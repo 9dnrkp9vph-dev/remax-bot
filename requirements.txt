@@ -1,0 +1,8 @@
+flask==3.0.3
+requests==2.32.3
+reportlab==4.2.2
+arabic-reshaper==3.0.0
+python-bidi==0.6.6
+Pillow==10.4.0
+numpy==1.26.4
+gunicorn==22.0.0
