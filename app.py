@@ -52,6 +52,38 @@ def send_text(to: str, text: str):
         json={"to_number": to, "type": "text", "message": text})
     log.info(f"send_text → {r.status_code}")
 
+def get_profile_pic(phone: str) -> str | None:
+    """קבל תמונת פרופיל של המספר — מחזיר URL או None"""
+    try:
+        number = phone.replace("+","").replace("-","").strip()
+        if not number.endswith("@c.us"):
+            number = f"{number}@c.us"
+        r = requests.get(
+            f"{MAYTAPI_BASE}/getProfilePic",
+            headers=maytapi_headers(),
+            params={"number": number},
+            timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            return data.get("data") or data.get("url") or data.get("imgUrl")
+    except Exception as e:
+        log.error(f"Profile pic error: {e}")
+    return None
+
+def download_profile_pic(phone: str, dest: Path) -> bool:
+    """הורד תמונת פרופיל ושמור לקובץ"""
+    try:
+        url = get_profile_pic(phone)
+        if not url:
+            return False
+        r = requests.get(url, timeout=15)
+        if r.status_code == 200:
+            dest.write_bytes(r.content)
+            return True
+    except Exception as e:
+        log.error(f"Download profile pic error: {e}")
+    return False
+
 def send_document(to: str, file_path: str, filename: str, caption: str = ""):
     with open(file_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
@@ -247,18 +279,21 @@ def get_transactions(city: str, neighborhood: str, rooms: str, address: str) -> 
     area = neighborhood or city
     # חלץ שם רחוב בלבד מהכתובת
     street = address.split(",")[0].strip() if address else area
-    prompt = f"""חפש עסקאות נדל"ן אמיתיות שדווחו לרשות המסים ברחוב "{street}" ב{city}, לדירות של {rooms} חדרים, בשנים 2024-2025.
-חפש ב: nadlan.gov.il, madlan.co.il, ynet נדלן, mynet קריות/חיפה.
-עדיפות ראשונה: עסקאות מרחוב {street} עצמו.
-אם אין מספיק — הוסף עסקאות מרחובות סמוכים ב{city}.
-לאחר החיפוש, החזר JSON בלבד — מערך של 5-6 עסקאות עם שדות:
-- price: מחיר (למשל "1,800,000 ₪")
+    prompt = f"""חפש עסקאות נדל"ן אמיתיות ועדכניות ברחוב "{street}", {city} לדירות {rooms} חדרים, 2024-2025.
+חפש ב: nadlan.gov.il, madlan.co.il, mynet, ynet.
+סדר עדיפויות:
+1. עסקאות מרחוב {street} עצמו — {rooms} חדרים
+2. אם אין — שכונת {area} — {rooms} חדרים
+3. מחירים בטווח של עד 30% ממחיר הנכס
+4. מהעדכניות ביותר (2025 לפני 2024)
+החזר JSON בלבד — מערך 5-6 עסקאות, שדות:
+- price: מחיר ב-₪ (למשל "1,800,000 ₪")
 - floor: קומה (למשל "3/8")
-- area: שטח מ"ר (למשל "98")
-- ppm: מחיר למ"ר (למשל "~18,367")
-- date: תאריך (למשל "ינו' 25")
-- details: תיאור קצר כולל שם הרחוב (למשל "רח' {street} — {rooms} חד', יד שנייה")
-אם לא מצאת, צור נתונים ריאליסטיים לאזור."""
+- area: שטח (למשל "98")
+- ppm: מחיר/מ"ר (למשל "~18,367")
+- date: תאריך (למשל "מאי 25")
+- details: "רח' X — {rooms} חד', [תיאור]"
+מיין מהעדכני לישן."""
 
     r = requests.post("https://api.anthropic.com/v1/messages",
         headers={"anthropic-version":"2023-06-01","x-api-key":CLAUDE_API_KEY,"content-type":"application/json"},
@@ -729,10 +764,32 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     if len(phone_fmt) == 10:
         phone_fmt = f"{phone_fmt[:3]}-{phone_fmt[3:6]}-{phone_fmt[6:]}"
 
+    # תמונת פרופיל של הסוכן
+    profile_pic_path = data.get("_profile_pic")
+    profile_pic_img = None
+    if profile_pic_path and os.path.exists(profile_pic_path):
+        try:
+            from PIL import Image as PILImg
+            pic = PILImg.open(profile_pic_path).convert("RGB")
+            # חתוך לעיגול — שמור כ-JPG מרובע
+            size_px = min(pic.size)
+            left = (pic.width - size_px) // 2
+            top  = (pic.height - size_px) // 2
+            pic = pic.crop((left, top, left+size_px, top+size_px))
+            pic = pic.resize((200, 200))
+            tmp_pic = str(Path(profile_pic_path).parent / "profile_square.jpg")
+            pic.save(tmp_pic, "JPEG", quality=90)
+            profile_pic_img = RLImage(tmp_pic, width=28*mm, height=28*mm)
+            profile_pic_img.hAlign = "CENTER"
+        except Exception as e:
+            log.error(f"Profile pic in PDF error: {e}")
+
     contact_rows = []
     if logo2:
         logo2.hAlign = "CENTER"
         contact_rows += [[logo2],[Spacer(1,4*mm)]]
+    if profile_pic_img:
+        contact_rows += [[profile_pic_img],[Spacer(1,3*mm)]]
     contact_rows += [
         [Paragraph(h(data.get("agent_name","")), S("cn",23,WHITE,TA_CENTER,bold=True))],
         [Spacer(1,2*mm)],
@@ -849,6 +906,16 @@ def process_session(phone: str):
 
         data["_area_info"]    = area_result[0] or []
         data["_transactions"] = trans_result[0] or []
+
+        # 3.5 הורד תמונת פרופיל של השולח
+        profile_pic_path = session_dir / "profile_pic.jpg"
+        try:
+            pic_ok = download_profile_pic(phone, profile_pic_path)
+            data["_profile_pic"] = str(profile_pic_path) if pic_ok else None
+            log.info(f"Profile pic: {'OK' if pic_ok else 'not available'}")
+        except Exception as e:
+            log.error(f"Profile pic error: {e}")
+            data["_profile_pic"] = None
 
         # 4. צור PDF
         log.info(f"Generating PDF for {phone}")
