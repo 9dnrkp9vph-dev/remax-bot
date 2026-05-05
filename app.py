@@ -123,7 +123,7 @@ def parse_listing_text(raw_text: str) -> dict:
             "content-type": "application/json"
         },
         json={
-            "model": "claude-sonnet-4-5",
+            "model": "claude-sonnet-4-20250514",
             "max_tokens": 1500,
             "messages": [{"role": "user", "content": prompt}]
         })
@@ -687,10 +687,12 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
                 mn, mx = min(prices), max(prices)
                 avg_ppm = int(sum(ppms)/len(ppms)) if ppms else 0
                 price_display = data.get("price_display","")
+                rooms_str = str(data.get("rooms",""))
+                shekel = "\u20aa"
                 summary_rows = [
-                    (f"טווח מחירים — {data.get('rooms','')} חד' באזור:", f"{mn:,} – {mx:,} ₪"),
-                    (f"מחיר ממוצע למ"ר:", f"~{avg_ppm:,} ₪" if avg_ppm else "—"),
-                    ("מחיר השיווק:", f"{price_display}  ← השווה לשוק"),
+                    (f"טווח מחירים — {rooms_str} חד' באזור:", f"{mn:,} – {mx:,} {shekel}"),
+                    ('מחיר ממוצע למ"ר:', f"~{avg_ppm:,} {shekel}" if avg_ppm else "—"),
+                    ("מחיר השיווק:", f"{price_display}  \u2190 השווה לשוק"),
                 ]
             for lbl, val in summary_rows:
                 sr = Table([[
