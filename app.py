@@ -551,20 +551,18 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             if im: im.hAlign = "CENTER"
             row1.append(im or Paragraph("",S(f"e{i}",8,MID,TA_CENTER)))
             caps1.append(Paragraph(h(captions[i]), S(f"c{i}",9,MID,TA_CENTER)))
-        grid = [row1, caps1]
-        row_h = [ph_h, 7*mm]
+        grid = [row1]
+        row_h = [ph_h]
         if len(image_paths) >= 3:
-            row2, caps2 = [], []
+            row2 = []
             for i in range(2, min(4, len(image_paths))):
                 im = fit_img(image_paths[i], ph_w, ph_h)
                 if im: im.hAlign = "CENTER"
                 row2.append(im or Paragraph("",S(f"e2{i}",8,MID,TA_CENTER)))
-                caps2.append(Paragraph(h(captions[i]), S(f"c2{i}",9,MID,TA_CENTER)))
             while len(row2) < 2:
                 row2.append(Paragraph("",S("ep",8,MID,TA_CENTER)))
-                caps2.append(Paragraph("",S("cp",8,MID,TA_CENTER)))
-            grid += [row2, caps2]
-            row_h += [ph_h, 7*mm]
+            grid += [row2]
+            row_h += [ph_h]
         story.append(Table(grid, colWidths=[ph_w,ph_w], rowHeights=row_h,
             style=[("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
                    ("COLPADDING",(0,0),(-1,-1),2),("ROWPADDING",(0,0),(-1,-1),1)]))
@@ -917,26 +915,31 @@ def process_session(phone: str):
             except Exception as e:
                 log.error(f"Trans fetch error: {e}")
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        def fetch_pic():
+            try:
+                pic_path = session_dir / "profile_pic.jpg"
+                ok = download_profile_pic(phone, pic_path)
+                if ok:
+                    data["_profile_pic"] = str(pic_path)
+                    log.info("Profile pic fetched OK")
+                else:
+                    log.info("Profile pic not available")
+            except Exception as e:
+                log.error(f"Profile pic fetch error: {e}")
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
             f1 = executor.submit(fetch_area)
             f2 = executor.submit(fetch_trans)
+            f3 = executor.submit(fetch_pic)
             try: f1.result(timeout=55)
             except: log.warning("Area info timeout")
             try: f2.result(timeout=55)
             except: log.warning("Transactions timeout")
+            try: f3.result(timeout=15)
+            except: log.warning("Profile pic timeout")
 
         data["_area_info"]    = area_result[0] or []
         data["_transactions"] = trans_result[0] or []
-
-        # 3.5 הורד תמונת פרופיל של השולח
-        profile_pic_path = session_dir / "profile_pic.jpg"
-        try:
-            pic_ok = download_profile_pic(phone, profile_pic_path)
-            data["_profile_pic"] = str(profile_pic_path) if pic_ok else None
-            log.info(f"Profile pic: {'OK' if pic_ok else 'not available'}")
-        except Exception as e:
-            log.error(f"Profile pic error: {e}")
-            data["_profile_pic"] = None
 
         # 4. צור PDF
         log.info(f"Generating PDF for {phone}")
