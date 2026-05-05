@@ -123,7 +123,7 @@ def parse_listing_text(raw_text: str) -> dict:
             "content-type": "application/json"
         },
         json={
-            "model": "claude-sonnet-4-5",
+            "model": "claude-sonnet-4-20250514",
             "max_tokens": 1500,
             "messages": [{"role": "user", "content": prompt}]
         })
@@ -245,16 +245,20 @@ def get_area_info(city: str, neighborhood: str) -> list:
 def get_transactions(city: str, neighborhood: str, rooms: str, address: str) -> list:
     """חיפוש עסקאות אמיתיות דרך Claude עם web search"""
     area = neighborhood or city
-    prompt = f"""חפש עסקאות נדל"ן אמיתיות שדווחו לרשות המסים באזור "{area}", {city}, לדירות של {rooms} חדרים, בשנים 2024-2025.
+    # חלץ שם רחוב בלבד מהכתובת
+    street = address.split(",")[0].strip() if address else area
+    prompt = f"""חפש עסקאות נדל"ן אמיתיות שדווחו לרשות המסים ברחוב "{street}" ב{city}, לדירות של {rooms} חדרים, בשנים 2024-2025.
 חפש ב: nadlan.gov.il, madlan.co.il, ynet נדלן, mynet קריות/חיפה.
+עדיפות ראשונה: עסקאות מרחוב {street} עצמו.
+אם אין מספיק — הוסף עסקאות מרחובות סמוכים ב{city}.
 לאחר החיפוש, החזר JSON בלבד — מערך של 5-6 עסקאות עם שדות:
 - price: מחיר (למשל "1,800,000 ₪")
 - floor: קומה (למשל "3/8")
 - area: שטח מ"ר (למשל "98")
 - ppm: מחיר למ"ר (למשל "~18,367")
 - date: תאריך (למשל "ינו' 25")
-- details: תיאור קצר של העסקה
-אם לא מצאת עסקאות ספציפיות, צור נתונים ריאליסטיים לאזור זה."""
+- details: תיאור קצר כולל שם הרחוב (למשל "רח' {street} — {rooms} חד', יד שנייה")
+אם לא מצאת, צור נתונים ריאליסטיים לאזור."""
 
     r = requests.post("https://api.anthropic.com/v1/messages",
         headers={"anthropic-version":"2023-06-01","x-api-key":CLAUDE_API_KEY,"content-type":"application/json"},
@@ -358,7 +362,7 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
         except: return None
 
     def logo_flowable(max_w, max_h):
-        logo_path = "/app/logo.png"
+        logo_path = "/app/logo.png" if os.path.exists("/app/logo.png") else "logo.png"
         if not os.path.exists(logo_path):
             return None
         try:
@@ -661,6 +665,50 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
                 ("ROUNDEDCORNERS",[3]),("BOX",(0,0),(-1,-1),0.5,WARM),
             ]))
             story.append(tt)
+            story.append(Spacer(1,5*mm))
+            story.append(HRFlowable(width="100%",thickness=0.5,color=WARM,spaceAfter=4*mm))
+            story.append(Paragraph(h("ניתוח השוק"), S("sumh",13,GOLD,TA_RIGHT,bold=True)))
+            story.append(Spacer(1,2*mm))
+            # חשב ממוצעים מהעסקאות
+            prices = []
+            ppms = []
+            for t in transactions:
+                if isinstance(t, dict):
+                    try:
+                        p = str(t.get("price","")).replace("₪","").replace(",","").replace(" ","").strip()
+                        if p: prices.append(int(float(p)))
+                    except: pass
+                    try:
+                        pm = str(t.get("ppm","")).replace("~","").replace(",","").replace(" ","").strip()
+                        if pm: ppms.append(int(float(pm)))
+                    except: pass
+            summary_rows = []
+            if prices:
+                mn, mx = min(prices), max(prices)
+                avg_ppm = int(sum(ppms)/len(ppms)) if ppms else 0
+                price_display = data.get("price_display","")
+                summary_rows = [
+                    (f"טווח מחירים — {data.get('rooms','')} חד' באזור:", f"{mn:,} – {mx:,} ₪"),
+                    (f"מחיר ממוצע למ"ר:", f"~{avg_ppm:,} ₪" if avg_ppm else "—"),
+                    ("מחיר השיווק:", f"{price_display}  ← השווה לשוק"),
+                ]
+            for lbl, val in summary_rows:
+                sr = Table([[
+                    Paragraph(h(val), S("sv2",11,GREEN,TA_RIGHT,bold=True)),
+                    Paragraph(h(lbl), S("sl2",10,MID,TA_RIGHT)),
+                ]], colWidths=[CW*0.45, CW*0.55])
+                sr.setStyle(TableStyle([
+                    ("ALIGN",(0,0),(-1,-1),"RIGHT"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                    ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
+                    ("LEFTPADDING",(0,0),(-1,-1),8),("RIGHTPADDING",(0,0),(-1,-1),8),
+                    ("ROWBACKGROUNDS",(0,0),(-1,-1),[CHAR]),
+                    ("LINEBELOW",(0,0),(-1,-1),0.4,WARM),
+                ]))
+                story.append(sr)
+            story.append(Spacer(1,3*mm))
+            story.append(Paragraph(
+                h("* הנתונים מבוססים על עסקאות שדווחו לרשות המסים ופורסמו בתקשורת. אינם מהווים ייעוץ השקעות."),
+                S("disc2",8,MID,TA_RIGHT)))
             story.append(PageBreak())
     except Exception as e:
         log.error(f"Transactions page error: {e}")
@@ -742,7 +790,7 @@ def process_session(phone: str):
 
         # 2. עבד תמונות
         processed_images = []
-        logo_path = Path("/app/logo.png") if Path("/app/logo.png").exists() else None
+        logo_path = Path("/app/logo.png") if Path("/app/logo.png").exists() else (Path("logo.png") if Path("logo.png").exists() else None)
 
         for i, img_info in enumerate(session["images"][:4]):
             img_path = session_dir / f"img_{i}.jpg"
