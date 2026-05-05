@@ -123,7 +123,7 @@ def parse_listing_text(raw_text: str) -> dict:
             "content-type": "application/json"
         },
         json={
-            "model": "claude-sonnet-4-5",
+            "model": "claude-sonnet-4-20250514",
             "max_tokens": 1500,
             "messages": [{"role": "user", "content": prompt}]
         })
@@ -203,6 +203,8 @@ def add_remax_logo_to_image(img_path: Path, out_path: Path, logo_path: Path):
 def get_area_info(city: str, neighborhood: str) -> list:
     """חיפוש אמיתי על האזור דרך Claude עם web search"""
     area = neighborhood or city
+    if not area:
+        return []
     prompt = f"""חפש מידע אמיתי ועדכני על שכונת "{area}" ב{city} לרוכשי דירות.
 חפש: תחבורה ציבורית, מוסדות חינוך, מרכזים מסחריים, שטחי טבע, מגמות נדל"ן.
 לאחר החיפוש, החזר JSON בלבד — מערך של 5 אובייקטים עם שדות:
@@ -217,7 +219,7 @@ def get_area_info(city: str, neighborhood: str) -> list:
             "max_tokens": 2000,
             "tools": [{"type": "web_search_20250305", "name": "web_search"}],
             "messages": [{"role": "user", "content": prompt}]
-        })
+        }, timeout=50)
 
     if r.status_code != 200:
         log.error(f"Area info error: {r.text}")
@@ -261,7 +263,7 @@ def get_transactions(city: str, neighborhood: str, rooms: str, address: str) -> 
             "max_tokens": 2000,
             "tools": [{"type": "web_search_20250305", "name": "web_search"}],
             "messages": [{"role": "user", "content": prompt}]
-        })
+        }, timeout=50)
 
     if r.status_code != 200:
         log.error(f"Transactions error: {r.text}")
@@ -517,12 +519,12 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
 
     story.append(Spacer(1,4*mm))
     amenities = []
-    if data.get("parking"): amenities.append(("🅿","חניה"))
-    if data.get("elevator"): amenities.append(("🛗","מעלית"))
-    if data.get("storage"): amenities.append(("🗄","מחסן"))
-    if data.get("shelter"): amenities.append(("🛡",'ממ"ד'))
+    if data.get("parking"): amenities.append(("P","חניה"))
+    if data.get("elevator"): amenities.append(("↑","מעלית"))
+    if data.get("storage"): amenities.append(("■","מחסן"))
+    if data.get("shelter"): amenities.append(("*",'ממ"ד'))
     if not amenities:
-        amenities = [("🏠","נכס"),("📐",'מ"ר'),("🔑","מפתח"),("✨","איכות")]
+        amenities = [("◆","נכס"),("m",'מ"ר'),("K","מפתח"),("★","איכות")]
     amenities = amenities[:4]
     bar_cells = [Table([
         [Paragraph(icon, S("bi",14,GOLD,TA_CENTER))],
@@ -584,7 +586,7 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
 
     # ── PAGE 4: AREA INFO ──────────────────────────────────────────────────────
     try:
-        area_items = get_area_info(data.get("city",""), data.get("neighborhood",""))
+        area_items = data.get("_area_info") or get_area_info(data.get("city",""), data.get("neighborhood",""))
         if area_items:
             story.append(Spacer(1,5*mm))
             area_name = data.get("neighborhood") or data.get("city","")
@@ -613,7 +615,7 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
 
     # ── PAGE 5: TRANSACTIONS ───────────────────────────────────────────────────
     try:
-        transactions = get_transactions(
+        transactions = data.get("_transactions") or get_transactions(
             data.get("city",""), data.get("neighborhood",""),
             str(data.get("rooms","")), data.get("address",""))
         if transactions:
@@ -766,7 +768,39 @@ def process_session(phone: str):
                     processed_images.append(img_path)
                     log.info(f"Image {i}: no logo file available")
 
-        # 3. צור PDF
+        # 3. חפש אזור ועסקאות במקביל לעיבוד תמונות
+        from concurrent.futures import ThreadPoolExecutor
+        area_result = [None]
+        trans_result = [None]
+
+        def fetch_area():
+            try:
+                area_result[0] = get_area_info(data.get("city",""), data.get("neighborhood",""))
+                log.info(f"Area info fetched: {len(area_result[0] or [])} items")
+            except Exception as e:
+                log.error(f"Area fetch error: {e}")
+
+        def fetch_trans():
+            try:
+                trans_result[0] = get_transactions(
+                    data.get("city",""), data.get("neighborhood",""),
+                    str(data.get("rooms","")), data.get("address",""))
+                log.info(f"Transactions fetched: {len(trans_result[0] or [])} items")
+            except Exception as e:
+                log.error(f"Trans fetch error: {e}")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            f1 = executor.submit(fetch_area)
+            f2 = executor.submit(fetch_trans)
+            try: f1.result(timeout=55)
+            except: log.warning("Area info timeout")
+            try: f2.result(timeout=55)
+            except: log.warning("Transactions timeout")
+
+        data["_area_info"]    = area_result[0] or []
+        data["_transactions"] = trans_result[0] or []
+
+        # 4. צור PDF
         log.info(f"Generating PDF for {phone}")
         pdf_path = generate_pdf(data, processed_images, session_dir)
 
