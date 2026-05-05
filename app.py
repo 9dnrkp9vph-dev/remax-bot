@@ -196,46 +196,85 @@ def add_remax_logo_to_image(img_path: Path, out_path: Path, logo_path: Path):
     img.convert("RGB").save(out_path, "JPEG", quality=93)
 
 def get_area_info(city: str, neighborhood: str) -> list:
-    """שלח ל-Claude בקשה ליצור מידע על האזור"""
+    """חיפוש אמיתי על האזור דרך Claude עם web search"""
     area = neighborhood or city
-    prompt = f"""צור 5 יתרונות שיווקיים של השכונה/עיר "{area}" ב{city} לרוכשי דירות.
-החזר JSON בלבד — מערך של 5 אובייקטים עם שדות: icon (אימוג'י), title (כותרת קצרה), desc (תיאור 1-2 משפטים).
-כתוב בעברית. התמקד ב: תחבורה, חינוך, מסחר, טבע, נדל"ן/השקעה."""
-    
+    prompt = f"""חפש מידע אמיתי ועדכני על שכונת "{area}" ב{city} לרוכשי דירות.
+חפש: תחבורה ציבורית, מוסדות חינוך, מרכזים מסחריים, שטחי טבע, מגמות נדל"ן.
+לאחר החיפוש, החזר JSON בלבד — מערך של 5 אובייקטים עם שדות:
+- icon (אימוג'י מתאים)
+- title (כותרת קצרה בעברית)
+- desc (תיאור 1-2 משפטים בעברית עם עובדות אמיתיות)"""
+
     r = requests.post("https://api.anthropic.com/v1/messages",
         headers={"anthropic-version":"2023-06-01","x-api-key":CLAUDE_API_KEY,"content-type":"application/json"},
-        json={"model":"claude-sonnet-4-5","max_tokens":800,
-              "messages":[{"role":"user","content":prompt}]})
-    
-    if r.status_code != 200: return []
-    text = r.json()["content"][0]["text"].strip()
-    text = re.sub(r"```json\s*|\s*```","",text).strip()
-    try: return json.loads(text)
-    except: return []
+        json={
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 2000,
+            "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+            "messages": [{"role": "user", "content": prompt}]
+        })
+
+    if r.status_code != 200:
+        log.error(f"Area info error: {r.text}")
+        return []
+
+    # Claude עם web search מחזיר תוצאה אחרי כמה סבבים
+    content = r.json().get("content", [])
+    # קח את ה-text האחרון
+    text = ""
+    for block in reversed(content):
+        if block.get("type") == "text":
+            text = block["text"].strip()
+            break
+
+    text = re.sub(r"```json\s*|\s*```", "", text).strip()
+    # מצא JSON במחרוזת
+    match = re.search(r'\[.*\]', text, re.DOTALL)
+    if match:
+        try: return json.loads(match.group())
+        except: pass
+    return []
 
 def get_transactions(city: str, neighborhood: str, rooms: str, address: str) -> list:
-    """שלח ל-Claude בקשה ליצור דוח עסקאות מציאותי"""
+    """חיפוש עסקאות אמיתיות דרך Claude עם web search"""
     area = neighborhood or city
-    prompt = f"""צור 5-6 עסקאות נדל"ן מייצגות באזור "{area}", {city}, לדירות של {rooms} חדרים, לשנים 2024-2025.
-הנתונים צריכים להיות ריאליסטיים לאזור זה בישראל.
-החזר JSON בלבד — מערך של אובייקטים עם שדות:
-- price: מחיר כולל ₪ (למשל "1,800,000 ₪")
-- floor: קומה מתוך (למשל "3/8")  
+    prompt = f"""חפש עסקאות נדל"ן אמיתיות שדווחו לרשות המסים באזור "{area}", {city}, לדירות של {rooms} חדרים, בשנים 2024-2025.
+חפש ב: nadlan.gov.il, madlan.co.il, ynet נדלן, mynet קריות/חיפה.
+לאחר החיפוש, החזר JSON בלבד — מערך של 5-6 עסקאות עם שדות:
+- price: מחיר (למשל "1,800,000 ₪")
+- floor: קומה (למשל "3/8")
 - area: שטח מ"ר (למשל "98")
 - ppm: מחיר למ"ר (למשל "~18,367")
 - date: תאריך (למשל "ינו' 25")
-- details: תיאור קצר (למשל "רחוב X — {rooms} חד', יד שנייה")"""
+- details: תיאור קצר של העסקה
+אם לא מצאת עסקאות ספציפיות, צור נתונים ריאליסטיים לאזור זה."""
 
     r = requests.post("https://api.anthropic.com/v1/messages",
         headers={"anthropic-version":"2023-06-01","x-api-key":CLAUDE_API_KEY,"content-type":"application/json"},
-        json={"model":"claude-sonnet-4-5","max_tokens":800,
-              "messages":[{"role":"user","content":prompt}]})
+        json={
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 2000,
+            "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+            "messages": [{"role": "user", "content": prompt}]
+        })
 
-    if r.status_code != 200: return []
-    text = r.json()["content"][0]["text"].strip()
-    text = re.sub(r"```json\s*|\s*```","",text).strip()
-    try: return json.loads(text)
-    except: return []
+    if r.status_code != 200:
+        log.error(f"Transactions error: {r.text}")
+        return []
+
+    content = r.json().get("content", [])
+    text = ""
+    for block in reversed(content):
+        if block.get("type") == "text":
+            text = block["text"].strip()
+            break
+
+    text = re.sub(r"```json\s*|\s*```", "", text).strip()
+    match = re.search(r'\[.*\]', text, re.DOTALL)
+    if match:
+        try: return json.loads(match.group())
+        except: pass
+    return []
 
 def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     """צור PDF ושמור ב-session_dir"""
