@@ -609,8 +609,11 @@ def schedule_processing(phone: str):
 # WEBHOOK
 # ══════════════════════════════════════════════════════════════════════════════
 
-@app.route("/webhook", methods=["POST"])
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
+    # Maytapi sends GET to verify the webhook URL
+    if request.method == "GET":
+        return jsonify({"status": "ok", "message": "RE/MAX Bot Webhook Active"}), 200
     try:
         body = request.get_json(force=True)
         log.info(f"Webhook: {json.dumps(body)[:300]}")
