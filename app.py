@@ -52,34 +52,43 @@ def send_text(to: str, text: str):
         json={"to_number": to, "type": "text", "message": text})
     log.info(f"send_text → {r.status_code}")
 
-def get_profile_pic(phone: str) -> str | None:
-    """קבל תמונת פרופיל של המספר — מחזיר URL או None"""
+def download_profile_pic(phone: str, dest: Path) -> bool:
+    """הורד תמונת פרופיל ושמור לקובץ — מנסה כמה endpoints"""
     try:
         number = phone.replace("+","").replace("-","").strip()
-        if not number.endswith("@c.us"):
-            number = f"{number}@c.us"
-        r = requests.get(
-            f"{MAYTAPI_BASE}/getProfilePic",
-            headers=maytapi_headers(),
-            params={"number": number},
-            timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            return data.get("data") or data.get("url") or data.get("imgUrl")
-    except Exception as e:
-        log.error(f"Profile pic error: {e}")
-    return None
+        number_at = f"{number}@c.us"
 
-def download_profile_pic(phone: str, dest: Path) -> bool:
-    """הורד תמונת פרופיל ושמור לקובץ"""
-    try:
-        url = get_profile_pic(phone)
-        if not url:
-            return False
-        r = requests.get(url, timeout=15)
-        if r.status_code == 200:
-            dest.write_bytes(r.content)
-            return True
+        # נסה endpoint 1: getProfilePic עם params
+        endpoints = [
+            {"method": "GET",  "url": f"{MAYTAPI_BASE}/getProfilePic", "params": {"number": number_at}},
+            {"method": "GET",  "url": f"{MAYTAPI_BASE}/getProfilePic", "params": {"number": number}},
+            {"method": "POST", "url": f"{MAYTAPI_BASE}/getProfilePic", "json": {"number": number_at}},
+            {"method": "GET",  "url": f"{MAYTAPI_BASE}/profile/pic",   "params": {"number": number_at}},
+        ]
+
+        for ep in endpoints:
+            try:
+                if ep["method"] == "GET":
+                    r = requests.get(ep["url"], headers=maytapi_headers(),
+                        params=ep.get("params"), timeout=10)
+                else:
+                    r = requests.post(ep["url"], headers=maytapi_headers(),
+                        json=ep.get("json"), timeout=10)
+                log.info(f"Profile pic endpoint {ep['url']}: {r.status_code} {r.text[:100]}")
+                if r.status_code == 200:
+                    data = r.json()
+                    pic_url = (data.get("data") or data.get("url") or
+                               data.get("imgUrl") or data.get("profilePicUrl") or
+                               data.get("image"))
+                    if pic_url and pic_url.startswith("http"):
+                        img_r = requests.get(pic_url, timeout=15)
+                        if img_r.status_code == 200:
+                            dest.write_bytes(img_r.content)
+                            log.info("Profile pic downloaded OK")
+                            return True
+            except Exception as ex:
+                log.warning(f"Endpoint {ep['url']} failed: {ex}")
+                continue
     except Exception as e:
         log.error(f"Download profile pic error: {e}")
     return False
@@ -288,9 +297,9 @@ def get_transactions(city: str, neighborhood: str, rooms: str, address: str) -> 
 4. מהעדכניות ביותר (2025 לפני 2024)
 החזר JSON בלבד — מערך 5-6 עסקאות, שדות:
 - price: מחיר ב-₪ (למשל "1,800,000 ₪")
-- floor: קומה (למשל "3/8")
-- area: שטח (למשל "98")
-- ppm: מחיר/מ"ר (למשל "~18,367")
+- floor: קומה (חובה! אם לא ידוע השתמש ב"?/?" — לעולם לא "לא צוין")
+- area: שטח במ"ר (חובה! אם לא ידוע השתמש בשטח ממוצע לאזור — לעולם לא "לא צוין")
+- ppm: מחיר/מ"ר מחושב (חובה! חשב price/area — לעולם לא "לא צוין")
 - date: תאריך (למשל "מאי 25")
 - details: "רח' X — {rooms} חד', [תיאור]"
 מיין מהעדכני לישן."""
