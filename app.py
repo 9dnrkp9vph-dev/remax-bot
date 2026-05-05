@@ -689,7 +689,7 @@ def process_session(phone: str):
     if not session:
         return
 
-    send_text(phone, "⏳ מעבד את הנכס... אנא המתן כ-30 שניות")
+    send_text(phone, "⏳ מכין את המצגת... כולל חיפוש עסקאות ומידע על השכונה.\nאנא המתן כ-90 שניות 🏠")
 
     session_dir = WORK_DIR / str(uuid.uuid4())
     session_dir.mkdir(exist_ok=True)
@@ -799,7 +799,7 @@ def webhook():
             }
             send_text(from_number,
                 f"✅ קיבלתי! עכשיו שלח את תמונות הנכס (עד 4).\n"
-                f"אחרי {SESSION_TIMEOUT} שניות מהתמונה האחרונה — המצגת תישלח אוטומטית.")
+                f"אחרי התמונות — אחפש עסקאות ומידע על השכונה ואשלח מצגת תוך ~90 שניות.")
             return jsonify({"ok": True})
 
         # ── תמונה בתוך סשן פעיל ──────────────────────────────────────────────
