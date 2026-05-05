@@ -133,8 +133,13 @@ def parse_listing_text(raw_text: str) -> dict:
         return {}
 
     text = r.json()["content"][0]["text"].strip()
-    # נקה backticks אם יש
-    text = re.sub(r"```json\s*|\s*```", "", text).strip()
+    # נקה backticks בכל פורמט
+    text = re.sub(r"```(?:json)?\s*", "", text).strip()
+    text = text.strip("`").strip()
+    # מצא את ה-JSON בתוך הטקסט
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        text = match.group()
     try:
         return json.loads(text)
     except Exception as e:
