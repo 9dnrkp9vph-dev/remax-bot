@@ -153,6 +153,7 @@ def parse_listing_text(raw_text: str) -> dict:
 - exclusive: true אם בלעדיות
 - description: תיאור שיווקי מלא מהמודעה
 - highlights: רשימת יתרונות (array of strings)
+- image_labels: רשימה של 4 כיתובים לתמונות לפי מה שמוזכר בטקסט (למשל ["סלון","מטבח","חדר הורים","אמבטיה"]) — השתמש תמיד ב-4 פריטים
 
 טקסט:
 {raw_text}"""
@@ -541,7 +542,10 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             imgs.append(None)
         row1 = []
         caps1 = []
-        captions = ["סלון","מטבח","חדר שינה","חדר אמבטיה"]
+        # כיתובים יוצגו לפי סדר התמונות שנשלחו
+        # כיתובים מהמלל המקורי אם זמין, אחרת גנרי
+        img_labels = data.get("image_labels", [])
+        captions = (img_labels + ["📷 תמונה 1","📷 תמונה 2","📷 תמונה 3","📷 תמונה 4"])[:4]
         for i in range(2):
             im = fit_img(imgs[i], ph_w, ph_h) if imgs[i] else None
             if im: im.hAlign = "CENTER"
@@ -833,6 +837,7 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     return out_path
 
 
+# VERSION: v12-fixed
 # ══════════════════════════════════════════════════════════════════════════════
 # SESSION PROCESSOR
 # ══════════════════════════════════════════════════════════════════════════════
@@ -858,7 +863,14 @@ def process_session(phone: str):
 
         # 2. עבד תמונות
         processed_images = []
-        logo_path = Path("/app/logo.png") if Path("/app/logo.png").exists() else (Path("logo.png") if Path("logo.png").exists() else None)
+        # מצא את קובץ הלוגו
+        for _lp in [Path("/app/logo.png"), Path("logo.png"), Path(__file__).parent / "logo.png"]:
+            if _lp.exists():
+                logo_path = _lp
+                break
+        else:
+            logo_path = None
+        log.info(f"Logo path: {logo_path}")
 
         for i, img_info in enumerate(session["images"][:4]):
             img_path = session_dir / f"img_{i}.jpg"
