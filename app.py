@@ -1072,6 +1072,18 @@ def normalize_city(city: str) -> str:
 
 def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
     """0=ללא התאמה, 100=מושלם. flex_level: 0=מחמיר, 1=±15%, 2=±30%"""
+    # ── סינון לפי תאריך — רק שיחות מ-5 חודשים אחרונים ──
+    from datetime import datetime, timedelta
+    call_date_str = (row.get("Date", "") or "").strip()
+    if call_date_str:
+        try:
+            call_dt = datetime.strptime(call_date_str, "%d/%m/%Y")
+            five_months_ago = datetime.now() - timedelta(days=150)
+            if call_dt < five_months_ago:
+                return 0
+        except ValueError:
+            pass
+
     row_type = (row.get("Type", "") or "").strip().lower()
     want_type = query.get("search_for", "").strip().lower()
     opposite = {"buyer": ["seller"], "seller": ["buyer"],
@@ -1165,7 +1177,7 @@ def search_listings_in_sheet(query: dict) -> list:
                 scored.append((s, row, flex))
         scored.sort(key=lambda x: -x[0])
         if len(scored) >= 3 or flex == 2:
-            return [(s, r, f) for (s, r, f) in scored[:5]]
+            return [(s, r, f) for (s, r, f) in scored[:3]]
     return []
 
 
@@ -1206,8 +1218,10 @@ def format_match_reply(query: dict, matches: list) -> str:
             budget_display = budget_max
 
         location = f"{neigh}, {city}" if neigh else city
+        # חישוב אחוז התאמה (max תאורטי ~115, נגביל ל-100)
+        match_pct = min(100, int(score))
         badge = "🟢 התאמה מצוינת" if score >= 70 else ("🟡 התאמה טובה" if score >= 50 else "🟠 התאמה חלקית")
-        lines.append(f"*{i}. {client_name}* {badge}")
+        lines.append(f"*{i}. {client_name}* — {match_pct}% {badge}")
 
         details = []
         if rooms: details.append(f"{rooms} חדרים")
