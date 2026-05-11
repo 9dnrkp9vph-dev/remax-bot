@@ -28,6 +28,11 @@ MAYTAPI_PHONE_ID = os.environ["MAYTAPI_PHONE_ID"]   # phone ID
 MAYTAPI_PRODUCT  = os.environ["MAYTAPI_PRODUCT_ID"] # product ID
 CLAUDE_API_KEY   = os.environ["CLAUDE_API_KEY"]
 TRIGGER_WORD     = os.environ.get("TRIGGER_WORD", "מצגת")
+GOOGLE_SHEETS_API_KEY = os.environ.get("GOOGLE_SHEETS_API_KEY", "")
+SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1Yu1d5ytaMXrSZNFJE3VKu4KZN_r6DQ0gyo9sw_A6NXE")
+SEARCH_TRIGGERS = ["אני מחפש", "אני מחפשת"]
+SEARCH_SHEET_NAME = "Calls_Log"
+BOT_QUERIES_SHEET = "Bot_Queries"
 
 MAYTAPI_BASE = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT}/{MAYTAPI_PHONE_ID}"
 
@@ -975,6 +980,311 @@ def schedule_processing(phone: str):
         sessions[phone]["timer"] = timer
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SEARCH BOT — מציאת לקוחות תואמים
+# ══════════════════════════════════════════════════════════════════════════════
+
+def parse_search_query(text: str) -> dict:
+    """שלח את בקשת החיפוש ל-Claude וקבל JSON עם פילטרים"""
+    prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס. סוכן שלח לך בקשה לחיפוש לקוח תואם במאגר.
+חלץ מהטקסט את הפרמטרים הבאים והחזר JSON בלבד (ללא markdown, ללא backticks).
+
+חשוב — זיהוי סוג החיפוש:
+- אם הסוכן מחפש "קונה" / "רוכש" → search_for = "buyer"
+- אם הסוכן מחפש "מוכר" / "בעל נכס" / "דירה למכירה ל..." → search_for = "seller"
+- אם הסוכן מחפש "שוכר" → search_for = "renter"
+- אם הסוכן מחפש "משכיר" → search_for = "landlord"
+- אם הסוכן רק תיאר נכס בלי לציין מי הוא מחפש — הסוכן רוב הזמן מייצג קונה ומחפש מוכר! search_for = "seller"
+
+שדות JSON:
+- search_for: buyer / seller / renter / landlord
+- city: עיר (קרית ביאליק / קרית מוצקין / קרית ים / קרית אתא / קרית חיים / חיפה / null)
+- neighborhood: שכונה (אם מצוין)
+- street: רחוב (אם מצוין)
+- rooms_min: מספר חדרים מינימלי (מספר או null)
+- rooms_max: מספר חדרים מקסימלי (מספר או null)
+- budget_min: תקציב מינימלי בש"ח (מספר או null)
+- budget_max: תקציב מקסימלי בש"ח (מספר או null) - "עד 2 מיליון" → budget_max=2000000
+- property_type: סוג נכס (דירה / פנטהאוז / קוטג' / בית / null)
+- summary_he: סיכום קצר בעברית של מה הסוכן מחפש (משפט אחד)
+
+טקסט:
+{text}"""
+
+    r = requests.post("https://api.anthropic.com/v1/messages",
+        headers={
+            "anthropic-version": "2023-06-01",
+            "x-api-key": CLAUDE_API_KEY,
+            "content-type": "application/json"
+        },
+        json={
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 800,
+            "messages": [{"role": "user", "content": prompt}]
+        }, timeout=20)
+
+    if r.status_code != 200:
+        log.error(f"Search parse error: {r.text}")
+        return {}
+
+    text_out = r.json()["content"][0]["text"].strip()
+    text_out = re.sub(r"```(?:json)?\s*", "", text_out).strip("` \n")
+    match = re.search(r'\{.*\}', text_out, re.DOTALL)
+    if match:
+        text_out = match.group()
+    try:
+        return json.loads(text_out)
+    except Exception as e:
+        log.error(f"Search JSON parse error: {e}")
+        return {}
+
+
+def fetch_sheet_rows() -> list:
+    """קרא את כל השורות מ-Calls_Log דרך Google Sheets API"""
+    if not GOOGLE_SHEETS_API_KEY:
+        log.error("GOOGLE_SHEETS_API_KEY not set!")
+        return []
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}/values/{SEARCH_SHEET_NAME}!A1:Z?key={GOOGLE_SHEETS_API_KEY}"
+    try:
+        r = requests.get(url, timeout=15)
+        if r.status_code != 200:
+            log.error(f"Sheets API error {r.status_code}: {r.text[:300]}")
+            return []
+        data = r.json().get("values", [])
+        if len(data) < 2:
+            return []
+        headers_row = data[0]
+        rows = []
+        for row in data[1:]:
+            row_padded = row + [""] * (len(headers_row) - len(row))
+            rows.append(dict(zip(headers_row, row_padded)))
+        return rows
+    except Exception as e:
+        log.error(f"Fetch sheet error: {e}")
+        return []
+
+
+def normalize_city(city: str) -> str:
+    if not city:
+        return ""
+    c = city.strip().replace("קריית", "קרית")
+    return re.sub(r"\s+", " ", c)
+
+
+def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
+    """0=ללא התאמה, 100=מושלם. flex_level: 0=מחמיר, 1=±15%, 2=±30%"""
+    row_type = (row.get("Type", "") or "").strip().lower()
+    want_type = query.get("search_for", "").strip().lower()
+    opposite = {"buyer": ["seller"], "seller": ["buyer"],
+                "renter": ["landlord"], "landlord": ["renter"]}
+    if want_type and row_type and row_type not in opposite.get(want_type, []):
+        return 0
+
+    if (row.get("Status", "") or "").strip() not in ("", "פתוח"):
+        return 0
+    if (row.get("Is_Real_Lead", "") or "").strip().upper() == "FALSE":
+        return 0
+
+    score = 0
+    q_city = normalize_city(query.get("city", "") or "")
+    r_city = normalize_city(row.get("City", "") or "")
+    if q_city:
+        if r_city == q_city:
+            score += 30
+        elif flex_level >= 2 and r_city and (r_city in q_city or q_city in r_city):
+            score += 15
+        else:
+            return 0
+    else:
+        score += 10
+
+    q_neigh = (query.get("neighborhood") or "").strip()
+    r_neigh = (row.get("Neighborhood", "") or "").strip()
+    if q_neigh and r_neigh:
+        if q_neigh == r_neigh:
+            score += 15
+        elif q_neigh in r_neigh or r_neigh in q_neigh:
+            score += 8
+
+    q_rmin = query.get("rooms_min")
+    q_rmax = query.get("rooms_max")
+    r_rooms_raw = (row.get("Rooms", "") or "").strip()
+    try:
+        r_rooms = float(r_rooms_raw) if r_rooms_raw else None
+    except ValueError:
+        r_rooms = None
+    if r_rooms is not None and (q_rmin or q_rmax):
+        flex = 0.5 if flex_level == 1 else (1.0 if flex_level == 2 else 0)
+        rmin_eff = (q_rmin - flex) if q_rmin else None
+        rmax_eff = (q_rmax + flex) if q_rmax else None
+        in_range = True
+        if rmin_eff is not None and r_rooms < rmin_eff:
+            in_range = False
+        if rmax_eff is not None and r_rooms > rmax_eff:
+            in_range = False
+        if in_range:
+            if q_rmin and q_rmax and q_rmin == q_rmax and r_rooms == q_rmin:
+                score += 25
+            else:
+                score += 15
+
+    q_bmax = query.get("budget_max")
+    r_bmin_raw = (row.get("Budget_Min", "") or "").strip()
+    r_bmax_raw = (row.get("Budget_Max", "") or "").strip()
+    try:
+        r_bmin = int(float(r_bmin_raw)) if r_bmin_raw else None
+        r_bmax = int(float(r_bmax_raw)) if r_bmax_raw else None
+    except ValueError:
+        r_bmin = r_bmax = None
+    if q_bmax and (r_bmin or r_bmax):
+        flex_pct = 0.0 if flex_level == 0 else (0.15 if flex_level == 1 else 0.30)
+        max_allowed = q_bmax * (1 + flex_pct)
+        ref_price = r_bmin or r_bmax
+        if ref_price and ref_price <= max_allowed:
+            score += 20
+
+    q_ptype = (query.get("property_type") or "").strip()
+    r_ptype = (row.get("Property_Type", "") or "").strip()
+    if q_ptype and r_ptype:
+        if q_ptype == r_ptype:
+            score += 10
+        elif q_ptype in r_ptype or r_ptype in q_ptype:
+            score += 5
+
+    return max(0, score)
+
+
+def search_listings_in_sheet(query: dict) -> list:
+    rows = fetch_sheet_rows()
+    if not rows:
+        return []
+    for flex in [0, 1, 2]:
+        scored = []
+        for row in rows:
+            s = score_match(row, query, flex_level=flex)
+            if s > 0:
+                scored.append((s, row, flex))
+        scored.sort(key=lambda x: -x[0])
+        if len(scored) >= 3 or flex == 2:
+            return [(s, r, f) for (s, r, f) in scored[:5]]
+    return []
+
+
+def format_match_reply(query: dict, matches: list) -> str:
+    if not matches:
+        return ("🔍 חיפשתי במאגר ולא מצאתי לקוחות תואמים כרגע.\n\n"
+                "טיפים:\n"
+                "• נסה לציין רק עיר ומספר חדרים (בלי שכונה ספציפית)\n"
+                "• הרחב את טווח התקציב\n"
+                '• דוגמה: "אני מחפש 4 חדרים בקרית ביאליק עד 2 מיליון"')
+
+    from urllib.parse import quote
+    summary = query.get("summary_he", "")
+    lines = [f"🎯 *מצאתי {len(matches)} התאמות עבורך!*"]
+    if summary:
+        lines.append(f"_{summary}_")
+    lines.append("")
+
+    for i, (score, row, flex) in enumerate(matches, 1):
+        first = (row.get("Client_FirstName", "") or "").strip() or "לקוח"
+        last = (row.get("Client_LastInitial", "") or "").strip()
+        client_name = f"{first} {last}." if last else first
+
+        agent_name = (row.get("Agent_Name", "") or "").strip()
+        agent_wa = (row.get("Agent_WhatsApp", "") or "").strip()
+        rooms = (row.get("Rooms", "") or "").strip()
+        budget_max = (row.get("Budget_Max", "") or "").strip()
+        city = (row.get("City", "") or "").strip()
+        neigh = (row.get("Neighborhood", "") or "").strip()
+        tag = (row.get("Summary_Tag", "") or "").strip()
+
+        budget_display = ""
+        try:
+            if budget_max:
+                bm = int(float(budget_max))
+                budget_display = f"{bm/1000000:.2f}M ₪".replace(".00", "") if bm >= 1000000 else f"{bm:,} ₪"
+        except ValueError:
+            budget_display = budget_max
+
+        location = f"{neigh}, {city}" if neigh else city
+        badge = "🟢 התאמה מצוינת" if score >= 70 else ("🟡 התאמה טובה" if score >= 50 else "🟠 התאמה חלקית")
+        lines.append(f"*{i}. {client_name}* {badge}")
+
+        details = []
+        if rooms: details.append(f"{rooms} חדרים")
+        if budget_display: details.append(f"עד {budget_display}")
+        if location: details.append(location)
+        if details: lines.append("   " + " | ".join(details))
+        if tag and len(tag) < 80: lines.append(f"   _{tag}_")
+        if agent_name: lines.append(f"   👤 סוכן מטפל: *{agent_name}*")
+
+        if agent_wa:
+            wa_clean = re.sub(r"[^\d]", "", agent_wa)
+            if wa_clean and not wa_clean.startswith("972"):
+                wa_clean = "972" + wa_clean.lstrip("0")
+            msg_url = f"היי, ראיתי שיש לך לקוח שמחפש {rooms} חדרים ב{location}. אני חושב שיש לי התאמה. נדבר?"
+            lines.append(f"   📲 https://wa.me/{wa_clean}?text={quote(msg_url)}")
+        lines.append("")
+
+    lines.append("━━━━━━━━━━━━━━━━━━")
+    lines.append("💡 לחץ על קישור ה-WhatsApp ליצירת קשר ישיר עם הסוכן המטפל")
+    return "\n".join(lines)
+
+
+def log_bot_query(sender_phone: str, query_text: str, parsed: dict, matches: list):
+    if not GOOGLE_SHEETS_API_KEY:
+        return
+    try:
+        from datetime import datetime
+        now = datetime.now()
+        row = [
+            now.strftime("%Y-%m-%d %H:%M:%S"),
+            sender_phone, "",
+            query_text[:200],
+            parsed.get("city", "") or "",
+            str(parsed.get("rooms_max", "") or ""),
+            str(parsed.get("budget_max", "") or ""),
+            str(len(matches)),
+            str(matches[0][0]) if matches else "0",
+            (matches[0][1].get("Agent_Name", "") if matches else ""),
+            (matches[0][1].get("Client_FirstName", "") if matches else ""),
+        ]
+        url = (f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
+               f"/values/{BOT_QUERIES_SHEET}!A1:append"
+               f"?valueInputOption=USER_ENTERED&key={GOOGLE_SHEETS_API_KEY}")
+        requests.post(url, json={"values": [row]}, timeout=10)
+    except Exception as e:
+        log.warning(f"Log bot query failed: {e}")
+
+
+def handle_search_request(sender_phone: str, message_text: str):
+    try:
+        send_text(sender_phone, "🔍 מחפש לקוחות תואמים במאגר...\nרגע ⏳")
+        parsed = parse_search_query(message_text)
+        log.info(f"Parsed search: {parsed}")
+        if not parsed:
+            send_text(sender_phone,
+                "❌ לא הצלחתי להבין את הבקשה.\n\n"
+                "נסה לכתוב כך:\n"
+                "*אני מחפש 4 חדרים בקרית ביאליק עד 2 מיליון*")
+            return
+        matches = search_listings_in_sheet(parsed)
+        log.info(f"Found {len(matches)} matches")
+        reply = format_match_reply(parsed, matches)
+        send_text(sender_phone, reply)
+        log_bot_query(sender_phone, message_text, parsed, matches)
+    except Exception as e:
+        log.error(f"Search handler error: {e}", exc_info=True)
+        send_text(sender_phone, f"❌ שגיאה: {str(e)[:100]}")
+
+
+def is_search_query(text: str) -> bool:
+    if not text:
+        return False
+    t = text.strip()
+    return any(t.startswith(trigger) for trigger in SEARCH_TRIGGERS)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -997,6 +1307,15 @@ def webhook():
         msg_type = msg.get("type", "")
         text     = msg.get("text", "") or msg.get("caption", "") or ""
         media    = msg.get("url", "") or msg.get("media_url", "")
+
+        # ── טריגר חיפוש — "אני מחפש" / "אני מחפשת" ───────────────────
+        if msg_type == "text" and is_search_query(text):
+            threading.Thread(
+                target=handle_search_request,
+                args=[from_number, text],
+                daemon=True
+            ).start()
+            return jsonify({"ok": True})
 
         # ── טריגר: הודעת טקסט עם מילת הקוד ────────────────────────────────
         if msg_type == "text" and TRIGGER_WORD in text:
