@@ -30,7 +30,14 @@ CLAUDE_API_KEY   = os.environ["CLAUDE_API_KEY"]
 TRIGGER_WORD     = os.environ.get("TRIGGER_WORD", "מצגת")
 GOOGLE_SHEETS_API_KEY = os.environ.get("GOOGLE_SHEETS_API_KEY", "")
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1Yu1d5ytaMXrSZNFJE3VKu4KZN_r6DQ0gyo9sw_A6NXE")
-SEARCH_TRIGGERS = ["אני מחפש", "אני מחפשת"]
+SEARCH_TRIGGERS       = ["מחפש קונה", "מחפשת קונה", "מחפש שוכר", "מחפשת שוכר"]
+GARBAGE_NAMES = {
+    "לקוח", "לקוחה", "הלקוח", "הלקוחה", "הנציג", "נציג",
+    "לתיאום", "תיאום", "המתקשר", "המתקשרת", "אנונימי",
+    "אם", "אמא", "אבא", "יגור", "יגיע", "מחפש", "מחפשת",
+    "כן", "לא", "אולי", "טרם", "ידוע", "בדיקה", "טסט",
+    "", " ", "?", "-", "N/A", "null", "None"
+}
 SEARCH_SHEET_NAME = "Calls_Log"
 BOT_QUERIES_SHEET = "Bot_Queries"
 
@@ -988,12 +995,10 @@ def parse_search_query(text: str) -> dict:
     prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס. סוכן שלח לך בקשה לחיפוש לקוח תואם במאגר.
 חלץ מהטקסט את הפרמטרים הבאים והחזר JSON בלבד (ללא markdown, ללא backticks).
 
-חשוב — זיהוי סוג החיפוש:
-- אם הסוכן מחפש "קונה" / "רוכש" → search_for = "buyer"
-- אם הסוכן מחפש "מוכר" / "בעל נכס" / "דירה למכירה ל..." → search_for = "seller"
-- אם הסוכן מחפש "שוכר" → search_for = "renter"
-- אם הסוכן מחפש "משכיר" → search_for = "landlord"
-- אם הסוכן רק תיאר נכס בלי לציין מי הוא מחפש — הסוכן רוב הזמן מייצג קונה ומחפש מוכר! search_for = "seller"
+חשוב מאוד — זיהוי סוג החיפוש:
+- "מחפש קונה" / "מחפשת קונה" / "מחפש רוכש" → search_for = "buyer" (הסוכן מייצג מוכר, רוצה למצוא קונים תואמים מהמאגר)
+- "מחפש שוכר" / "מחפשת שוכר" → search_for = "renter" (הסוכן מייצג משכיר, רוצה למצוא שוכרים תואמים)
+- search_for חייב להיות אחד מ: buyer / renter (אין seller או landlord!)
 
 שדות JSON:
 - search_for: buyer / seller / renter / landlord
@@ -1071,8 +1076,22 @@ def normalize_city(city: str) -> str:
 
 
 def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
-    """0=ללא התאמה, 100=מושלם. flex_level: 0=מחמיר, 1=±15%, 2=±30%"""
-    # ── סינון לפי תאריך — רק שיחות מ-5 חודשים אחרונים ──
+    """0=ללא התאמה, 100=מושלם. flex_level: 0=מחמיר, 1=±25%, 2=±35%"""
+
+    # ── סינון 1: שמות-זבל ──
+    first_name = (row.get("Client_FirstName", "") or "").strip()
+    if first_name in GARBAGE_NAMES or len(first_name) < 2:
+        return 0
+    if not re.search(r'[א-ת]', first_name):
+        return 0
+
+    # ── סינון 2: ליד אמיתי וסטטוס פתוח ──
+    if (row.get("Status", "") or "").strip() not in ("", "פתוח"):
+        return 0
+    if (row.get("Is_Real_Lead", "") or "").strip().upper() == "FALSE":
+        return 0
+
+    # ── סינון 3: תאריך - רק 5 חודשים אחרונים ──
     from datetime import datetime, timedelta
     call_date_str = (row.get("Date", "") or "").strip()
     if call_date_str:
@@ -1084,39 +1103,79 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         except ValueError:
             pass
 
+    # ── סינון 4: סוג עסקה - חייב להתאים ──
     row_type = (row.get("Type", "") or "").strip().lower()
     want_type = query.get("search_for", "").strip().lower()
-    opposite = {"buyer": ["seller"], "seller": ["buyer"],
-                "renter": ["landlord"], "landlord": ["renter"]}
-    if want_type and row_type and row_type not in opposite.get(want_type, []):
+    if want_type and row_type and row_type != want_type:
         return 0
 
-    if (row.get("Status", "") or "").strip() not in ("", "פתוח"):
-        return 0
-    if (row.get("Is_Real_Lead", "") or "").strip().upper() == "FALSE":
-        return 0
-
+    # ── סינון 5: עיר חובה ──
     score = 0
     q_city = normalize_city(query.get("city", "") or "")
     r_city = normalize_city(row.get("City", "") or "")
     if q_city:
         if r_city == q_city:
             score += 30
-        elif flex_level >= 2 and r_city and (r_city in q_city or q_city in r_city):
+        elif r_city and (r_city in q_city or q_city in r_city):
             score += 15
         else:
             return 0
     else:
         score += 10
 
+    # ── סינון 6: תקציב - חייב להיות בטווח סביר! ──
+    q_bmax = query.get("budget_max")
+    r_bmin_raw = (row.get("Budget_Min", "") or "").strip()
+    r_bmax_raw = (row.get("Budget_Max", "") or "").strip()
+    try:
+        r_bmin = int(float(r_bmin_raw)) if r_bmin_raw else None
+        r_bmax = int(float(r_bmax_raw)) if r_bmax_raw else None
+    except ValueError:
+        r_bmin = r_bmax = None
+
+    if q_bmax:
+        ref_price = r_bmax or r_bmin
+        if not ref_price:
+            return 0
+
+        if flex_level == 0:
+            min_allowed = q_bmax * 0.85
+            max_allowed = q_bmax * 1.15
+        elif flex_level == 1:
+            min_allowed = q_bmax * 0.75
+            max_allowed = q_bmax * 1.25
+        else:
+            min_allowed = q_bmax * 0.65
+            max_allowed = q_bmax * 1.35
+
+        if ref_price < min_allowed or ref_price > max_allowed:
+            return 0
+
+        diff_pct = abs(ref_price - q_bmax) / q_bmax
+        if diff_pct < 0.05:
+            score += 30
+        elif diff_pct < 0.10:
+            score += 25
+        elif diff_pct < 0.15:
+            score += 20
+        else:
+            score += 15
+
+    # ── שכונה - בונוס ──
     q_neigh = (query.get("neighborhood") or "").strip()
     r_neigh = (row.get("Neighborhood", "") or "").strip()
-    if q_neigh and r_neigh:
-        if q_neigh == r_neigh:
-            score += 15
-        elif q_neigh in r_neigh or r_neigh in q_neigh:
-            score += 8
+    if q_neigh:
+        if r_neigh:
+            if q_neigh == r_neigh:
+                score += 20
+            elif q_neigh in r_neigh or r_neigh in q_neigh:
+                score += 12
+            elif flex_level == 0:
+                return 0
+        elif flex_level == 0:
+            return 0
 
+    # ── חדרים - בונוס ──
     q_rmin = query.get("rooms_min")
     q_rmax = query.get("rooms_max")
     r_rooms_raw = (row.get("Rooms", "") or "").strip()
@@ -1139,21 +1198,7 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             else:
                 score += 15
 
-    q_bmax = query.get("budget_max")
-    r_bmin_raw = (row.get("Budget_Min", "") or "").strip()
-    r_bmax_raw = (row.get("Budget_Max", "") or "").strip()
-    try:
-        r_bmin = int(float(r_bmin_raw)) if r_bmin_raw else None
-        r_bmax = int(float(r_bmax_raw)) if r_bmax_raw else None
-    except ValueError:
-        r_bmin = r_bmax = None
-    if q_bmax and (r_bmin or r_bmax):
-        flex_pct = 0.0 if flex_level == 0 else (0.15 if flex_level == 1 else 0.30)
-        max_allowed = q_bmax * (1 + flex_pct)
-        ref_price = r_bmin or r_bmax
-        if ref_price and ref_price <= max_allowed:
-            score += 20
-
+    # ── סוג נכס ──
     q_ptype = (query.get("property_type") or "").strip()
     r_ptype = (row.get("Property_Type", "") or "").strip()
     if q_ptype and r_ptype:
@@ -1304,7 +1349,10 @@ def is_search_query(text: str) -> bool:
     if not text:
         return False
     t = text.strip()
-    return any(t.startswith(trigger) for trigger in SEARCH_TRIGGERS)
+    for trigger in SEARCH_TRIGGERS:
+        if t.startswith(trigger) or t.startswith("אני " + trigger):
+            return True
+    return False
 
 
 # ══════════════════════════════════════════════════════════════════════════════
