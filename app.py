@@ -902,7 +902,7 @@ def process_session(phone: str):
         def fetch_area():
             try:
                 area_result[0] = get_area_info(data.get("city",""), data.get("neighborhood",""))
-                log.info(f"Area info fetched: {len(area_result[0] or [])} items")
+                log.info(f"Area info fetched: {len(area_result[0]) if isinstance(area_result[0], list) else 0} items")
             except Exception as e:
                 log.error(f"Area fetch error: {e}")
 
@@ -911,7 +911,7 @@ def process_session(phone: str):
                 trans_result[0] = get_transactions(
                     data.get("city",""), data.get("neighborhood",""),
                     str(data.get("rooms","")), data.get("address",""))
-                log.info(f"Transactions fetched: {len(trans_result[0] or [])} items")
+                log.info(f"Transactions fetched: {len(trans_result[0]) if isinstance(trans_result[0], list) else 0} items")
             except Exception as e:
                 log.error(f"Trans fetch error: {e}")
 
@@ -927,19 +927,17 @@ def process_session(phone: str):
             except Exception as e:
                 log.error(f"Profile pic fetch error: {e}")
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            f1 = executor.submit(fetch_area)
-            f2 = executor.submit(fetch_trans)
+        import time
+        with ThreadPoolExecutor(max_workers=1) as executor:
             f3 = executor.submit(fetch_pic)
-            try: f1.result(timeout=55)
-            except: log.warning("Area info timeout")
-            try: f2.result(timeout=55)
-            except: log.warning("Transactions timeout")
-            try: f3.result(timeout=15)
-            except: log.warning("Profile pic timeout")
+        fetch_area()
+        time.sleep(5)
+        fetch_trans()
+        try: f3.result(timeout=15)
+        except: pass
 
-        data["_area_info"]    = area_result[0] or []
-        data["_transactions"] = trans_result[0] or []
+        data["_area_info"]    = area_result[0] if isinstance(area_result[0], list) else []
+        data["_transactions"] = trans_result[0] if isinstance(trans_result[0], list) else []
 
         # 4. צור PDF
         log.info(f"Generating PDF for {phone}")
