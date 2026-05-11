@@ -1216,13 +1216,22 @@ def format_match_reply(query: dict, matches: list) -> str:
         if details: lines.append("   " + " | ".join(details))
         if tag and len(tag) < 80: lines.append(f"   _{tag}_")
         if agent_name: lines.append(f"   👤 סוכן מטפל: *{agent_name}*")
-
+        
+        # תאריך השיחה של הלקוח
+        call_date = (row.get("Date", "") or "").strip()
+        call_time = (row.get("Time", "") or "").strip()
+        if call_date:
+            date_line = f"   📅 פנייה: {call_date}"
+            if call_time:
+                date_line += f" {call_time}"
+            lines.append(date_line)
+        
+        # קישור wa.me נקי - בלי טקסט מוכן
         if agent_wa:
             wa_clean = re.sub(r"[^\d]", "", agent_wa)
             if wa_clean and not wa_clean.startswith("972"):
                 wa_clean = "972" + wa_clean.lstrip("0")
-            msg_url = f"היי, ראיתי שיש לך לקוח שמחפש {rooms} חדרים ב{location}. אני חושב שיש לי התאמה. נדבר?"
-            lines.append(f"   📲 https://wa.me/{wa_clean}?text={quote(msg_url)}")
+            lines.append(f"   📲 https://wa.me/{wa_clean}")
         lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━")
