@@ -1029,6 +1029,7 @@ def parse_search_query(text: str) -> dict:
 - budget_max: מחיר מקסימלי בש"ח (מספר, או null) - "עד 2 מיליון" → 2000000
 - size_min: מ"ר מינימלי (מספר, או null)
 - size_max: מ"ר מקסימלי (מספר, או null)
+- floor_max: קומה מקסימלית (מספר, או null) - "עד קומה 2" → floor_max=2, "קומה נמוכה" → floor_max=3
 - property_type: סוג נכס מנורמל ("דירה" / "פנטהאוז" / "דופלקס" / "קוטג'" / "וילה" / "דו משפחתי" / null)
 - deal_type: "מכירה" / "השכרה" - ברירת מחדל "מכירה" אם לא צוין
 - must_have: רשימת תכונות חובה לפי החוקים למעלה (מערך, יכול להיות ריק)
@@ -1040,6 +1041,8 @@ def parse_search_query(text: str) -> dict:
   property_type="דירת גן", must_have=["גינה"]
 - "מחפש פנטהאוז 5 חדרים בחיפה" →
   city="חיפה", rooms_min=5, rooms_max=5, property_type="פנטהאוז", must_have=[]
+- "מחפש דירה בביאליק עם מעלית עד קומה 2" →
+  city="קרית ביאליק", property_type="דירה", floor_max=2, must_have=["מעלית"]
 - "מחפש דירה 4 חדרים בקרית מוצקין עד 2 מיליון" →
   city="קרית מוצקין", rooms_min=4, rooms_max=4, budget_max=2000000,
   property_type="דירה", must_have=[]
@@ -1171,6 +1174,20 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
     if deal_type and deal_type != want_deal:
         return 0
 
+    # ── קומה מקסימלית ──
+    floor_max = query.get("floor_max")
+    if floor_max:
+        r_floor_raw = (row.get("קומה", "") or "").strip()
+        try:
+            r_floor = int(float(r_floor_raw)) if r_floor_raw else None
+            if r_floor is not None and r_floor > floor_max:
+                if flex_level == 0:
+                    return 0
+                elif flex_level == 1 and r_floor > floor_max + 1:
+                    return 0
+        except ValueError:
+            pass
+
     # ── עיר - חובה ──
     q_city = normalize_city(query.get("city", "") or "")
     r_city = normalize_city(row.get("עיר / ישוב", "") or "")
@@ -1271,13 +1288,18 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
     # ── סוג נכס — בונוס/קנס ──
     q_ptype = (query.get("property_type") or "").strip()
     r_ptype = (row.get("סוג נכס", "") or "").strip()
+    # קטגוריות שלא מתאימות לדירה רגילה
+    PENTHOUSE_TYPES = {"פנטהאוז", "גג", "מיני פנטהאוז"}
     if q_ptype and r_ptype:
         if q_ptype == r_ptype:
             score += 15
         elif q_ptype in r_ptype or r_ptype in q_ptype:
             score += 7
         else:
-            # סוג נכס שונה לגמרי — סנן ב-flex=0, קנס ב-flex=1
+            # אם מחפשים "דירה" ומוצאים פנטהאוז — סנן תמיד
+            if q_ptype == "דירה" and r_ptype in PENTHOUSE_TYPES:
+                return 0
+            # כל סוג נכס שונה אחר
             if flex_level == 0:
                 return 0
             elif flex_level == 1:
