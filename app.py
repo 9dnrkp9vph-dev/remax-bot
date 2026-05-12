@@ -1004,20 +1004,20 @@ def parse_search_query(text: str) -> dict:
 - "קרית חיים מערבית" / "מערבית" → neighborhood = "מערבית"
 
 חוקי זיהוי must_have — חשוב מאוד!
-- "דירת גן" / "עם גינה" / "עם חצר" → must_have כולל "גינה", property_type = "דירה"
+- "דירת גן" / "עם גינה" / "עם חצר" → must_have כולל "גינה", property_type = "דירת גן"
 - "עם חנייה" / "חנייה פרטית" → must_have כולל "חנייה"
 - "עם מעלית" → must_have כולל "מעלית"
 - "עם ממ"ד" → must_have כולל "ממ\"ד"
 - "עם מרפסת" → must_have כולל "מרפסת"
-- "קרקע" / "קומת קרקע" → must_have כולל "גינה", property_type = "דירה"
+- "קרקע" / "קומת קרקע" → must_have כולל "גינה", property_type = "דירת גן"
 
 חוקי property_type — חשוב מאוד!
-- "דירת גן" → property_type = "דירה" (לא פנטהאוז! לא קוטג'!)
+- "דירת גן" → property_type = "דירת גן" (לא "דירה"! לא פנטהאוז!)
 - "פנטהאוז" / "גג" / "קומה עליונה" → property_type = "פנטהאוז"
 - "קוטג'" / "דו משפחתי" / "בית פרטי" → property_type = "קוטג'"
 - "וילה" → property_type = "וילה"
 - "דופלקס" → property_type = "דופלקס"
-- כל שאר המקרים: property_type = "דירה"
+- דירה רגילה ללא ציון מיוחד → property_type = "דירה"
 
 שדות JSON:
 - city: עיר (אחת מהערים למעלה או null)
@@ -1037,9 +1037,12 @@ def parse_search_query(text: str) -> dict:
 דוגמאות:
 - "מחפש דירת גן 4 חדרים בביאליק עד 3 מיליון" →
   city="קרית ביאליק", rooms_min=4, rooms_max=4, budget_max=3000000,
-  property_type="דירה", must_have=["גינה"]
+  property_type="דירת גן", must_have=["גינה"]
 - "מחפש פנטהאוז 5 חדרים בחיפה" →
   city="חיפה", rooms_min=5, rooms_max=5, property_type="פנטהאוז", must_have=[]
+- "מחפש דירה 4 חדרים בקרית מוצקין עד 2 מיליון" →
+  city="קרית מוצקין", rooms_min=4, rooms_max=4, budget_max=2000000,
+  property_type="דירה", must_have=[]
 
 טקסט:
 {text}"""
@@ -1274,9 +1277,11 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         elif q_ptype in r_ptype or r_ptype in q_ptype:
             score += 7
         else:
-            # סוג נכס שונה לגמרי — קנס משמעותי ב-flex=0
+            # סוג נכס שונה לגמרי — סנן ב-flex=0, קנס ב-flex=1
             if flex_level == 0:
-                score -= 20  # פנטהאוז כש-מחפשים דירת גן = ירידת ניקוד
+                return 0
+            elif flex_level == 1:
+                score -= 15
 
     # ── תכונות חובה (must_have) — מחמיר! ──
     must_have = query.get("must_have") or []
@@ -1288,24 +1293,29 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             'ממ״ד': 'ממ״ד',
             "מרפסת": "מרפסת",
             "גישה לנכים": "גישה לנכים",
-            "גינה": 'מ"ר גינה',
         }
         missing_features = 0
         for feature in must_have:
             feature_clean = feature.strip()
-            col = col_map.get(feature_clean, feature_clean)
-            val = (row.get(col, "") or "").strip()
-            has_feature = val and val not in ("ללא", "לא", "", "0", "אין")
+
+            # גינה — מחפש בעמודת "סוג נכס" שמכיל "גן"
+            if feature_clean == "גינה":
+                prop_type_val = (row.get("סוג נכס", "") or "").strip()
+                has_feature = "גן" in prop_type_val or "גינה" in prop_type_val or "קרקע" in prop_type_val
+            else:
+                col = col_map.get(feature_clean, feature_clean)
+                val = (row.get(col, "") or "").strip()
+                has_feature = val and val not in ("ללא", "לא", "", "0", "אין")
+
             if has_feature:
-                score += 10  # בונוס גדול יותר
+                score += 10
             else:
                 missing_features += 1
                 if flex_level <= 1:
                     return 0   # חובה ב-flex=0 וגם flex=1
-                # ב-flex=2 רק קנס
                 score -= 15
 
-        # אם חסרות הרבה תכונות גם ב-flex=2 — אל תחזיר
+        # אם חסרות כל התכונות גם ב-flex=2 — אל תחזיר
         if flex_level == 2 and missing_features == len(must_have):
             return 0
 
@@ -1314,6 +1324,11 @@ def search_listings_in_sheet(query: dict) -> list:
     rows = fetch_sheet_rows()
     if not rows:
         return []
+
+    q_ptype = (query.get("property_type") or "").strip()
+    is_garden = q_ptype == "דירת גן"
+
+    # ── שלב 1: חפש בדיוק את סוג הנכס המבוקש ──
     for flex in [0, 1, 2]:
         scored = []
         for row in rows:
@@ -1322,7 +1337,23 @@ def search_listings_in_sheet(query: dict) -> list:
                 scored.append((s, row, flex))
         scored.sort(key=lambda x: -x[0])
         if len(scored) >= 3 or flex == 2:
-            return [(s, r, f) for (s, r, f) in scored[:5]]
+            results = [(s, r, f) for (s, r, f) in scored[:5]]
+            # ── שלב 2: אם חיפשו דירת גן ואין תוצאות — הוסף קוטג' ──
+            if is_garden and len(results) < 3:
+                fallback_query = dict(query)
+                fallback_query["property_type"] = "קוטג'"
+                for flex2 in [0, 1, 2]:
+                    fallback_scored = []
+                    for row in rows:
+                        s = score_match(row, fallback_query, flex_level=flex2)
+                        if s > 0:
+                            fallback_scored.append((s, row, flex2))
+                    fallback_scored.sort(key=lambda x: -x[0])
+                    if fallback_scored:
+                        # הוסף עד 3 קוטג'ים כהשלמה
+                        results += [(s, r, f) for (s, r, f) in fallback_scored[:3]]
+                        break
+            return results
     return []
 
 
