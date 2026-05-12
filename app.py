@@ -31,7 +31,8 @@ TRIGGER_WORD     = os.environ.get("TRIGGER_WORD", "מצגת")
 GOOGLE_SHEETS_API_KEY  = os.environ.get("GOOGLE_SHEETS_API_KEY", "")
 PROPERTIES_SHEET_ID    = os.environ.get("PROPERTIES_SHEET_ID", "1PnQm-ifyLrh6sBbNNQbNlAHmJWeBnbzXJJERmTuaAVM")
 PROPERTIES_SHEET_NAME  = "נכסים"
-SEARCH_TRIGGERS        = ["מחפש דירה", "מחפשת דירה", "מחפש נכס", "מחפשת נכס", "מחפש בית", "מחפשת בית"]
+CONTACTS_SHEET_NAME    = "אנשי קשר"
+SEARCH_TRIGGERS        = ["מחפש דירה", "מחפשת דירה", "מחפש נכס", "מחפשת נכס"]
 
 MAYTAPI_BASE = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT}/{MAYTAPI_PHONE_ID}"
 
@@ -1048,6 +1049,45 @@ def parse_search_query(text: str) -> dict:
         return {}
 
 
+# Cache למספרי טלפון של סוכנים (כדי לא לקרוא בכל פעם)
+_agents_cache = {"data": None, "ts": 0}
+
+def fetch_agents_phones() -> dict:
+    """קרא את הטאב 'אנשי קשר' והחזר מילון: {שם סוכן: טלפון}"""
+    import time
+    # cache ל-5 דקות
+    if _agents_cache["data"] is not None and (time.time() - _agents_cache["ts"]) < 300:
+        return _agents_cache["data"]
+
+    if not GOOGLE_SHEETS_API_KEY:
+        return {}
+
+    from urllib.parse import quote
+    sheet_encoded = quote(CONTACTS_SHEET_NAME)
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{sheet_encoded}!A1:B200?key={GOOGLE_SHEETS_API_KEY}"
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code != 200:
+            log.error(f"Contacts API error {r.status_code}: {r.text[:300]}")
+            return {}
+        data = r.json().get("values", [])
+        agents = {}
+        for row in data:
+            if len(row) < 2:
+                continue
+            name = (row[0] or "").strip()
+            phone = (row[1] or "").strip()
+            if name and phone and name not in ("שם מלא", "משרד", "משרד ביאליק"):
+                agents[name] = phone
+        _agents_cache["data"] = agents
+        _agents_cache["ts"] = time.time()
+        log.info(f"Loaded {len(agents)} agent contacts")
+        return agents
+    except Exception as e:
+        log.error(f"Fetch agents error: {e}")
+        return {}
+
+
 def fetch_sheet_rows() -> list:
     """קרא את כל הנכסים מהגיליון"""
     if not GOOGLE_SHEETS_API_KEY:
@@ -1245,7 +1285,7 @@ def search_listings_in_sheet(query: dict) -> list:
                 scored.append((s, row, flex))
         scored.sort(key=lambda x: -x[0])
         if len(scored) >= 3 or flex == 2:
-            return [(s, r, f) for (s, r, f) in scored[:3]]
+            return [(s, r, f) for (s, r, f) in scored[:5]]
     return []
 
 
@@ -1314,8 +1354,12 @@ def format_match_reply(query: dict, matches: list) -> str:
         if agent_name:
             lines.append(f"   \U0001f464 סוכן: *{agent_name}*")
 
-        if agent_phone:
-            wa_clean = re.sub(r"[^\d]", "", agent_phone)
+        # חפש את הטלפון האמיתי של הסוכן מהטאב "אנשי קשר"
+        agents_phones = fetch_agents_phones()
+        real_phone = agents_phones.get(agent_name, agent_phone)
+
+        if real_phone:
+            wa_clean = re.sub(r"[^\d]", "", real_phone)
             if wa_clean and not wa_clean.startswith("972"):
                 wa_clean = "972" + wa_clean.lstrip("0")
             lines.append(f"   \U0001f4f2 https://wa.me/{wa_clean}")
@@ -1373,13 +1417,17 @@ def handle_search_request(sender_phone: str, message_text: str):
 
 
 def is_search_query(text: str) -> bool:
+    """זהה אם ההודעה היא בקשת חיפוש - חייב להתחיל בצמד מילים: מחפש/ת + דירה/דירת"""
     if not text:
         return False
     t = text.strip()
-    for trigger in SEARCH_TRIGGERS:
-        if t.startswith(trigger) or t.startswith("אני " + trigger):
-            return True
-    return False
+    # הסר "אני " מההתחלה אם יש
+    if t.startswith("אני "):
+        t = t[4:].strip()
+    # חייב להתחיל בדיוק ב: מחפש/מחפשת + רווח + דירה/דירת
+    import re
+    pattern = r'^מחפש[ת]?\s+דיר[הת]\b'
+    return bool(re.match(pattern, t))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
