@@ -993,7 +993,7 @@ def parse_search_query(text: str) -> dict:
 - "ביאליק" / "קרית ביאליק" → city = "קרית ביאליק"
 - "אתא" / "קרית אתא" → city = "קרית אתא"
 - "ים" / "קרית ים" → city = "קרית ים"
-- "חיים" / "קרית חיים" → city = "חיפה" (קרית חיים היא שכונה בחיפה, השכונה תופיע בעמודת שכונה)
+- "חיים" / "קרית חיים" → city = "חיפה" (קרית חיים היא שכונה בחיפה)
 - "חיפה" → city = "חיפה"
 
 נרמול שכונות:
@@ -1002,6 +1002,22 @@ def parse_search_query(text: str) -> dict:
 - "סביונים" / "סביוני ים" → neighborhood = "סביונ"
 - "גבעת טל" → neighborhood = "גבעת טל"
 - "קרית חיים מערבית" / "מערבית" → neighborhood = "מערבית"
+
+חוקי זיהוי must_have — חשוב מאוד!
+- "דירת גן" / "עם גינה" / "עם חצר" → must_have כולל "גינה", property_type = "דירה"
+- "עם חנייה" / "חנייה פרטית" → must_have כולל "חנייה"
+- "עם מעלית" → must_have כולל "מעלית"
+- "עם ממ"ד" → must_have כולל "ממ\"ד"
+- "עם מרפסת" → must_have כולל "מרפסת"
+- "קרקע" / "קומת קרקע" → must_have כולל "גינה", property_type = "דירה"
+
+חוקי property_type — חשוב מאוד!
+- "דירת גן" → property_type = "דירה" (לא פנטהאוז! לא קוטג'!)
+- "פנטהאוז" / "גג" / "קומה עליונה" → property_type = "פנטהאוז"
+- "קוטג'" / "דו משפחתי" / "בית פרטי" → property_type = "קוטג'"
+- "וילה" → property_type = "וילה"
+- "דופלקס" → property_type = "דופלקס"
+- כל שאר המקרים: property_type = "דירה"
 
 שדות JSON:
 - city: עיר (אחת מהערים למעלה או null)
@@ -1015,8 +1031,15 @@ def parse_search_query(text: str) -> dict:
 - size_max: מ"ר מקסימלי (מספר, או null)
 - property_type: סוג נכס מנורמל ("דירה" / "פנטהאוז" / "דופלקס" / "קוטג'" / "וילה" / "דו משפחתי" / null)
 - deal_type: "מכירה" / "השכרה" - ברירת מחדל "מכירה" אם לא צוין
-- must_have: רשימת תכונות חובה - אפשר: ["מעלית", "חנייה", "ממ\\"ד", "מרפסת", "גישה לנכים", "גינה"]
+- must_have: רשימת תכונות חובה לפי החוקים למעלה (מערך, יכול להיות ריק)
 - summary_he: סיכום קצר בעברית של הבקשה (משפט אחד)
+
+דוגמאות:
+- "מחפש דירת גן 4 חדרים בביאליק עד 3 מיליון" →
+  city="קרית ביאליק", rooms_min=4, rooms_max=4, budget_max=3000000,
+  property_type="דירה", must_have=["גינה"]
+- "מחפש פנטהאוז 5 חדרים בחיפה" →
+  city="חיפה", rooms_min=5, rooms_max=5, property_type="פנטהאוז", must_have=[]
 
 טקסט:
 {text}"""
@@ -1242,35 +1265,49 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         if q_smax and r_size <= q_smax:
             score += 8
 
-    # ── סוג נכס ──
+    # ── סוג נכס — בונוס/קנס ──
     q_ptype = (query.get("property_type") or "").strip()
     r_ptype = (row.get("סוג נכס", "") or "").strip()
     if q_ptype and r_ptype:
         if q_ptype == r_ptype:
-            score += 10
+            score += 15
         elif q_ptype in r_ptype or r_ptype in q_ptype:
-            score += 5
+            score += 7
+        else:
+            # סוג נכס שונה לגמרי — קנס משמעותי ב-flex=0
+            if flex_level == 0:
+                score -= 20  # פנטהאוז כש-מחפשים דירת גן = ירידת ניקוד
 
-    # ── תכונות חובה (must_have) ──
+    # ── תכונות חובה (must_have) — מחמיר! ──
     must_have = query.get("must_have") or []
-    if isinstance(must_have, list):
+    if isinstance(must_have, list) and must_have:
+        col_map = {
+            "מעלית": "מעלית",
+            "חנייה": "חנייה",
+            'ממ"ד': 'ממ״ד',
+            'ממ״ד': 'ממ״ד',
+            "מרפסת": "מרפסת",
+            "גישה לנכים": "גישה לנכים",
+            "גינה": 'מ"ר גינה',
+        }
+        missing_features = 0
         for feature in must_have:
             feature_clean = feature.strip()
-            col_map = {
-                "מעלית": "מעלית",
-                "חנייה": "חנייה",
-                'ממ"ד': 'ממ״ד',
-                'ממ״ד': 'ממ״ד',
-                "מרפסת": "מרפסת",
-                "גישה לנכים": "גישה לנכים",
-                "גינה": 'מ"ר גינה',
-            }
             col = col_map.get(feature_clean, feature_clean)
             val = (row.get(col, "") or "").strip()
-            if val and val not in ("ללא", "לא", "", "0"):
-                score += 5
-            elif flex_level == 0:
-                return 0
+            has_feature = val and val not in ("ללא", "לא", "", "0", "אין")
+            if has_feature:
+                score += 10  # בונוס גדול יותר
+            else:
+                missing_features += 1
+                if flex_level <= 1:
+                    return 0   # חובה ב-flex=0 וגם flex=1
+                # ב-flex=2 רק קנס
+                score -= 15
+
+        # אם חסרות הרבה תכונות גם ב-flex=2 — אל תחזיר
+        if flex_level == 2 and missing_features == len(must_have):
+            return 0
 
     return max(0, score)
 def search_listings_in_sheet(query: dict) -> list:
