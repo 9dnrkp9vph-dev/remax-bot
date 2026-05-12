@@ -28,18 +28,10 @@ MAYTAPI_PHONE_ID = os.environ["MAYTAPI_PHONE_ID"]   # phone ID
 MAYTAPI_PRODUCT  = os.environ["MAYTAPI_PRODUCT_ID"] # product ID
 CLAUDE_API_KEY   = os.environ["CLAUDE_API_KEY"]
 TRIGGER_WORD     = os.environ.get("TRIGGER_WORD", "מצגת")
-GOOGLE_SHEETS_API_KEY = os.environ.get("GOOGLE_SHEETS_API_KEY", "")
-SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1Yu1d5ytaMXrSZNFJE3VKu4KZN_r6DQ0gyo9sw_A6NXE")
-SEARCH_TRIGGERS       = ["מחפש קונה", "מחפשת קונה", "מחפש שוכר", "מחפשת שוכר"]
-GARBAGE_NAMES = {
-    "לקוח", "לקוחה", "הלקוח", "הלקוחה", "הנציג", "נציג",
-    "לתיאום", "תיאום", "המתקשר", "המתקשרת", "אנונימי",
-    "אם", "אמא", "אבא", "יגור", "יגיע", "מחפש", "מחפשת",
-    "כן", "לא", "אולי", "טרם", "ידוע", "בדיקה", "טסט",
-    "", " ", "?", "-", "N/A", "null", "None"
-}
-SEARCH_SHEET_NAME = "Calls_Log"
-BOT_QUERIES_SHEET = "Bot_Queries"
+GOOGLE_SHEETS_API_KEY  = os.environ.get("GOOGLE_SHEETS_API_KEY", "")
+PROPERTIES_SHEET_ID    = os.environ.get("PROPERTIES_SHEET_ID", "1PnQm-ifyLrh6sBbNNQbNlAHmJWeBnbzXJJERmTuaAVM")
+PROPERTIES_SHEET_NAME  = "נכסים"
+SEARCH_TRIGGERS        = ["מחפש דירה", "מחפשת דירה", "מחפש נכס", "מחפשת נכס", "מחפש בית", "מחפשת בית"]
 
 MAYTAPI_BASE = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT}/{MAYTAPI_PHONE_ID}"
 
@@ -991,26 +983,39 @@ def schedule_processing(phone: str):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def parse_search_query(text: str) -> dict:
-    """שלח את בקשת החיפוש ל-Claude וקבל JSON עם פילטרים"""
-    prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס. סוכן שלח לך בקשה לחיפוש לקוח תואם במאגר.
-חלץ מהטקסט את הפרמטרים הבאים והחזר JSON בלבד (ללא markdown, ללא backticks).
+    """שלח את בקשת החיפוש ל-Claude וקבל JSON עם פילטרים לחיפוש נכסים"""
+    prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש נכסים במאגר המשרד עבור לקוח.
+הסוכן שלח לך הודעה עם דרישות הלקוח. חלץ פרמטרים ל-JSON בלבד (ללא markdown, ללא backticks).
 
-חשוב מאוד — זיהוי סוג החיפוש:
-- "מחפש קונה" / "מחפשת קונה" / "מחפש רוכש" → search_for = "buyer" (הסוכן מייצג מוכר, רוצה למצוא קונים תואמים מהמאגר)
-- "מחפש שוכר" / "מחפשת שוכר" → search_for = "renter" (הסוכן מייצג משכיר, רוצה למצוא שוכרים תואמים)
-- search_for חייב להיות אחד מ: buyer / renter (אין seller או landlord!)
+נרמול ערים — הערים האפשריות:
+- "מוצקין" / "קרית מוצקין" / "קריית מוצקין" → city = "קרית מוצקין"
+- "ביאליק" / "קרית ביאליק" → city = "קרית ביאליק"
+- "אתא" / "קרית אתא" → city = "קרית אתא"
+- "ים" / "קרית ים" → city = "קרית ים"
+- "חיים" / "קרית חיים" → city = "חיפה" (קרית חיים היא שכונה בחיפה, השכונה תופיע בעמודת שכונה)
+- "חיפה" → city = "חיפה"
+
+נרמול שכונות:
+- "ותיקה" / "מוצקין הותיקה" → neighborhood = "ותיק"
+- "אפק" → neighborhood = "אפק"
+- "סביונים" / "סביוני ים" → neighborhood = "סביונ"
+- "גבעת טל" → neighborhood = "גבעת טל"
+- "קרית חיים מערבית" / "מערבית" → neighborhood = "מערבית"
 
 שדות JSON:
-- search_for: buyer / seller / renter / landlord
-- city: עיר (קרית ביאליק / קרית מוצקין / קרית ים / קרית אתא / קרית חיים / חיפה / null)
-- neighborhood: שכונה (אם מצוין)
-- street: רחוב (אם מצוין)
-- rooms_min: מספר חדרים מינימלי (מספר או null)
-- rooms_max: מספר חדרים מקסימלי (מספר או null)
-- budget_min: תקציב מינימלי בש"ח (מספר או null)
-- budget_max: תקציב מקסימלי בש"ח (מספר או null) - "עד 2 מיליון" → budget_max=2000000
-- property_type: סוג נכס (דירה / פנטהאוז / קוטג' / בית / null)
-- summary_he: סיכום קצר בעברית של מה הסוכן מחפש (משפט אחד)
+- city: עיר (אחת מהערים למעלה או null)
+- neighborhood: שכונה (substring לחיפוש, או null)
+- street: שם רחוב (אם הסוכן ציין, או null)
+- rooms_min: מספר חדרים מינימלי (מספר עשרוני, או null)
+- rooms_max: מספר חדרים מקסימלי (מספר עשרוני, או null) - "4 חדרים" → min=max=4
+- budget_min: מחיר מינימלי בש"ח (מספר, או null)
+- budget_max: מחיר מקסימלי בש"ח (מספר, או null) - "עד 2 מיליון" → 2000000
+- size_min: מ"ר מינימלי (מספר, או null)
+- size_max: מ"ר מקסימלי (מספר, או null)
+- property_type: סוג נכס מנורמל ("דירה" / "פנטהאוז" / "דופלקס" / "קוטג'" / "וילה" / "דו משפחתי" / null)
+- deal_type: "מכירה" / "השכרה" - ברירת מחדל "מכירה" אם לא צוין
+- must_have: רשימת תכונות חובה - אפשר: ["מעלית", "חנייה", "ממ\\"ד", "מרפסת", "גישה לנכים", "גינה"]
+- summary_he: סיכום קצר בעברית של הבקשה (משפט אחד)
 
 טקסט:
 {text}"""
@@ -1044,11 +1049,14 @@ def parse_search_query(text: str) -> dict:
 
 
 def fetch_sheet_rows() -> list:
-    """קרא את כל השורות מ-Calls_Log דרך Google Sheets API"""
+    """קרא את כל הנכסים מהגיליון"""
     if not GOOGLE_SHEETS_API_KEY:
         log.error("GOOGLE_SHEETS_API_KEY not set!")
         return []
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}/values/{SEARCH_SHEET_NAME}!A1:Z?key={GOOGLE_SHEETS_API_KEY}"
+
+    from urllib.parse import quote
+    sheet_encoded = quote(PROPERTIES_SHEET_NAME)
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{sheet_encoded}!A1:Z?key={GOOGLE_SHEETS_API_KEY}"
     try:
         r = requests.get(url, timeout=15)
         if r.status_code != 200:
@@ -1075,114 +1083,93 @@ def normalize_city(city: str) -> str:
     return re.sub(r"\s+", " ", c)
 
 
+
+def parse_price(s: str) -> int:
+    """המר מחיר משפת אנוש למספר. '₪ 2,590,000' → 2590000"""
+    if not s:
+        return 0
+    digits = re.sub(r"[^\d]", "", str(s))
+    try:
+        return int(digits) if digits else 0
+    except ValueError:
+        return 0
+
+
 def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
-    """0=ללא התאמה, 100=מושלם. flex_level: 0=מחמיר, 1=±25%, 2=±35%"""
-
-    # ── סינון 1: שמות-זבל ──
-    first_name = (row.get("Client_FirstName", "") or "").strip()
-    if first_name in GARBAGE_NAMES or len(first_name) < 2:
-        return 0
-    if not re.search(r'[א-ת]', first_name):
-        return 0
-
-    # ── סינון 2: ליד אמיתי וסטטוס פתוח ──
-    if (row.get("Status", "") or "").strip() not in ("", "פתוח"):
-        return 0
-    if (row.get("Is_Real_Lead", "") or "").strip().upper() == "FALSE":
-        return 0
-
-    # ── סינון 3: תאריך - רק 5 חודשים אחרונים ──
-    from datetime import datetime, timedelta
-    call_date_str = (row.get("Date", "") or "").strip()
-    if call_date_str:
-        try:
-            call_dt = datetime.strptime(call_date_str, "%d/%m/%Y")
-            five_months_ago = datetime.now() - timedelta(days=150)
-            if call_dt < five_months_ago:
-                return 0
-        except ValueError:
-            pass
-
-    # ── סינון 4: סוג עסקה - חייב להתאים ──
-    row_type = (row.get("Type", "") or "").strip().lower()
-    want_type = query.get("search_for", "").strip().lower()
-    if want_type and row_type and row_type != want_type:
-        return 0
-
-    # ── סינון 5: עיר חובה ──
+    """דרג נכס - 0=לא רלוונטי, 100=מושלם"""
     score = 0
+
+    # ── סוג עסקה - חובה להתאים ──
+    deal_type = (row.get("סוג עסקה", "") or "").strip()
+    want_deal = query.get("deal_type", "מכירה") or "מכירה"
+    if deal_type and deal_type != want_deal:
+        return 0
+
+    # ── עיר - חובה ──
     q_city = normalize_city(query.get("city", "") or "")
-    r_city = normalize_city(row.get("City", "") or "")
+    r_city = normalize_city(row.get("עיר / ישוב", "") or "")
     if q_city:
         if r_city == q_city:
             score += 30
         elif r_city and (r_city in q_city or q_city in r_city):
-            score += 15
+            score += 18
         else:
             return 0
     else:
-        score += 10
-
-    # ── סינון 6: תקציב - חייב להיות בטווח סביר! ──
-    q_bmax = query.get("budget_max")
-    r_bmin_raw = (row.get("Budget_Min", "") or "").strip()
-    r_bmax_raw = (row.get("Budget_Max", "") or "").strip()
-    try:
-        r_bmin = int(float(r_bmin_raw)) if r_bmin_raw else None
-        r_bmax = int(float(r_bmax_raw)) if r_bmax_raw else None
-    except ValueError:
-        r_bmin = r_bmax = None
-
-    if q_bmax:
-        ref_price = r_bmax or r_bmin
-        if not ref_price:
-            return 0
-
-        if flex_level == 0:
-            min_allowed = q_bmax * 0.85
-            max_allowed = q_bmax * 1.15
-        elif flex_level == 1:
-            min_allowed = q_bmax * 0.75
-            max_allowed = q_bmax * 1.25
-        else:
-            min_allowed = q_bmax * 0.65
-            max_allowed = q_bmax * 1.35
-
-        if ref_price < min_allowed or ref_price > max_allowed:
-            return 0
-
-        diff_pct = abs(ref_price - q_bmax) / q_bmax
-        if diff_pct < 0.05:
-            score += 30
-        elif diff_pct < 0.10:
-            score += 25
-        elif diff_pct < 0.15:
-            score += 20
-        else:
-            score += 15
+        score += 5
 
     # ── שכונה - בונוס ──
     q_neigh = (query.get("neighborhood") or "").strip()
-    r_neigh = (row.get("Neighborhood", "") or "").strip()
-    if q_neigh:
-        if r_neigh:
-            if q_neigh == r_neigh:
-                score += 20
-            elif q_neigh in r_neigh or r_neigh in q_neigh:
-                score += 12
-            elif flex_level == 0:
-                return 0
-        elif flex_level == 0:
+    r_neigh = (row.get("שכונה", "") or "").strip()
+    if q_neigh and r_neigh:
+        if q_neigh in r_neigh or r_neigh in q_neigh:
+            score += 20
+
+    # ── רחוב - בונוס גדול ──
+    q_street = (query.get("street") or "").strip()
+    r_street = (row.get("כתובת", "") or "").strip()
+    if q_street and r_street:
+        if q_street in r_street or r_street in q_street:
+            score += 25
+
+    # ── מחיר - חובה להיות בטווח ──
+    q_bmax = query.get("budget_max")
+    q_bmin = query.get("budget_min")
+    r_price = parse_price(row.get("מחיר", ""))
+
+    if q_bmax and r_price:
+        if flex_level == 0:
+            max_allowed = q_bmax * 1.10
+        elif flex_level == 1:
+            max_allowed = q_bmax * 1.20
+        else:
+            max_allowed = q_bmax * 1.35
+
+        if r_price > max_allowed:
             return 0
 
-    # ── חדרים - בונוס ──
+        if q_bmin and r_price < q_bmin * 0.7:
+            return 0
+
+        diff_pct = abs(r_price - q_bmax) / q_bmax
+        if diff_pct < 0.05:
+            score += 25
+        elif diff_pct < 0.10:
+            score += 20
+        elif diff_pct < 0.20:
+            score += 15
+        else:
+            score += 8
+
+    # ── חדרים ──
     q_rmin = query.get("rooms_min")
     q_rmax = query.get("rooms_max")
-    r_rooms_raw = (row.get("Rooms", "") or "").strip()
+    r_rooms_raw = (row.get("חדרים", "") or "").strip()
     try:
         r_rooms = float(r_rooms_raw) if r_rooms_raw else None
     except ValueError:
         r_rooms = None
+
     if r_rooms is not None and (q_rmin or q_rmax):
         flex = 0.5 if flex_level == 1 else (1.0 if flex_level == 2 else 0)
         rmin_eff = (q_rmin - flex) if q_rmin else None
@@ -1194,22 +1181,58 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             in_range = False
         if in_range:
             if q_rmin and q_rmax and q_rmin == q_rmax and r_rooms == q_rmin:
-                score += 25
+                score += 20
             else:
-                score += 15
+                score += 12
+        elif flex_level == 0:
+            return 0
+
+    # ── מ"ר ──
+    q_smin = query.get("size_min")
+    q_smax = query.get("size_max")
+    r_size_raw = (row.get('מ"ר', "") or row.get("מ״ר", "") or "").strip()
+    try:
+        r_size = int(float(r_size_raw)) if r_size_raw else None
+    except ValueError:
+        r_size = None
+
+    if r_size and (q_smin or q_smax):
+        if q_smin and r_size >= q_smin:
+            score += 8
+        if q_smax and r_size <= q_smax:
+            score += 8
 
     # ── סוג נכס ──
     q_ptype = (query.get("property_type") or "").strip()
-    r_ptype = (row.get("Property_Type", "") or "").strip()
+    r_ptype = (row.get("סוג נכס", "") or "").strip()
     if q_ptype and r_ptype:
         if q_ptype == r_ptype:
             score += 10
         elif q_ptype in r_ptype or r_ptype in q_ptype:
             score += 5
 
+    # ── תכונות חובה (must_have) ──
+    must_have = query.get("must_have") or []
+    if isinstance(must_have, list):
+        for feature in must_have:
+            feature_clean = feature.strip()
+            col_map = {
+                "מעלית": "מעלית",
+                "חנייה": "חנייה",
+                'ממ"ד': 'ממ״ד',
+                'ממ״ד': 'ממ״ד',
+                "מרפסת": "מרפסת",
+                "גישה לנכים": "גישה לנכים",
+                "גינה": 'מ"ר גינה',
+            }
+            col = col_map.get(feature_clean, feature_clean)
+            val = (row.get(col, "") or "").strip()
+            if val and val not in ("ללא", "לא", "", "0"):
+                score += 5
+            elif flex_level == 0:
+                return 0
+
     return max(0, score)
-
-
 def search_listings_in_sheet(query: dict) -> list:
     rows = fetch_sheet_rows()
     if not rows:
@@ -1226,78 +1249,82 @@ def search_listings_in_sheet(query: dict) -> list:
     return []
 
 
-def format_match_reply(query: dict, matches: list) -> str:
-    if not matches:
-        return ("🔍 חיפשתי במאגר ולא מצאתי לקוחות תואמים כרגע.\n\n"
-                "טיפים:\n"
-                "• נסה לציין רק עיר ומספר חדרים (בלי שכונה ספציפית)\n"
-                "• הרחב את טווח התקציב\n"
-                '• דוגמה: "אני מחפש 4 חדרים בקרית ביאליק עד 2 מיליון"')
 
-    from urllib.parse import quote
+def format_match_reply(query: dict, matches: list) -> str:
+    """בנה הודעת WhatsApp עם נכסים תואמים"""
+    if not matches:
+        return ("\U0001f50d חיפשתי במאגר הנכסים ולא מצאתי נכס מתאים כרגע.\n\n"
+                "טיפים:\n"
+                "\u2022 נסה לציין רק עיר ומספר חדרים\n"
+                "\u2022 הרחב את טווח התקציב\n"
+                "\u2022 דוגמה: \"מחפש דירה 4 חדרים בקרית ביאליק עד 2 מיליון\"")
+
     summary = query.get("summary_he", "")
-    lines = [f"🎯 *מצאתי {len(matches)} התאמות עבורך!*"]
+    lines = [f"\U0001f3e0 *מצאתי {len(matches)} נכסים מתאימים!*"]
     if summary:
         lines.append(f"_{summary}_")
     lines.append("")
 
     for i, (score, row, flex) in enumerate(matches, 1):
-        first = (row.get("Client_FirstName", "") or "").strip() or "לקוח"
-        last = (row.get("Client_LastInitial", "") or "").strip()
-        client_name = f"{first} {last}." if last else first
+        city      = (row.get("עיר / ישוב", "") or "").strip()
+        neigh     = (row.get("שכונה", "") or "").strip()
+        street    = (row.get("כתובת", "") or "").strip()
+        number    = (row.get("מספר בית", "") or "").strip()
+        rooms     = (row.get("חדרים", "") or "").strip()
+        size      = (row.get('מ"ר', "") or row.get("מ\u05f4ר", "") or "").strip()
+        floor     = (row.get("קומה", "") or "").strip()
+        total_floors = (row.get("מספר קומות", "") or "").strip()
+        price_raw = (row.get("מחיר", "") or "").strip()
+        prop_type = (row.get("סוג נכס", "") or "").strip()
+        agent_name  = (row.get("סוכן 1", "") or "").strip()
+        agent_phone = (row.get("טלפון 1", "") or "").strip()
 
-        agent_name = (row.get("Agent_Name", "") or "").strip()
-        agent_wa = (row.get("Agent_WhatsApp", "") or "").strip()
-        rooms = (row.get("Rooms", "") or "").strip()
-        budget_max = (row.get("Budget_Max", "") or "").strip()
-        city = (row.get("City", "") or "").strip()
-        neigh = (row.get("Neighborhood", "") or "").strip()
-        tag = (row.get("Summary_Tag", "") or "").strip()
-
-        budget_display = ""
-        try:
-            if budget_max:
-                bm = int(float(budget_max))
-                budget_display = f"{bm/1000000:.2f}M ₪".replace(".00", "") if bm >= 1000000 else f"{bm:,} ₪"
-        except ValueError:
-            budget_display = budget_max
-
-        location = f"{neigh}, {city}" if neigh else city
-        # חישוב אחוז התאמה (max תאורטי ~115, נגביל ל-100)
         match_pct = min(100, int(score))
-        badge = "🟢 התאמה מצוינת" if score >= 70 else ("🟡 התאמה טובה" if score >= 50 else "🟠 התאמה חלקית")
-        lines.append(f"*{i}. {client_name}* — {match_pct}% {badge}")
+        badge = "\U0001f7e2 התאמה מצוינת" if score >= 70 else ("\U0001f7e1 התאמה טובה" if score >= 50 else "\U0001f7e0 התאמה חלקית")
+
+        address_full = f"{street} {number}".strip()
+        location = address_full
+        if neigh:
+            location += f" — {neigh}"
+        if city:
+            location += f", {city}"
+
+        lines.append(f"*{i}. {prop_type or 'נכס'}* — {match_pct}% {badge}")
+        lines.append(f"   \U0001f4cd {location}")
 
         details = []
         if rooms: details.append(f"{rooms} חדרים")
-        if budget_display: details.append(f"עד {budget_display}")
-        if location: details.append(location)
-        if details: lines.append("   " + " | ".join(details))
-        if tag and len(tag) < 80: lines.append(f"   _{tag}_")
-        if agent_name: lines.append(f"   👤 סוכן מטפל: *{agent_name}*")
-        
-        # תאריך השיחה של הלקוח
-        call_date = (row.get("Date", "") or "").strip()
-        call_time = (row.get("Time", "") or "").strip()
-        if call_date:
-            date_line = f"   📅 פנייה: {call_date}"
-            if call_time:
-                date_line += f" {call_time}"
-            lines.append(date_line)
-        
-        # קישור wa.me נקי - בלי טקסט מוכן
-        if agent_wa:
-            wa_clean = re.sub(r"[^\d]", "", agent_wa)
+        if size: details.append(f"{size} מ\"ר")
+        if floor and total_floors and floor != "0":
+            details.append(f"קומה {floor}/{total_floors}")
+        if details:
+            lines.append("   " + " | ".join(details))
+
+        if price_raw:
+            lines.append(f"   \U0001f4b0 {price_raw}")
+
+        features = []
+        if (row.get("חנייה", "") or "").strip() == "כן": features.append("חנייה")
+        if (row.get("מעלית", "") or "").strip() == "כן": features.append("מעלית")
+        if (row.get("מרפסת", "") or "").strip() == "כן": features.append("מרפסת")
+        if (row.get("מ\u05f4ד", "") or "").strip() == "כן": features.append('ממ"ד')
+        if features:
+            lines.append(f"   \u2728 {' \u2022 '.join(features)}")
+
+        if agent_name:
+            lines.append(f"   \U0001f464 סוכן: *{agent_name}*")
+
+        if agent_phone:
+            wa_clean = re.sub(r"[^\d]", "", agent_phone)
             if wa_clean and not wa_clean.startswith("972"):
                 wa_clean = "972" + wa_clean.lstrip("0")
-            lines.append(f"   📲 https://wa.me/{wa_clean}")
+            lines.append(f"   \U0001f4f2 https://wa.me/{wa_clean}")
+
         lines.append("")
 
-    lines.append("━━━━━━━━━━━━━━━━━━")
-    lines.append("💡 לחץ על קישור ה-WhatsApp ליצירת קשר ישיר עם הסוכן המטפל")
+    lines.append("\u2501" * 9)
+    lines.append("\U0001f4a1 לחץ על קישור ה-WhatsApp לקבלת פרטים מהסוכן")
     return "\n".join(lines)
-
-
 def log_bot_query(sender_phone: str, query_text: str, parsed: dict, matches: list):
     if not GOOGLE_SHEETS_API_KEY:
         return
@@ -1326,20 +1353,20 @@ def log_bot_query(sender_phone: str, query_text: str, parsed: dict, matches: lis
 
 def handle_search_request(sender_phone: str, message_text: str):
     try:
-        send_text(sender_phone, "🔍 מחפש לקוחות תואמים במאגר...\nרגע ⏳")
+        send_text(sender_phone, "🔍 מחפש נכסים מתאימים במאגר...\nרגע ⏳")
         parsed = parse_search_query(message_text)
         log.info(f"Parsed search: {parsed}")
         if not parsed:
             send_text(sender_phone,
                 "❌ לא הצלחתי להבין את הבקשה.\n\n"
                 "נסה לכתוב כך:\n"
-                "*אני מחפש 4 חדרים בקרית ביאליק עד 2 מיליון*")
+                "*מחפש דירה 4 חדרים בקרית ביאליק עד 2 מיליון*")
             return
         matches = search_listings_in_sheet(parsed)
         log.info(f"Found {len(matches)} matches")
         reply = format_match_reply(parsed, matches)
         send_text(sender_phone, reply)
-        log_bot_query(sender_phone, message_text, parsed, matches)
+        # log_bot_query(sender_phone, message_text, parsed, matches)
     except Exception as e:
         log.error(f"Search handler error: {e}", exc_info=True)
         send_text(sender_phone, f"❌ שגיאה: {str(e)[:100]}")
