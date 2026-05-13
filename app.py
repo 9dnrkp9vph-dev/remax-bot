@@ -1020,7 +1020,8 @@ def parse_search_query(text: str) -> dict:
 - דירה רגילה ללא ציון מיוחד → property_type = "דירה"
 
 שדות JSON:
-- city: עיר (אחת מהערים למעלה או null)
+- city: עיר ראשית (אחת מהערים למעלה או null) — אם ציינו עיר אחת
+- cities: רשימת ערים (אם ציינו יותר מעיר אחת, למשל ["קרית מוצקין","קרית ביאליק"]) — אחרת null
 - neighborhood: שכונה (substring לחיפוש, או null)
 - street: שם רחוב (אם הסוכן ציין, או null)
 - rooms_min: מספר חדרים מינימלי (מספר עשרוני, או null)
@@ -1189,14 +1190,29 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             pass
 
     # ── עיר - חובה ──
-    q_city = normalize_city(query.get("city", "") or "")
     r_city = normalize_city(row.get("עיר / ישוב", "") or "")
-    if q_city:
-        if r_city == q_city:
-            score += 30
-        elif r_city and (r_city in q_city or q_city in r_city):
-            score += 18
-        else:
+    # תמיכה ברשימת ערים (cities) ועיר בודדת (city)
+    q_cities_raw = query.get("cities") or []
+    q_city_single = normalize_city(query.get("city", "") or "")
+    if q_cities_raw and isinstance(q_cities_raw, list):
+        q_cities = [normalize_city(c) for c in q_cities_raw if c]
+    elif q_city_single:
+        q_cities = [q_city_single]
+    else:
+        q_cities = []
+
+    if q_cities:
+        matched_city = False
+        for qc in q_cities:
+            if r_city == qc:
+                score += 30
+                matched_city = True
+                break
+            elif r_city and (r_city in qc or qc in r_city):
+                score += 18
+                matched_city = True
+                break
+        if not matched_city:
             return 0
     else:
         score += 5
