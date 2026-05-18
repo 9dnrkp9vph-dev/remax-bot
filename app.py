@@ -1140,6 +1140,11 @@ def fetch_sheet_rows() -> list:
         for row in data[1:]:
             row_padded = row + [""] * (len(headers_row) - len(row))
             rows.append(dict(zip(headers_row, row_padded)))
+        # סנן נכסים של סוכנים מוחרגים
+        EXCLUDED_AGENTS = {"אווה אזולאי"}
+        rows = [r for r in rows
+                if (r.get("סוכן 1","") or "").strip() not in EXCLUDED_AGENTS
+                and (r.get("סוכן 2","") or "").strip() not in EXCLUDED_AGENTS]
         return rows
     except Exception as e:
         log.error(f"Fetch sheet error: {e}")
@@ -1375,7 +1380,7 @@ def search_listings_in_sheet(query: dict) -> list:
                 scored.append((s, row, flex))
         scored.sort(key=lambda x: -x[0])
         if len(scored) >= 3 or flex == 2:
-            results = [(s, r, f) for (s, r, f) in scored[:5]]
+            results = [(s, r, f) for (s, r, f) in scored[:10]]
             # ── שלב 2: אם חיפשו דירת גן ואין תוצאות — הוסף קוטג' ──
             if is_garden and len(results) < 3:
                 fallback_query = dict(query)
