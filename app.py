@@ -1002,6 +1002,9 @@ def parse_search_query(text: str) -> dict:
 - "סביונים" / "סביוני ים" → neighborhood = "סביונ"
 - "גבעת טל" → neighborhood = "גבעת טל"
 - "קרית חיים מערבית" / "מערבית" → neighborhood = "מערבית"
+- "משכנות אומנים" / "משכנות" → neighborhood = "משכנות"
+- "נווה גנים" → neighborhood = "נווה גנים"
+- "לב מוצקין" → neighborhood = "לב מוצקין"
 
 חוקי זיהוי must_have — חשוב מאוד!
 - "דירת גן" / "עם גינה" / "עם חצר" → must_have כולל "גינה", property_type = "דירת גן"
@@ -1026,8 +1029,8 @@ def parse_search_query(text: str) -> dict:
 - street: שם רחוב (אם הסוכן ציין, או null)
 - rooms_min: מספר חדרים מינימלי (מספר עשרוני, או null)
 - rooms_max: מספר חדרים מקסימלי (מספר עשרוני, או null) - "4 חדרים" → min=max=4
-- budget_min: מחיר מינימלי בש"ח (מספר, או null)
-- budget_max: מחיר מקסימלי בש"ח (מספר, או null) - "עד 2 מיליון" → 2000000
+- budget_min: מחיר מינימלי בש"ח (מספר, או null) - "בין 3 ל-3.5 מיליון" → budget_min=3000000
+- budget_max: מחיר מקסימלי בש"ח (מספר, או null) - "עד 2 מיליון" → 2000000, "בין 3 ל-3.5 מיליון" → budget_max=3500000
 - size_min: מ"ר מינימלי (מספר, או null)
 - size_max: מ"ר מקסימלי (מספר, או null)
 - floor_max: קומה מקסימלית (מספר, או null) - "עד קומה 2" → floor_max=2, "קומה נמוכה" → floor_max=3
