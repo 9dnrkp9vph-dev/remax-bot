@@ -1554,11 +1554,24 @@ def webhook():
     if request.method == "GET":
         return jsonify({"status": "ok", "message": "RE/MAX Bot Webhook Active"}), 200
     try:
-        body = request.get_json(force=True)
+        body = request.get_json(force=True, silent=True) or {}
         log.info(f"Webhook: {json.dumps(body)[:300]}")
 
-        msg  = body.get("message", {})
+        # ── התעלם מ-ack/status/notify ולא מהודעות אמיתיות ──
+        if body.get("type") in ("ack", "status", "notify", "error"):
+            return jsonify({"ok": True})
+
+        msg = body.get("message", {})
+        # הגנה: אם message הוא לא dict (יכול להיות string או None), התעלם
+        if not isinstance(msg, dict):
+            log.info(f"Ignoring non-dict message: {type(msg).__name__}")
+            return jsonify({"ok": True})
+
+        # שליפת מספר הטלפון - בודקים גם user.phone שזה הפורמט של Maytapi
+        user = body.get("user") if isinstance(body.get("user"), dict) else {}
         from_number = (body.get("conversation", "")
+                       or user.get("phone", "")
+                       or user.get("id", "")
                        or msg.get("from_number", "")
                        or body.get("from", ""))
         if not from_number:
@@ -1567,6 +1580,10 @@ def webhook():
         msg_type = msg.get("type", "")
         text     = msg.get("text", "") or msg.get("caption", "") or ""
         media    = msg.get("url", "") or msg.get("media_url", "")
+
+        # ── אל תגיב להודעות שהבוט עצמו שלח ──
+        if msg.get("fromMe") is True:
+            return jsonify({"ok": True})
 
         # ── טריגר חיפוש — "אני מחפש" / "אני מחפשת" ───────────────────
         if msg_type == "text" and is_search_query(text):
