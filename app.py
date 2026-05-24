@@ -1562,9 +1562,19 @@ def webhook():
             return jsonify({"ok": True})
 
         msg  = body.get("message", {})
-        from_number = (body.get("conversation", "")
-                       or msg.get("from_number", "")
-                       or body.get("from", ""))
+
+        # שליפת מספר הטלפון - עדיפות ל-user.phone (מספר אמיתי) על פני conversation (יכול להיות LID)
+        user_obj = body.get("user") if isinstance(body.get("user"), dict) else {}
+        user_phone = user_obj.get("phone", "")
+        conversation = body.get("conversation", "")
+        # אם conversation מכיל "@lid" זה לא מספר טלפון אמיתי - נעדיף את user.phone
+        if "@lid" in conversation and user_phone:
+            from_number = user_phone
+        else:
+            from_number = (conversation
+                           or user_phone
+                           or msg.get("from_number", "")
+                           or body.get("from", ""))
         if not from_number:
             return jsonify({"ok": True})
 
