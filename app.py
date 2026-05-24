@@ -1557,6 +1557,10 @@ def webhook():
         body = request.get_json(force=True)
         log.info(f"Webhook: {json.dumps(body)[:300]}")
 
+        # ── התעלם מהודעות ack/status/error של Maytapi ──
+        if body.get("type") in ("ack", "status", "notify", "error"):
+            return jsonify({"ok": True})
+
         msg  = body.get("message", {})
         from_number = (body.get("conversation", "")
                        or msg.get("from_number", "")
