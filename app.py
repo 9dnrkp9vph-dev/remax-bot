@@ -1129,7 +1129,7 @@ def fetch_sheet_rows() -> list:
 
     from urllib.parse import quote
     sheet_encoded = quote(PROPERTIES_SHEET_NAME)
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{sheet_encoded}!A1:Z?key={GOOGLE_SHEETS_API_KEY}"
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{sheet_encoded}!A1:AR?key={GOOGLE_SHEETS_API_KEY}"
     try:
         r = requests.get(url, timeout=15)
         if r.status_code != 200:
