@@ -1,31 +1,24 @@
 """
-שרת בוט וואטסאפ — מצגות נדל"ן אוטומטיות
+שרת בוט וואטסאפ — מצגות נדל"ן אוטומטיות + חיפוש קונים
 RE/MAX Family | Railway.app deployment
-
 זרימה:
-1. סוכן שולח "מצגת" + טקסט + תמונות
-2. השרת מפרסר עם Claude API
-3. מייצר PDF
-4. שולח חזרה בוואטסאפ דרך Maytapi
+1. סוכן שולח "מצגת" + טקסט + תמונות → מצגת PDF
+2. סוכן שולח "מחפש דירה ..." → חיפוש נכסים מהמאגר
+3. סוכן שולח "מחפש קונה ..." → חיפוש קונים בשיחות שלו
 """
-
 import os, re, json, time, uuid, base64, tempfile, subprocess, logging, threading
 from pathlib import Path
 from io import BytesIO
-
 import requests
 from flask import Flask, request, jsonify
-
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
-
 app = Flask(__name__)
-
 # ── Config from env vars ───────────────────────────────────────────────────────
-MAYTAPI_TOKEN    = os.environ["MAYTAPI_TOKEN"]      # מהדאשבורד של maytapi
-MAYTAPI_PHONE_ID = os.environ["MAYTAPI_PHONE_ID"]   # phone ID
-MAYTAPI_PRODUCT  = os.environ["MAYTAPI_PRODUCT_ID"] # product ID
+MAYTAPI_TOKEN    = os.environ["MAYTAPI_TOKEN"]
+MAYTAPI_PHONE_ID = os.environ["MAYTAPI_PHONE_ID"]
+MAYTAPI_PRODUCT  = os.environ["MAYTAPI_PRODUCT_ID"]
 CLAUDE_API_KEY   = os.environ["CLAUDE_API_KEY"]
 TRIGGER_WORD     = os.environ.get("TRIGGER_WORD", "מצגת")
 GOOGLE_SHEETS_API_KEY  = os.environ.get("GOOGLE_SHEETS_API_KEY", "")
@@ -33,44 +26,39 @@ PROPERTIES_SHEET_ID    = os.environ.get("PROPERTIES_SHEET_ID", "1PnQm-ifyLrh6sBb
 PROPERTIES_SHEET_NAME  = "נכסים"
 CONTACTS_SHEET_NAME    = "אנשי קשר"
 SEARCH_TRIGGERS        = ["מחפש דירה", "מחפשת דירה", "מחפש נכס", "מחפשת נכס"]
-
+# Apps Script — לחיפוש קונים בשיחות (דוחות נדלן וואן)
+APPS_SCRIPT_URL   = os.environ.get("APPS_SCRIPT_URL", "")
+APPS_SCRIPT_TOKEN = os.environ.get("APPS_SCRIPT_TOKEN", "")
+BUYER_SEARCH_TRIGGERS = ["מחפש קונה", "מחפשת קונה"]
+_buyer_calls_cache = {"data": None, "ts": 0}
 MAYTAPI_BASE = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT}/{MAYTAPI_PHONE_ID}"
-
 # ── Temp dir for processing ────────────────────────────────────────────────────
 WORK_DIR = Path(tempfile.gettempdir()) / "remax_bot"
 WORK_DIR.mkdir(exist_ok=True)
-
 # ── Active sessions: phone → {text, images, timer} ────────────────────────────
 sessions = {}
-SESSION_TIMEOUT = 45  # seconds to wait for more images
-
+SESSION_TIMEOUT = 45
 # ══════════════════════════════════════════════════════════════════════════════
 # MAYTAPI HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
-
 def maytapi_headers():
     return {"x-maytapi-key": MAYTAPI_TOKEN, "Content-Type": "application/json"}
-
 def send_text(to: str, text: str):
     r = requests.post(f"{MAYTAPI_BASE}/sendMessage",
         headers=maytapi_headers(),
         json={"to_number": to, "type": "text", "message": text})
     log.info(f"send_text → {r.status_code}")
-
 def download_profile_pic(phone: str, dest: Path) -> bool:
     """הורד תמונת פרופיל ושמור לקובץ — מנסה כמה endpoints"""
     try:
         number = phone.replace("+","").replace("-","").strip()
         number_at = f"{number}@c.us"
-
-        # נסה endpoint 1: getProfilePic עם params
         endpoints = [
             {"method": "GET",  "url": f"{MAYTAPI_BASE}/getProfilePic", "params": {"number": number_at}},
             {"method": "GET",  "url": f"{MAYTAPI_BASE}/getProfilePic", "params": {"number": number}},
             {"method": "POST", "url": f"{MAYTAPI_BASE}/getProfilePic", "json": {"number": number_at}},
             {"method": "GET",  "url": f"{MAYTAPI_BASE}/profile/pic",   "params": {"number": number_at}},
         ]
-
         for ep in endpoints:
             try:
                 if ep["method"] == "GET":
@@ -97,7 +85,6 @@ def download_profile_pic(phone: str, dest: Path) -> bool:
     except Exception as e:
         log.error(f"Download profile pic error: {e}")
     return False
-
 def send_document(to: str, file_path: str, filename: str, caption: str = ""):
     with open(file_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
@@ -112,11 +99,8 @@ def send_document(to: str, file_path: str, filename: str, caption: str = ""):
         })
     log.info(f"send_document → {r.status_code} {r.text[:120]}")
     return r.status_code == 200
-
 def download_media(url: str, dest: Path) -> bool:
-    """הורד מדיה מ-Maytapi"""
     try:
-        # Maytapi media download requires auth token in header
         r = requests.get(url, headers={"x-maytapi-key": MAYTAPI_TOKEN}, timeout=30)
         if r.status_code == 200:
             dest.write_bytes(r.content)
@@ -126,15 +110,11 @@ def download_media(url: str, dest: Path) -> bool:
     except Exception as e:
         log.error(f"Download error: {e}")
         return False
-
 # ══════════════════════════════════════════════════════════════════════════════
 # CLAUDE API — פירסור טקסט
 # ══════════════════════════════════════════════════════════════════════════════
-
 def parse_listing_text(raw_text: str) -> dict:
-    """שלח את הטקסט ל-Claude וקבל JSON מובנה"""
     prompt = f"""אתה מנתח מודעות נדל"ן בעברית. קרא את הטקסט הבא והחזר JSON בלבד (ללא backticks).
-
 שדות נדרשים:
 - address: כתובת מלאה
 - city: עיר
@@ -159,10 +139,8 @@ def parse_listing_text(raw_text: str) -> dict:
 - description: תיאור שיווקי מלא מהמודעה
 - highlights: רשימת יתרונות (array of strings)
 - image_labels: רשימה של 4 כיתובים לתמונות לפי מה שמוזכר בטקסט (למשל ["סלון","מטבח","חדר הורים","אמבטיה"]) — השתמש תמיד ב-4 פריטים
-
 טקסט:
 {raw_text}"""
-
     r = requests.post("https://api.anthropic.com/v1/messages",
         headers={
             "anthropic-version": "2023-06-01",
@@ -174,16 +152,12 @@ def parse_listing_text(raw_text: str) -> dict:
             "max_tokens": 1500,
             "messages": [{"role": "user", "content": prompt}]
         })
-
     if r.status_code != 200:
         log.error(f"Claude API error: {r.text}")
         return {}
-
     text = r.json()["content"][0]["text"].strip()
-    # נקה backticks בכל פורמט
     text = re.sub(r"```(?:json)?\s*", "", text).strip()
     text = text.strip("`").strip()
-    # מצא את ה-JSON בתוך הטקסט
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         text = match.group()
@@ -192,26 +166,21 @@ def parse_listing_text(raw_text: str) -> dict:
     except Exception as e:
         log.error(f"JSON parse error: {e}\nText: {text[:200]}")
         return {}
-
 # ══════════════════════════════════════════════════════════════════════════════
 # PDF GENERATOR
 # ══════════════════════════════════════════════════════════════════════════════
-
 def install_deps():
     pkgs = ["reportlab", "arabic-reshaper", "python-bidi", "Pillow"]
     subprocess.run(
         ["pip", "install", "--break-system-packages", "-q"] + pkgs,
         capture_output=True)
-
 def has_remax_logo(img_path: Path) -> bool:
-    """בדוק אם יש לוגו RE/MAX בתמונה (אדום+כחול בפינות)"""
     try:
         from PIL import Image
         import numpy as np
         img = Image.open(img_path).convert("RGB")
         arr = np.array(img)
         h, w = arr.shape[:2]
-        # חפש פיקסלים אדומים אופייניים ל-RE/MAX (CC0033)
         corners = [arr[:h//4, :w//4], arr[:h//4, 3*w//4:],
                    arr[3*h//4:, :w//4], arr[3*h//4:, 3*w//4:]]
         for region in corners:
@@ -221,21 +190,16 @@ def has_remax_logo(img_path: Path) -> bool:
         return False
     except:
         return False
-
 def remove_logo_from_image(img_path: Path, out_path: Path):
-    """הסר לוגו מפינה (top-left נפוץ)"""
     from PIL import Image, ImageFilter, ImageDraw
     import numpy as np
     img = Image.open(img_path).convert("RGB")
     arr = np.array(img, dtype=np.float32)
     h, w = arr.shape[:2]
-    # חתוך 340px מלמעלה (מיקום לוגו נפוץ)
     crop_top = int(h * 0.25)
     cropped = img.crop((0, crop_top, w, h))
     cropped.save(out_path, "JPEG", quality=93)
-
 def add_remax_logo_to_image(img_path: Path, out_path: Path, logo_path: Path):
-    """הוסף לוגו RE/MAX לפינה ימנית-תחתונה"""
     from PIL import Image
     img = Image.open(img_path).convert("RGBA")
     logo = Image.open(logo_path).convert("RGBA")
@@ -246,9 +210,7 @@ def add_remax_logo_to_image(img_path: Path, out_path: Path, logo_path: Path):
     mx, my = int(iw * 0.015), int(ih * 0.02)
     img.paste(logo_r, (iw - logo_w - mx, ih - logo_h - my), logo_r)
     img.convert("RGB").save(out_path, "JPEG", quality=93)
-
 def get_area_info(city: str, neighborhood: str) -> list:
-    """חיפוש אמיתי על האזור דרך Claude עם web search"""
     area = neighborhood or city
     if not area:
         return []
@@ -258,7 +220,6 @@ def get_area_info(city: str, neighborhood: str) -> list:
 - icon (אימוג'י מתאים)
 - title (כותרת קצרה בעברית)
 - desc (תיאור 1-2 משפטים בעברית עם עובדות אמיתיות)"""
-
     r = requests.post("https://api.anthropic.com/v1/messages",
         headers={"anthropic-version":"2023-06-01","x-api-key":CLAUDE_API_KEY,"content-type":"application/json"},
         json={
@@ -267,32 +228,23 @@ def get_area_info(city: str, neighborhood: str) -> list:
             "tools": [{"type": "web_search_20250305", "name": "web_search"}],
             "messages": [{"role": "user", "content": prompt}]
         }, timeout=50)
-
     if r.status_code != 200:
         log.error(f"Area info error: {r.text}")
         return []
-
-    # Claude עם web search מחזיר תוצאה אחרי כמה סבבים
     content = r.json().get("content", [])
-    # קח את ה-text האחרון
     text = ""
     for block in reversed(content):
         if block.get("type") == "text":
             text = block["text"].strip()
             break
-
     text = re.sub(r"```json\s*|\s*```", "", text).strip()
-    # מצא JSON במחרוזת
     match = re.search(r'\[.*\]', text, re.DOTALL)
     if match:
         try: return json.loads(match.group())
         except: pass
     return []
-
 def get_transactions(city: str, neighborhood: str, rooms: str, address: str) -> list:
-    """חיפוש עסקאות אמיתיות דרך Claude עם web search"""
     area = neighborhood or city
-    # חלץ שם רחוב בלבד מהכתובת
     street = address.split(",")[0].strip() if address else area
     prompt = f"""חפש עסקאות נדל"ן אמיתיות ועדכניות ברחוב "{street}", {city} לדירות {rooms} חדרים, 2024-2025.
 חפש ב: nadlan.gov.il, madlan.co.il, mynet, ynet.
@@ -309,7 +261,6 @@ def get_transactions(city: str, neighborhood: str, rooms: str, address: str) -> 
 - date: תאריך (למשל "מאי 25")
 - details: "רח' X — {rooms} חד', [תיאור]"
 מיין מהעדכני לישן."""
-
     r = requests.post("https://api.anthropic.com/v1/messages",
         headers={"anthropic-version":"2023-06-01","x-api-key":CLAUDE_API_KEY,"content-type":"application/json"},
         json={
@@ -318,25 +269,21 @@ def get_transactions(city: str, neighborhood: str, rooms: str, address: str) -> 
             "tools": [{"type": "web_search_20250305", "name": "web_search"}],
             "messages": [{"role": "user", "content": prompt}]
         }, timeout=50)
-
     if r.status_code != 200:
         log.error(f"Transactions error: {r.text}")
         return []
-
     content = r.json().get("content", [])
     text = ""
     for block in reversed(content):
         if block.get("type") == "text":
             text = block["text"].strip()
             break
-
     text = re.sub(r"```json\s*|\s*```", "", text).strip()
     match = re.search(r'\[.*\]', text, re.DOTALL)
     if match:
         try: return json.loads(match.group())
         except: pass
     return []
-
 def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     """צור PDF פרמיום 6 עמודים בסגנון RE/MAX"""
     from reportlab.lib.pagesizes import A4
@@ -353,8 +300,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     from bidi.algorithm import get_display
     import arabic_reshaper
     from PIL import Image as PILImage
-
-    # ── Fonts ──────────────────────────────────────────────────────────────────
     font_paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/local/share/fonts/DejaVuSans.ttf",
@@ -370,15 +315,12 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     font_bold = font_reg.replace("DejaVuSans.ttf", "DejaVuSans-Bold.ttf")
     if not os.path.exists(font_bold):
         font_bold = font_reg
-
     try:
         pdfmetrics.registerFont(TTFont("Reg", font_reg))
     except: pass
     try:
         pdfmetrics.registerFont(TTFont("Bold", font_bold))
     except: pass
-
-    # ── Colors ─────────────────────────────────────────────────────────────────
     INK   = colors.HexColor("#0D1B2A")
     CHAR  = colors.HexColor("#162030")
     GOLD  = colors.HexColor("#C9972A")
@@ -389,20 +331,16 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     RED   = colors.HexColor("#CC0033")
     BLUE  = colors.HexColor("#003DA5")
     D1    = colors.HexColor("#1A2438")
-
     PAGE_W, PAGE_H = A4
     M  = 16*mm
     CW = PAGE_W - 2*M
-
     def h(text):
         if not text: return ""
         return get_display(arabic_reshaper.reshape(str(text)))
-
     def S(name, size=11, color=WHITE, align=TA_RIGHT, bold=False, leading=None):
         return ParagraphStyle(name, fontName="Bold" if bold else "Reg",
             fontSize=size, textColor=color, alignment=align,
             leading=leading or size*1.55)
-
     def fit_img(path, mw, mh):
         try:
             img = PILImage.open(path)
@@ -410,7 +348,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             r = min(mw/iw, mh/ih)
             return RLImage(str(path), width=iw*r, height=ih*r)
         except: return None
-
     def logo_flowable(max_w, max_h):
         logo_path = "/app/logo.png" if os.path.exists("/app/logo.png") else "logo.png"
         if not os.path.exists(logo_path):
@@ -425,7 +362,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             r = min(max_w/iw, max_h/ih)
             return RLImage(tmp, width=iw*r, height=ih*r)
         except: return None
-
     def cover_bg(canvas, doc):
         canvas.saveState()
         canvas.setFillColor(INK)
@@ -437,7 +373,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
         canvas.setFillColor(GOLD)
         canvas.rect(0, 0, PAGE_W, 2*mm, fill=1, stroke=0)
         canvas.restoreState()
-
     def inner_bg(canvas, doc):
         canvas.saveState()
         canvas.setFillColor(INK)
@@ -458,28 +393,22 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
         canvas.setFillColor(BLUE)
         canvas.rect(M-5*mm, 12*mm, 3, PAGE_H-24*mm, fill=1, stroke=0)
         canvas.restoreState()
-
     def page_cb(canvas, doc):
         cover_bg(canvas, doc) if doc.page == 1 else inner_bg(canvas, doc)
-
     story = []
-
-    # ── PAGE 1: COVER ──────────────────────────────────────────────────────────
+    # PAGE 1: COVER
     hero = fit_img(image_paths[0], PAGE_W-2*M, 82*mm) if image_paths else None
     if hero:
         hero.hAlign = "CENTER"
         story.append(Spacer(1, 8*mm))
         story.append(hero)
-
     story.append(Spacer(1, 5*mm))
     story.append(Table([[""]], colWidths=[CW],
         style=[("LINEABOVE",(0,0),(-1,-1),1.5,GOLD),("TOPPADDING",(0,0),(-1,-1),0)]))
     story.append(Spacer(1, 4*mm))
-
     excl = "  ✨ בלעדיות | לא פורסמה מעולם  " if data.get("exclusive") else "  🏠 למכירה  "
     story.append(Paragraph(h(excl), S("badge",12,GOLD,TA_CENTER,bold=True)))
     story.append(Spacer(1, 3*mm))
-
     addr = data.get("address","")
     neighborhood = data.get("neighborhood","")
     city = data.get("city","")
@@ -487,7 +416,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     story.append(Paragraph(h(addr), S("addr",26,WHITE,TA_CENTER,bold=True,leading=32)))
     story.append(Paragraph(h(subtitle), S("city",13,MID,TA_CENTER,leading=20)))
     story.append(Spacer(1, 5*mm))
-
     price_display = data.get("price_display","")
     pt = Table([[Paragraph(h(price_display), S("price",22,GOLD,TA_CENTER,bold=True))]], colWidths=[82*mm])
     pt.setStyle(TableStyle([
@@ -501,7 +429,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     story.append(Table([[""]], colWidths=[CW],
         style=[("LINEABOVE",(0,0),(-1,-1),1.5,GOLD),("TOPPADDING",(0,0),(-1,-1),0)]))
     story.append(Spacer(1, 4*mm))
-
     rooms = str(data.get("rooms",""))
     size  = str(data.get("size_sqm",""))
     balc  = str(data.get("balcony_sqm","")) if data.get("balcony_sqm") else "—"
@@ -516,26 +443,21 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
         style=[("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
                ("LINEBEFORE",(1,0),(-1,-1),0.5,CHAR)]))
     story.append(Spacer(1, 5*mm))
-
     logo = logo_flowable(52*mm, 18*mm)
     if logo:
         logo.hAlign = "CENTER"
         story.append(logo)
         story.append(Spacer(1, 3*mm))
-
     phone_raw = data.get("agent_phone","")
     agent_line = f"{data.get('agent_name','')}  |  {phone_raw}"
     story.append(Paragraph(h(agent_line), S("ac",10,MID,TA_CENTER)))
     story.append(PageBreak())
-
-    # ── PAGE 2: GALLERY ────────────────────────────────────────────────────────
+    # PAGE 2: GALLERY
     story.append(Spacer(1,5*mm))
     story.append(Paragraph(h("הנכס"), S("sec",16,GOLD,TA_RIGHT,bold=True)))
     story.append(HRFlowable(width="100%",thickness=1.5,color=GOLD,spaceAfter=4*mm))
-
     ph_w = (CW-3*mm)/2
     ph_h = 54*mm
-
     if len(image_paths) == 1:
         big = fit_img(image_paths[0], CW, 110*mm)
         if big:
@@ -547,8 +469,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             imgs.append(None)
         row1 = []
         caps1 = []
-        # כיתובים יוצגו לפי סדר התמונות שנשלחו
-        # כיתובים מהמלל המקורי אם זמין, אחרת גנרי
         img_labels = data.get("image_labels", [])
         captions = (img_labels + ["📷 תמונה 1","📷 תמונה 2","📷 תמונה 3","📷 תמונה 4"])[:4]
         for i in range(2):
@@ -571,7 +491,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
         story.append(Table(grid, colWidths=[ph_w,ph_w], rowHeights=row_h,
             style=[("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
                    ("COLPADDING",(0,0),(-1,-1),2),("ROWPADDING",(0,0),(-1,-1),1)]))
-
     story.append(Spacer(1,4*mm))
     amenities = []
     if data.get("parking"): amenities.append(("P","חניה"))
@@ -594,12 +513,10 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     ]))
     story.append(bt)
     story.append(PageBreak())
-
-    # ── PAGE 3: DETAILS + TEXT ─────────────────────────────────────────────────
+    # PAGE 3: DETAILS
     story.append(Spacer(1,5*mm))
     story.append(Paragraph(h("פרטי הנכס"), S("sec2",16,GOLD,TA_RIGHT,bold=True)))
     story.append(HRFlowable(width="100%",thickness=1.5,color=GOLD,spaceAfter=4*mm))
-
     detail_rows = [
         ("כתובת",     data.get("address","")),
         ("מחיר",      data.get("price_display","")),
@@ -616,7 +533,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
         Paragraph(h(v), S("dv",11,WHITE,TA_RIGHT,bold=True)),
         Paragraph(h(l), S("dl",10,MID,TA_RIGHT)),
     ] for l,v in detail_rows if v]
-
     dt = Table(rows_data, colWidths=[CW*0.62, CW*0.38])
     dt.setStyle(TableStyle([
         ("ALIGN",(0,0),(-1,-1),"RIGHT"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
@@ -627,7 +543,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     ]))
     story.append(dt)
     story.append(Spacer(1,5*mm))
-
     desc = data.get("description","")
     if desc:
         story.append(Paragraph(h("על הנכס"), S("sec3",16,GOLD,TA_RIGHT,bold=True)))
@@ -636,10 +551,8 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             if line.strip():
                 story.append(Paragraph(h(line.strip()), S("body",11,WHITE,TA_RIGHT,leading=17)))
                 story.append(Spacer(1,2*mm))
-
     story.append(PageBreak())
-
-    # ── PAGE 4: AREA INFO ──────────────────────────────────────────────────────
+    # PAGE 4: AREA
     try:
         area_items = data.get("_area_info") or get_area_info(data.get("city",""), data.get("neighborhood",""))
         if area_items:
@@ -667,8 +580,7 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             story.append(PageBreak())
     except Exception as e:
         log.error(f"Area info page error: {e}")
-
-    # ── PAGE 5: TRANSACTIONS ───────────────────────────────────────────────────
+    # PAGE 5: TRANSACTIONS
     try:
         transactions = data.get("_transactions") or get_transactions(
             data.get("city",""), data.get("neighborhood",""),
@@ -683,7 +595,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             story.append(Paragraph(h('מקור: רשות המסים, mynet, מדלן | עסקאות מאומתות'),
                 S("src",9,MID,TA_RIGHT)))
             story.append(Spacer(1,3*mm))
-
             col_w = [CW*0.22,CW*0.13,CW*0.13,CW*0.13,CW*0.12,CW*0.27]
             header = [
                 Paragraph(h("מחיר עסקה"), S("th",9.5,WHITE,TA_CENTER,bold=True)),
@@ -720,7 +631,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             story.append(HRFlowable(width="100%",thickness=0.5,color=WARM,spaceAfter=4*mm))
             story.append(Paragraph(h("ניתוח השוק"), S("sumh",13,GOLD,TA_RIGHT,bold=True)))
             story.append(Spacer(1,2*mm))
-            # חשב ממוצעים מהעסקאות
             prices = []
             ppms = []
             for t in transactions:
@@ -739,11 +649,11 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
                 avg_ppm = int(sum(ppms)/len(ppms)) if ppms else 0
                 price_display = data.get("price_display","")
                 rooms_str = str(data.get("rooms",""))
-                shekel = "\u20aa"
+                shekel = "₪"
                 summary_rows = [
                     (f"טווח מחירים — {rooms_str} חד' באזור:", f"{mn:,} – {mx:,} {shekel}"),
                     ('מחיר ממוצע למ"ר:', f"~{avg_ppm:,} {shekel}" if avg_ppm else "—"),
-                    ("מחיר השיווק:", f"{price_display}  \u2190 השווה לשוק"),
+                    ("מחיר השיווק:", f"{price_display}  ← השווה לשוק"),
                 ]
             for lbl, val in summary_rows:
                 sr = Table([[
@@ -765,8 +675,7 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             story.append(PageBreak())
     except Exception as e:
         log.error(f"Transactions page error: {e}")
-
-    # ── PAGE 6: CONTACT ────────────────────────────────────────────────────────
+    # PAGE 6: CONTACT
     story.append(Spacer(1,10*mm))
     story.append(Paragraph(h(addr), S("recap",18,WHITE,TA_CENTER,bold=True,leading=24)))
     story.append(Spacer(1,3*mm))
@@ -774,20 +683,16 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     story.append(Paragraph(h(summary), S("recap2",11,MID,TA_CENTER)))
     story.append(Spacer(1,5*mm))
     story.append(HRFlowable(width="70%",thickness=1,color=WARM,spaceAfter=5*mm))
-
     logo2 = logo_flowable(68*mm, 24*mm)
     phone_fmt = phone_raw
     if len(phone_fmt) == 10:
         phone_fmt = f"{phone_fmt[:3]}-{phone_fmt[3:6]}-{phone_fmt[6:]}"
-
-    # תמונת פרופיל של הסוכן
     profile_pic_path = data.get("_profile_pic")
     profile_pic_img = None
     if profile_pic_path and os.path.exists(profile_pic_path):
         try:
             from PIL import Image as PILImg
             pic = PILImg.open(profile_pic_path).convert("RGB")
-            # חתוך לעיגול — שמור כ-JPG מרובע
             size_px = min(pic.size)
             left = (pic.width - size_px) // 2
             top  = (pic.height - size_px) // 2
@@ -799,7 +704,6 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
             profile_pic_img.hAlign = "CENTER"
         except Exception as e:
             log.error(f"Profile pic in PDF error: {e}")
-
     contact_rows = []
     if logo2:
         logo2.hAlign = "CENTER"
@@ -831,42 +735,29 @@ def generate_pdf(data: dict, image_paths: list, session_dir: Path) -> Path:
     story.append(ct)
     story.append(Spacer(1,5*mm))
     story.append(Paragraph(h("המידע כפוף לאימות ובדיקה."), S("disc",8,MID,TA_CENTER)))
-
-    # ── Render ─────────────────────────────────────────────────────────────────
     out_path = session_dir / "presentation.pdf"
     doc = SimpleDocTemplate(str(out_path), pagesize=A4,
         leftMargin=M, rightMargin=M, topMargin=14*mm, bottomMargin=12*mm)
     doc.build(story, onFirstPage=page_cb, onLaterPages=page_cb)
     return out_path
-
-
-# VERSION: v12-fixed
+# VERSION: v13-buyers
 # ══════════════════════════════════════════════════════════════════════════════
 # SESSION PROCESSOR
 # ══════════════════════════════════════════════════════════════════════════════
-
 def process_session(phone: str):
-    """מעבד את הסשן — פירסור + PDF + שליחה"""
     session = sessions.pop(phone, None)
     if not session:
         return
-
     send_text(phone, "⏳ מכין את המצגת... כולל חיפוש עסקאות ומידע על השכונה.\nאנא המתן כ-90 שניות 🏠")
-
     session_dir = WORK_DIR / str(uuid.uuid4())
     session_dir.mkdir(exist_ok=True)
-
     try:
-        # 1. פרסר טקסט
         log.info(f"Parsing text for {phone}")
         data = parse_listing_text(session["text"])
         if not data:
             send_text(phone, "❌ לא הצלחתי לפרסר את פרטי הנכס. נסה שוב.")
             return
-
-        # 2. עבד תמונות
         processed_images = []
-        # מצא את קובץ הלוגו
         for _lp in [Path("/app/logo.png"), Path("logo.png"), Path(__file__).parent / "logo.png"]:
             if _lp.exists():
                 logo_path = _lp
@@ -874,7 +765,6 @@ def process_session(phone: str):
         else:
             logo_path = None
         log.info(f"Logo path: {logo_path}")
-
         for i, img_info in enumerate(session["images"][:4]):
             img_path = session_dir / f"img_{i}.jpg"
             if img_info.get("url"):
@@ -883,13 +773,10 @@ def process_session(phone: str):
                     continue
             elif img_info.get("data"):
                 img_path.write_bytes(base64.b64decode(img_info["data"]))
-
-            # בדוק אם יש לוגו RE/MAX — אל תמחק!
             if has_remax_logo(img_path):
                 processed_images.append(img_path)
                 log.info(f"Image {i}: RE/MAX logo found — keeping as-is")
             else:
-                # הוסף לוגו אם יש קובץ לוגו
                 if logo_path and logo_path.exists():
                     out_img = session_dir / f"img_{i}_logo.jpg"
                     add_remax_logo_to_image(img_path, out_img, logo_path)
@@ -898,19 +785,15 @@ def process_session(phone: str):
                 else:
                     processed_images.append(img_path)
                     log.info(f"Image {i}: no logo file available")
-
-        # 3. חפש אזור ועסקאות במקביל לעיבוד תמונות
         from concurrent.futures import ThreadPoolExecutor
         area_result = [None]
         trans_result = [None]
-
         def fetch_area():
             try:
                 area_result[0] = get_area_info(data.get("city",""), data.get("neighborhood",""))
                 log.info(f"Area info fetched: {len(area_result[0]) if isinstance(area_result[0], list) else 0} items")
             except Exception as e:
                 log.error(f"Area fetch error: {e}")
-
         def fetch_trans():
             try:
                 trans_result[0] = get_transactions(
@@ -919,7 +802,6 @@ def process_session(phone: str):
                 log.info(f"Transactions fetched: {len(trans_result[0]) if isinstance(trans_result[0], list) else 0} items")
             except Exception as e:
                 log.error(f"Trans fetch error: {e}")
-
         def fetch_pic():
             try:
                 pic_path = session_dir / "profile_pic.jpg"
@@ -931,8 +813,6 @@ def process_session(phone: str):
                     log.info("Profile pic not available")
             except Exception as e:
                 log.error(f"Profile pic fetch error: {e}")
-
-        import time
         with ThreadPoolExecutor(max_workers=1) as executor:
             f3 = executor.submit(fetch_pic)
         fetch_area()
@@ -940,37 +820,27 @@ def process_session(phone: str):
         fetch_trans()
         try: f3.result(timeout=15)
         except: pass
-
         data["_area_info"]    = area_result[0] if isinstance(area_result[0], list) else []
         data["_transactions"] = trans_result[0] if isinstance(trans_result[0], list) else []
-
-        # 4. צור PDF
         log.info(f"Generating PDF for {phone}")
         pdf_path = generate_pdf(data, processed_images, session_dir)
-
-        # 4. שלח
         addr  = data.get("address", "נכס")
         price = data.get("price_display", "")
         fname = f"מצגת_{addr.replace(' ','_')[:30]}.pdf"
         caption = f"✅ מצגת מוכנה!\n📍 {addr}\n💰 {price}"
-
         ok = send_document(phone, str(pdf_path), fname, caption)
         if ok:
             log.info(f"PDF sent successfully to {phone}")
         else:
             send_text(phone, "⚠️ ה-PDF נוצר אך נכשל בשליחה. נסה שוב.")
-
     except Exception as e:
         log.error(f"Process error for {phone}: {e}", exc_info=True)
         send_text(phone, f"❌ שגיאה בעיבוד: {str(e)[:100]}")
     finally:
-        # נקה קבצים זמניים
         import shutil
         try: shutil.rmtree(session_dir)
         except: pass
-
 def schedule_processing(phone: str):
-    """המתן SESSION_TIMEOUT שניות ואז עבד"""
     if phone in sessions and sessions[phone].get("timer"):
         sessions[phone]["timer"].cancel()
     timer = threading.Timer(SESSION_TIMEOUT, process_session, args=[phone])
@@ -978,16 +848,12 @@ def schedule_processing(phone: str):
     timer.start()
     if phone in sessions:
         sessions[phone]["timer"] = timer
-
 # ══════════════════════════════════════════════════════════════════════════════
-# SEARCH BOT — מציאת לקוחות תואמים
+# SEARCH BOT — מציאת נכסים תואמים (קונה מחפש דירה)
 # ══════════════════════════════════════════════════════════════════════════════
-
 def parse_search_query(text: str) -> dict:
-    """שלח את בקשת החיפוש ל-Claude וקבל JSON עם פילטרים לחיפוש נכסים"""
     prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש נכסים במאגר המשרד עבור לקוח.
 הסוכן שלח לך הודעה עם דרישות הלקוח. חלץ פרמטרים ל-JSON בלבד (ללא markdown, ללא backticks).
-
 נרמול ערים — הערים האפשריות:
 - "מוצקין" / "קרית מוצקין" / "קריית מוצקין" → city = "קרית מוצקין"
 - "ביאליק" / "קרית ביאליק" → city = "קרית ביאליק"
@@ -995,7 +861,6 @@ def parse_search_query(text: str) -> dict:
 - "ים" / "קרית ים" → city = "קרית ים"
 - "חיים" / "קרית חיים" → city = "חיפה" (קרית חיים היא שכונה בחיפה)
 - "חיפה" → city = "חיפה"
-
 נרמול שכונות:
 - "ותיקה" / "מוצקין הותיקה" → neighborhood = "ותיק"
 - "אפק" → neighborhood = "אפק"
@@ -1005,7 +870,6 @@ def parse_search_query(text: str) -> dict:
 - "משכנות אומנים" / "משכנות" → neighborhood = "משכנות"
 - "נווה גנים" → neighborhood = "נווה גנים"
 - "לב מוצקין" → neighborhood = "לב מוצקין"
-
 חוקי זיהוי must_have — חשוב מאוד!
 - "דירת גן" / "עם גינה" / "עם חצר" → must_have כולל "גינה", property_type = "דירת גן"
 - "עם חנייה" / "חנייה פרטית" → must_have כולל "חנייה"
@@ -1013,7 +877,6 @@ def parse_search_query(text: str) -> dict:
 - "עם ממ"ד" → must_have כולל "ממ\"ד"
 - "עם מרפסת" → must_have כולל "מרפסת"
 - "קרקע" / "קומת קרקע" → must_have כולל "גינה", property_type = "דירת גן"
-
 חוקי property_type — חשוב מאוד!
 - "דירת גן" → property_type = "דירת גן" (לא "דירה"! לא פנטהאוז!)
 - "פנטהאוז" / "גג" / "קומה עליונה" → property_type = "פנטהאוז"
@@ -1021,39 +884,11 @@ def parse_search_query(text: str) -> dict:
 - "וילה" → property_type = "וילה"
 - "דופלקס" → property_type = "דופלקס"
 - דירה רגילה ללא ציון מיוחד → property_type = "דירה"
-
 שדות JSON:
-- city: עיר ראשית (אחת מהערים למעלה או null) — אם ציינו עיר אחת
-- cities: רשימת ערים (אם ציינו יותר מעיר אחת, למשל ["קרית מוצקין","קרית ביאליק"]) — אחרת null
-- neighborhood: שכונה (substring לחיפוש, או null)
-- street: שם רחוב (אם הסוכן ציין, או null)
-- rooms_min: מספר חדרים מינימלי (מספר עשרוני, או null)
-- rooms_max: מספר חדרים מקסימלי (מספר עשרוני, או null) - "4 חדרים" → min=max=4
-- budget_min: מחיר מינימלי בש"ח (מספר, או null) - "בין 3 ל-3.5 מיליון" → budget_min=3000000
-- budget_max: מחיר מקסימלי בש"ח (מספר, או null) - "עד 2 מיליון" → 2000000, "בין 3 ל-3.5 מיליון" → budget_max=3500000
-- size_min: מ"ר מינימלי (מספר, או null)
-- size_max: מ"ר מקסימלי (מספר, או null)
-- floor_max: קומה מקסימלית (מספר, או null) - "עד קומה 2" → floor_max=2, "קומה נמוכה" → floor_max=3
-- property_type: סוג נכס מנורמל ("דירה" / "פנטהאוז" / "דופלקס" / "קוטג'" / "וילה" / "דו משפחתי" / null)
-- deal_type: "מכירה" / "השכרה" - ברירת מחדל "מכירה" אם לא צוין
-- must_have: רשימת תכונות חובה לפי החוקים למעלה (מערך, יכול להיות ריק)
-- summary_he: סיכום קצר בעברית של הבקשה (משפט אחד)
-
-דוגמאות:
-- "מחפש דירת גן 4 חדרים בביאליק עד 3 מיליון" →
-  city="קרית ביאליק", rooms_min=4, rooms_max=4, budget_max=3000000,
-  property_type="דירת גן", must_have=["גינה"]
-- "מחפש פנטהאוז 5 חדרים בחיפה" →
-  city="חיפה", rooms_min=5, rooms_max=5, property_type="פנטהאוז", must_have=[]
-- "מחפש דירה בביאליק עם מעלית עד קומה 2" →
-  city="קרית ביאליק", property_type="דירה", floor_max=2, must_have=["מעלית"]
-- "מחפש דירה 4 חדרים בקרית מוצקין עד 2 מיליון" →
-  city="קרית מוצקין", rooms_min=4, rooms_max=4, budget_max=2000000,
-  property_type="דירה", must_have=[]
-
+- city, cities, neighborhood, street, rooms_min, rooms_max, budget_min, budget_max,
+  size_min, size_max, floor_max, property_type, deal_type, must_have, summary_he
 טקסט:
 {text}"""
-
     r = requests.post("https://api.anthropic.com/v1/messages",
         headers={
             "anthropic-version": "2023-06-01",
@@ -1065,11 +900,9 @@ def parse_search_query(text: str) -> dict:
             "max_tokens": 800,
             "messages": [{"role": "user", "content": prompt}]
         }, timeout=20)
-
     if r.status_code != 200:
         log.error(f"Search parse error: {r.text}")
         return {}
-
     text_out = r.json()["content"][0]["text"].strip()
     text_out = re.sub(r"```(?:json)?\s*", "", text_out).strip("` \n")
     match = re.search(r'\{.*\}', text_out, re.DOTALL)
@@ -1080,21 +913,12 @@ def parse_search_query(text: str) -> dict:
     except Exception as e:
         log.error(f"Search JSON parse error: {e}")
         return {}
-
-
-# Cache למספרי טלפון של סוכנים (כדי לא לקרוא בכל פעם)
 _agents_cache = {"data": None, "ts": 0}
-
 def fetch_agents_phones() -> dict:
-    """קרא את הטאב 'אנשי קשר' והחזר מילון: {שם סוכן: טלפון}"""
-    import time
-    # cache ל-5 דקות
     if _agents_cache["data"] is not None and (time.time() - _agents_cache["ts"]) < 300:
         return _agents_cache["data"]
-
     if not GOOGLE_SHEETS_API_KEY:
         return {}
-
     from urllib.parse import quote
     sheet_encoded = quote(CONTACTS_SHEET_NAME)
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{sheet_encoded}!A1:B200?key={GOOGLE_SHEETS_API_KEY}"
@@ -1119,14 +943,10 @@ def fetch_agents_phones() -> dict:
     except Exception as e:
         log.error(f"Fetch agents error: {e}")
         return {}
-
-
 def fetch_sheet_rows() -> list:
-    """קרא את כל הנכסים מהגיליון"""
     if not GOOGLE_SHEETS_API_KEY:
         log.error("GOOGLE_SHEETS_API_KEY not set!")
         return []
-
     from urllib.parse import quote
     sheet_encoded = quote(PROPERTIES_SHEET_NAME)
     url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{sheet_encoded}!A1:AR?key={GOOGLE_SHEETS_API_KEY}"
@@ -1143,7 +963,6 @@ def fetch_sheet_rows() -> list:
         for row in data[1:]:
             row_padded = row + [""] * (len(headers_row) - len(row))
             rows.append(dict(zip(headers_row, row_padded)))
-        # סנן נכסים של סוכנים מוחרגים
         EXCLUDED_AGENTS = {"אווה אזולאי"}
         rows = [r for r in rows
                 if (r.get("סוכן 1","") or "").strip() not in EXCLUDED_AGENTS
@@ -1152,18 +971,12 @@ def fetch_sheet_rows() -> list:
     except Exception as e:
         log.error(f"Fetch sheet error: {e}")
         return []
-
-
 def normalize_city(city: str) -> str:
     if not city:
         return ""
     c = city.strip().replace("קריית", "קרית")
     return re.sub(r"\s+", " ", c)
-
-
-
 def parse_price(s: str) -> int:
-    """המר מחיר משפת אנוש למספר. '₪ 2,590,000' → 2590000"""
     if not s:
         return 0
     digits = re.sub(r"[^\d]", "", str(s))
@@ -1171,19 +984,12 @@ def parse_price(s: str) -> int:
         return int(digits) if digits else 0
     except ValueError:
         return 0
-
-
 def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
-    """דרג נכס - 0=לא רלוונטי, 100=מושלם"""
     score = 0
-
-    # ── סוג עסקה - חובה להתאים ──
     deal_type = (row.get("סוג עסקה", "") or "").strip()
     want_deal = query.get("deal_type", "מכירה") or "מכירה"
     if deal_type and deal_type != want_deal:
         return 0
-
-    # ── קומה מקסימלית ──
     floor_max = query.get("floor_max")
     if floor_max:
         r_floor_raw = (row.get("קומה", "") or "").strip()
@@ -1196,10 +1002,7 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
                     return 0
         except ValueError:
             pass
-
-    # ── עיר - חובה ──
     r_city = normalize_city(row.get("עיר / ישוב", "") or "")
-    # תמיכה ברשימת ערים (cities) ועיר בודדת (city)
     q_cities_raw = query.get("cities") or []
     q_city_single = normalize_city(query.get("city", "") or "")
     if q_cities_raw and isinstance(q_cities_raw, list):
@@ -1208,7 +1011,6 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         q_cities = [q_city_single]
     else:
         q_cities = []
-
     if q_cities:
         matched_city = False
         for qc in q_cities:
@@ -1224,26 +1026,19 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             return 0
     else:
         score += 5
-
-    # ── שכונה - בונוס ──
     q_neigh = (query.get("neighborhood") or "").strip()
     r_neigh = (row.get("שכונה", "") or "").strip()
     if q_neigh and r_neigh:
         if q_neigh in r_neigh or r_neigh in q_neigh:
             score += 20
-
-    # ── רחוב - בונוס גדול ──
     q_street = (query.get("street") or "").strip()
     r_street = (row.get("כתובת", "") or "").strip()
     if q_street and r_street:
         if q_street in r_street or r_street in q_street:
             score += 25
-
-    # ── מחיר - חובה להיות בטווח ──
     q_bmax = query.get("budget_max")
     q_bmin = query.get("budget_min")
     r_price = parse_price(row.get("מחיר", ""))
-
     if q_bmax and r_price:
         if flex_level == 0:
             max_allowed = q_bmax * 1.10
@@ -1251,13 +1046,10 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             max_allowed = q_bmax * 1.20
         else:
             max_allowed = q_bmax * 1.35
-
         if r_price > max_allowed:
             return 0
-
         if q_bmin and r_price < q_bmin * 0.7:
             return 0
-
         diff_pct = abs(r_price - q_bmax) / q_bmax
         if diff_pct < 0.05:
             score += 25
@@ -1267,8 +1059,6 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             score += 15
         else:
             score += 8
-
-    # ── חדרים ──
     q_rmin = query.get("rooms_min")
     q_rmax = query.get("rooms_max")
     r_rooms_raw = (row.get("חדרים", "") or "").strip()
@@ -1276,7 +1066,6 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         r_rooms = float(r_rooms_raw) if r_rooms_raw else None
     except ValueError:
         r_rooms = None
-
     if r_rooms is not None and (q_rmin or q_rmax):
         flex = 0.5 if flex_level == 1 else (1.0 if flex_level == 2 else 0)
         rmin_eff = (q_rmin - flex) if q_rmin else None
@@ -1293,8 +1082,6 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
                 score += 12
         elif flex_level == 0:
             return 0
-
-    # ── מ"ר ──
     q_smin = query.get("size_min")
     q_smax = query.get("size_max")
     r_size_raw = (row.get('מ"ר', "") or row.get("מ״ר", "") or "").strip()
@@ -1302,17 +1089,13 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         r_size = int(float(r_size_raw)) if r_size_raw else None
     except ValueError:
         r_size = None
-
     if r_size and (q_smin or q_smax):
         if q_smin and r_size >= q_smin:
             score += 8
         if q_smax and r_size <= q_smax:
             score += 8
-
-    # ── סוג נכס — בונוס/קנס ──
     q_ptype = (query.get("property_type") or "").strip()
     r_ptype = (row.get("סוג נכס", "") or "").strip()
-    # קטגוריות שלא מתאימות לדירה רגילה
     PENTHOUSE_TYPES = {"פנטהאוז", "גג", "מיני פנטהאוז"}
     if q_ptype and r_ptype:
         if q_ptype == r_ptype:
@@ -1320,16 +1103,12 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         elif q_ptype in r_ptype or r_ptype in q_ptype:
             score += 7
         else:
-            # אם מחפשים "דירה" ומוצאים פנטהאוז — סנן תמיד
             if q_ptype == "דירה" and r_ptype in PENTHOUSE_TYPES:
                 return 0
-            # כל סוג נכס שונה אחר
             if flex_level == 0:
                 return 0
             elif flex_level == 1:
                 score -= 15
-
-    # ── תכונות חובה (must_have) — מחמיר! ──
     must_have = query.get("must_have") or []
     if isinstance(must_have, list) and must_have:
         col_map = {
@@ -1343,8 +1122,6 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         missing_features = 0
         for feature in must_have:
             feature_clean = feature.strip()
-
-            # גינה — מחפש בעמודת "סוג נכס" שמכיל "גן"
             if feature_clean == "גינה":
                 prop_type_val = (row.get("סוג נכס", "") or "").strip()
                 has_feature = "גן" in prop_type_val or "גינה" in prop_type_val or "קרקע" in prop_type_val
@@ -1352,29 +1129,22 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
                 col = col_map.get(feature_clean, feature_clean)
                 val = (row.get(col, "") or "").strip()
                 has_feature = val and val not in ("ללא", "לא", "", "0", "אין")
-
             if has_feature:
                 score += 10
             else:
                 missing_features += 1
                 if flex_level <= 1:
-                    return 0   # חובה ב-flex=0 וגם flex=1
+                    return 0
                 score -= 15
-
-        # אם חסרות כל התכונות גם ב-flex=2 — אל תחזיר
         if flex_level == 2 and missing_features == len(must_have):
             return 0
-
     return max(0, score)
 def search_listings_in_sheet(query: dict) -> list:
     rows = fetch_sheet_rows()
     if not rows:
         return []
-
     q_ptype = (query.get("property_type") or "").strip()
     is_garden = q_ptype == "דירת גן"
-
-    # ── שלב 1: חפש בדיוק את סוג הנכס המבוקש ──
     for flex in [0, 1, 2]:
         scored = []
         for row in rows:
@@ -1384,7 +1154,6 @@ def search_listings_in_sheet(query: dict) -> list:
         scored.sort(key=lambda x: -x[0])
         if len(scored) >= 3 or flex == 2:
             results = [(s, r, f) for (s, r, f) in scored[:10]]
-            # ── שלב 2: אם חיפשו דירת גן ואין תוצאות — הוסף קוטג' ──
             if is_garden and len(results) < 3:
                 fallback_query = dict(query)
                 fallback_query["property_type"] = "קוטג'"
@@ -1396,56 +1165,45 @@ def search_listings_in_sheet(query: dict) -> list:
                             fallback_scored.append((s, row, flex2))
                     fallback_scored.sort(key=lambda x: -x[0])
                     if fallback_scored:
-                        # הוסף עד 3 קוטג'ים כהשלמה
                         results += [(s, r, f) for (s, r, f) in fallback_scored[:3]]
                         break
             return results
     return []
-
-
-
 def format_match_reply(query: dict, matches: list) -> str:
-    """בנה הודעת WhatsApp עם נכסים תואמים"""
     if not matches:
         return ("\U0001f50d חיפשתי במאגר הנכסים ולא מצאתי נכס מתאים כרגע.\n\n"
                 "טיפים:\n"
-                "\u2022 נסה לציין רק עיר ומספר חדרים\n"
-                "\u2022 הרחב את טווח התקציב\n"
-                "\u2022 דוגמה: \"מחפש דירה 4 חדרים בקרית ביאליק עד 2 מיליון\"")
-
+                "• נסה לציין רק עיר ומספר חדרים\n"
+                "• הרחב את טווח התקציב\n"
+                "• דוגמה: \"מחפש דירה 4 חדרים בקרית ביאליק עד 2 מיליון\"")
     summary = query.get("summary_he", "")
     lines = [f"\U0001f3e0 *מצאתי {len(matches)} נכסים מתאימים!*"]
     if summary:
         lines.append(f"_{summary}_")
     lines.append("")
-
     for i, (score, row, flex) in enumerate(matches, 1):
         city      = (row.get("עיר / ישוב", "") or "").strip()
         neigh     = (row.get("שכונה", "") or "").strip()
         street    = (row.get("כתובת", "") or "").strip()
         number    = (row.get("מספר בית", "") or "").strip()
         rooms     = (row.get("חדרים", "") or "").strip()
-        size      = (row.get('מ"ר', "") or row.get("מ\u05f4ר", "") or "").strip()
+        size      = (row.get('מ"ר', "") or row.get("מ״ר", "") or "").strip()
         floor     = (row.get("קומה", "") or "").strip()
         total_floors = (row.get("מספר קומות", "") or "").strip()
         price_raw = (row.get("מחיר", "") or "").strip()
         prop_type = (row.get("סוג נכס", "") or "").strip()
         agent_name  = (row.get("סוכן 1", "") or "").strip()
         agent_phone = (row.get("טלפון 1", "") or "").strip()
-
         match_pct = min(100, int(score))
         badge = "\U0001f7e2 התאמה מצוינת" if score >= 70 else ("\U0001f7e1 התאמה טובה" if score >= 50 else "\U0001f7e0 התאמה חלקית")
-
         address_full = f"{street} {number}".strip()
         location = address_full
         if neigh:
             location += f" — {neigh}"
         if city:
             location += f", {city}"
-
         lines.append(f"*{i}. {prop_type or 'נכס'}* — {match_pct}% {badge}")
         lines.append(f"   \U0001f4cd {location}")
-
         details = []
         if rooms: details.append(f"{rooms} חדרים")
         if size: details.append(f"{size} מ\"ר")
@@ -1453,62 +1211,28 @@ def format_match_reply(query: dict, matches: list) -> str:
             details.append(f"קומה {floor}/{total_floors}")
         if details:
             lines.append("   " + " | ".join(details))
-
         if price_raw:
             lines.append(f"   \U0001f4b0 {price_raw}")
-
         features = []
         if (row.get("חנייה", "") or "").strip() == "כן": features.append("חנייה")
         if (row.get("מעלית", "") or "").strip() == "כן": features.append("מעלית")
         if (row.get("מרפסת", "") or "").strip() == "כן": features.append("מרפסת")
-        if (row.get("מ\u05f4ד", "") or "").strip() == "כן": features.append('ממ"ד')
+        if (row.get("מ״ד", "") or "").strip() == "כן": features.append('ממ"ד')
         if features:
-            lines.append(f"   \u2728 {' \u2022 '.join(features)}")
-
+            lines.append(f"   ✨ {' • '.join(features)}")
         if agent_name:
             lines.append(f"   \U0001f464 סוכן: *{agent_name}*")
-
-        # חפש את הטלפון האמיתי של הסוכן מהטאב "אנשי קשר"
         agents_phones = fetch_agents_phones()
         real_phone = agents_phones.get(agent_name, agent_phone)
-
         if real_phone:
             wa_clean = re.sub(r"[^\d]", "", real_phone)
             if wa_clean and not wa_clean.startswith("972"):
                 wa_clean = "972" + wa_clean.lstrip("0")
             lines.append(f"   \U0001f4f2 https://wa.me/{wa_clean}")
-
         lines.append("")
-
-    lines.append("\u2501" * 9)
+    lines.append("━" * 9)
     lines.append("\U0001f4a1 לחץ על קישור ה-WhatsApp לקבלת פרטים מהסוכן")
     return "\n".join(lines)
-def log_bot_query(sender_phone: str, query_text: str, parsed: dict, matches: list):
-    if not GOOGLE_SHEETS_API_KEY:
-        return
-    try:
-        from datetime import datetime
-        now = datetime.now()
-        row = [
-            now.strftime("%Y-%m-%d %H:%M:%S"),
-            sender_phone, "",
-            query_text[:200],
-            parsed.get("city", "") or "",
-            str(parsed.get("rooms_max", "") or ""),
-            str(parsed.get("budget_max", "") or ""),
-            str(len(matches)),
-            str(matches[0][0]) if matches else "0",
-            (matches[0][1].get("Agent_Name", "") if matches else ""),
-            (matches[0][1].get("Client_FirstName", "") if matches else ""),
-        ]
-        url = (f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
-               f"/values/{BOT_QUERIES_SHEET}!A1:append"
-               f"?valueInputOption=USER_ENTERED&key={GOOGLE_SHEETS_API_KEY}")
-        requests.post(url, json={"values": [row]}, timeout=10)
-    except Exception as e:
-        log.warning(f"Log bot query failed: {e}")
-
-
 def handle_search_request(sender_phone: str, message_text: str):
     try:
         send_text(sender_phone, "🔍 מחפש נכסים מתאימים במאגר...\nרגע ⏳")
@@ -1524,50 +1248,170 @@ def handle_search_request(sender_phone: str, message_text: str):
         log.info(f"Found {len(matches)} matches")
         reply = format_match_reply(parsed, matches)
         send_text(sender_phone, reply)
-        # log_bot_query(sender_phone, message_text, parsed, matches)
     except Exception as e:
         log.error(f"Search handler error: {e}", exc_info=True)
         send_text(sender_phone, f"❌ שגיאה: {str(e)[:100]}")
-
-
 def is_search_query(text: str) -> bool:
-    """זהה אם ההודעה היא בקשת חיפוש - חייב להתחיל בצמד מילים: מחפש/ת + דירה/דירת"""
     if not text:
         return False
     t = text.strip()
-    # הסר "אני " מההתחלה אם יש
     if t.startswith("אני "):
         t = t[4:].strip()
-    # חייב להתחיל בדיוק ב: מחפש/מחפשת + רווח + דירה/דירת
-    import re
     pattern = r'^מחפש[ת]?\s+דיר[הת]\b'
     return bool(re.match(pattern, t))
-
-
+# ══════════════════════════════════════════════════════════════════════════════
+# BUYER SEARCH — מציאת קונים תואמים בשיחות (סוכן מחפש קונה)
+# ══════════════════════════════════════════════════════════════════════════════
+def normalize_phone_simple(p: str) -> str:
+    """0522575747 / 972522575747 / 052-2575747 → 522575747"""
+    digits = re.sub(r"\D", "", str(p or ""))
+    if digits.startswith("972"): digits = digits[3:]
+    if digits.startswith("0"):   digits = digits[1:]
+    return digits
+def fetch_calls_for_agent(agent_phone: str) -> list:
+    """קרא שיחות מ-Apps Script (cache 5 דקות), סנן רק ANSWER של הסוכן הזה"""
+    if not APPS_SCRIPT_URL or not APPS_SCRIPT_TOKEN:
+        log.error("APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN missing in env")
+        return []
+    if _buyer_calls_cache["data"] is not None and (time.time() - _buyer_calls_cache["ts"]) < 300:
+        all_rows = _buyer_calls_cache["data"]
+    else:
+        try:
+            from urllib.parse import quote
+            url = (f"{APPS_SCRIPT_URL}?action=raw&type={quote('שיחות')}"
+                   f"&from=01/01/2020&to=31/12/2099&token={APPS_SCRIPT_TOKEN}")
+            r = requests.get(url, timeout=30, allow_redirects=True)
+            if r.status_code != 200:
+                log.error(f"Apps Script error {r.status_code}: {r.text[:200]}")
+                return []
+            all_rows = r.json().get("rows", [])
+            _buyer_calls_cache["data"] = all_rows
+            _buyer_calls_cache["ts"] = time.time()
+            log.info(f"Loaded {len(all_rows)} call rows from Apps Script")
+        except Exception as e:
+            log.error(f"Fetch calls error: {e}")
+            return []
+    norm = normalize_phone_simple(agent_phone)
+    filtered = []
+    for row in all_rows:
+        if str(row.get("status", "")).upper() != "ANSWER":
+            continue
+        if normalize_phone_simple(str(row.get("agent_phone", ""))) != norm:
+            continue
+        filtered.append(row)
+    return filtered
+def parse_buyer_search_query(text: str) -> dict:
+    """חלץ מילות מפתח מבקשת החיפוש של הסוכן"""
+    cleaned = re.sub(r"^(אני\s+)?(מחפש|מחפשת)\s+קונה\s*", "", text.strip()).strip()
+    if not cleaned:
+        return {"query_text": "", "keywords": [], "summary_he": "כל הקונים האחרונים שלך"}
+    prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש קונה במאגר השיחות שלו.
+הסוכן ביקש: "{cleaned}"
+חלץ JSON בלבד (ללא markdown):
+- keywords: רשימת מילות מפתח חשובות בעברית לחיפוש בתמלולי שיחות (לדוגמה: "4 חדרים" → "4 חדרים"; אזור → שם האזור; "תקציב 2 מיליון" → "2 מיליון")
+- summary_he: סיכום קצר בעברית (משפט אחד) של מה הסוכן מחפש"""
+    try:
+        r = requests.post("https://api.anthropic.com/v1/messages",
+            headers={"anthropic-version":"2023-06-01","x-api-key":CLAUDE_API_KEY,"content-type":"application/json"},
+            json={"model":"claude-sonnet-4-5","max_tokens":400,
+                  "messages":[{"role":"user","content":prompt}]}, timeout=15)
+        if r.status_code != 200:
+            return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned}
+        out = r.json()["content"][0]["text"].strip()
+        out = re.sub(r"```(?:json)?\s*","",out).strip("` \n")
+        m = re.search(r"\{.*\}", out, re.DOTALL)
+        if m: out = m.group()
+        parsed = json.loads(out)
+        parsed["query_text"] = cleaned
+        return parsed
+    except Exception as e:
+        log.error(f"Buyer query parse error: {e}")
+        return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned}
+def _epoch_from_iso(s: str) -> float:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(s).replace("Z","+00:00")).timestamp()
+    except:
+        return 0
+def _fmt_il_dt(s: str) -> str:
+    from datetime import datetime
+    try:
+        d = datetime.fromisoformat(str(s).replace("Z","+00:00"))
+        return d.strftime("%d/%m/%Y %H:%M")
+    except:
+        return ""
+def format_buyer_match_reply(summary: str, matches: list) -> str:
+    if not matches:
+        return ("🔍 לא מצאתי קונים תואמים בשיחות שלך.\n\n"
+                "טיפ: שלח 'מחפש קונה' לבד וקבל את 5 הקונים האחרונים שלך.")
+    lines = [f"🏠 *מצאתי {len(matches)} קונים תואמים*"]
+    if summary: lines.append(f"_{summary}_")
+    lines.append("")
+    for i, c in enumerate(matches, 1):
+        phone = re.sub(r"\D", "", str(c.get("caller_phone","")))
+        date_s = _fmt_il_dt(c.get("received_at",""))
+        t = re.sub(r"https?://\S+", "", str(c.get("transcript_summary",""))).strip()
+        t_short = t[:240] + ("…" if len(t) > 240 else "")
+        lines.append(f"*{i}.* 📞 {phone}")
+        if date_s: lines.append(f"   📅 {date_s}")
+        if t_short: lines.append(f"   {t_short}")
+        if phone:
+            wa = phone if phone.startswith("972") else "972" + phone.lstrip("0")
+            lines.append(f"   📲 https://wa.me/{wa}")
+        lines.append("")
+    return "\n".join(lines)
+def handle_buyer_search_request(sender_phone: str, message_text: str):
+    try:
+        send_text(sender_phone, "🔍 מחפש קונים מתאימים בשיחות שלך... ⏳")
+        parsed = parse_buyer_search_query(message_text)
+        log.info(f"Parsed buyer search: {parsed}")
+        candidates = fetch_calls_for_agent(sender_phone)
+        log.info(f"{len(candidates)} ANSWER calls for {sender_phone}")
+        if not candidates:
+            send_text(sender_phone,
+                "🔍 לא מצאתי שיחות שענית להן.\n\n"
+                "אם זו טעות — בדוק שמספר הטלפון שלך מופיע בעמודה agent_phone בגיליון.")
+            return
+        keywords = parsed.get("keywords") or []
+        if not keywords:
+            candidates.sort(key=lambda c: _epoch_from_iso(c.get("received_at","")), reverse=True)
+            matches = candidates[:5]
+        else:
+            scored = []
+            for c in candidates:
+                t = str(c.get("transcript_summary","")).lower()
+                s = sum(1 for k in keywords if str(k).strip().lower() in t)
+                if s > 0: scored.append((s, c))
+            scored.sort(key=lambda x: (-x[0], -_epoch_from_iso(x[1].get("received_at",""))))
+            matches = [c for _, c in scored[:5]]
+            if not matches:
+                candidates.sort(key=lambda c: _epoch_from_iso(c.get("received_at","")), reverse=True)
+                matches = candidates[:5]
+        send_text(sender_phone, format_buyer_match_reply(parsed.get("summary_he",""), matches))
+    except Exception as e:
+        log.error(f"Buyer search error: {e}", exc_info=True)
+        send_text(sender_phone, f"❌ שגיאה: {str(e)[:100]}")
+def is_buyer_search_query(text: str) -> bool:
+    if not text: return False
+    t = text.strip()
+    if t.startswith("אני "): t = t[4:].strip()
+    return bool(re.match(r'^מחפש[ת]?\s+קונה\b', t))
 # ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK
 # ══════════════════════════════════════════════════════════════════════════════
-
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
-    # Maytapi sends GET to verify the webhook URL
     if request.method == "GET":
         return jsonify({"status": "ok", "message": "RE/MAX Bot Webhook Active"}), 200
     try:
         body = request.get_json(force=True)
         log.info(f"Webhook: {json.dumps(body)[:300]}")
-
-        # ── התעלם מהודעות ack/status/error של Maytapi ──
         if body.get("type") in ("ack", "status", "notify", "error"):
             return jsonify({"ok": True})
-
         msg  = body.get("message", {})
-
-        # שליפת מספר הטלפון - עדיפות ל-user.phone (מספר אמיתי) על פני conversation (יכול להיות LID)
         user_obj = body.get("user") if isinstance(body.get("user"), dict) else {}
         user_phone = user_obj.get("phone", "")
         conversation = body.get("conversation", "")
-        # אם conversation מכיל "@lid" זה לא מספר טלפון אמיתי - נעדיף את user.phone
         if "@lid" in conversation and user_phone:
             from_number = user_phone
         else:
@@ -1577,12 +1421,18 @@ def webhook():
                            or body.get("from", ""))
         if not from_number:
             return jsonify({"ok": True})
-
         msg_type = msg.get("type", "")
         text     = msg.get("text", "") or msg.get("caption", "") or ""
         media    = msg.get("url", "") or msg.get("media_url", "")
-
-        # ── טריגר חיפוש — "אני מחפש" / "אני מחפשת" ───────────────────
+        # ── טריגר חיפוש קונה — "מחפש קונה" / "מחפשת קונה" — חדש! ──────
+        if msg_type == "text" and is_buyer_search_query(text):
+            threading.Thread(
+                target=handle_buyer_search_request,
+                args=[from_number, text],
+                daemon=True
+            ).start()
+            return jsonify({"ok": True})
+        # ── טריגר חיפוש דירה ──
         if msg_type == "text" and is_search_query(text):
             threading.Thread(
                 target=handle_search_request,
@@ -1590,8 +1440,7 @@ def webhook():
                 daemon=True
             ).start()
             return jsonify({"ok": True})
-
-        # ── טריגר: הודעת טקסט עם מילת הקוד ────────────────────────────────
+        # ── טריגר מצגת ──
         if msg_type == "text" and TRIGGER_WORD in text:
             body_text = text.replace(TRIGGER_WORD, "").strip()
             sessions[from_number] = {
@@ -1603,8 +1452,6 @@ def webhook():
                 f"✅ קיבלתי! עכשיו שלח את תמונות הנכס (עד 4).\n"
                 f"אחרי התמונות — אחפש עסקאות ומידע על השכונה ואשלח מצגת תוך ~90 שניות.")
             return jsonify({"ok": True})
-
-        # ── תמונה בתוך סשן פעיל ──────────────────────────────────────────────
         if from_number in sessions and msg_type in ("image", "media"):
             sessions[from_number]["images"].append({
                 "url": media,
@@ -1612,36 +1459,27 @@ def webhook():
             })
             count = len(sessions[from_number]["images"])
             send_text(from_number, f"📸 קיבלתי תמונה {count}/4")
-            # אם יש כבר 4 — עבד מיד
             if count >= 4:
                 threading.Thread(target=process_session, args=[from_number], daemon=True).start()
             else:
                 schedule_processing(from_number)
             return jsonify({"ok": True})
-
-        # ── טקסט נוסף בתוך סשן (פרטים נוספים) ──────────────────────────────
         if from_number in sessions and msg_type == "text" and text:
             sessions[from_number]["text"] += "\n" + text
             schedule_processing(from_number)
             return jsonify({"ok": True})
-
     except Exception as e:
         log.error(f"Webhook error: {e}", exc_info=True)
-
     return jsonify({"ok": True})
-
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "trigger": TRIGGER_WORD})
-
 @app.route("/", methods=["GET"])
 def index():
     return "RE/MAX Bot 🏠 — Running"
-
 # ══════════════════════════════════════════════════════════════════════════════
 # STARTUP
 # ══════════════════════════════════════════════════════════════════════════════
-
 if __name__ == "__main__":
     log.info("Installing dependencies...")
     install_deps()
