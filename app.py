@@ -885,8 +885,32 @@ def parse_search_query(text: str) -> dict:
 - "דופלקס" → property_type = "דופלקס"
 - דירה רגילה ללא ציון מיוחד → property_type = "דירה"
 שדות JSON:
-- city, cities, neighborhood, street, rooms_min, rooms_max, budget_min, budget_max,
-  size_min, size_max, floor_max, property_type, deal_type, must_have, summary_he
+- city: עיר ראשית (אחת מהערים למעלה או null) — אם ציינו עיר אחת
+- cities: רשימת ערים (אם ציינו יותר מעיר אחת, למשל ["קרית מוצקין","קרית ביאליק"]) — אחרת null
+- neighborhood: שכונה (substring לחיפוש, או null)
+- street: שם רחוב (אם הסוכן ציין, או null)
+- rooms_min: מספר חדרים מינימלי (מספר עשרוני, או null)
+- rooms_max: מספר חדרים מקסימלי (מספר עשרוני, או null) - "4 חדרים" → min=max=4
+- budget_min: מחיר מינימלי בש"ח (מספר, או null) - "בין 3 ל-3.5 מיליון" → budget_min=3000000
+- budget_max: מחיר מקסימלי בש"ח (מספר, או null) - "עד 2 מיליון" → 2000000, "בין 3 ל-3.5 מיליון" → budget_max=3500000
+- size_min: מ"ר מינימלי (מספר, או null)
+- size_max: מ"ר מקסימלי (מספר, או null)
+- floor_max: קומה מקסימלית (מספר, או null) - "עד קומה 2" → floor_max=2, "קומה נמוכה" → floor_max=3
+- property_type: סוג נכס מנורמל ("דירה" / "פנטהאוז" / "דופלקס" / "קוטג'" / "וילה" / "דו משפחתי" / null)
+- deal_type: "מכירה" / "השכרה" - ברירת מחדל "מכירה" אם לא צוין
+- must_have: רשימת תכונות חובה לפי החוקים למעלה (מערך, יכול להיות ריק)
+- summary_he: סיכום קצר בעברית של הבקשה (משפט אחד)
+דוגמאות:
+- "מחפש דירת גן 4 חדרים בביאליק עד 3 מיליון" →
+  city="קרית ביאליק", rooms_min=4, rooms_max=4, budget_max=3000000,
+  property_type="דירת גן", must_have=["גינה"]
+- "מחפש פנטהאוז 5 חדרים בחיפה" →
+  city="חיפה", rooms_min=5, rooms_max=5, property_type="פנטהאוז", must_have=[]
+- "מחפש דירה בביאליק עם מעלית עד קומה 2" →
+  city="קרית ביאליק", property_type="דירה", floor_max=2, must_have=["מעלית"]
+- "מחפש דירה 4 חדרים בקרית מוצקין עד 2 מיליון" →
+  city="קרית מוצקין", rooms_min=4, rooms_max=4, budget_max=2000000,
+  property_type="דירה", must_have=[]
 טקסט:
 {text}"""
     r = requests.post("https://api.anthropic.com/v1/messages",
