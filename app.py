@@ -861,15 +861,54 @@ def parse_search_query(text: str) -> dict:
 - "ים" / "קרית ים" → city = "קרית ים"
 - "חיים" / "קרית חיים" → city = "חיפה" (קרית חיים היא שכונה בחיפה)
 - "חיפה" → city = "חיפה"
-נרמול שכונות:
-- "ותיקה" / "מוצקין הותיקה" → neighborhood = "ותיק"
-- "אפק" → neighborhood = "אפק"
-- "סביונים" / "סביוני ים" → neighborhood = "סביונ"
-- "גבעת טל" → neighborhood = "גבעת טל"
-- "קרית חיים מערבית" / "מערבית" → neighborhood = "מערבית"
-- "משכנות אומנים" / "משכנות" → neighborhood = "משכנות"
-- "נווה גנים" → neighborhood = "נווה גנים"
-- "לב מוצקין" → neighborhood = "לב מוצקין"
+מיפוי מלא של שכונות לערים (חשוב מאוד!):
+
+🏙️ **קרית ביאליק**:
+- "אפק" / "נאות אפק" / "אפקה" / "הברושים" → neighborhood="אפק"
+- "צור שלום" → neighborhood="צור שלום"
+- "גבעת הרקפות בביאליק" → neighborhood="גבעת הרקפות"
+- "הפרפר" → neighborhood="הפרפר"
+- "מרכז העיר בביאליק" / "סביניה" → neighborhood="מרכז" / "סביניה"
+- "הוותיקה בביאליק" → neighborhood="ותיק"
+- "ביאליק דרום" → neighborhood="ביאליק דרום"
+
+🏙️ **קרית מוצקין**:
+- "מוצקין הותיקה" / "ותיקה" (ברירת מחדל) → neighborhood="ותיק"
+- "אביבים" → neighborhood="אביבים"
+- "נווה גנים" → neighborhood="נווה גנים"
+- "משכנות האומנים" / "משכנות אומנים" / "משכנות" → neighborhood="משכנות"
+- "לב מוצקין" / "בנה ביתך" → neighborhood="לב מוצקין"
+
+🏙️ **קרית ים**:
+- "קרית ים א'" / "קרית ים ב'" / "קרית ים ג'" / "קרית ים ד'" → neighborhood="קרית ים X"
+- "סביונים" / "סביוני ים" → neighborhood="סביונ"
+
+🏙️ **קרית אתא**:
+- "גבעת רם" → neighborhood="גבעת רם"
+- "גבעת הרקפות באתא" / "גבעת תל חי" → neighborhood="גבעת הרקפות"
+- "גבעת טל" → neighborhood="גבעת טל"
+- "אלונים" / "גבעת אלונים" → neighborhood="אלונים"
+- "מרכז העיר באתא" → neighborhood="מרכז"
+- "קרית בנימין" → neighborhood="קרית בנימין"
+- "גבעה א'" / "שביט" → neighborhood="גבעה א" / "שביט"
+- "בית וגן" → neighborhood="בית וגן"
+- "בן גוריון" → neighborhood="בן גוריון"
+- "נווה חן" → neighborhood="נווה חן"
+- "נווה אברהם" → neighborhood="נווה אברהם"
+- "אברמסקי" → neighborhood="אברמסקי"
+- "פרוסטיג" → neighborhood="פרוסטיג"
+- "דשנים" → neighborhood="דשנים"
+- "גבעת הכלניות" → neighborhood="גבעת הכלניות"
+
+🏙️ **חיפה**:
+- "קרית חיים מערבית" / "מערבית" → neighborhood="מערבית"
+- "קרית חיים מזרחית" / "מזרחית" → neighborhood="מזרחית"
+- "קרית חיים" (בלי כיוון) → neighborhood="קרית חיים"
+
+⚠️ כללים חשובים:
+1. אם הסוכן ציין שכונה — תמצא בה את העיר הנכונה מהרשימה. אל תניח אוטומטית "קרית מוצקין".
+2. שכונות עם אותו שם בערים שונות (גבעת הרקפות / מרכז העיר / ותיקה) — חכה לציון מפורש של העיר. אם לא צוינה עיר, שאל: השתמש בברירת המחדל הנפוצה (לרוב מוצקין).
+3. אם השכונה לא מופיעה ברשימה ולא צוינה עיר — השאר city=null ואל תנחש.
 חוקי זיהוי must_have — חשוב מאוד!
 - "דירת גן" / "עם גינה" / "עם חצר" → must_have כולל "גינה", property_type = "דירת גן"
 - "עם חנייה" / "חנייה פרטית" → must_have כולל "חנייה"
@@ -1050,11 +1089,16 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             return 0
     else:
         score += 5
+    # ── שכונה — חובה ב-flex 0 ו-1, בונוס/קנס ב-flex 2 ──
     q_neigh = (query.get("neighborhood") or "").strip()
     r_neigh = (row.get("שכונה", "") or "").strip()
-    if q_neigh and r_neigh:
-        if q_neigh in r_neigh or r_neigh in q_neigh:
-            score += 20
+    if q_neigh:
+        if r_neigh and (q_neigh in r_neigh or r_neigh in q_neigh):
+            score += 30
+        else:
+            if flex_level <= 1:
+                return 0
+            score -= 15
     q_street = (query.get("street") or "").strip()
     r_street = (row.get("כתובת", "") or "").strip()
     if q_street and r_street:
@@ -1201,9 +1245,22 @@ def format_match_reply(query: dict, matches: list) -> str:
                 "• הרחב את טווח התקציב\n"
                 "• דוגמה: \"מחפש דירה 4 חדרים בקרית ביאליק עד 2 מיליון\"")
     summary = query.get("summary_he", "")
+    # ── בדיקה: האם התוצאות באמת בשכונה שביקשו? ──
+    q_neigh = (query.get("neighborhood") or "").strip()
+    neighborhood_mismatch = False
+    if q_neigh:
+        match_in_neigh = 0
+        for _, row, _ in matches:
+            r_neigh = (row.get("שכונה", "") or "").strip()
+            if r_neigh and (q_neigh in r_neigh or r_neigh in q_neigh):
+                match_in_neigh += 1
+        if match_in_neigh == 0:
+            neighborhood_mismatch = True
     lines = [f"\U0001f3e0 *מצאתי {len(matches)} נכסים מתאימים!*"]
     if summary:
         lines.append(f"_{summary}_")
+    if neighborhood_mismatch:
+        lines.append(f"⚠️ לא מצאתי דירות בשכונת *{q_neigh}*. הנה דירות באזורים סמוכים:")
     lines.append("")
     for i, (score, row, flex) in enumerate(matches, 1):
         city      = (row.get("עיר / ישוב", "") or "").strip()
