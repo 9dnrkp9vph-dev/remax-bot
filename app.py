@@ -1382,14 +1382,15 @@ def fetch_calls_for_agent(agent_phone: str) -> list:
         filtered.append(row)
     return filtered
 def parse_buyer_search_query(text: str) -> dict:
-    """חלץ מילות מפתח מבקשת החיפוש של הסוכן"""
+    """חלץ מילות מפתח + תקציב מבקשת החיפוש של הסוכן"""
     cleaned = re.sub(r"^(אני\s+)?(מחפש|מחפשת)\s+קונה\s*", "", text.strip()).strip()
     if not cleaned:
-        return {"query_text": "", "keywords": [], "summary_he": "כל הקונים האחרונים שלך"}
+        return {"query_text": "", "keywords": [], "summary_he": "כל הקונים האחרונים שלך", "budget": None}
     prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש קונה במאגר השיחות שלו.
 הסוכן ביקש: "{cleaned}"
 חלץ JSON בלבד (ללא markdown):
-- keywords: רשימת מילות מפתח חשובות בעברית לחיפוש בתמלולי שיחות (לדוגמה: "4 חדרים" → "4 חדרים"; אזור → שם האזור; "תקציב 2 מיליון" → "2 מיליון")
+- keywords: רשימת מילות מפתח חשובות בעברית לחיפוש בתמלולי שיחות (לדוגמה: "4 חדרים" → "4 חדרים"; אזור → שם האזור)
+- budget: התקציב המבוקש בש"ח כמספר עגול (לדוגמה: "2 מיליון" → 2000000, "1.8 מ" → 1800000, "עד 2.5 מ ש"ח" → 2500000). אם לא צוין — null.
 - summary_he: סיכום קצר בעברית (משפט אחד) של מה הסוכן מחפש"""
     try:
         r = requests.post("https://api.anthropic.com/v1/messages",
@@ -1397,17 +1398,51 @@ def parse_buyer_search_query(text: str) -> dict:
             json={"model":"claude-sonnet-4-5","max_tokens":400,
                   "messages":[{"role":"user","content":prompt}]}, timeout=15)
         if r.status_code != 200:
-            return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned}
+            return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget": None}
         out = r.json()["content"][0]["text"].strip()
         out = re.sub(r"```(?:json)?\s*","",out).strip("` \n")
         m = re.search(r"\{.*\}", out, re.DOTALL)
         if m: out = m.group()
         parsed = json.loads(out)
         parsed["query_text"] = cleaned
+        if "budget" not in parsed:
+            parsed["budget"] = None
         return parsed
     except Exception as e:
         log.error(f"Buyer query parse error: {e}")
-        return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned}
+        return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget": None}
+
+def extract_budget_from_transcript(transcript: str):
+    """חלץ תקציב מתמלול שיחה. מחזיר מספר בש\"ח או None."""
+    if not transcript:
+        return None
+    t = str(transcript)
+    # 1. מיליונים: "2 מיליון", "1.8 מליון", "2.5 מ'", "2 מ ש"ח"
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:מיליון|מליון|מ['׳`]?\s*(?:ש[\"״']ח|₪)?)", t)
+    if m:
+        try:
+            return int(float(m.group(1).replace(",", ".")) * 1_000_000)
+        except: pass
+    # 2. מספרים עם פסיקים: "1,800,000 ש"ח"
+    m = re.search(r"(\d{1,3}(?:,\d{3})+)\s*(?:ש[\"״']ח|₪|שח)?", t)
+    if m:
+        try:
+            return int(m.group(1).replace(",", ""))
+        except: pass
+    # 3. מספר גדול חשוף: "1800000 ש"ח"
+    m = re.search(r"\b(\d{6,8})\s*(?:ש[\"״']ח|₪|שח)\b", t)
+    if m:
+        try:
+            return int(m.group(1))
+        except: pass
+    return None
+
+def format_price_il(n) -> str:
+    if not n: return ""
+    try:
+        return f"{int(n):,} ₪"
+    except:
+        return str(n)
 def _epoch_from_iso(s: str) -> float:
     from datetime import datetime
     try:
@@ -1432,10 +1467,11 @@ def format_buyer_match_reply(summary: str, matches: list) -> str:
         phone = re.sub(r"\D", "", str(c.get("caller_phone","")))
         date_s = _fmt_il_dt(c.get("received_at",""))
         t = re.sub(r"https?://\S+", "", str(c.get("transcript_summary",""))).strip()
-        t_short = t[:240] + ("…" if len(t) > 240 else "")
+        budget = extract_budget_from_transcript(c.get("transcript_summary",""))
         lines.append(f"*{i}.* 📞 {phone}")
         if date_s: lines.append(f"   📅 {date_s}")
-        if t_short: lines.append(f"   {t_short}")
+        if budget: lines.append(f"   💰 תקציב: {format_price_il(budget)}")
+        if t: lines.append(f"   {t}")
         if phone:
             wa = phone if phone.startswith("972") else "972" + phone.lstrip("0")
             lines.append(f"   📲 https://wa.me/{wa}")
@@ -1453,6 +1489,22 @@ def handle_buyer_search_request(sender_phone: str, message_text: str):
                 "🔍 לא מצאתי שיחות שענית להן.\n\n"
                 "אם זו טעות — בדוק שמספר הטלפון שלך מופיע בעמודה agent_phone בגיליון.")
             return
+
+        # סינון לפי תקציב — סנן החוצה קונים עם הפרש >30% מהמבוקש
+        target_budget = parsed.get("budget")
+        if target_budget:
+            filtered = []
+            for c in candidates:
+                cb = extract_budget_from_transcript(c.get("transcript_summary",""))
+                if cb is None:
+                    # ללא תקציב ידוע — סנן החוצה (כדי לעמוד בדרישה)
+                    continue
+                diff_pct = abs(cb - target_budget) / target_budget
+                if diff_pct <= 0.30:
+                    filtered.append(c)
+            log.info(f"Budget filter ±30% of {target_budget}: {len(candidates)} → {len(filtered)}")
+            candidates = filtered
+
         keywords = parsed.get("keywords") or []
         if not keywords:
             candidates.sort(key=lambda c: _epoch_from_iso(c.get("received_at","")), reverse=True)
@@ -1477,6 +1529,184 @@ def is_buyer_search_query(text: str) -> bool:
     t = text.strip()
     if t.startswith("אני "): t = t[4:].strip()
     return bool(re.match(r'^מחפש[ת]?\s+קונה\b', t))
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXCLUSIVITY SEARCH — חיפוש בלעדויות חיצוניות מלשונית "בלעדויות חיצוניות"
+# ══════════════════════════════════════════════════════════════════════════════
+_external_excl_cache = {"data": None, "ts": 0}
+
+def fetch_external_exclusives() -> list:
+    """קרא בלעדויות חיצוניות מ-Apps Script (cache 5 דקות)"""
+    if not APPS_SCRIPT_URL or not APPS_SCRIPT_TOKEN:
+        log.error("APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN missing in env")
+        return []
+    if _external_excl_cache["data"] is not None and (time.time() - _external_excl_cache["ts"]) < 300:
+        return _external_excl_cache["data"]
+    try:
+        from urllib.parse import quote
+        url = (f"{APPS_SCRIPT_URL}?action=raw&type={quote('בלעדויות חיצוניות')}"
+               f"&from=01/01/2020&to=31/12/2099&token={APPS_SCRIPT_TOKEN}")
+        r = requests.get(url, timeout=30, allow_redirects=True)
+        if r.status_code != 200:
+            log.error(f"Apps Script error {r.status_code}: {r.text[:200]}")
+            return []
+        rows = r.json().get("rows", [])
+        _external_excl_cache["data"] = rows
+        _external_excl_cache["ts"] = time.time()
+        log.info(f"Loaded {len(rows)} external exclusives")
+        return rows
+    except Exception as e:
+        log.error(f"Fetch external exclusives error: {e}")
+        return []
+
+def parse_exclusivity_search_query(text: str) -> dict:
+    """חלץ פרמטרי חיפוש עבור בלעדויות חיצוניות (זהה ל-parse_search_query אבל פשוט יותר)"""
+    cleaned = re.sub(r"^(אני\s+)?(מחפש|מחפשת)\s+בלעדיות?\s*", "", text.strip()).strip()
+    if not cleaned:
+        return {"query_text": "", "keywords": [], "summary_he": "כל הבלעדויות האחרונות", "budget_max": None, "city": None, "rooms": None}
+    prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש בלעדויות במאגר.
+הסוכן ביקש: "{cleaned}"
+חלץ JSON בלבד (ללא markdown):
+- keywords: רשימת מילות מפתח חשובות בעברית לחיפוש בתיאורי נכסים
+- city: עיר מנורמלת ("קרית ביאליק" / "קרית מוצקין" / "קרית אתא" / "קרית ים" / "חיפה") או null
+- rooms: מספר חדרים (מספר עשרוני) או null
+- budget_max: תקציב מקסימלי בש"ח כמספר (לדוגמה "עד 2 מיליון" → 2000000), או null
+- summary_he: סיכום קצר בעברית של מה הסוכן מחפש"""
+    try:
+        r = requests.post("https://api.anthropic.com/v1/messages",
+            headers={"anthropic-version":"2023-06-01","x-api-key":CLAUDE_API_KEY,"content-type":"application/json"},
+            json={"model":"claude-sonnet-4-5","max_tokens":500,
+                  "messages":[{"role":"user","content":prompt}]}, timeout=15)
+        if r.status_code != 200:
+            return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget_max": None, "city": None, "rooms": None}
+        out = r.json()["content"][0]["text"].strip()
+        out = re.sub(r"```(?:json)?\s*","",out).strip("` \n")
+        m = re.search(r"\{.*\}", out, re.DOTALL)
+        if m: out = m.group()
+        parsed = json.loads(out)
+        parsed["query_text"] = cleaned
+        return parsed
+    except Exception as e:
+        log.error(f"Exclusivity query parse error: {e}")
+        return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget_max": None, "city": None, "rooms": None}
+
+def _parse_price_to_int(p: str):
+    """'1,800,000 ₪' → 1800000"""
+    if not p: return None
+    s = re.sub(r"[^\d.]", "", str(p))
+    try:
+        return int(float(s)) if s else None
+    except:
+        return None
+
+def score_exclusivity_match(row: dict, query: dict) -> int:
+    """דרג נכס: 0=לא רלוונטי, 100=מושלם"""
+    score = 0
+    street = (row.get("street","") or "")
+    dest = (row.get("dest","") or "")
+    desti = (row.get("desti","") or "")
+    combined = f"{street} {dest} {desti}".lower()
+
+    # עיר
+    q_city = (query.get("city") or "").strip()
+    if q_city:
+        if q_city.lower() in combined or q_city.replace("קרית","קריית").lower() in combined:
+            score += 30
+        else:
+            return 0
+
+    # חדרים
+    q_rooms = query.get("rooms")
+    if q_rooms is not None:
+        m = re.search(r"(\d+(?:\.\d+)?)\s*חדרים?", dest)
+        if m:
+            try:
+                r_rooms = float(m.group(1))
+                if abs(r_rooms - float(q_rooms)) < 0.6:
+                    score += 25
+                elif abs(r_rooms - float(q_rooms)) < 1.1:
+                    score += 10
+                else:
+                    return 0
+            except: pass
+
+    # תקציב
+    q_bmax = query.get("budget_max")
+    if q_bmax:
+        r_price = _parse_price_to_int(row.get("price",""))
+        if r_price:
+            if r_price > q_bmax * 1.15:
+                return 0
+            diff_pct = abs(r_price - q_bmax) / q_bmax
+            if diff_pct < 0.05: score += 20
+            elif diff_pct < 0.15: score += 12
+            else: score += 5
+
+    # מילות מפתח
+    keywords = query.get("keywords") or []
+    if keywords:
+        kw_hits = sum(1 for kw in keywords if str(kw).strip().lower() in combined and len(str(kw).strip()) > 1)
+        score += min(kw_hits * 5, 25)
+
+    return score
+
+def format_exclusivity_match_reply(query: dict, matches: list) -> str:
+    if not matches:
+        return ("🔍 לא מצאתי בלעדויות תואמות במאגר.\n\n"
+                "נסה לחפש עם פחות פרטים, או \"מחפש בלעדיות\" לבד לקבלת הבלעדויות האחרונות.")
+    summary = query.get("summary_he","")
+    lines = [f"🏠 *מצאתי {len(matches)} בלעדויות תואמות*"]
+    if summary: lines.append(f"_{summary}_")
+    lines.append("")
+    for i, m in enumerate(matches, 1):
+        street = (m.get("street","") or "").strip()
+        dest = (m.get("dest","") or "").strip()
+        desti = (m.get("desti","") or "").strip()
+        price = (m.get("price","") or "").strip()
+        office = (m.get("office","") or "").strip()
+        link = (m.get("link","") or "").strip()
+        received = (m.get("received_at","") or "").strip()
+
+        lines.append(f"*{i}.* 📍 {street}")
+        if dest: lines.append(f"   🏘 {dest}")
+        if price: lines.append(f"   💰 {price}")
+        if office: lines.append(f"   🏢 {office}")
+        if received: lines.append(f"   📅 {received[:10]}")
+        if desti: lines.append(f"   📝 {desti}")
+        if link: lines.append(f"   🔗 {link}")
+        lines.append("")
+    return "\n".join(lines)
+
+def handle_exclusivity_search_request(sender_phone: str, message_text: str):
+    try:
+        send_text(sender_phone, "🔍 מחפש בלעדויות מתאימות במאגר... ⏳")
+        parsed = parse_exclusivity_search_query(message_text)
+        log.info(f"Parsed exclusivity search: {parsed}")
+        all_rows = fetch_external_exclusives()
+        if not all_rows:
+            send_text(sender_phone, "🔍 אין כרגע בלעדויות במאגר. בדוק שה-MailParser → Sheets פעיל.")
+            return
+
+        # אם אין קריטריונים — החזר את 5 האחרונות
+        if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
+            all_rows.sort(key=lambda r: r.get("received_at",""), reverse=True)
+            matches = all_rows[:5]
+        else:
+            scored = [(score_exclusivity_match(r, parsed), r) for r in all_rows]
+            scored = [(s, r) for s, r in scored if s > 0]
+            scored.sort(key=lambda x: (-x[0], x[1].get("received_at","")))
+            matches = [r for _, r in scored[:5]]
+
+        send_text(sender_phone, format_exclusivity_match_reply(parsed, matches))
+    except Exception as e:
+        log.error(f"Exclusivity search error: {e}", exc_info=True)
+        send_text(sender_phone, f"❌ שגיאה: {str(e)[:100]}")
+
+def is_exclusivity_search_query(text: str) -> bool:
+    if not text: return False
+    t = text.strip()
+    if t.startswith("אני "): t = t[4:].strip()
+    return bool(re.match(r'^מחפש[ת]?\s+בלעדיות?\b', t))
 # ══════════════════════════════════════════════════════════════════════════════
 # WEBHOOK
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1505,10 +1735,19 @@ def webhook():
         msg_type = msg.get("type", "")
         text     = msg.get("text", "") or msg.get("caption", "") or ""
         media    = msg.get("url", "") or msg.get("media_url", "")
-        # ── טריגר חיפוש קונה — "מחפש קונה" / "מחפשת קונה" — חדש! ──────
+        # ── טריגר חיפוש קונה — "מחפש קונה" / "מחפשת קונה" ──────────────
         if msg_type == "text" and is_buyer_search_query(text):
             threading.Thread(
                 target=handle_buyer_search_request,
+                args=[from_number, text],
+                daemon=True
+            ).start()
+            return jsonify({"ok": True})
+
+        # ── טריגר חיפוש בלעדויות — "מחפש בלעדיות" / "מחפשת בלעדיות" ─────
+        if msg_type == "text" and is_exclusivity_search_query(text):
+            threading.Thread(
+                target=handle_exclusivity_search_request,
                 args=[from_number, text],
                 daemon=True
             ).start()
