@@ -2037,12 +2037,12 @@ def api_search_exclusives():
             matches = scored[:15]
         out = [{
             "score": min(100, int(sc)),
-            "street": (r.get("street", "") or "").strip(),
-            "dest": (r.get("dest", "") or "").strip(),
-            "desc": (r.get("desti", "") or "").strip(),
-            "price": (r.get("price", "") or "").strip(),
-            "office": (r.get("office", "") or "").strip(),
-            "date": (r.get("received_at", "") or "")[:10],
+            "street": str(r.get("street", "") or "").strip(),
+            "dest": str(r.get("dest", "") or "").strip(),
+            "desc": str(r.get("desti", "") or "").strip(),
+            "price": str(r.get("price", "") or "").strip(),
+            "office": str(r.get("office", "") or "").strip(),
+            "date": str(r.get("received_at", "") or "")[:10],
         } for sc, r in matches]
         return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "results": out})
     except Exception as e:
@@ -2292,9 +2292,9 @@ function makePresentation(){
 }
 
 function viewSearch(kind){
-  var cfg={props:{t:"🔎 מציאת נכסים",ph:"מחפש דירה 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
-           excl:{t:"🏆 מציאת בלעדיות",ph:"מחפש בלעדיות 4 חדרים בקרית ים",ep:"/api/search/exclusives"},
-           buyers:{t:"👤 מציאת קונים",ph:"מחפש קונה 4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
+  var cfg={props:{t:"🔎 מציאת נכסים",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
+           excl:{t:"🏆 מציאת בלעדיות",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
+           buyers:{t:"👤 מציאת קונים",ph:"4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
   $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button><div id=sres></div></div>';
 }
 function doSearch(ep,kind){
