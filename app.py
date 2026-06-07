@@ -1798,6 +1798,465 @@ def health():
 def index():
     return "RE/MAX Bot 🏠 — Running"
 # ══════════════════════════════════════════════════════════════════════════════
+# FAMILY BOT — WEB APP LAYER  (אפליקציית web, ללא תלות בוואטסאפ)
+# ══════════════════════════════════════════════════════════════════════════════
+import secrets as _secrets
+from flask import send_file, Response, redirect
+
+# --- Twilio + admin config (env vars) ---
+TWILIO_SID   = os.environ.get("TWILIO_SID", "")
+TWILIO_AUTH  = os.environ.get("TWILIO_AUTH", "")
+TWILIO_FROM  = os.environ.get("TWILIO_FROM", "")           # +972... או MG... (Messaging Service)
+ADMIN_PHONES = [p.strip() for p in os.environ.get("ADMIN_PHONES", "").split(",") if p.strip()]
+
+# --- in-memory OTP + sessions ---
+_otp_store = {}     # last9 -> {"code","exp","tries"}
+_web_sessions = {}  # token -> {"phone","role","name","exp"}
+_OTP_TTL  = 300
+_SESS_TTL = 6 * 3600
+
+def _last9(s):
+    d = re.sub(r"\D", "", str(s or ""))
+    return d[-9:]
+
+def _to_e164(last9):
+    return "+972" + last9
+
+def _wa_phone(p):
+    d = re.sub(r"\D", "", str(p or ""))
+    if not d: return ""
+    return d if d.startswith("972") else "972" + d.lstrip("0")
+
+def _norm_name(s):
+    return re.sub(r"\s+", " ", str(s or "")).strip()
+
+def _deal_label(code):
+    c = str(code or "").upper()
+    if "OWNER_EXCLUSIVE" in c: return "בלעדיות"
+    if "CLIENT_SALE" in c:     return "קונים"
+    if "OWNER_RENT" in c or "CLIENT_RENT" in c: return "שכירות"
+    if "OWNER_SALE" in c:      return "מוכר"
+    return code or "חתימה"
+
+def _web_valid_pct(v):
+    if v is None or v == "": return None
+    if isinstance(v, str) and re.search(r"https?://", v): return None
+    try: return float(v)
+    except: return None
+
+def web_send_sms(last9, body):
+    if not (TWILIO_SID and TWILIO_AUTH and TWILIO_FROM):
+        log.error("Twilio not configured")
+        return False
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
+    data = {"To": _to_e164(last9), "Body": body}
+    if TWILIO_FROM.startswith("MG"): data["MessagingServiceSid"] = TWILIO_FROM
+    else: data["From"] = TWILIO_FROM
+    try:
+        r = requests.post(url, data=data, auth=(TWILIO_SID, TWILIO_AUTH), timeout=15)
+        if r.status_code >= 300:
+            log.error(f"Twilio error {r.status_code}: {r.text[:200]}")
+            return False
+        return True
+    except Exception as e:
+        log.error(f"Twilio send error: {e}")
+        return False
+
+def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
+    if not (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN):
+        return []
+    from urllib.parse import quote
+    url = (f"{APPS_SCRIPT_URL}?action=raw&type={quote(type_he)}"
+           f"&from={frm}&to={to}&token={APPS_SCRIPT_TOKEN}")
+    try:
+        r = requests.get(url, timeout=30, allow_redirects=True)
+        j = r.json()
+        return j.get("rows", []) if j.get("ok") else []
+    except Exception as e:
+        log.error(f"web_fetch_raw {type_he}: {e}")
+        return []
+
+_web_phonemap = {"data": None, "ts": 0}
+def web_phone_name_map():
+    if _web_phonemap["data"] is not None and (time.time() - _web_phonemap["ts"]) < 3600:
+        return _web_phonemap["data"]
+    rows = web_fetch_raw("שיחות")
+    m = {}
+    for r in rows:
+        ph = _last9(r.get("agent_phone", "")); ag = (r.get("agent", "") or "").strip()
+        if ph and ag: m[ph] = ag
+    _web_phonemap["data"] = m; _web_phonemap["ts"] = time.time()
+    return m
+
+def web_role_for(last9):
+    if last9 in set(_last9(a) for a in ADMIN_PHONES): return "admin"
+    if web_phone_name_map().get(last9): return "agent"
+    return None
+
+def _web_auth():
+    tok = (request.headers.get("X-Auth-Token") or request.args.get("token")
+           or ((request.get_json(silent=True) or {}).get("token") if request.method == "POST" else None))
+    if not tok: return None
+    s = _web_sessions.get(tok)
+    if not s: return None
+    if s["exp"] < time.time():
+        _web_sessions.pop(tok, None); return None
+    return s
+
+# ── Auth endpoints ─────────────────────────────────────────────────────────────
+@app.route("/api/auth/request", methods=["POST"])
+def api_auth_request():
+    phone = _last9((request.get_json(silent=True) or {}).get("phone", ""))
+    if not phone: return jsonify({"ok": False, "reason": "bad_phone"})
+    if not web_role_for(phone): return jsonify({"ok": False, "reason": "unknown"})
+    code = f"{_secrets.randbelow(900000) + 100000}"
+    _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
+    if not web_send_sms(phone, f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)"):
+        return jsonify({"ok": False, "reason": "sms_failed"})
+    return jsonify({"ok": True})
+
+@app.route("/api/auth/verify", methods=["POST"])
+def api_auth_verify():
+    body  = request.get_json(silent=True) or {}
+    phone = _last9(body.get("phone", "")); code = str(body.get("code", "")).strip()
+    rec = _otp_store.get(phone)
+    if not rec or rec["exp"] < time.time(): return jsonify({"ok": False, "reason": "expired"})
+    if rec["tries"] >= 5: _otp_store.pop(phone, None); return jsonify({"ok": False, "reason": "too_many"})
+    if code != rec["code"]:
+        rec["tries"] += 1; return jsonify({"ok": False, "reason": "wrong"})
+    _otp_store.pop(phone, None)
+    role = web_role_for(phone)
+    name = "מנהל" if role == "admin" else (web_phone_name_map().get(phone) or "סוכן")
+    token = _secrets.token_urlsafe(24)
+    _web_sessions[token] = {"phone": phone, "role": role, "name": name, "exp": time.time() + _SESS_TTL}
+    return jsonify({"ok": True, "token": token, "role": role, "name": name})
+
+# ── History (calls + signatures) ───────────────────────────────────────────────
+@app.route("/api/history", methods=["GET"])
+def api_history():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    calls = web_fetch_raw("שיחות"); sigs = web_fetch_raw("חתימות")
+    if s["role"] != "admin":
+        ph = s["phone"]; nm = _norm_name(s["name"])
+        calls = [c for c in calls if _last9(c.get("agent_phone", "")) == ph]
+        sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) == nm]
+    calls.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
+    sigs.sort(key=lambda g: _epoch_from_iso(g.get("received_at", "")), reverse=True)
+    call_out = [{
+        "time": _fmt_il_dt(c.get("received_at", "")),
+        "status": str(c.get("status", "")).upper(),
+        "caller": re.sub(r"\D", "", str(c.get("caller_phone", ""))),
+        "duration": c.get("duration_sec", ""),
+        "agent": (c.get("agent", "") or "").strip(),
+        "summary": re.sub(r"https?://\S+", "", str(c.get("transcript_summary", ""))).strip(),
+        "ts": _epoch_from_iso(c.get("received_at", "")),
+    } for c in calls[:500]]
+    sig_out = [{
+        "time": _fmt_il_dt(g.get("received_at", "")),
+        "type": _deal_label(g.get("deal_type", "")),
+        "client": (g.get("client_name", "") or "").strip(),
+        "address": ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x]),
+        "pct": _web_valid_pct(g.get("commission_pct")),
+        "agent": (g.get("agent", "") or "").strip(),
+        "ts": _epoch_from_iso(g.get("received_at", "")),
+    } for g in sigs[:500]]
+    return jsonify({"ok": True, "role": s["role"], "name": s["name"], "calls": call_out, "signatures": sig_out})
+
+# ── Property search ────────────────────────────────────────────────────────────
+@app.route("/api/search/properties", methods=["POST"])
+def api_search_properties():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    q = (request.get_json(silent=True) or {}).get("q", "").strip()
+    parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
+    matches = search_listings_in_sheet(parsed) if parsed else []
+    phones = fetch_agents_phones()
+    out = []
+    for score, row, flex in matches:
+        ag = (row.get("סוכן 1", "") or "").strip()
+        out.append({
+            "score": min(100, int(score)),
+            "type": (row.get("סוג נכס", "") or "").strip(),
+            "city": (row.get("עיר / ישוב", "") or "").strip(),
+            "neighborhood": (row.get("שכונה", "") or "").strip(),
+            "address": (f"{row.get('כתובת','')} {row.get('מספר בית','')}").strip(),
+            "rooms": (row.get("חדרים", "") or "").strip(),
+            "size": (row.get('מ"ר', "") or row.get("מ״ר", "") or "").strip(),
+            "floor": (row.get("קומה", "") or "").strip(),
+            "price": (row.get("מחיר", "") or "").strip(),
+            "agent": ag,
+            "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
+        })
+    return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "results": out})
+
+# ── Exclusivity search ─────────────────────────────────────────────────────────
+@app.route("/api/search/exclusives", methods=["POST"])
+def api_search_exclusives():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    q = (request.get_json(silent=True) or {}).get("q", "").strip()
+    parsed = parse_exclusivity_search_query(q if q.startswith("מחפש") else ("מחפש בלעדיות " + q))
+    rows = fetch_external_exclusives()
+    if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
+        rows = sorted(rows, key=lambda r: r.get("received_at", ""), reverse=True)
+        matches = [(1, r) for r in rows[:15]]
+    else:
+        scored = [(score_exclusivity_match(r, parsed), r) for r in rows]
+        scored = [(sc, r) for sc, r in scored if sc > 0]
+        scored.sort(key=lambda x: -x[0])
+        matches = scored[:15]
+    out = [{
+        "score": min(100, int(sc)),
+        "street": (r.get("street", "") or "").strip(),
+        "dest": (r.get("dest", "") or "").strip(),
+        "desc": (r.get("desti", "") or "").strip(),
+        "price": (r.get("price", "") or "").strip(),
+        "office": (r.get("office", "") or "").strip(),
+        "date": (r.get("received_at", "") or "")[:10],
+    } for sc, r in matches]
+    return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "results": out})
+
+# ── Buyer search (in agent's own answered calls) ───────────────────────────────
+@app.route("/api/search/buyers", methods=["POST"])
+def api_search_buyers():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    q = (request.get_json(silent=True) or {}).get("q", "").strip()
+    parsed = parse_buyer_search_query(q if q.startswith("מחפש") else ("מחפש קונה " + q))
+    # candidates = answered calls (agent → his own; admin → all)
+    if s["role"] == "admin":
+        candidates = [c for c in web_fetch_raw("שיחות") if str(c.get("status", "")).upper() == "ANSWER"]
+    else:
+        candidates = fetch_calls_for_agent(s["phone"])
+    target_budget = parsed.get("budget")
+    if target_budget:
+        filt = []
+        for c in candidates:
+            cb = extract_budget_from_transcript(c.get("transcript_summary", ""))
+            if cb is None: continue
+            if abs(cb - target_budget) / target_budget <= 0.30: filt.append(c)
+        candidates = filt
+    keywords = parsed.get("keywords") or []
+    if not keywords:
+        candidates.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
+        matches = candidates[:10]
+    else:
+        scored = []
+        for c in candidates:
+            t = str(c.get("transcript_summary", "")).lower()
+            sc = sum(1 for k in keywords if str(k).strip().lower() in t)
+            if sc > 0: scored.append((sc, c))
+        scored.sort(key=lambda x: (-x[0], -_epoch_from_iso(x[1].get("received_at", ""))))
+        matches = [c for _, c in scored[:10]]
+        if not matches:
+            candidates.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
+            matches = candidates[:10]
+    out = []
+    for c in matches:
+        phone = re.sub(r"\D", "", str(c.get("caller_phone", "")))
+        out.append({
+            "phone": phone,
+            "wa": _wa_phone(phone),
+            "date": _fmt_il_dt(c.get("received_at", "")),
+            "budget": format_price_il(extract_budget_from_transcript(c.get("transcript_summary", ""))),
+            "summary": re.sub(r"https?://\S+", "", str(c.get("transcript_summary", ""))).strip(),
+        })
+    return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "results": out})
+
+# ── Presentation (PDF) ─────────────────────────────────────────────────────────
+@app.route("/api/presentation", methods=["POST"])
+def api_presentation():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    text = (request.form.get("text") or "").strip()
+    if not text: return jsonify({"ok": False, "reason": "no_text"}), 400
+    session_dir = WORK_DIR / str(uuid.uuid4()); session_dir.mkdir(exist_ok=True)
+    try:
+        data = parse_listing_text(text)
+        if not data: return jsonify({"ok": False, "reason": "parse_failed"}), 400
+        logo_path = None
+        for _lp in [Path("/app/logo.png"), Path("logo.png"), Path(__file__).parent / "logo.png"]:
+            if _lp.exists(): logo_path = _lp; break
+        processed = []
+        files = request.files.getlist("images")[:4]
+        for i, f in enumerate(files):
+            img_path = session_dir / f"img_{i}.jpg"; f.save(str(img_path))
+            try:
+                if has_remax_logo(img_path):
+                    processed.append(img_path)
+                elif logo_path:
+                    out_img = session_dir / f"img_{i}_logo.jpg"
+                    add_remax_logo_to_image(img_path, out_img, logo_path); processed.append(out_img)
+                else:
+                    processed.append(img_path)
+            except Exception as e:
+                log.error(f"img proc {i}: {e}"); processed.append(img_path)
+        try: data["_area_info"] = get_area_info(data.get("city", ""), data.get("neighborhood", "")) or []
+        except Exception: data["_area_info"] = []
+        try: data["_transactions"] = get_transactions(data.get("city", ""), data.get("neighborhood", ""),
+                                                       str(data.get("rooms", "")), data.get("address", "")) or []
+        except Exception: data["_transactions"] = []
+        pdf_path = generate_pdf(data, processed, session_dir)
+        addr = (data.get("address", "נכס") or "נכס").replace(" ", "_")[:30]
+        return send_file(str(pdf_path), mimetype="application/pdf",
+                         as_attachment=True, download_name=f"מצגת_{addr}.pdf")
+    except Exception as e:
+        log.error(f"web presentation error: {e}", exc_info=True)
+        return jsonify({"ok": False, "reason": str(e)[:120]}), 500
+
+# ── Frontend ───────────────────────────────────────────────────────────────────
+@app.route("/app", methods=["GET"])
+def family_bot_app():
+    return Response(FAMILY_BOT_HTML, mimetype="text/html")
+
+FAMILY_BOT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Family Bot</title>
+<style>
+*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f3f4f6;color:#1f2937}
+.wrap{max-width:620px;margin:0 auto;padding:14px;padding-bottom:80px}
+.card{background:#fff;border-radius:14px;padding:14px;margin:10px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+h1{font-size:20px;margin:6px 0}h2{font-size:16px;margin:0 0 10px}
+input,button,textarea{font-size:16px;padding:11px;border-radius:10px;border:1px solid #d1d5db;width:100%;font-family:inherit}
+button{background:#0D1B2A;color:#fff;border:none;margin-top:8px;font-weight:bold;cursor:pointer}
+button.gold{background:#C9972A}button.sec{background:#e5e7eb;color:#111827}
+.tabs{position:fixed;bottom:0;left:0;right:0;background:#fff;display:flex;border-top:1px solid #e5e7eb;max-width:620px;margin:0 auto}
+.tab{flex:1;text-align:center;padding:10px 4px;font-size:12px;color:#6b7280;cursor:pointer}
+.tab.on{color:#0D1B2A;font-weight:bold;border-top:2px solid #C9972A;margin-top:-1px}
+.chips{display:flex;gap:6px;margin:4px 0}.chip{flex:1;text-align:center;padding:8px;border-radius:10px;background:#e5e7eb;cursor:pointer;font-size:13px}.chip.on{background:#0D1B2A;color:#fff}
+.row{border-bottom:1px solid #f0f0f0;padding:9px 0;font-size:14px}.row:last-child{border:none}
+.badge{display:inline-block;background:#eef2ff;color:#3730a3;font-size:11px;padding:2px 7px;border-radius:999px;margin-inline-start:6px}
+.ans{color:#15803d;font-weight:bold}.noans{color:#b91c1c}.muted{color:#6b7280;font-size:13px}
+.new{animation:hl 2.5s ease-out}@keyframes hl{0%{background:#fef9c3}100%{background:transparent}}
+.score{float:left;background:#dcfce7;color:#166534;border-radius:8px;padding:1px 7px;font-size:12px}
+a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
+</style></head><body><div class="wrap">
+<h1>🏠 Family Bot</h1>
+
+<div id="login">
+  <div class="card" id="s1">
+    <label class="muted">מספר הטלפון שלך</label>
+    <input id="phone" type="tel" inputmode="numeric" placeholder="05X-XXXXXXX">
+    <button onclick="sendCode()">שלח קוד ב-SMS</button>
+    <div id="m1" class="muted"></div>
+  </div>
+  <div class="card hidden" id="s2">
+    <label class="muted">הזן את הקוד מה-SMS</label>
+    <input id="code" type="tel" inputmode="numeric" placeholder="______">
+    <button onclick="verify()">כניסה</button>
+    <button class="sec" onclick="show('s1')">החלף מספר</button>
+    <div id="m2" class="muted"></div>
+  </div>
+</div>
+
+<div id="appui" class="hidden">
+  <div id="view"></div>
+  <div class="tabs">
+    <div class="tab on" data-t="history" onclick="tab('history')">📊 היסטוריה</div>
+    <div class="tab" data-t="present" onclick="tab('present')">📄 מצגת</div>
+    <div class="tab" data-t="props" onclick="tab('props')">🔎 נכסים</div>
+    <div class="tab" data-t="excl" onclick="tab('excl')">🏆 בלעדיות</div>
+    <div class="tab" data-t="buyers" onclick="tab('buyers')">👤 קונים</div>
+  </div>
+</div>
+
+<script>
+var TOKEN=null,ROLE=null,NAME=null,TABNOW="history",RANGE="month",timer=null,seenCall=0,seenSig=0;
+function $(id){return document.getElementById(id);}
+function show(id){$("s1").classList.add("hidden");$("s2").classList.add("hidden");$(id).classList.remove("hidden");}
+function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};if(TOKEN)opt.headers["X-Auth-Token"]=TOKEN;return fetch(path,opt).then(function(r){return r.json();});}
+try{var sp=localStorage.getItem("fbPhone");if(sp)$("phone").value=sp;}catch(e){}
+try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");NAME=localStorage.getItem("fbName");enter();}}catch(e){}
+function sendCode(){var p=$("phone").value.trim();if(!p){alert("הזן מספר");return;}try{localStorage.setItem("fbPhone",p);}catch(e){}$("m1").textContent="שולח…";
+  api("/api/auth/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p})}).then(function(r){
+    if(r.ok){show("s2");$("m2").textContent="";}
+    else{$("m1").innerHTML="<span class=err>"+(r.reason=="unknown"?"המספר לא מזוהה":(r.reason=="sms_failed"?"שליחת SMS נכשלה (בדוק Twilio)":"שגיאה"))+"</span>";}
+  }).catch(function(){$("m1").innerHTML="<span class=err>שגיאה</span>";});}
+function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){alert("הזן קוד");return;}$("m2").textContent="בודק…";
+  api("/api/auth/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p,code:c})}).then(function(r){
+    if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);}catch(e){}enter();}
+    else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
+  }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");tab("history");}
+function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
+function render(){if(TABNOW=="history")viewHistory();else if(TABNOW=="present")viewPresent();else viewSearch(TABNOW);}
+
+function viewHistory(){
+  $("view").innerHTML='<div class=card><h2>היסטוריה'+(ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':' — '+NAME)+'</h2>'+
+    '<div class=chips id=rc><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><div class=chip data-r=all>הכל</div></div>'+
+    '<div class=muted id=live>טוען…</div></div><div id=calls></div><div id=sigs></div>';
+  document.querySelectorAll("#rc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");RANGE=c.dataset.r;seenCall=0;seenSig=0;loadHistory();};});
+  seenCall=0;seenSig=0;loadHistory();
+  timer=setInterval(loadHistory,30000);
+}
+function inRange(ts){if(RANGE=="all")return true;var now=Date.now()/1000,d=new Date();var start;if(RANGE=="week"){start=new Date();start.setDate(d.getDate()-d.getDay());start.setHours(0,0,0,0);}else{start=new Date(d.getFullYear(),d.getMonth(),1);}return ts>=start.getTime()/1000;}
+function loadHistory(){api("/api/history").then(function(r){
+  if(!r.ok){relogin();return;}
+  var calls=r.calls.filter(function(c){return inRange(c.ts);});
+  var sigs=r.signatures.filter(function(g){return inRange(g.ts);});
+  $("live").innerHTML="🟢 חי · מתעדכן כל 30 שניות · "+calls.length+" שיחות · "+sigs.length+" חתימות";
+  var maxC=calls.length?calls[0].ts:0,maxS=sigs.length?sigs[0].ts:0;
+  $("calls").innerHTML="<div class=card><h2>📞 שיחות</h2>"+(calls.length?calls.map(function(c){
+    var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
+    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+(c.caller||"-")+(ROLE=="admin"&&c.agent?" · "+c.agent:"")+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+"</div>";
+  }).join(""):"<div class=muted>אין שיחות בטווח.</div>")+"</div>";
+  $("sigs").innerHTML="<div class=card><h2>✍️ חתימות</h2>"+(sigs.length?sigs.map(function(g){
+    var isNew=seenSig&&g.ts>seenSig;var p=(g.pct!=null)?(" · "+g.pct+"%"):"";
+    return "<div class='row"+(isNew?" new":"")+"'><b>"+esc(g.type)+"</b>"+p+(g.client?" · "+esc(g.client):"")+"<div class=muted>"+esc(g.address)+(ROLE=="admin"&&g.agent?" · "+esc(g.agent):"")+" · "+g.time+"</div></div>";
+  }).join(""):"<div class=muted>אין חתימות בטווח.</div>")+"</div>";
+  seenCall=maxC;seenSig=maxS;
+}).catch(function(){});}
+
+function viewPresent(){
+  $("view").innerHTML='<div class=card><h2>📄 יצירת מצגת נכס</h2>'+
+    '<label class=muted>פרטי הנכס (טקסט חופשי כמו במודעה)</label>'+
+    '<textarea id=ptext rows=7 placeholder="כתובת, מחיר, חדרים, מ״ר, קומה, תיאור, שם הסוכן..."></textarea>'+
+    '<label class=muted style=margin-top:8px>תמונות (עד 4)</label>'+
+    '<input id=pimgs type=file accept="image/*" multiple>'+
+    '<button class=gold onclick=makePresentation()>צור מצגת PDF</button>'+
+    '<div id=pmsg class=muted></div></div>';
+}
+function makePresentation(){
+  var t=$("ptext").value.trim();if(!t){alert("הזן פרטי נכס");return;}
+  var fd=new FormData();fd.append("text",t);var fs=$("pimgs").files;for(var i=0;i<Math.min(fs.length,4);i++)fd.append("images",fs[i]);
+  $("pmsg").innerHTML="⏳ מכין מצגת (כולל עסקאות ומידע שכונתי)... זה יכול לקחת כ-90 שניות.";
+  fetch("/api/presentation",{method:"POST",headers:{"X-Auth-Token":TOKEN},body:fd}).then(function(r){
+    if(!r.ok)return r.json().then(function(j){throw new Error(j.reason||"שגיאה");});
+    return r.blob();
+  }).then(function(b){var u=URL.createObjectURL(b);var a=document.createElement("a");a.href=u;a.download="מצגת.pdf";a.click();$("pmsg").innerHTML="✅ המצגת הורדה.";})
+  .catch(function(e){$("pmsg").innerHTML="<span class=err>שגיאה: "+esc(e.message)+"</span>";});
+}
+
+function viewSearch(kind){
+  var cfg={props:{t:"🔎 מציאת נכסים",ph:"מחפש דירה 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
+           excl:{t:"🏆 מציאת בלעדיות",ph:"מחפש בלעדיות 4 חדרים בקרית ים",ep:"/api/search/exclusives"},
+           buyers:{t:"👤 מציאת קונים",ph:"מחפש קונה 4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
+  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button><div id=sres></div></div>';
+}
+function doSearch(ep,kind){
+  var q=$("sq").value.trim();$("sres").innerHTML="<div class=muted>מחפש… ⏳</div>";
+  api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q})}).then(function(r){
+    if(!r.ok){relogin();return;}
+    if(!r.results.length){$("sres").innerHTML="<div class=muted>לא נמצאו תוצאות. נסה עם פחות פרטים.</div>";return;}
+    var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
+    h+=r.results.map(function(x){return card(kind,x);}).join("");
+    $("sres").innerHTML=h;
+  }).catch(function(){$("sres").innerHTML="<span class=err>שגיאה</span>";});
+}
+function card(kind,x){
+  if(kind=="props"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.type||"נכס")+"</b> · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+
+    "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price].filter(Boolean).join(" · ")+"</div>"+
+    (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+"</div>";}
+  if(kind=="excl"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
+    (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price,x.office,x.date].filter(Boolean).map(esc).join(" · ")+"</div></div>";}
+  return "<div class=row>📞 <b>"+esc(x.phone||"-")+"</b>"+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
+    "<div class=muted>"+[x.date,x.budget].filter(Boolean).map(esc).join(" · ")+"</div>"+(x.summary?"<div>"+esc(x.summary)+"</div>":"")+"</div>";
+}
+function relogin(){try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+</script></div></body></html>'''
+
+# ══════════════════════════════════════════════════════════════════════════════
 # STARTUP
 # ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
