@@ -1948,9 +1948,7 @@ def api_auth_request():
     if not web_role_for(phone): return jsonify({"ok": False, "reason": "unknown"})
     code = f"{_secrets.randbelow(900000) + 100000}"
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
-    # שורת ה-@host #code מאפשרת קריאה אוטומטית (WebOTP) ב-Android Chrome
-    body = f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)\n\n@{request.host} #{code}"
-    if not web_send_sms(phone, body):
+    if not web_send_sms(phone, f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)"):
         return jsonify({"ok": False, "reason": "sms_failed"})
     return jsonify({"ok": True})
 
