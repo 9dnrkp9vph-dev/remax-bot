@@ -1943,15 +1943,22 @@ def api_history():
         sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) == nm]
     calls.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
     sigs.sort(key=lambda g: _epoch_from_iso(g.get("received_at", "")), reverse=True)
-    call_out = [{
-        "time": _fmt_il_dt(c.get("received_at", "")),
-        "status": str(c.get("status", "")).upper(),
-        "caller": re.sub(r"\D", "", str(c.get("caller_phone", ""))),
-        "duration": c.get("duration_sec", ""),
-        "agent": (c.get("agent", "") or "").strip(),
-        "summary": re.sub(r"https?://\S+", "", str(c.get("transcript_summary", ""))).strip(),
-        "ts": _epoch_from_iso(c.get("received_at", "")),
-    } for c in calls[:500]]
+    call_out = []
+    for c in calls[:500]:
+        raw = str(c.get("transcript_summary", ""))
+        m = re.search(r"https?://\S+", raw)
+        callback = m.group(0) if (m and ("maskyoo" in raw or "click2call" in raw)) else ""
+        text = re.sub(r"https?://\S+", "", raw).strip()
+        call_out.append({
+            "time": _fmt_il_dt(c.get("received_at", "")),
+            "status": str(c.get("status", "")).upper(),
+            "caller": re.sub(r"\D", "", str(c.get("caller_phone", ""))),
+            "duration": c.get("duration_sec", ""),
+            "agent": (c.get("agent", "") or "").strip(),
+            "summary": text,
+            "callback": callback,
+            "ts": _epoch_from_iso(c.get("received_at", "")),
+        })
     sig_out = [{
         "time": _fmt_il_dt(g.get("received_at", "")),
         "type": _deal_label(g.get("deal_type", "")),
@@ -2110,18 +2117,33 @@ def api_presentation():
 def family_bot_app():
     return Response(FAMILY_BOT_HTML, mimetype="text/html")
 
+@app.route("/assets/logo", methods=["GET"])
+def family_logo():
+    names = ["family-logo.png.jpg", "family-logo.png", "family-logo.jpg", "family-logo.jpeg",
+             "family-logo.webp", "logo.png", "logo.jpg"]
+    dirs = [Path(__file__).parent, Path("."), Path("/app")]
+    for d in dirs:
+        for n in names:
+            p = d / n
+            if p.exists():
+                ext = p.suffix.lower()
+                mt = "image/jpeg" if ext in (".jpg", ".jpeg") else ("image/webp" if ext == ".webp" else "image/png")
+                return send_file(str(p), mimetype=mt)
+    return ("", 404)
+
 FAMILY_BOT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Family Bot</title>
 <style>
 *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f3f4f6;color:#1f2937}
 .wrap{max-width:620px;margin:0 auto;padding:14px;padding-bottom:80px}
+.brand{text-align:center;margin:4px 0 6px}.brand img{max-height:72px;max-width:78%}.brandtxt{font-size:20px;font-weight:bold}
 .card{background:#fff;border-radius:14px;padding:14px;margin:10px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 h1{font-size:20px;margin:6px 0}h2{font-size:16px;margin:0 0 10px}
 input,button,textarea{font-size:16px;padding:11px;border-radius:10px;border:1px solid #d1d5db;width:100%;font-family:inherit}
 button{background:#0D1B2A;color:#fff;border:none;margin-top:8px;font-weight:bold;cursor:pointer}
 button.gold{background:#C9972A}button.sec{background:#e5e7eb;color:#111827}
 .tabs{position:fixed;bottom:0;left:0;right:0;background:#fff;display:flex;border-top:1px solid #e5e7eb;max-width:620px;margin:0 auto}
-.tab{flex:1;text-align:center;padding:10px 4px;font-size:12px;color:#6b7280;cursor:pointer}
+.tab{flex:1;text-align:center;padding:9px 2px;font-size:11px;line-height:1.3;color:#6b7280;cursor:pointer}
 .tab.on{color:#0D1B2A;font-weight:bold;border-top:2px solid #C9972A;margin-top:-1px}
 .chips{display:flex;gap:6px;margin:4px 0}.chip{flex:1;text-align:center;padding:8px;border-radius:10px;background:#e5e7eb;cursor:pointer;font-size:13px}.chip.on{background:#0D1B2A;color:#fff}
 .row{border-bottom:1px solid #f0f0f0;padding:9px 0;font-size:14px}.row:last-child{border:none}
@@ -2130,8 +2152,9 @@ button.gold{background:#C9972A}button.sec{background:#e5e7eb;color:#111827}
 .new{animation:hl 2.5s ease-out}@keyframes hl{0%{background:#fef9c3}100%{background:transparent}}
 .score{float:left;background:#dcfce7;color:#166534;border-radius:8px;padding:1px 7px;font-size:12px}
 a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
+.cbtn{display:inline-block;background:#15803d;color:#fff;border-radius:8px;padding:2px 9px;font-size:12px;text-decoration:none}
 </style></head><body><div class="wrap">
-<h1>🏠 Family Bot</h1>
+<div class="brand"><img src="/assets/logo" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div></div>
 
 <div id="login">
   <div class="card" id="s1">
@@ -2152,7 +2175,8 @@ a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
 <div id="appui" class="hidden">
   <div id="view"></div>
   <div class="tabs">
-    <div class="tab on" data-t="history" onclick="tab('history')">📊 היסטוריה</div>
+    <div class="tab on" data-t="calls" onclick="tab('calls')">📞 שיחות</div>
+    <div class="tab" data-t="sigs" onclick="tab('sigs')">✍️ חתימות</div>
     <div class="tab" data-t="present" onclick="tab('present')">📄 מצגת</div>
     <div class="tab" data-t="props" onclick="tab('props')">🔎 נכסים</div>
     <div class="tab" data-t="excl" onclick="tab('excl')">🏆 בלעדיות</div>
@@ -2177,34 +2201,45 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");tab("history");}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");tab("calls");}
 function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
-function render(){if(TABNOW=="history")viewHistory();else if(TABNOW=="present")viewPresent();else viewSearch(TABNOW);}
+function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="present")viewPresent();else viewSearch(TABNOW);}
 
-function viewHistory(){
-  $("view").innerHTML='<div class=card><h2>היסטוריה'+(ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':' — '+NAME)+'</h2>'+
-    '<div class=chips id=rc><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><div class=chip data-r=all>הכל</div></div>'+
-    '<div class=muted id=live>טוען…</div></div><div id=calls></div><div id=sigs></div>';
-  document.querySelectorAll("#rc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");RANGE=c.dataset.r;seenCall=0;seenSig=0;loadHistory();};});
-  seenCall=0;seenSig=0;loadHistory();
-  timer=setInterval(loadHistory,30000);
+function rangeChips(){return '<div class=chips id=rc><div class=chip data-r=day>היום</div><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><div class=chip data-r=all>הכל</div></div>';}
+function bindChips(reload){document.querySelectorAll("#rc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");RANGE=c.dataset.r;seenCall=0;seenSig=0;reload();};});}
+function inRange(ts){if(RANGE=="all")return true;var d=new Date();var start;if(RANGE=="day"){start=new Date();start.setHours(0,0,0,0);}else if(RANGE=="week"){start=new Date();start.setDate(d.getDate()-d.getDay());start.setHours(0,0,0,0);}else{start=new Date(d.getFullYear(),d.getMonth(),1);}return ts>=start.getTime()/1000;}
+
+function viewCalls(){
+  $("view").innerHTML='<div class=card><h2>📞 שיחות'+(ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':' — '+esc(NAME))+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=calls></div>';
+  bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,30000);
 }
-function inRange(ts){if(RANGE=="all")return true;var now=Date.now()/1000,d=new Date();var start;if(RANGE=="week"){start=new Date();start.setDate(d.getDate()-d.getDay());start.setHours(0,0,0,0);}else{start=new Date(d.getFullYear(),d.getMonth(),1);}return ts>=start.getTime()/1000;}
-function loadHistory(){api("/api/history").then(function(r){
+function viewSigs(){
+  $("view").innerHTML='<div class=card><h2>✍️ חתימות'+(ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':' — '+esc(NAME))+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
+  bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,30000);
+}
+function loadCalls(){api("/api/history").then(function(r){
   if(!r.ok){relogin();return;}
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
-  var sigs=r.signatures.filter(function(g){return inRange(g.ts);});
-  $("live").innerHTML="🟢 חי · מתעדכן כל 30 שניות · "+calls.length+" שיחות · "+sigs.length+" חתימות";
-  var maxC=calls.length?calls[0].ts:0,maxS=sigs.length?sigs[0].ts:0;
-  $("calls").innerHTML="<div class=card><h2>📞 שיחות</h2>"+(calls.length?calls.map(function(c){
+  $("live").innerHTML="🟢 חי · מתעדכן כל 30 שניות · "+calls.length+" שיחות";
+  var maxC=calls.length?calls[0].ts:0;
+  $("calls").innerHTML="<div class=card>"+(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
-    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+(c.caller||"-")+(ROLE=="admin"&&c.agent?" · "+c.agent:"")+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+"</div>";
+    var callerLink=c.caller?("<a href='tel:"+c.caller+"'>"+c.caller+"</a>"):"-";
+    var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener>🔁 חייג חזרה</a>"):"";
+    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(ROLE=="admin"&&c.agent?" · "+esc(c.agent):"")+cb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+"</div>";
   }).join(""):"<div class=muted>אין שיחות בטווח.</div>")+"</div>";
-  $("sigs").innerHTML="<div class=card><h2>✍️ חתימות</h2>"+(sigs.length?sigs.map(function(g){
+  seenCall=maxC;
+}).catch(function(){});}
+function loadSigs(){api("/api/history").then(function(r){
+  if(!r.ok){relogin();return;}
+  var sigs=r.signatures.filter(function(g){return inRange(g.ts);});
+  $("live").innerHTML="🟢 חי · מתעדכן כל 30 שניות · "+sigs.length+" חתימות";
+  var maxS=sigs.length?sigs[0].ts:0;
+  $("sigs").innerHTML="<div class=card>"+(sigs.length?sigs.map(function(g){
     var isNew=seenSig&&g.ts>seenSig;var p=(g.pct!=null)?(" · "+g.pct+"%"):"";
     return "<div class='row"+(isNew?" new":"")+"'><b>"+esc(g.type)+"</b>"+p+(g.client?" · "+esc(g.client):"")+"<div class=muted>"+esc(g.address)+(ROLE=="admin"&&g.agent?" · "+esc(g.agent):"")+" · "+g.time+"</div></div>";
   }).join(""):"<div class=muted>אין חתימות בטווח.</div>")+"</div>";
-  seenCall=maxC;seenSig=maxS;
+  seenSig=maxS;
 }).catch(function(){});}
 
 function viewPresent(){
