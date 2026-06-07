@@ -1896,8 +1896,27 @@ def web_phone_name_map():
     _web_phonemap["data"] = m; _web_phonemap["ts"] = time.time()
     return m
 
+def _parse_coordinators():
+    """COORDINATORS env (JSON): {"<טלפון מתאמת>":{"name":"...","agents":["<טלפון סוכן>",...]}}"""
+    raw = os.environ.get("COORDINATORS", "").strip()
+    if not raw: return {}
+    try:
+        data = json.loads(raw)
+    except Exception:
+        log.error("COORDINATORS env is not valid JSON"); return {}
+    out = {}
+    for k, v in (data.items() if isinstance(data, dict) else []):
+        kk = _last9(k)
+        if not kk or not isinstance(v, dict): continue
+        agents = set(_last9(a) for a in (v.get("agents") or []) if _last9(a))
+        names = set(_norm_name(n) for n in (v.get("names") or []) if _norm_name(n))
+        out[kk] = {"name": v.get("name") or "מתאמת", "agents": agents, "names": names}
+    return out
+_COORDINATORS = _parse_coordinators()
+
 def web_role_for(last9):
     if last9 in set(_last9(a) for a in ADMIN_PHONES): return "admin"
+    if last9 in _COORDINATORS: return "coordinator"
     if web_phone_name_map().get(last9): return "agent"
     return None
 
@@ -1910,6 +1929,16 @@ def _web_auth():
     if s["exp"] < time.time():
         _web_sessions.pop(tok, None); return None
     return s
+
+# --- activity log (in-memory, newest last) ---
+_activity = []
+def _log_activity(name, role, phone, action, detail=""):
+    _activity.append({
+        "ts": time.time(), "name": name or "", "role": role or "",
+        "phone": phone or "", "action": action, "detail": str(detail)[:80],
+    })
+    if len(_activity) > 800:
+        del _activity[:len(_activity) - 800]
 
 # ── Auth endpoints ─────────────────────────────────────────────────────────────
 @app.route("/api/auth/request", methods=["POST"])
@@ -1934,9 +1963,16 @@ def api_auth_verify():
         rec["tries"] += 1; return jsonify({"ok": False, "reason": "wrong"})
     _otp_store.pop(phone, None)
     role = web_role_for(phone)
-    name = "מנהל" if role == "admin" else (web_phone_name_map().get(phone) or "סוכן")
+    if role == "admin": name = "מנהל"
+    elif role == "coordinator": name = _COORDINATORS[phone]["name"]
+    else: name = web_phone_name_map().get(phone) or "סוכן"
     token = _secrets.token_urlsafe(24)
-    _web_sessions[token] = {"phone": phone, "role": role, "name": name, "exp": time.time() + _SESS_TTL}
+    sess = {"phone": phone, "role": role, "name": name, "exp": time.time() + _SESS_TTL}
+    if role == "coordinator":
+        sess["agents"] = list(_COORDINATORS[phone]["agents"])
+        sess["agent_names"] = list(_COORDINATORS[phone]["names"])
+    _web_sessions[token] = sess
+    _log_activity(name, role, phone, "כניסה")
     return jsonify({"ok": True, "token": token, "role": role, "name": name})
 
 # ── History (calls + signatures) ───────────────────────────────────────────────
@@ -1945,7 +1981,16 @@ def api_history():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     calls = web_fetch_raw("שיחות"); sigs = web_fetch_raw("חתימות")
-    if s["role"] != "admin":
+    if s["role"] == "coordinator":
+        agset = set(s.get("agents") or [])
+        names = set(_norm_name(n) for n in (s.get("agent_names") or []))
+        for a in agset:
+            nm = _norm_name(web_phone_name_map().get(a, ""))
+            if nm: names.add(nm)
+        names.discard("")
+        calls = [c for c in calls if _last9(c.get("agent_phone", "")) in agset]
+        sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) in names]
+    elif s["role"] != "admin":
         ph = s["phone"]; nm = _norm_name(s["name"])
         calls = [c for c in calls if _last9(c.get("agent_phone", "")) == ph]
         sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) == nm]
@@ -1980,6 +2025,14 @@ def api_history():
     } for g in sigs[:500]]
     return jsonify({"ok": True, "role": s["role"], "name": s["name"], "calls": call_out, "signatures": sig_out})
 
+# ── Activity log (admin only) ──────────────────────────────────────────────────
+@app.route("/api/activity", methods=["GET"])
+def api_activity():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
+    return jsonify({"ok": True, "items": list(reversed(_activity[-300:]))})
+
 # ── Property search ────────────────────────────────────────────────────────────
 @app.route("/api/search/properties", methods=["POST"])
 def api_search_properties():
@@ -1987,6 +2040,7 @@ def api_search_properties():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
+        _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכסים", q)
         parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
         matches = search_listings_in_sheet(parsed) if parsed else []
         phones = fetch_agents_phones()
@@ -2017,16 +2071,29 @@ def _web_num(v):
     try: return float(v)
     except: return None
 
+def _dedupe_exclusives(rows):
+    """אם אותו נכס מופיע כמה פעמים (לפי הכתובת) — להשאיר רק את החדש ביותר."""
+    best = {}
+    for r in rows:
+        key = re.sub(r"\s+", " ", str(r.get("street", "") or "")).strip().lower()
+        if not key:
+            key = "id:" + str(r.get("event_id", ""))
+        cur = best.get(key)
+        if cur is None or str(r.get("received_at", "")) > str(cur.get("received_at", "")):
+            best[key] = r
+    return list(best.values())
+
 @app.route("/api/search/exclusives", methods=["POST"])
 def api_search_exclusives():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
+        _log_activity(s["name"], s["role"], s["phone"], "חיפוש בלעדיות", q)
         parsed = parse_exclusivity_search_query(q if q.startswith("מחפש") else ("מחפש בלעדיות " + q)) or {}
         parsed["budget_max"] = _web_num(parsed.get("budget_max"))   # מנע TypeError בכפל
         parsed["rooms"]      = _web_num(parsed.get("rooms"))
-        rows = fetch_external_exclusives()
+        rows = _dedupe_exclusives(fetch_external_exclusives())
         if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
             rows = sorted(rows, key=lambda r: r.get("received_at", ""), reverse=True)
             matches = [(1, r) for r in rows[:15]]
@@ -2056,10 +2123,15 @@ def api_search_buyers():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
+        _log_activity(s["name"], s["role"], s["phone"], "חיפוש קונים", q)
         parsed = parse_buyer_search_query(q if q.startswith("מחפש") else ("מחפש קונה " + q)) or {}
         # candidates = answered calls (agent → his own; admin → all)
         if s["role"] == "admin":
             candidates = [c for c in web_fetch_raw("שיחות") if str(c.get("status", "")).upper() == "ANSWER"]
+        elif s["role"] == "coordinator":
+            agset = set(s.get("agents") or [])
+            candidates = [c for c in web_fetch_raw("שיחות")
+                          if str(c.get("status", "")).upper() == "ANSWER" and _last9(c.get("agent_phone", "")) in agset]
         else:
             candidates = fetch_calls_for_agent(s["phone"])
         target_budget = _web_num(parsed.get("budget"))
@@ -2111,6 +2183,7 @@ def api_presentation():
     try:
         data = parse_listing_text(text)
         if not data: return jsonify({"ok": False, "reason": "parse_failed"}), 400
+        _log_activity(s["name"], s["role"], s["phone"], "יצירת מצגת", data.get("address", ""))
         logo_path = None
         for _lp in [Path("/app/logo.png"), Path("logo.png"), Path(__file__).parent / "logo.png"]:
             if _lp.exists(): logo_path = _lp; break
@@ -2165,7 +2238,7 @@ FAMILY_BOT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 <style>
 *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f3f4f6;color:#1f2937}
 .wrap{max-width:620px;margin:0 auto;padding:6px 14px 80px}
-.brand{text-align:center;margin:0 0 4px}.brand img{max-height:44px;max-width:60%;object-fit:contain}.brandtxt{font-size:20px;font-weight:bold}
+.brand{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;margin:2px 0 6px}.brand img{max-height:40px;max-width:62%;object-fit:contain}.brandtxt{font-size:20px;font-weight:bold}.brandname{font-size:15px;font-weight:bold;color:#0D1B2A}
 .card{background:#fff;border-radius:14px;padding:14px;margin:10px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 h1{font-size:20px;margin:6px 0}h2{font-size:16px;margin:0 0 10px}
 input,button,textarea{font-size:16px;padding:11px;border-radius:10px;border:1px solid #d1d5db;width:100%;font-family:inherit}
@@ -2183,7 +2256,7 @@ button.gold{background:#C9972A}button.sec{background:#e5e7eb;color:#111827}
 a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
 .cbtn{display:inline-block;background:#15803d;color:#fff;border-radius:8px;padding:2px 9px;font-size:12px;text-decoration:none}
 </style></head><body><div class="wrap">
-<div class="brand"><img src="/assets/logo" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div></div>
+<div class="brand"><img src="/assets/logo" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="card" id="s1">
@@ -2202,6 +2275,7 @@ a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
 </div>
 
 <div id="appui" class="hidden">
+  <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px"><button class="sec" style="width:auto;display:inline-block;padding:7px 16px;margin:0" onclick="tab('activity')">📣 עדכונים — מי משתמש במערכת</button></div>
   <div id="view"></div>
   <div class="tabs">
     <div class="tab on" data-t="calls" onclick="tab('calls')">📞 שיחות</div>
@@ -2230,43 +2304,58 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");tab("calls");}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn)bn.textContent=NAME?("שלום, "+NAME):"";if(ROLE=="admin")$("adminbar").classList.remove("hidden");tab("calls");}
 function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
-function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="present")viewPresent();else viewSearch(TABNOW);}
+function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="present")viewPresent();else if(TABNOW=="activity")viewActivity();else viewSearch(TABNOW);}
+function viewActivity(){
+  $("view").innerHTML='<div class=card><h2>📣 עדכונים — שימוש במערכת</h2><div class=muted id=acthdr>טוען…</div></div><div id=actlist></div>';
+  loadActivity();timer=setInterval(loadActivity,30000);
+}
+function loadActivity(){api("/api/activity").then(function(r){
+  if(!r.ok){if(r.auth===false){relogin();return;}$("actlist").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
+  $("acthdr").innerHTML="🟢 חי · "+r.items.length+" פעולות אחרונות";
+  $("actlist").innerHTML="<div class=card>"+(r.items.length?r.items.map(function(a){
+    var t=new Date(a.ts*1000);var ts=("0"+t.getDate()).slice(-2)+"/"+("0"+(t.getMonth()+1)).slice(-2)+" "+("0"+t.getHours()).slice(-2)+":"+("0"+t.getMinutes()).slice(-2);
+    var ph=a.phone?("0"+a.phone):"";var icon=a.action=="כניסה"?"🔑":"🔎";
+    return "<div class=row>"+icon+" <b>"+esc(a.name)+"</b>"+(ph?" <span class=muted>("+ph+")</span>":"")+" · "+esc(a.action)+(a.detail?": "+esc(a.detail):"")+"<div class=muted>"+ts+"</div></div>";
+  }).join(""):"<div class=muted>אין פעולות עדיין.</div>")+"</div>";
+}).catch(function(){});}
 
 function rangeChips(){return '<div class=chips id=rc><div class=chip data-r=day>היום</div><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><div class=chip data-r=all>הכל</div></div>';}
 function bindChips(reload){document.querySelectorAll("#rc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");RANGE=c.dataset.r;seenCall=0;seenSig=0;reload();};});}
-function inRange(ts){if(RANGE=="all")return true;var d=new Date();var start;if(RANGE=="day"){start=new Date();start.setHours(0,0,0,0);}else if(RANGE=="week"){start=new Date();start.setDate(d.getDate()-d.getDay());start.setHours(0,0,0,0);}else{start=new Date(d.getFullYear(),d.getMonth(),1);}return ts>=start.getTime()/1000;}
+function inRange(ts){var d=new Date();var start;if(RANGE=="day"){start=new Date();start.setHours(0,0,0,0);}else if(RANGE=="week"){start=new Date();start.setDate(d.getDate()-d.getDay());start.setHours(0,0,0,0);}else if(RANGE=="month"){start=new Date(d.getFullYear(),d.getMonth(),1);}else{start=new Date(d.getFullYear(),0,1);}return ts>=start.getTime()/1000;}
+function periodLabel(){return RANGE=="day"?"היום":(RANGE=="week"?"השבוע":(RANGE=="month"?"החודש":"מתחילת השנה"));}
 
+function scopeLabel(){return ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':(ROLE=="coordinator"?' <span class=badge>הסוכנים שלי</span>':' — '+esc(NAME));}
 function viewCalls(){
-  $("view").innerHTML='<div class=card><h2>📞 שיחות'+(ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':' — '+esc(NAME))+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=calls></div>';
+  $("view").innerHTML='<div class=card><h2>📞 שיחות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=calls></div>';
   bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,30000);
 }
 function viewSigs(){
-  $("view").innerHTML='<div class=card><h2>✍️ חתימות'+(ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':' — '+esc(NAME))+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
+  $("view").innerHTML='<div class=card><h2>✍️ חתימות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
   bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,30000);
 }
 function loadCalls(){api("/api/history").then(function(r){
   if(!r.ok){relogin();return;}
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
-  $("live").innerHTML="🟢 חי · מתעדכן כל 30 שניות · "+calls.length+" שיחות";
+  $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+" שיחות";
   var maxC=calls.length?calls[0].ts:0;
   $("calls").innerHTML="<div class=card>"+(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
     var callerLink=c.caller?("<a href='tel:"+(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
     var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener>🔁 חייג חזרה</a>"):"";
-    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(ROLE=="admin"&&c.agent?" · "+esc(c.agent):"")+cb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+"</div>";
+    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(ROLE!="agent"&&c.agent?" · "+esc(c.agent):"")+cb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+"</div>";
   }).join(""):"<div class=muted>אין שיחות בטווח.</div>")+"</div>";
   seenCall=maxC;
 }).catch(function(){});}
 function loadSigs(){api("/api/history").then(function(r){
   if(!r.ok){relogin();return;}
   var sigs=r.signatures.filter(function(g){return inRange(g.ts);});
-  $("live").innerHTML="🟢 חי · מתעדכן כל 30 שניות · "+sigs.length+" חתימות";
+  $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+sigs.length+" חתימות";
   var maxS=sigs.length?sigs[0].ts:0;
   $("sigs").innerHTML="<div class=card>"+(sigs.length?sigs.map(function(g){
     var isNew=seenSig&&g.ts>seenSig;var p=(g.pct!=null)?(" · "+g.pct+"%"):"";
-    return "<div class='row"+(isNew?" new":"")+"'><b>"+esc(g.type)+"</b>"+p+(g.client?" · "+esc(g.client):"")+"<div class=muted>"+esc(g.address)+(ROLE=="admin"&&g.agent?" · "+esc(g.agent):"")+" · "+g.time+"</div></div>";
+    return "<div class='row"+(isNew?" new":"")+"'><b>"+esc(g.type)+"</b>"+p+(g.client?" · "+esc(g.client):"")+"<div class=muted>"+esc(g.address)+(ROLE!="agent"&&g.agent?" · "+esc(g.agent):"")+" · "+g.time+"</div></div>";
   }).join(""):"<div class=muted>אין חתימות בטווח.</div>")+"</div>";
   seenSig=maxS;
 }).catch(function(){});}
