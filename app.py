@@ -2047,6 +2047,8 @@ def api_history():
         "client": (g.get("client_name", "") or "").strip(),
         "address": ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x]),
         "pct": _web_valid_pct(g.get("commission_pct")),
+        "link": (str(g.get("commission_pct")).strip()
+                 if isinstance(g.get("commission_pct"), str) and re.search(r"https?://", str(g.get("commission_pct"))) else ""),
         "agent": (g.get("agent", "") or "").strip(),
         "ts": _epoch_from_iso(g.get("received_at", "")),
     } for g in sigs[:500]]
@@ -2074,6 +2076,47 @@ def api_activity():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
     return jsonify({"ok": True, "items": list(reversed(_activity[-300:]))})
+
+def _report_wa_text(sm, label, frm, to):
+    c = sm["calls"]; sg = sm["sigs"]
+    L = [f"📊 *סיכום {label}* ({frm}–{to})", ""]
+    L.append(f"📞 שיחות: {c['total']} · נענו: {c['answered']} ({c['rate']}%)")
+    L.append(f"   לא נענו: {c['notAnswered']} (CC {c['cc']} · BUSY {c['busy']} · ללא מענה {c['noanswer']})")
+    L.append("")
+    L.append("👥 *מתווכים מובילים:*")
+    for i, a in enumerate(sm["agents"][:10], 1):
+        L.append(f"{i}. {a['name']}: {a['total']} שיחות ({a['answered']} נענו · {a['rate']}%)")
+    L.append("")
+    L.append(f"✍️ חתימות: {sg['total']} — קונים {sg['konim']} · בלעדיות {sg['bladiut']} · שכירויות {sg['skhirut']}")
+    L.append(f"🏘️ נכסים חדשים: {sm['props']['total']}")
+    L.append(f"🏆 בלעדיות חדשות: {len(sm['exclusives'])}")
+    L.append("")
+    L.append("_הופק מ-Family Bot 🏠_")
+    return "\n".join(L)
+
+@app.route("/api/report", methods=["GET"])
+def api_report():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
+    period = request.args.get("period", "month")
+    from datetime import datetime, timedelta, timezone
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Asia/Jerusalem"))
+    except Exception:
+        now = datetime.now(timezone.utc) + timedelta(hours=3)
+    if period == "week":
+        start = now - timedelta(days=(now.weekday() + 1) % 7)   # ראשון
+    elif period == "year":
+        start = now.replace(month=1, day=1)
+    else:
+        period = "month"; start = now.replace(day=1)
+    frm = start.strftime("%d/%m/%Y"); to = now.strftime("%d/%m/%Y")
+    sm = buildOrgSummary_(frm, to, True)
+    label = {"week": "השבוע", "month": "החודש", "year": "השנה"}[period]
+    return jsonify({"ok": True, "label": label, "from": frm, "to": to,
+                    "summary": sm, "wa_text": _report_wa_text(sm, label, frm, to)})
 
 # ── Property search ────────────────────────────────────────────────────────────
 @app.route("/api/search/properties", methods=["POST"])
@@ -2310,6 +2353,7 @@ button.gold{background:#C9972A}button.sec{background:#e5e7eb;color:#111827}
 a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
 .cbtn{display:inline-block;background:#15803d;color:#fff;border-radius:8px;padding:2px 9px;font-size:12px;text-decoration:none}
 .rchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.rchip{background:#eef2ff;color:#3730a3;border-radius:999px;padding:5px 11px;font-size:13px;cursor:pointer}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:6px}.stat{background:#f9fafb;border-radius:10px;padding:10px 6px;text-align:center}.stat .n{font-size:19px;font-weight:bold}.stat .l{font-size:11px;color:#6b7280;margin-top:2px}
 </style></head><body><div class="wrap">
 <div class="brand"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
@@ -2331,6 +2375,7 @@ a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
 
 <div id="appui" class="hidden">
   <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px">
+    <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('activity')">📣 עדכונים</button>
     <select id="impsel" onchange="setImp(this.value)" style="width:auto;display:inline-block;padding:8px 10px;margin:0 0 6px;border-radius:10px;border:1px solid #d1d5db"><option value="">👁 צפה כסוכן…</option></select>
   </div>
@@ -2365,7 +2410,26 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
 function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn)bn.textContent=NAME?("שלום, "+NAME):"";if(ROLE=="admin"){$("adminbar").classList.remove("hidden");loadAgents();}tab("calls");}
 function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
-function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="present")viewPresent();else if(TABNOW=="activity")viewActivity();else viewSearch(TABNOW);}
+function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="present")viewPresent();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else viewSearch(TABNOW);}
+var REPTEXT="";
+function kpi(n,l){return "<div class=stat><div class=n>"+n+"</div><div class=l>"+l+"</div></div>";}
+function viewReport(){
+  $("view").innerHTML='<div class=card><h2>📊 דוחות מנהל</h2><div class=chips id=rpc><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><div class=chip data-r=year>השנה</div></div></div><div id=rep></div>';
+  document.querySelectorAll("#rpc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");loadReport(c.dataset.r);};});
+  loadReport("month");
+}
+function loadReport(p){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p).then(function(r){
+  if(!r.ok){if(r.auth===false){relogin();return;}$("rep").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
+  REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;
+  var h="<div class=card><div class=muted>"+esc(r.label)+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+kpi(sg.total,"חתימות")+kpi(sm.exclusives.length,"בלעדיות")+kpi(sm.props.total,"נכסים")+"</div></div>";
+  var ag="<table><tr><th style=text-align:start>מתווך</th><th>שיחות</th><th>נענו</th><th>%</th></tr>";sm.agents.slice(0,10).forEach(function(a,i){ag+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center>"+a.total+"</td><td style=text-align:center>"+a.answered+"</td><td style=text-align:center>"+a.rate+"%</td></tr>";});ag+="</table>";
+  h+="<div class=card><h2>👥 מתווכים מובילים</h2>"+ag+"</div>";
+  h+="<div class=card><h2>✍️ חתימות</h2><div class=grid>"+kpi(sg.konim+" ("+sg.pctK+"%)","קונים")+kpi(sg.bladiut+" ("+sg.pctB+"%)","בלעדיות")+kpi(sg.skhirut+" ("+sg.pctS+"%)","שכירויות")+kpi(sg.total,"סה״כ")+"</div></div>";
+  h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
+  $("rep").innerHTML=h;
+}).catch(function(){$("rep").innerHTML="<div class=card err>שגיאה</div>";});}
+function exportWa(){window.open("https://wa.me/?text="+encodeURIComponent(REPTEXT),"_blank");}
+function copyRep(){try{navigator.clipboard.writeText(REPTEXT).then(function(){alert("הטקסט הועתק");});}catch(e){alert("העתקה נכשלה");}}
 function viewActivity(){
   $("view").innerHTML='<div class=card><h2>📣 עדכונים — שימוש במערכת</h2><div class=muted id=acthdr>טוען…</div></div><div id=actlist></div>';
   loadActivity();timer=setInterval(loadActivity,30000);
@@ -2417,7 +2481,7 @@ function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")
   var maxS=sigs.length?sigs[0].ts:0;
   $("sigs").innerHTML="<div class=card>"+(sigs.length?sigs.map(function(g){
     var isNew=seenSig&&g.ts>seenSig;var p=(g.pct!=null)?(" · "+g.pct+"%"):"";
-    return "<div class='row"+(isNew?" new":"")+"'><b>"+esc(g.type)+"</b>"+p+(g.client?" · "+esc(g.client):"")+"<div class=muted>"+esc(g.address)+(isMulti()&&g.agent?" · "+esc(g.agent):"")+" · "+g.time+"</div></div>";
+    return "<div class='row"+(isNew?" new":"")+"'><b>"+esc(g.type)+"</b>"+p+(g.client?" · "+esc(g.client):"")+"<div class=muted>"+esc(g.address)+(isMulti()&&g.agent?" · "+esc(g.agent):"")+" · "+g.time+"</div>"+(g.link?"<div><a class=cbtn style=background:#0D1B2A href='"+g.link+"' target=_blank rel=noopener>📄 קישור לחתימה</a></div>":"")+"</div>";
   }).join(""):"<div class=muted>אין חתימות בטווח.</div>")+"</div>";
   seenSig=maxS;
 }).catch(function(){});}
