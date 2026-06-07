@@ -2159,10 +2159,12 @@ def api_search_buyers():
                 matches = candidates[:10]
         out = []
         for c in matches:
-            phone = re.sub(r"\D", "", str(c.get("caller_phone", "")))
+            disp, tel = _il_phone(c.get("caller_phone", ""))
             out.append({
-                "phone": phone,
-                "wa": _wa_phone(phone),
+                "phone": disp,
+                "tel": tel,
+                "wa": _wa_phone(c.get("caller_phone", "")),
+                "agent": (c.get("agent", "") or "").strip(),
                 "date": _fmt_il_dt(c.get("received_at", "")),
                 "budget": format_price_il(extract_budget_from_transcript(c.get("transcript_summary", ""))),
                 "summary": re.sub(r"https?://\S+", "", str(c.get("transcript_summary", ""))).strip(),
@@ -2221,8 +2223,8 @@ def family_bot_app():
 
 @app.route("/assets/logo", methods=["GET"])
 def family_logo():
-    names = ["family-logo.png.jpg", "family-logo.png", "family-logo.jpg", "family-logo.jpeg",
-             "family-logo.webp", "logo.png", "logo.jpg"]
+    names = ["family-logo.jpg", "family-logo.jpeg", "family-logo.png", "family-logo.webp",
+             "family-logo.png.jpg", "logo.png", "logo.jpg"]
     dirs = [Path(__file__).parent, Path("."), Path("/app")]
     for d in dirs:
         for n in names:
@@ -2230,7 +2232,9 @@ def family_logo():
             if p.exists():
                 ext = p.suffix.lower()
                 mt = "image/jpeg" if ext in (".jpg", ".jpeg") else ("image/webp" if ext == ".webp" else "image/png")
-                return send_file(str(p), mimetype=mt)
+                resp = send_file(str(p), mimetype=mt, max_age=0)
+                resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                return resp
     return ("", 404)
 
 FAMILY_BOT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
@@ -2245,7 +2249,7 @@ input,button,textarea{font-size:16px;padding:11px;border-radius:10px;border:1px 
 button{background:#0D1B2A;color:#fff;border:none;margin-top:8px;font-weight:bold;cursor:pointer}
 button.gold{background:#C9972A}button.sec{background:#e5e7eb;color:#111827}
 .tabs{position:fixed;bottom:0;left:0;right:0;background:#fff;display:flex;border-top:1px solid #e5e7eb;max-width:620px;margin:0 auto}
-.tab{flex:1;text-align:center;padding:10px 1px;font-size:14px;line-height:1.25;color:#6b7280;cursor:pointer}
+.tab{flex:1;text-align:center;padding:9px 1px;font-size:12px;line-height:1.2;color:#6b7280;cursor:pointer}
 .tab.on{color:#0D1B2A;font-weight:bold;border-top:2px solid #C9972A;margin-top:-1px}
 .chips{display:flex;gap:6px;margin:4px 0}.chip{flex:1;text-align:center;padding:8px;border-radius:10px;background:#e5e7eb;cursor:pointer;font-size:13px}.chip.on{background:#0D1B2A;color:#fff}
 .row{border-bottom:1px solid #f0f0f0;padding:9px 0;font-size:14px}.row:last-child{border:none}
@@ -2256,7 +2260,7 @@ button.gold{background:#C9972A}button.sec{background:#e5e7eb;color:#111827}
 a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
 .cbtn{display:inline-block;background:#15803d;color:#fff;border-radius:8px;padding:2px 9px;font-size:12px;text-decoration:none}
 </style></head><body><div class="wrap">
-<div class="brand"><img src="/assets/logo" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="card" id="s1">
@@ -2278,12 +2282,12 @@ a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
   <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px"><button class="sec" style="width:auto;display:inline-block;padding:7px 16px;margin:0" onclick="tab('activity')">📣 עדכונים — מי משתמש במערכת</button></div>
   <div id="view"></div>
   <div class="tabs">
-    <div class="tab on" data-t="calls" onclick="tab('calls')">📞 שיחות</div>
-    <div class="tab" data-t="sigs" onclick="tab('sigs')">✍️ חתימות</div>
+    <div class="tab on" data-t="calls" onclick="tab('calls')">📞 שיחות שלי</div>
+    <div class="tab" data-t="buyers" onclick="tab('buyers')">👤 הקונים שלי</div>
+    <div class="tab" data-t="sigs" onclick="tab('sigs')">✍️ חתימות שלי</div>
+    <div class="tab" data-t="props" onclick="tab('props')">🏢 נכסים במשרד</div>
+    <div class="tab" data-t="excl" onclick="tab('excl')">🏘️ נכסים בקריות</div>
     <div class="tab" data-t="present" onclick="tab('present')">📄 מצגת</div>
-    <div class="tab" data-t="props" onclick="tab('props')">🔎 נכסים</div>
-    <div class="tab" data-t="excl" onclick="tab('excl')">🏆 בלעדיות</div>
-    <div class="tab" data-t="buyers" onclick="tab('buyers')">👤 קונים</div>
   </div>
 </div>
 
@@ -2381,9 +2385,9 @@ function makePresentation(){
 }
 
 function viewSearch(kind){
-  var cfg={props:{t:"🔎 מציאת נכסים",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
-           excl:{t:"🏆 מציאת בלעדיות",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
-           buyers:{t:"👤 מציאת קונים",ph:"4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
+  var cfg={props:{t:"🏢 נכסים במשרד",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
+           excl:{t:"🏘️ נכסים בקריות",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
+           buyers:{t:"👤 הקונים שלי",ph:"4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
   $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button><div id=sres></div></div>';
 }
 function doSearch(ep,kind){
@@ -2402,7 +2406,9 @@ function card(kind,x){
     (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+"</div>";}
   if(kind=="excl"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
     (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price,x.office,x.date].filter(Boolean).map(esc).join(" · ")+"</div></div>";}
-  return "<div class=row>📞 <b>"+esc(x.phone||"-")+"</b>"+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
+  var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"-";
+  return "<div class=row>📞 <b>"+ph+"</b>"+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
+    (x.agent?" · 👤 קיבל: "+esc(x.agent):"")+
     "<div class=muted>"+[x.date,x.budget].filter(Boolean).map(esc).join(" · ")+"</div>"+(x.summary?"<div>"+esc(x.summary)+"</div>":"")+"</div>";
 }
 function relogin(){try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}
