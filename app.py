@@ -1896,6 +1896,11 @@ def web_phone_name_map():
     _web_phonemap["data"] = m; _web_phonemap["ts"] = time.time()
     return m
 
+def _phones_for_name(name):
+    nn = _norm_name(name)
+    if not nn: return set()
+    return set(p for p, n in web_phone_name_map().items() if _norm_name(n) == nn)
+
 def _parse_coordinators():
     """COORDINATORS env (JSON): {"<טלפון מתאמת>":{"name":"...","agents":["<טלפון סוכן>",...]}}"""
     raw = os.environ.get("COORDINATORS", "").strip()
@@ -1940,6 +1945,16 @@ def _log_activity(name, role, phone, action, detail=""):
     if len(_activity) > 800:
         del _activity[:len(_activity) - 800]
 
+# --- recent searches per user (phone -> {kind: [queries]}) ---
+_recent = {}
+def _push_recent(phone, kind, q):
+    q = (q or "").strip()
+    if not q or not phone: return
+    lst = _recent.setdefault(phone, {}).setdefault(kind, [])
+    lst[:] = [x for x in lst if x != q]
+    lst.insert(0, q)
+    del lst[8:]
+
 # ── Auth endpoints ─────────────────────────────────────────────────────────────
 @app.route("/api/auth/request", methods=["POST"])
 def api_auth_request():
@@ -1981,11 +1996,12 @@ def api_history():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     eff = s
-    if s["role"] == "admin":                       # "צפה כסוכן" — למנהל בלבד
-        ap = _last9(request.args.get("as", ""))
-        nm = web_phone_name_map().get(ap, "") if ap else ""
-        if ap and nm:
-            eff = {"role": "agent", "phone": ap, "name": nm}
+    if s["role"] == "admin":                       # "צפה כסוכן" — למנהל בלבד (לפי שם)
+        as_name = request.args.get("as", "").strip()
+        if as_name:
+            phones = _phones_for_name(as_name)
+            if phones:
+                eff = {"role": "agent", "name": as_name, "phones": phones}
     calls = web_fetch_raw("שיחות"); sigs = web_fetch_raw("חתימות")
     if eff["role"] == "coordinator":
         agset = set(eff.get("agents") or [])
@@ -1997,8 +2013,13 @@ def api_history():
         calls = [c for c in calls if _last9(c.get("agent_phone", "")) in agset]
         sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) in names]
     elif eff["role"] != "admin":
-        ph = eff["phone"]; nm = _norm_name(eff["name"])
-        calls = [c for c in calls if _last9(c.get("agent_phone", "")) == ph]
+        nm = _norm_name(eff["name"])
+        if eff.get("phones"):
+            pset = eff["phones"]
+            calls = [c for c in calls if _last9(c.get("agent_phone", "")) in pset]
+        else:
+            ph = eff["phone"]
+            calls = [c for c in calls if _last9(c.get("agent_phone", "")) == ph]
         sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) == nm]
     calls.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
     sigs.sort(key=lambda g: _epoch_from_iso(g.get("received_at", "")), reverse=True)
@@ -2032,14 +2053,20 @@ def api_history():
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"], "calls": call_out, "signatures": sig_out})
 
 # ── Activity log (admin only) ──────────────────────────────────────────────────
+@app.route("/api/recent", methods=["GET"])
+def api_recent():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    kind = request.args.get("kind", "")
+    return jsonify({"ok": True, "items": _recent.get(s["phone"], {}).get(kind, [])})
+
 @app.route("/api/agents", methods=["GET"])
 def api_agents():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
-    m = web_phone_name_map()
-    agents = sorted(([{"phone": p, "name": n} for p, n in m.items()]), key=lambda x: x["name"])
-    return jsonify({"ok": True, "agents": agents})
+    names = sorted(set(_norm_name(n) for n in web_phone_name_map().values() if _norm_name(n)))
+    return jsonify({"ok": True, "agents": [{"name": n} for n in names]})
 
 @app.route("/api/activity", methods=["GET"])
 def api_activity():
@@ -2056,6 +2083,7 @@ def api_search_properties():
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
         _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכסים", q)
+        _push_recent(s["phone"], "props", q)
         parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
         matches = search_listings_in_sheet(parsed) if parsed else []
         phones = fetch_agents_phones()
@@ -2105,6 +2133,7 @@ def api_search_exclusives():
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
         _log_activity(s["name"], s["role"], s["phone"], "חיפוש בלעדיות", q)
+        _push_recent(s["phone"], "excl", q)
         parsed = parse_exclusivity_search_query(q if q.startswith("מחפש") else ("מחפש בלעדיות " + q)) or {}
         parsed["budget_max"] = _web_num(parsed.get("budget_max"))   # מנע TypeError בכפל
         parsed["rooms"]      = _web_num(parsed.get("rooms"))
@@ -2125,6 +2154,7 @@ def api_search_exclusives():
             "price": str(r.get("price", "") or "").strip(),
             "office": str(r.get("office", "") or "").strip(),
             "date": str(r.get("received_at", "") or "")[:10],
+            "link": str(r.get("link", "") or "").strip(),
         } for sc, r in matches]
         return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "results": out})
     except Exception as e:
@@ -2141,9 +2171,11 @@ def api_search_buyers():
         _log_activity(s["name"], s["role"], s["phone"], "חיפוש קונים", q)
         parsed = parse_buyer_search_query(q if q.startswith("מחפש") else ("מחפש קונה " + q)) or {}
         # candidates = answered calls (agent → his own; admin → all)
-        as_phone = _last9((request.get_json(silent=True) or {}).get("as", "")) if s["role"] == "admin" else ""
-        if as_phone and web_phone_name_map().get(as_phone):
-            candidates = fetch_calls_for_agent(as_phone)   # "צפה כסוכן"
+        as_name = (request.get_json(silent=True) or {}).get("as", "").strip() if s["role"] == "admin" else ""
+        as_pset = _phones_for_name(as_name) if as_name else set()
+        if as_pset:
+            candidates = [c for c in web_fetch_raw("שיחות")
+                          if str(c.get("status", "")).upper() == "ANSWER" and _last9(c.get("agent_phone", "")) in as_pset]
         elif s["role"] == "admin":
             candidates = [c for c in web_fetch_raw("שיחות") if str(c.get("status", "")).upper() == "ANSWER"]
         elif s["role"] == "coordinator":
@@ -2277,6 +2309,7 @@ button.gold{background:#C9972A}button.sec{background:#e5e7eb;color:#111827}
 .score{float:left;background:#dcfce7;color:#166534;border-radius:8px;padding:1px 7px;font-size:12px}
 a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
 .cbtn{display:inline-block;background:#15803d;color:#fff;border-radius:8px;padding:2px 9px;font-size:12px;text-decoration:none}
+.rchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.rchip{background:#eef2ff;color:#3730a3;border-radius:999px;padding:5px 11px;font-size:13px;cursor:pointer}
 </style></head><body><div class="wrap">
 <div class="brand"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
@@ -2313,7 +2346,7 @@ a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
 </div>
 
 <script>
-var TOKEN=null,ROLE=null,NAME=null,TABNOW="calls",RANGE="month",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null;
+var TOKEN=null,ROLE=null,NAME=null,TABNOW="calls",RANGE="month",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null;
 function $(id){return document.getElementById(id);}
 function show(id){$("s1").classList.add("hidden");$("s2").classList.add("hidden");$(id).classList.remove("hidden");}
 function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};if(TOKEN)opt.headers["X-Auth-Token"]=TOKEN;return fetch(path,opt).then(function(r){return r.json();});}
@@ -2355,7 +2388,7 @@ function periodLabel(){return RANGE=="day"?"היום":(RANGE=="week"?"השבוע
 function isMulti(){return (ROLE=="admin"||ROLE=="coordinator")&&!IMP;}
 function scopeLabel(){if(IMP)return ' <span class=badge>👁 צופה כ: '+esc(IMPNAME)+'</span>';return ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':(ROLE=="coordinator"?' <span class=badge>הסוכנים שלי</span>':' — '+esc(NAME));}
 function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}render();}
-function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;var sel=$("impsel");r.agents.forEach(function(a){var o=document.createElement("option");o.value=a.phone;o.textContent=a.name;sel.appendChild(o);});}).catch(function(){});}
+function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;var sel=$("impsel");r.agents.forEach(function(a){var o=document.createElement("option");o.value=a.name;o.textContent=a.name;sel.appendChild(o);});}).catch(function(){});}
 function viewCalls(){
   $("view").innerHTML='<div class=card><h2>📞 שיחות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=calls></div>';
   bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,30000);
@@ -2413,8 +2446,17 @@ function viewSearch(kind){
   var cfg={props:{t:"🏢 נכסים במשרד",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
            excl:{t:"🏘️ נכסים בקריות",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
            buyers:{t:"👤 הקונים שלי",ph:"4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
-  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button><div id=sres></div></div>';
+  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button><div id=recent></div><div id=sres></div></div>';
+  CUR_EP=cfg.ep;CUR_KIND=kind;
+  if(kind=="props"||kind=="excl")loadRecent(kind);
 }
+function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
+  var box=$("recent");if(!box)return;
+  if(!r||!r.ok||!r.items.length){box.innerHTML="";return;}
+  box.innerHTML="<div class=muted style=margin:6px_0>חיפושים אחרונים:</div><div id=rchips class=rchips></div>";
+  var c=$("rchips");
+  r.items.forEach(function(q){var sp=document.createElement("span");sp.className="rchip";sp.textContent=q;sp.onclick=function(){$("sq").value=q;doSearch(CUR_EP,CUR_KIND);};c.appendChild(sp);});
+}).catch(function(){});}
 function doSearch(ep,kind){
   var q=$("sq").value.trim();$("sres").innerHTML="<div class=muted>מחפש… ⏳</div>";
   api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:IMP||""})}).then(function(r){
@@ -2423,6 +2465,7 @@ function doSearch(ep,kind){
     var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
     h+=r.results.map(function(x){return card(kind,x);}).join("");
     $("sres").innerHTML=h;
+    if(kind=="props"||kind=="excl")loadRecent(kind);
   }).catch(function(){$("sres").innerHTML="<span class=err>שגיאה</span>";});
 }
 function card(kind,x){
@@ -2430,7 +2473,8 @@ function card(kind,x){
     "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price].filter(Boolean).join(" · ")+"</div>"+
     (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+"</div>";}
   if(kind=="excl"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
-    (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price,x.office,x.date].filter(Boolean).map(esc).join(" · ")+"</div></div>";}
+    (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price,x.office,x.date].filter(Boolean).map(esc).join(" · ")+"</div>"+
+    (x.link?"<div><a class=cbtn style=background:#0D1B2A href='"+x.link+"' target=_blank rel=noopener>🔗 נדל\"ן וואן</a></div>":"")+"</div>";}
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"-";
   return "<div class=row>📞 <b>"+ph+"</b>"+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
     (x.agent?" · 👤 קיבל: "+esc(x.agent):"")+
