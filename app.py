@@ -1827,6 +1827,14 @@ def _wa_phone(p):
     if not d: return ""
     return d if d.startswith("972") else "972" + d.lstrip("0")
 
+def _il_phone(p):
+    """מחזיר (תצוגה מקומית 05X..., קישור חיוג +972...)"""
+    d = re.sub(r"\D", "", str(p or ""))
+    if not d: return ("", "")
+    if d.startswith("972"): d = d[3:]
+    d = d.lstrip("0")
+    return ("0" + d, "+972" + d)
+
 def _norm_name(s):
     return re.sub(r"\s+", " ", str(s or "")).strip()
 
@@ -1949,10 +1957,12 @@ def api_history():
         m = re.search(r"https?://\S+", raw)
         callback = m.group(0) if (m and ("maskyoo" in raw or "click2call" in raw)) else ""
         text = re.sub(r"https?://\S+", "", raw).strip()
+        caller_disp, caller_tel = _il_phone(c.get("caller_phone", ""))
         call_out.append({
             "time": _fmt_il_dt(c.get("received_at", "")),
             "status": str(c.get("status", "")).upper(),
-            "caller": re.sub(r"\D", "", str(c.get("caller_phone", ""))),
+            "caller": caller_disp,
+            "tel": caller_tel,
             "duration": c.get("duration_sec", ""),
             "agent": (c.get("agent", "") or "").strip(),
             "summary": text,
@@ -1975,101 +1985,120 @@ def api_history():
 def api_search_properties():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
-    q = (request.get_json(silent=True) or {}).get("q", "").strip()
-    parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
-    matches = search_listings_in_sheet(parsed) if parsed else []
-    phones = fetch_agents_phones()
-    out = []
-    for score, row, flex in matches:
-        ag = (row.get("סוכן 1", "") or "").strip()
-        out.append({
-            "score": min(100, int(score)),
-            "type": (row.get("סוג נכס", "") or "").strip(),
-            "city": (row.get("עיר / ישוב", "") or "").strip(),
-            "neighborhood": (row.get("שכונה", "") or "").strip(),
-            "address": (f"{row.get('כתובת','')} {row.get('מספר בית','')}").strip(),
-            "rooms": (row.get("חדרים", "") or "").strip(),
-            "size": (row.get('מ"ר', "") or row.get("מ״ר", "") or "").strip(),
-            "floor": (row.get("קומה", "") or "").strip(),
-            "price": (row.get("מחיר", "") or "").strip(),
-            "agent": ag,
-            "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
-        })
-    return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "results": out})
+    try:
+        q = (request.get_json(silent=True) or {}).get("q", "").strip()
+        parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
+        matches = search_listings_in_sheet(parsed) if parsed else []
+        phones = fetch_agents_phones()
+        out = []
+        for score, row, flex in matches:
+            ag = (row.get("סוכן 1", "") or "").strip()
+            out.append({
+                "score": min(100, int(score)),
+                "type": (row.get("סוג נכס", "") or "").strip(),
+                "city": (row.get("עיר / ישוב", "") or "").strip(),
+                "neighborhood": (row.get("שכונה", "") or "").strip(),
+                "address": (f"{row.get('כתובת','')} {row.get('מספר בית','')}").strip(),
+                "rooms": (row.get("חדרים", "") or "").strip(),
+                "size": (row.get('מ"ר', "") or row.get("מ״ר", "") or "").strip(),
+                "floor": (row.get("קומה", "") or "").strip(),
+                "price": (row.get("מחיר", "") or "").strip(),
+                "agent": ag,
+                "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
+            })
+        return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "results": out})
+    except Exception as e:
+        log.error(f"properties search error: {e}", exc_info=True)
+        return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
 # ── Exclusivity search ─────────────────────────────────────────────────────────
+def _web_num(v):
+    if v is None or v == "": return None
+    try: return float(v)
+    except: return None
+
 @app.route("/api/search/exclusives", methods=["POST"])
 def api_search_exclusives():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
-    q = (request.get_json(silent=True) or {}).get("q", "").strip()
-    parsed = parse_exclusivity_search_query(q if q.startswith("מחפש") else ("מחפש בלעדיות " + q))
-    rows = fetch_external_exclusives()
-    if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
-        rows = sorted(rows, key=lambda r: r.get("received_at", ""), reverse=True)
-        matches = [(1, r) for r in rows[:15]]
-    else:
-        scored = [(score_exclusivity_match(r, parsed), r) for r in rows]
-        scored = [(sc, r) for sc, r in scored if sc > 0]
-        scored.sort(key=lambda x: -x[0])
-        matches = scored[:15]
-    out = [{
-        "score": min(100, int(sc)),
-        "street": (r.get("street", "") or "").strip(),
-        "dest": (r.get("dest", "") or "").strip(),
-        "desc": (r.get("desti", "") or "").strip(),
-        "price": (r.get("price", "") or "").strip(),
-        "office": (r.get("office", "") or "").strip(),
-        "date": (r.get("received_at", "") or "")[:10],
-    } for sc, r in matches]
-    return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "results": out})
+    try:
+        q = (request.get_json(silent=True) or {}).get("q", "").strip()
+        parsed = parse_exclusivity_search_query(q if q.startswith("מחפש") else ("מחפש בלעדיות " + q)) or {}
+        parsed["budget_max"] = _web_num(parsed.get("budget_max"))   # מנע TypeError בכפל
+        parsed["rooms"]      = _web_num(parsed.get("rooms"))
+        rows = fetch_external_exclusives()
+        if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
+            rows = sorted(rows, key=lambda r: r.get("received_at", ""), reverse=True)
+            matches = [(1, r) for r in rows[:15]]
+        else:
+            scored = [(score_exclusivity_match(r, parsed), r) for r in rows]
+            scored = [(sc, r) for sc, r in scored if sc > 0]
+            scored.sort(key=lambda x: -x[0])
+            matches = scored[:15]
+        out = [{
+            "score": min(100, int(sc)),
+            "street": (r.get("street", "") or "").strip(),
+            "dest": (r.get("dest", "") or "").strip(),
+            "desc": (r.get("desti", "") or "").strip(),
+            "price": (r.get("price", "") or "").strip(),
+            "office": (r.get("office", "") or "").strip(),
+            "date": (r.get("received_at", "") or "")[:10],
+        } for sc, r in matches]
+        return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "results": out})
+    except Exception as e:
+        log.error(f"exclusives search error: {e}", exc_info=True)
+        return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
 # ── Buyer search (in agent's own answered calls) ───────────────────────────────
 @app.route("/api/search/buyers", methods=["POST"])
 def api_search_buyers():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
-    q = (request.get_json(silent=True) or {}).get("q", "").strip()
-    parsed = parse_buyer_search_query(q if q.startswith("מחפש") else ("מחפש קונה " + q))
-    # candidates = answered calls (agent → his own; admin → all)
-    if s["role"] == "admin":
-        candidates = [c for c in web_fetch_raw("שיחות") if str(c.get("status", "")).upper() == "ANSWER"]
-    else:
-        candidates = fetch_calls_for_agent(s["phone"])
-    target_budget = parsed.get("budget")
-    if target_budget:
-        filt = []
-        for c in candidates:
-            cb = extract_budget_from_transcript(c.get("transcript_summary", ""))
-            if cb is None: continue
-            if abs(cb - target_budget) / target_budget <= 0.30: filt.append(c)
-        candidates = filt
-    keywords = parsed.get("keywords") or []
-    if not keywords:
-        candidates.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
-        matches = candidates[:10]
-    else:
-        scored = []
-        for c in candidates:
-            t = str(c.get("transcript_summary", "")).lower()
-            sc = sum(1 for k in keywords if str(k).strip().lower() in t)
-            if sc > 0: scored.append((sc, c))
-        scored.sort(key=lambda x: (-x[0], -_epoch_from_iso(x[1].get("received_at", ""))))
-        matches = [c for _, c in scored[:10]]
-        if not matches:
+    try:
+        q = (request.get_json(silent=True) or {}).get("q", "").strip()
+        parsed = parse_buyer_search_query(q if q.startswith("מחפש") else ("מחפש קונה " + q)) or {}
+        # candidates = answered calls (agent → his own; admin → all)
+        if s["role"] == "admin":
+            candidates = [c for c in web_fetch_raw("שיחות") if str(c.get("status", "")).upper() == "ANSWER"]
+        else:
+            candidates = fetch_calls_for_agent(s["phone"])
+        target_budget = _web_num(parsed.get("budget"))
+        if target_budget:
+            filt = []
+            for c in candidates:
+                cb = extract_budget_from_transcript(c.get("transcript_summary", ""))
+                if cb is None: continue
+                if abs(cb - target_budget) / target_budget <= 0.30: filt.append(c)
+            candidates = filt
+        keywords = parsed.get("keywords") or []
+        if not keywords:
             candidates.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
             matches = candidates[:10]
-    out = []
-    for c in matches:
-        phone = re.sub(r"\D", "", str(c.get("caller_phone", "")))
-        out.append({
-            "phone": phone,
-            "wa": _wa_phone(phone),
-            "date": _fmt_il_dt(c.get("received_at", "")),
-            "budget": format_price_il(extract_budget_from_transcript(c.get("transcript_summary", ""))),
-            "summary": re.sub(r"https?://\S+", "", str(c.get("transcript_summary", ""))).strip(),
-        })
-    return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "results": out})
+        else:
+            scored = []
+            for c in candidates:
+                t = str(c.get("transcript_summary", "")).lower()
+                sc = sum(1 for k in keywords if str(k).strip().lower() in t)
+                if sc > 0: scored.append((sc, c))
+            scored.sort(key=lambda x: (-x[0], -_epoch_from_iso(x[1].get("received_at", ""))))
+            matches = [c for _, c in scored[:10]]
+            if not matches:
+                candidates.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
+                matches = candidates[:10]
+        out = []
+        for c in matches:
+            phone = re.sub(r"\D", "", str(c.get("caller_phone", "")))
+            out.append({
+                "phone": phone,
+                "wa": _wa_phone(phone),
+                "date": _fmt_il_dt(c.get("received_at", "")),
+                "budget": format_price_il(extract_budget_from_transcript(c.get("transcript_summary", ""))),
+                "summary": re.sub(r"https?://\S+", "", str(c.get("transcript_summary", ""))).strip(),
+            })
+        return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "results": out})
+    except Exception as e:
+        log.error(f"buyers search error: {e}", exc_info=True)
+        return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
 # ── Presentation (PDF) ─────────────────────────────────────────────────────────
 @app.route("/api/presentation", methods=["POST"])
@@ -2135,15 +2164,15 @@ FAMILY_BOT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Family Bot</title>
 <style>
 *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f3f4f6;color:#1f2937}
-.wrap{max-width:620px;margin:0 auto;padding:14px;padding-bottom:80px}
-.brand{text-align:center;margin:4px 0 6px}.brand img{max-height:72px;max-width:78%}.brandtxt{font-size:20px;font-weight:bold}
+.wrap{max-width:620px;margin:0 auto;padding:6px 14px 80px}
+.brand{text-align:center;margin:0 0 4px}.brand img{max-height:44px;max-width:60%;object-fit:contain}.brandtxt{font-size:20px;font-weight:bold}
 .card{background:#fff;border-radius:14px;padding:14px;margin:10px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 h1{font-size:20px;margin:6px 0}h2{font-size:16px;margin:0 0 10px}
 input,button,textarea{font-size:16px;padding:11px;border-radius:10px;border:1px solid #d1d5db;width:100%;font-family:inherit}
 button{background:#0D1B2A;color:#fff;border:none;margin-top:8px;font-weight:bold;cursor:pointer}
 button.gold{background:#C9972A}button.sec{background:#e5e7eb;color:#111827}
 .tabs{position:fixed;bottom:0;left:0;right:0;background:#fff;display:flex;border-top:1px solid #e5e7eb;max-width:620px;margin:0 auto}
-.tab{flex:1;text-align:center;padding:9px 2px;font-size:11px;line-height:1.3;color:#6b7280;cursor:pointer}
+.tab{flex:1;text-align:center;padding:10px 1px;font-size:14px;line-height:1.25;color:#6b7280;cursor:pointer}
 .tab.on{color:#0D1B2A;font-weight:bold;border-top:2px solid #C9972A;margin-top:-1px}
 .chips{display:flex;gap:6px;margin:4px 0}.chip{flex:1;text-align:center;padding:8px;border-radius:10px;background:#e5e7eb;cursor:pointer;font-size:13px}.chip.on{background:#0D1B2A;color:#fff}
 .row{border-bottom:1px solid #f0f0f0;padding:9px 0;font-size:14px}.row:last-child{border:none}
@@ -2165,7 +2194,7 @@ a{color:#0D1B2A}.err{color:#b91c1c}.hidden{display:none}
   </div>
   <div class="card hidden" id="s2">
     <label class="muted">הזן את הקוד מה-SMS</label>
-    <input id="code" type="tel" inputmode="numeric" placeholder="______">
+    <input id="code" type="tel" inputmode="numeric" autocomplete="one-time-code" placeholder="______">
     <button onclick="verify()">כניסה</button>
     <button class="sec" onclick="show('s1')">החלף מספר</button>
     <div id="m2" class="muted"></div>
@@ -2224,7 +2253,7 @@ function loadCalls(){api("/api/history").then(function(r){
   var maxC=calls.length?calls[0].ts:0;
   $("calls").innerHTML="<div class=card>"+(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
-    var callerLink=c.caller?("<a href='tel:"+c.caller+"'>"+c.caller+"</a>"):"-";
+    var callerLink=c.caller?("<a href='tel:"+(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
     var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener>🔁 חייג חזרה</a>"):"";
     return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(ROLE=="admin"&&c.agent?" · "+esc(c.agent):"")+cb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+"</div>";
   }).join(""):"<div class=muted>אין שיחות בטווח.</div>")+"</div>";
@@ -2271,7 +2300,7 @@ function viewSearch(kind){
 function doSearch(ep,kind){
   var q=$("sq").value.trim();$("sres").innerHTML="<div class=muted>מחפש… ⏳</div>";
   api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q})}).then(function(r){
-    if(!r.ok){relogin();return;}
+    if(!r.ok){if(r.auth===false){relogin();return;}$("sres").innerHTML="<span class=err>שגיאה בשרת: "+esc(r.reason||"")+"</span>";return;}
     if(!r.results.length){$("sres").innerHTML="<div class=muted>לא נמצאו תוצאות. נסה עם פחות פרטים.</div>";return;}
     var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
     h+=r.results.map(function(x){return card(kind,x);}).join("");
