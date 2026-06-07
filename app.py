@@ -2077,6 +2077,53 @@ def api_activity():
     if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
     return jsonify({"ok": True, "items": list(reversed(_activity[-300:]))})
 
+def _web_org_summary(frm, to):
+    calls = web_fetch_raw("שיחות", frm, to)
+    sigs  = web_fetch_raw("חתימות", frm, to)
+    props = web_fetch_raw("נכסים", frm, to)
+    answered = cc = busy = 0; by_agent = {}
+    for c in calls:
+        st = str(c.get("status", "")).upper().strip()
+        if st == "ANSWER": answered += 1
+        elif st == "CALLER_CANCEL": cc += 1
+        elif st == "BUSY": busy += 1
+        ag = (c.get("agent", "") or "").strip()
+        if ag:
+            d = by_agent.setdefault(ag, {"total": 0, "answered": 0}); d["total"] += 1
+            if st == "ANSWER": d["answered"] += 1
+    total = len(calls); noanswer = total - answered - cc - busy
+    rate = round(answered / total * 100) if total else 0
+    agents = sorted(({"name": k, "total": v["total"], "answered": v["answered"],
+                      "rate": round(v["answered"] / v["total"] * 100) if v["total"] else 0}
+                     for k, v in by_agent.items()), key=lambda x: -x["total"])
+    konim = bladiut = skhirut = 0; exc = []
+    for g in sigs:
+        dt = str(g.get("deal_type", "")).upper()
+        if "CLIENT_SALE" in dt: konim += 1
+        elif "OWNER_EXCLUSIVE" in dt: bladiut += 1
+        elif "OWNER_RENT" in dt or "CLIENT_RENT" in dt: skhirut += 1
+        if "OWNER_EXCLUSIVE" in dt:
+            exc.append({"date": g.get("_date_key", ""),
+                        "address": ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x]),
+                        "agent": (g.get("agent", "") or "").strip()})
+    st_total = len(sigs)
+    pct = lambda n: round(n / st_total * 100) if st_total else 0
+    by_city = {}
+    for p in props:
+        city = (p.get("city", "") or "").strip()
+        if city: by_city[city] = by_city.get(city, 0) + 1
+    top_cities = sorted(({"city": k, "n": v} for k, v in by_city.items()), key=lambda x: -x["n"])[:5]
+    return {
+        "period": {"from": frm, "to": to},
+        "calls": {"total": total, "answered": answered, "notAnswered": cc + busy + noanswer,
+                  "cc": cc, "busy": busy, "noanswer": noanswer, "rate": rate},
+        "agents": agents,
+        "sigs": {"total": st_total, "konim": konim, "bladiut": bladiut, "skhirut": skhirut,
+                 "pctK": pct(konim), "pctB": pct(bladiut), "pctS": pct(skhirut)},
+        "exclusives": exc,
+        "props": {"total": len(props), "topCities": top_cities},
+    }
+
 def _report_wa_text(sm, label, frm, to):
     c = sm["calls"]; sg = sm["sigs"]
     L = [f"📊 *סיכום {label}* ({frm}–{to})", ""]
@@ -2113,10 +2160,14 @@ def api_report():
     else:
         period = "month"; start = now.replace(day=1)
     frm = start.strftime("%d/%m/%Y"); to = now.strftime("%d/%m/%Y")
-    sm = buildOrgSummary_(frm, to, True)
-    label = {"week": "השבוע", "month": "החודש", "year": "השנה"}[period]
-    return jsonify({"ok": True, "label": label, "from": frm, "to": to,
-                    "summary": sm, "wa_text": _report_wa_text(sm, label, frm, to)})
+    try:
+        sm = _web_org_summary(frm, to)
+        label = {"week": "השבוע", "month": "החודש", "year": "השנה"}[period]
+        return jsonify({"ok": True, "label": label, "from": frm, "to": to,
+                        "summary": sm, "wa_text": _report_wa_text(sm, label, frm, to)})
+    except Exception as e:
+        log.error(f"report error: {e}", exc_info=True)
+        return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
 # ── Property search ────────────────────────────────────────────────────────────
 @app.route("/api/search/properties", methods=["POST"])
