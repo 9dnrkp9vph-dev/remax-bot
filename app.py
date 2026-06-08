@@ -1476,6 +1476,21 @@ def _excl_epoch(s) -> float:
         except Exception:
             return 0.0
     return 0.0
+def _prop_epoch(row) -> float:
+    """תאריך יצירה של נכס מגיליון המשרד → epoch למיון. תומך ב-DD.M.YYYY (18.5.2026),
+    DD/MM/YYYY ו-ISO. נכסים חדשים יותר מקבלים ערך גבוה יותר (מיון יורד = החדש ראשון)."""
+    from datetime import datetime
+    s = str(row.get("תאריך יצירה", "") or "").strip()
+    if not s:
+        return 0.0
+    m = re.match(r"^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})", s)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            return datetime(y, mo, d).timestamp()
+        except Exception:
+            return 0.0
+    return _excl_epoch(s)
 def format_buyer_match_reply(summary: str, matches: list) -> str:
     if not matches:
         return ("🔍 לא מצאתי קונים תואמים בשיחות שלך.\n\n"
@@ -2211,16 +2226,28 @@ def api_report():
         now = datetime.now(ZoneInfo("Asia/Jerusalem"))
     except Exception:
         now = datetime.now(timezone.utc) + timedelta(hours=3)
-    if period == "week":
+    _HE_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+                  "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"]
+    # בחירת חודש ספציפי מתחילת השנה (month=1..12)
+    sel_month = request.args.get("month", "").strip()
+    end = now
+    label = {"week": "השבוע", "month": "החודש", "year": "השנה"}.get(period, "החודש")
+    if sel_month.isdigit() and 1 <= int(sel_month) <= 12:
+        mo = int(sel_month)
+        start = now.replace(month=mo, day=1, hour=0, minute=0, second=0, microsecond=0)
+        if mo < now.month:  # חודש שכבר הסתיים — עד סוף החודש
+            nxt = start.replace(year=start.year + 1, month=1) if mo == 12 else start.replace(month=mo + 1)
+            end = nxt - timedelta(days=1)
+        label = f"{_HE_MONTHS[mo - 1]} {start.year}"
+    elif period == "week":
         start = now - timedelta(days=(now.weekday() + 1) % 7)   # ראשון
     elif period == "year":
         start = now.replace(month=1, day=1)
     else:
         period = "month"; start = now.replace(day=1)
-    frm = start.strftime("%d/%m/%Y"); to = now.strftime("%d/%m/%Y")
+    frm = start.strftime("%d/%m/%Y"); to = end.strftime("%d/%m/%Y")
     try:
         sm = _web_org_summary(frm, to)
-        label = {"week": "השבוע", "month": "החודש", "year": "השנה"}[period]
         return jsonify({"ok": True, "label": label, "from": frm, "to": to,
                         "summary": sm, "wa_text": _report_wa_text(sm, label, frm, to)})
     except Exception as e:
@@ -2234,16 +2261,14 @@ def api_search_properties():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
-        _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכסים", q)
-        _push_recent(s["phone"], "props", q)
-        parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
-        matches = search_listings_in_sheet(parsed) if parsed else []
+        _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכסים", q or "(כל הנכסים)")
+        if q:
+            _push_recent(s["phone"], "props", q)
         phones = fetch_agents_phones()
-        out = []
-        for score, row, flex in matches:
+
+        def _row_out(row, score=None):
             ag = (row.get("סוכן 1", "") or "").strip()
-            out.append({
-                "score": min(100, int(score)),
+            d = {
                 "type": (row.get("סוג נכס", "") or "").strip(),
                 "city": (row.get("עיר / ישוב", "") or "").strip(),
                 "neighborhood": (row.get("שכונה", "") or "").strip(),
@@ -2252,9 +2277,27 @@ def api_search_properties():
                 "size": (row.get('מ"ר', "") or row.get("מ״ר", "") or "").strip(),
                 "floor": (row.get("קומה", "") or "").strip(),
                 "price": (row.get("מחיר", "") or "").strip(),
+                "date": (row.get("תאריך יצירה", "") or "").strip(),
                 "agent": ag,
                 "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
-            })
+            }
+            if score is not None:
+                d["score"] = min(100, int(score))
+            return d
+
+        # חיפוש ריק = כל הנכסים הפעילים, ממוינים מהחדש לישן (לפי תאריך יצירה)
+        if not q:
+            rows = [r for r in fetch_sheet_rows()
+                    if (r.get("סטטוס", "") or "").strip() in ("", "פעילה")]
+            rows.sort(key=_prop_epoch, reverse=True)
+            out = [_row_out(r) for r in rows]
+            return jsonify({"ok": True,
+                            "summary": f"כל הנכסים הפעילים ({len(out)}) — מהחדש לישן",
+                            "results": out})
+
+        parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
+        matches = search_listings_in_sheet(parsed) if parsed else []
+        out = [_row_out(row, score) for score, row, flex in matches]
         return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "results": out})
     except Exception as e:
         log.error(f"properties search error: {e}", exc_info=True)
@@ -2521,6 +2564,7 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 .chips{display:flex;gap:7px;margin:6px 0 2px}
 .chip{flex:1;text-align:center;padding:10px 6px;border-radius:11px;background:#eef1f5;color:var(--ink);cursor:pointer;font-size:13px;font-weight:700;border:1px solid #e3e7eb}
 .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.monthsel{flex:1;min-width:0;text-align:center;padding:10px 6px;border-radius:11px;background:#eef1f5;color:var(--ink);cursor:pointer;font-size:13px;font-weight:700;border:1px solid #e3e7eb}
 .row{border-bottom:1px solid var(--line);padding:12px 2px;font-size:14.5px;line-height:1.55}.row:last-child{border:none}
 .badge{display:inline-block;background:rgba(13,27,42,.08);color:var(--ink);font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;margin-inline-start:6px;vertical-align:middle}
 .ans{display:inline-block;background:#e7f6ec;color:#137a3a;font-weight:800;font-size:12px;padding:2px 9px;border-radius:999px}
@@ -2597,11 +2641,15 @@ function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs
 var REPTEXT="";
 function kpi(n,l){return "<div class=stat><div class=n>"+n+"</div><div class=l>"+l+"</div></div>";}
 function viewReport(){
-  $("view").innerHTML='<div class=card><h2>📊 דוחות מנהל</h2><div class=chips id=rpc><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><div class=chip data-r=year>השנה</div></div></div><div id=rep></div>';
-  document.querySelectorAll("#rpc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");loadReport(c.dataset.r);};});
+  var MN=["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
+  var cm=new Date().getMonth()+1,opts='<option value="">▾ חודש</option>';
+  for(var m=1;m<=cm;m++)opts+='<option value="'+m+'">'+MN[m-1]+'</option>';
+  $("view").innerHTML='<div class=card><h2>📊 דוחות מנהל</h2><div class=chips id=rpc><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><select id=monthsel class=monthsel>'+opts+'</select><div class=chip data-r=year>השנה</div></div></div><div id=rep></div>';
+  document.querySelectorAll("#rpc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");var ms=$("monthsel");if(ms)ms.value="";loadReport(c.dataset.r);};});
+  var msel=$("monthsel");if(msel)msel.onchange=function(){if(!this.value)return;document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});loadReport("month",this.value);};
   loadReport("month");
 }
-function loadReport(p){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p).then(function(r){
+function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p+(month?"&month="+month:"")).then(function(r){
   if(!r.ok){if(r.auth===false){relogin();return;}$("rep").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
   REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;
   var h="<div class=card><div class=muted>"+esc(r.label)+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+kpi(sg.total,"חתימות")+kpi(sm.exclusives.length,"בלעדיות")+kpi(sm.props.total,"נכסים")+"</div></div>";
@@ -2727,7 +2775,7 @@ function doSearch(ep,kind){
 }
 function card(kind,x){
   if(kind=="props"){return "<div class=row>"+((x.score!==undefined&&x.score!=="")?"<span class=score>"+x.score+"%</span>":"")+"<b>"+esc(x.type||"נכס")+"</b> · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+
-    "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price].filter(Boolean).join(" · ")+"</div>"+
+    "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
     (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+"</div>";}
   if(kind=="excl"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
     (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price,x.office,x.date].filter(Boolean).map(esc).join(" · ")+"</div>"+
