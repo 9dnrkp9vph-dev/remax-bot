@@ -2583,11 +2583,29 @@ def api_my_buyers():
                 "summary": str(r.get("summary", "") or "").strip(),
                 "date": _fmt_buyer_date(r.get("date", "")),
                 "agent": str(r.get("agent", "") or "").strip(),
+                "row": r.get("row", ""),
+                "search": str(r.get("search", "") or "").strip(),
             })
         return jsonify({"ok": True, "count": len(out), "results": out})
     except Exception as e:
         log.error(f"my buyers error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+@app.route("/api/buyers/update", methods=["POST"])
+def api_buyers_update():
+    """שמירת חידוד החיפוש (עמודה 'חיפוש') לשורת קונה קיימת לפי מספר השורה."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    body = request.get_json(silent=True) or {}
+    row = str(body.get("row", "")).strip()
+    search = (body.get("search") or "").strip()
+    if not row:
+        return jsonify({"ok": False, "reason": "no_row"}), 400
+    j = _buyers_apps_post("updatebuyer", {"row": row, "search": search})
+    if not j or not j.get("ok"):
+        return jsonify({"ok": False, "reason": (j or {}).get("error", "update_failed")}), 502
+    _log_activity(s["name"], s["role"], s["phone"], "עדכון חיפוש קונה", search[:60])
+    return jsonify({"ok": True})
 
 # ── Presentation (PDF) ─────────────────────────────────────────────────────────
 @app.route("/api/presentation", methods=["POST"])
@@ -2697,6 +2715,7 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 .bsum{margin-top:5px;color:#33405a;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .bsum.open{-webkit-line-clamp:unset;overflow:visible}
 .bmore{display:inline-block;margin-top:3px;color:var(--gold,#8a6d1e);font-size:12px;font-weight:700;cursor:pointer}
+.bqedit{width:100%;margin-top:8px;padding:9px 10px;border:1px dashed #cbb88a;border-radius:10px;font-size:13px;font-family:inherit;box-sizing:border-box;background:#fffdf7}
 .bbtns{display:flex;gap:8px;margin-top:8px}
 .bsearch{flex:1;width:auto;padding:9px 6px;margin:0;font-size:13px;font-weight:700;border-radius:10px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer}
 .bsearch[data-k=excl]{background:#fff;color:var(--ink)}
@@ -2939,14 +2958,20 @@ function buyerCard(x){
     "<div class=bhead><span class=btag>👤 קונה</span> <b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>💰 "+esc(x.budget)+"</span>":"")+"</div>"+
     (meta?"<div class=muted bmeta>"+meta+"</div>":"")+
     (x.summary?("<div class=bsum id="+sid+">"+esc(x.summary)+"</div><span class=bmore onclick=\"var e=document.getElementById('"+sid+"');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'הצג פחות':'הצג עוד';\">הצג עוד</span>"):"")+
-    "<div class=bbtns><button class=bsearch data-k=props data-q=\""+q+"\" data-r=\""+rid+"\">🏢 חפש במשרד</button><button class=bsearch data-k=excl data-q=\""+q+"\" data-r=\""+rid+"\">🏘️ חפש בקריות</button></div>"+
+    "<input class=bqedit id=q"+n+" value=\""+esc(x.search||"").replace(/\"/g,"&quot;")+"\" placeholder=\"חידוד חיפוש (לא חובה): למשל 4 חדרים קרית ביאליק עד 2 מיליון\">"+
+    "<div class=bbtns><button class=bsearch data-k=props data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\">🏢 חפש במשרד</button><button class=bsearch data-k=excl data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\">🏘️ חפש בקריות</button></div>"+
     "<div id="+rid+" class=bresults></div>"+
     "</div>";
 }
 var BSEQ=0;
 function buyerSearch(b){
-  var kind=b.getAttribute("data-k"),q=decodeURIComponent(b.getAttribute("data-q")||""),rid=b.getAttribute("data-r");
+  var kind=b.getAttribute("data-k"),rid=b.getAttribute("data-r");
+  var ein=document.getElementById(b.getAttribute("data-e")||"");
+  var manual=ein&&ein.value.trim();
+  var q=manual?ein.value.trim():decodeURIComponent(b.getAttribute("data-q")||"");
   var box=document.getElementById(rid);if(!box)return;
+  var rw=b.getAttribute("data-row");
+  if(manual&&rw){api("/api/buyers/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({row:rw,search:manual})}).catch(function(){});}
   var ep=kind=="props"?"/api/search/properties":"/api/search/exclusives";
   box.innerHTML="<div class=muted style=margin:6px_0>מחפש "+(kind=="props"?"במשרד":"בקריות")+"… ⏳</div>";
   api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){
