@@ -2186,6 +2186,11 @@ def api_history():
             ph = eff["phone"]
             calls = [c for c in calls if _last9(c.get("agent_phone", "")) == ph]
         sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) == nm]
+    _hidden = _fetch_hidden_calls()
+    if request.args.get("hidden") == "1":
+        calls = [c for c in calls if str(c.get("event_id", "")) in _hidden]
+    else:
+        calls = [c for c in calls if str(c.get("event_id", "")) not in _hidden]
     calls.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
     sigs.sort(key=lambda g: _excl_epoch(g.get("received_at", "")), reverse=True)
     call_out = []
@@ -2213,6 +2218,7 @@ def api_history():
             "summary": text,
             "clientDetails": client_details,
             "callback": callback,
+            "id": str(c.get("event_id", "") or ""),
             "ts": _epoch_from_iso(c.get("received_at", "")),
         })
     sig_out = [{
@@ -2801,6 +2807,37 @@ def api_buyers_delete():
     _log_activity(s["name"], s["role"], s["phone"], "מחיקת קונה", row)
     return jsonify({"ok": True})
 
+def _fetch_hidden_calls():
+    c = _cache_get("hidden_calls", 60)
+    if c is not None: return c
+    j = _buyers_apps_post("listhidden", {})
+    ids = set(str(x) for x in (j.get("ids", []) if (j and j.get("ok")) else []))
+    _cache_put("hidden_calls", ids)
+    return ids
+
+@app.route("/api/calls/hide", methods=["POST"])
+def api_calls_hide():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    eid = str((request.get_json(silent=True) or {}).get("id", "")).strip()
+    if not eid: return jsonify({"ok": False, "reason": "no_id"}), 400
+    j = _buyers_apps_post("hidecall", {"event_id": eid})
+    if not j or not j.get("ok"): return jsonify({"ok": False, "reason": "fail"}), 502
+    _cache_clear("hidden_calls")
+    _log_activity(s["name"], s["role"], s["phone"], "הסתרת שיחה", eid)
+    return jsonify({"ok": True})
+
+@app.route("/api/calls/unhide", methods=["POST"])
+def api_calls_unhide():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    eid = str((request.get_json(silent=True) or {}).get("id", "")).strip()
+    if not eid: return jsonify({"ok": False, "reason": "no_id"}), 400
+    j = _buyers_apps_post("unhidecall", {"event_id": eid})
+    if not j or not j.get("ok"): return jsonify({"ok": False, "reason": "fail"}), 502
+    _cache_clear("hidden_calls")
+    return jsonify({"ok": True})
+
 # ── Presentation (PDF) ─────────────────────────────────────────────────────────
 @app.route("/api/presentation", methods=["POST"])
 def api_presentation():
@@ -2909,6 +2946,8 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .monthsel{flex:1;min-width:0;text-align:center;padding:10px 6px;border-radius:11px;background:#eef1f5;color:var(--ink);cursor:pointer;font-size:13px;font-weight:700;border:1px solid #e3e7eb}
 .addbuyer{display:inline-block;width:auto;padding:3px 9px;margin:0;font-size:12px;font-weight:700;border:1px solid var(--gold,#caa14a);background:#fff7e6;color:#7a5c12;border-radius:9px;cursor:pointer}
+.hidecall{display:inline-block;width:auto;padding:3px 9px;margin:0;font-size:12px;font-weight:700;border:1px solid #c9ccd1;background:#f3f4f6;color:#555;border-radius:9px;cursor:pointer}
+.hlink{color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;text-decoration:underline}
 .ovl{position:fixed;inset:0;background:rgba(13,27,42,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:14px}
 .ovlbox{background:#fff;border-radius:16px;padding:16px;width:100%;max-width:430px;box-shadow:0 12px 40px rgba(0,0,0,.3);max-height:90vh;overflow:auto}
 .ovlbox input,.ovlbox textarea{width:100%;margin:5px 0;padding:10px;border:1px solid #d8dde3;border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box}
@@ -3054,18 +3093,23 @@ function isMulti(){return (ROLE=="admin"||ROLE=="coordinator")&&!IMP;}
 function scopeLabel(){if(IMP)return ' <span class=badge>👁 צופה כ: '+esc(IMPNAME)+'</span>';return ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':(ROLE=="coordinator"?' <span class=badge>הסוכנים שלי</span>':' — '+esc(NAME));}
 function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}render();}
 function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;var sel=$("impsel");r.agents.forEach(function(a){var o=document.createElement("option");o.value=a.name;o.textContent=a.name;sel.appendChild(o);});}).catch(function(){});}
+var HIDDENMODE=false;
+function toggleHidden(){HIDDENMODE=!HIDDENMODE;loadCalls();}
+function hideCall(id){if(!id){alert("חסר מזהה");return;}api("/api/calls/hide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok)loadCalls();else alert("הסתרה נכשלה");}).catch(function(){alert("שגיאה");});}
+function unhideCall(id){if(!id)return;api("/api/calls/unhide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok)loadCalls();else alert("שחזור נכשל");}).catch(function(){alert("שגיאה");});}
 function viewCalls(){
-  $("view").innerHTML='<div class=card><h2>📞 שיחות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=calls></div>';
+  $("view").innerHTML='<div class=card><h2>📞 שיחות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div><div style=text-align:center;margin-top:6px><span class=hlink id=htoggle onclick=toggleHidden()>🙈 הצג מוסתרות</span></div></div><div id=calls></div>';
   bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,30000);
 }
 function viewSigs(){
   $("view").innerHTML='<div class=card><h2>✍️ חתימות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
   bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,30000);
 }
-function loadCalls(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
+function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"):"")+(HIDDENMODE?"hidden=1":"")).then(function(r){
   if(!r.ok){relogin();return;}
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
-  $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+" שיחות";
+  $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+(HIDDENMODE?" מוסתרות":" שיחות");
+  var ht=$("htoggle");if(ht)ht.textContent=HIDDENMODE?"↩️ חזרה לשיחות":"🙈 הצג מוסתרות";
   var maxC=calls.length?calls[0].ts:0;
   $("calls").innerHTML="<div class=card>"+(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
@@ -3073,9 +3117,11 @@ function loadCalls(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):""
     var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener>🔁 חייג חזרה</a>"):"";
     var bsum=(c.summary||"")+(c.clientDetails?("\n"+c.clientDetails):"");
     var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\">➕ קונה</button>";
-    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(isMulti()&&c.agent?" · "+esc(c.agent):"")+cb+addb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+(c.clientDetails?"<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div></div>":"")+"</div>";
+    var hideb=" <button class=hidecall data-id=\""+esc(c.id||"")+"\" data-act=\""+(HIDDENMODE?"unhide":"hide")+"\">"+(HIDDENMODE?"↩️ שחזר":"🙈 הסתר")+"</button>";
+    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(isMulti()&&c.agent?" · "+esc(c.agent):"")+cb+addb+hideb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+(c.clientDetails?"<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div></div>":"")+"</div>";
   }).join(""):"<div class=muted>אין שיחות בטווח.</div>")+"</div>";
   document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:decodeURIComponent(b.getAttribute("data-sum")||"")});};});
+  document.querySelectorAll("#calls .hidecall").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");if(b.getAttribute("data-act")=="unhide")unhideCall(id);else hideCall(id);};});
   seenCall=maxC;
 }).catch(function(){});}
 function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
