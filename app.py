@@ -2183,10 +2183,20 @@ def api_activity():
     if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
     return jsonify({"ok": True, "items": list(reversed(_activity[-300:]))})
 
-def _web_org_summary(frm, to):
+def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
     calls = web_fetch_raw("שיחות", frm, to)
     sigs  = web_fetch_raw("חתימות", frm, to)
     props = web_fetch_raw("נכסים", frm, to)
+    if agent_name or agent_phones:
+        _nn = _norm_name(agent_name or "")
+        _phs = set(agent_phones or [])
+        def _is_mine(row, use_phone=False):
+            if _nn and _norm_name(row.get("agent", "")) == _nn: return True
+            if use_phone and _phs and _last9(row.get("agent_phone", "")) in _phs: return True
+            return False
+        calls = [c for c in calls if _is_mine(c, True)]
+        sigs  = [g for g in sigs if _is_mine(g)]
+        props = [p for p in props if _is_mine(p)]
     answered = cc = busy = 0; by_agent = {}
     for c in calls:
         st = str(c.get("status", "")).upper().strip()
@@ -2230,6 +2240,43 @@ def _web_org_summary(frm, to):
         "props": {"total": len(props), "topCities": top_cities},
     }
 
+def _agent_insights(frm, to, prev_frm, prev_to, eff_name, eff_phones, cur_sm):
+    """מלל חופשי על ביצועי הסוכן: מגמות מול התקופה הקודמת + דירוג בלעדיות."""
+    out = []
+    try:
+        prev = _web_org_summary(prev_frm, prev_to, eff_name, eff_phones)
+    except Exception:
+        prev = None
+    def _trend(label, cur, prevn, suf=""):
+        if cur > prevn: return f"📈 {label}: עלייה מ-{prevn}{suf} ל-{cur}{suf}"
+        if cur < prevn: return f"📉 {label}: ירידה מ-{prevn}{suf} ל-{cur}{suf}"
+        return f"➡️ {label}: ללא שינוי ({cur}{suf})"
+    def _add(label, cur, prevn, suf=""):
+        if cur == 0 and prevn == 0: return
+        out.append(_trend(label, cur, prevn, suf))
+    if prev is not None:
+        _add("שיחות נכנסות", cur_sm["calls"]["total"], prev["calls"]["total"])
+        _add("אחוז מענה", cur_sm["calls"]["rate"], prev["calls"]["rate"], "%")
+        _add("החתמות קונים", cur_sm["sigs"]["konim"], prev["sigs"]["konim"])
+        _add("בלעדיות חדשות", cur_sm["sigs"]["bladiut"], prev["sigs"]["bladiut"])
+        _add("נכסים חדשים", cur_sm["props"]["total"], prev["props"]["total"])
+    # דירוג בגיוס בלעדיות מול כל המשרד (מוצג רק אם בעשירייה הראשונה)
+    try:
+        org_sigs = web_fetch_raw("חתימות", frm, to)
+        cnt = {}
+        for g in org_sigs:
+            if "OWNER_EXCLUSIVE" in str(g.get("deal_type", "")).upper():
+                ag = _norm_name(g.get("agent", ""))
+                if ag: cnt[ag] = cnt.get(ag, 0) + 1
+        mine = cnt.get(_norm_name(eff_name or ""), 0)
+        if mine > 0:
+            rank = 1 + sum(1 for v in cnt.values() if v > mine)
+            if rank <= 10:
+                out.append(f"🏆 מקום {rank} בגיוס בלעדיות במשרד ({mine} בלעדיות)")
+    except Exception:
+        pass
+    return out
+
 def _report_wa_text(sm, label, frm, to):
     c = sm["calls"]; sg = sm["sigs"]
     L = [f"📊 *סיכום {label}* ({frm}–{to})", ""]
@@ -2251,7 +2298,6 @@ def _report_wa_text(sm, label, frm, to):
 def api_report():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
-    if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
     period = request.args.get("period", "month")
     from datetime import datetime, timedelta, timezone
     try:
@@ -2279,10 +2325,31 @@ def api_report():
     else:
         period = "month"; start = now.replace(day=1)
     frm = start.strftime("%d/%m/%Y"); to = end.strftime("%d/%m/%Y")
+    as_name = request.args.get("as", "").strip() if s["role"] in ("admin", "coordinator") else ""
+    if s["role"] == "agent":
+        eff_name = s.get("name", "")
+        eff_phones = set(_phones_for_name(eff_name))
+        if s.get("phone"): eff_phones.add(_last9(s["phone"]))
+        scope = eff_name or "הדוח שלי"
+    elif as_name:
+        eff_name = as_name
+        eff_phones = set(_phones_for_name(as_name))
+        scope = as_name
+    else:
+        eff_name = None; eff_phones = None; scope = "כל המשרד"
+    insights = []
     try:
-        sm = _web_org_summary(frm, to)
-        return jsonify({"ok": True, "label": label, "from": frm, "to": to,
-                        "summary": sm, "wa_text": _report_wa_text(sm, label, frm, to)})
+        sm = _web_org_summary(frm, to, eff_name, eff_phones)
+        if eff_name:
+            _delta = end - start
+            _pe = start - timedelta(days=1)
+            _ps = _pe - _delta
+            insights = _agent_insights(frm, to, _ps.strftime("%d/%m/%Y"), _pe.strftime("%d/%m/%Y"), eff_name, eff_phones, sm)
+        wa = _report_wa_text(sm, label + " · " + scope, frm, to)
+        if insights:
+            wa = "📊 *תובנות:*\n" + "\n".join(insights) + "\n\n" + wa
+        return jsonify({"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
+                        "insights": insights, "summary": sm, "wa_text": wa})
     except Exception as e:
         log.error(f"report error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -2295,7 +2362,7 @@ def api_search_properties():
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
         _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכסים", q or "(כל הנכסים)")
-        if q:
+        if q and not (request.get_json(silent=True) or {}).get("nosave"):
             _push_recent(s["phone"], "props", q)
         phones = fetch_agents_phones()
 
@@ -2419,7 +2486,8 @@ def api_search_exclusives():
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
         _log_activity(s["name"], s["role"], s["phone"], "חיפוש בלעדיות", q)
-        _push_recent(s["phone"], "excl", q)
+        if not (request.get_json(silent=True) or {}).get("nosave"):
+            _push_recent(s["phone"], "excl", q)
         parsed = parse_exclusivity_search_query(q if q.startswith("מחפש") else ("מחפש בלעדיות " + q)) or {}
         parsed["budget_max"] = _web_num(parsed.get("budget_max"))   # מנע TypeError בכפל
         parsed["rooms"]      = _web_num(parsed.get("rooms"))
@@ -2775,6 +2843,7 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 .bresults{margin-top:8px}
 .bresults:empty{margin:0}
 .bresh{font-size:12px;font-weight:700;color:var(--muted);margin:4px 0 6px}
+.insight{padding:7px 2px;border-bottom:1px solid #eef1f5;font-size:14px;font-weight:600}.insight:last-child{border-bottom:none}
 .row{border-bottom:1px solid var(--line);padding:12px 2px;font-size:14.5px;line-height:1.55}.row:last-child{border:none}
 .badge{display:inline-block;background:rgba(13,27,42,.08);color:var(--ink);font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;margin-inline-start:6px;vertical-align:middle}
 .ans{display:inline-block;background:#e7f6ec;color:#137a3a;font-weight:800;font-size:12px;padding:2px 9px;border-radius:999px}
@@ -2785,7 +2854,7 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 a{color:var(--blue);font-weight:700;text-decoration:none}a:hover{text-decoration:underline}
 .err{color:var(--red);font-weight:700}.hidden{display:none}
 .cbtn{display:inline-block;background:#137a3a;color:#fff!important;border-radius:10px;padding:4px 12px;font-size:12.5px;font-weight:800;text-decoration:none;margin-top:5px}
-.rchips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}.rchip{background:rgba(0,61,165,.08);color:var(--blue);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid rgba(0,61,165,.15)}
+.rchips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}.rchip{background:rgba(0,61,165,.08);color:var(--blue);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid rgba(0,61,165,.15);max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:8px}
 .stat{background:linear-gradient(180deg,#fff,#f6f8fa);border:1px solid #eceff2;border-radius:13px;padding:12px 6px;text-align:center}
 .stat .n{font-size:21px;font-weight:800;color:var(--ink)}.stat .l{font-size:11px;color:var(--muted);margin-top:3px}
@@ -2812,8 +2881,10 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 </div>
 
 <div id="appui" class="hidden">
-  <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px">
+  <div id="topbar" style="text-align:center;margin-bottom:6px">
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
+  </div>
+  <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px">
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('activity')">📣 עדכונים</button>
     <select id="impsel" onchange="setImp(this.value)" style="width:auto;display:inline-block;padding:8px 10px;margin:0 0 6px;border-radius:10px;border:1px solid #d1d5db"><option value="">👁 צפה כסוכן…</option></select>
   </div>
@@ -2823,7 +2894,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
     <div class="tab" data-t="buyers" onclick="tab('buyers')">👤 הקונים שלי</div>
     <div class="tab" data-t="sigs" onclick="tab('sigs')">✍️ חתימות שלי</div>
     <div class="tab" data-t="props" onclick="tab('props')">🏢 נכסים במשרד</div>
-    <div class="tab" data-t="excl" onclick="tab('excl')">🏘️ נכסים בקריות</div>
+    <div class="tab" data-t="excl" onclick="tab('excl')">🏘️ נכסים בשת״פ</div>
     <div class="tab" data-t="present" onclick="tab('present')">📄 מצגת</div>
   </div>
 </div>
@@ -2860,12 +2931,13 @@ function viewReport(){
   var msel=$("monthsel");if(msel)msel.onchange=function(){if(!this.value)return;document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});loadReport("month",this.value);};
   loadReport("month");
 }
-function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p+(month?"&month="+month:"")).then(function(r){
+function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p+(month?"&month="+month:"")+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
   if(!r.ok){if(r.auth===false){relogin();return;}$("rep").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
   REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;
-  var h="<div class=card><div class=muted>"+esc(r.label)+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+kpi(sg.total,"חתימות")+kpi(sm.exclusives.length,"בלעדיות")+kpi(sm.props.total,"נכסים")+"</div></div>";
-  var ag="<table><tr><th style=text-align:start>מתווך</th><th>שיחות</th><th>נענו</th><th>%</th></tr>";sm.agents.slice(0,10).forEach(function(a,i){ag+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center>"+a.total+"</td><td style=text-align:center>"+a.answered+"</td><td style=text-align:center>"+a.rate+"%</td></tr>";});ag+="</table>";
-  h+="<div class=card><h2>👥 מתווכים מובילים</h2>"+ag+"</div>";
+  var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+kpi(sg.total,"חתימות")+kpi(sm.exclusives.length,"בלעדיות")+kpi(sm.props.total,"נכסים")+"</div></div>";
+  if(r.insights&&r.insights.length){h+="<div class=card><h2>📊 תובנות</h2>"+r.insights.map(function(t){return "<div class=insight>"+esc(t)+"</div>";}).join("")+"</div>";}
+  if(r.scope=="כל המשרד"){var ag="<table><tr><th style=text-align:start>מתווך</th><th>שיחות</th><th>נענו</th><th>%</th></tr>";sm.agents.slice(0,10).forEach(function(a,i){ag+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center>"+a.total+"</td><td style=text-align:center>"+a.answered+"</td><td style=text-align:center>"+a.rate+"%</td></tr>";});ag+="</table>";
+  h+="<div class=card><h2>👥 מתווכים מובילים</h2>"+ag+"</div>";}
   h+="<div class=card><h2>✍️ חתימות</h2><div class=grid>"+kpi(sg.konim+" ("+sg.pctK+"%)","קונים")+kpi(sg.bladiut+" ("+sg.pctB+"%)","בלעדיות")+kpi(sg.skhirut+" ("+sg.pctS+"%)","שכירויות")+kpi(sg.total,"סה״כ")+"</div></div>";
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
@@ -2953,7 +3025,7 @@ function makePresentation(){
 
 function viewSearch(kind){
   var cfg={props:{t:"🏢 נכסים במשרד",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
-           excl:{t:"🏘️ נכסים בקריות",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
+           excl:{t:"🏘️ נכסים בשת״פ",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
            buyers:{t:"👤 הקונים שלי",ph:"4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
   $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button>'+(kind=="buyers"?' <button class=sec onclick=openBuyerForm({})>➕ הוסף קונה</button>':'')+'<div id=recent></div><div id=sres></div>'+(kind=="props"?'<div id=myprops></div>':'')+(kind=="buyers"?'<div id=mybuyers></div>':'')+'</div>';
   CUR_EP=cfg.ep;CUR_KIND=kind;
@@ -3013,7 +3085,7 @@ function buyerCard(x){
     (meta?"<div class=muted bmeta>"+meta+"</div>":"")+
     (x.summary?("<div class=bsum id="+sid+">"+esc(x.summary)+"</div><span class=bmore onclick=\"var e=document.getElementById('"+sid+"');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'הצג פחות':'הצג עוד';\">הצג עוד</span>"):"")+
     "<input class=bqedit id=q"+n+" value=\""+esc(x.search||"").replace(/\"/g,"&quot;")+"\" placeholder=\"חידוד חיפוש (לא חובה): למשל 4 חדרים קרית ביאליק עד 2 מיליון\">"+
-    "<div class=bbtns><button class=bsearch data-k=props data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\">🏢 חפש במשרד</button><button class=bsearch data-k=excl data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\">🏘️ חפש בקריות</button></div>"+
+    "<div class=bbtns><button class=bsearch data-k=props data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\">🏢 חפש במשרד</button><button class=bsearch data-k=excl data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\">🏘️ חפש בשת״פ</button></div>"+
     "<div id="+rid+" class=bresults></div>"+
     "</div>";
 }
@@ -3027,12 +3099,12 @@ function buyerSearch(b){
   var rw=b.getAttribute("data-row");
   if(manual&&rw){api("/api/buyers/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({row:rw,search:manual})}).catch(function(){});}
   var ep=kind=="props"?"/api/search/properties":"/api/search/exclusives";
-  box.innerHTML="<div class=muted style=margin:6px_0>מחפש "+(kind=="props"?"במשרד":"בקריות")+"… ⏳</div>";
-  api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){
+  box.innerHTML="<div class=muted style=margin:6px_0>מחפש "+(kind=="props"?"במשרד":"בשת״פ")+"… ⏳</div>";
+  api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:(typeof IMP!="undefined"?IMP:"")||"",nosave:true})}).then(function(r){
     if(!box)return;
     if(!r||!r.ok){box.innerHTML="<span class=err>שגיאה בחיפוש"+(r&&r.reason?" ("+esc(r.reason)+")":"")+"</span>";return;}
-    if(!r.results.length){box.innerHTML="<div class=muted style=margin:6px_0>לא נמצאו נכסים תואמים "+(kind=="props"?"במשרד":"בקריות")+".</div>";return;}
-    var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בקריות")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+"</div>";
+    if(!r.results.length){box.innerHTML="<div class=muted style=margin:6px_0>לא נמצאו נכסים תואמים "+(kind=="props"?"במשרד":"בשת״פ")+".</div>";return;}
+    var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+"</div>";
     h+=r.results.map(function(y){return card(kind,y);}).join("");
     box.innerHTML=h;
   }).catch(function(){if(box)box.innerHTML="<span class=err>שגיאה</span>";});
