@@ -1006,7 +1006,31 @@ def fetch_agents_phones() -> dict:
     except Exception as e:
         log.error(f"Fetch agents error: {e}")
         return {}
+import threading as _threading
+_TTL_CACHE = {}
+_TTL_LOCK = _threading.Lock()
+def _cache_get(key, ttl):
+    with _TTL_LOCK:
+        e = _TTL_CACHE.get(key)
+        if e and (time.time() - e[0]) < ttl:
+            return e[1]
+    return None
+def _cache_put(key, val):
+    with _TTL_LOCK:
+        _TTL_CACHE[key] = (time.time(), val)
+def _cache_clear(key):
+    with _TTL_LOCK:
+        _TTL_CACHE.pop(key, None)
+
 def fetch_sheet_rows() -> list:
+    c = _cache_get('sheet_rows', 60)
+    if c is not None:
+        return c
+    rows = _fetch_sheet_rows_raw()
+    if rows:
+        _cache_put('sheet_rows', rows)
+    return rows
+def _fetch_sheet_rows_raw() -> list:
     if not GOOGLE_SHEETS_API_KEY:
         log.error("GOOGLE_SHEETS_API_KEY not set!")
         return []
@@ -1918,6 +1942,15 @@ def web_send_sms(last9, body):
         return False
 
 def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
+    _ck = "raw:" + str(type_he) + ":" + str(frm) + ":" + str(to)
+    c = _cache_get(_ck, 30)
+    if c is not None:
+        return c
+    rows = _web_fetch_raw_uncached(type_he, frm, to)
+    if rows:
+        _cache_put(_ck, rows)
+    return rows
+def _web_fetch_raw_uncached(type_he, frm="01/01/2020", to="31/12/2099"):
     if not (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN):
         return []
     from urllib.parse import quote
@@ -2492,10 +2525,15 @@ def _buyers_apps_post(action, payload):
         return None
 
 def _fetch_manual_buyers():
+    c = _cache_get("buyers", 20)
+    if c is not None:
+        return c
     j = _buyers_apps_post("listbuyers", {})
     if not j or not j.get("ok"):
         return []
-    return j.get("rows", []) or []
+    rows = j.get("rows", []) or []
+    _cache_put("buyers", rows)
+    return rows
 
 def _fmt_buyer_date(raw):
     """גוגל שיטס לפעמים ממיר את התאריך ל-ISO; מציג אותו יפה בשעון ישראל."""
@@ -2548,6 +2586,7 @@ def api_buyers_add():
     j = _buyers_apps_post("addbuyer", payload)
     if not j or not j.get("ok"):
         return jsonify({"ok": False, "reason": (j or {}).get("error", "save_failed")}), 502
+    _cache_clear("buyers")
     _log_activity(s["name"], s["role"], s["phone"], "הוספת קונה", name or phone)
     return jsonify({"ok": True})
 
@@ -2604,6 +2643,7 @@ def api_buyers_update():
     j = _buyers_apps_post("updatebuyer", {"row": row, "search": search})
     if not j or not j.get("ok"):
         return jsonify({"ok": False, "reason": (j or {}).get("error", "update_failed")}), 502
+    _cache_clear("buyers")
     _log_activity(s["name"], s["role"], s["phone"], "עדכון חיפוש קונה", search[:60])
     return jsonify({"ok": True})
 
@@ -3039,4 +3079,4 @@ if __name__ == "__main__":
     install_deps()
     log.info(f"Bot starting — trigger word: '{TRIGGER_WORD}'")
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, threaded=True)
