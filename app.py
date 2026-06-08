@@ -2697,6 +2697,12 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 .bsum{margin-top:5px;color:#33405a;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .bsum.open{-webkit-line-clamp:unset;overflow:visible}
 .bmore{display:inline-block;margin-top:3px;color:var(--gold,#8a6d1e);font-size:12px;font-weight:700;cursor:pointer}
+.bbtns{display:flex;gap:8px;margin-top:8px}
+.bsearch{flex:1;width:auto;padding:9px 6px;margin:0;font-size:13px;font-weight:700;border-radius:10px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer}
+.bsearch[data-k=excl]{background:#fff;color:var(--ink)}
+.bresults{margin-top:8px}
+.bresults:empty{margin:0}
+.bresh{font-size:12px;font-weight:700;color:var(--muted);margin:4px 0 6px}
 .row{border-bottom:1px solid var(--line);padding:12px 2px;font-size:14.5px;line-height:1.55}.row:last-child{border:none}
 .badge{display:inline-block;background:rgba(13,27,42,.08);color:var(--ink);font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;margin-inline-start:6px;vertical-align:middle}
 .ans{display:inline-block;background:#e7f6ec;color:#137a3a;font-weight:800;font-size:12px;padding:2px 9px;border-radius:999px}
@@ -2922,18 +2928,36 @@ function loadMyBuyers(){var box=$("mybuyers");if(!box)return;box.innerHTML="<div
     var h="<div class=muted style=margin:12px_0_4px>👤 הקונים שלי ("+r.results.length+")</div>";
     h+=r.results.map(function(x){return buyerCard(x);}).join("");
     $("mybuyers").innerHTML=h;
+    document.querySelectorAll("#mybuyers .bsearch").forEach(function(b){b.onclick=function(){buyerSearch(b);};});
   }).catch(function(){if($("mybuyers"))$("mybuyers").innerHTML="";});}
 function buyerCard(x){
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"";
-  var sid="bs"+(BSEQ++);
+  var n=BSEQ++,sid="bs"+n,rid="br"+n;
   var meta=[(ph?"📞 "+ph:""),(x.wa?"<a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":""),(x.date?"📅 "+esc(x.date):""),((isMulti()&&x.agent)?"👤 "+esc(x.agent):"")].filter(Boolean).join(" · ");
+  var q=encodeURIComponent(((x.budget||"")+" "+(x.summary||"")).trim().slice(0,800));
   return "<div class='row buyerrow'>"+
     "<div class=bhead><span class=btag>👤 קונה</span> <b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>💰 "+esc(x.budget)+"</span>":"")+"</div>"+
     (meta?"<div class=muted bmeta>"+meta+"</div>":"")+
     (x.summary?("<div class=bsum id="+sid+">"+esc(x.summary)+"</div><span class=bmore onclick=\"var e=document.getElementById('"+sid+"');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'הצג פחות':'הצג עוד';\">הצג עוד</span>"):"")+
+    "<div class=bbtns><button class=bsearch data-k=props data-q=\""+q+"\" data-r=\""+rid+"\">🏢 חפש במשרד</button><button class=bsearch data-k=excl data-q=\""+q+"\" data-r=\""+rid+"\">🏘️ חפש בקריות</button></div>"+
+    "<div id="+rid+" class=bresults></div>"+
     "</div>";
 }
 var BSEQ=0;
+function buyerSearch(b){
+  var kind=b.getAttribute("data-k"),q=decodeURIComponent(b.getAttribute("data-q")||""),rid=b.getAttribute("data-r");
+  var box=document.getElementById(rid);if(!box)return;
+  var ep=kind=="props"?"/api/search/properties":"/api/search/exclusives";
+  box.innerHTML="<div class=muted style=margin:6px_0>מחפש "+(kind=="props"?"במשרד":"בקריות")+"… ⏳</div>";
+  api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){
+    if(!box)return;
+    if(!r||!r.ok){box.innerHTML="<span class=err>שגיאה בחיפוש"+(r&&r.reason?" ("+esc(r.reason)+")":"")+"</span>";return;}
+    if(!r.results.length){box.innerHTML="<div class=muted style=margin:6px_0>לא נמצאו נכסים תואמים "+(kind=="props"?"במשרד":"בקריות")+".</div>";return;}
+    var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בקריות")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+"</div>";
+    h+=r.results.map(function(y){return card(kind,y);}).join("");
+    box.innerHTML=h;
+  }).catch(function(){if(box)box.innerHTML="<span class=err>שגיאה</span>";});
+}
 function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
   var box=$("recent");if(!box)return;
   if(!r||!r.ok||!r.items.length){box.innerHTML="";return;}
