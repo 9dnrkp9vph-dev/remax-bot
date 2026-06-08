@@ -2184,9 +2184,12 @@ def api_activity():
     return jsonify({"ok": True, "items": list(reversed(_activity[-300:]))})
 
 def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
-    calls = web_fetch_raw("שיחות", frm, to)
-    sigs  = web_fetch_raw("חתימות", frm, to)
-    props = web_fetch_raw("נכסים", frm, to)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=3) as _ex:
+        _fc = _ex.submit(web_fetch_raw, "שיחות", frm, to)
+        _fs = _ex.submit(web_fetch_raw, "חתימות", frm, to)
+        _fp = _ex.submit(web_fetch_raw, "נכסים", frm, to)
+        calls, sigs, props = _fc.result(), _fs.result(), _fp.result()
     if agent_name or agent_phones:
         _nn = _norm_name(agent_name or "")
         _phs = set(agent_phones or [])
