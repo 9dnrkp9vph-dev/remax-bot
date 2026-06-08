@@ -2497,6 +2497,24 @@ def _fetch_manual_buyers():
         return []
     return j.get("rows", []) or []
 
+def _fmt_buyer_date(raw):
+    """גוגל שיטס לפעמים ממיר את התאריך ל-ISO; מציג אותו יפה בשעון ישראל."""
+    from datetime import datetime
+    raw = str(raw or "").strip()
+    if not raw:
+        return ""
+    try:
+        d = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        try:
+            from zoneinfo import ZoneInfo
+            if d.tzinfo:
+                d = d.astimezone(ZoneInfo("Asia/Jerusalem"))
+        except Exception:
+            pass
+        return d.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return raw
+
 @app.route("/api/buyers/add", methods=["POST"])
 def api_buyers_add():
     s = _web_auth()
@@ -2563,7 +2581,7 @@ def api_my_buyers():
                 "phone": disp, "tel": tel, "wa": _wa_phone(r.get("phone", "")),
                 "budget": str(r.get("budget", "") or "").strip(),
                 "summary": str(r.get("summary", "") or "").strip(),
-                "date": str(r.get("date", "") or "").strip(),
+                "date": _fmt_buyer_date(r.get("date", "")),
                 "agent": str(r.get("agent", "") or "").strip(),
             })
         return jsonify({"ok": True, "count": len(out), "results": out})
@@ -2670,6 +2688,15 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 .ovlbox{background:#fff;border-radius:16px;padding:16px;width:100%;max-width:430px;box-shadow:0 12px 40px rgba(0,0,0,.3);max-height:90vh;overflow:auto}
 .ovlbox input,.ovlbox textarea{width:100%;margin:5px 0;padding:10px;border:1px solid #d8dde3;border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box}
 .ovlbtns{display:flex;gap:8px;margin-top:8px}.ovlbtns button{flex:1}
+.buyerrow{border-right:4px solid var(--gold,#caa14a);background:#fffdf7}
+.bhead{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:2px}
+.btag{display:inline-block;background:var(--gold,#caa14a);color:#2e2204;font-size:11px;font-weight:800;padding:2px 8px;border-radius:8px}
+.bname{font-size:16px}
+.bbudget{display:inline-block;background:#fff3d6;color:#7a5c12;font-weight:800;padding:2px 9px;border-radius:8px;border:1px solid #e7d39a;font-size:13px}
+.bmeta{margin:2px 0}
+.bsum{margin-top:5px;color:#33405a;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.bsum.open{-webkit-line-clamp:unset;overflow:visible}
+.bmore{display:inline-block;margin-top:3px;color:var(--gold,#8a6d1e);font-size:12px;font-weight:700;cursor:pointer}
 .row{border-bottom:1px solid var(--line);padding:12px 2px;font-size:14.5px;line-height:1.55}.row:last-child{border:none}
 .badge{display:inline-block;background:rgba(13,27,42,.08);color:var(--ink);font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;margin-inline-start:6px;vertical-align:middle}
 .ans{display:inline-block;background:#e7f6ec;color:#137a3a;font-weight:800;font-size:12px;padding:2px 9px;border-radius:999px}
@@ -2898,10 +2925,15 @@ function loadMyBuyers(){var box=$("mybuyers");if(!box)return;box.innerHTML="<div
   }).catch(function(){if($("mybuyers"))$("mybuyers").innerHTML="";});}
 function buyerCard(x){
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"";
-  return "<div class=row><b>"+esc(x.name||"קונה")+"</b>"+(ph?" · 📞 "+ph:"")+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
-    "<div class=muted>"+[x.budget?"💰 "+esc(x.budget):"",x.date?"📅 "+esc(x.date):"",(isMulti()&&x.agent)?("👤 "+esc(x.agent)):""].filter(Boolean).join(" · ")+"</div>"+
-    (x.summary?"<div>"+esc(x.summary)+"</div>":"")+"</div>";
+  var sid="bs"+(BSEQ++);
+  var meta=[(ph?"📞 "+ph:""),(x.wa?"<a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":""),(x.date?"📅 "+esc(x.date):""),((isMulti()&&x.agent)?"👤 "+esc(x.agent):"")].filter(Boolean).join(" · ");
+  return "<div class='row buyerrow'>"+
+    "<div class=bhead><span class=btag>👤 קונה</span> <b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>💰 "+esc(x.budget)+"</span>":"")+"</div>"+
+    (meta?"<div class=muted bmeta>"+meta+"</div>":"")+
+    (x.summary?("<div class=bsum id="+sid+">"+esc(x.summary)+"</div><span class=bmore onclick=\"var e=document.getElementById('"+sid+"');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'הצג פחות':'הצג עוד';\">הצג עוד</span>"):"")+
+    "</div>";
 }
+var BSEQ=0;
 function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
   var box=$("recent");if(!box)return;
   if(!r||!r.ok||!r.items.length){box.innerHTML="";return;}
