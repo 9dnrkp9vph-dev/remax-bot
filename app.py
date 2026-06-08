@@ -2477,6 +2477,100 @@ def api_search_buyers():
         log.error(f"buyers search error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
+# ── Manual buyers — נשמרים בטאב "קונים" בקובץ נדל"ן וואן דרך ה-Apps Script ──────
+def _buyers_apps_post(action, payload):
+    """שולח פעולה (addbuyer/listbuyers) ל-Apps Script ומחזיר את ה-JSON."""
+    if not (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN):
+        return None
+    data = {"action": action, "token": APPS_SCRIPT_TOKEN}
+    data.update(payload or {})
+    try:
+        r = requests.post(APPS_SCRIPT_URL, data=data, timeout=30, allow_redirects=True)
+        return r.json()
+    except Exception as e:
+        log.error(f"buyers {action} error: {e}")
+        return None
+
+def _fetch_manual_buyers():
+    j = _buyers_apps_post("listbuyers", {})
+    if not j or not j.get("ok"):
+        return []
+    return j.get("rows", []) or []
+
+@app.route("/api/buyers/add", methods=["POST"])
+def api_buyers_add():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    phone = (body.get("phone") or "").strip()
+    budget = (body.get("budget") or "").strip()
+    summary = (body.get("summary") or "").strip()
+    if not (name or phone or summary):
+        return jsonify({"ok": False, "reason": "empty"}), 400
+    from datetime import datetime, timezone, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Asia/Jerusalem"))
+    except Exception:
+        now = datetime.now(timezone.utc) + timedelta(hours=3)
+    # מנהל/מתאמת יכולים לשמור בשם סוכן אחר (as)
+    eff_name, eff_phone = s.get("name", ""), _last9(s.get("phone", ""))
+    if s["role"] in ("admin", "coordinator"):
+        as_name = (body.get("as") or "").strip()
+        if as_name:
+            eff_name = as_name
+            ps = list(_phones_for_name(as_name))
+            eff_phone = ps[0] if ps else ""
+    payload = {
+        "date": now.strftime("%d/%m/%Y %H:%M"),
+        "name": name, "phone": phone, "budget": budget, "summary": summary,
+        "agent": eff_name, "agent_phone": eff_phone,
+    }
+    j = _buyers_apps_post("addbuyer", payload)
+    if not j or not j.get("ok"):
+        return jsonify({"ok": False, "reason": (j or {}).get("error", "save_failed")}), 502
+    _log_activity(s["name"], s["role"], s["phone"], "הוספת קונה", name or phone)
+    return jsonify({"ok": True})
+
+@app.route("/api/my/buyers", methods=["GET", "POST"])
+def api_my_buyers():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    try:
+        rows = _fetch_manual_buyers()
+        as_name = ""
+        if s["role"] in ("admin", "coordinator"):
+            as_name = ((request.get_json(silent=True) or {}).get("as", "")
+                       or request.args.get("as", "")).strip()
+        if s["role"] == "admin" and not as_name:
+            mine = rows  # מנהל רואה את כל הקונים
+        else:
+            eff_name = as_name or s.get("name", "")
+            eff_phones = set(_phones_for_name(eff_name))
+            if not as_name and s.get("phone"):
+                eff_phones.add(_last9(s["phone"]))
+            nn = _norm_name(eff_name)
+            mine = [r for r in rows
+                    if (_norm_name(r.get("agent", "")) == nn and nn)
+                    or (_last9(r.get("agent_phone", "")) in eff_phones)]
+        mine.sort(key=lambda r: _excl_epoch(r.get("date", "")), reverse=True)
+        out = []
+        for r in mine:
+            disp, tel = _il_phone(r.get("phone", ""))
+            out.append({
+                "name": (r.get("name", "") or "").strip(),
+                "phone": disp, "tel": tel, "wa": _wa_phone(r.get("phone", "")),
+                "budget": (r.get("budget", "") or "").strip(),
+                "summary": (r.get("summary", "") or "").strip(),
+                "date": (r.get("date", "") or "").strip(),
+                "agent": (r.get("agent", "") or "").strip(),
+            })
+        return jsonify({"ok": True, "count": len(out), "results": out})
+    except Exception as e:
+        log.error(f"my buyers error: {e}", exc_info=True)
+        return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
 # ── Presentation (PDF) ─────────────────────────────────────────────────────────
 @app.route("/api/presentation", methods=["POST"])
 def api_presentation():
@@ -2565,6 +2659,11 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 .chip{flex:1;text-align:center;padding:10px 6px;border-radius:11px;background:#eef1f5;color:var(--ink);cursor:pointer;font-size:13px;font-weight:700;border:1px solid #e3e7eb}
 .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .monthsel{flex:1;min-width:0;text-align:center;padding:10px 6px;border-radius:11px;background:#eef1f5;color:var(--ink);cursor:pointer;font-size:13px;font-weight:700;border:1px solid #e3e7eb}
+.addbuyer{display:inline-block;width:auto;padding:3px 9px;margin:0;font-size:12px;font-weight:700;border:1px solid var(--gold,#caa14a);background:#fff7e6;color:#7a5c12;border-radius:9px;cursor:pointer}
+.ovl{position:fixed;inset:0;background:rgba(13,27,42,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:14px}
+.ovlbox{background:#fff;border-radius:16px;padding:16px;width:100%;max-width:430px;box-shadow:0 12px 40px rgba(0,0,0,.3);max-height:90vh;overflow:auto}
+.ovlbox input,.ovlbox textarea{width:100%;margin:5px 0;padding:10px;border:1px solid #d8dde3;border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box}
+.ovlbtns{display:flex;gap:8px;margin-top:8px}.ovlbtns button{flex:1}
 .row{border-bottom:1px solid var(--line);padding:12px 2px;font-size:14.5px;line-height:1.55}.row:last-child{border:none}
 .badge{display:inline-block;background:rgba(13,27,42,.08);color:var(--ink);font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;margin-inline-start:6px;vertical-align:middle}
 .ans{display:inline-block;background:#e7f6ec;color:#137a3a;font-weight:800;font-size:12px;padding:2px 9px;border-radius:999px}
@@ -2701,8 +2800,11 @@ function loadCalls(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):""
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
     var callerLink=c.caller?("<a href='tel:"+(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
     var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener>🔁 חייג חזרה</a>"):"";
-    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(isMulti()&&c.agent?" · "+esc(c.agent):"")+cb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+(c.clientDetails?"<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div></div>":"")+"</div>";
+    var bsum=(c.summary||"")+(c.clientDetails?("\n"+c.clientDetails):"");
+    var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\">➕ קונה</button>";
+    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(isMulti()&&c.agent?" · "+esc(c.agent):"")+cb+addb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+(c.clientDetails?"<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div></div>":"")+"</div>";
   }).join(""):"<div class=muted>אין שיחות בטווח.</div>")+"</div>";
+  document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:decodeURIComponent(b.getAttribute("data-sum")||"")});};});
   seenCall=maxC;
 }).catch(function(){});}
 function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
@@ -2741,10 +2843,11 @@ function viewSearch(kind){
   var cfg={props:{t:"🏢 נכסים במשרד",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
            excl:{t:"🏘️ נכסים בקריות",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
            buyers:{t:"👤 הקונים שלי",ph:"4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
-  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button><div id=recent></div><div id=sres></div>'+(kind=="props"?'<div id=myprops></div>':'')+'</div>';
+  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button>'+(kind=="buyers"?' <button class=sec onclick=openBuyerForm({})>➕ הוסף קונה</button>':'')+'<div id=recent></div><div id=sres></div>'+(kind=="props"?'<div id=myprops></div>':'')+(kind=="buyers"?'<div id=mybuyers></div>':'')+'</div>';
   CUR_EP=cfg.ep;CUR_KIND=kind;
   if(kind=="props"||kind=="excl")loadRecent(kind);
   if(kind=="props")loadMyProps();
+  if(kind=="buyers")loadMyBuyers();
 }
 function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div class=muted style=margin:8px_0>טוען את הנכסים שלך… ⏳</div>";
   api("/api/my/properties",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:IMP||""})}).then(function(r){
@@ -2755,6 +2858,44 @@ function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div c
     $("myprops").innerHTML=h;
   }).catch(function(){if($("myprops"))$("myprops").innerHTML="";});}
 function shareApp(){var u=location.origin+"/app";var t="📲 אפליקציית RE/MAX Family\nחיפוש נכסים, קונים, בלעדיות ויצירת מצגות נדל\"ן:\n"+u;window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank");}
+function openBuyerForm(pf){pf=pf||{};closeBuyer();
+  var ov=document.createElement("div");ov.className="ovl";ov.id="buyerovl";
+  ov.innerHTML='<div class=ovlbox><h3 style=margin:0_0_8px>➕ הוספת קונה</h3>'+
+    '<input id=bf_name placeholder="שם הלקוח">'+
+    '<input id=bf_phone placeholder="טלפון">'+
+    '<input id=bf_budget placeholder="תקציב (למשל 2,000,000)">'+
+    '<textarea id=bf_sum rows=6 placeholder="סיכום השיחה — ניתן לערוך"></textarea>'+
+    '<div class=ovlbtns><button class=gold onclick=saveBuyer()>שמירה</button><button class=sec onclick=closeBuyer()>ביטול</button></div>'+
+    '<div id=bf_msg class=muted></div></div>';
+  ov.onclick=function(e){if(e.target===ov)closeBuyer();};
+  document.body.appendChild(ov);
+  $("bf_name").value=pf.name||"";$("bf_phone").value=pf.phone||"";$("bf_budget").value=pf.budget||"";$("bf_sum").value=pf.summary||"";
+  $("bf_name").focus();
+}
+function closeBuyer(){var o=$("buyerovl");if(o)o.remove();}
+function saveBuyer(){
+  var body={name:$("bf_name").value.trim(),phone:$("bf_phone").value.trim(),budget:$("bf_budget").value.trim(),summary:$("bf_sum").value.trim(),as:(typeof IMP!="undefined"?IMP:"")||""};
+  if(!body.name&&!body.phone&&!body.summary){$("bf_msg").innerHTML="<span class=err>יש למלא לפחות שדה אחד</span>";return;}
+  $("bf_msg").textContent="שומר… ⏳";
+  api("/api/buyers/add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){
+    if(!r||!r.ok){$("bf_msg").innerHTML="<span class=err>שמירה נכשלה"+(r&&r.reason?" ("+esc(r.reason)+")":"")+"</span>";return;}
+    closeBuyer();if(TABNOW=="buyers"&&typeof loadMyBuyers=="function")loadMyBuyers();alert("✅ הקונה נשמר");
+  }).catch(function(){$("bf_msg").innerHTML="<span class=err>שגיאה</span>";});
+}
+function loadMyBuyers(){var box=$("mybuyers");if(!box)return;box.innerHTML="<div class=muted style=margin:8px_0>טוען קונים… ⏳</div>";
+  api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){
+    if(!$("mybuyers"))return;if(!r||!r.ok){$("mybuyers").innerHTML="";return;}
+    if(!r.results.length){$("mybuyers").innerHTML="<div class=muted style=margin:8px_0>אין קונים שמורים עדיין. הוסף קונה משיחה (➕ קונה) או בכפתור למעלה.</div>";return;}
+    var h="<div class=muted style=margin:12px_0_4px>👤 הקונים שלי ("+r.results.length+")</div>";
+    h+=r.results.map(function(x){return buyerCard(x);}).join("");
+    $("mybuyers").innerHTML=h;
+  }).catch(function(){if($("mybuyers"))$("mybuyers").innerHTML="";});}
+function buyerCard(x){
+  var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"";
+  return "<div class=row><b>"+esc(x.name||"קונה")+"</b>"+(ph?" · 📞 "+ph:"")+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
+    "<div class=muted>"+[x.budget?"💰 "+esc(x.budget):"",x.date?"📅 "+esc(x.date):"",(isMulti()&&x.agent)?("👤 "+esc(x.agent)):""].filter(Boolean).join(" · ")+"</div>"+
+    (x.summary?"<div>"+esc(x.summary)+"</div>":"")+"</div>";
+}
 function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
   var box=$("recent");if(!box)return;
   if(!r||!r.ok||!r.items.length){box.innerHTML="";return;}
