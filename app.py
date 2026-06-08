@@ -1058,6 +1058,74 @@ def _fetch_sheet_rows_raw() -> list:
     except Exception as e:
         log.error(f"Fetch sheet error: {e}")
         return []
+SIGNINGS_SHEET_TAB = os.environ.get("SIGNINGS_SHEET_TAB", "חתימות")
+def fetch_signings_from_sheet():
+    """קורא חתימות מטאב מלא (ייצוא מהקרם) בגיליון הנכסים. ריק/לא קיים -> [] ונפילה חזרה."""
+    c = _cache_get("signings_sheet", 60)
+    if c is not None:
+        return c
+    if not GOOGLE_SHEETS_API_KEY:
+        return []
+    from urllib.parse import quote
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(SIGNINGS_SHEET_TAB)}!A1:Z?key={GOOGLE_SHEETS_API_KEY}"
+    try:
+        r = requests.get(url, timeout=15)
+        if r.status_code != 200:
+            return []
+        data = r.json().get("values", [])
+        if len(data) < 2:
+            return []
+        headers = [str(h).strip() for h in data[0]]
+        def col(row, name):
+            try:
+                i = headers.index(name)
+            except ValueError:
+                return ""
+            return row[i] if i < len(row) else ""
+        out = []
+        for row in data[1:]:
+            dt = col(row, "סוג הסכם"); agent = col(row, "סוכן")
+            if not dt and not agent:
+                continue
+            rec = col(row, "נוצר בתאריך")
+            out.append({
+                "agent": agent,
+                "agent_phone": col(row, "מספר טלפון סוכן 1"),
+                "deal_type": dt,
+                "received_at": rec,
+                "_date_key": rec,
+                "address": col(row, "כתובת") or col(row, "רחוב"),
+                "city": "",
+                "client_name": col(row, "שם לקוח"),
+                "commission_pct": col(row, "העמלה שנחתמה"),
+            })
+        _cache_put("signings_sheet", out)
+        return out
+    except Exception as e:
+        log.error(f"signings sheet error: {e}")
+        return []
+def get_signings(frm="01/01/2020", to="31/12/2099"):
+    """חתימות לתקופה. אם יש טאב מלא (ייצוא מהקרם) — הוא הבסיס המדויק, ומוסיפים מהמקור
+    האוטומטי (Apps Script) רק חתימות חדשות יותר מההדבקה האחרונה, כך שהדוח תמיד עדכני
+    גם בלי הדבקה ידנית כל יום. אם אין טאב מלא — נופלים חזרה למקור האוטומטי בלבד."""
+    manual = fetch_signings_from_sheet()
+    if manual:
+        max_e = max((_excl_epoch(g.get("received_at", "")) for g in manual), default=0)
+        try:
+            auto = web_fetch_raw("חתימות")
+        except Exception:
+            auto = []
+        extra = [g for g in auto if _excl_epoch(g.get("received_at", "")) > max_e]
+        allsig = manual + extra
+    else:
+        allsig = web_fetch_raw("חתימות", frm, to)
+    lo = _excl_epoch(frm); hi = _excl_epoch(to) + 86399
+    out = []
+    for g in allsig:
+        e = _excl_epoch(g.get("received_at", ""))
+        if e and lo <= e <= hi:
+            out.append(g)
+    return out
 def normalize_city(city: str) -> str:
     if not city:
         return ""
@@ -2099,7 +2167,7 @@ def api_history():
             phones = _phones_for_name(as_name)
             if phones:
                 eff = {"role": "agent", "name": as_name, "phones": phones}
-    calls = web_fetch_raw("שיחות"); sigs = web_fetch_raw("חתימות")
+    calls = web_fetch_raw("שיחות"); sigs = get_signings()
     if eff["role"] == "coordinator":
         agset = set(eff.get("agents") or [])
         names = set(_norm_name(n) for n in (eff.get("agent_names") or []))
@@ -2119,7 +2187,7 @@ def api_history():
             calls = [c for c in calls if _last9(c.get("agent_phone", "")) == ph]
         sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) == nm]
     calls.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
-    sigs.sort(key=lambda g: _epoch_from_iso(g.get("received_at", "")), reverse=True)
+    sigs.sort(key=lambda g: _excl_epoch(g.get("received_at", "")), reverse=True)
     call_out = []
     for c in calls[:500]:
         raw = str(c.get("transcript_summary", ""))
@@ -2148,7 +2216,7 @@ def api_history():
             "ts": _epoch_from_iso(c.get("received_at", "")),
         })
     sig_out = [{
-        "time": _fmt_il_dt(g.get("received_at", "")),
+        "time": (_fmt_il_dt(g.get("received_at", "")) or str(g.get("received_at", "") or "").strip()),
         "type": _deal_label(g.get("deal_type", "")),
         "client": (g.get("client_name", "") or "").strip(),
         "address": ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x]),
@@ -2156,7 +2224,7 @@ def api_history():
         "link": (str(g.get("commission_pct")).strip()
                  if isinstance(g.get("commission_pct"), str) and re.search(r"https?://", str(g.get("commission_pct"))) else ""),
         "agent": (g.get("agent", "") or "").strip(),
-        "ts": _epoch_from_iso(g.get("received_at", "")),
+        "ts": _excl_epoch(g.get("received_at", "")),
     } for g in sigs[:500]]
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"], "calls": call_out, "signatures": sig_out})
 
@@ -2187,7 +2255,7 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=3) as _ex:
         _fc = _ex.submit(web_fetch_raw, "שיחות", frm, to)
-        _fs = _ex.submit(web_fetch_raw, "חתימות", frm, to)
+        _fs = _ex.submit(get_signings, frm, to)
         _fp = _ex.submit(web_fetch_raw, "נכסים", frm, to)
         calls, sigs, props = _fc.result(), _fs.result(), _fp.result()
     if agent_name or agent_phones:
@@ -2265,7 +2333,7 @@ def _agent_insights(frm, to, prev_frm, prev_to, eff_name, eff_phones, cur_sm):
         _add("נכסים חדשים", cur_sm["props"]["total"], prev["props"]["total"])
     # דירוג בגיוס בלעדיות מול כל המשרד (מוצג רק אם בעשירייה הראשונה)
     try:
-        org_sigs = web_fetch_raw("חתימות", frm, to)
+        org_sigs = get_signings(frm, to)
         cnt = {}
         for g in org_sigs:
             if "OWNER_EXCLUSIVE" in str(g.get("deal_type", "")).upper():
