@@ -1835,6 +1835,12 @@ _DEFAULT_ADMIN_PHONES = [
 ]
 ADMIN_PHONES = _DEFAULT_ADMIN_PHONES + [p.strip() for p in os.environ.get("ADMIN_PHONES", "").split(",") if p.strip()]
 
+# קודי כניסה קבועים שעוקפים את ה-SMS (Twilio) — { 9 ספרות אחרונות של הטלפון: קוד }
+# לשימוש אישי בלבד. מי שמכניס מספר+קוד תואמים נכנס בלי SMS.
+_BYPASS_LOGINS = {
+    "505709865": "1324",   # אייל שמול
+}
+
 # --- in-memory OTP + sessions ---
 _otp_store = {}     # last9 -> {"code","exp","tries"}
 _web_sessions = {}  # token -> {"phone","role","name","exp"}
@@ -1986,7 +1992,10 @@ def _push_recent(phone, kind, q):
 def api_auth_request():
     phone = _last9((request.get_json(silent=True) or {}).get("phone", ""))
     if not phone: return jsonify({"ok": False, "reason": "bad_phone"})
-    if not web_role_for(phone): return jsonify({"ok": False, "reason": "unknown"})
+    if not web_role_for(phone) and phone not in _BYPASS_LOGINS:
+        return jsonify({"ok": False, "reason": "unknown"})
+    if phone in _BYPASS_LOGINS:
+        return jsonify({"ok": True})   # קוד קבוע — אין צורך ב-SMS, הקש את הקוד שלך
     code = f"{_secrets.randbelow(900000) + 100000}"
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
     if not web_send_sms(phone, f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)"):
@@ -1997,6 +2006,20 @@ def api_auth_request():
 def api_auth_verify():
     body  = request.get_json(silent=True) or {}
     phone = _last9(body.get("phone", "")); code = str(body.get("code", "")).strip()
+    # קוד כניסה קבוע (עוקף SMS) — רק למספרים שהוגדרו ב-_BYPASS_LOGINS
+    if phone in _BYPASS_LOGINS and code == _BYPASS_LOGINS[phone]:
+        role = web_role_for(phone) or "admin"
+        if role == "admin": name = "מנהל"
+        elif role == "coordinator": name = _COORDINATORS[phone]["name"]
+        else: name = web_phone_name_map().get(phone) or "סוכן"
+        token = _secrets.token_urlsafe(24)
+        sess = {"phone": phone, "role": role, "name": name, "exp": time.time() + _SESS_TTL}
+        if role == "coordinator":
+            sess["agents"] = list(_COORDINATORS[phone]["agents"])
+            sess["agent_names"] = list(_COORDINATORS[phone]["names"])
+        _web_sessions[token] = sess
+        _log_activity(name, role, phone, "כניסה (קוד קבוע)")
+        return jsonify({"ok": True, "token": token, "role": role, "name": name})
     rec = _otp_store.get(phone)
     if not rec or rec["exp"] < time.time(): return jsonify({"ok": False, "reason": "expired"})
     if rec["tries"] >= 5: _otp_store.pop(phone, None); return jsonify({"ok": False, "reason": "too_many"})
@@ -2515,7 +2538,7 @@ a{color:var(--blue);font-weight:700;text-decoration:none}a:hover{text-decoration
 table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);font-weight:700;padding:7px 4px;border-bottom:2px solid #eef0f3}td{padding:9px 4px;border-bottom:1px solid var(--line);font-size:14px}
 .cdetails{background:rgba(201,151,42,.12);border-inline-start:3px solid var(--gold);border-radius:0 8px 8px 0;padding:9px 11px;margin-top:8px;font-size:14px;line-height:1.55}.cdetails b{color:#7a5a12;display:block;margin-bottom:3px}
 </style></head><body><div class="wrap">
-<div class="brand"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><button class="sec" onclick="shareApp()" title="שתף את האפליקציה בוואטסאפ" style="width:auto;margin:0;padding:6px 11px;font-size:13px;flex:0 0 auto">📲 שתף</button><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="card" id="s1">
@@ -2534,7 +2557,6 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 </div>
 
 <div id="appui" class="hidden">
-  <div style="text-align:center;margin-bottom:6px"><button class="sec" style="width:auto;display:inline-block;padding:7px 14px" onclick="shareApp()">📲 שתף את האפליקציה</button></div>
   <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px">
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('activity')">📣 עדכונים</button>
