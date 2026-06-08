@@ -2786,6 +2786,21 @@ def api_buyers_update():
     _log_activity(s["name"], s["role"], s["phone"], "עדכון חיפוש קונה", search[:60])
     return jsonify({"ok": True})
 
+@app.route("/api/buyers/delete", methods=["POST"])
+def api_buyers_delete():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    body = request.get_json(silent=True) or {}
+    row = str(body.get("row", "")).strip()
+    if not row:
+        return jsonify({"ok": False, "reason": "no_row"}), 400
+    j = _buyers_apps_post("deletebuyer", {"row": row})
+    if not j or not j.get("ok"):
+        return jsonify({"ok": False, "reason": (j or {}).get("error", "delete_failed")}), 502
+    _cache_clear("buyers")
+    _log_activity(s["name"], s["role"], s["phone"], "מחיקת קונה", row)
+    return jsonify({"ok": True})
+
 # ── Presentation (PDF) ─────────────────────────────────────────────────────────
 @app.route("/api/presentation", methods=["POST"])
 def api_presentation():
@@ -2903,6 +2918,7 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 .btag{display:inline-block;background:var(--gold,#caa14a);color:#2e2204;font-size:11px;font-weight:800;padding:2px 8px;border-radius:8px}
 .bname{font-size:16px}
 .bbudget{display:inline-block;background:#fff3d6;color:#7a5c12;font-weight:800;padding:2px 9px;border-radius:8px;border:1px solid #e7d39a;font-size:13px}
+.bdel{margin-inline-start:auto;width:auto;padding:3px 8px;margin-top:0;margin-bottom:0;background:#fff;border:1px solid #e3a3a3;color:#b03a3a;border-radius:8px;font-size:13px;cursor:pointer;line-height:1}
 .bmeta{margin:2px 0}
 .bsum{margin-top:5px;color:#33405a;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .bsum.open{-webkit-line-clamp:unset;overflow:visible}
@@ -3152,7 +3168,7 @@ function buyerCard(x){
   var meta=[(ph?"📞 "+ph:""),(x.wa?"<a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":""),(x.date?"📅 "+esc(x.date):""),((isMulti()&&x.agent)?"👤 "+esc(x.agent):"")].filter(Boolean).join(" · ");
   var q=encodeURIComponent(((x.budget||"")+" "+(x.summary||"")).trim().slice(0,800));
   return "<div class='row buyerrow'>"+
-    "<div class=bhead><span class=btag>👤 קונה</span> <b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>💰 "+esc(x.budget)+"</span>":"")+"</div>"+
+    "<div class=bhead><span class=btag>👤 קונה</span> <b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>💰 "+esc(x.budget)+"</span>":"")+"<button class=bdel onclick=\"delBuyer('"+esc(String(x.row||""))+"')\" title='מחק קונה'>🗑</button></div>"+
     (meta?"<div class=muted bmeta>"+meta+"</div>":"")+
     (x.summary?("<div class=bsum id="+sid+">"+esc(x.summary)+"</div><span class=bmore onclick=\"var e=document.getElementById('"+sid+"');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'הצג פחות':'הצג עוד';\">הצג עוד</span>"):"")+
     "<input class=bqedit id=q"+n+" value=\""+esc(x.search||"").replace(/\"/g,"&quot;")+"\" placeholder=\"חידוד חיפוש (לא חובה): למשל 4 חדרים קרית ביאליק עד 2 מיליון\">"+
@@ -3161,6 +3177,14 @@ function buyerCard(x){
     "</div>";
 }
 var BSEQ=0;
+function delBuyer(row){
+  if(!row){alert("לא ניתן למחוק (חסר מזהה)");return;}
+  if(!confirm("למחוק את הקונה לצמיתות?"))return;
+  api("/api/buyers/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({row:row})}).then(function(r){
+    if(!r||!r.ok){alert("מחיקה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));return;}
+    if(typeof loadMyBuyers=="function")loadMyBuyers();
+  }).catch(function(){alert("שגיאה");});
+}
 function buyerSearch(b){
   var kind=b.getAttribute("data-k"),rid=b.getAttribute("data-r");
   var ein=document.getElementById(b.getAttribute("data-e")||"");
