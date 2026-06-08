@@ -1827,7 +1827,13 @@ from flask import send_file, Response, redirect
 TWILIO_SID   = os.environ.get("TWILIO_SID", "")
 TWILIO_AUTH  = os.environ.get("TWILIO_AUTH", "")
 TWILIO_FROM  = os.environ.get("TWILIO_FROM", "")           # +972... או MG... (Messaging Service)
-ADMIN_PHONES = [p.strip() for p in os.environ.get("ADMIN_PHONES", "").split(",") if p.strip()]
+# מנהלים קבועים (מוגדרים לפי מספר טלפון) — בנוסף למשתנה הסביבה ADMIN_PHONES אם קיים
+_DEFAULT_ADMIN_PHONES = [
+    "0546000808",  # אודי שמול
+    "0544448065",  # מתן ביטון
+    "0525640615",  # אוריין שמול
+]
+ADMIN_PHONES = _DEFAULT_ADMIN_PHONES + [p.strip() for p in os.environ.get("ADMIN_PHONES", "").split(",") if p.strip()]
 
 # --- in-memory OTP + sessions ---
 _otp_store = {}     # last9 -> {"code","exp","tries"}
@@ -2231,6 +2237,64 @@ def api_search_properties():
         log.error(f"properties search error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
+# ── "הנכסים שלי" — כל הנכסים של הסוכן מגיליון המשרד, לפי שם וטלפון ──────────────
+def _agent_owns_row(row, agent_name, agent_phones):
+    """האם הנכס שייך לסוכן — לפי שם (סוכן 1/2) או מספר טלפון (טלפון 1/2)."""
+    nn = _norm_name(agent_name)
+    if nn and nn not in ("מנהל", "סוכן"):
+        for col in ("סוכן 1", "סוכן 2"):
+            if _norm_name(row.get(col, "")) == nn:
+                return True
+    if agent_phones:
+        for col in ("טלפון 1", "טלפון 2", "טלפון"):
+            ph = _last9(row.get(col, ""))
+            if ph and ph in agent_phones:
+                return True
+    return False
+
+@app.route("/api/my/properties", methods=["GET", "POST"])
+def api_my_properties():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    try:
+        # מנהל יכול לצפות כסוכן עם as; אחרת הזהות של המחובר עצמו
+        as_name = ""
+        if s["role"] == "admin":
+            as_name = ((request.get_json(silent=True) or {}).get("as", "")
+                       or request.args.get("as", "")).strip()
+        if as_name:
+            eff_name = as_name
+            eff_phones = set(_phones_for_name(as_name))
+        else:
+            eff_name = s.get("name", "")
+            eff_phones = set(_phones_for_name(eff_name))
+            if s.get("phone"):
+                eff_phones.add(_last9(s["phone"]))
+        rows = fetch_sheet_rows()
+        mine = [r for r in rows if _agent_owns_row(r, eff_name, eff_phones)]
+        phones_map = fetch_agents_phones()
+        out = []
+        for r in mine:
+            ag = (r.get("סוכן 1", "") or "").strip()
+            out.append({
+                "type": (r.get("סוג נכס", "") or "").strip(),
+                "city": (r.get("עיר / ישוב", "") or "").strip(),
+                "neighborhood": (r.get("שכונה", "") or "").strip(),
+                "address": (f"{r.get('כתובת','')} {r.get('מספר בית','')}").strip(),
+                "rooms": (r.get("חדרים", "") or "").strip(),
+                "size": (r.get('מ"ר', "") or r.get("מ״ר", "") or "").strip(),
+                "floor": (r.get("קומה", "") or "").strip(),
+                "price": (r.get("מחיר", "") or "").strip(),
+                "agent": ag,
+                "wa": _wa_phone(phones_map.get(ag, r.get("טלפון 1", ""))),
+            })
+        _log_activity(s["name"], s["role"], s["phone"], "הנכסים שלי",
+                      eff_name if as_name else "")
+        return jsonify({"ok": True, "count": len(out), "name": eff_name, "results": out})
+    except Exception as e:
+        log.error(f"my properties error: {e}", exc_info=True)
+        return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
 # ── Exclusivity search ─────────────────────────────────────────────────────────
 def _web_num(v):
     if v is None or v == "": return None
@@ -2470,6 +2534,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 </div>
 
 <div id="appui" class="hidden">
+  <div style="text-align:center;margin-bottom:6px"><button class="sec" style="width:auto;display:inline-block;padding:7px 14px" onclick="shareApp()">📲 שתף את האפליקציה</button></div>
   <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px">
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('activity')">📣 עדכונים</button>
@@ -2606,10 +2671,20 @@ function viewSearch(kind){
   var cfg={props:{t:"🏢 נכסים במשרד",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
            excl:{t:"🏘️ נכסים בקריות",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
            buyers:{t:"👤 הקונים שלי",ph:"4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
-  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button><div id=recent></div><div id=sres></div></div>';
+  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button><div id=recent></div><div id=sres></div>'+(kind=="props"?'<div id=myprops></div>':'')+'</div>';
   CUR_EP=cfg.ep;CUR_KIND=kind;
   if(kind=="props"||kind=="excl")loadRecent(kind);
+  if(kind=="props")loadMyProps();
 }
+function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div class=muted style=margin:8px_0>טוען את הנכסים שלך… ⏳</div>";
+  api("/api/my/properties",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:IMP||""})}).then(function(r){
+    if(!$("myprops"))return;if(!r||!r.ok){$("myprops").innerHTML="";return;}
+    if(!r.results.length){$("myprops").innerHTML="<div class=muted style=margin:8px_0>לא נמצאו נכסים על שמך בגיליון המשרד.</div>";return;}
+    var h="<div class=muted style=margin:12px_0_4px>🏠 הנכסים שלי במשרד ("+r.results.length+")</div>";
+    h+=r.results.map(function(x){return card("props",x);}).join("");
+    $("myprops").innerHTML=h;
+  }).catch(function(){if($("myprops"))$("myprops").innerHTML="";});}
+function shareApp(){var u=location.origin+"/app";var t="📲 אפליקציית RE/MAX Family\nחיפוש נכסים, קונים, בלעדיות ויצירת מצגות נדל\"ן:\n"+u;window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank");}
 function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
   var box=$("recent");if(!box)return;
   if(!r||!r.ok||!r.items.length){box.innerHTML="";return;}
@@ -2629,7 +2704,7 @@ function doSearch(ep,kind){
   }).catch(function(){$("sres").innerHTML="<span class=err>שגיאה</span>";});
 }
 function card(kind,x){
-  if(kind=="props"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.type||"נכס")+"</b> · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+
+  if(kind=="props"){return "<div class=row>"+((x.score!==undefined&&x.score!=="")?"<span class=score>"+x.score+"%</span>":"")+"<b>"+esc(x.type||"נכס")+"</b> · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+
     "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price].filter(Boolean).join(" · ")+"</div>"+
     (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+"</div>";}
   if(kind=="excl"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
