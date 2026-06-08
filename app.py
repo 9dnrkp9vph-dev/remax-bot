@@ -2559,12 +2559,12 @@ def api_my_buyers():
         for r in mine:
             disp, tel = _il_phone(r.get("phone", ""))
             out.append({
-                "name": (r.get("name", "") or "").strip(),
+                "name": str(r.get("name", "") or "").strip(),
                 "phone": disp, "tel": tel, "wa": _wa_phone(r.get("phone", "")),
-                "budget": (r.get("budget", "") or "").strip(),
-                "summary": (r.get("summary", "") or "").strip(),
-                "date": (r.get("date", "") or "").strip(),
-                "agent": (r.get("agent", "") or "").strip(),
+                "budget": str(r.get("budget", "") or "").strip(),
+                "summary": str(r.get("summary", "") or "").strip(),
+                "date": str(r.get("date", "") or "").strip(),
+                "agent": str(r.get("agent", "") or "").strip(),
             })
         return jsonify({"ok": True, "count": len(out), "results": out})
     except Exception as e:
@@ -2646,7 +2646,7 @@ FAMILY_BOT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 :root{--ink:#0D1B2A;--gold:#C9972A;--red:#E11B22;--blue:#003DA5;--bg:#eef1f5;--muted:#6b7280;--line:#eef0f3}
 *{box-sizing:border-box}
 body{font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
-.wrap{max-width:620px;margin:0 auto;padding:10px 14px 100px}
+.wrap{max-width:620px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top,0)) 14px 100px}
 .brand{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;margin:6px 0 12px;padding-bottom:12px;border-bottom:2px solid var(--gold)}
 .brand img{max-height:42px;max-width:60%;object-fit:contain}.brandtxt{font-size:20px;font-weight:800}
 .brandname{font-size:15px;font-weight:800;color:var(--ink);background:#fff;border:1px solid #e6e8ec;border-radius:999px;padding:5px 13px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
