@@ -1456,6 +1456,26 @@ def _fmt_il_dt(s: str) -> str:
         return d.strftime("%d/%m/%Y %H:%M")
     except:
         return ""
+def _excl_epoch(s) -> float:
+    """תאריך → epoch למיון. תומך גם ב-ISO (2026-06-07T03:04:15Z) וגם ב-DD/MM/YYYY [HH:MM[:SS]].
+    מחזיר 0 אם לא ניתן לפענח. מבטיח שנכסים חדשים תמיד ממוינים ראשונים גם אם הפורמט משתנה."""
+    from datetime import datetime
+    s = str(s or "").strip()
+    if not s:
+        return 0.0
+    try:
+        return datetime.fromisoformat(s.replace("Z","+00:00")).timestamp()
+    except Exception:
+        pass
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?", s)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        hh, mi, ss = int(m.group(4) or 0), int(m.group(5) or 0), int(m.group(6) or 0)
+        try:
+            return datetime(y, mo, d, hh, mi, ss).timestamp()
+        except Exception:
+            return 0.0
+    return 0.0
 def format_buyer_match_reply(summary: str, matches: list) -> str:
     if not matches:
         return ("🔍 לא מצאתי קונים תואמים בשיחות שלך.\n\n"
@@ -1540,7 +1560,7 @@ def fetch_external_exclusives() -> list:
     if not APPS_SCRIPT_URL or not APPS_SCRIPT_TOKEN:
         log.error("APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN missing in env")
         return []
-    if _external_excl_cache["data"] is not None and (time.time() - _external_excl_cache["ts"]) < 300:
+    if _external_excl_cache["data"] is not None and (time.time() - _external_excl_cache["ts"]) < 60:
         return _external_excl_cache["data"]
     try:
         from urllib.parse import quote
@@ -1689,12 +1709,12 @@ def handle_exclusivity_search_request(sender_phone: str, message_text: str):
 
         # אם אין קריטריונים — החזר את 5 האחרונות
         if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
-            all_rows.sort(key=lambda r: r.get("received_at",""), reverse=True)
+            all_rows.sort(key=lambda r: _excl_epoch(r.get("received_at","")), reverse=True)
             matches = all_rows[:5]
         else:
             scored = [(score_exclusivity_match(r, parsed), r) for r in all_rows]
             scored = [(s, r) for s, r in scored if s > 0]
-            scored.sort(key=lambda x: (-x[0], x[1].get("received_at","")))
+            scored.sort(key=lambda x: (-x[0], -_excl_epoch(x[1].get("received_at",""))))
             matches = [r for _, r in scored[:5]]
 
         send_text(sender_phone, format_exclusivity_match_reply(parsed, matches))
@@ -2028,7 +2048,15 @@ def api_history():
         raw = str(c.get("transcript_summary", ""))
         m = re.search(r"https?://\S+", raw)
         callback = m.group(0) if (m and ("maskyoo" in raw or "click2call" in raw)) else ""
-        text = re.sub(r"https?://\S+", "", raw).strip()
+        text = re.sub(r"https?://\S+", "", raw)
+        text = re.sub(r"\*", "", text)                       # נקה כוכביות (סימון bold של וואטסאפ)
+        text = re.sub(r"AI מתמלל ומסכם שיחות", "", text)
+        text = re.sub(r"[ \t]+", " ", text).strip()
+        client_details = ""
+        mi = text.find("פרטים שנאספו על הלקוח")
+        if mi >= 0:
+            client_details = text[mi:].strip()
+            text = text[:mi].strip()
         caller_disp, caller_tel = _il_phone(c.get("caller_phone", ""))
         call_out.append({
             "time": _fmt_il_dt(c.get("received_at", "")),
@@ -2038,6 +2066,7 @@ def api_history():
             "duration": c.get("duration_sec", ""),
             "agent": (c.get("agent", "") or "").strip(),
             "summary": text,
+            "clientDetails": client_details,
             "callback": callback,
             "ts": _epoch_from_iso(c.get("received_at", "")),
         })
@@ -2216,7 +2245,7 @@ def _dedupe_exclusives(rows):
         if not key:
             key = "id:" + str(r.get("event_id", ""))
         cur = best.get(key)
-        if cur is None or str(r.get("received_at", "")) > str(cur.get("received_at", "")):
+        if cur is None or _excl_epoch(r.get("received_at", "")) > _excl_epoch(cur.get("received_at", "")):
             best[key] = r
     return list(best.values())
 
@@ -2233,7 +2262,7 @@ def api_search_exclusives():
         parsed["rooms"]      = _web_num(parsed.get("rooms"))
         rows = _dedupe_exclusives(fetch_external_exclusives())
         if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
-            rows = sorted(rows, key=lambda r: r.get("received_at", ""), reverse=True)
+            rows = sorted(rows, key=lambda r: _excl_epoch(r.get("received_at", "")), reverse=True)
             matches = [(1, r) for r in rows[:15]]
         else:
             scored = [(score_exclusivity_match(r, parsed), r) for r in rows]
@@ -2420,6 +2449,7 @@ a{color:var(--blue);font-weight:700;text-decoration:none}a:hover{text-decoration
 .stat{background:linear-gradient(180deg,#fff,#f6f8fa);border:1px solid #eceff2;border-radius:13px;padding:12px 6px;text-align:center}
 .stat .n{font-size:21px;font-weight:800;color:var(--ink)}.stat .l{font-size:11px;color:var(--muted);margin-top:3px}
 table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);font-weight:700;padding:7px 4px;border-bottom:2px solid #eef0f3}td{padding:9px 4px;border-bottom:1px solid var(--line);font-size:14px}
+.cdetails{background:rgba(201,151,42,.12);border-inline-start:3px solid var(--gold);border-radius:0 8px 8px 0;padding:9px 11px;margin-top:8px;font-size:14px;line-height:1.55}.cdetails b{color:#7a5a12;display:block;margin-bottom:3px}
 </style></head><body><div class="wrap">
 <div class="brand"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
@@ -2536,7 +2566,7 @@ function loadCalls(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):""
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
     var callerLink=c.caller?("<a href='tel:"+(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
     var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener>🔁 חייג חזרה</a>"):"";
-    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(isMulti()&&c.agent?" · "+esc(c.agent):"")+cb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+"</div>";
+    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(isMulti()&&c.agent?" · "+esc(c.agent):"")+cb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+(c.clientDetails?"<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div></div>":"")+"</div>";
   }).join(""):"<div class=muted>אין שיחות בטווח.</div>")+"</div>";
   seenCall=maxC;
 }).catch(function(){});}
