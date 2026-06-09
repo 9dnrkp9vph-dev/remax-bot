@@ -2114,7 +2114,9 @@ def api_auth_request():
         return jsonify({"ok": True})   # קוד קבוע — אין צורך ב-SMS, הקש את הקוד שלך
     code = f"{_secrets.randbelow(900000) + 100000}"
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
-    if not web_send_sms(phone, f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)"):
+    _host = (request.host or "remax-bot.onrender.com").split(":")[0]
+    _sms = f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)\n\n@{_host} #{code}"
+    if not web_send_sms(phone, _sms):
         return jsonify({"ok": False, "reason": "sms_failed"})
     return jsonify({"ok": True})
 
@@ -2516,10 +2518,15 @@ def api_my_properties():
         rows = fetch_sheet_rows()
         mine = [r for r in rows if _agent_owns_row(r, eff_name, eff_phones)]
         phones_map = fetch_agents_phones()
+        pending = _fetch_pending_listings()
         out = []
         for r in mine:
             ag = (r.get("סוכן 1", "") or "").strip()
+            lid = (r.get("מספר מודעה", "") or "").strip()
             out.append({
+                "id": lid,
+                "own": True,
+                "pending": lid in pending,
                 "type": (r.get("סוג נכס", "") or "").strip(),
                 "city": (r.get("עיר / ישוב", "") or "").strip(),
                 "neighborhood": (r.get("שכונה", "") or "").strip(),
@@ -2537,6 +2544,44 @@ def api_my_properties():
     except Exception as e:
         log.error(f"my properties error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+SECRETARY_EMAIL = os.environ.get("SECRETARY_EMAIL", "orianshmul@gmail.com")
+def _fetch_pending_listings():
+    c = _cache_get("pending_listings", 60)
+    if c is not None: return c
+    j = _buyers_apps_post("listpending", {})
+    ids = set(str(x).strip() for x in (j.get("ids", []) if (j and j.get("ok")) else []))
+    _cache_put("pending_listings", ids)
+    return ids
+
+@app.route("/api/listing/request", methods=["POST"])
+def api_listing_request():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    body = request.get_json(silent=True) or {}
+    kind = (body.get("kind") or "").strip()
+    lid = str(body.get("id") or "").strip()
+    if kind not in ("remove", "price") or not lid:
+        return jsonify({"ok": False, "reason": "bad_request"}), 400
+    eff_name = s.get("name", "")
+    if s["role"] in ("admin", "coordinator"):
+        an = (body.get("as") or "").strip()
+        if an: eff_name = an
+    payload = {
+        "listing_id": lid,
+        "address": (body.get("address") or "").strip(),
+        "kind": kind,
+        "new_price": (body.get("new_price") or "").strip(),
+        "agent": eff_name,
+        "agent_phone": _last9(s.get("phone", "")),
+        "secretary": SECRETARY_EMAIL,
+    }
+    j = _buyers_apps_post("requestchange", payload)
+    if not j or not j.get("ok"):
+        return jsonify({"ok": False, "reason": (j or {}).get("error", "fail")}), 502
+    _cache_clear("pending_listings")
+    _log_activity(s["name"], s["role"], s["phone"], ("בקשת הסרת מודעה" if kind == "remove" else "בקשת עדכון מחיר"), lid)
+    return jsonify({"ok": True})
 
 # ── Exclusivity search ─────────────────────────────────────────────────────────
 def _web_num(v):
@@ -2571,7 +2616,7 @@ def api_search_exclusives():
         rows = _dedupe_exclusives(fetch_external_exclusives())
         if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
             rows = sorted(rows, key=lambda r: _excl_epoch(r.get("received_at", "")), reverse=True)
-            matches = [(1, r) for r in rows[:15]]
+            matches = [(1, r) for r in rows[:30]]
         else:
             scored = [(score_exclusivity_match(r, parsed), r) for r in rows]
             scored = [(sc, r) for sc, r in scored if sc > 0]
@@ -2948,6 +2993,9 @@ button.gold{background:var(--gold);color:#1c1300}button.sec{background:#eef1f5;c
 .addbuyer{display:inline-block;width:auto;padding:3px 9px;margin:0;font-size:12px;font-weight:700;border:1px solid var(--gold,#caa14a);background:#fff7e6;color:#7a5c12;border-radius:9px;cursor:pointer}
 .hidecall{display:inline-block;width:auto;padding:3px 9px;margin:0;font-size:12px;font-weight:700;border:1px solid #c9ccd1;background:#f3f4f6;color:#555;border-radius:9px;cursor:pointer}
 .hlink{color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;text-decoration:underline}
+.lbtns{margin-top:6px;display:flex;gap:8px;flex-wrap:wrap}
+.lreq{width:auto;padding:4px 10px;margin:0;font-size:12px;font-weight:700;border-radius:9px;cursor:pointer;border:1px solid #c9ccd1;background:#f3f4f6;color:#444}
+.lpend{display:inline-block;background:#fff3d6;color:#7a5c12;font-weight:800;padding:3px 10px;border-radius:9px;border:1px solid #e7d39a;font-size:12px}
 .ovl{position:fixed;inset:0;background:rgba(13,27,42,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:14px}
 .ovlbox{background:#fff;border-radius:16px;padding:16px;width:100%;max-width:430px;box-shadow:0 12px 40px rgba(0,0,0,.3);max-height:90vh;overflow:auto}
 .ovlbox input,.ovlbox textarea{width:100%;margin:5px 0;padding:10px;border:1px solid #d8dde3;border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box}
@@ -3173,7 +3221,9 @@ function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div c
     var h="<div class=muted style=margin:12px_0_4px>🏠 הנכסים שלי במשרד ("+r.results.length+")</div>";
     h+=r.results.map(function(x){return card("props",x);}).join("");
     $("myprops").innerHTML=h;
+    document.querySelectorAll("#myprops .lreq").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id"),addr=decodeURIComponent(b.getAttribute("data-addr")||""),k=b.getAttribute("data-k");if(k=="remove"){if(confirm("לשלוח בקשה למזכירה להסיר את המודעה?\n"+addr))listingReq("remove",id,addr,"");}else{var np=prompt("מחיר חדש למודעה:\n"+addr);if(np&&np.trim())listingReq("price",id,addr,np.trim());}};});
   }).catch(function(){if($("myprops"))$("myprops").innerHTML="";});}
+function listingReq(kind,id,addr,np){api("/api/listing/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:kind,id:id,address:addr,new_price:np,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){if(r&&r.ok){alert("✅ הבקשה נשלחה למזכירה");loadMyProps();}else alert("שליחה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));}).catch(function(){alert("שגיאה");});}
 function shareApp(){var u=location.origin+"/app";var t="📲 אפליקציית RE/MAX Family\nחיפוש נכסים, קונים, בלעדיות ויצירת מצגות נדל\"ן:\n"+u;window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank");}
 function openBuyerForm(pf){pf=pf||{};closeBuyer();
   var ov=document.createElement("div");ov.className="ovl";ov.id="buyerovl";
@@ -3234,11 +3284,12 @@ function delBuyer(row){
 function buyerSearch(b){
   var kind=b.getAttribute("data-k"),rid=b.getAttribute("data-r");
   var ein=document.getElementById(b.getAttribute("data-e")||"");
-  var manual=ein&&ein.value.trim();
-  var q=manual?ein.value.trim():decodeURIComponent(b.getAttribute("data-q")||"");
+  var refine=ein&&ein.value.trim();
+  var base=decodeURIComponent(b.getAttribute("data-q")||"");
+  var q=refine?(base+"\n\n*** דגש/חידוד מהסוכן (עדיפות גבוהה — גובר על הסיכום שלמעלה): "+refine+" *** אם לא צוין כאן תקציב חדש, השאר את התקציב מהסיכום."):base;
   var box=document.getElementById(rid);if(!box)return;
   var rw=b.getAttribute("data-row");
-  if(manual&&rw){api("/api/buyers/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({row:rw,search:manual})}).catch(function(){});}
+  if(refine&&rw){api("/api/buyers/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({row:rw,search:refine})}).catch(function(){});}
   var ep=kind=="props"?"/api/search/properties":"/api/search/exclusives";
   box.innerHTML="<div class=muted style=margin:6px_0>מחפש "+(kind=="props"?"במשרד":"בשת״פ")+"… ⏳</div>";
   api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:(typeof IMP!="undefined"?IMP:"")||"",nosave:true})}).then(function(r){
@@ -3271,7 +3322,7 @@ function doSearch(ep,kind){
 function card(kind,x){
   if(kind=="props"){return "<div class=row>"+((x.score!==undefined&&x.score!=="")?"<span class=score>"+x.score+"%</span>":"")+"<b>"+esc(x.type||"נכס")+"</b> · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+
     "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
-    (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+"</div>";}
+    (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+(x.own?("<div class=lbtns>"+(x.pending?"<span class=lpend>🔧 בטיפול אצל המזכירה</span>":("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">🗑 הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">💰 עדכן מחיר</button>"))+"</div>"):"")+"</div>";}
   if(kind=="excl"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
     (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price,x.office,x.date].filter(Boolean).map(esc).join(" · ")+"</div>"+
     (x.link?"<div><a class=cbtn style=background:#0D1B2A href='"+x.link+"' target=_blank rel=noopener>🔗 נדל\"ן וואן</a></div>":"")+"</div>";}
