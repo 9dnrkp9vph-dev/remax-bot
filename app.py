@@ -2085,13 +2085,23 @@ def _web_auth():
 
 # --- activity log (in-memory, newest last) ---
 _activity = []
+def _persist_activity(entry):
+    try:
+        _buyers_apps_post("logactivity", {"entry": json.dumps(entry, ensure_ascii=False)})
+    except Exception:
+        pass
 def _log_activity(name, role, phone, action, detail=""):
-    _activity.append({
+    entry = {
         "ts": time.time(), "name": name or "", "role": role or "",
         "phone": phone or "", "action": action, "detail": str(detail)[:80],
-    })
+    }
+    _activity.append(entry)
     if len(_activity) > 800:
         del _activity[:len(_activity) - 800]
+    try:
+        _threading.Thread(target=_persist_activity, args=(entry,), daemon=True).start()
+    except Exception:
+        pass
 
 # --- recent searches per user (phone -> {kind: [queries]}) ---
 _recent = {}
@@ -2257,7 +2267,20 @@ def api_activity():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
-    return jsonify({"ok": True, "items": list(reversed(_activity[-300:]))})
+    c = _cache_get("activity_today", 30)
+    if c is None:
+        jj = _buyers_apps_post("listactivity", {})
+        c = jj.get("items", []) if (jj and jj.get("ok")) else []
+        _cache_put("activity_today", c)
+    seen = set(); merged = []
+    for it in (list(c) + list(_activity[-400:])):
+        try: tsr = round(float(it.get("ts", 0)))
+        except Exception: tsr = 0
+        k = (tsr, str(it.get("name", "")), str(it.get("action", "")), str(it.get("detail", "")))
+        if k in seen: continue
+        seen.add(k); merged.append(it)
+    merged.sort(key=lambda x: float(x.get("ts", 0) or 0), reverse=True)
+    return jsonify({"ok": True, "items": merged[:300]})
 
 def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
     from concurrent.futures import ThreadPoolExecutor
@@ -3091,7 +3114,7 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn)bn.textContent=NAME?("שלום, "+NAME):"";if(ROLE=="admin"){$("adminbar").classList.remove("hidden");loadAgents();}tab("calls");}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";bn.onclick=logout;bn.style.cursor="pointer";bn.title="לחץ ליציאה מהמערכת";}if(ROLE=="admin"){$("adminbar").classList.remove("hidden");loadAgents();}tab("calls");}
 function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="present")viewPresent();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else viewSearch(TABNOW);}
 var REPTEXT="";
@@ -3332,6 +3355,7 @@ function card(kind,x){
     "<div class=muted>"+[x.date,x.budget].filter(Boolean).map(esc).join(" · ")+"</div>"+(x.summary?"<div>"+esc(x.summary)+"</div>":"")+"</div>";
 }
 function relogin(){try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}
+function logout(){if(!confirm("להתנתק מהמערכת?"))return;try{localStorage.removeItem("fbTok");localStorage.removeItem("fbRole");localStorage.removeItem("fbName");}catch(e){}location.reload();}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 </script></div></body></html>'''
 
