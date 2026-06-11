@@ -1007,6 +1007,17 @@ def fetch_agents_phones() -> dict:
         log.error(f"Fetch agents error: {e}")
         return {}
 
+def _fmt_vphone(v):
+    """נרמול טלפון ישראלי לתצוגה: 0XXXXXXXXX."""
+    d = re.sub(r"\D", "", str(v or ""))
+    if not d:
+        return ""
+    if d.startswith("972"):
+        d = "0" + d[3:]
+    elif not d.startswith("0"):
+        d = "0" + d
+    return d
+
 _vphone_cache = {"data": None, "ts": 0}
 def fetch_agent_virtual_phones() -> dict:
     """מפה: שם סוכן (מנורמל) -> טלפון וירטואלי (עמודה C ב'אנשי קשר')."""
@@ -1025,7 +1036,7 @@ def fetch_agent_virtual_phones() -> dict:
             if len(row) < 3:
                 continue
             name = (row[0] or "").strip()
-            vp = (row[2] or "").strip()
+            vp = _fmt_vphone((row[2] or "").strip())
             if name and vp and name not in ("שם מלא", "משרד", "משרד ביאליק", "טלפון וירטואלי"):
                 out[_norm_name(name)] = vp
         _vphone_cache["data"] = out
@@ -3270,7 +3281,8 @@ button.gold{background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;box
 a{color:var(--blue);font-weight:700;text-decoration:none}a:hover{text-decoration:underline}
 .err{color:var(--red);font-weight:700}.hidden{display:none}
 .vphone{display:inline-block;font-size:12px;font-weight:800;color:#0d5aa7;background:#eaf3fb;border:1px solid #bcd9f0;border-radius:9px;padding:2px 9px;margin-inline-end:8px}
-.vphone a{text-decoration:none}
+.vpnum{user-select:all;-webkit-user-select:all;letter-spacing:.3px}
+.vpcopy{cursor:pointer;color:#0d5aa7;font-weight:800;margin-inline-start:6px;border-inline-start:1px solid #bcd9f0;padding-inline-start:6px}
 .cbtn{display:inline-block;background:#137a3a;color:#fff!important;border-radius:10px;padding:4px 12px;font-size:12.5px;font-weight:800;text-decoration:none;margin-top:5px}
 .rchips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}.rchip{background:rgba(0,61,165,.08);color:var(--blue);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid rgba(0,61,165,.15);max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:8px}
@@ -3415,7 +3427,7 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
   $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+(HIDDENMODE?" מוסתרות":" שיחות");
   var ht=$("htoggle");if(ht)ht.textContent=HIDDENMODE?"↩️ חזרה לשיחות":"🙈 הצג מוסתרות";
-  var vp=$("vphone");if(vp)vp.innerHTML=r.vphone?("🤖📞 <a href='tel:"+esc(r.vphone)+"' style=color:inherit>"+esc(r.vphone)+"</a>"):"";
+  VPHONE=r.vphone||"";var vp=$("vphone");if(vp)vp.innerHTML=VPHONE?("🤖📞 <span class=vpnum>"+esc(VPHONE)+"</span> <span id=vpcopybtn class=vpcopy onclick=copyVphone()>📋 העתק</span>"):"";
   var maxC=calls.length?calls[0].ts:0;
   $("calls").innerHTML="<div class=card>"+(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
@@ -3621,6 +3633,11 @@ function openNewborn(){
 var _nbScrollY=0;
 function nbLock(on){var b=document.body;if(on){_nbScrollY=window.scrollY||window.pageYOffset||0;b.style.position="fixed";b.style.top=(-_nbScrollY)+"px";b.style.left="0";b.style.right="0";b.style.width="100%";}else{b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";window.scrollTo(0,_nbScrollY);}}
 function closeNewborn(){$("nbmodal").classList.add("hidden");nbLock(false);}
+var VPHONE="";
+function copyVphone(){if(!VPHONE)return;var b=$("vpcopybtn");var ok=function(){if(b){var t=b.innerHTML;b.innerHTML="✓ הועתק";setTimeout(function(){b.innerHTML=t;},1500);}};
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(VPHONE).then(ok,function(){vpFallbackCopy(VPHONE);ok();});return;}}catch(e){}
+  vpFallbackCopy(VPHONE);ok();}
+function vpFallbackCopy(t){try{var ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}catch(e){}}
 function nbWa(k,a){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).catch(function(){});}catch(e){}return true;}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 </script></div></body></html>'''
