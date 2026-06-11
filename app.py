@@ -2606,6 +2606,132 @@ def api_listing_request():
     _log_activity(s["name"], s["role"], s["phone"], ("בקשת הסרת מודעה" if kind == "remove" else "בקשת עדכון מחיר"), lid)
     return jsonify({"ok": True})
 
+# ── "נכס נולד" — נכסים חדשים עם חשיפה מושהית פר-סוכן ─────────────────────────────
+NEWBORN_SHEET_TAB   = os.environ.get("NEWBORN_SHEET_TAB", "נכס נולד")
+NEWBORN_DELAYS_TAB  = os.environ.get("NEWBORN_DELAYS_TAB", "נכסנולד_הגדרות")
+NEWBORN_DEFAULT_DELAY = int(os.environ.get("NEWBORN_DEFAULT_DELAY", "0") or 0)
+NEWBORN_WINDOW_DAYS   = int(os.environ.get("NEWBORN_WINDOW_DAYS", "30") or 30)
+NEWBORN_HIDDEN        = 10 ** 9   # ערך "מוסתר" — הסוכן לא רואה שום נכס
+_NB_HIDDEN_TOKENS = {"מוסתר", "מוסתרת", "הסתר", "לעולם", "אין", "לא", "-", "–", "—", "x", "X", "✗"}
+
+def fetch_newborn():
+    c = _cache_get("newborn_rows", 60)
+    if c is not None: return c
+    j = _buyers_apps_post("listnewborn", {})
+    rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
+    _cache_put("newborn_rows", rows)
+    return rows
+
+def _fetch_newborn_delays():
+    c = _cache_get("newborn_delays", 60)
+    if c is not None: return c
+    d = {"_default": NEWBORN_DEFAULT_DELAY}
+    j = _buyers_apps_post("listnewborndelays", {})
+    _delay_rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
+    for r in _delay_rows:
+        nm = _norm_name(r.get("סוכן", "") or r.get("שם", "") or "")
+        raw = (r.get("ימים", "") or r.get("ימי השהיה", "") or r.get("השהיה", "") or "").strip()
+        if raw in _NB_HIDDEN_TOKENS:
+            days = NEWBORN_HIDDEN
+        else:
+            try: days = int(float(raw)) if raw != "" else None
+            except Exception: days = None
+        if days is None: continue
+        if nm in ("ברירת מחדל", "ברירתמחדל", "default", "כללי"):
+            d["_default"] = days
+        elif nm:
+            d[nm] = days
+    _cache_put("newborn_delays", d)
+    return d
+
+def _newborn_created_epoch(r):
+    raw = (r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "") or "").strip()
+    if not raw:
+        return 0
+    raw = raw.replace("-", "/").split(",")[0].strip()
+    import datetime as _dt
+    for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%Y", "%d.%m.%Y %H:%M", "%d.%m.%Y",
+                "%Y/%m/%d %H:%M", "%Y/%m/%d", "%d/%m/%y %H:%M", "%d/%m/%y"):
+        try:
+            return _dt.datetime.strptime(raw, fmt).timestamp()
+        except Exception:
+            pass
+    try:
+        return _prop_epoch(r) or 0
+    except Exception:
+        return 0
+
+def _newborn_price(p):
+    p = str(p or "").strip()
+    if not p:
+        return ""
+    try:
+        n = int(round(float(p.replace(",", "").replace("₪", "").strip())))
+        return f"{n:,} ₪"
+    except Exception:
+        return p
+
+@app.route("/api/newborn", methods=["GET", "POST"])
+def api_newborn():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    try:
+        as_name = ""
+        if s["role"] in ("admin", "coordinator"):
+            as_name = ((request.get_json(silent=True) or {}).get("as", "")
+                       or request.args.get("as", "")).strip()
+        eff_name = as_name or s.get("name", "")
+        eff_norm = _norm_name(eff_name)
+        admin_all = (s["role"] == "admin" and not as_name)
+        delays = _fetch_newborn_delays()
+        delay = 0 if admin_all else int(delays.get(eff_norm, delays.get("_default", 0)))
+        if not admin_all and delay >= NEWBORN_HIDDEN:   # מוסתר — לא רואה כלום, אין באנר
+            return jsonify({"ok": True, "count": 0, "released": 0, "delay": delay, "results": []})
+        now = time.time()
+        rows = [r for r in fetch_newborn() if _newborn_created_epoch(r)]
+        rows.sort(key=_newborn_created_epoch, reverse=True)
+        out = []
+        for r in rows:
+            created = _newborn_created_epoch(r)
+            if (now - created) / 86400 > NEWBORN_WINDOW_DAYS:   # ישנים מדי לא מציגים
+                continue
+            def _nb(v):
+                v = str(v or "").strip()
+                return "" if v in ("-", "—", "") else v
+            lister = _nb(r.get("משתמש", "") or r.get("סוכן 1", ""))
+            own = bool(eff_norm) and bool(lister) and _norm_name(lister) == eff_norm
+            rel_epoch = created + delay * 86400
+            released = admin_all or own or now >= rel_epoch
+            city = _nb(r.get("עיר", "") or r.get("עיר / ישוב", ""))
+            if released:
+                ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
+                out.append({
+                    "released": True,
+                    "own": own,
+                    "city": city,
+                    "address": _nb(r.get("רחוב1", "") or r.get("רחוב", "")),
+                    "desc": _nb(r.get("תיאור נכס", "")),
+                    "price": _newborn_price(r.get("מחיר", "")),
+                    "notes": _nb(r.get("הערות חדש", ""))[:160],
+                    "owner": _nb(r.get("שם בעל הנכס", "")),
+                    "phone": ophone,
+                    "wa": _wa_phone(ophone),
+                    "agent": lister,
+                    "link": _nb(r.get("קישור", "")),
+                    "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
+                })
+            else:
+                out.append({
+                    "released": False,
+                    "city": city,
+                    "release_in": max(1, int((rel_epoch - now) / 86400 + 0.999)),
+                })
+        return jsonify({"ok": True, "count": len(out),
+                        "released": sum(1 for x in out if x["released"]), "delay": delay, "results": out})
+    except Exception as e:
+        log.error(f"newborn error: {e}", exc_info=True)
+        return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
 # ── Exclusivity search ─────────────────────────────────────────────────────────
 def _web_num(v):
     if v is None or v == "": return None
@@ -3060,6 +3186,12 @@ a{color:var(--blue);font-weight:700;text-decoration:none}a:hover{text-decoration
 .stat .n{font-size:21px;font-weight:800;color:var(--ink)}.stat .l{font-size:11px;color:var(--muted);margin-top:3px}
 table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);font-weight:700;padding:7px 4px;border-bottom:2px solid #eef0f3}td{padding:9px 4px;border-bottom:1px solid var(--line);font-size:14px}
 .cdetails{background:rgba(201,151,42,.12);border-inline-start:3px solid var(--gold);border-radius:0 8px 8px 0;padding:9px 11px;margin-top:8px;font-size:14px;line-height:1.55}.cdetails b{color:#7a5a12;display:block;margin-bottom:3px}
+ .nbbanner{cursor:pointer;background:linear-gradient(90deg,#fff4d6,#ffe9b3);border:1px solid #e7cf86;color:#6b4e0e;font-weight:800;border-radius:14px;padding:10px 14px;margin-bottom:10px;text-align:center;box-shadow:0 2px 10px rgba(180,140,20,.15)}
+ .nbmodal{position:fixed;inset:0;background:rgba(13,27,42,.55);z-index:99;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px}
+ .nbcard{background:#fff;border-radius:18px;max-width:560px;width:100%;padding:14px 16px;box-shadow:0 18px 50px rgba(0,0,0,.3)}
+ .nbhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+ .nbx{width:auto;padding:4px 12px;margin:0;border-radius:9px;border:1px solid #d1d5db;background:#f3f4f6;color:#444;font-weight:800;cursor:pointer}
+ .nblock{background:#f7f7f9;border:1px dashed #cfd2d8;color:#666}
 </style></head><body><div class="wrap">
 <div class="brand"><button class="sec" onclick="shareApp()" title="שתף את האפליקציה בוואטסאפ" style="width:auto;margin:0;padding:6px 11px;font-size:13px;flex:0 0 auto">📲 שתף</button><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
@@ -3081,6 +3213,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 </div>
 
 <div id="appui" class="hidden">
+  <div id="nbbanner" class="nbbanner hidden" onclick="openNewborn()"></div>
   <div id="topbar" style="text-align:center;margin-bottom:6px">
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
   </div>
@@ -3097,6 +3230,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
     <div class="tab" data-t="excl" onclick="tab('excl')">🏘️ נכסים בשת״פ</div>
     <div class="tab" data-t="present" onclick="tab('present')">📄 מצגת</div>
   </div>
+  <div id="nbmodal" class="nbmodal hidden"></div>
 </div>
 
 <script>
@@ -3117,7 +3251,7 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";bn.onclick=logout;bn.style.cursor="pointer";bn.title="לחץ ליציאה מהמערכת";}if(ROLE=="admin"){$("adminbar").classList.remove("hidden");loadAgents();}tab("calls");}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";bn.onclick=logout;bn.style.cursor="pointer";bn.title="לחץ ליציאה מהמערכת";}if(ROLE=="admin"){$("adminbar").classList.remove("hidden");loadAgents();}loadNbBanner();tab("calls");}
 function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="present")viewPresent();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else viewSearch(TABNOW);}
 var REPTEXT="";
@@ -3168,7 +3302,7 @@ function periodLabel(){return RANGE=="day"?"היום":(RANGE=="week"?"השבוע
 
 function isMulti(){return (ROLE=="admin"||ROLE=="coordinator")&&!IMP;}
 function scopeLabel(){if(IMP)return ' <span class=badge>👁 צופה כ: '+esc(IMPNAME)+'</span>';return ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':(ROLE=="coordinator"?' <span class=badge>הסוכנים שלי</span>':' — '+esc(NAME));}
-function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}render();}
+function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}loadNbBanner();render();}
 function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;var sel=$("impsel");r.agents.forEach(function(a){var o=document.createElement("option");o.value=a.name;o.textContent=a.name;sel.appendChild(o);});}).catch(function(){});}
 var HIDDENMODE=false;
 function toggleHidden(){HIDDENMODE=!HIDDENMODE;loadCalls();}
@@ -3362,6 +3496,34 @@ function card(kind,x){
 }
 function relogin(){try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}
 function logout(){if(!confirm("להתנתק מהמערכת?"))return;try{localStorage.removeItem("fbTok");localStorage.removeItem("fbRole");localStorage.removeItem("fbName");}catch(e){}location.reload();}
+var NBDATA=null;
+function nbAs(){return IMP?("?as="+encodeURIComponent(IMP)):"";}
+function loadNbBanner(){var b=$("nbbanner");if(!b)return;
+  api("/api/newborn"+nbAs()).then(function(r){
+    if(!r||!r.ok||!r.count){b.classList.add("hidden");return;}
+    NBDATA=r;var rel=r.released||0;
+    b.innerHTML="🐣 נכס נולד — "+r.count+" נכסים חדשים"+(rel<r.count?(" · "+rel+" פתוחים לצפייה"):"")+" ›לחץ‹";
+    b.classList.remove("hidden");
+  }).catch(function(){});}
+function openNewborn(){
+  api("/api/newborn"+nbAs()).then(function(r){
+    if(!r||!r.ok)return;NBDATA=r;
+    var rows=(r.results||[]).map(function(x){
+      if(x.released){
+        return "<div class=row><b>🏠 "+esc(x.address||x.city||"נכס")+"</b>"+(x.city&&x.address?", "+esc(x.city):"")+(x.own?" <span class=badge>שלי</span>":"")+
+          (x.desc?"<div>"+esc(x.desc)+"</div>":"")+
+          "<div class=muted>"+[x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
+          (x.notes?"<div class=muted>"+esc(x.notes)+"</div>":"")+
+          ((x.owner||x.phone)?"<div>👤 "+esc(x.owner||"בעל הנכס")+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":(x.phone?" · <a href='tel:"+esc(x.phone)+"'>"+esc(x.phone)+"</a>":""))+"</div>":"")+
+          (x.link?"<div><a class=cbtn style=background:#0D1B2A href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 פרטים</a></div>":"")+"</div>";
+      }
+      return "<div class='row nblock'>🔒 <b>נכס חדש"+(x.city?" ב"+esc(x.city):"")+"</b>"+(x.type?" · "+esc(x.type):"")+"<div class=muted>ייחשף עבורך בעוד "+x.release_in+" ימים</div></div>";
+    }).join("");
+    if(!rows)rows="<div class=muted>אין נכסים חדשים כרגע.</div>";
+    $("nbmodal").innerHTML="<div class=nbcard><div class=nbhead><h2 style=margin:0>🐣 נכס נולד</h2><button class=nbx onclick=closeNewborn()>✕</button></div>"+rows+"</div>";
+    $("nbmodal").classList.remove("hidden");
+  }).catch(function(){});}
+function closeNewborn(){$("nbmodal").classList.add("hidden");}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 </script></div></body></html>'''
 
