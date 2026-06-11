@@ -2726,6 +2726,8 @@ def api_newborn():
                     "city": city,
                     "release_in": max(1, int((rel_epoch - now) / 86400 + 0.999)),
                 })
+            if len(out) >= 20:   # רק 20 הנכסים האחרונים (כבר ממוינים מהחדש לישן)
+                break
         return jsonify({"ok": True, "count": len(out),
                         "released": sum(1 for x in out if x["released"]), "delay": delay, "results": out})
     except Exception as e:
@@ -3230,7 +3232,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
     <div class="tab" data-t="excl" onclick="tab('excl')">🏘️ נכסים בשת״פ</div>
     <div class="tab" data-t="present" onclick="tab('present')">📄 מצגת</div>
   </div>
-  <div id="nbmodal" class="nbmodal hidden"></div>
+  <div id="nbmodal" class="nbmodal hidden" onclick="if(event.target===this)closeNewborn()"></div>
 </div>
 
 <script>
@@ -3251,7 +3253,7 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";bn.onclick=logout;bn.style.cursor="pointer";bn.title="לחץ ליציאה מהמערכת";}if(ROLE=="admin"){$("adminbar").classList.remove("hidden");loadAgents();}loadNbBanner();tab("calls");}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";bn.onclick=logout;bn.style.cursor="pointer";bn.title="לחץ ליציאה מהמערכת";}if(ROLE=="admin"){$("adminbar").classList.remove("hidden");loadAgents();}tab("calls");setTimeout(loadNbBanner,1500);}
 function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="present")viewPresent();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else viewSearch(TABNOW);}
 var REPTEXT="";
@@ -3508,7 +3510,7 @@ function loadNbBanner(){var b=$("nbbanner");if(!b)return;
 function openNewborn(){
   api("/api/newborn"+nbAs()).then(function(r){
     if(!r||!r.ok)return;NBDATA=r;
-    var rows=(r.results||[]).map(function(x){
+    var rows=(r.results||[]).slice(0,20).map(function(x){
       if(x.released){
         return "<div class=row><b>🏠 "+esc(x.address||x.city||"נכס")+"</b>"+(x.city&&x.address?", "+esc(x.city):"")+(x.own?" <span class=badge>שלי</span>":"")+
           (x.desc?"<div>"+esc(x.desc)+"</div>":"")+
