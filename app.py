@@ -1006,6 +1006,35 @@ def fetch_agents_phones() -> dict:
     except Exception as e:
         log.error(f"Fetch agents error: {e}")
         return {}
+
+_vphone_cache = {"data": None, "ts": 0}
+def fetch_agent_virtual_phones() -> dict:
+    """מפה: שם סוכן (מנורמל) -> טלפון וירטואלי (עמודה C ב'אנשי קשר')."""
+    if _vphone_cache["data"] is not None and (time.time() - _vphone_cache["ts"]) < 300:
+        return _vphone_cache["data"]
+    if not GOOGLE_SHEETS_API_KEY:
+        return {}
+    from urllib.parse import quote
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(CONTACTS_SHEET_NAME)}!A1:C200?key={GOOGLE_SHEETS_API_KEY}"
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code != 200:
+            return {}
+        out = {}
+        for row in r.json().get("values", []):
+            if len(row) < 3:
+                continue
+            name = (row[0] or "").strip()
+            vp = (row[2] or "").strip()
+            if name and vp and name not in ("שם מלא", "משרד", "משרד ביאליק", "טלפון וירטואלי"):
+                out[_norm_name(name)] = vp
+        _vphone_cache["data"] = out
+        _vphone_cache["ts"] = time.time()
+        return out
+    except Exception as e:
+        log.error(f"vphone fetch error: {e}")
+        return {}
+
 import threading as _threading
 _TTL_CACHE = {}
 _TTL_LOCK = _threading.Lock()
@@ -2044,10 +2073,23 @@ def web_phone_name_map():
     _web_phonemap["data"] = m; _web_phonemap["ts"] = time.time()
     return m
 
+def web_contacts_phone_name():
+    """{last9(phone): name} מלשונית 'אנשי קשר' (A=שם, B=טלפון) — מקור הכניסה לסוכנים."""
+    m = {}
+    for name, phone in fetch_agents_phones().items():
+        p = _last9(phone)
+        if p and name:
+            m[p] = name
+    return m
+
 def _phones_for_name(name):
     nn = _norm_name(name)
     if not nn: return set()
-    return set(p for p, n in web_phone_name_map().items() if _norm_name(n) == nn)
+    s = set(p for p, n in web_phone_name_map().items() if _norm_name(n) == nn)
+    for p, n in web_contacts_phone_name().items():
+        if _norm_name(n) == nn:
+            s.add(p)
+    return s
 
 def _parse_coordinators():
     """COORDINATORS env (JSON): {"<טלפון מתאמת>":{"name":"...","agents":["<טלפון סוכן>",...]}}"""
@@ -2070,7 +2112,7 @@ _COORDINATORS = _parse_coordinators()
 def web_role_for(last9):
     if last9 in set(_last9(a) for a in ADMIN_PHONES): return "admin"
     if last9 in _COORDINATORS: return "coordinator"
-    if web_phone_name_map().get(last9): return "agent"
+    if web_contacts_phone_name().get(last9) or web_phone_name_map().get(last9): return "agent"
     return None
 
 def _web_auth():
@@ -2139,7 +2181,7 @@ def api_auth_verify():
         role = web_role_for(phone) or "admin"
         if role == "admin": name = "מנהל"
         elif role == "coordinator": name = _COORDINATORS[phone]["name"]
-        else: name = web_phone_name_map().get(phone) or "סוכן"
+        else: name = web_contacts_phone_name().get(phone) or web_phone_name_map().get(phone) or "סוכן"
         token = _secrets.token_urlsafe(24)
         sess = {"phone": phone, "role": role, "name": name, "exp": time.time() + _SESS_TTL}
         if role == "coordinator":
@@ -2244,7 +2286,9 @@ def api_history():
         "agent": (g.get("agent", "") or "").strip(),
         "ts": _excl_epoch(g.get("received_at", "")),
     } for g in sigs[:500]]
-    return jsonify({"ok": True, "role": eff["role"], "name": eff["name"], "calls": call_out, "signatures": sig_out})
+    vphone = fetch_agent_virtual_phones().get(_norm_name(eff["name"]), "")
+    return jsonify({"ok": True, "role": eff["role"], "name": eff["name"],
+                    "vphone": vphone, "calls": call_out, "signatures": sig_out})
 
 # ── Activity log (admin only) ──────────────────────────────────────────────────
 @app.route("/api/recent", methods=["GET"])
@@ -3225,6 +3269,8 @@ button.gold{background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;box
 .score{float:left;background:var(--ink);color:#fff;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800}
 a{color:var(--blue);font-weight:700;text-decoration:none}a:hover{text-decoration:underline}
 .err{color:var(--red);font-weight:700}.hidden{display:none}
+.vphone{display:inline-block;font-size:12px;font-weight:800;color:#0d5aa7;background:#eaf3fb;border:1px solid #bcd9f0;border-radius:9px;padding:2px 9px;margin-inline-end:8px}
+.vphone a{text-decoration:none}
 .cbtn{display:inline-block;background:#137a3a;color:#fff!important;border-radius:10px;padding:4px 12px;font-size:12.5px;font-weight:800;text-decoration:none;margin-top:5px}
 .rchips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}.rchip{background:rgba(0,61,165,.08);color:var(--blue);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid rgba(0,61,165,.15);max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:8px}
@@ -3233,7 +3279,7 @@ a{color:var(--blue);font-weight:700;text-decoration:none}a:hover{text-decoration
 table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);font-weight:700;padding:7px 4px;border-bottom:2px solid #eef0f3}td{padding:9px 4px;border-bottom:1px solid var(--line);font-size:14px}
 .cdetails{background:rgba(201,151,42,.12);border-inline-start:3px solid var(--gold);border-radius:0 8px 8px 0;padding:9px 11px;margin-top:8px;font-size:14px;line-height:1.55}.cdetails b{color:#7a5a12;display:block;margin-bottom:3px}
  .nbbanner{cursor:pointer;background:linear-gradient(90deg,#fff4d6,#ffe9b3);border:1px solid #e7cf86;color:#6b4e0e;font-weight:800;border-radius:14px;padding:10px 14px;margin-bottom:10px;text-align:center;box-shadow:0 2px 10px rgba(180,140,20,.15)}
- .nbmodal{position:fixed;inset:0;background:rgba(13,27,42,.55);z-index:99;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px}
+ .nbmodal{position:fixed;inset:0;background:rgba(13,27,42,.55);z-index:99;display:flex;align-items:flex-start;justify-content:center;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:24px 12px}
  .nbmodal.hidden{display:none!important}
  .nbcard{background:#fff;border-radius:18px;max-width:560px;width:100%;padding:14px 16px;box-shadow:0 18px 50px rgba(0,0,0,.3)}
  .nbhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
@@ -3357,7 +3403,7 @@ function toggleHidden(){HIDDENMODE=!HIDDENMODE;loadCalls();}
 function hideCall(id){if(!id){alert("חסר מזהה");return;}api("/api/calls/hide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok)loadCalls();else alert("הסתרה נכשלה");}).catch(function(){alert("שגיאה");});}
 function unhideCall(id){if(!id)return;api("/api/calls/unhide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok)loadCalls();else alert("שחזור נכשל");}).catch(function(){alert("שגיאה");});}
 function viewCalls(){
-  $("view").innerHTML='<div class=card><h2>📞 שיחות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div><div style=text-align:center;margin-top:6px><span class=hlink id=htoggle onclick=toggleHidden()>🙈 הצג מוסתרות</span></div></div><div id=calls></div>';
+  $("view").innerHTML='<div class=card><h2>📞 שיחות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div><div style=text-align:center;margin-top:6px><span id=vphone class=vphone></span><span class=hlink id=htoggle onclick=toggleHidden()>🙈 הצג מוסתרות</span></div></div><div id=calls></div>';
   bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,30000);
 }
 function viewSigs(){
@@ -3369,6 +3415,7 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
   $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+(HIDDENMODE?" מוסתרות":" שיחות");
   var ht=$("htoggle");if(ht)ht.textContent=HIDDENMODE?"↩️ חזרה לשיחות":"🙈 הצג מוסתרות";
+  var vp=$("vphone");if(vp)vp.innerHTML=r.vphone?("🤖📞 <a href='tel:"+esc(r.vphone)+"' style=color:inherit>"+esc(r.vphone)+"</a>"):"";
   var maxC=calls.length?calls[0].ts:0;
   $("calls").innerHTML="<div class=card>"+(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
@@ -3569,8 +3616,11 @@ function openNewborn(){
     if(!rows)rows="<div class=muted>אין נכסים זמינים עבורך כרגע.</div>";
     $("nbmodal").innerHTML="<div class=nbcard><div class=nbhead><h2 style=margin:0>🐣 נכס נולד</h2><button class=nbx onclick=closeNewborn()>✕</button></div>"+rows+"</div>";
     $("nbmodal").classList.remove("hidden");
+    nbLock(true);
   }).catch(function(){});}
-function closeNewborn(){$("nbmodal").classList.add("hidden");}
+var _nbScrollY=0;
+function nbLock(on){var b=document.body;if(on){_nbScrollY=window.scrollY||window.pageYOffset||0;b.style.position="fixed";b.style.top=(-_nbScrollY)+"px";b.style.left="0";b.style.right="0";b.style.width="100%";}else{b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";window.scrollTo(0,_nbScrollY);}}
+function closeNewborn(){$("nbmodal").classList.add("hidden");nbLock(false);}
 function nbWa(k,a){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).catch(function(){});}catch(e){}return true;}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 </script></div></body></html>'''
