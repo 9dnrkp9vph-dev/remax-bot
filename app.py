@@ -3261,9 +3261,9 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 </div>
 
 <div id="appui" class="hidden">
-  <div id="nbbanner" class="nbbanner hidden" onclick="openNewborn()"></div>
   <div id="topbar" style="text-align:center;margin-bottom:6px">
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
+    <button class="sec" id="nbbtn" style="width:auto;display:inline-block;padding:7px 14px;margin:0 4px 6px" onclick="openNewborn()">🐥 נכס נולד</button>
   </div>
   <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px">
     <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('activity')">📣 עדכונים</button>
@@ -3546,12 +3546,10 @@ function relogin(){try{localStorage.removeItem("fbTok");}catch(e){}location.relo
 function logout(){if(!confirm("להתנתק מהמערכת?"))return;try{localStorage.removeItem("fbTok");localStorage.removeItem("fbRole");localStorage.removeItem("fbName");}catch(e){}location.reload();}
 var NBDATA=null;
 function nbAs(){return IMP?("?as="+encodeURIComponent(IMP)):"";}
-function loadNbBanner(){var b=$("nbbanner");if(!b)return;
+function loadNbBanner(){var b=$("nbbtn");if(!b)return;
   api("/api/newborn"+nbAs()).then(function(r){
-    if(!r||!r.ok||!r.count){b.classList.add("hidden");return;}
-    NBDATA=r;var rel=r.released||0;
-    b.innerHTML="🐣 נכס נולד — "+r.count+" נכסים חדשים"+(rel<r.count?(" · "+rel+" פתוחים לצפייה"):"")+" ›לחץ‹";
-    b.classList.remove("hidden");
+    if(!r||!r.ok)return;NBDATA=r;
+    b.innerHTML=(r.count>0)?("🐥 נכס נולד ("+r.count+")"):"🐥 נכס נולד";
   }).catch(function(){});}
 function openNewborn(){
   api("/api/newborn"+nbAs()).then(function(r){
@@ -3568,7 +3566,7 @@ function openNewborn(){
       }
       return "<div class='row nblock'>🔒 <b>נכס חדש"+(x.city?" ב"+esc(x.city):"")+"</b>"+(x.type?" · "+esc(x.type):"")+"<div class=muted>ייחשף עבורך בעוד "+x.release_in+" ימים</div></div>";
     }).join("");
-    if(!rows)rows="<div class=muted>אין נכסים חדשים כרגע.</div>";
+    if(!rows)rows="<div class=muted>אין נכסים זמינים עבורך כרגע.</div>";
     $("nbmodal").innerHTML="<div class=nbcard><div class=nbhead><h2 style=margin:0>🐣 נכס נולד</h2><button class=nbx onclick=closeNewborn()>✕</button></div>"+rows+"</div>";
     $("nbmodal").classList.remove("hidden");
   }).catch(function(){});}
