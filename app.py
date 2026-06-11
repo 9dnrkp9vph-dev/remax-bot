@@ -2610,7 +2610,7 @@ def api_listing_request():
 NEWBORN_SHEET_TAB   = os.environ.get("NEWBORN_SHEET_TAB", "נכס נולד")
 NEWBORN_DELAYS_TAB  = os.environ.get("NEWBORN_DELAYS_TAB", "נכסנולד_הגדרות")
 NEWBORN_DEFAULT_DELAY = int(os.environ.get("NEWBORN_DEFAULT_DELAY", "0") or 0)
-NEWBORN_WINDOW_DAYS   = int(os.environ.get("NEWBORN_WINDOW_DAYS", "30") or 30)
+NEWBORN_WINDOW_DAYS   = int(os.environ.get("NEWBORN_WINDOW_DAYS", "90") or 90)
 NEWBORN_HIDDEN        = 10 ** 9   # ערך "מוסתר" — הסוכן לא רואה שום נכס
 _NB_HIDDEN_TOKENS = {"מוסתר", "מוסתרת", "הסתר", "לעולם", "אין", "לא", "-", "–", "—", "x", "X", "✗"}
 
@@ -2702,31 +2702,26 @@ def api_newborn():
             own = bool(eff_norm) and bool(lister) and _norm_name(lister) == eff_norm
             rel_epoch = created + delay * 86400
             released = admin_all or own or now >= rel_epoch
+            if not released:
+                continue   # מציגים רק נכסים שכבר נחשפו לסוכן (14+ ימים מהיצירה)
             city = _nb(r.get("עיר", "") or r.get("עיר / ישוב", ""))
-            if released:
-                ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
-                out.append({
-                    "released": True,
-                    "own": own,
-                    "city": city,
-                    "address": _nb(r.get("רחוב1", "") or r.get("רחוב", "")),
-                    "desc": _nb(r.get("תיאור נכס", "")),
-                    "price": _newborn_price(r.get("מחיר", "")),
-                    "notes": _nb(r.get("הערות חדש", ""))[:160],
-                    "owner": _nb(r.get("שם בעל הנכס", "")),
-                    "phone": ophone,
-                    "wa": _wa_phone(ophone),
-                    "agent": lister,
-                    "link": _nb(r.get("קישור", "")),
-                    "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
-                })
-            else:
-                out.append({
-                    "released": False,
-                    "city": city,
-                    "release_in": max(1, int((rel_epoch - now) / 86400 + 0.999)),
-                })
-            if len(out) >= 20:   # רק 20 הנכסים האחרונים (כבר ממוינים מהחדש לישן)
+            ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
+            out.append({
+                "released": True,
+                "own": own,
+                "city": city,
+                "address": _nb(r.get("רחוב1", "") or r.get("רחוב", "")),
+                "desc": _nb(r.get("תיאור נכס", "")),
+                "price": _newborn_price(r.get("מחיר", "")),
+                "notes": _nb(r.get("הערות חדש", ""))[:160],
+                "owner": _nb(r.get("שם בעל הנכס", "")),
+                "phone": ophone,
+                "wa": _wa_phone(ophone),
+                "agent": lister,
+                "link": _nb(r.get("קישור", "")),
+                "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
+            })
+            if len(out) >= 20:   # רק 20 הנכסים האחרונים שנחשפו (ממוינים מהחדש לישן)
                 break
         return jsonify({"ok": True, "count": len(out),
                         "released": sum(1 for x in out if x["released"]), "delay": delay, "results": out})
