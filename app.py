@@ -2644,6 +2644,30 @@ def _fetch_newborn_delays():
     _cache_put("newborn_delays", d)
     return d
 
+def _nb_key(r):
+    """מפתח יציב לזיהוי נכס נולד (למעקב פניות)."""
+    pid = (r.get("מזהה", "") or "").strip()
+    if pid: return "id:" + pid
+    link = (r.get("קישור", "") or "").strip()
+    if link: return "ln:" + link
+    addr = (r.get("רחוב1", "") or r.get("רחוב", "") or "").strip()
+    return "ad:" + addr + "|" + (r.get("נוצר בתאריך", "") or "").strip()
+
+def _fetch_newborn_contacts():
+    c = _cache_get("newborn_contacts", 45)
+    if c is not None: return c
+    j = _buyers_apps_post("listnewborncontacts", {})
+    rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
+    d = {}
+    for r in rows:
+        k = (r.get("key", "") or r.get("מפתח", "") or "").strip()
+        ag = (r.get("agent", "") or r.get("סוכן", "") or "").strip()
+        if not k: continue
+        d.setdefault(k, [])
+        if ag and ag not in d[k]: d[k].append(ag)
+    _cache_put("newborn_contacts", d)
+    return d
+
 def _newborn_created_epoch(r):
     raw = (r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "") or "").strip()
     if not raw:
@@ -2688,6 +2712,7 @@ def api_newborn():
         if not admin_all and delay >= NEWBORN_HIDDEN:   # מוסתר — לא רואה כלום, אין באנר
             return jsonify({"ok": True, "count": 0, "released": 0, "delay": delay, "results": []})
         now = time.time()
+        contacts = _fetch_newborn_contacts()
         rows = [r for r in fetch_newborn() if _newborn_created_epoch(r)]
         rows.sort(key=_newborn_created_epoch, reverse=True)
         out = []
@@ -2706,9 +2731,12 @@ def api_newborn():
                 continue   # מציגים רק נכסים שכבר נחשפו לסוכן (14+ ימים מהיצירה)
             city = _nb(r.get("עיר", "") or r.get("עיר / ישוב", ""))
             ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
+            _k = _nb_key(r)
             out.append({
                 "released": True,
                 "own": own,
+                "key": _k,
+                "contacted": contacts.get(_k, []),
                 "city": city,
                 "address": _nb(r.get("רחוב1", "") or r.get("רחוב", "")),
                 "desc": _nb(r.get("תיאור נכס", "")),
@@ -2728,6 +2756,27 @@ def api_newborn():
     except Exception as e:
         log.error(f"newborn error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+@app.route("/api/newborn/contact", methods=["POST"])
+def api_newborn_contact():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    d = request.get_json(silent=True) or {}
+    key = (d.get("key", "") or "").strip()
+    addr = (d.get("addr", "") or "").strip()
+    as_name = (d.get("as", "") or "").strip() if s["role"] in ("admin", "coordinator") else ""
+    nm = as_name or s.get("name", "")
+    _log_activity(nm, s["role"], s.get("phone", ""), "📲 וואטסאפ — נכס נולד", addr or key)
+    if key:
+        try:
+            _threading.Thread(
+                target=lambda: _buyers_apps_post("newborncontact",
+                                                 {"key": key, "agent": nm, "addr": addr}),
+                daemon=True).start()
+        except Exception:
+            pass
+        _cache_clear("newborn_contacts")
+    return jsonify({"ok": True})
 
 # ── Exclusivity search ─────────────────────────────────────────────────────────
 def _web_num(v):
@@ -3190,6 +3239,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
  .nbhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
  .nbx{width:auto;padding:4px 12px;margin:0;border-radius:9px;border:1px solid #d1d5db;background:#f3f4f6;color:#444;font-weight:800;cursor:pointer}
  .nblock{background:#f7f7f9;border:1px dashed #cfd2d8;color:#666}
+ .nbcontact{display:inline-block;margin-top:5px;background:#e7f7ec;color:#1a7d3c;font-weight:800;font-size:12px;padding:3px 10px;border-radius:9px;border:1px solid #b6e3c4}
 </style></head><body><div class="wrap">
 <div class="brand"><button class="sec" onclick="shareApp()" title="שתף את האפליקציה בוואטסאפ" style="width:auto;margin:0;padding:6px 11px;font-size:13px;flex:0 0 auto">📲 שתף</button><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
@@ -3512,7 +3562,8 @@ function openNewborn(){
           (x.desc?"<div>"+esc(x.desc)+"</div>":"")+
           "<div class=muted>"+[x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
           (x.notes?"<div class=muted>"+esc(x.notes)+"</div>":"")+
-          ((x.owner||x.phone)?"<div>👤 "+esc(x.owner||"בעל הנכס")+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":(x.phone?" · <a href='tel:"+esc(x.phone)+"'>"+esc(x.phone)+"</a>":""))+"</div>":"")+
+          ((x.owner||x.phone)?"<div>👤 "+esc(x.owner||"בעל הנכס")+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank rel=noopener onclick=\"nbWa('"+encodeURIComponent(x.key||'')+"','"+encodeURIComponent(x.address||'')+"')\">וואטסאפ</a>":(x.phone?" · <a href='tel:"+esc(x.phone)+"'>"+esc(x.phone)+"</a>":""))+"</div>":"")+
+          (x.contacted&&x.contacted.length?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
           (x.link?"<div><a class=cbtn style=background:#0D1B2A href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 פרטים</a></div>":"")+"</div>";
       }
       return "<div class='row nblock'>🔒 <b>נכס חדש"+(x.city?" ב"+esc(x.city):"")+"</b>"+(x.type?" · "+esc(x.type):"")+"<div class=muted>ייחשף עבורך בעוד "+x.release_in+" ימים</div></div>";
@@ -3522,6 +3573,7 @@ function openNewborn(){
     $("nbmodal").classList.remove("hidden");
   }).catch(function(){});}
 function closeNewborn(){$("nbmodal").classList.add("hidden");}
+function nbWa(k,a){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).catch(function(){});}catch(e){}return true;}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 </script></div></body></html>'''
 
