@@ -3298,8 +3298,41 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
  .nbx{width:auto;padding:4px 12px;margin:0;border-radius:9px;border:1px solid #d1d5db;background:#f3f4f6;color:#444;font-weight:800;cursor:pointer}
  .nblock{background:#f7f7f9;border:1px dashed #cfd2d8;color:#666}
  .nbcontact{display:inline-block;margin-top:5px;background:#e7f7ec;color:#1a7d3c;font-weight:800;font-size:12px;padding:3px 10px;border-radius:9px;border:1px solid #b6e3c4}
+/* ===== ריענון עיצובי (מאושר) — אזור-אזור, ללא שינוי לוגיקה ===== */
+.brand{justify-content:space-between!important;border-bottom:none!important;position:relative;padding-bottom:14px}
+.brand:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
+.sharebtn{width:38px!important;height:38px!important;padding:0!important;font-size:16px!important;border-radius:12px!important;display:inline-flex!important;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(13,27,42,.06)!important;margin:0!important}
+.brandname{background:linear-gradient(180deg,#fff,#f7f9fc)!important;border:1px solid #e7d9b3!important;color:#5a4a1e!important;box-shadow:0 2px 8px rgba(201,151,42,.14)!important;display:inline-flex!important;align-items:center;gap:6px}
+.brandname:before{content:"";width:7px;height:7px;border-radius:50%;background:#2ec26a;box-shadow:0 0 0 3px rgba(46,194,106,.18);flex:0 0 auto}
+.btn-primary{background:linear-gradient(180deg,#16273c,#0D1B2A)!important;color:#fff!important;border:none!important;box-shadow:0 6px 18px rgba(13,27,42,.22)!important;font-weight:800}
+.btn-gold{background:#fff!important;color:#5a4a1e!important;border:1px solid #ead9ab!important;box-shadow:0 4px 14px rgba(201,151,42,.12)!important;font-weight:800}
+.selwrap{position:relative;display:inline-block;width:auto;margin:0 0 6px;vertical-align:middle}
+.selwrap select{appearance:none;-webkit-appearance:none;padding:9px 30px 9px 12px!important;border-radius:12px!important;border:1px solid #e2e6ec!important;font-weight:700;color:var(--ink);background:#fff;box-shadow:0 2px 8px rgba(13,27,42,.04);margin:0!important}
+.selwrap:after{content:"⌄";position:absolute;inset-inline-start:11px;top:4px;font-size:18px;color:#9aa3ad;pointer-events:none}
+.btn-ghost{position:relative}
+.btn-ghost .ndot{position:absolute;top:4px;inset-inline-start:8px;width:8px;height:8px;border-radius:50%;background:var(--red);border:1.5px solid #eef1f5}
+.chips{background:#eef1f6;border:1px solid #e3e7ed;border-radius:13px;padding:3px;gap:2px!important}
+.chips .chip{border:none!important;background:transparent!important;color:#5a6470!important;border-radius:10px!important;font-weight:800!important;padding:9px 4px!important}
+.chips .chip.on{background:#fff!important;color:var(--ink)!important;border:none!important;box-shadow:0 2px 8px rgba(13,27,42,.12)!important;position:relative}
+.chips .chip.on:after{content:"";display:block;height:2px;width:18px;margin:3px auto -2px;border-radius:2px;background:var(--gold)}
+.callrow{position:relative;background:#fff;border:1px solid #edf0f4;border-radius:16px;padding:13px 15px;margin-bottom:11px;box-shadow:0 4px 16px rgba(13,27,42,.05);overflow:hidden}
+.callrow:before{content:"";position:absolute;inset-inline-start:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--gold),#a87d1a)}
+.callrow.new{box-shadow:0 0 0 2px rgba(201,151,42,.4),0 4px 16px rgba(13,27,42,.06)}
+.callrow .ctop{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.callrow .ctime{font-size:12px;color:#8a929d;font-weight:700;white-space:nowrap}
+.callrow .cphone{font-size:18px;font-weight:900;color:var(--ink);letter-spacing:.3px}
+.callrow .cphone a{color:var(--ink);text-decoration:none}
+.callrow .cmeta{color:var(--muted);font-size:12.5px;margin:3px 0 0}
+.callrow .csum{font-size:14px;line-height:1.6;color:#33405a;margin-top:7px}
+.callrow .cbtns{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap;align-items:center}
+.callrow .cbtns .addbuyer,.callrow .cbtns .hidecall{margin:0!important}
+.ans,.noans{font-size:12px;padding:3px 11px}
+.tab{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.tab .tic{display:inline-flex;align-items:center;justify-content:center;width:34px;height:27px;border-radius:9px;font-size:15px;margin-bottom:2px}
+.tab.on{border-top-color:transparent!important;background:none!important}
+.tab.on .tic{background:linear-gradient(180deg,rgba(201,151,42,.2),rgba(201,151,42,.06));box-shadow:inset 0 0 0 1px rgba(201,151,42,.28)}
 </style></head><body><div class="wrap">
-<div class="brand"><button class="sec" onclick="shareApp()" title="שתף את האפליקציה בוואטסאפ" style="width:auto;margin:0;padding:6px 11px;font-size:13px;flex:0 0 auto">📲 שתף</button><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><button class="sec sharebtn" onclick="shareApp()" title="שתף את האפליקציה בוואטסאפ">📲</button><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="loginlogo"><img src="/assets/icon" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
@@ -3320,21 +3353,21 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 
 <div id="appui" class="hidden">
   <div id="topbar" style="text-align:center;margin-bottom:6px">
-    <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
-    <button class="sec" id="nbbtn" style="width:auto;display:inline-block;padding:7px 14px;margin:0 4px 6px" onclick="openNewborn()">🐥 נכס נולד</button>
+    <button class="sec btn-primary" style="width:auto;display:inline-block;padding:11px 18px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
+    <button class="sec btn-gold" id="nbbtn" style="width:auto;display:inline-block;padding:11px 18px;margin:0 4px 6px" onclick="openNewborn()">🐥 נכס נולד</button>
   </div>
   <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px">
-    <button class="sec" style="width:auto;display:inline-block;padding:7px 14px;margin:0 0 6px" onclick="tab('activity')">📣 עדכונים</button>
-    <select id="impsel" onchange="setImp(this.value)" style="width:auto;display:inline-block;padding:8px 10px;margin:0 0 6px;border-radius:10px;border:1px solid #d1d5db"><option value="">👁 צפה כסוכן…</option></select>
+    <button class="sec btn-ghost" style="width:auto;display:inline-block;padding:11px 16px;margin:0 0 6px" onclick="tab('activity')"><span class="ndot"></span>📣 עדכונים</button>
+    <span class="selwrap"><select id="impsel" onchange="setImp(this.value)"><option value="">👁 צפה כסוכן…</option></select></span>
   </div>
   <div id="view"></div>
   <div class="tabs">
-    <div class="tab on" data-t="calls" onclick="tab('calls')">📞 שיחות שלי</div>
-    <div class="tab" data-t="buyers" onclick="tab('buyers')">👤 הקונים שלי</div>
-    <div class="tab" data-t="sigs" onclick="tab('sigs')">✍️ חתימות שלי</div>
-    <div class="tab" data-t="props" onclick="tab('props')">🏢 נכסים במשרד</div>
-    <div class="tab" data-t="excl" onclick="tab('excl')">🏘️ נכסים בשת״פ</div>
-    <div class="tab" data-t="present" onclick="tab('present')">📄 מצגת</div>
+    <div class="tab on" data-t="calls" onclick="tab('calls')"><span class="tic">📞</span>שיחות שלי</div>
+    <div class="tab" data-t="buyers" onclick="tab('buyers')"><span class="tic">👤</span>הקונים שלי</div>
+    <div class="tab" data-t="sigs" onclick="tab('sigs')"><span class="tic">✍️</span>חתימות שלי</div>
+    <div class="tab" data-t="props" onclick="tab('props')"><span class="tic">🏢</span>נכסים במשרד</div>
+    <div class="tab" data-t="excl" onclick="tab('excl')"><span class="tic">🏘️</span>נכסים בשת״פ</div>
+    <div class="tab" data-t="present" onclick="tab('present')"><span class="tic">📄</span>מצגת</div>
   </div>
   <div id="nbmodal" class="nbmodal hidden" onclick="if(event.target===this)closeNewborn()"></div>
 </div>
@@ -3429,15 +3462,22 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
   var ht=$("htoggle");if(ht)ht.textContent=HIDDENMODE?"↩️ חזרה לשיחות":"🙈 הצג מוסתרות";
   VPHONE=r.vphone||"";var vp=$("vphone");if(vp)vp.innerHTML=VPHONE?("🤖📞 <span class=vpnum>"+esc(VPHONE)+"</span> <span id=vpcopybtn class=vpcopy onclick=copyVphone()>📋 העתק</span>"):"";
   var maxC=calls.length?calls[0].ts:0;
-  $("calls").innerHTML="<div class=card>"+(calls.length?calls.map(function(c){
+  $("calls").innerHTML=(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
     var callerLink=c.caller?("<a href='tel:"+(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
     var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener>🔁 חייג חזרה</a>"):"";
     var bsum=(c.summary||"")+(c.clientDetails?("\n"+c.clientDetails):"");
     var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\">➕ קונה</button>";
     var hideb=" <button class=hidecall data-id=\""+esc(c.id||"")+"\" data-act=\""+(HIDDENMODE?"unhide":"hide")+"\">"+(HIDDENMODE?"↩️ שחזר":"🙈 הסתר")+"</button>";
-    return "<div class='row"+(isNew?" new":"")+"'>"+st+" · 📞 "+callerLink+(isMulti()&&c.agent?" · "+esc(c.agent):"")+cb+addb+hideb+"<div class=muted>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</div>"+(c.summary?"<div>"+esc(c.summary)+"</div>":"")+(c.clientDetails?"<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div></div>":"")+"</div>";
-  }).join(""):"<div class=muted>אין שיחות בטווח.</div>")+"</div>";
+    return "<div class='callrow"+(isNew?" new":"")+"'>"+
+      "<div class=ctop>"+st+"<span class=ctime>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</span></div>"+
+      "<div class=cphone>📞 "+callerLink+"</div>"+
+      (isMulti()&&c.agent?"<div class=cmeta>👤 קיבל: "+esc(c.agent)+"</div>":"")+
+      (c.summary?"<div class=csum>"+esc(c.summary)+"</div>":"")+
+      (c.clientDetails?"<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div></div>":"")+
+      "<div class=cbtns>"+cb+addb+hideb+"</div>"+
+    "</div>";
+  }).join(""):"<div class=card><div class=muted>אין שיחות בטווח.</div></div>");
   document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:decodeURIComponent(b.getAttribute("data-sum")||"")});};});
   document.querySelectorAll("#calls .hidecall").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");if(b.getAttribute("data-act")=="unhide")unhideCall(id);else hideCall(id);};});
   seenCall=maxC;
