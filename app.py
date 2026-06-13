@@ -1618,6 +1618,13 @@ def _excl_epoch(s) -> float:
         except Exception:
             return 0.0
     return 0.0
+
+def _is_our_office(o):
+    """האם שם המשרד הוא RE/MAX Family (כל הווריאציות)."""
+    t = re.sub(r"[\s/\\.\-_'\"׳״]", "", str(o or "").lower())
+    rmx = ("remax" in t) or ("רימקס" in t) or ("רמקס" in t)
+    fam = ("family" in t) or ("פמילי" in t) or ("פמלי" in t)
+    return rmx and fam
 def _prop_epoch(row) -> float:
     """תאריך יצירה של נכס מגיליון המשרד → epoch למיון. תומך ב-DD.M.YYYY (18.5.2026),
     DD/MM/YYYY ו-ISO. נכסים חדשים יותר מקבלים ערך גבוה יותר (מיון יורד = החדש ראשון)."""
@@ -2514,6 +2521,25 @@ def api_report():
     insights = []
     try:
         sm = _web_org_summary(frm, to, eff_name, eff_phones)
+        try:   # ספירת "מודעות" — אותו מקור של "נכסים במשרד" (יד2): סוכן=שלו, מנהל=סה"כ
+            _lr = fetch_sheet_rows()
+            listings_total = (sum(1 for r in _lr if _agent_owns_row(r, eff_name, eff_phones or set()))
+                              if eff_name else len(_lr))
+        except Exception:
+            listings_total = 0
+        shtaf = []   # גיוס נכסים בשת״פ — פילוח לפי משרד בתקופה (למנהל/רכז)
+        if s["role"] in ("admin", "coordinator"):
+            try:
+                _se = start.timestamp(); _ee = end.timestamp() + 86400
+                _by = {}
+                for _r in _dedupe_exclusives(fetch_external_exclusives()):
+                    _ep = _excl_epoch(_r.get("received_at", ""))
+                    if _ep and _se <= _ep < _ee:
+                        _off = (str(_r.get("office", "") or "").strip() or "ללא שם משרד")
+                        _by[_off] = _by.get(_off, 0) + 1
+                shtaf = sorted([{"office": k, "count": v} for k, v in _by.items()], key=lambda x: -x["count"])
+            except Exception:
+                shtaf = []
         if eff_name:
             _delta = end - start
             _pe = start - timedelta(days=1)
@@ -2522,8 +2548,14 @@ def api_report():
         wa = _report_wa_text(sm, label + " · " + scope, frm, to)
         if insights:
             wa = "📊 *תובנות:*\n" + "\n".join(insights) + "\n\n" + wa
+        if shtaf:
+            _tot = sum(o["count"] for o in shtaf)
+            _lines = "\n".join((("🏠 " if _is_our_office(o["office"]) else "• ") + o["office"] + ": " + str(o["count"]))
+                               for o in shtaf)
+            wa = wa + '\n\n🤝 *גיוס נכסים בשת"פ — ' + label + '* (סה"כ ' + str(_tot) + ')\n' + _lines
         return jsonify({"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
-                        "insights": insights, "summary": sm, "wa_text": wa})
+                        "insights": insights, "summary": sm, "listings": listings_total,
+                        "shtaf": shtaf, "wa_text": wa})
     except Exception as e:
         log.error(f"report error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -3308,6 +3340,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .callrow .cbtns{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap;align-items:center}
 .callrow .cbtns .addbuyer,.callrow .cbtns .hidecall{margin:0!important}
 .ans,.noans{font-size:12px;padding:3px 11px}
+.ouroffice{display:inline-block;background:#fdeef0;color:#c01f2a;font-weight:900;padding:1px 9px;border-radius:8px;border:1px solid #f3c4c9}
 .tab{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:0;position:relative}
 .tabbadge{position:absolute;top:3px;inset-inline-start:50%;transform:translateX(58%);background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;font-size:10px;font-weight:900;min-width:17px;height:17px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 1px 4px rgba(201,151,42,.45)}
 .menuwrap{position:relative}
@@ -3393,11 +3426,12 @@ function toggleExc(){var b=$("exclist");if(!b)return;if(b.innerHTML){b.innerHTML
 function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p+(month?"&month="+month:"")+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
   if(!r.ok){if(r.auth===false){relogin();return;}$("rep").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
   REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;REPEXC=sm.exclusives||[];
-  var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+kpi(sg.total,"חתימות")+"<div class=stat style=cursor:pointer onclick=toggleExc()><div class=n>"+sm.exclusives.length+"</div><div class=l>בלעדיות 👁</div></div>"+kpi(sm.props.total,"נכסים")+"</div></div><div id=exclist></div>";
+  var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+kpi(sg.total,"חתימות")+"<div class=stat style=cursor:pointer onclick=toggleExc()><div class=n>"+sm.exclusives.length+"</div><div class=l>בלעדיות 👁</div></div>"+kpi((r.listings!=null?r.listings:0),"מודעות")+"</div></div><div id=exclist></div>";
   if(r.insights&&r.insights.length){h+="<div class=card><h2>📊 תובנות</h2>"+r.insights.map(function(t){return "<div class=insight>"+esc(t)+"</div>";}).join("")+"</div>";}
   if(r.scope=="כל המשרד"){var ag="<table><tr><th style=text-align:start>מתווך</th><th>שיחות</th><th>נענו</th><th>%</th></tr>";sm.agents.slice(0,10).forEach(function(a,i){ag+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center>"+a.total+"</td><td style=text-align:center>"+a.answered+"</td><td style=text-align:center>"+a.rate+"%</td></tr>";});ag+="</table>";
   h+="<div class=card><h2>👥 מתווכים מובילים</h2>"+ag+"</div>";}
   h+="<div class=card><h2>✍️ חתימות</h2><div class=grid>"+kpi(sg.konim+" ("+sg.pctK+"%)","קונים")+kpi(sg.bladiut+" ("+sg.pctB+"%)","בלעדיות")+kpi(sg.skhirut+" ("+sg.pctS+"%)","שכירויות")+kpi(sg.total,"סה״כ")+"</div></div>";
+  if(r.shtaf&&r.shtaf.length){var tot=r.shtaf.reduce(function(a,o){return a+o.count;},0);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>🤝 גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+r.shtaf.length+" משרדים · סה״כ "+tot+" נכסים</div>"+st+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
 }).catch(function(){$("rep").innerHTML="<div class=card err>שגיאה</div>";});}
@@ -3603,7 +3637,7 @@ function card(kind,x){
     "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
     (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+(x.own?("<div class=lbtns>"+(x.pending?"<span class=lpend>🔧 בטיפול אצל המזכירה</span>":("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">🗑 הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">💰 עדכן מחיר</button>"))+"</div>"):"")+"</div>";}
   if(kind=="excl"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
-    (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price,x.office,x.date].filter(Boolean).map(esc).join(" · ")+"</div>"+
+    (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price?esc(x.price):"",(x.office?(isOurOffice(x.office)?"<span class=ouroffice>🏠 "+esc(x.office)+"</span>":esc(x.office)):""),x.date?esc(x.date):""].filter(Boolean).join(" · ")+"</div>"+
     (x.link?"<div><a class=cbtn style=background:#0D1B2A href='"+x.link+"' target=_blank rel=noopener>🔗 נדל\"ן וואן</a></div>":"")+"</div>";}
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"-";
   return "<div class=row>📞 <b>"+ph+"</b>"+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
@@ -3653,6 +3687,7 @@ function copyVphone(){if(!VPHONE)return;var b=$("vpcopybtn");var ok=function(){i
 function vpFallbackCopy(t){try{var ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}catch(e){}}
 function nbWa(k,a){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).catch(function(){});}catch(e){}return true;}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function isOurOffice(o){var t=String(o||"").toLowerCase().replace(/[\s\/\\.\-_'"׳״]/g,"");var rmx=t.indexOf("remax")>-1||t.indexOf("רימקס")>-1||t.indexOf("רמקס")>-1;var fam=t.indexOf("family")>-1||t.indexOf("פמילי")>-1||t.indexOf("פמלי")>-1;return rmx&&fam;}
 </script></div></body></html>'''
 
 # ══════════════════════════════════════════════════════════════════════════════
