@@ -2496,8 +2496,12 @@ def _report_wa_text(sm, label, frm, to):
         L.append(f"{i}. {a['name']}: {a['total']} שיחות ({a['answered']} נענו · {a['rate']}%)")
     L.append("")
     L.append(f"✍️ חתימות: {sg['total']} — קונים {sg['konim']} · בלעדיות {sg['bladiut']} · שכירויות {sg['skhirut']}")
-    L.append(f"🏘️ נכסים חדשים: {sm['props']['total']}")
-    L.append(f"🏆 בלעדיות חדשות: {len(sm['exclusives'])}")
+    _exc = sm.get("exclusives") or []
+    L.append("")
+    L.append(f"🏆 *נכסים שגויסו בבלעדיות: {len(_exc)}*")
+    for e in sorted(_exc, key=lambda x: str(x.get("date", "")), reverse=True):
+        L.append("• 👤 " + (e.get("agent", "") or "—") + " · " + (e.get("address", "") or "—")
+                 + ((" · " + e.get("date")) if e.get("date") else ""))
     L.append("")
     L.append("_הופק מ-Family Bot 🏠_")
     return "\n".join(L)
@@ -2518,7 +2522,7 @@ def api_report():
     # בחירת חודש ספציפי מתחילת השנה (month=1..12)
     sel_month = request.args.get("month", "").strip()
     end = now
-    label = {"week": "השבוע", "month": "החודש", "year": "השנה"}.get(period, "החודש")
+    label = {"week": "השבוע", "lastweek": "שבוע שעבר", "month": "החודש", "year": "השנה"}.get(period, "החודש")
     if sel_month.isdigit() and 1 <= int(sel_month) <= 12:
         mo = int(sel_month)
         start = now.replace(month=mo, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -2528,6 +2532,10 @@ def api_report():
         label = f"{_HE_MONTHS[mo - 1]} {start.year}"
     elif period == "week":
         start = now - timedelta(days=(now.weekday() + 1) % 7)   # ראשון
+    elif period == "lastweek":
+        _sun = (now - timedelta(days=(now.weekday() + 1) % 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start = _sun - timedelta(days=7)   # יום ראשון של שבוע שעבר
+        end = _sun - timedelta(days=1)      # יום שבת של שבוע שעבר
     elif period == "year":
         start = now.replace(month=1, day=1)
     else:
@@ -3461,7 +3469,7 @@ function viewReport(){
   var MN=["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
   var cm=new Date().getMonth()+1,opts='<option value="">▾ חודש</option>';
   for(var m=1;m<=cm;m++)opts+='<option value="'+m+'">'+MN[m-1]+'</option>';
-  $("view").innerHTML='<div class=card><h2>📊 דוחות מנהל</h2><div class=chips id=rpc><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><select id=monthsel class=monthsel>'+opts+'</select><div class=chip data-r=year>השנה</div></div></div><div id=rep></div>';
+  $("view").innerHTML='<div class=card><h2>📊 דוחות מנהל</h2><div class=chips id=rpc><div class=chip data-r=lastweek>שבוע שעבר</div><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><select id=monthsel class=monthsel>'+opts+'</select><div class=chip data-r=year>השנה</div></div></div><div id=rep></div>';
   document.querySelectorAll("#rpc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");var ms=$("monthsel");if(ms)ms.value="";loadReport(c.dataset.r);};});
   var msel=$("monthsel");if(msel)msel.onchange=function(){if(!this.value)return;document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});loadReport("month",this.value);};
   loadReport("month");
