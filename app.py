@@ -3310,11 +3310,20 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .ans,.noans{font-size:12px;padding:3px 11px}
 .tab{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:0;position:relative}
 .tabbadge{position:absolute;top:3px;inset-inline-start:50%;transform:translateX(58%);background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;font-size:10px;font-weight:900;min-width:17px;height:17px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 1px 4px rgba(201,151,42,.45)}
+.menuwrap{position:relative}
+.appmenu{position:absolute;top:46px;inset-inline-start:0;z-index:60;background:#fff;border:1px solid #e6e9ef;border-radius:14px;box-shadow:0 16px 40px rgba(13,27,42,.22);padding:6px;min-width:218px}
+.appmenu .mi{display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:10px;font-size:14.5px;font-weight:700;color:var(--ink);cursor:pointer}
+.appmenu .mi:active,.appmenu .mi:hover{background:#f3f5f9}
+.appmenu .mi-danger{color:#c0322f}
+.appmenu hr{border:none;border-top:1px solid #eef0f4;margin:4px 4px}
+.appmenu .mi-sub{padding:9px 12px 7px}
+.appmenu .mi-sub .mi-lbl{font-size:13px;font-weight:800;color:var(--muted);margin-bottom:6px}
+.appmenu .mi-sub select{width:100%;padding:10px 10px;border-radius:10px;border:1px solid #e2e6ec;font-family:inherit;font-size:14px;font-weight:700;color:var(--ink);background:#fff}
 .tab .tic{display:inline-flex;align-items:center;justify-content:center;width:34px;height:27px;border-radius:9px;font-size:15px;margin-bottom:2px}
 .tab.on{border-top-color:transparent!important;background:none!important}
 .tab.on .tic{background:linear-gradient(180deg,rgba(201,151,42,.2),rgba(201,151,42,.06));box-shadow:inset 0 0 0 1px rgba(201,151,42,.28)}
 </style></head><body><div class="wrap">
-<div class="brand"><button class="sec sharebtn" onclick="shareApp()" title="שתף את האפליקציה בוואטסאפ">📲</button><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט">☰</button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="loginlogo"><img src="/assets/icon" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
@@ -3334,13 +3343,6 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 </div>
 
 <div id="appui" class="hidden">
-  <div id="topbar" style="text-align:center;margin-bottom:6px">
-    <button class="sec btn-primary" style="width:auto;display:inline-block;padding:11px 18px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
-  </div>
-  <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px">
-    <button class="sec btn-ghost" style="width:auto;display:inline-block;padding:11px 16px;margin:0 0 6px" onclick="tab('activity')"><span class="ndot"></span>📣 עדכונים</button>
-    <span class="selwrap"><select id="impsel" onchange="setImp(this.value)"><option value="">👁 צפה כסוכן…</option></select></span>
-  </div>
   <div id="view"></div>
   <div class="tabs">
     <div class="tab on" data-t="calls" onclick="tab('calls')"><span class="tic">📞</span>שיחות שלי</div>
@@ -3371,7 +3373,7 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";bn.onclick=logout;bn.style.cursor="pointer";bn.title="לחץ ליציאה מהמערכת";}if(ROLE=="admin"){$("adminbar").classList.remove("hidden");loadAgents();}tab("calls");setTimeout(loadNbBanner,1500);}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";}if(ROLE=="admin"){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");}tab("calls");setTimeout(loadNbBanner,1500);}
 function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else viewSearch(TABNOW);}
 var REPTEXT="";
@@ -3609,6 +3611,10 @@ function card(kind,x){
     "<div class=muted>"+[x.date,x.budget].filter(Boolean).map(esc).join(" · ")+"</div>"+(x.summary?"<div>"+esc(x.summary)+"</div>":"")+"</div>";
 }
 function relogin(){try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}
+function toggleMenu(e){if(e){e.stopPropagation();}var m=$("appmenu");if(m)m.classList.toggle("hidden");}
+function closeMenu(){var m=$("appmenu");if(m)m.classList.add("hidden");}
+function menuGo(t){closeMenu();tab(t);}
+document.addEventListener("click",function(e){var m=$("appmenu");if(m&&!m.classList.contains("hidden")&&!e.target.closest(".menuwrap"))closeMenu();});
 function logout(){if(!confirm("להתנתק מהמערכת?"))return;try{localStorage.removeItem("fbTok");localStorage.removeItem("fbRole");localStorage.removeItem("fbName");}catch(e){}location.reload();}
 var NBDATA=null;
 function nbAs(){return IMP?("?as="+encodeURIComponent(IMP)):"";}
