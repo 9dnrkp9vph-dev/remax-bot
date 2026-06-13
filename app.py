@@ -851,10 +851,7 @@ def schedule_processing(phone: str):
 # ══════════════════════════════════════════════════════════════════════════════
 # SEARCH BOT — מציאת נכסים תואמים (קונה מחפש דירה)
 # ══════════════════════════════════════════════════════════════════════════════
-def parse_search_query(text: str) -> dict:
-    prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש נכסים במאגר המשרד עבור לקוח.
-הסוכן שלח לך הודעה עם דרישות הלקוח. חלץ פרמטרים ל-JSON בלבד (ללא markdown, ללא backticks).
-נרמול ערים — הערים האפשריות:
+_CITY_NB_MAP_HE = """נרמול ערים — הערים האפשריות:
 - "מוצקין" / "קרית מוצקין" / "קריית מוצקין" → city = "קרית מוצקין"
 - "ביאליק" / "קרית ביאליק" → city = "קרית ביאליק"
 - "אתא" / "קרית אתא" → city = "קרית אתא"
@@ -881,7 +878,15 @@ def parse_search_query(text: str) -> dict:
 
 🏙️ **קרית ים**:
 - "קרית ים א'" / "קרית ים ב'" / "קרית ים ג'" / "קרית ים ד'" → neighborhood="קרית ים X"
+- "פסגות ים" → neighborhood="פסגות ים"
 - "סביונים" / "סביוני ים" → neighborhood="סביונ"
+- "גלי ים" → neighborhood="גלי ים"
+- "אלמוגים" → neighborhood="אלמוגים"
+- "בנה ביתך" (בקרית ים — לא להתבלבל עם לב מוצקין שבקרית מוצקין) → neighborhood="בנה ביתך"
+- "יוספטל" → neighborhood="יוספטל"
+- "אג״ש" → neighborhood="אג״ש"
+- "נווה חוף" → neighborhood="נווה חוף"
+- "לכיש" → neighborhood="לכיש"
 
 🏙️ **קרית אתא**:
 - "גבעת רם" → neighborhood="גבעת רם"
@@ -908,7 +913,12 @@ def parse_search_query(text: str) -> dict:
 ⚠️ כללים חשובים:
 1. אם הסוכן ציין שכונה — תמצא בה את העיר הנכונה מהרשימה. אל תניח אוטומטית "קרית מוצקין".
 2. שכונות עם אותו שם בערים שונות (גבעת הרקפות / מרכז העיר / ותיקה) — חכה לציון מפורש של העיר. אם לא צוינה עיר, שאל: השתמש בברירת המחדל הנפוצה (לרוב מוצקין).
-3. אם השכונה לא מופיעה ברשימה ולא צוינה עיר — השאר city=null ואל תנחש.
+3. אם השכונה לא מופיעה ברשימה ולא צוינה עיר — השאר city=null ואל תנחש."""
+
+def parse_search_query(text: str) -> dict:
+    prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש נכסים במאגר המשרד עבור לקוח.
+הסוכן שלח לך הודעה עם דרישות הלקוח. חלץ פרמטרים ל-JSON בלבד (ללא markdown, ללא backticks).
+{_CITY_NB_MAP_HE}
 חוקי זיהוי must_have — חשוב מאוד!
 - "דירת גן" / "עם גינה" / "עם חצר" → must_have כולל "גינה", property_type = "דירת גן"
 - "עם חנייה" / "חנייה פרטית" → must_have כולל "חנייה"
@@ -1730,12 +1740,14 @@ def parse_exclusivity_search_query(text: str) -> dict:
     """חלץ פרמטרי חיפוש עבור בלעדויות חיצוניות (זהה ל-parse_search_query אבל פשוט יותר)"""
     cleaned = re.sub(r"^(אני\s+)?(מחפש|מחפשת)\s+בלעדיות?\s*", "", text.strip()).strip()
     if not cleaned:
-        return {"query_text": "", "keywords": [], "summary_he": "כל הבלעדויות האחרונות", "budget_max": None, "city": None, "rooms": None}
+        return {"query_text": "", "keywords": [], "summary_he": "כל הבלעדויות האחרונות", "budget_max": None, "city": None, "neighborhood": None, "rooms": None}
     prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש בלעדויות במאגר.
 הסוכן ביקש: "{cleaned}"
+{_CITY_NB_MAP_HE}
 חלץ JSON בלבד (ללא markdown):
 - keywords: רשימת מילות מפתח חשובות בעברית לחיפוש בתיאורי נכסים
-- city: עיר מנורמלת ("קרית ביאליק" / "קרית מוצקין" / "קרית אתא" / "קרית ים" / "חיפה") או null
+- city: עיר מנורמלת לפי הרשימה למעלה, או null
+- neighborhood: שכונה מנורמלת לפי הרשימה למעלה (substring לחיפוש), או null
 - rooms: מספר חדרים (מספר עשרוני) או null
 - budget_max: תקציב מקסימלי בש"ח כמספר (לדוגמה "עד 2 מיליון" → 2000000), או null
 - summary_he: סיכום קצר בעברית של מה הסוכן מחפש"""
@@ -1745,7 +1757,7 @@ def parse_exclusivity_search_query(text: str) -> dict:
             json={"model":"claude-sonnet-4-5","max_tokens":500,
                   "messages":[{"role":"user","content":prompt}]}, timeout=15)
         if r.status_code != 200:
-            return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget_max": None, "city": None, "rooms": None}
+            return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget_max": None, "city": None, "neighborhood": None, "rooms": None}
         out = r.json()["content"][0]["text"].strip()
         out = re.sub(r"```(?:json)?\s*","",out).strip("` \n")
         m = re.search(r"\{.*\}", out, re.DOTALL)
@@ -1755,7 +1767,7 @@ def parse_exclusivity_search_query(text: str) -> dict:
         return parsed
     except Exception as e:
         log.error(f"Exclusivity query parse error: {e}")
-        return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget_max": None, "city": None, "rooms": None}
+        return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget_max": None, "city": None, "neighborhood": None, "rooms": None}
 
 def _parse_price_to_int(p: str):
     """'1,800,000 ₪' → 1800000"""
@@ -1781,6 +1793,11 @@ def score_exclusivity_match(row: dict, query: dict) -> int:
             score += 30
         else:
             return 0
+
+    # שכונה (התאמה רכה)
+    q_nb = (query.get("neighborhood") or "").strip()
+    if q_nb and q_nb.lower() in combined:
+        score += 20
 
     # חדרים
     q_rooms = query.get("rooms")
@@ -1855,7 +1872,7 @@ def handle_exclusivity_search_request(sender_phone: str, message_text: str):
             return
 
         # אם אין קריטריונים — החזר את 5 האחרונות
-        if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
+        if not (parsed.get("city") or parsed.get("neighborhood") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
             all_rows.sort(key=lambda r: _excl_epoch(r.get("received_at","")), reverse=True)
             matches = all_rows[:5]
         else:
@@ -3284,9 +3301,10 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .callrow .cphone a{color:var(--ink);text-decoration:none}
 .callrow .cmeta{color:var(--muted);font-size:12.5px;margin:3px 0 0}
 .callrow .csumwrap{margin-top:7px}
-.callrow .csum{font-size:14px;line-height:1.6;color:#33405a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.callrow .csum.open{-webkit-line-clamp:unset;overflow:visible}
-.callrow .csummore{display:inline-block;margin-top:4px;color:#8a6d1e;font-size:12.5px;font-weight:800;cursor:pointer}
+.callrow .csum{font-size:14px;line-height:1.6;color:#33405a;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(122,90,18,.25)}
+.callrow .csum.collapsed{display:none}
+.callrow .csummore{display:inline-block;margin-top:6px;color:#7a5a12;font-size:12.5px;font-weight:800;cursor:pointer}
+.callrow .cdetails .csummore{margin-top:8px}
 .callrow .cbtns{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap;align-items:center}
 .callrow .cbtns .addbuyer,.callrow .cbtns .hidecall{margin:0!important}
 .ans,.noans{font-size:12px;padding:3px 11px}
@@ -3418,7 +3436,13 @@ function viewSigs(){
   $("view").innerHTML='<div class=card><h2>✍️ חתימות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
   bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,30000);
 }
-function csumMore(el){var s=el.previousElementSibling;if(!s)return;var o=s.classList.toggle("open");el.textContent=o?"פחות ▴":"עוד ▾";}
+function csumMore(el){var s=el.nextElementSibling;if(!s||!s.classList.contains("csum"))return;var hidden=s.classList.toggle("collapsed");el.textContent=hidden?"עוד — סיכום שיחה ▾":"פחות ▴";}
+function callDetails(c){
+  var sum=c.summary?("<span class=csummore onclick=csumMore(this)>עוד — סיכום שיחה ▾</span><div class='csum collapsed'>"+esc(c.summary)+"</div>"):"";
+  if(c.clientDetails)return "<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div>"+sum+"</div>";
+  if(c.summary)return "<div class=csumwrap>"+sum+"</div>";
+  return "";
+}
 function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"):"")+(HIDDENMODE?"hidden=1":"")).then(function(r){
   if(!r.ok){relogin();return;}
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
@@ -3437,14 +3461,12 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
       "<div class=ctop>"+st+"<span class=ctime>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</span></div>"+
       "<div class=cphone>📞 "+callerLink+"</div>"+
       (isMulti()&&c.agent?"<div class=cmeta>👤 קיבל: "+esc(c.agent)+"</div>":"")+
-      (c.clientDetails?"<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div></div>":"")+
-      (c.summary?"<div class=csumwrap><div class=csum>"+esc(c.summary)+"</div><span class=csummore onclick=csumMore(this)>עוד ▾</span></div>":"")+
+      callDetails(c)+
       "<div class=cbtns>"+cb+addb+hideb+"</div>"+
     "</div>";
   }).join(""):"<div class=card><div class=muted>אין שיחות בטווח.</div></div>");
   document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:decodeURIComponent(b.getAttribute("data-sum")||"")});};});
   document.querySelectorAll("#calls .hidecall").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");if(b.getAttribute("data-act")=="unhide")unhideCall(id);else hideCall(id);};});
-  document.querySelectorAll("#calls .csumwrap").forEach(function(w){var s=w.querySelector(".csum"),m=w.querySelector(".csummore");if(s&&m&&s.scrollHeight<=s.clientHeight+2)m.style.display="none";});
   seenCall=maxC;
 }).catch(function(){});}
 function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
