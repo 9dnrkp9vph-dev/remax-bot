@@ -2937,7 +2937,7 @@ def api_search_exclusives():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
-        _log_activity(s["name"], s["role"], s["phone"], "חיפוש בלעדיות", q)
+        if q: _log_activity(s["name"], s["role"], s["phone"], "חיפוש בלעדיות", q)
         if not (request.get_json(silent=True) or {}).get("nosave"):
             _push_recent(s["phone"], "excl", q)
         parsed = parse_exclusivity_search_query(q if q.startswith("מחפש") else ("מחפש בלעדיות " + q)) or {}
@@ -3593,6 +3593,7 @@ function viewSearch(kind){
   if(kind=="props"||kind=="excl")loadRecent(kind);
   if(kind=="props")loadMyProps();
   if(kind=="buyers")loadMyBuyers();
+  if(kind=="excl")doSearch(cfg.ep,kind);   // טען מיד את כל הבלעדיות האחרונות
 }
 function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div class=muted style=margin:8px_0>טוען את הנכסים שלך… ⏳</div>";
   api("/api/my/properties",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:IMP||""})}).then(function(r){
