@@ -2302,6 +2302,7 @@ def api_history():
             "status": str(c.get("status", "")).upper(),
             "caller": caller_disp,
             "tel": caller_tel,
+            "wa": _wa_phone(c.get("caller_phone", "")),
             "duration": c.get("duration_sec", ""),
             "agent": (c.get("agent", "") or "").strip(),
             "summary": text,
@@ -3343,8 +3344,23 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .callrow .cdetails .csummore{margin-top:8px}
 .callrow .cbtns{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap;align-items:center}
 .callrow .cbtns .addbuyer,.callrow .cbtns .hidecall{margin:0!important}
+.callrow .cbtns .wab{display:inline-block;background:#e7f6ec;color:#0f7a37;border:1px solid #b6e3c4;font-weight:800;font-size:12px;padding:6px 12px;border-radius:10px;text-decoration:none}
 .ans,.noans{font-size:12px;padding:3px 11px}
 .ouroffice{display:inline-block;background:#fdeef0;color:#c01f2a;font-weight:900;padding:1px 9px;border-radius:8px;border:1px solid #f3c4c9}
+.nbcardx{position:relative;background:#fff;border:1px solid #edf0f4;border-radius:16px;padding:14px 15px;margin-bottom:12px;box-shadow:0 4px 16px rgba(13,27,42,.05);overflow:hidden}
+.nbcardx:before{content:"";position:absolute;inset-inline-start:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--gold),#a87d1a)}
+.nbcardx .nbtop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.nbcardx .nbaddr{font-size:16px;font-weight:900;color:var(--ink);line-height:1.3}
+.nbcardx .nbdate{font-size:12px;color:#8a929d;font-weight:700;white-space:nowrap}
+.nbcardx .nbdesc{font-size:14px;color:#33405a;margin-top:5px;line-height:1.5}
+.nbcardx .nbprice{font-size:16px;font-weight:900;color:#0f7a37;margin-top:6px}
+.nbcardx .nbowner{font-size:14px;font-weight:800;color:var(--ink);margin-top:9px;padding-top:9px;border-top:1px solid #f0f2f5}
+.nbcardx .nbacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.nbcardx .nbbtn{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:800;padding:10px 15px;border-radius:11px;cursor:pointer;text-decoration:none;border:1px solid transparent}
+.nbcardx .nbbtn.call{background:#eef4ff;color:#1d4ed8;border-color:#cfe0fb}
+.nbcardx .nbbtn.wa{background:#e7f6ec;color:#0f7a37;border-color:#b6e3c4}
+.nbcardx .nbbtn.mark{background:#fff7e6;color:#7a5c12;border-color:#ead9ab}
+.nbcardx .nbcontact{margin-top:9px}
 .tab{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:0;position:relative}
 .tabbadge{position:absolute;top:3px;inset-inline-start:50%;transform:translateX(58%);background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;font-size:10px;font-weight:900;min-width:17px;height:17px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 1px 4px rgba(201,151,42,.45)}
 .menuwrap{position:relative}
@@ -3387,7 +3403,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
     <div class="tab" data-t="sigs" onclick="tab('sigs')"><span class="tic">✍️</span>חתימות שלי</div>
     <div class="tab" data-t="props" onclick="tab('props')"><span class="tic">🏢</span>נכסים במשרד</div>
     <div class="tab" data-t="excl" onclick="tab('excl')"><span class="tic">🏘️</span>נכסים בשת״פ</div>
-    <div class="tab" id="nbtab" onclick="openNewborn()"><span class="tic">🐥</span>נכס נולד<span class="tabbadge hidden" id="nbtabbadge"></span></div>
+    <div class="tab" data-t="newborn" id="nbtab" onclick="tab('newborn')"><span class="tic">🐥</span>נכס נולד<span class="tabbadge hidden" id="nbtabbadge"></span></div>
   </div>
   <div id="nbmodal" class="nbmodal hidden" onclick="if(event.target===this)closeNewborn()"></div>
 </div>
@@ -3412,7 +3428,7 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
 function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";}if(ROLE=="admin"){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");}tab("calls");setTimeout(loadNbBanner,1500);}
 function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
-function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else viewSearch(TABNOW);}
+function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else viewSearch(TABNOW);}
 var REPTEXT="";
 function kpi(n,l){return "<div class=stat><div class=n>"+n+"</div><div class=l>"+l+"</div></div>";}
 function viewReport(){
@@ -3505,12 +3521,13 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
     var bsum=(c.summary||"")+(c.clientDetails?("\n"+c.clientDetails):"");
     var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\">➕ קונה</button>";
     var hideb=" <button class=hidecall data-id=\""+esc(c.id||"")+"\" data-act=\""+(HIDDENMODE?"unhide":"hide")+"\">"+(HIDDENMODE?"↩️ שחזר":"🙈 הסתר")+"</button>";
+    var wab=c.wa?(" <a class=wab href='https://wa.me/"+c.wa+"' target=_blank rel=noopener>💬 וואטסאפ</a>"):"";
     return "<div class='callrow"+(isNew?" new":"")+"'>"+
       "<div class=ctop>"+st+"<span class=ctime>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</span></div>"+
       "<div class=cphone>📞 "+callerLink+"</div>"+
       (isMulti()&&c.agent?"<div class=cmeta>👤 קיבל: "+esc(c.agent)+"</div>":"")+
       callDetails(c)+
-      "<div class=cbtns>"+cb+addb+hideb+"</div>"+
+      "<div class=cbtns>"+wab+cb+addb+hideb+"</div>"+
     "</div>";
   }).join(""):"<div class=card><div class=muted>אין שיחות בטווח.</div></div>");
   document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:decodeURIComponent(b.getAttribute("data-sum")||"")});};});
@@ -3691,6 +3708,41 @@ function openNewborn(){
   }).catch(function(){});}
 var _nbScrollY=0;
 function nbLock(on){var b=document.body;if(on){_nbScrollY=window.scrollY||window.pageYOffset||0;b.style.position="fixed";b.style.top=(-_nbScrollY)+"px";b.style.left="0";b.style.right="0";b.style.width="100%";}else{b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";window.scrollTo(0,_nbScrollY);}}
+function viewNewborn(){
+  $("view").innerHTML='<div class=card><h2>🐥 נכס נולד'+scopeLabel()+'</h2><div class=muted>צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div>';
+  loadNewbornPage();
+}
+function loadNewbornPage(){
+  api("/api/newborn"+nbAs()).then(function(r){
+    if(!$("nblist"))return;
+    if(!r||!r.ok){$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";return;}
+    NBDATA=r;
+    var items=(r.results||[]).filter(function(x){return x.released;});
+    var lv=$("nblive");if(lv)lv.innerHTML="🟢 "+items.length+" נכסים לגיוס";
+    if(!items.length){$("nblist").innerHTML="<div class=card><div class=muted>אין נכסים זמינים עבורך כרגע.</div></div>";return;}
+    $("nblist").innerHTML=items.map(nbCard).join("");
+  }).catch(function(){if($("nblist"))$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";});
+}
+function nbCard(x){
+  var k=encodeURIComponent(x.key||""),a=encodeURIComponent(x.address||""),ph=x.phone||"";
+  return "<div class=nbcardx>"+
+    "<div class=nbtop><b class=nbaddr>🏠 "+esc(x.address||x.city||"נכס")+"</b>"+(x.date?"<span class=nbdate>📅 "+esc(x.date)+"</span>":"")+"</div>"+
+    ((x.city&&x.address)?"<div class=muted>"+esc(x.city)+"</div>":"")+
+    (x.desc?"<div class=nbdesc>"+esc(x.desc)+"</div>":"")+
+    (x.price?"<div class=nbprice>💰 "+esc(x.price)+"</div>":"")+
+    (x.notes?"<div class=muted style=margin-top:4px>"+esc(x.notes)+"</div>":"")+
+    "<div class=nbowner>👤 "+esc(x.owner||"בעל הנכס")+(ph?" · "+esc(ph):"")+"</div>"+
+    "<div class=nbacts>"+
+      (ph?"<a class='nbbtn call' href='tel:"+esc(ph)+"' onclick=\"nbMark('"+k+"','"+a+"')\">📞 חייג</a>":"")+
+      (x.wa?"<a class='nbbtn wa' href='https://wa.me/"+x.wa+"?text="+nbWaMsg(x)+"' target=_blank rel=noopener onclick=\"nbMark('"+k+"','"+a+"')\">💬 וואטסאפ</a>":"")+
+      "<button class='nbbtn mark' onclick=\"nbMark('"+k+"','"+a+"',1)\">✅ יצרתי קשר</button>"+
+    "</div>"+
+    (x.contacted&&x.contacted.length?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
+    (x.link?"<div style=margin-top:9px><a class=cbtn style=background:#0D1B2A href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 צפייה במודעה</a></div>":"")+
+  "</div>";
+}
+function nbWaMsg(x){var who=NAME?(" מדבר/ת "+NAME):"";var m="שלום!"+who+" מ-RE/MAX Family 🏠 ראיתי את הנכס שלך"+(x.address?(" ב"+x.address):"")+" למכירה, ואשמח לעזור לך למכור אותו במחיר הטוב ביותר ובליווי מקצועי. אפשר לדבר?";return encodeURIComponent(m);}
+function nbMark(k,a,reload){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).then(function(){if(reload)loadNewbornPage();}).catch(function(){});}catch(e){}return true;}
 function closeNewborn(){$("nbmodal").classList.add("hidden");nbLock(false);}
 var VPHONE="";
 function copyVphone(){if(!VPHONE)return;var b=$("vpcopybtn");var ok=function(){if(b){var t=b.innerHTML;b.innerHTML="✓ הועתק";setTimeout(function(){b.innerHTML=t;},1500);}};
