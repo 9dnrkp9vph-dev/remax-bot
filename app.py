@@ -3327,7 +3327,8 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .callrow .cbtns{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap;align-items:center}
 .callrow .cbtns .addbuyer,.callrow .cbtns .hidecall{margin:0!important}
 .ans,.noans{font-size:12px;padding:3px 11px}
-.tab{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.tab{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:0;position:relative}
+.tabbadge{position:absolute;top:3px;inset-inline-start:50%;transform:translateX(58%);background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;font-size:10px;font-weight:900;min-width:17px;height:17px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 1px 4px rgba(201,151,42,.45)}
 .tab .tic{display:inline-flex;align-items:center;justify-content:center;width:34px;height:27px;border-radius:9px;font-size:15px;margin-bottom:2px}
 .tab.on{border-top-color:transparent!important;background:none!important}
 .tab.on .tic{background:linear-gradient(180deg,rgba(201,151,42,.2),rgba(201,151,42,.06));box-shadow:inset 0 0 0 1px rgba(201,151,42,.28)}
@@ -3354,7 +3355,6 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 <div id="appui" class="hidden">
   <div id="topbar" style="text-align:center;margin-bottom:6px">
     <button class="sec btn-primary" style="width:auto;display:inline-block;padding:11px 18px;margin:0 0 6px" onclick="tab('report')">📊 דוחות</button>
-    <button class="sec btn-gold" id="nbbtn" style="width:auto;display:inline-block;padding:11px 18px;margin:0 4px 6px" onclick="openNewborn()">🐥 נכס נולד</button>
   </div>
   <div id="adminbar" class="hidden" style="text-align:center;margin-bottom:6px">
     <button class="sec btn-ghost" style="width:auto;display:inline-block;padding:11px 16px;margin:0 0 6px" onclick="tab('activity')"><span class="ndot"></span>📣 עדכונים</button>
@@ -3367,7 +3367,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
     <div class="tab" data-t="sigs" onclick="tab('sigs')"><span class="tic">✍️</span>חתימות שלי</div>
     <div class="tab" data-t="props" onclick="tab('props')"><span class="tic">🏢</span>נכסים במשרד</div>
     <div class="tab" data-t="excl" onclick="tab('excl')"><span class="tic">🏘️</span>נכסים בשת״פ</div>
-    <div class="tab" data-t="present" onclick="tab('present')"><span class="tic">📄</span>מצגת</div>
+    <div class="tab" id="nbtab" onclick="openNewborn()"><span class="tic">🐥</span>נכס נולד<span class="tabbadge hidden" id="nbtabbadge"></span></div>
   </div>
   <div id="nbmodal" class="nbmodal hidden" onclick="if(event.target===this)closeNewborn()"></div>
 </div>
@@ -3392,7 +3392,7 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
 function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";bn.onclick=logout;bn.style.cursor="pointer";bn.title="לחץ ליציאה מהמערכת";}if(ROLE=="admin"){$("adminbar").classList.remove("hidden");loadAgents();}tab("calls");setTimeout(loadNbBanner,1500);}
 function tab(t){TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
-function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="present")viewPresent();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else viewSearch(TABNOW);}
+function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else viewSearch(TABNOW);}
 var REPTEXT="";
 function kpi(n,l){return "<div class=stat><div class=n>"+n+"</div><div class=l>"+l+"</div></div>";}
 function viewReport(){
@@ -3645,10 +3645,10 @@ function relogin(){try{localStorage.removeItem("fbTok");}catch(e){}location.relo
 function logout(){if(!confirm("להתנתק מהמערכת?"))return;try{localStorage.removeItem("fbTok");localStorage.removeItem("fbRole");localStorage.removeItem("fbName");}catch(e){}location.reload();}
 var NBDATA=null;
 function nbAs(){return IMP?("?as="+encodeURIComponent(IMP)):"";}
-function loadNbBanner(){var b=$("nbbtn");if(!b)return;
+function loadNbBanner(){var b=$("nbtabbadge");if(!b)return;
   api("/api/newborn"+nbAs()).then(function(r){
     if(!r||!r.ok)return;NBDATA=r;
-    b.innerHTML=(r.count>0)?("🐥 נכס נולד ("+r.count+")"):"🐥 נכס נולד";
+    if(r.count>0){b.textContent=r.count;b.classList.remove("hidden");}else{b.classList.add("hidden");}
   }).catch(function(){});}
 function openNewborn(){
   api("/api/newborn"+nbAs()).then(function(r){
