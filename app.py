@@ -3723,8 +3723,9 @@ function card(kind,x){
   if(kind=="props"){return "<div class=row>"+((x.score!==undefined&&x.score!=="")?"<span class=score>"+x.score+"%</span>":"")+"<b>"+esc(x.type||"נכס")+"</b> · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+
     "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
     (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+(x.own?("<div class=lbtns>"+(x.pending?"<span class=lpend>🔧 בטיפול אצל המזכירה</span>":("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">🗑 הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">💰 עדכן מחיר</button>"))+"</div>"):"")+"</div>";}
-  if(kind=="excl"){return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
+  if(kind=="excl"){var _dd=daysSince(x.date);return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
     (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price?esc(x.price):"",(x.office?(isOurOffice(x.office)?"<span class=ouroffice>🏠 "+esc(x.office)+"</span>":esc(x.office)):""),x.date?esc(x.date):""].filter(Boolean).join(" · ")+"</div>"+
+    (_dd!=null?"<div class=muted>⏳ "+daysLabel(_dd)+"</div>":"")+
     (x.link?"<div><a class=cbtn style=background:#0D1B2A href='"+x.link+"' target=_blank rel=noopener>🔗 נדל\"ן וואן</a></div>":"")+"</div>";}
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"-";
   return "<div class=row>📞 <b>"+ph+"</b>"+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
@@ -3809,6 +3810,8 @@ function vpFallbackCopy(t){try{var ta=document.createElement("textarea");ta.valu
 function nbWa(k,a){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).catch(function(){});}catch(e){}return true;}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 function isOurOffice(o){var t=String(o||"").toLowerCase().replace(/[\s\/\\.\-_'"׳״]/g,"");var rmx=t.indexOf("remax")>-1||t.indexOf("רימקס")>-1||t.indexOf("רמקס")>-1;var fam=t.indexOf("family")>-1||t.indexOf("פמילי")>-1||t.indexOf("פמלי")>-1;return rmx&&fam;}
+function daysSince(s){if(!s)return null;s=String(s).trim();var d;var m=s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);if(m){d=new Date(+m[3],+m[2]-1,+m[1]);}else{d=new Date(s.slice(0,10));}if(isNaN(d))return null;var n=Math.floor((Date.now()-d.getTime())/86400000);return n<0?0:n;}
+function daysLabel(dd){return dd==0?"נכנס לבלעדיות היום":(dd==1?"יום אחד בבלעדיות":dd+" ימים בבלעדיות");}
 </script></div></body></html>'''
 
 # ══════════════════════════════════════════════════════════════════════════════
