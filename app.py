@@ -2313,6 +2313,9 @@ def api_history():
         if mi >= 0:
             client_details = text[mi:].strip()
             text = text[:mi].strip()
+        # אם אחרי הסרת התווית "סיכום השיחה:" לא נשאר תוכן אמיתי — אין סיכום
+        if not re.sub(r"[\s.\-–—:·•]", "", re.sub(r"^\s*סיכום השיחה:?\s*", "", text)):
+            text = ""
         caller_disp, caller_tel = _il_phone(c.get("caller_phone", ""))
         call_out.append({
             "time": _fmt_il_dt(c.get("received_at", "")),
@@ -2411,7 +2414,7 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
     agents = sorted(({"name": k, "total": v["total"], "answered": v["answered"],
                       "rate": round(v["answered"] / v["total"] * 100) if v["total"] else 0}
                      for k, v in by_agent.items()), key=lambda x: -x["total"])
-    konim = bladiut = skhirut = 0; exc = []
+    konim = bladiut = skhirut = 0; exc = []; sigs_list = []
     for g in sigs:
         dt = str(g.get("deal_type", "")).upper()
         if "CLIENT_SALE" in dt: konim += 1
@@ -2421,6 +2424,11 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
             exc.append({"date": g.get("_date_key", ""),
                         "address": ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x]),
                         "agent": (g.get("agent", "") or "").strip()})
+        sigs_list.append({"date": g.get("_date_key", ""),
+                          "type": _deal_label(g.get("deal_type", "")),
+                          "client": (g.get("client_name", "") or "").strip(),
+                          "address": ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x]),
+                          "agent": (g.get("agent", "") or "").strip()})
     st_total = len(sigs)
     pct = lambda n: round(n / st_total * 100) if st_total else 0
     by_city = {}
@@ -2436,6 +2444,7 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
         "sigs": {"total": st_total, "konim": konim, "bladiut": bladiut, "skhirut": skhirut,
                  "pctK": pct(konim), "pctB": pct(bladiut), "pctS": pct(skhirut)},
         "exclusives": exc,
+        "sigsList": sigs_list,
         "props": {"total": len(props), "topCities": top_cities},
     }
 
@@ -3457,7 +3466,14 @@ function viewReport(){
   var msel=$("monthsel");if(msel)msel.onchange=function(){if(!this.value)return;document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});loadReport("month",this.value);};
   loadReport("month");
 }
-var REPEXC=[];
+var REPEXC=[],REPSIGS=[],REPSIGB=null;
+function toggleSigs(){var b=$("sigslist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}var g=REPSIGB||{};
+  var head="<div class=grid>"+kpi(g.konim+" ("+g.pctK+"%)","קונים")+kpi(g.bladiut+" ("+g.pctB+"%)","בלעדיות")+kpi(g.skhirut+" ("+g.pctS+"%)","שכירויות")+kpi(g.total,"סה״כ")+"</div>";
+  var list;
+  if(REPSIGS&&REPSIGS.length){var arr=REPSIGS.slice().sort(function(a,c){return String(c.date).localeCompare(String(a.date));});
+    list=arr.map(function(e){return "<div class=row><b>"+esc(e.type||"חתימה")+"</b>"+(e.client?" · "+esc(e.client):"")+"<div class=muted>"+[e.address?esc(e.address):"",e.agent?"👤 "+esc(e.agent):"",e.date?"📅 "+fmtD(e.date):""].filter(Boolean).join(" · ")+"</div></div>";}).join("");
+  }else{list="<div class=muted>אין חתימות בתקופה.</div>";}
+  b.innerHTML="<div class=card><h2>✍️ חתימות ("+(g.total||0)+")</h2>"+head+"<div style=margin-top:8px>"+list+"</div></div>";}
 function fmtD(s){s=String(s||"");if(s.indexOf("T")>-1){var pp=s.slice(0,10).split("-");if(pp.length==3)return pp[2]+"/"+pp[1]+"/"+pp[0];}return s.slice(0,16);}
 function toggleExc(){var b=$("exclist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}if(!REPEXC||!REPEXC.length){b.innerHTML="<div class=card><div class=muted>אין בלעדיות בתקופה.</div></div>";return;}var list=REPEXC.slice().sort(function(a,c){return String(c.date).localeCompare(String(a.date));});b.innerHTML="<div class=card><h2>🏘️ בלעדיות ("+REPEXC.length+")</h2>"+list.map(function(e){return "<div class=row><b>"+esc(e.address||"—")+"</b><div class=muted>"+[e.agent?"👤 "+esc(e.agent):"",e.date?"📅 "+fmtD(e.date):""].filter(Boolean).join(" · ")+"</div></div>";}).join("")+"</div>";}
 function toggleAds(){var b=$("adslist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}
@@ -3470,12 +3486,11 @@ function toggleAds(){var b=$("adslist");if(!b)return;if(b.innerHTML){b.innerHTML
   }).catch(function(){b.innerHTML="<div class=card><div class=err>שגיאה</div></div>";});}
 function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p+(month?"&month="+month:"")+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
   if(!r.ok){if(r.auth===false){relogin();return;}$("rep").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
-  REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;REPEXC=sm.exclusives||[];
-  var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+kpi(sg.total,"חתימות")+"<div class=stat style=cursor:pointer onclick=toggleExc()><div class=n>"+sm.exclusives.length+"</div><div class=l>בלעדיות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleAds()><div class=n>"+(r.listings!=null?r.listings:0)+"</div><div class=l>מודעות 👁</div></div></div></div><div id=exclist></div><div id=adslist></div>";
+  REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;REPEXC=sm.exclusives||[];REPSIGS=sm.sigsList||[];REPSIGB=sg;
+  var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+"<div class=stat style=cursor:pointer onclick=toggleSigs()><div class=n>"+sg.total+"</div><div class=l>חתימות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleExc()><div class=n>"+sm.exclusives.length+"</div><div class=l>בלעדיות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleAds()><div class=n>"+(r.listings!=null?r.listings:0)+"</div><div class=l>מודעות 👁</div></div></div></div><div id=sigslist></div><div id=exclist></div><div id=adslist></div>";
   if(r.insights&&r.insights.length){h+="<div class=card><h2>📊 תובנות</h2>"+r.insights.map(function(t){return "<div class=insight>"+esc(t)+"</div>";}).join("")+"</div>";}
   if(r.scope=="כל המשרד"){var ag="<table><tr><th style=text-align:start>מתווך</th><th>שיחות</th><th>נענו</th><th>%</th></tr>";sm.agents.slice(0,10).forEach(function(a,i){ag+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center>"+a.total+"</td><td style=text-align:center>"+a.answered+"</td><td style=text-align:center>"+a.rate+"%</td></tr>";});ag+="</table>";
   h+="<div class=card><h2>👥 מתווכים מובילים</h2>"+ag+"</div>";}
-  h+="<div class=card><h2>✍️ חתימות</h2><div class=grid>"+kpi(sg.konim+" ("+sg.pctK+"%)","קונים")+kpi(sg.bladiut+" ("+sg.pctB+"%)","בלעדיות")+kpi(sg.skhirut+" ("+sg.pctS+"%)","שכירויות")+kpi(sg.total,"סה״כ")+"</div></div>";
   if(r.shtaf&&r.shtaf.length){var tot=(r.shtaf_total!=null?r.shtaf_total:r.shtaf.reduce(function(a,o){return a+o.count;},0));var noff=(r.shtaf_offices!=null?r.shtaf_offices:r.shtaf.length);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>🤝 גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+noff+" משרדים · סה״כ "+tot+" נכסים"+(noff>10?" · מציג 10 מובילים":"")+"</div>"+st+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
