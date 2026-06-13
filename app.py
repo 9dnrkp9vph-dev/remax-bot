@@ -3359,7 +3359,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .nbcardx .nbbtn{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:800;padding:10px 15px;border-radius:11px;cursor:pointer;text-decoration:none;border:1px solid transparent}
 .nbcardx .nbbtn.call{background:#eef4ff;color:#1d4ed8;border-color:#cfe0fb}
 .nbcardx .nbbtn.wa{background:#e7f6ec;color:#0f7a37;border-color:#b6e3c4}
-.nbcardx .nbbtn.mark{background:#fff7e6;color:#7a5c12;border-color:#ead9ab}
+.nbcardx .nbbtn.link{background:#0D1B2A;color:#fff;border-color:#0D1B2A}
 .nbcardx .nbcontact{margin-top:9px}
 .tab{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:0;position:relative}
 .tabbadge{position:absolute;top:3px;inset-inline-start:50%;transform:translateX(58%);background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;font-size:10px;font-weight:900;min-width:17px;height:17px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 1px 4px rgba(201,151,42,.45)}
@@ -3735,10 +3735,9 @@ function nbCard(x){
     "<div class=nbacts>"+
       (ph?"<a class='nbbtn call' href='tel:"+esc(ph)+"' onclick=\"nbMark('"+k+"','"+a+"')\">📞 חייג</a>":"")+
       (x.wa?"<a class='nbbtn wa' href='https://wa.me/"+x.wa+"?text="+nbWaMsg(x)+"' target=_blank rel=noopener onclick=\"nbMark('"+k+"','"+a+"')\">💬 וואטסאפ</a>":"")+
-      "<button class='nbbtn mark' onclick=\"nbMark('"+k+"','"+a+"',1)\">✅ יצרתי קשר</button>"+
+      (x.link?"<a class='nbbtn link' href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 צפייה במודעה</a>":"")+
     "</div>"+
-    (x.contacted&&x.contacted.length?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
-    (x.link?"<div style=margin-top:9px><a class=cbtn style=background:#0D1B2A href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 צפייה במודעה</a></div>":"")+
+    ((ROLE=="admin"&&x.contacted&&x.contacted.length)?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
   "</div>";
 }
 function nbWaMsg(x){var who=NAME?(" מדבר/ת "+NAME):"";var m="שלום!"+who+" מ-RE/MAX Family 🏠 ראיתי את הנכס שלך"+(x.address?(" ב"+x.address):"")+" למכירה, ואשמח לעזור לך למכור אותו במחיר הטוב ביותר ובליווי מקצועי. אפשר לדבר?";return encodeURIComponent(m);}
