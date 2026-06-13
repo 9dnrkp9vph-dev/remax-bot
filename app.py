@@ -2414,12 +2414,17 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
     agents = sorted(({"name": k, "total": v["total"], "answered": v["answered"],
                       "rate": round(v["answered"] / v["total"] * 100) if v["total"] else 0}
                      for k, v in by_agent.items()), key=lambda x: -x["total"])
-    konim = bladiut = skhirut = 0; exc = []; sigs_list = []
+    konim = bladiut = skhirut = 0; exc = []; sigs_list = []; sig_agents = {}
     for g in sigs:
         dt = str(g.get("deal_type", "")).upper()
+        _ag = (g.get("agent", "") or "").strip()
         if "CLIENT_SALE" in dt: konim += 1
         elif "OWNER_EXCLUSIVE" in dt: bladiut += 1
         elif "OWNER_RENT" in dt or "CLIENT_RENT" in dt: skhirut += 1
+        if _ag:
+            _d = sig_agents.setdefault(_ag, {"konim": 0, "bladiut": 0})
+            if "CLIENT_SALE" in dt: _d["konim"] += 1
+            elif "OWNER_EXCLUSIVE" in dt: _d["bladiut"] += 1
         if "OWNER_EXCLUSIVE" in dt:
             exc.append({"date": g.get("_date_key", ""),
                         "address": ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x]),
@@ -2445,6 +2450,10 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
                  "pctK": pct(konim), "pctB": pct(bladiut), "pctS": pct(skhirut)},
         "exclusives": exc,
         "sigsList": sigs_list,
+        "topGius": sorted(({"name": k, "n": v["bladiut"]} for k, v in sig_agents.items() if v["bladiut"]),
+                          key=lambda x: -x["n"])[:5],
+        "topKonim": sorted(({"name": k, "n": v["konim"]} for k, v in sig_agents.items() if v["konim"]),
+                           key=lambda x: -x["n"])[:5],
         "props": {"total": len(props), "topCities": top_cities},
     }
 
@@ -3467,11 +3476,11 @@ var REPTEXT="";
 function kpi(n,l){return "<div class=stat><div class=n>"+n+"</div><div class=l>"+l+"</div></div>";}
 function viewReport(){
   var MN=["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
-  var cm=new Date().getMonth()+1,opts='<option value="">▾ חודש</option>';
+  var cm=new Date().getMonth()+1,opts='<option value="">החודש</option>';
   for(var m=1;m<=cm;m++)opts+='<option value="'+m+'">'+MN[m-1]+'</option>';
-  $("view").innerHTML='<div class=card><h2>📊 דוחות מנהל</h2><div class=chips id=rpc><div class=chip data-r=lastweek>שבוע שעבר</div><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><select id=monthsel class=monthsel>'+opts+'</select><div class=chip data-r=year>השנה</div></div></div><div id=rep></div>';
-  document.querySelectorAll("#rpc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");var ms=$("monthsel");if(ms)ms.value="";loadReport(c.dataset.r);};});
-  var msel=$("monthsel");if(msel)msel.onchange=function(){if(!this.value)return;document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});loadReport("month",this.value);};
+  $("view").innerHTML='<div class=card><h2>📊 דוחות מנהל</h2><div class=chips id=rpc><div class=chip data-r=lastweek>שבוע שעבר</div><div class=chip data-r=week>השבוע</div><select id=monthsel class="chip monthsel on" title="בחר חודש">'+opts+'</select><div class=chip data-r=year>השנה</div></div></div><div id=rep></div>';
+  document.querySelectorAll("#rpc .chip").forEach(function(c){if(c.tagName=="SELECT")return;c.onclick=function(){document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");var ms=$("monthsel");if(ms){ms.classList.remove("on");ms.value="";}loadReport(c.dataset.r);};});
+  var msel=$("monthsel");if(msel)msel.onchange=function(){document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});msel.classList.add("on");if(this.value)loadReport("month",this.value);else loadReport("month");};
   loadReport("month");
 }
 var REPEXC=[],REPSIGS=[],REPSIGB=null;
@@ -3498,7 +3507,9 @@ function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</di
   var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+"<div class=stat style=cursor:pointer onclick=toggleSigs()><div class=n>"+sg.total+"</div><div class=l>חתימות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleExc()><div class=n>"+sm.exclusives.length+"</div><div class=l>בלעדיות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleAds()><div class=n>"+(r.listings!=null?r.listings:0)+"</div><div class=l>מודעות 👁</div></div></div></div><div id=sigslist></div><div id=exclist></div><div id=adslist></div>";
   if(r.insights&&r.insights.length){h+="<div class=card><h2>📊 תובנות</h2>"+r.insights.map(function(t){return "<div class=insight>"+esc(t)+"</div>";}).join("")+"</div>";}
   if(r.scope=="כל המשרד"){var ag="<table><tr><th style=text-align:start>מתווך</th><th>שיחות</th><th>נענו</th><th>%</th></tr>";sm.agents.slice(0,10).forEach(function(a,i){ag+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center>"+a.total+"</td><td style=text-align:center>"+a.answered+"</td><td style=text-align:center>"+a.rate+"%</td></tr>";});ag+="</table>";
-  h+="<div class=card><h2>👥 מתווכים מובילים</h2>"+ag+"</div>";}
+  h+="<div class=card><h2>👥 מתווכים מובילים</h2>"+ag+"</div>";
+  if(sm.topGius&&sm.topGius.length){var tg="<table><tr><th style=text-align:start>מתווך</th><th>נכסים</th></tr>";sm.topGius.forEach(function(a,i){tg+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tg+="</table>";h+="<div class=card><h2>🏆 מובילים בגיוס נכסים</h2>"+tg+"</div>";}
+  if(sm.topKonim&&sm.topKonim.length){var tk="<table><tr><th style=text-align:start>מתווך</th><th>קונים</th></tr>";sm.topKonim.forEach(function(a,i){tk+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tk+="</table>";h+="<div class=card><h2>🤝 מובילים בהחתמת קונים</h2>"+tk+"</div>";}}
   if(r.shtaf&&r.shtaf.length){var tot=(r.shtaf_total!=null?r.shtaf_total:r.shtaf.reduce(function(a,o){return a+o.count;},0));var noff=(r.shtaf_offices!=null?r.shtaf_offices:r.shtaf.length);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>🤝 גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+noff+" משרדים · סה״כ "+tot+" נכסים"+(noff>10?" · מציג 10 מובילים":"")+"</div>"+st+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
