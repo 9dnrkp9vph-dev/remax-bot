@@ -3133,47 +3133,7 @@ def api_calls_unhide():
     _cache_clear("hidden_calls")
     return jsonify({"ok": True})
 
-# ── Presentation (PDF) ─────────────────────────────────────────────────────────
-@app.route("/api/presentation", methods=["POST"])
-def api_presentation():
-    s = _web_auth()
-    if not s: return jsonify({"ok": False, "auth": False}), 401
-    text = (request.form.get("text") or "").strip()
-    if not text: return jsonify({"ok": False, "reason": "no_text"}), 400
-    session_dir = WORK_DIR / str(uuid.uuid4()); session_dir.mkdir(exist_ok=True)
-    try:
-        data = parse_listing_text(text)
-        if not data: return jsonify({"ok": False, "reason": "parse_failed"}), 400
-        _log_activity(s["name"], s["role"], s["phone"], "יצירת מצגת", data.get("address", ""))
-        logo_path = None
-        for _lp in [Path("/app/logo.png"), Path("logo.png"), Path(__file__).parent / "logo.png"]:
-            if _lp.exists(): logo_path = _lp; break
-        processed = []
-        files = request.files.getlist("images")[:4]
-        for i, f in enumerate(files):
-            img_path = session_dir / f"img_{i}.jpg"; f.save(str(img_path))
-            try:
-                if has_remax_logo(img_path):
-                    processed.append(img_path)
-                elif logo_path:
-                    out_img = session_dir / f"img_{i}_logo.jpg"
-                    add_remax_logo_to_image(img_path, out_img, logo_path); processed.append(out_img)
-                else:
-                    processed.append(img_path)
-            except Exception as e:
-                log.error(f"img proc {i}: {e}"); processed.append(img_path)
-        try: data["_area_info"] = get_area_info(data.get("city", ""), data.get("neighborhood", "")) or []
-        except Exception: data["_area_info"] = []
-        try: data["_transactions"] = get_transactions(data.get("city", ""), data.get("neighborhood", ""),
-                                                       str(data.get("rooms", "")), data.get("address", "")) or []
-        except Exception: data["_transactions"] = []
-        pdf_path = generate_pdf(data, processed, session_dir)
-        addr = (data.get("address", "נכס") or "נכס").replace(" ", "_")[:30]
-        return send_file(str(pdf_path), mimetype="application/pdf",
-                         as_attachment=True, download_name=f"מצגת_{addr}.pdf")
-    except Exception as e:
-        log.error(f"web presentation error: {e}", exc_info=True)
-        return jsonify({"ok": False, "reason": str(e)[:120]}), 500
+# ── (מצגת PDF ב-web הוסרה לבקשת המשתמש; פונקציות העזר נשארות לשימוש handler אחר) ──
 
 # ── Frontend ───────────────────────────────────────────────────────────────────
 @app.route("/app", methods=["GET"])
@@ -3323,7 +3283,10 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .callrow .cphone{font-size:18px;font-weight:900;color:var(--ink);letter-spacing:.3px}
 .callrow .cphone a{color:var(--ink);text-decoration:none}
 .callrow .cmeta{color:var(--muted);font-size:12.5px;margin:3px 0 0}
-.callrow .csum{font-size:14px;line-height:1.6;color:#33405a;margin-top:7px}
+.callrow .csumwrap{margin-top:7px}
+.callrow .csum{font-size:14px;line-height:1.6;color:#33405a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.callrow .csum.open{-webkit-line-clamp:unset;overflow:visible}
+.callrow .csummore{display:inline-block;margin-top:4px;color:#8a6d1e;font-size:12.5px;font-weight:800;cursor:pointer}
 .callrow .cbtns{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap;align-items:center}
 .callrow .cbtns .addbuyer,.callrow .cbtns .hidecall{margin:0!important}
 .ans,.noans{font-size:12px;padding:3px 11px}
@@ -3455,6 +3418,7 @@ function viewSigs(){
   $("view").innerHTML='<div class=card><h2>✍️ חתימות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
   bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,30000);
 }
+function csumMore(el){var s=el.previousElementSibling;if(!s)return;var o=s.classList.toggle("open");el.textContent=o?"פחות ▴":"עוד ▾";}
 function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"):"")+(HIDDENMODE?"hidden=1":"")).then(function(r){
   if(!r.ok){relogin();return;}
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
@@ -3473,13 +3437,14 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
       "<div class=ctop>"+st+"<span class=ctime>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</span></div>"+
       "<div class=cphone>📞 "+callerLink+"</div>"+
       (isMulti()&&c.agent?"<div class=cmeta>👤 קיבל: "+esc(c.agent)+"</div>":"")+
-      (c.summary?"<div class=csum>"+esc(c.summary)+"</div>":"")+
       (c.clientDetails?"<div class=cdetails><b>📋 פרטים על הלקוח</b><div>"+esc(c.clientDetails.replace(/^פרטים שנאספו על הלקוח:?\s*/,""))+"</div></div>":"")+
+      (c.summary?"<div class=csumwrap><div class=csum>"+esc(c.summary)+"</div><span class=csummore onclick=csumMore(this)>עוד ▾</span></div>":"")+
       "<div class=cbtns>"+cb+addb+hideb+"</div>"+
     "</div>";
   }).join(""):"<div class=card><div class=muted>אין שיחות בטווח.</div></div>");
   document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:decodeURIComponent(b.getAttribute("data-sum")||"")});};});
   document.querySelectorAll("#calls .hidecall").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");if(b.getAttribute("data-act")=="unhide")unhideCall(id);else hideCall(id);};});
+  document.querySelectorAll("#calls .csumwrap").forEach(function(w){var s=w.querySelector(".csum"),m=w.querySelector(".csummore");if(s&&m&&s.scrollHeight<=s.clientHeight+2)m.style.display="none";});
   seenCall=maxC;
 }).catch(function(){});}
 function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
@@ -3493,26 +3458,6 @@ function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")
   }).join(""):"<div class=muted>אין חתימות בטווח.</div>")+"</div>";
   seenSig=maxS;
 }).catch(function(){});}
-
-function viewPresent(){
-  $("view").innerHTML='<div class=card><h2>📄 יצירת מצגת נכס</h2>'+
-    '<label class=muted>פרטי הנכס (טקסט חופשי כמו במודעה)</label>'+
-    '<textarea id=ptext rows=7 placeholder="כתובת, מחיר, חדרים, מ״ר, קומה, תיאור, שם הסוכן..."></textarea>'+
-    '<label class=muted style=margin-top:8px>תמונות (עד 4)</label>'+
-    '<input id=pimgs type=file accept="image/*" multiple>'+
-    '<button class=gold onclick=makePresentation()>צור מצגת PDF</button>'+
-    '<div id=pmsg class=muted></div></div>';
-}
-function makePresentation(){
-  var t=$("ptext").value.trim();if(!t){alert("הזן פרטי נכס");return;}
-  var fd=new FormData();fd.append("text",t);var fs=$("pimgs").files;for(var i=0;i<Math.min(fs.length,4);i++)fd.append("images",fs[i]);
-  $("pmsg").innerHTML="⏳ מכין מצגת (כולל עסקאות ומידע שכונתי)... זה יכול לקחת כ-90 שניות.";
-  fetch("/api/presentation",{method:"POST",headers:{"X-Auth-Token":TOKEN},body:fd}).then(function(r){
-    if(!r.ok)return r.json().then(function(j){throw new Error(j.reason||"שגיאה");});
-    return r.blob();
-  }).then(function(b){var u=URL.createObjectURL(b);var a=document.createElement("a");a.href=u;a.download="מצגת.pdf";a.click();$("pmsg").innerHTML="✅ המצגת הורדה.";})
-  .catch(function(e){$("pmsg").innerHTML="<span class=err>שגיאה: "+esc(e.message)+"</span>";});
-}
 
 function viewSearch(kind){
   var cfg={props:{t:"🏢 נכסים במשרד",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
