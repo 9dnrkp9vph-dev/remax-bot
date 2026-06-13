@@ -2527,7 +2527,7 @@ def api_report():
                               if eff_name else len(_lr))
         except Exception:
             listings_total = 0
-        shtaf = []   # גיוס נכסים בשת״פ — פילוח לפי משרד בתקופה (למנהל/רכז)
+        shtaf = []; shtaf_total = 0; shtaf_offices = 0   # גיוס נכסים בשת״פ — פילוח לפי משרד (למנהל/רכז)
         if s["role"] in ("admin", "coordinator"):
             try:
                 _se = start.timestamp(); _ee = end.timestamp() + 86400
@@ -2535,11 +2535,15 @@ def api_report():
                 for _r in _dedupe_exclusives(fetch_external_exclusives()):
                     _ep = _excl_epoch(_r.get("received_at", ""))
                     if _ep and _se <= _ep < _ee:
-                        _off = (str(_r.get("office", "") or "").strip() or "ללא שם משרד")
+                        _raw = (str(_r.get("office", "") or "").strip() or "ללא שם משרד")
+                        _off = "RE/MAX Family" if _is_our_office(_raw) else _raw   # אחד את כל הווריאציות שלנו
                         _by[_off] = _by.get(_off, 0) + 1
-                shtaf = sorted([{"office": k, "count": v} for k, v in _by.items()], key=lambda x: -x["count"])
+                _full = sorted([{"office": k, "count": v} for k, v in _by.items()], key=lambda x: -x["count"])
+                shtaf_total = sum(o["count"] for o in _full)
+                shtaf_offices = len(_full)
+                shtaf = _full[:10]   # רק 10 המובילים
             except Exception:
-                shtaf = []
+                shtaf = []; shtaf_total = 0; shtaf_offices = 0
         if eff_name:
             _delta = end - start
             _pe = start - timedelta(days=1)
@@ -2549,13 +2553,13 @@ def api_report():
         if insights:
             wa = "📊 *תובנות:*\n" + "\n".join(insights) + "\n\n" + wa
         if shtaf:
-            _tot = sum(o["count"] for o in shtaf)
             _lines = "\n".join((("🏠 " if _is_our_office(o["office"]) else "• ") + o["office"] + ": " + str(o["count"]))
                                for o in shtaf)
-            wa = wa + '\n\n🤝 *גיוס נכסים בשת"פ — ' + label + '* (סה"כ ' + str(_tot) + ')\n' + _lines
+            _note = (' · מציג 10 מובילים' if shtaf_offices > 10 else '')
+            wa = wa + '\n\n🤝 *גיוס נכסים בשת"פ — ' + label + '* (סה"כ ' + str(shtaf_total) + ' נכסים, ' + str(shtaf_offices) + ' משרדים' + _note + ')\n' + _lines
         return jsonify({"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
                         "insights": insights, "summary": sm, "listings": listings_total,
-                        "shtaf": shtaf, "wa_text": wa})
+                        "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices, "wa_text": wa})
     except Exception as e:
         log.error(f"report error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -3423,15 +3427,23 @@ function viewReport(){
 var REPEXC=[];
 function fmtD(s){s=String(s||"");if(s.indexOf("T")>-1){var pp=s.slice(0,10).split("-");if(pp.length==3)return pp[2]+"/"+pp[1]+"/"+pp[0];}return s.slice(0,16);}
 function toggleExc(){var b=$("exclist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}if(!REPEXC||!REPEXC.length){b.innerHTML="<div class=card><div class=muted>אין בלעדיות בתקופה.</div></div>";return;}var list=REPEXC.slice().sort(function(a,c){return String(c.date).localeCompare(String(a.date));});b.innerHTML="<div class=card><h2>🏘️ בלעדיות ("+REPEXC.length+")</h2>"+list.map(function(e){return "<div class=row><b>"+esc(e.address||"—")+"</b><div class=muted>"+[e.agent?"👤 "+esc(e.agent):"",e.date?"📅 "+fmtD(e.date):""].filter(Boolean).join(" · ")+"</div></div>";}).join("")+"</div>";}
+function toggleAds(){var b=$("adslist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}
+  b.innerHTML="<div class=card><div class=muted>טוען מודעות… ⏳</div></div>";
+  api("/api/my/properties",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:IMP||""})}).then(function(r){
+    if(!r||!r.ok){b.innerHTML="<div class=card class=err>שגיאה</div>";return;}
+    var items=r.results||[];
+    if(!items.length){b.innerHTML="<div class=card><div class=muted>אין מודעות על שם הסוכן.</div></div>";return;}
+    b.innerHTML="<div class=card><h2>📋 מודעות הסוכן ("+items.length+")</h2>"+items.map(function(x){var y={};for(var k in x)y[k]=x[k];y.own=false;return card("props",y);}).join("")+"</div>";
+  }).catch(function(){b.innerHTML="<div class=card><div class=err>שגיאה</div></div>";});}
 function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p+(month?"&month="+month:"")+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
   if(!r.ok){if(r.auth===false){relogin();return;}$("rep").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
   REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;REPEXC=sm.exclusives||[];
-  var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+kpi(sg.total,"חתימות")+"<div class=stat style=cursor:pointer onclick=toggleExc()><div class=n>"+sm.exclusives.length+"</div><div class=l>בלעדיות 👁</div></div>"+kpi((r.listings!=null?r.listings:0),"מודעות")+"</div></div><div id=exclist></div>";
+  var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+kpi(sg.total,"חתימות")+"<div class=stat style=cursor:pointer onclick=toggleExc()><div class=n>"+sm.exclusives.length+"</div><div class=l>בלעדיות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleAds()><div class=n>"+(r.listings!=null?r.listings:0)+"</div><div class=l>מודעות 👁</div></div></div></div><div id=exclist></div><div id=adslist></div>";
   if(r.insights&&r.insights.length){h+="<div class=card><h2>📊 תובנות</h2>"+r.insights.map(function(t){return "<div class=insight>"+esc(t)+"</div>";}).join("")+"</div>";}
   if(r.scope=="כל המשרד"){var ag="<table><tr><th style=text-align:start>מתווך</th><th>שיחות</th><th>נענו</th><th>%</th></tr>";sm.agents.slice(0,10).forEach(function(a,i){ag+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center>"+a.total+"</td><td style=text-align:center>"+a.answered+"</td><td style=text-align:center>"+a.rate+"%</td></tr>";});ag+="</table>";
   h+="<div class=card><h2>👥 מתווכים מובילים</h2>"+ag+"</div>";}
   h+="<div class=card><h2>✍️ חתימות</h2><div class=grid>"+kpi(sg.konim+" ("+sg.pctK+"%)","קונים")+kpi(sg.bladiut+" ("+sg.pctB+"%)","בלעדיות")+kpi(sg.skhirut+" ("+sg.pctS+"%)","שכירויות")+kpi(sg.total,"סה״כ")+"</div></div>";
-  if(r.shtaf&&r.shtaf.length){var tot=r.shtaf.reduce(function(a,o){return a+o.count;},0);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>🤝 גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+r.shtaf.length+" משרדים · סה״כ "+tot+" נכסים</div>"+st+"</div>";}
+  if(r.shtaf&&r.shtaf.length){var tot=(r.shtaf_total!=null?r.shtaf_total:r.shtaf.reduce(function(a,o){return a+o.count;},0));var noff=(r.shtaf_offices!=null?r.shtaf_offices:r.shtaf.length);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>🤝 גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+noff+" משרדים · סה״כ "+tot+" נכסים"+(noff>10?" · מציג 10 מובילים":"")+"</div>"+st+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
 }).catch(function(){$("rep").innerHTML="<div class=card err>שגיאה</div>";});}
