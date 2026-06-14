@@ -2113,6 +2113,34 @@ def _canon_key(name):
     k = _name_key(name)
     return _alias_key_map().get(k, k)
 
+# ── תפקידים (6) → היקף נתונים + טאבים. קונפיג ריק = התנהגות נוכחית מדויקת. ──────
+_ROLE_SCOPE = {"developer": "admin", "manager": "admin", "accountant": "admin",
+               "secretary": "admin", "coordinator": "coordinator", "agent": "agent"}
+_ALL_TABS = ["calls", "buyers", "sigs", "props", "excl", "newborn", "report", "activity"]
+
+def _resolve_roles(last9):
+    """מחזיר (scope_role, display_role). scope ל-data (admin/coordinator/agent), display ל-UI/טאבים.
+    אם אין תפקיד בקונפיג — נופל בדיוק להתנהגות הקיימת (web_role_for)."""
+    disp = (_load_config().get("roles") or {}).get(last9)
+    if disp in _ROLE_SCOPE:
+        return _ROLE_SCOPE[disp], disp
+    base = web_role_for(last9) or "agent"
+    return base, {"admin": "manager", "coordinator": "coordinator", "agent": "agent"}.get(base, "agent")
+
+def _tabs_for_role(drole):
+    """רשימת הטאבים הגלויים לתפקיד. ללא הגדרה בקונפיג = כל הטאבים (אפס שינוי)."""
+    perms = (_load_config().get("rolePerms") or {}).get(drole)
+    if perms and isinstance(perms.get("tabs"), list):
+        return [t for t in perms["tabs"] if t in _ALL_TABS]
+    return list(_ALL_TABS)
+
+def _login_name(phone, scope, drole):
+    if drole == "coordinator" and phone in _COORDINATORS:
+        return _COORDINATORS[phone]["name"]
+    if scope == "admin" and drole in ("manager", "developer"):
+        return "מנהל"
+    return web_contacts_phone_name().get(phone) or web_phone_name_map().get(phone) or ("מנהל" if scope == "admin" else "סוכן")
+
 def _vphone_for_name(name):
     """מספר וירטואלי של סוכן — חיפוש גמיש (גם אם השם כתוב מעט אחר בלשוניות שונות)."""
     vm = fetch_agent_virtual_phones()
@@ -2301,38 +2329,39 @@ def api_auth_verify():
     phone = _last9(body.get("phone", "")); code = str(body.get("code", "")).strip()
     # קוד כניסה קבוע (עוקף SMS) — רק למספרים שהוגדרו ב-_BYPASS_LOGINS
     if phone in _BYPASS_LOGINS and code == _BYPASS_LOGINS[phone]:
-        role = web_role_for(phone) or "admin"
-        if role == "admin": name = "מנהל"
-        elif role == "coordinator": name = _COORDINATORS[phone]["name"]
-        else: name = web_contacts_phone_name().get(phone) or web_phone_name_map().get(phone) or "סוכן"
+        scope, drole = _resolve_roles(phone)
+        if not scope: scope = "admin"
+        if _is_dev(phone): scope = "admin"; drole = "developer"
+        role = scope
+        name = _login_name(phone, scope, drole)
         token = _secrets.token_urlsafe(24)
-        sess = {"phone": phone, "role": role, "name": name, "exp": time.time() + _SESS_TTL}
-        if _is_dev(phone): sess["role"] = "admin"; sess["dev"] = True
-        if role == "coordinator":
+        sess = {"phone": phone, "role": role, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
+        if _is_dev(phone): sess["dev"] = True
+        if role == "coordinator" and phone in _COORDINATORS:
             sess["agents"] = list(_COORDINATORS[phone]["agents"])
             sess["agent_names"] = list(_COORDINATORS[phone]["names"])
         _web_sessions[token] = sess
         _log_activity(name, sess["role"], phone, "כניסה (קוד קבוע)")
-        return jsonify({"ok": True, "token": token, "role": sess["role"], "name": name, "dev": sess.get("dev", False)})
+        return jsonify({"ok": True, "token": token, "role": role, "drole": drole, "name": name, "dev": sess.get("dev", False), "tabs": _tabs_for_role(drole)})
     rec = _otp_store.get(phone)
     if not rec or rec["exp"] < time.time(): return jsonify({"ok": False, "reason": "expired"})
     if rec["tries"] >= 5: _otp_store.pop(phone, None); return jsonify({"ok": False, "reason": "too_many"})
     if code != rec["code"]:
         rec["tries"] += 1; return jsonify({"ok": False, "reason": "wrong"})
     _otp_store.pop(phone, None)
-    role = web_role_for(phone)
-    if role == "admin": name = "מנהל"
-    elif role == "coordinator": name = _COORDINATORS[phone]["name"]
-    else: name = web_phone_name_map().get(phone) or "סוכן"
+    scope, drole = _resolve_roles(phone)
+    if _is_dev(phone): scope = "admin"; drole = "developer"
+    role = scope
+    name = _login_name(phone, scope, drole)
     token = _secrets.token_urlsafe(24)
-    sess = {"phone": phone, "role": role, "name": name, "exp": time.time() + _SESS_TTL}
-    if _is_dev(phone): sess["role"] = "admin"; sess["dev"] = True
-    if role == "coordinator":
+    sess = {"phone": phone, "role": role, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
+    if _is_dev(phone): sess["dev"] = True
+    if role == "coordinator" and phone in _COORDINATORS:
         sess["agents"] = list(_COORDINATORS[phone]["agents"])
         sess["agent_names"] = list(_COORDINATORS[phone]["names"])
     _web_sessions[token] = sess
     _log_activity(name, sess["role"], phone, "כניסה")
-    return jsonify({"ok": True, "token": token, "role": sess["role"], "name": name, "dev": sess.get("dev", False)})
+    return jsonify({"ok": True, "token": token, "role": role, "drole": drole, "name": name, "dev": sess.get("dev", False), "tabs": _tabs_for_role(drole)})
 
 @app.route("/api/admin/loginas", methods=["POST"])
 def api_admin_loginas():
@@ -2519,6 +2548,50 @@ def api_dev_agent_update():
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון סוכן", name)
     return jsonify({"ok": ok})
 
+@app.route("/api/dev/role", methods=["POST"])
+def api_dev_role():
+    """שיוך תפקיד לאדם (לפי טלפון). ריק = הסרה (חוזר לברירת מחדל)."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    body = request.get_json(silent=True) or {}
+    phone = _last9(body.get("phone") or "")
+    role = (body.get("role") or "").strip()
+    if not phone:
+        return jsonify({"ok": False, "reason": "missing"}), 400
+    cfg = _load_config()
+    roles = cfg.setdefault("roles", {})
+    if role in _ROLE_SCOPE:
+        roles[phone] = role
+    else:
+        roles.pop(phone, None)
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שיוך תפקיד", role + " ← " + phone)
+    return jsonify({"ok": ok})
+
+@app.route("/api/dev/roleperms", methods=["GET", "POST"])
+def api_dev_roleperms():
+    """מטריצת טאבים לכל תפקיד. GET=קריאה, POST {role, tabs:[...]}=עדכון."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    cfg = _load_config()
+    if request.method == "GET":
+        out = {}
+        for r in _ROLE_SCOPE:
+            out[r] = _tabs_for_role(r)
+        return jsonify({"ok": True, "allTabs": _ALL_TABS, "perms": out})
+    body = request.get_json(silent=True) or {}
+    role = (body.get("role") or "").strip()
+    tabs = body.get("tabs")
+    if role not in _ROLE_SCOPE or not isinstance(tabs, list):
+        return jsonify({"ok": False, "reason": "bad"}), 400
+    rp = cfg.setdefault("rolePerms", {})
+    rp[role] = {"tabs": [t for t in tabs if t in _ALL_TABS]}
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון הרשאות תפקיד", role)
+    return jsonify({"ok": ok})
+
 @app.route("/api/dev/newborn_default", methods=["POST"])
 def api_dev_nb_default():
     """ברירת מחדל לימי השהיה של נכס נולד (לכל סוכן ללא הגדרה אישית)."""
@@ -2647,6 +2720,7 @@ def api_history():
     vphone = _vphone_for_name(eff["name"])
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"],
                     "dev": bool(s.get("dev", False)),
+                    "drole": s.get("drole", ""), "tabs": _tabs_for_role(s.get("drole", "")),
                     "vphone": vphone, "calls": call_out, "signatures": sig_out})
 
 # ── Activity log (admin only) ──────────────────────────────────────────────────
@@ -3773,7 +3847,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .tab.on{border-top-color:transparent!important;background:none!important}
 .tab.on .tic{background:linear-gradient(180deg,rgba(201,151,42,.2),rgba(201,151,42,.06));box-shadow:inset 0 0 0 1px rgba(201,151,42,.28)}
 </style></head><body><div class="wrap">
-<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט">☰</button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט">☰</button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="loginlogo"><img src="/assets/icon" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
@@ -3806,12 +3880,12 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 </div>
 
 <script>
-var TOKEN=null,ROLE=null,NAME=null,DEV=false,TABNOW="calls",RANGE="month",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null;
+var TOKEN=null,ROLE=null,NAME=null,DEV=false,TABS=null,TABNOW="calls",RANGE="month",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null;
 function $(id){return document.getElementById(id);}
 function show(id){$("s1").classList.add("hidden");$("s2").classList.add("hidden");$(id).classList.remove("hidden");}
 function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};if(TOKEN)opt.headers["X-Auth-Token"]=TOKEN;return fetch(path,opt).then(function(r){return r.json();});}
 try{var sp=localStorage.getItem("fbPhone");if(sp)$("phone").value=sp;}catch(e){}
-try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";enter();}}catch(e){}
+try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}enter();}}catch(e){}
 function sendCode(){var p=$("phone").value.trim();if(!p){alert("הזן מספר");return;}try{localStorage.setItem("fbPhone",p);}catch(e){}$("m1").textContent="שולח…";
   api("/api/auth/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p})}).then(function(r){
     if(r.ok){show("s2");$("m2").textContent="";startOtp();}
@@ -3820,25 +3894,36 @@ function sendCode(){var p=$("phone").value.trim();if(!p){alert("הזן מספר"
 function startOtp(){if(!("OTPCredential" in window))return;try{navigator.credentials.get({otp:{transport:["sms"]}}).then(function(o){if(o&&o.code){$("code").value=o.code;verify();}}).catch(function(){});}catch(e){}}
 function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){alert("הזן קוד");return;}$("m2").textContent="בודק…";
   api("/api/auth/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p,code:c})}).then(function(r){
-    if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;DEV=!!r.dev;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);localStorage.setItem("fbDev",DEV?"1":"");}catch(e){}enter();}
+    if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);localStorage.setItem("fbDev",DEV?"1":"");localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";}if(ROLE=="admin"){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}tab("calls");setTimeout(loadNbBanner,1500);}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";}if(ROLE=="admin"){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);}
+function firstAllowedTab(){var order=["calls","buyers","sigs","props","excl","newborn"];if(!TABS||!TABS.length)return "calls";for(var i=0;i<order.length;i++){if(TABS.indexOf(order[i])>=0)return order[i];}return "calls";}
+function applyTabPerms(){
+  var navKeys=["calls","buyers","sigs","props","excl","newborn"];
+  document.querySelectorAll(".tab").forEach(function(t){var k=t.dataset.t;if(navKeys.indexOf(k)<0)return;t.style.display=(!TABS||!TABS.length||TABS.indexOf(k)>=0)?"":"none";});
+  var mr=$("mi-report");if(mr)mr.style.display=(!TABS||!TABS.length||TABS.indexOf("report")>=0)?"":"none";
+  var ma=$("mi-activity");if(ma&&TABS&&TABS.length&&TABS.indexOf("activity")<0)ma.style.display="none";
+  if(TABS&&TABS.length&&navKeys.indexOf(TABNOW)>=0&&TABS.indexOf(TABNOW)<0){tab(firstAllowedTab());}
+}
 
 // ── קונסולת מפתח ──────────────────────────────────────────────
-function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div>';loadDevPeople();}
+function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div>';loadDevPeople();loadRolePerms();}
 function devDiag(){$("devdiag").textContent=" בודק…";api("/api/dev/diag").then(function(r){$("devdiag").textContent=" "+((r&&r.msg)||"שגיאה");}).catch(function(){$("devdiag").textContent=" שגיאת רשת";});}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
-var DEVAGENTS=[];
-function renderDevPeople(r){DEVAGENTS=r.agents||[];
+var DEVAGENTS=[],DEVDATA=null,DEVALL=false;
+function devToggleAll(){DEVALL=!DEVALL;if(DEVDATA)renderDevPeople(DEVDATA);}
+function renderDevPeople(r){DEVDATA=r;DEVAGENTS=r.agents||[];
   var opts='<option value="">— שייך לסוכן —</option>'+DEVAGENTS.map(function(a){return '<option value="'+esc(a.name)+'">'+esc(a.name)+'</option>';}).join("");
   function block(title,arr,pre){if(!arr||!arr.length)return '<div class=card><b>'+title+'</b><div class=muted style="margin-top:6px">הכל מזוהה ✓</div></div>';
     return '<div class=card><b>'+title+' ('+arr.length+')</b><div class=muted style="margin:4px 0 8px">שמות שלא מתאימים לאף סוכן — שייך לקיים או צור חדש:</div>'+arr.map(function(u,i){var id=pre+i;
       return '<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div><b>'+esc(u.name)+'</b> <span class=muted>('+u.count+')</span></div><select id="'+id+'" class="chip" style="width:100%;box-sizing:border-box;margin-top:5px">'+opts+'</select><div style="display:flex;gap:6px;margin-top:5px"><button class="btn-gold" style="flex:1" onclick="devAssign(\''+encodeURIComponent(u.name)+'\',\''+id+'\')">שייך</button><button class="btn-ghost" style="flex:1" onclick="devNewAgent(\''+encodeURIComponent(u.name)+'\')">➕ חדש</button></div></div>';}).join("")+'</div>';}
   var defc='<div class=card><b>🐥 ימי נכס נולד — ברירת מחדל</b><div class=muted style="margin:4px 0 6px">ימים לכל סוכן ללא הגדרה אישית</div><div style="display:flex;gap:6px;align-items:center"><input id="nbdef" class="chip" style="width:90px;box-sizing:border-box" type="number" value="'+esc(r.nbDefault)+'"><button class="btn-gold" style="flex:1" onclick="devSetDefault()">שמור</button></div></div>';
-  var dir='<div class=card><b>👥 ספריית סוכנים ('+DEVAGENTS.length+')</b><div class=muted style="margin:4px 0 8px">מספר וירטואלי · ימי נכס נולד (ריק=ברירת מחדל, ✓מוסתר=לא רואה כלום)</div>'+DEVAGENTS.map(function(a,i){
-    return '<div style="padding:10px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:6px"><input id="vp'+i+'" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"><input id="nb'+i+'" class="chip" style="width:72px;box-sizing:border-box" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"></div><div style="display:flex;gap:12px;margin-top:7px;align-items:center"><label class=muted style="display:flex;gap:4px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר</label><button class="btn-gold" style="flex:1" onclick="devSaveAgent('+i+')">שמור</button></div></div>';
-  }).join("")+'<div style="display:flex;gap:6px;margin-top:12px"><input id="newag" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="שם סוכן חדש"><button class="btn-gold" onclick="devAddAgent()">➕ הוסף</button></div></div>';
+  var NSHOW=5;var shown=DEVALL?DEVAGENTS:DEVAGENTS.slice(0,NSHOW);
+  var more=(DEVAGENTS.length>NSHOW)?('<div style="text-align:center;margin-top:10px"><button class="btn-ghost" onclick="devToggleAll()">'+(DEVALL?"פחות ▲":("עוד "+(DEVAGENTS.length-NSHOW)+" ▼"))+'</button></div>'):'';
+  var dir='<div class=card><b>👥 ספריית סוכנים ('+DEVAGENTS.length+')</b><div class=muted style="margin:4px 0 8px">מספר וירטואלי · ימי נכס נולד (ריק=ברירת מחדל, ✓מוסתר=לא רואה כלום)</div>'+shown.map(function(a,i){
+    return '<div style="padding:10px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:6px"><input id="vp'+i+'" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"><input id="nb'+i+'" class="chip" style="width:72px;box-sizing:border-box" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"></div><div style="display:flex;gap:12px;margin-top:7px;align-items:center"><label class=muted style="display:flex;gap:4px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר</label><button class="btn-gold" style="flex:1" onclick="devSaveAgent('+i+')">שמור</button></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center"><span class=muted style="font-size:12px">תפקיד:</span><select id="rl'+i+'" class="chip" style="flex:1;min-width:0" onchange="devSetRole('+i+')">'+roleOpts(a.role)+'</select></div></div>';
+  }).join("")+more+'<div style="display:flex;gap:6px;margin-top:12px"><input id="newag" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="שם סוכן חדש"><button class="btn-gold" onclick="devAddAgent()">➕ הוסף</button></div></div>';
   $("devbody").innerHTML=block("🔴 לא מזוהה — חתימות",r.unmatchedSignings,"sg")+block("🔴 לא מזוהה — נכסים",r.unmatchedListings,"ls")+defc+dir;}
 function devPost(url,body){api(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("השמירה נכשלה — לחץ '🔧 בדיקת חיבור' כדי לראות למה (כנראה ה-Apps Script לא פרוס בגרסה חדשה).");}}).catch(function(){alert("שגיאת רשת");});}
 function devAssign(nameEnc,selId){var sel=$(selId);var agent=sel?sel.value:"";if(!agent){alert("בחר סוכן מהרשימה");return;}devPost("/api/dev/alias",{alias:decodeURIComponent(nameEnc),agent:agent});}
@@ -3846,6 +3931,19 @@ function devNewAgent(nameEnc){var name=decodeURIComponent(nameEnc);if(!confirm("
 function devAddAgent(){var el=$("newag");var name=el?el.value.trim():"";if(!name){alert("הקלד שם סוכן");return;}devPost("/api/dev/agent_add",{name:name});}
 function devSaveAgent(i){var a=DEVAGENTS[i];if(!a)return;var hid=$("hd"+i).checked;var nb=$("nb"+i).value.trim();devPost("/api/dev/agent_update",{name:a.name,vphone:$("vp"+i).value.trim(),newbornDelay:(hid?"hidden":nb)});}
 function devSetDefault(){devPost("/api/dev/newborn_default",{days:$("nbdef").value.trim()});}
+function roleOpts(cur){var rs=[["","— תפקיד (ברירת מחדל) —"],["manager","מנהל"],["accountant","מנהלת חשבונות"],["secretary","מזכירה"],["coordinator","מתאמת"],["agent","סוכן"]];return rs.map(function(x){return '<option value="'+x[0]+'"'+(cur==x[0]?" selected":"")+'>'+x[1]+'</option>';}).join("");}
+function devSetRole(i){var a=DEVAGENTS[i];if(!a)return;var ph=a.phone||(a.phones&&a.phones[0]);if(!ph){alert("לסוכן אין מספר טלפון — אי אפשר לשייך תפקיד");loadDevPeople();return;}devPost("/api/dev/role",{phone:ph,role:$("rl"+i).value});}
+var ROLEPERMS={};
+function loadRolePerms(){api("/api/dev/roleperms").then(function(r){if(!r||!r.ok)return;renderRolePerms(r);}).catch(function(){});}
+function renderRolePerms(r){ROLEPERMS=r.perms||{};
+  var roles=[["manager","מנהל"],["accountant","מנהלת חשבונות"],["secretary","מזכירה"],["coordinator","מתאמת"],["agent","סוכן"]];
+  var tabs=[["calls","שיחות"],["buyers","קונים"],["sigs","חתימות"],["props","נכסים במשרד"],["excl","שת״פ"],["newborn","נכס נולד"],["report","דוחות"],["activity","עדכונים"]];
+  var html='<div class=card><b>🔐 הרשאות טאבים לפי תפקיד</b><div class=muted style="margin:4px 0 8px">סמן אילו טאבים כל תפקיד רואה (שמירה לכל תפקיד בנפרד).</div>';
+  html+=roles.map(function(rl){var cur=ROLEPERMS[rl[0]]||[];
+    return '<div style="padding:9px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600;margin-bottom:5px">'+rl[1]+'</div><div style="display:flex;flex-wrap:wrap;gap:10px">'+tabs.map(function(t){return '<label class=muted style="display:flex;gap:3px;align-items:center"><input type=checkbox id="p_'+rl[0]+'_'+t[0]+'" '+(cur.indexOf(t[0])>=0?"checked":"")+'>'+t[1]+'</label>';}).join("")+'</div><div style="margin-top:6px"><button class="btn-gold" onclick="devSavePerms(\''+rl[0]+'\')">שמור '+rl[1]+'</button></div></div>';
+  }).join("")+'</div>';
+  $("devperms").innerHTML=html;}
+function devSavePerms(role){var tabs=["calls","buyers","sigs","props","excl","newborn","report","activity"];var sel=[];tabs.forEach(function(t){var c=$("p_"+role+"_"+t);if(c&&c.checked)sel.push(t);});api("/api/dev/roleperms",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({role:role,tabs:sel})}).then(function(r){if(r&&r.ok)loadRolePerms();else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
 function tab(t){var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else viewSearch(TABNOW);}
 var REPTEXT="";
@@ -3943,6 +4041,7 @@ function callDetails(c){
 }
 function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"):"")+(HIDDENMODE?"hidden=1":"")).then(function(r){
   if(!r.ok){relogin();return;}
+  if(r.tabs&&!IMP){TABS=r.tabs;try{localStorage.setItem("fbTabs",JSON.stringify(TABS));}catch(e){}applyTabPerms();}
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
   $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+(HIDDENMODE?" מוסתרות":" שיחות");
   var ht=$("htoggle");if(ht)ht.textContent=HIDDENMODE?"↩️ חזרה לשיחות":"🙈 הצג מוסתרות";
