@@ -2041,6 +2041,15 @@ def _il_phone(p):
 def _norm_name(s):
     return re.sub(r"\s+", " ", str(s or "")).strip()
 
+def _name_key(s):
+    """מפתח השוואה גמיש לשמות — מתעלם מרווחים, יוד/וו כפול, גרשיים ואותיות סופיות.
+    משמש *רק* להתאמה (לא לתצוגה), כדי שסוכן יזוהה גם אם נכתב מעט אחר בלשוניות שונות."""
+    t = re.sub(r"[֑-ׇ]", "", str(s or ""))   # הסר ניקוד/דגש
+    t = re.sub(r"[\s'\"`׳״’.\-_,()\[\]]", "", t)
+    for _a, _b in (("ך", "כ"), ("ם", "מ"), ("ן", "נ"), ("ף", "פ"), ("ץ", "צ")):
+        t = t.replace(_a, _b)
+    return t.replace("יי", "י").replace("וו", "ו")
+
 def _deal_label(code):
     c = str(code or "").upper()
     if "OWNER_EXCLUSIVE" in c: return "בלעדיות"
@@ -2276,22 +2285,22 @@ def api_history():
     calls = web_fetch_raw("שיחות"); sigs = get_signings()
     if eff["role"] == "coordinator":
         agset = set(eff.get("agents") or [])
-        names = set(_norm_name(n) for n in (eff.get("agent_names") or []))
+        names = set(_name_key(n) for n in (eff.get("agent_names") or []))
         for a in agset:
-            nm = _norm_name(web_phone_name_map().get(a, ""))
+            nm = _name_key(web_phone_name_map().get(a, ""))
             if nm: names.add(nm)
         names.discard("")
         calls = [c for c in calls if _last9(c.get("agent_phone", "")) in agset]
-        sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) in names]
+        sigs  = [g for g in sigs if _name_key(g.get("agent", "")) in names]
     elif eff["role"] != "admin":
-        nm = _norm_name(eff["name"])
+        nm = _name_key(eff["name"])
         if eff.get("phones"):
             pset = eff["phones"]
             calls = [c for c in calls if _last9(c.get("agent_phone", "")) in pset]
         else:
             ph = eff["phone"]
             calls = [c for c in calls if _last9(c.get("agent_phone", "")) == ph]
-        sigs  = [g for g in sigs if _norm_name(g.get("agent", "")) == nm]
+        sigs  = [g for g in sigs if _name_key(g.get("agent", "")) == nm]
     _hidden = _fetch_hidden_calls()
     if request.args.get("hidden") == "1":
         calls = [c for c in calls if str(c.get("event_id", "")) in _hidden]
@@ -2390,10 +2399,10 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
         _fp = _ex.submit(web_fetch_raw, "נכסים", frm, to)
         calls, sigs, props = _fc.result(), _fs.result(), _fp.result()
     if agent_name or agent_phones:
-        _nn = _norm_name(agent_name or "")
+        _nn = _name_key(agent_name or "")
         _phs = set(agent_phones or [])
         def _is_mine(row, use_phone=False):
-            if _nn and _norm_name(row.get("agent", "")) == _nn: return True
+            if _nn and _name_key(row.get("agent", "")) == _nn: return True
             if use_phone and _phs and _last9(row.get("agent_phone", "")) in _phs: return True
             return False
         calls = [c for c in calls if _is_mine(c, True)]
@@ -2675,10 +2684,10 @@ def api_search_properties():
 # ── "הנכסים שלי" — כל הנכסים של הסוכן מגיליון המשרד, לפי שם וטלפון ──────────────
 def _agent_owns_row(row, agent_name, agent_phones):
     """האם הנכס שייך לסוכן — לפי שם (סוכן 1/2) או מספר טלפון (טלפון 1/2)."""
-    nn = _norm_name(agent_name)
+    nn = _name_key(agent_name)
     if nn and nn not in ("מנהל", "סוכן"):
         for col in ("סוכן 1", "סוכן 2"):
-            if _norm_name(row.get(col, "")) == nn:
+            if _name_key(row.get(col, "")) == nn:
                 return True
     if agent_phones:
         for col in ("טלפון 1", "טלפון 2", "טלפון"):
