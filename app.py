@@ -2141,6 +2141,34 @@ def _login_name(phone, scope, drole):
         return "מנהל"
     return web_contacts_phone_name().get(phone) or web_phone_name_map().get(phone) or ("מנהל" if scope == "admin" else "סוכן")
 
+def _team_for(name):
+    """צוות הסוכן: (phones:set, keys:set) של כל החברים כולל עצמו. None אם אין צוות.
+    אדיטיבי — חל רק אם הסוכן חבר בצוות שהוגדר בקונפיג."""
+    ck = _canon_key(name)
+    if not ck: return None
+    for grp in (_load_config().get("teams") or []):
+        if not isinstance(grp, list): continue
+        gkeys = set(_canon_key(m) for m in grp if m)
+        if ck in gkeys:
+            phones = set(); keys = set()
+            for m in grp:
+                k = _canon_key(m)
+                if k: keys.add(k)
+                for ph in _phones_for_name(m):
+                    if ph: phones.add(ph)
+            return phones, keys
+    return None
+
+def _row_owned(row, keys, phones):
+    """האם שורת נכס שייכת לאחד מחברי הצוות (שם קנוני או טלפון)."""
+    for col in ("סוכן 1", "סוכן 2"):
+        if _canon_key(row.get(col, "")) in keys: return True
+    if phones:
+        for col in ("טלפון 1", "טלפון 2", "טלפון"):
+            ph = _last9(row.get(col, ""))
+            if ph and ph in phones: return True
+    return False
+
 def _vphone_for_name(name):
     """מספר וירטואלי של סוכן — חיפוש גמיש (גם אם השם כתוב מעט אחר בלשוניות שונות)."""
     vm = fetch_agent_virtual_phones()
@@ -2592,6 +2620,32 @@ def api_dev_roleperms():
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון הרשאות תפקיד", role)
     return jsonify({"ok": ok})
 
+@app.route("/api/dev/teams", methods=["GET", "POST"])
+def api_dev_teams():
+    """צוותים (מי רואה את מי). GET=קריאה, POST {teams:[[name,name,...],...]}=שמירה."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    cfg = _load_config()
+    if request.method == "GET":
+        return jsonify({"ok": True, "teams": cfg.get("teams") or []})
+    body = request.get_json(silent=True) or {}
+    teams = body.get("teams")
+    if not isinstance(teams, list):
+        return jsonify({"ok": False, "reason": "bad"}), 400
+    clean = []
+    for grp in teams:
+        if isinstance(grp, list):
+            members = []
+            for m in grp:
+                m = str(m).strip()
+                if m and m not in members: members.append(m)
+            if len(members) >= 2: clean.append(members)
+    cfg["teams"] = clean
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון צוותים", str(len(clean)))
+    return jsonify({"ok": ok})
+
 @app.route("/api/dev/newborn_default", methods=["POST"])
 def api_dev_nb_default():
     """ברירת מחדל לימי השהיה של נכס נולד (לכל סוכן ללא הגדרה אישית)."""
@@ -2659,14 +2713,22 @@ def api_history():
         calls = [c for c in calls if _last9(c.get("agent_phone", "")) in agset]
         sigs  = [g for g in sigs if _canon_key(g.get("agent", "")) in names]
     elif eff["role"] != "admin":
-        nm = _canon_key(eff["name"])
-        if eff.get("phones"):
-            pset = eff["phones"]
-            calls = [c for c in calls if _last9(c.get("agent_phone", "")) in pset]
+        _team = _team_for(eff["name"])
+        if _team:
+            tphones, tkeys = _team
+            own = set(eff.get("phones") or ([eff["phone"]] if eff.get("phone") else []))
+            tphones = tphones | own
+            calls = [c for c in calls if _last9(c.get("agent_phone", "")) in tphones]
+            sigs  = [g for g in sigs if _canon_key(g.get("agent", "")) in tkeys]
         else:
-            ph = eff["phone"]
-            calls = [c for c in calls if _last9(c.get("agent_phone", "")) == ph]
-        sigs  = [g for g in sigs if _canon_key(g.get("agent", "")) == nm]
+            nm = _canon_key(eff["name"])
+            if eff.get("phones"):
+                pset = eff["phones"]
+                calls = [c for c in calls if _last9(c.get("agent_phone", "")) in pset]
+            else:
+                ph = eff["phone"]
+                calls = [c for c in calls if _last9(c.get("agent_phone", "")) == ph]
+            sigs  = [g for g in sigs if _canon_key(g.get("agent", "")) == nm]
     _hidden = _fetch_hidden_calls()
     if request.args.get("hidden") == "1":
         calls = [c for c in calls if str(c.get("event_id", "")) in _hidden]
@@ -2768,18 +2830,18 @@ def api_activity():
     merged.sort(key=lambda x: float(x.get("ts", 0) or 0), reverse=True)
     return jsonify({"ok": True, "items": merged[:300]})
 
-def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
+def _web_org_summary(frm, to, agent_name=None, agent_phones=None, agent_keys=None):
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=3) as _ex:
         _fc = _ex.submit(web_fetch_raw, "שיחות", frm, to)
         _fs = _ex.submit(get_signings, frm, to)
         _fp = _ex.submit(web_fetch_raw, "נכסים", frm, to)
         calls, sigs, props = _fc.result(), _fs.result(), _fp.result()
-    if agent_name or agent_phones:
-        _nn = _canon_key(agent_name or "")
+    if agent_name or agent_phones or agent_keys:
+        _nks = set(agent_keys) if agent_keys else ({_canon_key(agent_name)} if (agent_name and _canon_key(agent_name)) else set())
         _phs = set(agent_phones or [])
         def _is_mine(row, use_phone=False):
-            if _nn and _canon_key(row.get("agent", "")) == _nn: return True
+            if _nks and _canon_key(row.get("agent", "")) in _nks: return True
             if use_phone and _phs and _last9(row.get("agent_phone", "")) in _phs: return True
             return False
         calls = [c for c in calls if _is_mine(c, True)]
@@ -2843,11 +2905,11 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None):
         "props": {"total": len(props), "topCities": top_cities},
     }
 
-def _agent_insights(frm, to, prev_frm, prev_to, eff_name, eff_phones, cur_sm):
+def _agent_insights(frm, to, prev_frm, prev_to, eff_name, eff_phones, cur_sm, eff_keys=None):
     """מלל חופשי על ביצועי הסוכן: מגמות מול התקופה הקודמת + דירוג בלעדיות."""
     out = []
     try:
-        prev = _web_org_summary(prev_frm, prev_to, eff_name, eff_phones)
+        prev = _web_org_summary(prev_frm, prev_to, eff_name, eff_phones, eff_keys)
     except Exception:
         prev = None
     def _trend(label, cur, prevn, suf=""):
@@ -2937,24 +2999,36 @@ def api_report():
         period = "month"; start = now.replace(day=1)
     frm = start.strftime("%d/%m/%Y"); to = end.strftime("%d/%m/%Y")
     as_name = request.args.get("as", "").strip() if s["role"] in ("admin", "coordinator") else ""
+    eff_keys = None
     if s["role"] == "agent":
         eff_name = s.get("name", "")
         eff_phones = set(_phones_for_name(eff_name))
         if s.get("phone"): eff_phones.add(_last9(s["phone"]))
         scope = eff_name or "הדוח שלי"
+        _team = _team_for(eff_name)
     elif as_name:
         eff_name = as_name
         eff_phones = set(_phones_for_name(as_name))
         scope = as_name
+        _team = _team_for(as_name)
     else:
-        eff_name = None; eff_phones = None; scope = "כל המשרד"
+        eff_name = None; eff_phones = None; scope = "כל המשרד"; _team = None
+    if _team:
+        tphones, tkeys = _team
+        eff_phones = (eff_phones or set()) | tphones
+        eff_keys = tkeys
+        scope = scope + " (צוות)"
     insights = []
     try:
-        sm = _web_org_summary(frm, to, eff_name, eff_phones)
+        sm = _web_org_summary(frm, to, eff_name, eff_phones, eff_keys)
         try:   # ספירת "מודעות" — אותו מקור של "נכסים במשרד" (יד2): סוכן=שלו, מנהל=סה"כ
             _lr = fetch_sheet_rows()
-            listings_total = (sum(1 for r in _lr if _agent_owns_row(r, eff_name, eff_phones or set()))
-                              if eff_name else len(_lr))
+            if eff_keys:
+                listings_total = sum(1 for r in _lr if _row_owned(r, eff_keys, eff_phones or set()))
+            elif eff_name:
+                listings_total = sum(1 for r in _lr if _agent_owns_row(r, eff_name, eff_phones or set()))
+            else:
+                listings_total = len(_lr)
         except Exception:
             listings_total = 0
         shtaf = []; shtaf_total = 0; shtaf_offices = 0   # גיוס נכסים בשת״פ — פילוח לפי משרד (למנהל/רכז)
@@ -2992,7 +3066,7 @@ def api_report():
             _delta = end - start
             _pe = start - timedelta(days=1)
             _ps = _pe - _delta
-            insights = _agent_insights(frm, to, _ps.strftime("%d/%m/%Y"), _pe.strftime("%d/%m/%Y"), eff_name, eff_phones, sm)
+            insights = _agent_insights(frm, to, _ps.strftime("%d/%m/%Y"), _pe.strftime("%d/%m/%Y"), eff_name, eff_phones, sm, eff_keys)
         wa = _report_wa_text(sm, label + " · " + scope, frm, to)
         if insights:
             wa = "📊 *תובנות:*\n" + "\n".join(insights) + "\n\n" + wa
@@ -3908,7 +3982,7 @@ function applyTabPerms(){
 }
 
 // ── קונסולת מפתח ──────────────────────────────────────────────
-function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div>';loadDevPeople();loadRolePerms();}
+function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div>';loadDevPeople();loadRolePerms();loadTeams();}
 function devDiag(){$("devdiag").textContent=" בודק…";api("/api/dev/diag").then(function(r){$("devdiag").textContent=" "+((r&&r.msg)||"שגיאה");}).catch(function(){$("devdiag").textContent=" שגיאת רשת";});}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
 var DEVAGENTS=[],DEVDATA=null,DEVALL=false;
@@ -3924,7 +3998,7 @@ function renderDevPeople(r){DEVDATA=r;DEVAGENTS=r.agents||[];
   var dir='<div class=card><b>👥 ספריית סוכנים ('+DEVAGENTS.length+')</b><div class=muted style="margin:4px 0 8px">מספר וירטואלי · ימי נכס נולד (ריק=ברירת מחדל, ✓מוסתר=לא רואה כלום)</div>'+shown.map(function(a,i){
     return '<div style="padding:10px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:6px"><input id="vp'+i+'" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"><input id="nb'+i+'" class="chip" style="width:72px;box-sizing:border-box" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"></div><div style="display:flex;gap:12px;margin-top:7px;align-items:center"><label class=muted style="display:flex;gap:4px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר</label><button class="btn-gold" style="flex:1" onclick="devSaveAgent('+i+')">שמור</button></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center"><span class=muted style="font-size:12px">תפקיד:</span><select id="rl'+i+'" class="chip" style="flex:1;min-width:0" onchange="devSetRole('+i+')">'+roleOpts(a.role)+'</select></div></div>';
   }).join("")+more+'<div style="display:flex;gap:6px;margin-top:12px"><input id="newag" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="שם סוכן חדש"><button class="btn-gold" onclick="devAddAgent()">➕ הוסף</button></div></div>';
-  $("devbody").innerHTML=block("🔴 לא מזוהה — חתימות",r.unmatchedSignings,"sg")+block("🔴 לא מזוהה — נכסים",r.unmatchedListings,"ls")+defc+dir;}
+  $("devbody").innerHTML=block("🔴 לא מזוהה — חתימות",r.unmatchedSignings,"sg")+block("🔴 לא מזוהה — נכסים",r.unmatchedListings,"ls")+defc+dir;renderTeams();}
 function devPost(url,body){api(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("השמירה נכשלה — לחץ '🔧 בדיקת חיבור' כדי לראות למה (כנראה ה-Apps Script לא פרוס בגרסה חדשה).");}}).catch(function(){alert("שגיאת רשת");});}
 function devAssign(nameEnc,selId){var sel=$(selId);var agent=sel?sel.value:"";if(!agent){alert("בחר סוכן מהרשימה");return;}devPost("/api/dev/alias",{alias:decodeURIComponent(nameEnc),agent:agent});}
 function devNewAgent(nameEnc){var name=decodeURIComponent(nameEnc);if(!confirm("ליצור סוכן חדש בשם: "+name+"?"))return;devPost("/api/dev/agent_add",{name:name});}
@@ -3944,6 +4018,18 @@ function renderRolePerms(r){ROLEPERMS=r.perms||{};
   }).join("")+'</div>';
   $("devperms").innerHTML=html;}
 function devSavePerms(role){var tabs=["calls","buyers","sigs","props","excl","newborn","report","activity"];var sel=[];tabs.forEach(function(t){var c=$("p_"+role+"_"+t);if(c&&c.checked)sel.push(t);});api("/api/dev/roleperms",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({role:role,tabs:sel})}).then(function(r){if(r&&r.ok)loadRolePerms();else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
+var TEAMS=[];
+function loadTeams(){api("/api/dev/teams").then(function(r){if(r&&r.ok){TEAMS=r.teams||[];renderTeams();}}).catch(function(){});}
+function renderTeams(){if(!$("devteams"))return;
+  var aopts='<option value="">— בחר סוכן —</option>'+(DEVAGENTS||[]).map(function(a){return '<option value="'+esc(a.name)+'">'+esc(a.name)+'</option>';}).join("");
+  var html='<div class=card><b>👥 צוותים (מי רואה את מי)</b><div class=muted style="margin:4px 0 8px">חברי צוות רואים זה את נתוני זה, והדוח שלהם משותף (סכום הצוות).</div>';
+  html+=(TEAMS.length?TEAMS.map(function(t,i){return '<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div><b>'+t.map(esc).join(" + ")+'</b></div><div style="display:flex;gap:6px;margin-top:5px"><select id="tm'+i+'" class="chip" style="flex:1;min-width:0">'+aopts+'</select><button class="btn-gold" onclick="teamAdd('+i+')">➕ הוסף</button><button class="btn-ghost" onclick="teamDel('+i+')">✖</button></div></div>';}).join(""):'<div class=muted style="padding:4px 0">אין צוותים מוגדרים.</div>');
+  html+='<div style="margin-top:10px"><div class=muted style="margin-bottom:4px">צוות חדש:</div><div style="display:flex;gap:6px;flex-wrap:wrap"><select id="tnew1" class="chip" style="flex:1;min-width:120px">'+aopts+'</select><select id="tnew2" class="chip" style="flex:1;min-width:120px">'+aopts+'</select><button class="btn-gold" onclick="teamCreate()">צור</button></div></div></div>';
+  $("devteams").innerHTML=html;}
+function saveTeams(){api("/api/dev/teams",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({teams:TEAMS})}).then(function(r){if(r&&r.ok)loadTeams();else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
+function teamCreate(){var a=$("tnew1").value,b=$("tnew2").value;if(!a||!b||a==b){alert("בחר שני סוכנים שונים");return;}TEAMS.push([a,b]);saveTeams();}
+function teamAdd(i){var v=$("tm"+i).value;if(!v){alert("בחר סוכן");return;}if(TEAMS[i].indexOf(v)<0)TEAMS[i].push(v);saveTeams();}
+function teamDel(i){if(!confirm("להסיר את הצוות?"))return;TEAMS.splice(i,1);saveTeams();}
 function tab(t){var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else viewSearch(TABNOW);}
 var REPTEXT="";
