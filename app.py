@@ -1030,31 +1030,37 @@ def _fmt_vphone(v):
 
 _vphone_cache = {"data": None, "ts": 0}
 def fetch_agent_virtual_phones() -> dict:
-    """מפה: שם סוכן (מנורמל) -> טלפון וירטואלי (עמודה C ב'אנשי קשר')."""
-    if _vphone_cache["data"] is not None and (time.time() - _vphone_cache["ts"]) < 300:
-        return _vphone_cache["data"]
-    if not GOOGLE_SHEETS_API_KEY:
-        return {}
-    from urllib.parse import quote
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(CONTACTS_SHEET_NAME)}!A1:C200?key={GOOGLE_SHEETS_API_KEY}"
-    try:
-        r = requests.get(url, timeout=10)
-        if r.status_code != 200:
-            return {}
+    """מפה: שם סוכן (מנורמל) -> טלפון וירטואלי. גיליון 'אנשי קשר' (עמודה C) + דריסת קונפיג."""
+    cached = _vphone_cache["data"] if (_vphone_cache["data"] is not None and (time.time() - _vphone_cache["ts"]) < 300) else None
+    if cached is not None:
+        out = dict(cached)
+    else:
         out = {}
-        for row in r.json().get("values", []):
-            if len(row) < 3:
-                continue
-            name = (row[0] or "").strip()
-            vp = _fmt_vphone((row[2] or "").strip())
-            if name and vp and name not in ("שם מלא", "משרד", "משרד ביאליק", "טלפון וירטואלי"):
-                out[_norm_name(name)] = vp
-        _vphone_cache["data"] = out
+        if GOOGLE_SHEETS_API_KEY:
+            from urllib.parse import quote
+            url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(CONTACTS_SHEET_NAME)}!A1:C200?key={GOOGLE_SHEETS_API_KEY}"
+            try:
+                r = requests.get(url, timeout=10)
+                if r.status_code == 200:
+                    for row in r.json().get("values", []):
+                        if len(row) < 3: continue
+                        name = (row[0] or "").strip()
+                        vp = _fmt_vphone((row[2] or "").strip())
+                        if name and vp and name not in ("שם מלא", "משרד", "משרד ביאליק", "טלפון וירטואלי"):
+                            out[_norm_name(name)] = vp
+            except Exception as e:
+                log.error(f"vphone fetch error: {e}")
+        _vphone_cache["data"] = dict(out)
         _vphone_cache["ts"] = time.time()
-        return out
-    except Exception as e:
-        log.error(f"vphone fetch error: {e}")
-        return {}
+    # דריסת קונפיג (קונסולת המפתח) — מספר וירטואלי שהוגדר ידנית
+    try:
+        for ag in (_load_config().get("agents") or []):
+            vp = (ag.get("vphone") or "").strip()
+            nm = _norm_name(ag.get("name", ""))
+            if vp and nm: out[nm] = _fmt_vphone(vp)
+    except Exception:
+        pass
+    return out
 
 import threading as _threading
 _TTL_CACHE = {}
@@ -2082,6 +2088,7 @@ def _save_config(cfg):
         if ok:
             _cache_put("app_config", cfg)
             _cache_clear("alias_key_map")
+            _cache_clear("newborn_delays")
         return ok
     except Exception:
         return False
@@ -2189,6 +2196,12 @@ def _phones_for_name(name):
     for p, n in web_contacts_phone_name().items():
         if _norm_name(n) == nn:
             s.add(p)
+    ck = _canon_key(name)
+    for ag in (_load_config().get("agents") or []):
+        if _canon_key(ag.get("name", "")) == ck:
+            for fld in ("phone", "vphone"):
+                v = _last9(ag.get(fld, ""))
+                if v: s.add(v)
     return s
 
 def _parse_coordinators():
@@ -2357,6 +2370,9 @@ def api_dev_people():
         return jsonify({"ok": False, "reason": "forbidden"}), 403
     cfg = _load_config()
     cfg_roles = cfg.get("roles") or {}
+    cfg_by_key = {_name_key(a.get("name", "")): a for a in (cfg.get("agents") or []) if a.get("name")}
+    delays = _fetch_newborn_delays()
+    _nb_def = int(delays.get("_default", 0))
     contacts = web_contacts_phone_name()       # {last9: name}
     vmap = fetch_agent_virtual_phones()         # {norm_name: vphone}
     known = {}   # name_key -> {name, phones:set, vphone, aliases:[]}
@@ -2396,10 +2412,20 @@ def api_dev_people():
         role = ""
         for ph in v["phones"]:
             if ph in cfg_roles: role = cfg_roles[ph]; break
+        _ce = cfg_by_key.get(_name_key(v["name"]), {})
+        _cnd = _ce.get("newbornDelay")
+        if _cnd in ("hidden", "מוסתר"):
+            nb_val, nb_hidden = "", True
+        elif _cnd not in (None, ""):
+            nb_val, nb_hidden = _cnd, False
+        else:
+            nb_val, nb_hidden = "", False
         agents.append({"name": v["name"], "vphone": v["vphone"],
                        "phones": sorted(p for p in v["phones"] if p),
-                       "aliases": v["aliases"], "role": role})
-    return jsonify({"ok": True, "agents": agents,
+                       "aliases": v["aliases"], "role": role,
+                       "phone": (_ce.get("phone", "") or (sorted(v["phones"])[0] if v["phones"] else "")),
+                       "nbDelay": nb_val, "nbHidden": nb_hidden})
+    return jsonify({"ok": True, "agents": agents, "nbDefault": _nb_def,
                     "unmatchedSignings": _scan(sig_names),
                     "unmatchedListings": _scan(list_names)})
 
@@ -2425,6 +2451,80 @@ def api_dev_alias():
         al.append(alias)
     ok = _save_config(cfg)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שיוך כינוי שם", agent + " ← " + alias)
+    return jsonify({"ok": ok})
+
+@app.route("/api/dev/agent_add", methods=["POST"])
+def api_dev_agent_add():
+    """הוספת סוכן קנוני חדש לקונפיג (כדי שיהיה ניתן לשייך אליו / שיופיע כסוכן מוכר)."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "reason": "missing"}), 400
+    cfg = _load_config()
+    agents = cfg.setdefault("agents", [])
+    if not any(_name_key(a.get("name", "")) == _name_key(name) for a in agents):
+        ent = {"name": name, "aliases": []}
+        if (body.get("phone") or "").strip():  ent["phone"]  = _last9(body["phone"])
+        if (body.get("vphone") or "").strip(): ent["vphone"] = body["vphone"].strip()
+        agents.append(ent)
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "הוספת סוכן", name)
+    return jsonify({"ok": ok})
+
+@app.route("/api/dev/agent_update", methods=["POST"])
+def api_dev_agent_update():
+    """עדכון שדות סוכן בקונפיג: מספר וירטואלי, טלפון, וימי השהיה לנכס נולד."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "reason": "missing"}), 400
+    cfg = _load_config()
+    agents = cfg.setdefault("agents", [])
+    entry = next((a for a in agents if _name_key(a.get("name", "")) == _name_key(name)), None)
+    if not entry:
+        entry = {"name": name, "aliases": []}
+        agents.append(entry)
+    if "vphone" in body:
+        vp = (body.get("vphone") or "").strip()
+        if vp: entry["vphone"] = vp
+        else: entry.pop("vphone", None)
+    if "phone" in body:
+        ph = _last9(body.get("phone") or "")
+        if ph: entry["phone"] = ph
+        else: entry.pop("phone", None)
+    if "newbornDelay" in body:
+        nd = body.get("newbornDelay")
+        if nd in ("", None): entry.pop("newbornDelay", None)
+        elif str(nd) in ("hidden", "מוסתר", "-1"): entry["newbornDelay"] = "hidden"
+        else:
+            try: entry["newbornDelay"] = int(nd)
+            except Exception: pass
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון סוכן", name)
+    return jsonify({"ok": ok})
+
+@app.route("/api/dev/newborn_default", methods=["POST"])
+def api_dev_nb_default():
+    """ברירת מחדל לימי השהיה של נכס נולד (לכל סוכן ללא הגדרה אישית)."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    body = request.get_json(silent=True) or {}
+    v = body.get("days")
+    cfg = _load_config()
+    if v in ("", None):
+        cfg.pop("newbornDefaultDelay", None)
+    else:
+        try: cfg["newbornDefaultDelay"] = int(v)
+        except Exception: return jsonify({"ok": False, "reason": "bad"}), 400
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "ברירת מחדל נכס נולד", str(v))
     return jsonify({"ok": ok})
 
 # ── History (calls + signatures) ───────────────────────────────────────────────
@@ -2975,6 +3075,23 @@ def _fetch_newborn_delays():
             d["_default"] = days
         elif nm:
             d[nm] = days
+    # שכבת קונפיג (קונסולת המפתח) — דורסת/משלימה את הגיליון
+    _cfg = _load_config()
+    _cd = _cfg.get("newbornDefaultDelay")
+    if _cd not in (None, ""):
+        try: d["_default"] = int(_cd)
+        except Exception: pass
+    for ag in (_cfg.get("agents") or []):
+        nd = ag.get("newbornDelay")
+        if nd is None or nd == "": continue
+        if nd in ("hidden", "מוסתר", -1, "-1"):
+            val = NEWBORN_HIDDEN
+        else:
+            try: val = int(nd)
+            except Exception: continue
+        for _nm in [ag.get("name", "")] + list(ag.get("aliases") or []):
+            k = _norm_name(_nm)
+            if k: d[k] = val
     _cache_put("newborn_delays", d)
     return d
 
@@ -3666,13 +3783,23 @@ function enter(){$("login").classList.add("hidden");$("appui").classList.remove(
 // ── קונסולת מפתח ──────────────────────────────────────────────
 function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div>';loadDevPeople();}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
-function renderDevPeople(r){var opts='<option value="">— שייך לסוכן —</option>'+(r.agents||[]).map(function(a){return '<option value="'+esc(a.name)+'">'+esc(a.name)+'</option>';}).join("");
+var DEVAGENTS=[];
+function renderDevPeople(r){DEVAGENTS=r.agents||[];
+  var opts='<option value="">— שייך לסוכן —</option>'+DEVAGENTS.map(function(a){return '<option value="'+esc(a.name)+'">'+esc(a.name)+'</option>';}).join("");
   function block(title,arr,pre){if(!arr||!arr.length)return '<div class=card><b>'+title+'</b><div class=muted style="margin-top:6px">הכל מזוהה ✓</div></div>';
-    return '<div class=card><b>'+title+' ('+arr.length+')</b><div class=muted style="margin:4px 0 8px">שמות שלא מתאימים לאף סוכן — שייך אותם כדי שיופיעו אצל הסוכן הנכון:</div>'+arr.map(function(u,i){var id=pre+i;
-      return '<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div><b>'+esc(u.name)+'</b> <span class=muted>('+u.count+')</span></div><div style="display:flex;gap:6px;margin-top:5px"><select id="'+id+'" class="chip" style="flex:1">'+opts+'</select><button class="btn-gold" onclick="devAssign(\''+encodeURIComponent(u.name)+'\',\''+id+'\')">שייך</button></div></div>';}).join("")+'</div>';}
-  var dir='<div class=card><b>👥 ספריית סוכנים ('+(r.agents||[]).length+')</b>'+(r.agents||[]).map(function(a){return '<div style="padding:7px 0;border-bottom:1px solid rgba(127,127,127,.18)"><b>'+esc(a.name)+'</b>'+(a.vphone?' <span class=muted>📞 '+esc(a.vphone)+'</span>':'')+((a.aliases&&a.aliases.length)?'<div class=muted style="margin-top:2px">כינויים: '+a.aliases.map(esc).join(", ")+'</div>':'')+'</div>';}).join("")+'</div>';
-  $("devbody").innerHTML=block("🔴 לא מזוהה — חתימות",r.unmatchedSignings,"sg")+block("🔴 לא מזוהה — נכסים",r.unmatchedListings,"ls")+dir;}
-function devAssign(nameEnc,selId){var sel=$(selId);var agent=sel?sel.value:"";if(!agent){alert("בחר סוכן מהרשימה");return;}api("/api/dev/alias",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({alias:decodeURIComponent(nameEnc),agent:agent})}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("השמירה נכשלה");}}).catch(function(){alert("שגיאה");});}
+    return '<div class=card><b>'+title+' ('+arr.length+')</b><div class=muted style="margin:4px 0 8px">שמות שלא מתאימים לאף סוכן — שייך לקיים או צור חדש:</div>'+arr.map(function(u,i){var id=pre+i;
+      return '<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div><b>'+esc(u.name)+'</b> <span class=muted>('+u.count+')</span></div><div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap"><select id="'+id+'" class="chip" style="flex:1;min-width:130px">'+opts+'</select><button class="btn-gold" onclick="devAssign(\''+encodeURIComponent(u.name)+'\',\''+id+'\')">שייך</button><button class="btn-ghost" onclick="devNewAgent(\''+encodeURIComponent(u.name)+'\')">➕ חדש</button></div></div>';}).join("")+'</div>';}
+  var defc='<div class=card><b>🐥 ימי נכס נולד — ברירת מחדל</b><div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><input id="nbdef" class="chip" style="width:90px" type="number" value="'+esc(r.nbDefault)+'"><span class=muted>ימים לכל סוכן ללא הגדרה אישית</span><button class="btn-gold" onclick="devSetDefault()">שמור</button></div></div>';
+  var dir='<div class=card><b>👥 ספריית סוכנים ('+DEVAGENTS.length+')</b><div class=muted style="margin:4px 0 8px">מספר וירטואלי · ימי נכס נולד (ריק=ברירת מחדל, ✓מוסתר=לא רואה כלום)</div>'+DEVAGENTS.map(function(a,i){
+    return '<div style="padding:9px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;align-items:center"><input id="vp'+i+'" class="chip" style="width:135px" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"><input id="nb'+i+'" class="chip" style="width:80px" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"><label class=muted style="display:flex;gap:3px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר</label><button class="btn-gold" onclick="devSaveAgent('+i+')">שמור</button></div></div>';
+  }).join("")+'<div style="display:flex;gap:6px;margin-top:10px"><input id="newag" class="chip" style="flex:1" placeholder="שם סוכן חדש"><button class="btn-gold" onclick="devAddAgent()">➕ הוסף סוכן</button></div></div>';
+  $("devbody").innerHTML=block("🔴 לא מזוהה — חתימות",r.unmatchedSignings,"sg")+block("🔴 לא מזוהה — נכסים",r.unmatchedListings,"ls")+defc+dir;}
+function devPost(url,body){api(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("השמירה נכשלה");}}).catch(function(){alert("שגיאה");});}
+function devAssign(nameEnc,selId){var sel=$(selId);var agent=sel?sel.value:"";if(!agent){alert("בחר סוכן מהרשימה");return;}devPost("/api/dev/alias",{alias:decodeURIComponent(nameEnc),agent:agent});}
+function devNewAgent(nameEnc){var name=decodeURIComponent(nameEnc);if(!confirm("ליצור סוכן חדש בשם: "+name+"?"))return;devPost("/api/dev/agent_add",{name:name});}
+function devAddAgent(){var el=$("newag");var name=el?el.value.trim():"";if(!name){alert("הקלד שם סוכן");return;}devPost("/api/dev/agent_add",{name:name});}
+function devSaveAgent(i){var a=DEVAGENTS[i];if(!a)return;var hid=$("hd"+i).checked;var nb=$("nb"+i).value.trim();devPost("/api/dev/agent_update",{name:a.name,vphone:$("vp"+i).value.trim(),newbornDelay:(hid?"hidden":nb)});}
+function devSetDefault(){devPost("/api/dev/newborn_default",{days:$("nbdef").value.trim()});}
 function tab(t){var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else viewSearch(TABNOW);}
 var REPTEXT="";
