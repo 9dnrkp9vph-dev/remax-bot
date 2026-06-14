@@ -2537,6 +2537,32 @@ def api_dev_nb_default():
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "ברירת מחדל נכס נולד", str(v))
     return jsonify({"ok": ok})
 
+@app.route("/api/dev/diag", methods=["GET"])
+def api_dev_diag():
+    """אבחון חיבור הקונפיג ל-Apps Script — לזיהוי 'השמירה נכשלה'."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    raw_get = _buyers_apps_post("getconfig", {})
+    getok = bool(raw_get and raw_get.get("ok") and "config" in raw_get)
+    probe = dict(_load_config()); probe["_diag_ts"] = int(time.time())
+    wrote = _save_config(probe)
+    raw2 = _buyers_apps_post("getconfig", {})
+    readback = bool(raw2 and raw2.get("ok") and ("_diag_ts" in (raw2.get("config") or "")))
+    if getok and wrote and readback:
+        msg = "✅ החיבור תקין — שמירה וקריאה עובדות."
+    elif not APPS_SCRIPT_URL:
+        msg = "❌ APPS_SCRIPT_URL לא מוגדר בשרת."
+    elif not getok:
+        msg = "❌ getconfig לא עונה ok — ה-Apps Script כנראה לא פרוס בגרסה חדשה (חסר getconfig/setconfig), או טוקן שגוי."
+    elif not wrote or not readback:
+        msg = "❌ setconfig לא כותב — ודא שפרסת גרסה חדשה ושלגיליון יש הרשאת כתיבה."
+    else:
+        msg = "⚠️ מצב לא ידוע."
+    return jsonify({"ok": True, "msg": msg, "url_set": bool(APPS_SCRIPT_URL),
+                    "getconfig_ok": getok, "write_ok": bool(wrote), "readback_ok": readback,
+                    "raw": str(raw_get)[:200]})
+
 # ── History (calls + signatures) ───────────────────────────────────────────────
 @app.route("/api/history", methods=["GET"])
 def api_history():
@@ -3800,20 +3826,21 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
 function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";}if(ROLE=="admin"){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}tab("calls");setTimeout(loadNbBanner,1500);}
 
 // ── קונסולת מפתח ──────────────────────────────────────────────
-function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div>';loadDevPeople();}
+function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div>';loadDevPeople();}
+function devDiag(){$("devdiag").textContent=" בודק…";api("/api/dev/diag").then(function(r){$("devdiag").textContent=" "+((r&&r.msg)||"שגיאה");}).catch(function(){$("devdiag").textContent=" שגיאת רשת";});}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
 var DEVAGENTS=[];
 function renderDevPeople(r){DEVAGENTS=r.agents||[];
   var opts='<option value="">— שייך לסוכן —</option>'+DEVAGENTS.map(function(a){return '<option value="'+esc(a.name)+'">'+esc(a.name)+'</option>';}).join("");
   function block(title,arr,pre){if(!arr||!arr.length)return '<div class=card><b>'+title+'</b><div class=muted style="margin-top:6px">הכל מזוהה ✓</div></div>';
     return '<div class=card><b>'+title+' ('+arr.length+')</b><div class=muted style="margin:4px 0 8px">שמות שלא מתאימים לאף סוכן — שייך לקיים או צור חדש:</div>'+arr.map(function(u,i){var id=pre+i;
-      return '<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div><b>'+esc(u.name)+'</b> <span class=muted>('+u.count+')</span></div><div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap"><select id="'+id+'" class="chip" style="flex:1;min-width:130px">'+opts+'</select><button class="btn-gold" onclick="devAssign(\''+encodeURIComponent(u.name)+'\',\''+id+'\')">שייך</button><button class="btn-ghost" onclick="devNewAgent(\''+encodeURIComponent(u.name)+'\')">➕ חדש</button></div></div>';}).join("")+'</div>';}
-  var defc='<div class=card><b>🐥 ימי נכס נולד — ברירת מחדל</b><div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><input id="nbdef" class="chip" style="width:90px" type="number" value="'+esc(r.nbDefault)+'"><span class=muted>ימים לכל סוכן ללא הגדרה אישית</span><button class="btn-gold" onclick="devSetDefault()">שמור</button></div></div>';
+      return '<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div><b>'+esc(u.name)+'</b> <span class=muted>('+u.count+')</span></div><select id="'+id+'" class="chip" style="width:100%;box-sizing:border-box;margin-top:5px">'+opts+'</select><div style="display:flex;gap:6px;margin-top:5px"><button class="btn-gold" style="flex:1" onclick="devAssign(\''+encodeURIComponent(u.name)+'\',\''+id+'\')">שייך</button><button class="btn-ghost" style="flex:1" onclick="devNewAgent(\''+encodeURIComponent(u.name)+'\')">➕ חדש</button></div></div>';}).join("")+'</div>';}
+  var defc='<div class=card><b>🐥 ימי נכס נולד — ברירת מחדל</b><div class=muted style="margin:4px 0 6px">ימים לכל סוכן ללא הגדרה אישית</div><div style="display:flex;gap:6px;align-items:center"><input id="nbdef" class="chip" style="width:90px;box-sizing:border-box" type="number" value="'+esc(r.nbDefault)+'"><button class="btn-gold" style="flex:1" onclick="devSetDefault()">שמור</button></div></div>';
   var dir='<div class=card><b>👥 ספריית סוכנים ('+DEVAGENTS.length+')</b><div class=muted style="margin:4px 0 8px">מספר וירטואלי · ימי נכס נולד (ריק=ברירת מחדל, ✓מוסתר=לא רואה כלום)</div>'+DEVAGENTS.map(function(a,i){
-    return '<div style="padding:9px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;align-items:center"><input id="vp'+i+'" class="chip" style="width:135px" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"><input id="nb'+i+'" class="chip" style="width:80px" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"><label class=muted style="display:flex;gap:3px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר</label><button class="btn-gold" onclick="devSaveAgent('+i+')">שמור</button></div></div>';
-  }).join("")+'<div style="display:flex;gap:6px;margin-top:10px"><input id="newag" class="chip" style="flex:1" placeholder="שם סוכן חדש"><button class="btn-gold" onclick="devAddAgent()">➕ הוסף סוכן</button></div></div>';
+    return '<div style="padding:10px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:6px"><input id="vp'+i+'" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"><input id="nb'+i+'" class="chip" style="width:72px;box-sizing:border-box" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"></div><div style="display:flex;gap:12px;margin-top:7px;align-items:center"><label class=muted style="display:flex;gap:4px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר</label><button class="btn-gold" style="flex:1" onclick="devSaveAgent('+i+')">שמור</button></div></div>';
+  }).join("")+'<div style="display:flex;gap:6px;margin-top:12px"><input id="newag" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="שם סוכן חדש"><button class="btn-gold" onclick="devAddAgent()">➕ הוסף</button></div></div>';
   $("devbody").innerHTML=block("🔴 לא מזוהה — חתימות",r.unmatchedSignings,"sg")+block("🔴 לא מזוהה — נכסים",r.unmatchedListings,"ls")+defc+dir;}
-function devPost(url,body){api(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("השמירה נכשלה");}}).catch(function(){alert("שגיאה");});}
+function devPost(url,body){api(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("השמירה נכשלה — לחץ '🔧 בדיקת חיבור' כדי לראות למה (כנראה ה-Apps Script לא פרוס בגרסה חדשה).");}}).catch(function(){alert("שגיאת רשת");});}
 function devAssign(nameEnc,selId){var sel=$(selId);var agent=sel?sel.value:"";if(!agent){alert("בחר סוכן מהרשימה");return;}devPost("/api/dev/alias",{alias:decodeURIComponent(nameEnc),agent:agent});}
 function devNewAgent(nameEnc){var name=decodeURIComponent(nameEnc);if(!confirm("ליצור סוכן חדש בשם: "+name+"?"))return;devPost("/api/dev/agent_add",{name:name});}
 function devAddAgent(){var el=$("newag");var name=el?el.value.trim():"";if(!name){alert("הקלד שם סוכן");return;}devPost("/api/dev/agent_add",{name:name});}
