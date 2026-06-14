@@ -2588,6 +2588,20 @@ def api_report():
                 shtaf = _full[:10]   # רק 10 המובילים
             except Exception:
                 shtaf = []; shtaf_total = 0; shtaf_offices = 0
+        nb_cities = []; nb_total = 0   # נכס נולד — פילוח לפי ערים בתקופה (למנהל/רכז)
+        if s["role"] in ("admin", "coordinator"):
+            try:
+                _nse = start.timestamp(); _nee = end.timestamp() + 86400
+                _bc = {}
+                for _r in fetch_newborn():
+                    _ep = _newborn_created_epoch(_r)
+                    if _ep and _nse <= _ep < _nee:
+                        nb_total += 1
+                        _ct = _detect_city(_r.get("רחוב1", "") or _r.get("רחוב", "") or _r.get("עיר", ""))
+                        _bc[_ct] = _bc.get(_ct, 0) + 1
+                nb_cities = sorted(({"city": k, "n": v} for k, v in _bc.items()), key=lambda x: -x["n"])
+            except Exception:
+                nb_cities = []; nb_total = 0
         if eff_name:
             _delta = end - start
             _pe = start - timedelta(days=1)
@@ -2603,7 +2617,8 @@ def api_report():
             wa = wa + '\n\n🤝 *גיוס נכסים בשת"פ — ' + label + '* (סה"כ ' + str(shtaf_total) + ' נכסים, ' + str(shtaf_offices) + ' משרדים' + _note + ')\n' + _lines
         return jsonify({"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
                         "insights": insights, "summary": sm, "listings": listings_total,
-                        "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices, "wa_text": wa})
+                        "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices,
+                        "nbCities": nb_cities, "nbTotal": nb_total, "wa_text": wa})
     except Exception as e:
         log.error(f"report error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -2837,6 +2852,16 @@ def _newborn_created_epoch(r):
     except Exception:
         return 0
 
+def _detect_city(addr):
+    """זיהוי עיר מתוך כתובת חופשית (לפילוח 'נכס נולד' לפי ערים)."""
+    a = str(addr or "")
+    if "ביאליק" in a: return "קרית ביאליק"
+    if "מוצקין" in a: return "קרית מוצקין"
+    if "אתא" in a: return "קרית אתא"
+    if "חיים" in a or "חיפה" in a: return "חיפה"
+    if "קרית ים" in a or "קריית ים" in a: return "קרית ים"
+    return "אחר"
+
 def _newborn_price(p):
     p = str(p or "").strip()
     if not p:
@@ -2895,7 +2920,7 @@ def api_newborn():
                 "price": _newborn_price(r.get("מחיר", "")),
                 "notes": _nb(r.get("הערות חדש", ""))[:160],
                 "owner": _nb(r.get("שם בעל הנכס", "")),
-                "phone": ophone,
+                "phone": _fmt_vphone(ophone),
                 "wa": _wa_phone(ophone),
                 "agent": lister,
                 "link": _nb(r.get("קישור", "")),
@@ -3511,6 +3536,7 @@ function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</di
   if(sm.topGius&&sm.topGius.length){var tg="<table><tr><th style=text-align:start>מתווך</th><th>נכסים</th></tr>";sm.topGius.forEach(function(a,i){tg+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tg+="</table>";h+="<div class=card><h2>🏆 מובילים בגיוס נכסים</h2>"+tg+"</div>";}
   if(sm.topKonim&&sm.topKonim.length){var tk="<table><tr><th style=text-align:start>מתווך</th><th>קונים</th></tr>";sm.topKonim.forEach(function(a,i){tk+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tk+="</table>";h+="<div class=card><h2>🤝 מובילים בהחתמת קונים</h2>"+tk+"</div>";}}
   if(r.shtaf&&r.shtaf.length){var tot=(r.shtaf_total!=null?r.shtaf_total:r.shtaf.reduce(function(a,o){return a+o.count;},0));var noff=(r.shtaf_offices!=null?r.shtaf_offices:r.shtaf.length);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>🤝 גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+noff+" משרדים · סה״כ "+tot+" נכסים"+(noff>10?" · מציג 10 מובילים":"")+"</div>"+st+"</div>";}
+  if(r.scope=="כל המשרד"&&r.nbCities&&r.nbCities.length){var nc="<table><tr><th style=text-align:start>עיר</th><th>נכסים</th></tr>";r.nbCities.forEach(function(c){nc+="<tr><td>"+esc(c.city)+"</td><td style=text-align:center><b>"+c.n+"</b></td></tr>";});nc+="</table>";h+="<div class=card><h2>🏙️ נכס נולד לפי ערים</h2><div class=muted style=margin-bottom:8px>סה״כ "+(r.nbTotal||0)+" נכסים בתקופה</div>"+nc+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
 }).catch(function(){$("rep").innerHTML="<div class=card err>שגיאה</div>";});}
