@@ -2113,6 +2113,16 @@ def _canon_key(name):
     k = _name_key(name)
     return _alias_key_map().get(k, k)
 
+def _vphone_for_name(name):
+    """מספר וירטואלי של סוכן — חיפוש גמיש (גם אם השם כתוב מעט אחר בלשוניות שונות)."""
+    vm = fetch_agent_virtual_phones()
+    v = vm.get(_norm_name(name))
+    if v: return v
+    ck = _canon_key(name)
+    for nm, vp in vm.items():
+        if _canon_key(nm) == ck: return vp
+    return ""
+
 def _deal_label(code):
     c = str(code or "").upper()
     if "OWNER_EXCLUSIVE" in c: return "בלעדיות"
@@ -2608,7 +2618,7 @@ def api_history():
         "agent": (g.get("agent", "") or "").strip(),
         "ts": _excl_epoch(g.get("received_at", "")),
     } for g in sigs[:500]]
-    vphone = fetch_agent_virtual_phones().get(_norm_name(eff["name"]), "")
+    vphone = _vphone_for_name(eff["name"])
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"],
                     "dev": bool(s.get("dev", False)),
                     "vphone": vphone, "calls": call_out, "signatures": sig_out})
@@ -2626,7 +2636,16 @@ def api_agents():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
-    names = sorted(set(_norm_name(n) for n in web_phone_name_map().values() if _norm_name(n)))
+    # מיזוג: אנשי קשר (קנוני) + סוכני קונפיג + לשונית שיחות — דדופ לפי מפתח גמיש
+    by_canon = {}
+    for n in (list(web_contacts_phone_name().values())
+              + [ag.get("name", "") for ag in (_load_config().get("agents") or [])]
+              + list(web_phone_name_map().values())):
+        nn = _norm_name(n)
+        if not nn: continue
+        ck = _canon_key(nn)
+        if ck not in by_canon: by_canon[ck] = nn
+    names = sorted(by_canon.values())
     return jsonify({"ok": True, "agents": [{"name": n} for n in names]})
 
 @app.route("/api/activity", methods=["GET"])
