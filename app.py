@@ -2068,17 +2068,20 @@ def _load_config():
     """קונפיג מערכת (dict) מטאב 'config' ב-Apps Script. מטמון 60ש'. ריק=ברירת מחדל."""
     c = _cache_get("app_config", 60)
     if c is not None: return c
-    cfg = {}
-    try:
-        j = _buyers_apps_post("getconfig", {})
-        if j and j.get("ok"):
-            raw = (j.get("config") or "").strip()
-            if raw: cfg = _json.loads(raw)
-    except Exception:
+    with _sf_lock("app_config"):
+        c = _cache_get("app_config", 60)
+        if c is not None: return c
         cfg = {}
-    if not isinstance(cfg, dict): cfg = {}
-    _cache_put("app_config", cfg)
-    return cfg
+        try:
+            j = _buyers_apps_post("getconfig", {})
+            if j and j.get("ok"):
+                raw = (j.get("config") or "").strip()
+                if raw: cfg = _json.loads(raw)
+        except Exception:
+            cfg = {}
+        if not isinstance(cfg, dict): cfg = {}
+        _cache_put("app_config", cfg)
+        return cfg
 
 def _save_config(cfg):
     """כתיבת הקונפיג חזרה ל-Apps Script. מעדכן מטמון בהצלחה."""
@@ -2211,15 +2214,30 @@ def web_send_sms(last9, body):
         log.error(f"Twilio send error: {e}")
         return False
 
+# Single-flight: כשהרבה בקשות נכשלות במטמון בו-זמנית (למשל 20 סוכנים בבוקר על מטמון קר),
+# רק חוט אחד מבצע את הקריאה ל-Apps Script והשאר ממתינים לתוצאה — במקום 20 קריאות מקבילות.
+_sf_locks = {}
+_sf_guard = _threading.Lock()
+def _sf_lock(key):
+    with _sf_guard:
+        lk = _sf_locks.get(key)
+        if lk is None:
+            lk = _threading.Lock(); _sf_locks[key] = lk
+        return lk
+
 def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
     _ck = "raw:" + str(type_he) + ":" + str(frm) + ":" + str(to)
     c = _cache_get(_ck, 60)
     if c is not None:
         return c
-    rows = _web_fetch_raw_uncached(type_he, frm, to)
-    if rows:
-        _cache_put(_ck, rows)
-    return rows
+    with _sf_lock(_ck):
+        c = _cache_get(_ck, 60)   # בדיקה כפולה — אולי חוט אחר כבר מילא בזמן ההמתנה
+        if c is not None:
+            return c
+        rows = _web_fetch_raw_uncached(type_he, frm, to)
+        if rows:
+            _cache_put(_ck, rows)
+        return rows
 def _web_fetch_raw_uncached(type_he, frm="01/01/2020", to="31/12/2099"):
     if not (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN):
         return []
@@ -3244,10 +3262,13 @@ _NB_HIDDEN_TOKENS = {"מוסתר", "מוסתרת", "הסתר", "לעולם", "א
 def fetch_newborn():
     c = _cache_get("newborn_rows", 300)
     if c is not None: return c
-    j = _buyers_apps_post("listnewborn", {})
-    rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
-    _cache_put("newborn_rows", rows)
-    return rows
+    with _sf_lock("newborn_rows"):
+        c = _cache_get("newborn_rows", 300)
+        if c is not None: return c
+        j = _buyers_apps_post("listnewborn", {})
+        rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
+        _cache_put("newborn_rows", rows)
+        return rows
 
 def _fetch_newborn_delays():
     c = _cache_get("newborn_delays", 600)
@@ -4405,6 +4426,14 @@ def _warm_once():
             _cache_put("newborn_rows", _j.get("rows", []) or [])
     except Exception:
         pass
+    try:   # קונפיג (תפקידים/צוותים/כינויים) — שמירה חמה כדי שלא יחסום תחת עומס
+        _jc = _buyers_apps_post("getconfig", {})
+        if _jc and _jc.get("ok"):
+            _rawc = (_jc.get("config") or "").strip()
+            _cfgc = _json.loads(_rawc) if _rawc else {}
+            if isinstance(_cfgc, dict): _cache_put("app_config", _cfgc)
+    except Exception:
+        pass
     try:
         if APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN:
             from urllib.parse import quote as _q
@@ -4424,7 +4453,7 @@ def _start_warmer():
         return
     _warmer_started = True
     def _loop():
-        time.sleep(8)
+        time.sleep(3)
         while True:
             try:
                 _warm_once()
