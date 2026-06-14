@@ -3907,7 +3907,7 @@ function loadActivity(){api("/api/activity").then(function(r){
   }).join(""):"<div class=muted>אין פעולות עדיין.</div>")+"</div>";
 }).catch(function(){});}
 
-function rangeChips(){return '<div class=chips id=rc><div class=chip data-r=day>היום</div><div class=chip data-r=week>השבוע</div><div class="chip on" data-r=month>החודש</div><div class=chip data-r=all>הכל</div></div>';}
+function rangeChips(){var rs=[["day","היום"],["week","השבוע"],["month","החודש"],["all","הכל"]];return '<div class=chips id=rc>'+rs.map(function(x){return '<div class="chip'+(RANGE==x[0]?" on":"")+'" data-r='+x[0]+'>'+x[1]+'</div>';}).join("")+'</div>';}
 function bindChips(reload){document.querySelectorAll("#rc .chip").forEach(function(c){c.onclick=function(){document.querySelectorAll("#rc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");RANGE=c.dataset.r;seenCall=0;seenSig=0;reload();};});}
 function inRange(ts){var d=new Date();var start;if(RANGE=="day"){start=new Date();start.setHours(0,0,0,0);}else if(RANGE=="week"){start=new Date();start.setDate(d.getDate()-d.getDay());start.setHours(0,0,0,0);}else if(RANGE=="month"){start=new Date(d.getFullYear(),d.getMonth(),1);}else{start=new Date(d.getFullYear(),0,1);}return ts>=start.getTime()/1000;}
 function periodLabel(){return RANGE=="day"?"היום":(RANGE=="week"?"השבוע":(RANGE=="month"?"החודש":"מתחילת השנה"));}
