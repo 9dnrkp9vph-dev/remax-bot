@@ -3849,6 +3849,61 @@ function daysLabel(dd){return dd==0?"נכנס לבלעדיות היום":(dd==1?
 </script></div></body></html>'''
 
 # ══════════════════════════════════════════════════════════════════════════════
+# BACKGROUND CACHE WARMER — מרענן ברקע את הקריאות הכבדות מ-Apps Script,
+# כך שבקשות הסוכנים תמיד מקבלות תשובה מיידית מהמטמון (לא ממתינות בתור).
+# עדכון אטומי בלבד (אף פעם לא מרוקן את המטמון תוך כדי). config-agnostic לשכפול.
+# ══════════════════════════════════════════════════════════════════════════════
+WARM_INTERVAL = int(os.environ.get("WARM_INTERVAL", "30") or 30)
+
+def _warm_once():
+    for _tab in ("שיחות", "חתימות", "נכסים"):
+        try:
+            _r = _web_fetch_raw_uncached(_tab)
+            if _r:
+                _cache_put("raw:%s:01/01/2020:31/12/2099" % _tab, _r)
+        except Exception:
+            pass
+    try:
+        _j = _buyers_apps_post("listnewborn", {})
+        if _j and _j.get("ok"):
+            _cache_put("newborn_rows", _j.get("rows", []) or [])
+    except Exception:
+        pass
+    try:
+        if APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN:
+            from urllib.parse import quote as _q
+            _u = ("%s?action=raw&type=%s&from=01/01/2020&to=31/12/2099&token=%s"
+                  % (APPS_SCRIPT_URL, _q("בלעדויות חיצוניות"), APPS_SCRIPT_TOKEN))
+            _rr = requests.get(_u, timeout=30, allow_redirects=True)
+            if _rr.status_code == 200 and _rr.json().get("ok"):
+                _external_excl_cache["data"] = _rr.json().get("rows", [])
+                _external_excl_cache["ts"] = time.time()
+    except Exception:
+        pass
+
+_warmer_started = False
+def _start_warmer():
+    global _warmer_started
+    if _warmer_started:
+        return
+    _warmer_started = True
+    def _loop():
+        time.sleep(8)
+        while True:
+            try:
+                _warm_once()
+            except Exception:
+                pass
+            time.sleep(WARM_INTERVAL)
+    try:
+        _threading.Thread(target=_loop, daemon=True, name="cache-warmer").start()
+        log.info("Cache warmer started (interval %ss)" % WARM_INTERVAL)
+    except Exception as _e:
+        log.error("warmer start failed: %s" % _e)
+
+_start_warmer()
+
+# ══════════════════════════════════════════════════════════════════════════════
 # STARTUP
 # ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
