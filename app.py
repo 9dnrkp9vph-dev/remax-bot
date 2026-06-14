@@ -2829,6 +2829,55 @@ def api_sign_validate_id():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     return jsonify({"ok": True, "valid": _valid_il_id(request.args.get("id", ""))})
 
+def _eff_agent_ctx(s):
+    """(name, phones, is_all) של הסוכן האפקטיבי לבקשה (כולל צפייה-כסוכן + צוות)."""
+    name = s.get("name", "")
+    as_name = request.args.get("as", "").strip() if s.get("role") in ("admin", "coordinator") else ""
+    if as_name: name = as_name
+    phs = set(_phones_for_name(name))
+    if s.get("phone"): phs.add(_last9(s["phone"]))
+    t = _team_for(name)
+    if t: phs |= t[0]
+    is_all = (s.get("role") == "admin" and not as_name)
+    return name, phs, is_all
+
+@app.route("/api/sign/clients")
+def api_sign_clients():
+    """לקוחות לבחירה — המתקשרים בהיסטוריית השיחות של הסוכן (טלפון + תאריך אחרון)."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    name, phs, is_all = _eff_agent_ctx(s)
+    calls = web_fetch_raw("שיחות")
+    if not is_all and phs:
+        calls = [c for c in calls if _last9(c.get("agent_phone", "")) in phs]
+    seen = {}
+    for c in sorted(calls, key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True):
+        ph = _last9(c.get("caller_phone", ""))
+        if not ph or ph in seen: continue
+        disp = _il_phone(c.get("caller_phone", ""))[0]
+        seen[ph] = {"phone": disp, "date": (_fmt_il_dt(c.get("received_at", "")) or "")[:10]}
+        if len(seen) >= 200: break
+    return jsonify({"ok": True, "clients": list(seen.values())})
+
+@app.route("/api/sign/properties")
+def api_sign_properties():
+    """נכסים לבחירה — המודעות של הסוכן (כתובת + מחיר)."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    name, phs, is_all = _eff_agent_ctx(s)
+    rows = fetch_sheet_rows()
+    out, seen = [], set()
+    for r in rows:
+        if not is_all and not _agent_owns_row(r, name, phs): continue
+        street = (r.get("רחוב1", "") or r.get("רחוב", "") or r.get("כתובת", "") or "").strip()
+        city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()
+        addr = ", ".join([x for x in [street, city] if x])
+        if not addr or addr in seen: continue
+        seen.add(addr)
+        out.append({"address": addr, "price": (r.get("מחיר", "") or "").strip()})
+        if len(out) >= 300: break
+    return jsonify({"ok": True, "properties": out})
+
 @app.route("/api/dev/newborn_default", methods=["POST"])
 def api_dev_nb_default():
     """ברירת מחדל לימי השהיה של נכס נולד (לכל סוכן ללא הגדרה אישית)."""
@@ -4332,7 +4381,7 @@ function initSigPad(id){var c=$(id);if(!c)return;var rect=c.getBoundingClientRec
   c.onmousedown=st;c.onmousemove=mv;c.onmouseup=en;c.onmouseleave=en;c.ontouchstart=st;c.ontouchmove=mv;c.ontouchend=en;}
 function clearSig(id){var c=$(id);if(!c)return;c.getContext("2d").clearRect(0,0,c.width,c.height);c.dataset.signed="";}
 function sgFill(body,v){var map={
-  "SALE_FEE":(v.cbuy?v.cbuy+"%":"____"),"RENT_FEE":(v.crent?(v.crent+" חודשי שכירות"):"____"),
+  "SALE_FEE":(v.cbuy?(v.cbuy+(v.cbuyunit=="₪"?" ₪":"%")):"____"),"RENT_FEE":(v.crent?(v.crent+" חודשי שכירות"):"____"),
   "EXCLUSIVE_FROM":(v.exfrom||"____"),"EXCLUSIVE_TO":(v.exto||"____"),"CON_REF_ID":(v.refid||"____"),"CON_REF_DATE":(v.refdate||v.date),
   "{תאריך}":v.date,"{שם_הסוכן}":v.agent,"{שם_הלקוח}":v.cname,"{טלפון_הלקוח}":v.cphone,"{תז_הלקוח}":v.cid,"{כתובת_הנכס}":v.addr,"{מחיר_מבוקש}":v.price,"{עמלת_קניה}":v.cbuy,"{עמלת_שכירות}":v.crent};
   var out=body||"";for(var k in map){out=out.split(k).join(map[k]==null?"":map[k]);}return out;}
@@ -4347,23 +4396,30 @@ function openSign(){if(timer){clearInterval(timer);timer=null;}
   $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>✍️ החתמת לקוח</b><button class="btn-ghost" onclick="tab(\'sigs\')">✕ סגור</button></div>'
    +'<div style="margin-top:8px"><div class=muted>סוג ההחתמה</div><select id="sg_aud" class="chip" style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgAudUI()"><option value="buyer">מתעניין (קונה/שוכר)</option><option value="seller">בעל נכס (מוכר/משכיר)</option></select></div>'
    +'<div id="sg_buyerdeal" style="margin-top:12px"><div class=muted>סוג עסקה + עמלה</div>'
-   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:64px" inputmode=decimal placeholder="%"> %</label>'
-   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_rent"> שכירות — עמלה <input id="sg_crent" class=chip style="width:64px" inputmode=decimal placeholder="חודשים"> חודשים</label></div>'
+   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_cbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
+   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_rent"> שכירות — עמלה <input id="sg_crent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label></div>'
    +'<div id="sg_sellerdeal" style="margin-top:12px;display:none"><div class=muted>סוג עסקה + עמלה</div>'
-   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:64px" inputmode=decimal placeholder="%"> %</label>'
-   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:64px" inputmode=decimal placeholder="חודשים"> חודשים</label>'
+   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_scbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
+   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
    +'<label style="display:flex;gap:6px;align-items:center;margin-top:10px"><input type=checkbox id="sg_exon" onchange="sgExclUI()"> כולל הסכם בלעדיות (הלקוח חותם על 2 טפסים)</label>'
    +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">בלעדיות מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>'
    +'<div style="margin-top:12px"><div class=muted>פרטי הלקוח</div>'
+   +'<select id="sg_clientpick" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgPickClient()"><option value="">— קונה שמור (מתוך השיחות שלך) —</option></select>'
    +'<input id="sg_cname" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="שם מלא">'
    +'<input id="sg_cphone" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="טלפון" inputmode=tel>'
    +'<input id="sg_cid" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="תעודת זהות" inputmode=numeric oninput="sgCheckId()"><div id="sg_idmsg" style="font-size:12px;margin-top:3px"></div></div>'
    +'<div style="margin-top:12px"><div class=muted>פרטי הנכס</div>'
+   +'<select id="sg_proppick" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgPickProp()"><option value="">— מהמודעות שלך —</option></select>'
    +'<input id="sg_addr" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="כתובת הנכס">'
    +'<input id="sg_price" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="מחיר מבוקש (₪)" inputmode=numeric></div>'
    +'<div style="margin-top:14px"><div class=muted>✍️ חתימת הלקוח</div><canvas id="sg_pad" style="width:100%;height:160px;border:1px solid rgba(127,127,127,.4);border-radius:10px;touch-action:none;background:#fff;margin-top:6px;display:block"></canvas><div style="text-align:left;margin-top:4px"><button class="btn-ghost" onclick="clearSig(\'sg_pad\')">נקה</button></div></div>'
    +'<button class="btn-gold" style="width:100%;margin-top:14px" onclick="sgGenerate()">צור הסכם וחתום</button></div><div id="sg_preview"></div>';
-  setTimeout(function(){initSigPad("sg_pad");},60);}
+  setTimeout(function(){initSigPad("sg_pad");},60);loadSignPickers();}
+function loadSignPickers(){
+  api("/api/sign/clients").then(function(r){if(!r||!r.ok)return;var el=$("sg_clientpick");if(!el)return;el.innerHTML='<option value="">— קונה שמור (מתוך השיחות שלך) —</option>'+(r.clients||[]).map(function(c){return '<option value="'+esc(c.phone)+'">'+esc(c.phone)+(c.date?(" · "+esc(c.date)):"")+'</option>';}).join("");}).catch(function(){});
+  api("/api/sign/properties").then(function(r){if(!r||!r.ok)return;var el=$("sg_proppick");if(!el)return;el.innerHTML='<option value="">— מהמודעות שלך —</option>'+(r.properties||[]).map(function(p){return '<option value="'+esc(p.address)+'" data-price="'+esc(p.price||"")+'">'+esc(p.address)+'</option>';}).join("");}).catch(function(){});}
+function sgPickClient(){var el=$("sg_clientpick");if(el&&el.value)$("sg_cphone").value=el.value;}
+function sgPickProp(){var el=$("sg_proppick");if(!el||!el.value)return;$("sg_addr").value=el.value;var pr=el.options[el.selectedIndex].getAttribute("data-price");if(pr&&$("sg_price"))$("sg_price").value=pr;}
 function sgGenerate(){
   var cid=($("sg_cid").value||"").trim();
   if(cid&&!validILID(cid)){alert("תעודת הזהות אינה תקינה");return;}
@@ -4372,6 +4428,7 @@ function sgGenerate(){
   var aud=$("sg_aud").value;
   var v={date:SG_DATE,agent:NAME||"",cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:$("sg_addr").value.trim(),price:$("sg_price").value.trim(),
     cbuy:(aud=="buyer"?$("sg_cbuy").value.trim():$("sg_scbuy").value.trim()),
+    cbuyunit:(aud=="buyer"?($("sg_cbuyunit")?$("sg_cbuyunit").value:"%"):($("sg_scbuyunit")?$("sg_scbuyunit").value:"%")),
     crent:(aud=="buyer"?$("sg_crent").value.trim():$("sg_scrent").value.trim()),
     exfrom:($("sg_exfrom")?fmtDate($("sg_exfrom").value):""),exto:($("sg_exto")?fmtDate($("sg_exto").value):""),
     refid:("RF"+Date.now().toString().slice(-8)),refdate:SG_DATE};
