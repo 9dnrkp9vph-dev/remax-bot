@@ -2172,6 +2172,18 @@ def _row_owned(row, keys, phones):
             if ph and ph in phones: return True
     return False
 
+def _valid_il_id(idnum):
+    """בדיקת תקינות תעודת זהות ישראלית (ספרת ביקורת לפי התקן)."""
+    s = re.sub(r"\D", "", str(idnum or ""))
+    if not s or len(s) > 9:
+        return False
+    s = s.zfill(9)
+    total = 0
+    for i, ch in enumerate(s):
+        d = int(ch) * (1 if i % 2 == 0 else 2)
+        total += d if d < 10 else d - 9
+    return total % 10 == 0
+
 def _vphone_for_name(name):
     """מספר וירטואלי של סוכן — חיפוש גמיש (גם אם השם כתוב מעט אחר בלשוניות שונות)."""
     vm = fetch_agent_virtual_phones()
@@ -2663,6 +2675,159 @@ def api_dev_teams():
     ok = _save_config(cfg)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון צוותים", str(len(clean)))
     return jsonify({"ok": ok})
+
+_CONTRACT_TYPES = {
+    "buyer_both": "מתעניין — קניה ושכירות",
+    "buyer_buy":  "מתעניין — קניה",
+    "buyer_rent": "מתעניין — שכירות",
+    "seller_both": "בעל נכס — מכירה והשכרה",
+    "seller_sell": "בעל נכס — מכירה",
+    "exclusive":  "בלעדיות",
+    "shtaf":      "שיתוף פעולה (שת״פ)",
+}
+_PARTIES = """בין הלקוח, שפרטיו המלאים מופיעים לעיל ו/או מי מטעמו
+לבין מנהלי המשרד RE/MAX Family, אייל שמול, ת.ז 039627989, מ.ר 20039
+ו/או אודי שמול, ת.ז 301055901, מ.ר 313254 ו/או גיל קדם ת.ז 039456868 מ.ר 313369 ו/או אוהד פלד ת.ז 033056938 מ.ר 3156247
+והמתווך שפרטיו מופיעים לעיל
+ממשרד רימקס פמילי (פמלי נדל"ן והשקעות בע"מ) שכתובתו רח' יגאל בשן 2, ק. ביאליק ח.פ. 515506293 ו/או (פמלי תיווך בע"מ) שושנה דמארי 4, קרית מוצקין ח.פ 515466548
+ו/או כל מורשה אחר שהוסמך על ידם לביצוע הזמנה זו (כולם ביחד, להלן: "המתווך")."""
+
+# נוסחי ברירת מחדל (ניתנים לעריכה בקונסולה — config דורס). משתנים: SALE_FEE / RENT_FEE / EXCLUSIVE_FROM / EXCLUSIVE_TO / CON_REF_ID / CON_REF_DATE.
+_DEFAULT_CONTRACTS = {
+"buyer_both": _PARTIES + """
+1. הלקוח מזמין שרותי תיווך מקרקעין מהמתווך, כדי לקבל שירותי תיווך בקשר לנכסים המפורטים לעיל.
+2. הלקוח מאשר כי המתווך הציג בפניו את הנכסים המפורטים להלן, והוא מתחייב לדווח למתווך מיד על כל משא ומתן המתנהל עמו ו/או עם שולחו בקשר לאחד או יותר מהנכסים, וכן מיד עם חתימת הסכם מחייב ו/או עם התחייבות לביצוע העסקה, המוקדם מביניהם, ביחס לאחד או יותר מהנכסים להלן.
+3. הלקוח מתחייב לשלם למתווך דמי תיווך בשיעור המפורט להלן בסעיף 5 מיד עם חתימת הסכם מחייב ו/או עם התחייבות לביצוע העסקה המוקדם מביניהם, בנוגע לאחד או יותר מהנכסים המפורטים לעיל.
+4. הלקוח מתחייב לא למסור לגורם כלשהו מידע שיקבל מהמתווך בנוגע לנכסים שלהלן ומתחייב לפצות את המתווך על כל נזק שייגרם לו באם יפר התחייבות זאת.
+5. דמי התיווך שישולמו למתווך כמפורט בסעיף 3 לעיל, יהיו במזומן כדלקמן:
+   5.1  בקניה: SALE_FEE ממחיר המכירה הכולל של הנכס, בתוספת מע"מ.
+   5.2  בכל מקרה עמלת התיווך בקנייה לא תפחת מ-26,500 ש"ח + מע"מ (עמלת מינימום בנכסים מתחת ל-1,325,000 ש"ח).
+   5.3  בהשכרה: דמי שכירות של RENT_FEE בתוספת מע"מ.
+   5.4  האמור לעיל בא בנוסף לזכותו של המתווך לגבות דמי תיווך מהמוכר / משכיר.
+   5.5  היה ותתפתח עסקה דרך בעל נכס שפרטיו רשומים בפרטי הנכס לעיל עם הקונה הנ"ל, יחוייב בדמי תיווך כמסומן בסעיף 5.1 וגם 5.2.
+   5.6  במידה ותיחתם עסקה שלא בידיעת המתווך/משרד התיווך ו/או אי תשלום שכ"ט תוך 30 יום מיום ביצוע העסקה, יפוצה המתווך ב-1% + מע"מ נוספים ללא הוכחת נזק או חודש שכירות נוסף (בשכירות בלבד).
+6. הלקוח מאשר כי עם מכירת הנכס ורכישתו על ידי הקונה המתווך יוכל להודיע לציבור כי הנכס נמכר.
+7. הלקוח מצהיר כי ידוע לו כי דמי התיווך ייגבו על ידי מנהל המשרד וכנגד חשבונית מס כחוק מטעם פמילי נדל"ן והשקעות בע"מ ו/או פמילי תיווך בע"מ.
+8. הלקוח מאשר שהומלץ לו על ידי המתווך להסתייע בשרותי עורך דין ו/או מומחים אחרים לפי העניין והצורך במהלך העסקה.
+9. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+"buyer_buy": _PARTIES + """
+1. הלקוח מזמין שרותי תיווך מקרקעין מהמתווך, כדי לקבל שירותי תיווך בקשר לנכסים המפורטים לעיל.
+2. הלקוח מאשר כי המתווך הציג בפניו את הנכסים המפורטים להלן, והוא מתחייב לדווח למתווך מיד על כל משא ומתן המתנהל עמו ו/או עם שולחו בקשר לאחד או יותר מהנכסים, וכן מיד עם חתימת הסכם מחייב ו/או עם התחייבות לביצוע העסקה, המוקדם מביניהם, ביחס לאחד או יותר מהנכסים להלן.
+3. הלקוח מתחייב לשלם למתווך דמי תיווך בשיעור המפורט להלן בסעיף 5 מיד עם חתימת הסכם מחייב ו/או עם התחייבות לביצוע העסקה המוקדם מביניהם, בנוגע לאחד או יותר מהנכסים המפורטים לעיל.
+4. הלקוח מתחייב לא למסור לגורם כלשהו מידע שיקבל מהמתווך בנוגע לנכסים שלהלן ומתחייב לפצות את המתווך על כל נזק שייגרם לו באם יפר התחייבות זאת.
+5. דמי התיווך שישולמו למתווך כמפורט בסעיף 3 לעיל, יהיו במזומן כדלקמן:
+   5.1  בקניה: SALE_FEE ממחיר המכירה הכולל של הנכס, בתוספת מע"מ.
+   5.2  בכל מקרה עמלת התיווך בקנייה לא תפחת מ-26,500 ש"ח + מע"מ (עמלת מינימום בנכסים מתחת ל-1,325,000 ש"ח).
+   5.3  האמור לעיל בא בנוסף לזכותו של המתווך לגבות דמי תיווך מהמוכר / משכיר.
+   5.4  היה ותתפתח עסקה דרך בעל נכס שפרטיו רשומים בפרטי הנכס לעיל עם הקונה הנ"ל, יחוייב בדמי תיווך כמסומן בסעיף 5.1 וגם 5.2.
+   5.5  במידה ותיחתם עסקה שלא בידיעת המתווך/משרד התיווך ו/או אי תשלום שכ"ט תוך 30 יום מיום ביצוע העסקה, יפוצה המתווך ב-1% + מע"מ נוספים ללא הוכחת נזק או חודש שכירות נוסף (בשכירות בלבד).
+6. הלקוח מאשר כי עם מכירת הנכס ורכישתו על ידי הקונה המתווך יוכל להודיע לציבור כי הנכס נמכר.
+7. הלקוח מצהיר כי ידוע לו כי דמי התיווך ייגבו על ידי מנהל המשרד וכנגד חשבונית מס כחוק מטעם פמילי נדל"ן והשקעות בע"מ ו/או פמילי תיווך בע"מ.
+8. הלקוח מאשר שהומלץ לו על ידי המתווך להסתייע בשרותי עורך דין ושמאי מוסמך ו/או מומחים אחרים טרם ביצוע העסקה.
+9. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+"buyer_rent": _PARTIES + """
+1. הלקוח מזמין שרותי תיווך מקרקעין מהמתווך, כדי לקבל שירותי תיווך בקשר לנכסים המפורטים לעיל.
+2. הלקוח מאשר כי המתווך הציג בפניו את הנכסים המפורטים להלן, והוא מתחייב לדווח למתווך מיד על כל משא ומתן המתנהל עמו ו/או עם שולחו בקשר לאחד או יותר מהנכסים, וכן מיד עם חתימת הסכם מחייב ו/או עם התחייבות לביצוע העסקה, המוקדם מביניהם, ביחס לאחד או יותר מהנכסים להלן.
+3. הלקוח מתחייב לשלם למתווך דמי תיווך בשיעור המפורט להלן בסעיף 5 מיד עם חתימת הסכם מחייב ו/או עם התחייבות לביצוע העסקה המוקדם מביניהם, בנוגע לאחד או יותר מהנכסים המפורטים לעיל.
+4. הלקוח מתחייב לא למסור לגורם כלשהו מידע שיקבל מהמתווך בנוגע לנכסים שלהלן ומתחייב לפצות את המתווך על כל נזק שייגרם לו באם יפר התחייבות זאת.
+5. דמי התיווך שישולמו למתווך כמפורט בסעיף 3 לעיל, יהיו במזומן כדלקמן:
+   5.1  בשכירות: דמי שכירות של RENT_FEE בתוספת מע"מ.
+   5.2  האמור לעיל בא בנוסף לזכותו של המתווך לגבות דמי תיווך מהמשכיר.
+   5.3  היה ותתפתח עסקה דרך בעל הנכס שפרטיו רשומים בפרטי הנכס עם הקונה הנ"ל, יחוייב בדמי תיווך כמסומן בסעיף 5.1.
+   5.4  במידה ותיחתם עסקה שלא בידיעת המתווך/משרד התיווך, יפוצה המתווך בחודש שכירות נוסף.
+6. הלקוח מאשר כי עם מכירת הנכס ורכישתו על ידי הקונה המתווך יוכל להודיע לציבור כי הנכס נמכר.
+7. הלקוח מצהיר כי ידוע לו כי דמי התיווך ייגבו על ידי מנהל המשרד וכנגד חשבונית מס כחוק מטעם פמילי נדל"ן והשקעות בע"מ ו/או פמילי תיווך בע"מ.
+8. הלקוח מאשר שהומלץ לו על ידי המתווך להסתייע בשרותי עורך דין ו/או מומחים אחרים לפי העניין והצורך במהלך העסקה.
+9. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+"seller_both": _PARTIES + """
+הסכם והזמנה זו מתייחסים לנכס שפרטיו רשומים בנספח להלן וכן לכל עסקת מקרקעין אחרת שתתפתח בעסקה זו.
+1. הלקוח מצהיר כי הינו בעל הזכויות המלאות בנכס המקרקעין המתואר לעיל והמהווה חלק בלתי נפרד מהסכם זה (להלן "הנכס") או שהינו מורשה מטעם בעל/י הזכויות למוכרו ו/או להשכירו. הלקוח מצהיר כי הובהר לו כי פרטי הנכס יועמדו לידיעת קונים/שוכרים/מתווכים כדי לקדם את שיווק הנכס וכן שפרטי הנכס שמסר למתווך והרשומים בנספח הינם הפרטים המהותיים, הנכונים והמלאים.
+2. הלקוח מתחייב להמציא למתווך מיידית נסח רישום או אישור זכויות מהמנהל ו/או החברה המשכנת, עדכניים.
+3. הלקוח ישלם למתווך עבור פעולת התיווך מיד עם חתימת הסכם מחייב למכירת או השכרת הנכס (עד 3 ימי עסקים מחתימת הסכם מחייב) בסכומים המפורטים בסעיף 4.
+4. דמי התיווך שהלקוח מתחייב לשלמם בהתאם לאמור בסעיף 3 לעיל יהיו כדלקמן:
+   4.1  במכירה SALE_FEE ממחיר המכירה הכולל של הנכס, בתוספת מע"מ.
+   4.2  בכל מקרה עמלת התיווך לא תפחת מ-26,500 ש"ח + מע"מ (עמלת מינימום בנכסים מתחת ל-1,325,000 ש"ח).
+   4.3  בהשכרה: דמי שכירות של RENT_FEE בתוספת מע"מ.
+   4.4  האמור לעיל בא בנוסף לזכותו של המתווך לגבות דמי תיווך מהקונה/שוכר.
+   4.5  במידה ותיחתם עסקה שלא בידיעת המתווך/משרד התיווך ו/או אי תשלום שכ"ט תוך 30 יום מיום ביצוע העסקה, יפוצה המתווך ב-1% + מע"מ נוספים ללא הוכחת נזק או חודש שכירות נוסף (בשכירות בלבד).
+5. הלקוח מאשר כי עם מכירת הנכס המתווך יוכל להודיע לציבור כי הנכס נמכר.
+6. הלקוח מאשר שהומלץ לו על ידי המתווך להסתייע בשירותי עורך דין ו/או מומחים אחרים לפי העניין והצורך במהלך העסקה.
+7. הלקוח מצהיר כי ידוע לו כי דמי התיווך ייגבו על ידי מנהל המשרד וכנגד חשבונית מס כחוק מטעם פמילי נדל"ן והשקעות בע"מ ו/או פמילי תיווך בע"מ.
+8. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+"seller_sell": "",
+"exclusive": _PARTIES + """
+הסכם זה מהווה חלק בלתי נפרד מהסכם הזמנת שירותי תיווך מספר CON_REF_ID אשר נחתמה בין הצדדים ביום CON_REF_DATE
+ומתייחס לנכס שפרטיו רשומים לעיל בהזמנה כאמור (להלן: "הנכס") וכן לכל עסקת מקרקעין אחרת שתתפתח מהסכם והזמנה אלו.
+1. הלקוח מצהיר בזאת כי הינו בעל הזכויות המלאות ב"נכס" ומהווה חלק בלתי נפרד מהסכם זה, או שהינו מורשה מטעם בעל/י הזכויות בנכס למוכרו ו/או להשכירו. הלקוח מצהיר כי הובהר לו כי פרטי הנכס יועברו לידיעת קונים/שוכרים/מתווכים כדי לקדם את שיווק הנכס וכן שפרטי הנכס שמסר למתווך והרשומים בנספח הינם הפרטים המהותיים, הנכונים והמלאים.
+2. הלקוח מתחייב להמציא למתווך מיידית נוסח רישום או אישור זכויות מהמנהל ו/או החברה המשכנת, עדכניים. הלקוח מייפה בזה את כוחו של המתווך או באי כוחו לפנות ולקבל בשמו ועבורו את כל הידע הדרוש לשיווק הנכס מכל רשות, משרד, עירייה, אדם או גוף כלשהוא ולמסרם ללקוחות פוטנציאליים לצורך שיווק הנכס.
+3. הלקוח מזמין מהמתווך שירותי תיווך ומסמיך אותו לפעול עבורו באופן בלעדי לשיווק הנכס לתקופה מיום EXCLUSIVE_FROM ועד יום EXCLUSIVE_TO (להלן: "תקופת הבלעדיות"). עם גמר תקופת הבלעדיות יהווה הסכם זה הזמנת שירותי תיווך רגילה, ללא בלעדיות, של הלקוח מהמתווך. המתווך יוכל אז לשווק את הנכס ואם הנכס יירכש כתוצאה מטיפול המתווך יהיה המתווך זכאי לדמי תיווך כמפורט להלן בסעיף 5.
+4. הלקוח ישלם למתווך עבור פעולת התיווך, מיד עם חתימת הסכם מחייב למכירת או השכרת הנכס, דמי תיווך בשיעורים המפורטים בסעיף 5 להלן, וזאת בכל מקרה אם ההסכם ייחתם במהלך תקופת הבלעדיות ובהמשך לסעיף 14ב' לחוק המתווכים. במידה והנכס ימכר/יושכר ע"י המתווך לאחר תקופת הבלעדיות יהיה זכאי המתווך לדמי התיווך בשיעורים המפורטים בסעיף 5.
+5. דמי התיווך שהלקוח מתחייב בזה לשלמם, בהתאם לאמור בסעיף 4 לעיל הם בהתאם למפורט ומוסכם בהסכם הזמנת שירותי תיווך מספר CON_REF_ID מיום CON_REF_DATE.
+6. הלקוח מצהיר כי ידוע לו כי דמי התיווך ייגבו על ידי המתווך הח"מ וכנגד חשבונית מס כחוק מטעם פמילי נדל"ן והשקעות בע"מ ו/או פמילי תיווך בע"מ.
+7. הלקוח מאשר שהומלץ לו ע"י המתווך להסתייע בשרותי עורך דין ו/או מומחים אחרים לפני העניין והצורך במהלך העסקה.
+8. המתווך ירכז את כל הפעולות לשיווקו של הנכס בתקופת הבלעדיות. הלקוח מתחייב כי בתקופה זו לא יבקש ו/או יקבל שירותי תיווך לשיווק הנכס מכל מתווך אחר וכי כל קשר ו/או משא ומתן בינו לבין מתווכים אחרים ו/או קונים ו/או שוכרים מיועדים יעשה אך ורק דרך המתווך ובאמצעותו. הלקוח מצהיר כי ידוע לו שהפרת סעיף זה עלולה לפגוע ביכולתו של המתווך, בחוסר תום לב, לשמש כגורם היעיל בעסקה, וכי במקרה של הפרה יהיה המתווך זכאי כפיצוי למלוא העמלה שהייתה מגיעה לו, בנוסף לכיסוי כל נזק אחר אשר נגרם לו כתוצאה מההפרה, בכפוף לסעיף 14 (ב) לחוק המתווכים.
+9. הלקוח יביא את עובדת התקשרותו בהסכם זה לידיעת הפונים אליו ישירות ובמיוחד לכל מתווך אחר ו/או קונה ו/או שוכר עמם היה קשור בעבר. כמו כן יביא לסיומה המיידי של כל התחייבות קיימת הסותרת התחייבויותיו עפ"י הסכם זה. המתווך מתחייב לפעול בשקידה, במסירות ובנאמנות ולשתף מתווכים ומשרדי תיווך אחרים במציאת קונים מעוניינים ולבנות ולבצע תכנית שיווקית ופרסומית לקידום שיווק הנכס. כל זאת בהתאם לשיקול דעתו המקצועית ובהתאם למפרט בטופס פעולות שיווקיות המצורף להזמנה זו.
+10. מובן וידוע ללקוח בזאת שהלקוח ממנה את המתווך להיות הגורם הפעיל והיחיד שיפעל לקידום מכירת ו/או השכרת הנכס.
+11. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+"shtaf": "",
+}
+
+def _contract_title(ctype):
+    return {"buyer_both": "הזמנת שירותי תיווך לקניה/שכירות נכס מקרקעין",
+            "buyer_buy": "הזמנת שירותי תיווך לקניית נכס מקרקעין",
+            "buyer_rent": "הזמנת שירותי תיווך לשכירות נכס מקרקעין",
+            "seller_both": "הזמנת שירותי תיווך למכירת ו/או השכרת נכס מקרקעין",
+            "seller_sell": "הזמנת שירותי תיווך למכירת נכס מקרקעין",
+            "exclusive": "הזמנת שירותי תיווך בבלעדיות",
+            "shtaf": "הסכם שיתוף פעולה"}.get(ctype, "הזמנת שירותי תיווך")
+
+_CONTRACT_FALLBACK = {"seller_sell": "seller_both"}
+
+def _contract_text(ctype):
+    """הנוסח האפקטיבי: מה שנשמר ב-config, ואם ריק — ברירת המחדל המוטמעת (עם נפילה הגיונית)."""
+    c = (_load_config().get("contracts") or {}).get(ctype)
+    if c is not None and str(c).strip() != "":
+        return c
+    d = _DEFAULT_CONTRACTS.get(ctype, "")
+    if d.strip():
+        return d
+    fb = _CONTRACT_FALLBACK.get(ctype)
+    return _DEFAULT_CONTRACTS.get(fb, "") if fb else ""
+
+@app.route("/api/dev/contract", methods=["GET", "POST"])
+def api_dev_contract():
+    """נוסחי ההסכמים (ניתנים לעריכה במנהל). GET=קריאה, POST {type, body}=שמירה."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    cfg = _load_config()
+    if request.method == "GET":
+        eff = {t: _contract_text(t) for t in _CONTRACT_TYPES}
+        return jsonify({"ok": True, "types": _CONTRACT_TYPES, "contracts": eff})
+    body = request.get_json(silent=True) or {}
+    ctype = (body.get("type") or "").strip()
+    text = body.get("body")
+    if ctype not in _CONTRACT_TYPES or not isinstance(text, str):
+        return jsonify({"ok": False, "reason": "bad"}), 400
+    contracts = cfg.setdefault("contracts", {})
+    contracts[ctype] = text
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון נוסח הסכם", _CONTRACT_TYPES.get(ctype, ctype))
+    return jsonify({"ok": ok})
+
+@app.route("/api/sign/contract")
+def api_sign_contract():
+    """נוסח ההסכם לסוכן (לא רק למפתח) — לשימוש במסך החתימה."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    t = (request.args.get("type") or "buyer_both").strip()
+    return jsonify({"ok": True, "type": t, "body": _contract_text(t), "title": _contract_title(t), "types": _CONTRACT_TYPES})
+
+@app.route("/api/sign/validate_id")
+def api_sign_validate_id():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    return jsonify({"ok": True, "valid": _valid_il_id(request.args.get("id", ""))})
 
 @app.route("/api/dev/newborn_default", methods=["POST"])
 def api_dev_nb_default():
@@ -4003,22 +4168,25 @@ function applyTabPerms(){
 }
 
 // ── קונסולת מפתח ──────────────────────────────────────────────
-function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div>';loadDevPeople();loadRolePerms();loadTeams();}
+function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadContracts();}
 function devDiag(){$("devdiag").textContent=" בודק…";api("/api/dev/diag").then(function(r){$("devdiag").textContent=" "+((r&&r.msg)||"שגיאה");}).catch(function(){$("devdiag").textContent=" שגיאת רשת";});}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
-var DEVAGENTS=[],DEVDATA=null,DEVALL=false;
+var DEVAGENTS=[],DEVDATA=null,DEVALL=false,DEVFILTER="";
 function devToggleAll(){DEVALL=!DEVALL;if(DEVDATA)renderDevPeople(DEVDATA);}
+function devSearch(v){DEVFILTER=v;if(DEVDATA)renderDevPeople(DEVDATA);var el=$("devsearch");if(el){el.focus();try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){}}}
 function renderDevPeople(r){DEVDATA=r;DEVAGENTS=r.agents||[];
   var opts='<option value="">— שייך לסוכן —</option>'+DEVAGENTS.map(function(a){return '<option value="'+esc(a.name)+'">'+esc(a.name)+'</option>';}).join("");
   function block(title,arr,pre){if(!arr||!arr.length)return '<div class=card><b>'+title+'</b><div class=muted style="margin-top:6px">הכל מזוהה ✓</div></div>';
     return '<div class=card><b>'+title+' ('+arr.length+')</b><div class=muted style="margin:4px 0 8px">שמות שלא מתאימים לאף סוכן — שייך לקיים או צור חדש:</div>'+arr.map(function(u,i){var id=pre+i;
       return '<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div><b>'+esc(u.name)+'</b> <span class=muted>('+u.count+')</span></div><select id="'+id+'" class="chip" style="width:100%;box-sizing:border-box;margin-top:5px">'+opts+'</select><div style="display:flex;gap:6px;margin-top:5px"><button class="btn-gold" style="flex:1" onclick="devAssign(\''+encodeURIComponent(u.name)+'\',\''+id+'\')">שייך</button><button class="btn-ghost" style="flex:1" onclick="devNewAgent(\''+encodeURIComponent(u.name)+'\')">➕ חדש</button></div></div>';}).join("")+'</div>';}
   var defc='<div class=card><b>🐥 ימי נכס נולד — ברירת מחדל</b><div class=muted style="margin:4px 0 6px">ימים לכל סוכן ללא הגדרה אישית</div><div style="display:flex;gap:6px;align-items:center"><input id="nbdef" class="chip" style="width:90px;box-sizing:border-box" type="number" value="'+esc(r.nbDefault)+'"><button class="btn-gold" style="flex:1" onclick="devSetDefault()">שמור</button></div></div>';
-  var NSHOW=5;var shown=DEVALL?DEVAGENTS:DEVAGENTS.slice(0,NSHOW);
-  var more=(DEVAGENTS.length>NSHOW)?('<div style="text-align:center;margin-top:10px"><button class="btn-ghost" onclick="devToggleAll()">'+(DEVALL?"פחות ▲":("עוד "+(DEVAGENTS.length-NSHOW)+" ▼"))+'</button></div>'):'';
-  var dir='<div class=card><b>👥 ספריית סוכנים ('+DEVAGENTS.length+')</b><div class=muted style="margin:4px 0 8px">מספר וירטואלי · ימי נכס נולד (ריק=ברירת מחדל, ✓מוסתר=לא רואה כלום)</div>'+shown.map(function(a,i){
-    return '<div style="padding:10px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:6px"><input id="vp'+i+'" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"><input id="nb'+i+'" class="chip" style="width:72px;box-sizing:border-box" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"></div><div style="display:flex;gap:12px;margin-top:7px;align-items:center"><label class=muted style="display:flex;gap:4px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר</label><button class="btn-gold" style="flex:1" onclick="devSaveAgent('+i+')">שמור</button></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center"><span class=muted style="font-size:12px">תפקיד:</span><select id="rl'+i+'" class="chip" style="flex:1;min-width:0" onchange="devSetRole('+i+')">'+roleOpts(a.role)+'</select></div></div>';
-  }).join("")+more+'<div style="display:flex;gap:6px;margin-top:12px"><input id="newag" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="שם סוכן חדש"><button class="btn-gold" onclick="devAddAgent()">➕ הוסף</button></div></div>';
+  var NSHOW=5;var flt=(DEVFILTER||"").trim();
+  function devCard(a,i){return '<div style="padding:10px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:6px"><input id="vp'+i+'" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"><input id="nb'+i+'" class="chip" style="width:72px;box-sizing:border-box" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"></div><div style="display:flex;gap:12px;margin-top:7px;align-items:center"><label class=muted style="display:flex;gap:4px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר</label><button class="btn-gold" style="flex:1" onclick="devSaveAgent('+i+')">שמור</button></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center"><span class=muted style="font-size:12px">תפקיד:</span><select id="rl'+i+'" class="chip" style="flex:1;min-width:0" onchange="devSetRole('+i+')">'+roleOpts(a.role)+'</select></div></div>';}
+  var cards="";DEVAGENTS.forEach(function(a,i){var show=flt?(String(a.name).indexOf(flt)>=0):(DEVALL||i<NSHOW);if(show)cards+=devCard(a,i);});
+  if(flt&&!cards)cards='<div class=muted style="padding:8px 0">לא נמצא סוכן בשם זה.</div>';
+  var more=(!flt&&DEVAGENTS.length>NSHOW)?('<div style="text-align:center;margin-top:10px"><button class="btn-ghost" onclick="devToggleAll()">'+(DEVALL?"פחות ▲":("עוד "+(DEVAGENTS.length-NSHOW)+" ▼"))+'</button></div>'):'';
+  var srch='<input id="devsearch" class="chip" style="width:100%;box-sizing:border-box;margin:2px 0 8px" placeholder="🔍 חפש סוכן לפי שם" value="'+esc(flt)+'" oninput="devSearch(this.value)">';
+  var dir='<div class=card><b>👥 ספריית סוכנים ('+DEVAGENTS.length+')</b><div class=muted style="margin:4px 0 6px">מספר וירטואלי · ימי נכס נולד (ריק=ברירת מחדל, ✓מוסתר=לא רואה כלום) · תפקיד</div>'+srch+cards+more+'<div style="display:flex;gap:6px;margin-top:12px"><input id="newag" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="שם סוכן חדש"><button class="btn-gold" onclick="devAddAgent()">➕ הוסף</button></div></div>';
   $("devbody").innerHTML=block("🔴 לא מזוהה — חתימות",r.unmatchedSignings,"sg")+block("🔴 לא מזוהה — נכסים",r.unmatchedListings,"ls")+defc+dir;renderTeams();}
 function devPost(url,body){api(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("השמירה נכשלה — לחץ '🔧 בדיקת חיבור' כדי לראות למה (כנראה ה-Apps Script לא פרוס בגרסה חדשה).");}}).catch(function(){alert("שגיאת רשת");});}
 function devAssign(nameEnc,selId){var sel=$(selId);var agent=sel?sel.value:"";if(!agent){alert("בחר סוכן מהרשימה");return;}devPost("/api/dev/alias",{alias:decodeURIComponent(nameEnc),agent:agent});}
@@ -4051,6 +4219,19 @@ function saveTeams(){api("/api/dev/teams",{method:"POST",headers:{"Content-Type"
 function teamCreate(){var a=$("tnew1").value,b=$("tnew2").value;if(!a||!b||a==b){alert("בחר שני סוכנים שונים");return;}TEAMS.push([a,b]);saveTeams();}
 function teamAdd(i){var v=$("tm"+i).value;if(!v){alert("בחר סוכן");return;}if(TEAMS[i].indexOf(v)<0)TEAMS[i].push(v);saveTeams();}
 function teamDel(i){if(!confirm("להסיר את הצוות?"))return;TEAMS.splice(i,1);saveTeams();}
+var CONTRACTS={},CTYPES={},CTYPE="seller";
+function loadContracts(){api("/api/dev/contract").then(function(r){if(r&&r.ok){CONTRACTS=r.contracts||{};CTYPES=r.types||{};if(!CTYPES[CTYPE]){var ks=Object.keys(CTYPES);if(ks.length)CTYPE=ks[0];}renderContracts();}}).catch(function(){});}
+function renderContracts(){if(!$("devcontracts"))return;
+  var topts=Object.keys(CTYPES).map(function(k){return '<option value="'+k+'"'+(k==CTYPE?" selected":"")+'>'+esc(CTYPES[k])+'</option>';}).join("");
+  var ph=["{תאריך}","{שם_הסוכן}","{שם_הלקוח}","{טלפון_הלקוח}","{תז_הלקוח}","{כתובת_הנכס}","{מחיר_מבוקש}","{שכירות_מבוקשת}","{עמלת_קניה}","{עמלת_שכירות}","{תקופת_בלעדיות}","{הערות}"];
+  var html='<div class=card><b>📄 נוסחי הסכמים (לעריכה)</b><div class=muted style="margin:4px 0 8px">הדבק כאן את הנוסח המשפטי שלך. המשתנים יתמלאו אוטומטית בזמן החתימה. (שמור כל סוג בנפרד)</div>';
+  html+='<select id="ctype" class="chip" style="width:100%;box-sizing:border-box;margin-bottom:6px" onchange="ctypeChange(this.value)">'+topts+'</select>';
+  html+='<textarea id="cbody" class="chip" style="width:100%;box-sizing:border-box;min-height:220px;font-family:inherit;line-height:1.6" placeholder="הדבק כאן את נוסח ההסכם...">'+esc(CONTRACTS[CTYPE]||"")+'</textarea>';
+  html+='<div class=muted style="margin:6px 0;font-size:12px">משתנים זמינים: '+ph.map(esc).join(" · ")+'</div>';
+  html+='<button class="btn-gold" style="width:100%" onclick="saveContract()">שמור נוסח</button></div>';
+  $("devcontracts").innerHTML=html;}
+function ctypeChange(v){var ta=$("cbody");if(ta)CONTRACTS[CTYPE]=ta.value;CTYPE=v;renderContracts();}
+function saveContract(){var ta=$("cbody");if(!ta)return;CONTRACTS[CTYPE]=ta.value;api("/api/dev/contract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:CTYPE,body:ta.value})}).then(function(r){if(r&&r.ok)alert("נשמר ✓");else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
 function tab(t){var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else viewSearch(TABNOW);}
 var REPTEXT="";
@@ -4136,9 +4317,77 @@ function viewCalls(){
   bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,45000);
 }
 function viewSigs(){
-  $("view").innerHTML='<div class=card><h2>✍️ חתימות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">✍️ חתימות'+scopeLabel()+'</h2><button class="btn-gold" onclick="openSign()">➕ החתם לקוח</button></div>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
   bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,60000);
 }
+// ── מסך החתמת לקוח (במקום) ─────────────────────────────────────
+var SG_DATE="",SG_CONTRACT="";
+function validILID(v){var s=(v||"").replace(/\D/g,"");if(!s||s.length>9)return false;s=("000000000"+s).slice(-9);var t=0;for(var i=0;i<9;i++){var d=parseInt(s[i],10)*(i%2===0?1:2);t+=d>9?d-9:d;}return t%10===0;}
+function sgCheckId(){var el=$("sg_cid"),m=$("sg_idmsg");if(!el||!m)return;var v=el.value.trim();if(!v){m.textContent="";return;}if(validILID(v)){m.textContent="✓ תעודת זהות תקינה";m.style.color="#1a7f37";}else{m.textContent="✗ תעודת זהות לא תקינה";m.style.color="#c0322f";}}
+function initSigPad(id){var c=$(id);if(!c)return;var rect=c.getBoundingClientRect();c.width=rect.width||320;c.height=rect.height||160;var ctx=c.getContext("2d");ctx.lineWidth=2.2;ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle="#0D1B2A";var drawing=false;
+  function pos(e){var r=c.getBoundingClientRect();var t=(e.touches&&e.touches[0])?e.touches[0]:e;return {x:t.clientX-r.left,y:t.clientY-r.top};}
+  function st(e){drawing=true;var p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);e.preventDefault();}
+  function mv(e){if(!drawing)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();c.dataset.signed="1";e.preventDefault();}
+  function en(){drawing=false;}
+  c.onmousedown=st;c.onmousemove=mv;c.onmouseup=en;c.onmouseleave=en;c.ontouchstart=st;c.ontouchmove=mv;c.ontouchend=en;}
+function clearSig(id){var c=$(id);if(!c)return;c.getContext("2d").clearRect(0,0,c.width,c.height);c.dataset.signed="";}
+function sgFill(body,v){var map={
+  "SALE_FEE":(v.cbuy?v.cbuy+"%":"____"),"RENT_FEE":(v.crent?(v.crent+" חודשי שכירות"):"____"),
+  "EXCLUSIVE_FROM":(v.exfrom||"____"),"EXCLUSIVE_TO":(v.exto||"____"),"CON_REF_ID":(v.refid||"____"),"CON_REF_DATE":(v.refdate||v.date),
+  "{תאריך}":v.date,"{שם_הסוכן}":v.agent,"{שם_הלקוח}":v.cname,"{טלפון_הלקוח}":v.cphone,"{תז_הלקוח}":v.cid,"{כתובת_הנכס}":v.addr,"{מחיר_מבוקש}":v.price,"{עמלת_קניה}":v.cbuy,"{עמלת_שכירות}":v.crent};
+  var out=body||"";for(var k in map){out=out.split(k).join(map[k]==null?"":map[k]);}return out;}
+function sgResolveKey(){var a=$("sg_aud")?$("sg_aud").value:"buyer";
+  if(a=="buyer"){var b=$("sg_buy").checked,r=$("sg_rent").checked;return (b&&r)?"buyer_both":(r&&!b?"buyer_rent":"buyer_buy");}
+  var s=$("sg_sell").checked,sr=$("sg_srent").checked;return (s&&sr)?"seller_both":((sr&&!s)?"seller_both":"seller_sell");}
+function sgAudUI(){var a=$("sg_aud")?$("sg_aud").value:"buyer";var bd=$("sg_buyerdeal"),sd=$("sg_sellerdeal");if(bd)bd.style.display=(a=="buyer")?"":"none";if(sd)sd.style.display=(a=="seller")?"":"none";}
+function sgExclUI(){var on=$("sg_exon")&&$("sg_exon").checked;var w=$("sg_exdates");if(w)w.style.display=on?"":"none";}
+function fmtDate(iso){if(!iso)return "";var p=String(iso).split("-");return p.length==3?(p[2]+"/"+p[1]+"/"+p[0]):iso;}
+function openSign(){if(timer){clearInterval(timer);timer=null;}
+  var d=new Date();SG_DATE=("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>✍️ החתמת לקוח</b><button class="btn-ghost" onclick="tab(\'sigs\')">✕ סגור</button></div>'
+   +'<div style="margin-top:8px"><div class=muted>סוג ההחתמה</div><select id="sg_aud" class="chip" style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgAudUI()"><option value="buyer">מתעניין (קונה/שוכר)</option><option value="seller">בעל נכס (מוכר/משכיר)</option></select></div>'
+   +'<div id="sg_buyerdeal" style="margin-top:12px"><div class=muted>סוג עסקה + עמלה</div>'
+   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:64px" inputmode=decimal placeholder="%"> %</label>'
+   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_rent"> שכירות — עמלה <input id="sg_crent" class=chip style="width:64px" inputmode=decimal placeholder="חודשים"> חודשים</label></div>'
+   +'<div id="sg_sellerdeal" style="margin-top:12px;display:none"><div class=muted>סוג עסקה + עמלה</div>'
+   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:64px" inputmode=decimal placeholder="%"> %</label>'
+   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:64px" inputmode=decimal placeholder="חודשים"> חודשים</label>'
+   +'<label style="display:flex;gap:6px;align-items:center;margin-top:10px"><input type=checkbox id="sg_exon" onchange="sgExclUI()"> כולל הסכם בלעדיות (הלקוח חותם על 2 טפסים)</label>'
+   +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">בלעדיות מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>'
+   +'<div style="margin-top:12px"><div class=muted>פרטי הלקוח</div>'
+   +'<input id="sg_cname" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="שם מלא">'
+   +'<input id="sg_cphone" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="טלפון" inputmode=tel>'
+   +'<input id="sg_cid" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="תעודת זהות" inputmode=numeric oninput="sgCheckId()"><div id="sg_idmsg" style="font-size:12px;margin-top:3px"></div></div>'
+   +'<div style="margin-top:12px"><div class=muted>פרטי הנכס</div>'
+   +'<input id="sg_addr" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="כתובת הנכס">'
+   +'<input id="sg_price" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="מחיר מבוקש (₪)" inputmode=numeric></div>'
+   +'<div style="margin-top:14px"><div class=muted>✍️ חתימת הלקוח</div><canvas id="sg_pad" style="width:100%;height:160px;border:1px solid rgba(127,127,127,.4);border-radius:10px;touch-action:none;background:#fff;margin-top:6px;display:block"></canvas><div style="text-align:left;margin-top:4px"><button class="btn-ghost" onclick="clearSig(\'sg_pad\')">נקה</button></div></div>'
+   +'<button class="btn-gold" style="width:100%;margin-top:14px" onclick="sgGenerate()">צור הסכם וחתום</button></div><div id="sg_preview"></div>';
+  setTimeout(function(){initSigPad("sg_pad");},60);}
+function sgGenerate(){
+  var cid=($("sg_cid").value||"").trim();
+  if(cid&&!validILID(cid)){alert("תעודת הזהות אינה תקינה");return;}
+  if(!($("sg_cname").value||"").trim()){alert("חסר שם לקוח");return;}
+  var pad=$("sg_pad");if(!pad||pad.dataset.signed!="1"){alert("חסרה חתימת הלקוח");return;}
+  var aud=$("sg_aud").value;
+  var v={date:SG_DATE,agent:NAME||"",cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:$("sg_addr").value.trim(),price:$("sg_price").value.trim(),
+    cbuy:(aud=="buyer"?$("sg_cbuy").value.trim():$("sg_scbuy").value.trim()),
+    crent:(aud=="buyer"?$("sg_crent").value.trim():$("sg_scrent").value.trim()),
+    exfrom:($("sg_exfrom")?fmtDate($("sg_exfrom").value):""),exto:($("sg_exto")?fmtDate($("sg_exto").value):""),
+    refid:("RF"+Date.now().toString().slice(-8)),refdate:SG_DATE};
+  var sig=pad.toDataURL("image/png");
+  var keys=[sgResolveKey()];
+  if(aud=="seller"&&$("sg_exon")&&$("sg_exon").checked)keys.push("exclusive");
+  $("sg_preview").innerHTML='<div class=muted style="text-align:center;padding:12px">מפיק…</div>';
+  var docs=[];
+  function step(i){if(i>=keys.length){renderSignDocs(docs,v,sig);return;}
+    api("/api/sign/contract?type="+encodeURIComponent(keys[i])).then(function(r){docs.push({title:(r&&r.title)||"",body:sgFill((r&&r.body)||"",v)});step(i+1);}).catch(function(){docs.push({title:"שגיאה",body:""});step(i+1);});}
+  step(0);}
+function renderSignDocs(docs,v,sig){
+  var hdr="תאריך: "+v.date+" · המתווך/הסוכן: "+v.agent+"\nלקוח: "+v.cname+(v.cphone?(" · טל' "+v.cphone):"")+(v.cid?(" · ת״ז "+v.cid):"")+"\nנכס: "+(v.addr||"—")+(v.price?(" · מחיר מבוקש: "+v.price+" ₪"):"");
+  var html=docs.map(function(dn){return '<div class=card><b>📄 '+esc(dn.title)+'</b><div style="white-space:pre-wrap;line-height:1.7;margin-top:8px;border:1px solid rgba(127,127,127,.25);border-radius:10px;padding:12px;background:#fff;color:#111;direction:rtl">'+esc(hdr)+"\\n\\n"+esc(dn.body)+'<div style="margin-top:14px;border-top:1px dashed #bbb;padding-top:8px;color:#111">חתימת '+esc(v.cname)+':<br><img src="'+sig+'" style="max-height:80px;background:#fff"></div></div></div>';}).join("");
+  html+='<div class=muted style="margin:4px 0 12px">תצוגה לבדיקה'+(docs.length>1?' — בעל נכס + בלעדיות = 2 מסמכים (כפי שציינת)':'')+'. המיילסטון הבא: שמירה לדוחות + הפקת PDF.</div>';
+  $("sg_preview").innerHTML=html;try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
 function csumMore(el){var s=el.nextElementSibling;if(!s||!s.classList.contains("csum"))return;var hidden=s.classList.toggle("collapsed");el.textContent=hidden?"עוד — סיכום שיחה ▾":"פחות ▴";}
 function callDetails(c){
   var sum=c.summary?("<span class=csummore onclick=csumMore(this)>עוד — סיכום שיחה ▾</span><div class='csum collapsed'>"+esc(c.summary)+"</div>"):"";
