@@ -2941,6 +2941,127 @@ def api_sign_submit():
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
     return jsonify({"ok": ok_any, "event_id": eid, "link": link, "doc_saved": doc_saved, "doc_resp": doc_resp})
 
+def _sign_now_iso():
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        return _dt.datetime.now(ZoneInfo("Asia/Jerusalem")).isoformat()
+    except Exception:
+        return _dt.datetime.utcnow().isoformat()
+
+@app.route("/api/sign/send_remote", methods=["POST"])
+def api_sign_send_remote():
+    """שלב 2 — שליחת קישור חתימה ללקוח (SMS+WhatsApp). יוצר חתימה 'ממתינה' ללא קישור עד שהלקוח חותם."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    body = request.get_json(silent=True) or {}
+    docs = body.get("docs") or []
+    agent = (body.get("agent") or s.get("name", "")).strip()
+    client = (body.get("client") or "").strip()
+    phone = (body.get("phone") or "").strip()
+    address = (body.get("address") or "").strip()
+    notes = (body.get("notes") or "").strip()
+    header = body.get("header") or ""
+    if not docs:
+        return jsonify({"ok": False, "reason": "no_docs"}), 400
+    if not client:
+        return jsonify({"ok": False, "reason": "no_client"}), 400
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) < 9:
+        return jsonify({"ok": False, "reason": "bad_phone"}), 400
+    last9 = digits.lstrip("0")[-9:]
+    # פיצול כתובת לרחוב + עיר
+    city = ""
+    if "," in address:
+        _p = address.rsplit(",", 1)
+        address, city = _p[0].strip(), _p[1].strip()
+    else:
+        _c = _detect_city(address)
+        if _c and _c != "אחר": city = _c
+    now_iso = _sign_now_iso()
+    token = _secrets.token_urlsafe(12)
+    base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    link = base + "/s/" + token
+    # שורת חתימה 'ממתינה' — event_id=token זמני, ללא קישור (commission_pct ריק) עד שהלקוח חותם
+    ok_any = False
+    for d in docs:
+        j = _buyers_apps_post("addsigning", {
+            "event_id": token, "deal_type": d.get("deal_type", ""), "agent": agent,
+            "client_name": client, "address": address, "city": city,
+            "commission_pct": "", "received_at": now_iso, "notes": notes})
+        if j and j.get("ok"):
+            ok_any = True
+    # שמירת המסמך במצב 'pending' — ללא חתימה, ימתין שהלקוח יחתום
+    try:
+        _buyers_apps_post("savesigndoc", {
+            "doc_token": token, "event_id": token, "status": "pending",
+            "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
+            "signature": "", "signed_at": ""})
+    except Exception:
+        pass
+    # שליחה ב-SMS וב-WhatsApp
+    msg = ("שלום %s,\nהתבקשת לחתום על מסמך מטעם RE/MAX Family (%s).\nלצפייה וחתימה:\n%s" % (client, agent, link))
+    sms_ok = False; wa_ok = False
+    try: sms_ok = bool(web_send_sms(last9, msg))
+    except Exception: sms_ok = False
+    try:
+        wa = _wa_phone(phone)
+        if wa: send_text(wa, msg); wa_ok = True
+    except Exception: wa_ok = False
+    if ok_any:
+        _cache_clear("signings_sheet")
+        _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+        _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שליחת חתימה מרחוק", (client + " · " + address).strip(" ·"))
+    return jsonify({"ok": ok_any, "sms": sms_ok, "wa": wa_ok, "phone": last9})
+
+@app.route("/api/sign/complete", methods=["POST"])
+def api_sign_complete():
+    """ציבורי — הלקוח חתם מרחוק: מאמת ת״ז, שומר חתימה, מוסיף את הקישור לשורת החתימה הקיימת."""
+    body = request.get_json(silent=True) or {}
+    token = (body.get("token") or "").strip()
+    cid = re.sub(r"\D", "", (body.get("cid") or ""))
+    signature = body.get("signature") or ""
+    if not token:
+        return jsonify({"ok": False, "reason": "no_token"}), 400
+    if not _valid_il_id(cid):
+        return jsonify({"ok": False, "reason": "bad_id"}), 400
+    if not signature:
+        return jsonify({"ok": False, "reason": "no_signature"}), 400
+    j = _buyers_apps_post("getsigndoc", {"doc_token": token})
+    if not (j and j.get("ok") and j.get("found")):
+        return jsonify({"ok": False, "reason": "not_found"}), 404
+    doc = j.get("doc", {})
+    if str(doc.get("status", "")) == "signed":
+        return jsonify({"ok": False, "reason": "already_signed"}), 409
+    # הוספת ת״ז לשורת ה'לקוח' בכותרת
+    header = str(doc.get("header", ""))
+    if cid and ("ת״ז" not in header and "ת\"ז" not in header):
+        lines = header.split("\n")
+        for _i, _ln in enumerate(lines):
+            if _ln.startswith("לקוח"):
+                lines[_i] = _ln + " · ת״ז " + cid
+                break
+        header = "\n".join(lines)
+    now_iso = _sign_now_iso()
+    base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    link = base + "/s/" + token
+    upd_ok = False
+    try:
+        ju = _buyers_apps_post("updatesigndoc", {
+            "doc_token": token, "event_id": cid, "status": "signed",
+            "header": header, "signature": signature, "signed_at": now_iso})
+        upd_ok = bool(ju and ju.get("ok"))
+    except Exception:
+        upd_ok = False
+    # הוספת הקישור לשורת החתימה הקיימת + עדכון event_id ל-ת״ז
+    try:
+        _buyers_apps_post("updatesigning", {"doc_token": token, "commission_pct": link, "event_id": cid})
+    except Exception:
+        pass
+    _cache_clear("signings_sheet")
+    _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+    return jsonify({"ok": upd_ok, "link": link})
+
 @app.route("/s/<token>")
 def public_sign_doc(token):
     """עמוד ציבורי של ההסכם החתום (ללא התחברות) — נפתח מהקישור בשורת החתימה / מה-SMS."""
@@ -2961,13 +3082,14 @@ def public_sign_doc(token):
     except Exception:
         docs = []
     signature = str(doc.get("signature", ""))
+    status = str(doc.get("status", "signed"))
     docs_html = "".join(
         "<div class=doc><h2>%s</h2><div class=body>%s</div></div>" % (
             _h.escape(str(d.get("title", ""))), _h.escape(str(d.get("body", "")))) for d in docs)
     sig_html = ("<div class=sig><div>חתימת הלקוח:</div><img src='" + signature + "' alt='חתימה'></div>") if signature else ""
     _head = ("<!DOCTYPE html><html dir=rtl lang=he><head><meta charset=utf-8>"
              "<meta name=viewport content='width=device-width,initial-scale=1'>"
-             "<title>הסכם חתום — RE/MAX Family</title><style>"
+             "<title>הסכם — RE/MAX Family</title><style>"
              "body{font-family:Arial,'Heebo',sans-serif;background:#eceef1;color:#111;margin:0;padding:14px;direction:rtl}"
              ".page{max-width:820px;margin:0 auto;background:#fff;padding:28px;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.12)}"
              ".brand{text-align:center;font-weight:800;color:#0D1B2A;font-size:20px;margin-bottom:8px}"
@@ -2976,8 +3098,44 @@ def public_sign_doc(token):
              ".body{white-space:pre-wrap;line-height:1.85;font-size:14px}"
              ".sig{margin-top:18px;border-top:1px dashed #999;padding-top:12px}.sig img{max-height:100px;background:#fff;border:1px solid #eee}"
              ".pb{display:block;width:100%;max-width:820px;margin:14px auto 30px;padding:14px;background:#C9972A;color:#fff;border:none;border-radius:9px;font-size:16px;font-weight:700;cursor:pointer}"
-             "@media print{.pb{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:100%}}"
+             ".signbox{margin-top:18px;border-top:2px solid #0D1B2A;padding-top:16px}"
+             ".signlbl{font-weight:700;font-size:14px;margin-bottom:6px}"
+             ".signinp{width:100%;box-sizing:border-box;padding:12px;font-size:16px;border:1px solid #bbb;border-radius:8px;direction:ltr;text-align:right}"
+             "#idmsg{font-size:12px;margin-top:4px;min-height:14px}"
+             ".signpad{width:100%;height:180px;border:1px solid #bbb;border-radius:8px;background:#fff;touch-action:none;display:block;margin-top:6px}"
+             ".clrbtn{background:none;border:none;color:#666;font-size:13px;cursor:pointer;padding:6px}"
+             "@media print{.pb,.signbox{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:100%}}"
              "</style></head><body><div class=page><div class=brand>🏠 RE/MAX Family</div><div class=hdr>")
+    if status == "pending":
+        _form = ("</div>" + docs_html +
+                 "<div class=signbox><div class=signlbl>תעודת זהות</div>"
+                 "<input id=cid class=signinp inputmode=numeric autocomplete=off placeholder='9 ספרות' oninput='chkId()'>"
+                 "<div id=idmsg></div>"
+                 "<div class=signlbl style='margin-top:14px'>✍️ חתימה</div>"
+                 "<canvas id=pad class=signpad></canvas>"
+                 "<div style='text-align:left'><button class=clrbtn onclick='clrPad()'>נקה</button></div>"
+                 "<button id=sbtn class=pb onclick='doSign()'>✅ אשר וחתום</button>"
+                 "<div style='text-align:center;color:#888;font-size:12px;margin-bottom:20px'>בלחיצה אני מאשר/ת את תוכן המסמך וחותם/ת עליו</div>"
+                 "</div></div>")
+        _js = ("<script>var TOKEN=" + _json.dumps(token) + ";"
+               "function validIL(v){v=String(v).replace(/\\D/g,'');if(v.length>9)return false;while(v.length<9)v='0'+v;var s=0;for(var i=0;i<9;i++){var n=parseInt(v[i],10)*((i%2)+1);if(n>9)n-=9;s+=n;}return s%10===0;}"
+               "function chkId(){var v=document.getElementById('cid').value;var m=document.getElementById('idmsg');if(!v){m.textContent='';return;}if(validIL(v)){m.textContent='✓ תקין';m.style.color='#1a8a4a';}else{m.textContent='✗ ת״ז לא תקינה';m.style.color='#c0392b';}}"
+               "var cv=document.getElementById('pad'),cx=cv.getContext('2d'),drawing=false,signed=false;"
+               "function szPad(){var r=cv.getBoundingClientRect();cv.width=r.width;cv.height=180;cx.lineWidth=2.5;cx.lineCap='round';cx.lineJoin='round';cx.strokeStyle='#0D1B2A';}"
+               "szPad();"
+               "function pos(e){var r=cv.getBoundingClientRect();var t=(e.touches&&e.touches[0])?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top};}"
+               "function dn(e){drawing=true;var p=pos(e);cx.beginPath();cx.moveTo(p.x,p.y);if(e.cancelable)e.preventDefault();}"
+               "function mv(e){if(!drawing)return;var p=pos(e);cx.lineTo(p.x,p.y);cx.stroke();signed=true;if(e.cancelable)e.preventDefault();}"
+               "function up(){drawing=false;}"
+               "cv.addEventListener('mousedown',dn);cv.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);"
+               "cv.addEventListener('touchstart',dn,{passive:false});cv.addEventListener('touchmove',mv,{passive:false});cv.addEventListener('touchend',up);"
+               "function clrPad(){cx.clearRect(0,0,cv.width,cv.height);signed=false;}"
+               "function doSign(){var id=document.getElementById('cid').value;if(!validIL(id)){alert('תעודת הזהות אינה תקינה');return;}if(!signed){alert('נא לחתום בתיבת החתימה');return;}"
+               "var tw=440,th=Math.round(tw*cv.height/cv.width);var c=document.createElement('canvas');c.width=tw;c.height=th;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,tw,th);x.drawImage(cv,0,0,tw,th);var sig=c.toDataURL('image/jpeg',0.55);"
+               "var b=document.getElementById('sbtn');b.disabled=true;b.textContent='שומר…';"
+               "fetch('/api/sign/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,cid:id,signature:sig})}).then(function(r){return r.json();}).then(function(r){if(r&&r.ok){location.reload();}else{b.disabled=false;b.textContent='✅ אשר וחתום';alert('שמירה נכשלה: '+((r&&r.reason)||'שגיאה'));}}).catch(function(){b.disabled=false;b.textContent='✅ אשר וחתום';alert('שגיאת רשת');});}"
+               "</script>")
+        return _head + _h.escape(header) + _form + _js + "</body></html>"
     _tail = ("</div>" + docs_html + sig_html + "</div>"
              "<button class=pb onclick='window.print()'>🖨️ שמור / הדפס PDF</button></body></html>")
     return _head + _h.escape(header) + _tail
@@ -4510,7 +4668,7 @@ function sgAudUI(){var a=$("sg_aud")?$("sg_aud").value:"buyer";var bd=$("sg_buye
 function sgExclSel(){var w=$("sg_exdates");if(w)w.style.display=($("sg_exsel")&&$("sg_exsel").value=="custom")?"":"none";}
 function fmtDate(iso){if(!iso)return "";var p=String(iso).split("-");return p.length==3?(p[2]+"/"+p[1]+"/"+p[0]):iso;}
 function sgFmtD(d){return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();}
-function sgMode(){var m=document.querySelector('input[name=sgmode]:checked');var remote=m&&m.value=="remote";var pw=$("sg_padwrap"),rw=$("sg_remotewrap");if(pw)pw.style.display=remote?"none":"";if(rw)rw.style.display=remote?"":"none";}
+function sgMode(){var m=document.querySelector('input[name=sgmode]:checked');var remote=m&&m.value=="remote";var pw=$("sg_padwrap"),rw=$("sg_remotewrap");if(pw)pw.style.display=remote?"none":"";if(rw)rw.style.display=remote?"":"none";var b=$("sg_gobtn");if(b)b.textContent=remote?"📲 שלח ללקוח לחתימה":"צור הסכם וחתום";}
 function openSign(){if(timer){clearInterval(timer);timer=null;}
   var cards=[["buyer","החתמת מתעניין","🧑","#2f9bc4"],["seller","החתמת בעל נכס","🧔","#e09a3a"],["shtaf","הסכם שת״פ","🤝","#8e44ad"],["referral","הפניית לקוח","↪️","#15a085"]];
   var grid=cards.map(function(c){return '<div onclick="openSignCard(\''+c[0]+'\')" style="cursor:pointer;text-align:center;padding:8px 4px"><div style="width:80px;height:80px;border-radius:50%;background:'+c[3]+';display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 8px;box-shadow:0 3px 10px rgba(0,0,0,.18)">'+c[2]+'</div><div style="font-weight:700;font-size:14px;line-height:1.2">'+c[1]+'</div></div>';}).join("");
@@ -4542,8 +4700,8 @@ function openSignForm(aud){SG_AUD=aud;
    +'<label style="display:block;margin-top:6px;line-height:1.5"><input type=radio name="sgmode" value="local" checked onchange="sgMode()" style="vertical-align:middle;margin-left:6px"> הפקה ללא שליחה (חתימה במקום)</label>'
    +'<label style="display:block;margin-top:6px;line-height:1.5"><input type=radio name="sgmode" value="remote" onchange="sgMode()" style="vertical-align:middle;margin-left:6px"> שליחה לחתימה ב-SMS ומייל</label></div>'
    +'<div id="sg_padwrap" style="margin-top:14px"><div class=muted>✍️ חתימת הלקוח</div><canvas id="sg_pad" style="width:100%;height:160px;border:1px solid rgba(127,127,127,.4);border-radius:10px;touch-action:none;background:#fff;margin-top:6px;display:block"></canvas><div style="text-align:left;margin-top:4px"><button class="btn-ghost" onclick="clearSig(\'sg_pad\')">נקה</button></div></div>'
-   +'<div id="sg_remotewrap" style="display:none;margin-top:14px"><div class=muted style="padding:10px;background:rgba(127,127,127,.08);border-radius:8px">📲 שליחה מרחוק (SMS+מייל) — בקרוב. כרגע בחר ״הפקה ללא שליחה״.</div></div>'
-   +'<button class="btn-gold" style="width:100%;margin-top:14px" onclick="sgGenerate()">צור הסכם וחתום</button></div><div id="sg_preview"></div>';
+   +'<div id="sg_remotewrap" style="display:none;margin-top:14px"><div class=muted style="padding:10px;background:rgba(127,127,127,.08);border-radius:8px">📲 קישור לחתימה יישלח ללקוח ב-SMS וב-WhatsApp. הלקוח ימלא ת״ז ויחתום במכשירו, והקישור החתום יתווסף לשורת החתימה.</div></div>'
+   +'<button id="sg_gobtn" class="btn-gold" style="width:100%;margin-top:14px" onclick="sgGenerate()">צור הסכם וחתום</button></div><div id="sg_preview"></div>';
   setTimeout(function(){initSigPad("sg_pad");},60);loadSignPickers();}
 var SG_CLIENTS={},SG_PROPS={};
 function loadSignPickers(){
@@ -4557,11 +4715,13 @@ function sgClientType(){var nm=String(($("sg_cname")||{}).value||"").trim();var 
 function sgPropType(){var ad=String(($("sg_addr")||{}).value||"").trim();var p=SG_PROPS[ad];if(p&&p.price)$("sg_price").value=p.price;}
 function sgGenerate(){
   var m=document.querySelector('input[name=sgmode]:checked');
-  if(m&&m.value=="remote"){alert("שליחה מרחוק (SMS+מייל) — בקרוב 🙂 כרגע בחר ״הפקה ללא שליחה״.");return;}
+  var isRemote=m&&m.value=="remote";
   var cid=($("sg_cid").value||"").trim();
   if(cid&&!validILID(cid)){alert("תעודת הזהות אינה תקינה");return;}
   if(!($("sg_cname").value||"").trim()){alert("חסר שם לקוח");return;}
-  var pad=$("sg_pad");if(!pad||pad.dataset.signed!="1"){alert("חסרה חתימת הלקוח");return;}
+  var pad=$("sg_pad");
+  if(isRemote){if(!($("sg_cphone").value||"").trim()){alert("חסר טלפון לקוח לשליחת הקישור");return;}}
+  else{if(!pad||pad.dataset.signed!="1"){alert("חסרה חתימת הלקוח");return;}}
   var aud=SG_AUD||"buyer";
   var exfrom="",exto="",exclOn=false;
   if(aud=="seller"){var xsel=$("sg_exsel")?$("sg_exsel").value:"";
@@ -4573,12 +4733,12 @@ function sgGenerate(){
     crent:(aud=="buyer"?$("sg_crent").value.trim():$("sg_scrent").value.trim()),
     notes:($("sg_notes")?$("sg_notes").value.trim():""),
     exfrom:exfrom,exto:exto,refid:("RF"+Date.now().toString().slice(-8)),refdate:SG_DATE};
-  var sig=sgShrinkSig(pad);
+  var sig=isRemote?"":sgShrinkSig(pad);
   var keys=[sgResolveKey()];
   if(exclOn)keys.push("exclusive");
-  $("sg_preview").innerHTML='<div class=muted style="text-align:center;padding:12px">מפיק…</div>';
+  $("sg_preview").innerHTML='<div class=muted style="text-align:center;padding:12px">'+(isRemote?"מכין ושולח…":"מפיק…")+'</div>';
   var docs=[];
-  function step(i){if(i>=keys.length){renderSignDocs(docs,v,sig);return;}
+  function step(i){if(i>=keys.length){if(isRemote){sgSendRemote(docs,v);}else{renderSignDocs(docs,v,sig);}return;}
     api("/api/sign/contract?type="+encodeURIComponent(keys[i])).then(function(r){var fb=sgFill((r&&r.body)||"",v);if(v.notes)fb=fb+String.fromCharCode(10)+String.fromCharCode(10)+"הערות: "+v.notes;docs.push({title:(r&&r.title)||"",body:fb,deal_type:sgDealType(keys[i])});step(i+1);}).catch(function(){docs.push({title:"שגיאה",body:"",deal_type:""});step(i+1);});}
   step(0);}
 function sgShrinkSig(pad){try{var tw=440;var th=Math.round(tw*(pad.height||160)/(pad.width||440));var c=document.createElement("canvas");c.width=tw;c.height=th;var x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,tw,th);x.drawImage(pad,0,0,tw,th);return c.toDataURL("image/jpeg",0.55);}catch(e){return pad.toDataURL("image/jpeg",0.5);}}
@@ -4591,9 +4751,18 @@ function sgSubmit(){
     if(r&&r.ok){var _warn=(r.doc_saved===false)?'<div class=muted style="margin-top:8px;color:#c0392b">⚠️ המסמך עצמו לא נשמר (Apps Script) — הקישור לא יעבוד. צלם לי מסך.<br><span style="font-size:10px;direction:ltr;display:block;word-break:break-all">'+(r.doc_resp||'')+'</span></div>':'';$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div>'+_warn+'<button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
     else{alert("השמירה נכשלה — ודא שה-Apps Script פרוס בגרסה חדשה (עם הפעולה addsigning).");}
   }).catch(function(){alert("שגיאת רשת");});}
+function sgBuildHeader(v){return "תאריך: "+v.date+" · המתווך/הסוכן: "+v.agent+"\nלקוח: "+v.cname+(v.cphone?(" · טל' "+v.cphone):"")+(v.cid?(" · ת״ז "+v.cid):"")+"\nנכס: "+(v.addr||"—")+(v.price?(" · מחיר מבוקש: "+v.price+" ₪"):"");}
+function sgSendRemote(docs,v){
+  var hdr=sgBuildHeader(v);
+  api("/api/sign/send_remote",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,phone:v.cphone,address:v.addr,notes:(v.notes||""),header:hdr,docs:docs.map(function(d){return {deal_type:d.deal_type,title:d.title,body:d.body};})})}).then(function(r){
+    if(r&&r.ok){var ch=[];if(r.sms)ch.push("SMS");if(r.wa)ch.push("WhatsApp");var chs=ch.length?ch.join(" + "):"(בדוק הגדרות שליחה)";
+      $("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">📲</div><b>נשלח ללקוח!</b><div class=muted style="margin-top:6px">קישור לחתימה נשלח אל '+esc(v.cname)+' ('+chs+').<br>החתימה תופיע בטאב ״חתימות״ — הקישור החתום יתווסף ברגע שהלקוח יחתום.</div><button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';
+      try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
+    else{$("sg_preview").innerHTML='';alert("השליחה נכשלה: "+((r&&r.reason)||"שגיאה")+". ודא שה-Apps Script פרוס בגרסה חדשה.");}
+  }).catch(function(){$("sg_preview").innerHTML='';alert("שגיאת רשת");});}
 function renderSignDocs(docs,v,sig){
   SG_LASTDOCS=docs;SG_LASTV=v;SG_LASTSIG=sig;
-  var hdr="תאריך: "+v.date+" · המתווך/הסוכן: "+v.agent+"\nלקוח: "+v.cname+(v.cphone?(" · טל' "+v.cphone):"")+(v.cid?(" · ת״ז "+v.cid):"")+"\nנכס: "+(v.addr||"—")+(v.price?(" · מחיר מבוקש: "+v.price+" ₪"):"");
+  var hdr=sgBuildHeader(v);
   SG_LASTHDR=hdr;
   var html=docs.map(function(dn){return '<div class=card><b>📄 '+esc(dn.title)+'</b><div style="white-space:pre-wrap;line-height:1.7;margin-top:8px;border:1px solid rgba(127,127,127,.25);border-radius:10px;padding:12px;background:#fff;color:#111;direction:rtl">'+esc(hdr)+"\\n\\n"+esc(dn.body)+'<div style="margin-top:14px;border-top:1px dashed #bbb;padding-top:8px;color:#111">חתימת '+esc(v.cname)+':<br><img src="'+sig+'" style="max-height:80px;background:#fff"></div></div></div>';}).join("");
   html+='<div class=card>'+(docs.length>1?'<div class=muted style="margin-bottom:8px">בעל נכס + בלעדיות = 2 מסמכים</div>':'')+'<button class="btn-gold" style="width:100%" onclick="sgSubmit()">✅ אשר, חתום ושמור</button><div class=muted style="margin-top:6px;text-align:center;font-size:12px">השמירה תיכנס לגליון חתימות ולדוחות</div></div>';
