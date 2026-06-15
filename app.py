@@ -4545,6 +4545,8 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 .callrow .cdetails{background:none!important;border-inline-start:none!important;border-radius:0!important;padding:0!important;margin-top:8px!important;color:#5b6473}
 .callrow .cdetails b{display:none}
 /* ===== באטץ' 8: טאב חתימות (כפתורים + כרטיסים) ===== */
+.chips .chip.on{background:linear-gradient(180deg,#2f6fd6,#1f5fbe)!important;color:#fff!important;box-shadow:0 4px 12px rgba(31,95,190,.28)!important}
+.chips .chip.on:after{display:none!important}
 .sgbtns{display:flex;gap:8px;margin-top:12px}
 .sgbtns .sgbtn{flex:1;width:auto!important;margin:0!important;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .sgbtn .eico{stroke:#231700;margin:0}
@@ -5146,7 +5148,7 @@ function card(kind,x){
         ("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">עדכן מחיר</button>")):"";
     return "<div class=pcard><div class=ptop><div class=ptitle>"+esc(x.type||"נכס")+" · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+"</div>"+((x.score!==undefined&&x.score!=="")?"<span class=pscore>"+x.score+"%</span>":"")+"</div>"+
       (pmeta?"<div class=pmeta>"+pmeta+"</div>":"")+
-      (x.price?"<div class=pprice>"+esc(x.price)+"</div>":"")+
+      (x.price?"<div class=pprice>"+esc(fmtBudget(x.price))+"</div>":"")+
       (x.agent?"<div class=pagent><span>"+_usvg+esc(x.agent)+"</span>"+(x.wa?"<a class=pwa href='https://wa.me/"+x.wa+"' target=_blank rel=noopener>וואטסאפ</a>":"")+"</div>":"")+
       (pacts?"<div class=pacts>"+pacts+"</div>":"")+"</div>";}
   if(kind=="excl"){var _dd=daysSince(x.date);
@@ -5154,7 +5156,7 @@ function card(kind,x){
     return "<div class=pcard><div class=ptop><div class=ptitle>"+esc(x.street)+"</div><span class=pscore>"+x.score+"%</span></div>"+
       (x.dest?"<div class=pmeta>"+esc(x.dest)+"</div>":"")+
       (x.desc?"<div class=pdesc>"+esc(x.desc)+"</div>":"")+
-      (x.price?"<div class=pprice>"+esc(x.price)+"</div>":"")+
+      (x.price?"<div class=pprice>"+esc(fmtBudget(x.price))+"</div>":"")+
       (emeta?"<div class=pmeta>"+emeta+"</div>":"")+
       (x.link?"<div class=pacts><a class=plink href='"+x.link+"' target=_blank rel=noopener>נדל\"ן וואן</a></div>":"")+"</div>";}
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"-";
