@@ -3568,24 +3568,44 @@ def _agent_insights(frm, to, prev_frm, prev_to, eff_name, eff_phones, cur_sm, ef
     return out
 
 def _report_wa_text(sm, label, frm, to):
-    c = sm["calls"]; sg = sm["sigs"]
+    c = sm["calls"]; sg = sm["sigs"]; pr = sm.get("props", {}) or {}
     L = [f"📊 *סיכום {label}* ({frm}–{to})", ""]
-    L.append(f"📞 שיחות: {c['total']} · נענו: {c['answered']} ({c['rate']}%)")
-    L.append(f"   לא נענו: {c['notAnswered']} (CC {c['cc']} · BUSY {c['busy']} · ללא מענה {c['noanswer']})")
+    # שיחות
+    L.append(f"📞 *שיחות:* {c['total']} · נענו {c['answered']} ({c['rate']}%)")
+    L.append(f"   לא נענו {c['notAnswered']}: ניתק {c['cc']} · תפוס {c['busy']} · ללא מענה {c['noanswer']}")
     L.append("")
-    L.append("👥 *מתווכים מובילים:*")
+    # מתווכים מובילים (שיחות)
+    L.append("👥 *מתווכים מובילים (שיחות):*")
     for i, a in enumerate(sm["agents"][:10], 1):
         L.append(f"{i}. {a['name']}: {a['total']} שיחות ({a['answered']} נענו · {a['rate']}%)")
     L.append("")
-    L.append(f"✍️ חתימות: {sg['total']} — קונים {sg['konim']} · בלעדיות {sg['bladiut']} · שכירויות {sg['skhirut']}")
+    # חתימות
+    L.append(f"✍️ *חתימות:* {sg['total']} — קונים {sg['konim']} ({sg.get('pctK', 0)}%) · בלעדיות {sg['bladiut']} ({sg.get('pctB', 0)}%) · שכירויות {sg['skhirut']} ({sg.get('pctS', 0)}%)")
+    # מובילים בגיוס נכסים
+    _tg = sm.get("topGius") or []
+    if _tg:
+        L.append("")
+        L.append("🏆 *מובילים בגיוס נכסים:*")
+        for i, a in enumerate(_tg[:10], 1):
+            L.append(f"{i}. {a['name']}: {a['n']} נכסים")
+    # מובילים בהחתמת קונים
+    _tk = sm.get("topKonim") or []
+    if _tk:
+        L.append("")
+        L.append("🤝 *מובילים בהחתמת קונים:*")
+        for i, a in enumerate(_tk[:10], 1):
+            L.append(f"{i}. {a['name']}: {a['n']} קונים")
+    # נכסים שגויסו בבלעדיות
     _exc = sm.get("exclusives") or []
     L.append("")
-    L.append(f"🏆 *נכסים שגויסו בבלעדיות: {len(_exc)}*")
+    L.append(f"🏠 *נכסים שגויסו בבלעדיות: {len(_exc)}*")
     for e in sorted(_exc, key=lambda x: str(x.get("date", "")), reverse=True):
-        L.append("• 👤 " + (e.get("agent", "") or "—") + " · " + (e.get("address", "") or "—")
+        L.append("• " + (e.get("agent", "") or "—") + " · " + (e.get("address", "") or "—")
                  + ((" · " + e.get("date")) if e.get("date") else ""))
-    L.append("")
-    L.append("_הופק מ-Family Bot 🏠_")
+    # מודעות פעילות
+    if pr.get("total") is not None:
+        L.append("")
+        L.append(f"📋 *מודעות פעילות:* {pr.get('total')}")
     return "\n".join(L)
 
 @app.route("/api/report", methods=["GET"])
@@ -3700,6 +3720,10 @@ def api_report():
                                for o in shtaf)
             _note = (' · מציג 10 מובילים' if shtaf_offices > 10 else '')
             wa = wa + '\n\n🤝 *גיוס נכסים בשת"פ — ' + label + '* (סה"כ ' + str(shtaf_total) + ' נכסים, ' + str(shtaf_offices) + ' משרדים' + _note + ')\n' + _lines
+        if nb_cities:
+            _ncl = "\n".join("• " + cc["city"] + ": " + str(cc["n"]) for cc in nb_cities)
+            wa = wa + '\n\n🏙️ *נכס נולד לפי ערים* (סה"כ ' + str(nb_total) + ' נכסים)\n' + _ncl
+        wa = wa + "\n\n_הופק מ-Family Bot 🏠_"
         return jsonify({"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
                         "insights": insights, "summary": sm, "listings": listings_total,
                         "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices,
