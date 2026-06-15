@@ -1017,6 +1017,33 @@ def fetch_agents_phones() -> dict:
         log.error(f"Fetch agents error: {e}")
         return {}
 
+_agents_full_cache = {"data": None, "ts": 0}
+def fetch_agents_full() -> dict:
+    """מפה: שם מנורמל -> {name, phone, license} מגיליון 'אנשי קשר' (A=שם, B=טלפון, D=רישיון תיווך)."""
+    if _agents_full_cache["data"] is not None and (time.time() - _agents_full_cache["ts"]) < 300:
+        return _agents_full_cache["data"]
+    if not GOOGLE_SHEETS_API_KEY:
+        return {}
+    from urllib.parse import quote
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(CONTACTS_SHEET_NAME)}!A1:D200?key={GOOGLE_SHEETS_API_KEY}"
+    out = {}
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code != 200:
+            return {}
+        for row in r.json().get("values", []):
+            name = (row[0] if len(row) > 0 else "").strip()
+            phone = (row[1] if len(row) > 1 else "").strip()
+            lic = (row[3] if len(row) > 3 else "").strip()
+            if name and name not in ("שם מלא", "משרד", "משרד ביאליק", "רישיון תיווך"):
+                out[_norm_name(name)] = {"name": name, "phone": phone, "license": lic}
+        _agents_full_cache["data"] = out
+        _agents_full_cache["ts"] = time.time()
+        return out
+    except Exception as e:
+        log.error(f"agents full error: {e}")
+        return {}
+
 def _fmt_vphone(v):
     """נרמול טלפון ישראלי לתצוגה: 0XXXXXXXXX."""
     d = re.sub(r"\D", "", str(v or ""))
@@ -3087,6 +3114,40 @@ def api_sign_share():
     except Exception: sms_ok = False
     return jsonify({"ok": (wa_ok or sms_ok), "wa": wa_ok, "sms": sms_ok})
 
+def _parse_sign_header(header):
+    """מפרק את מחרוזת הכותרת המובנית (תאריך/סוכן/לקוח/נכסים) לשדות לרינדור נקי בעמוד ההסכם."""
+    import re as _re2
+    out = {"date": "", "agent": "", "client": "", "phone": "", "cid": "", "props": []}
+    for ln in str(header or "").split("\n"):
+        ln = ln.strip()
+        if not ln:
+            continue
+        if ln.startswith("תאריך:"):
+            m = _re2.search(r"תאריך:\s*([^·]+)", ln)
+            if m: out["date"] = m.group(1).strip()
+            m = _re2.search(r"הסוכן:\s*(.+)$", ln)
+            if m: out["agent"] = m.group(1).strip()
+        elif ln.startswith("לקוח:"):
+            parts = [p.strip() for p in ln[len("לקוח:"):].strip().split("·")]
+            if parts and parts[0]: out["client"] = parts[0]
+            for p in parts[1:]:
+                if "טל" in p: out["phone"] = _re2.sub(r"[^0-9+\-]", "", p)
+                elif "ז" in p and "ת" in p: out["cid"] = _re2.sub(r"[^0-9]", "", p)
+        elif ln.startswith("נכס:"):
+            seg = ln[len("נכס:"):].strip().split("·")
+            addr = seg[0].strip()
+            price = ""
+            for s in seg[1:]:
+                if "מחיר" in s: price = _re2.sub(r"[^0-9,]", "", s)
+            if addr: out["props"].append({"addr": addr, "price": price})
+        elif _re2.match(r"^\d+\.", ln):
+            m = _re2.match(r"^\d+\.\s*(.+?)\s*—\s*(.+)$", ln)
+            if m:
+                out["props"].append({"addr": m.group(1).strip(), "price": _re2.sub(r"[^0-9,]", "", m.group(2))})
+            else:
+                out["props"].append({"addr": _re2.sub(r"^\d+\.\s*", "", ln), "price": ""})
+    return out
+
 @app.route("/s/<token>")
 def public_sign_doc(token):
     """עמוד ציבורי של ההסכם החתום (ללא התחברות) — נפתח מהקישור בשורת החתימה / מה-SMS."""
@@ -3117,22 +3178,67 @@ def public_sign_doc(token):
              "<title>הסכם — RE/MAX Family</title><style>"
              "body{font-family:Arial,'Heebo',sans-serif;background:#eceef1;color:#111;margin:0;padding:14px;direction:rtl}"
              ".page{max-width:820px;margin:0 auto;background:#fff;padding:28px;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.12)}"
-             ".brand{text-align:center;font-weight:800;color:#0D1B2A;font-size:20px;margin-bottom:8px}"
-             ".hdr{white-space:pre-wrap;border-bottom:2px solid #0D1B2A;padding-bottom:12px;margin-bottom:16px;font-weight:600;font-size:14px}"
-             ".doc{margin-bottom:22px}.doc h2{font-size:17px;color:#0D1B2A;border-bottom:1px solid #ccc;padding-bottom:6px}"
-             ".body{white-space:pre-wrap;line-height:1.85;font-size:14px}"
+             ".logobar{display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:3px solid #0D1B2A;padding-bottom:14px;margin-bottom:18px}"
+             ".logobar img{height:54px;width:auto;mix-blend-mode:multiply;flex:0 0 auto}"
+             ".agentbox{text-align:start;font-size:13px;color:#444;line-height:1.55}"
+             ".agentbox .an{font-weight:800;font-size:15px;color:#0D1B2A}"
+             ".agentbox .al{color:#555;font-size:12.5px}"
+             ".hdr{white-space:pre-wrap;background:#f7f8fa;border:1px solid #e6e8ec;border-radius:10px;padding:15px 17px;margin-bottom:22px;font-size:14px;line-height:1.75;color:#222}"
+             ".doc{margin-bottom:26px}.doc h2{font-size:19px;color:#0D1B2A;text-align:center;font-weight:800;margin:0 0 16px;padding-bottom:11px;border-bottom:2px solid #C9972A}"
+             ".body{white-space:pre-wrap;line-height:1.95;font-size:14.5px;text-align:justify}"
              ".sig{margin-top:18px;border-top:1px dashed #999;padding-top:12px}.sig img{max-height:100px;background:#fff;border:1px solid #eee}"
-             ".pb{display:block;width:100%;max-width:820px;margin:14px auto 30px;padding:14px;background:#C9972A;color:#fff;border:none;border-radius:9px;font-size:16px;font-weight:700;cursor:pointer}"
+             ".pb{display:block;width:100%;max-width:820px;margin:14px auto 30px;padding:15px;background:#0D1B2A;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:800;cursor:pointer}"
+             ".sig{margin-top:20px;border-top:1px solid #ddd;padding-top:14px;font-size:14px;font-weight:600}"
              ".signbox{margin-top:18px;border-top:2px solid #0D1B2A;padding-top:16px}"
              ".signlbl{font-weight:700;font-size:14px;margin-bottom:6px}"
              ".signinp{width:100%;box-sizing:border-box;padding:12px;font-size:16px;border:1px solid #bbb;border-radius:8px;direction:ltr;text-align:right}"
              "#idmsg{font-size:12px;margin-top:4px;min-height:14px}"
              ".signpad{width:100%;height:180px;border:1px solid #bbb;border-radius:8px;background:#fff;touch-action:none;display:block;margin-top:6px}"
              ".clrbtn{background:none;border:none;color:#666;font-size:13px;cursor:pointer;padding:6px}"
+             ".agentline{font-size:13px;color:#555;margin-bottom:10px}"
+             ".docnum{color:#e8761a;font-weight:800;font-size:18px;margin:2px 0 12px}"
+             ".cline{font-size:14px;color:#222;margin-bottom:14px;line-height:1.7;border-bottom:1px solid #eee;padding-bottom:12px}"
+             ".ptt{font-weight:800;color:#0D1B2A;margin-bottom:6px;font-size:14px}"
+             ".ptable{width:100%;border-collapse:collapse;margin-bottom:22px;font-size:13.5px}"
+             ".ptable th{background:#f2f4f7;border:1px solid #d8dce2;padding:9px 11px;text-align:start;font-weight:700;color:#333}"
+             ".ptable td{border:1px solid #d8dce2;padding:9px 11px}"
              "@media print{.pb,.signbox{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:100%}}"
-             "</style></head><body><div class=page><div class=brand>🏠 RE/MAX Family</div><div class=hdr>")
+             "</style></head><body><div class=page>")
+    _p = _parse_sign_header(header)
+    _docnum = "%05d" % ((sum(ord(c) for c in token) * 7) % 90000 + 10000)
+    _cid_eff = _p["cid"]
+    if not _cid_eff:
+        _ev = str(doc.get("event_id", ""))
+        if _ev.isdigit() and len(_ev) >= 7: _cid_eff = _ev
+    _rows = ""
+    for pr in _p["props"]:
+        _prc = (_h.escape(pr["price"]) + " ₪") if pr.get("price") else "—"
+        _rows += "<tr><td>" + _h.escape(pr["addr"]) + "</td><td>" + _prc + "</td></tr>"
+    _ptbl = ("<div class=ptt>פרטי הנכס</div><table class=ptable><tr><th>כתובת</th><th>מחיר מבוקש</th></tr>" + _rows + "</table>") if _p["props"] else ""
+    _cparts = []
+    if _p["client"]: _cparts.append("שם הלקוח: <b>" + _h.escape(_p["client"]) + "</b>")
+    if _cid_eff: _cparts.append("ת״ז: " + _h.escape(_cid_eff))
+    if _p["phone"]: _cparts.append("טל': " + _h.escape(_p["phone"]))
+    if _p["date"]: _cparts.append("תאריך: " + _h.escape(_p["date"]))
+    _ainfo = {}
+    if _p["agent"]:
+        try: _ainfo = fetch_agents_full().get(_norm_name(_p["agent"]), {})
+        except Exception: _ainfo = {}
+    _aphone = _fmt_vphone(_ainfo.get("phone", "")) if _ainfo.get("phone") else ""
+    _alic = (_ainfo.get("license", "") or "").strip()
+    _agent_box = ""
+    if _p["agent"]:
+        _agent_box = ("<div class=agentbox><div class=an>" + _h.escape(_p["agent"]) + "</div>" +
+            (("<div class=al>רישיון תיווך מס׳: " + _h.escape(_alic) + "</div>") if _alic else "") +
+            (("<div class=al>טלפון: " + _h.escape(_aphone) + "</div>") if _aphone else "") +
+            "<div class=al>RE/MAX Family</div></div>")
+    _logobar = "<div class=logobar>" + _agent_box + "<img src='/assets/logo?v=3' alt='RE/MAX Family'></div>"
+    meta_html = (_logobar +
+        "<div class=docnum>הסכם מס׳ " + _docnum + "</div>" +
+        (("<div class=cline>" + " · ".join(_cparts) + "</div>") if _cparts else "") +
+        _ptbl)
     if status == "pending":
-        _form = ("</div>" + docs_html +
+        _form = (docs_html +
                  "<div class=signbox><div class=signlbl>תעודת זהות</div>"
                  "<input id=cid class=signinp type=text inputmode=numeric maxlength=9 name=sg_tz autocomplete=off autocorrect=off data-form-type=other data-lpignore=true placeholder='9 ספרות' oninput='chkId()'>"
                  "<div id=idmsg></div>"
@@ -3160,10 +3266,10 @@ def public_sign_doc(token):
                "var b=document.getElementById('sbtn');b.disabled=true;b.textContent='שומר…';"
                "fetch('/api/sign/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,cid:id,signature:sig})}).then(function(r){return r.json();}).then(function(r){if(r&&r.ok){location.reload();}else{b.disabled=false;b.textContent='✅ אשר וחתום';alert('שמירה נכשלה: '+((r&&r.reason)||'שגיאה'));}}).catch(function(){b.disabled=false;b.textContent='✅ אשר וחתום';alert('שגיאת רשת');});}"
                "</script>")
-        return _head + _h.escape(header) + _form + _js + "</body></html>"
-    _tail = ("</div>" + docs_html + sig_html + "</div>"
-             "<button class=pb onclick='window.print()'>🖨️ שמור / הדפס PDF</button></body></html>")
-    return _head + _h.escape(header) + _tail
+        return _head + meta_html + _form + _js + "</body></html>"
+    _tail = (docs_html + sig_html + "</div>"
+             "<button class=pb onclick='window.print()'>שמור / הדפס PDF</button></body></html>")
+    return _head + meta_html + _tail
 
 @app.route("/api/dev/newborn_default", methods=["POST"])
 def api_dev_nb_default():
