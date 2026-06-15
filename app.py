@@ -2928,7 +2928,7 @@ def api_sign_submit():
     doc_saved = False; doc_resp = ""
     try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה)
         jd = _buyers_apps_post("savesigndoc", {
-            "token": token, "event_id": eid, "status": "signed",
+            "doc_token": token, "event_id": eid, "status": "signed",
             "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
             "signature": signature, "signed_at": now_iso})
         doc_saved = bool(jd and jd.get("ok"))
@@ -2945,7 +2945,7 @@ def api_sign_submit():
 def public_sign_doc(token):
     """עמוד ציבורי של ההסכם החתום (ללא התחברות) — נפתח מהקישור בשורת החתימה / מה-SMS."""
     import html as _h
-    j = _buyers_apps_post("getsigndoc", {"token": token})
+    j = _buyers_apps_post("getsigndoc", {"doc_token": token})
     if not (j and j.get("ok") and j.get("found")):
         _dbg = _h.escape(str(j)[:400]) if j else "אין תגובה מ-Apps Script (None)"
         return ("<!DOCTYPE html><html dir=rtl lang=he><head><meta charset=utf-8>"
