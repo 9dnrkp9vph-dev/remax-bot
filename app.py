@@ -2895,6 +2895,8 @@ def api_sign_submit():
     cid = re.sub(r"\D", "", (body.get("cid") or ""))
     address = (body.get("address") or "").strip()
     notes = (body.get("notes") or "").strip()
+    signature = body.get("signature") or ""
+    header = body.get("header") or ""
     if not docs:
         return jsonify({"ok": False, "reason": "no_docs"}), 400
     # פיצול כתובת לרחוב + עיר (כמו בגליון: address נפרד מ-city)
@@ -2912,19 +2914,67 @@ def api_sign_submit():
     except Exception:
         now_iso = _dt.datetime.utcnow().isoformat()
     eid = cid if cid else ("SIGN%d" % int(time.time() * 1000))   # event_id = ת"ז הלקוח (משותף לכל מסמכי החתימה)
+    token = _secrets.token_urlsafe(12)
+    base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    link = base + "/s/" + token
     ok_any = False
     for d in docs:
         j = _buyers_apps_post("addsigning", {
             "event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
             "client_name": client, "address": address, "city": city,
-            "commission_pct": "", "received_at": now_iso, "notes": notes})   # commission_pct יישמר לקישור ה-PDF (שלב הבא)
+            "commission_pct": link, "received_at": now_iso, "notes": notes})
         if j and j.get("ok"):
             ok_any = True
+    try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה)
+        _buyers_apps_post("savesigndoc", {
+            "token": token, "event_id": eid, "status": "signed",
+            "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
+            "signature": signature, "signed_at": now_iso})
+    except Exception:
+        pass
     if ok_any:
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
-    return jsonify({"ok": ok_any, "event_id": eid})
+    return jsonify({"ok": ok_any, "event_id": eid, "link": link})
+
+@app.route("/s/<token>")
+def public_sign_doc(token):
+    """עמוד ציבורי של ההסכם החתום (ללא התחברות) — נפתח מהקישור בשורת החתימה / מה-SMS."""
+    import html as _h
+    j = _buyers_apps_post("getsigndoc", {"token": token})
+    if not (j and j.get("ok") and j.get("found")):
+        return ("<!DOCTYPE html><html dir=rtl lang=he><head><meta charset=utf-8>"
+                "<meta name=viewport content='width=device-width,initial-scale=1'><title>מסמך</title></head>"
+                "<body style='font-family:Arial;text-align:center;padding:40px'><h2>המסמך לא נמצא</h2>"
+                "<p>ייתכן שהקישור שגוי או שפג תוקפו.</p></body></html>"), 404
+    doc = j.get("doc", {})
+    header = str(doc.get("header", ""))
+    try:
+        docs = _json.loads(doc.get("docs") or "[]")
+    except Exception:
+        docs = []
+    signature = str(doc.get("signature", ""))
+    docs_html = "".join(
+        "<div class=doc><h2>%s</h2><div class=body>%s</div></div>" % (
+            _h.escape(str(d.get("title", ""))), _h.escape(str(d.get("body", "")))) for d in docs)
+    sig_html = ("<div class=sig><div>חתימת הלקוח:</div><img src='" + signature + "' alt='חתימה'></div>") if signature else ""
+    _head = ("<!DOCTYPE html><html dir=rtl lang=he><head><meta charset=utf-8>"
+             "<meta name=viewport content='width=device-width,initial-scale=1'>"
+             "<title>הסכם חתום — RE/MAX Family</title><style>"
+             "body{font-family:Arial,'Heebo',sans-serif;background:#eceef1;color:#111;margin:0;padding:14px;direction:rtl}"
+             ".page{max-width:820px;margin:0 auto;background:#fff;padding:28px;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.12)}"
+             ".brand{text-align:center;font-weight:800;color:#0D1B2A;font-size:20px;margin-bottom:8px}"
+             ".hdr{white-space:pre-wrap;border-bottom:2px solid #0D1B2A;padding-bottom:12px;margin-bottom:16px;font-weight:600;font-size:14px}"
+             ".doc{margin-bottom:22px}.doc h2{font-size:17px;color:#0D1B2A;border-bottom:1px solid #ccc;padding-bottom:6px}"
+             ".body{white-space:pre-wrap;line-height:1.85;font-size:14px}"
+             ".sig{margin-top:18px;border-top:1px dashed #999;padding-top:12px}.sig img{max-height:100px;background:#fff;border:1px solid #eee}"
+             ".pb{display:block;width:100%;max-width:820px;margin:14px auto 30px;padding:14px;background:#C9972A;color:#fff;border:none;border-radius:9px;font-size:16px;font-weight:700;cursor:pointer}"
+             "@media print{.pb{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:100%}}"
+             "</style></head><body><div class=page><div class=brand>🏠 RE/MAX Family</div><div class=hdr>")
+    _tail = ("</div>" + docs_html + sig_html + "</div>"
+             "<button class=pb onclick='window.print()'>🖨️ שמור / הדפס PDF</button></body></html>")
+    return _head + _h.escape(header) + _tail
 
 @app.route("/api/dev/newborn_default", methods=["POST"])
 def api_dev_nb_default():
@@ -4511,7 +4561,7 @@ function sgGenerate(){
   if(aud=="seller"){var xsel=$("sg_exsel")?$("sg_exsel").value:"";
     if(xsel=="custom"){if($("sg_exfrom").value&&$("sg_exto").value){exclOn=true;exfrom=fmtDate($("sg_exfrom").value);exto=fmtDate($("sg_exto").value);}}
     else if(xsel){var xn=parseInt(xsel,10);var xf=new Date(),xt=new Date();xt.setMonth(xt.getMonth()+xn);exclOn=true;exfrom=sgFmtD(xf);exto=sgFmtD(xt);}}
-  var v={date:SG_DATE,agent:NAME||"",cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:$("sg_addr").value.trim(),price:$("sg_price").value.trim(),
+  var v={date:SG_DATE,agent:(((typeof IMP!="undefined"&&IMP)?(IMPNAME||IMP):NAME)||""),cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:$("sg_addr").value.trim(),price:$("sg_price").value.trim(),
     cbuy:(aud=="buyer"?$("sg_cbuy").value.trim():$("sg_scbuy").value.trim()),
     cbuyunit:(aud=="buyer"?($("sg_cbuyunit")?$("sg_cbuyunit").value:"%"):($("sg_scbuyunit")?$("sg_scbuyunit").value:"%")),
     crent:(aud=="buyer"?$("sg_crent").value.trim():$("sg_scrent").value.trim()),
@@ -4526,17 +4576,18 @@ function sgGenerate(){
     api("/api/sign/contract?type="+encodeURIComponent(keys[i])).then(function(r){var fb=sgFill((r&&r.body)||"",v);if(v.notes)fb=fb+String.fromCharCode(10)+String.fromCharCode(10)+"הערות: "+v.notes;docs.push({title:(r&&r.title)||"",body:fb,deal_type:sgDealType(keys[i])});step(i+1);}).catch(function(){docs.push({title:"שגיאה",body:"",deal_type:""});step(i+1);});}
   step(0);}
 function sgDealType(key){return {buyer_buy:"CLIENT_SALE",buyer_both:"CLIENT_SALE",buyer_rent:"CLIENT_RENT",seller_sell:"OWNER_SALE",seller_both:"OWNER_SALE",exclusive:"OWNER_EXCLUSIVE"}[key]||"";}
-var SG_LASTDOCS=null,SG_LASTV=null,SG_LASTSIG="";
+var SG_LASTDOCS=null,SG_LASTV=null,SG_LASTSIG="",SG_LASTHDR="";
 function sgSubmit(){
   if(!SG_LASTDOCS||!SG_LASTDOCS.length){alert("אין מה לשמור");return;}
   var v=SG_LASTV;
-  api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,cid:v.cid,address:v.addr,notes:(v.notes||""),docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type};})})}).then(function(r){
+  api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,cid:v.cid,address:v.addr,notes:(v.notes||""),signature:SG_LASTSIG,header:SG_LASTHDR,docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type,title:d.title,body:d.body};})})}).then(function(r){
     if(r&&r.ok){$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div><button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
     else{alert("השמירה נכשלה — ודא שה-Apps Script פרוס בגרסה חדשה (עם הפעולה addsigning).");}
   }).catch(function(){alert("שגיאת רשת");});}
 function renderSignDocs(docs,v,sig){
   SG_LASTDOCS=docs;SG_LASTV=v;SG_LASTSIG=sig;
   var hdr="תאריך: "+v.date+" · המתווך/הסוכן: "+v.agent+"\nלקוח: "+v.cname+(v.cphone?(" · טל' "+v.cphone):"")+(v.cid?(" · ת״ז "+v.cid):"")+"\nנכס: "+(v.addr||"—")+(v.price?(" · מחיר מבוקש: "+v.price+" ₪"):"");
+  SG_LASTHDR=hdr;
   var html=docs.map(function(dn){return '<div class=card><b>📄 '+esc(dn.title)+'</b><div style="white-space:pre-wrap;line-height:1.7;margin-top:8px;border:1px solid rgba(127,127,127,.25);border-radius:10px;padding:12px;background:#fff;color:#111;direction:rtl">'+esc(hdr)+"\\n\\n"+esc(dn.body)+'<div style="margin-top:14px;border-top:1px dashed #bbb;padding-top:8px;color:#111">חתימת '+esc(v.cname)+':<br><img src="'+sig+'" style="max-height:80px;background:#fff"></div></div></div>';}).join("");
   html+='<div class=card>'+(docs.length>1?'<div class=muted style="margin-bottom:8px">בעל נכס + בלעדיות = 2 מסמכים</div>':'')+'<button class="btn-gold" style="width:100%" onclick="sgSubmit()">✅ אשר, חתום ושמור</button><div class=muted style="margin-top:6px;text-align:center;font-size:12px">השמירה תיכנס לגליון חתימות ולדוחות</div></div>';
   $("sg_preview").innerHTML=html;try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
