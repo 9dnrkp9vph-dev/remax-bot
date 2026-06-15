@@ -4544,6 +4544,24 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 .callrow .csub{color:var(--muted);font-size:12.5px;font-weight:600;margin-top:1px}
 .callrow .cdetails{background:none!important;border-inline-start:none!important;border-radius:0!important;padding:0!important;margin-top:8px!important;color:#5b6473}
 .callrow .cdetails b{display:none}
+/* ===== באטץ' 8: טאב חתימות (כפתורים + כרטיסים) ===== */
+.sgbtns{display:flex;gap:8px;margin-top:12px}
+.sgbtns .sgbtn{flex:1;width:auto!important;margin:0!important;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.sgbtn .eico{stroke:#231700;margin:0}
+.scard{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px 16px;margin-bottom:11px;box-shadow:0 8px 22px rgba(20,30,50,.05)}
+.scard.excl{border:1.5px solid #e7d6a8}
+.scard.new{box-shadow:0 0 0 1.5px rgba(187,138,44,.5),0 8px 22px rgba(20,30,50,.05)}
+.scard .stop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.scard .sname{font-size:15.5px;font-weight:800;color:var(--ink)}
+.scard .stag{flex:0 0 auto;font-size:11px;font-weight:800;padding:3px 11px;border-radius:999px;white-space:nowrap}
+.stag.t-buyer{background:#eef2fb;color:#2f5fbe}
+.stag.t-seller{background:#fdeef0;color:#c01f2a}
+.stag.t-excl{background:#fbf3df;color:#7a5c12}
+.stag.t-rent{background:#e6f4ec;color:var(--green)}
+.scard .saddr{color:#5b6473;font-size:13.5px;margin-top:8px;display:flex;align-items:center;gap:4px}
+.scard .sdate{color:var(--muted);font-size:12.5px;margin-top:5px}
+.scard .slink{display:inline-flex;align-items:center;background:linear-gradient(180deg,#16273c,#0D1B2A);color:#fff;font-weight:800;font-size:12.5px;padding:9px 15px;border-radius:11px;text-decoration:none}
+.scard .slink .eico{stroke:#fff}
 .callrow .cbtns .addbuyer{background:linear-gradient(180deg,#2f6fd6,#1f5fbe)!important;color:#fff!important;border:none!important;box-shadow:0 4px 12px rgba(31,95,190,.28)!important}
 .callrow .cbtns .addbuyer .eico{stroke:#fff}
 .callrow .cbtns .cbtn{display:inline-flex!important;align-items:center;justify-content:center;background:#eef1f6!important;color:#46505f!important;border:1px solid var(--line)!important;box-shadow:none!important;font-weight:800!important;font-size:12px!important;padding:6px 12px!important;border-radius:10px!important}
@@ -4785,7 +4803,7 @@ function viewCalls(){
   bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,45000);
 }
 function viewSigs(){
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">חתימות'+scopeLabel()+'</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn-gold" onclick="openSignForm(\'buyer\')">החתם מתעניין</button><button class="btn-gold" onclick="openSignForm(\'seller\')">החתם בעל נכס</button></div></div>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
+  $("view").innerHTML='<div class=card><h2 style="margin:0 0 2px">חתימות שלי'+scopeLabel()+'</h2><div class=sgbtns><button class="btn-gold sgbtn" onclick="openSignForm(\'buyer\')"><svg class=eico viewBox=\'0 0 18 18\'><circle cx=\'9\' cy=\'6\' r=\'2.6\'/><path d=\'M4 15a5 5 0 0 1 10 0\'/></svg>החתם מתעניין</button><button class="btn-gold sgbtn" onclick="openSignForm(\'seller\')"><svg class=eico viewBox=\'0 0 18 18\'><rect x=\'4.2\' y=\'2.6\' width=\'9.6\' height=\'12.8\' rx=\'1\'/><path d=\'M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4\'/><path d=\'M2.6 15.4h12.8\'/></svg>החתם בעל נכס</button></div>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
   bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,60000);
 }
 // ── מסך החתמת לקוח (במקום) ─────────────────────────────────────
@@ -4979,15 +4997,23 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
   document.querySelectorAll("#calls .hidecall").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");if(b.getAttribute("data-act")=="unhide")unhideCall(id);else hideCall(id);};});
   seenCall=maxC;
 }).catch(function(){});}
+function sigTag(t){t=String(t||"");if(/בלעד/.test(t))return {cls:"t-excl",excl:true};if(/מוכר|מכיר|בעל/.test(t))return {cls:"t-seller",excl:false};if(/שכיר/.test(t))return {cls:"t-rent",excl:false};return {cls:"t-buyer",excl:false};}
 function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
   if(!r.ok){relogin();return;}
   var sigs=r.signatures.filter(function(g){return inRange(g.ts);});
   $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+sigs.length+" חתימות";
   var maxS=sigs.length?sigs[0].ts:0;
-  $("sigs").innerHTML="<div class=card>"+(sigs.length?sigs.map(function(g){
-    var isNew=seenSig&&g.ts>seenSig;var p=(g.pct!=null)?(" · "+g.pct+"%"):"";
-    return "<div class='row"+(isNew?" new":"")+"'><b>"+esc(g.type)+"</b>"+p+(g.client?" · "+esc(g.client):"")+"<div class=muted>"+esc(g.address)+(isMulti()&&g.agent?" · "+esc(g.agent):"")+" · "+g.time+"</div>"+(g.link?"<div><a class=cbtn style=background:#0D1B2A href='"+g.link+"' target=_blank rel=noopener>📄 קישור לחתימה</a></div>":"")+"</div>";
-  }).join(""):"<div class=muted>אין חתימות בטווח.</div>")+"</div>";
+  var _dsv="<svg class=eico viewBox='0 0 18 18'><rect x='4' y='2.5' width='10' height='13' rx='1.4'/><path d='M6.5 6h5M6.5 9h5M6.5 12h3'/></svg>";
+  $("sigs").innerHTML=(sigs.length?('<div class=muted style="margin:2px 2px 10px;font-weight:700">חתימות אחרונות</div>'+sigs.map(function(g){
+    var isNew=seenSig&&g.ts>seenSig;var tg=sigTag(g.type);
+    var meta="נחתם · "+g.time+((isMulti()&&g.agent)?(" · "+esc(g.agent)):"")+((g.pct!=null)?(" · "+g.pct+"%"):"");
+    return "<div class='scard"+(tg.excl?" excl":"")+(isNew?" new":"")+"'>"+
+      "<div class=stop><b class=sname>"+esc(g.client||g.type||"חתימה")+"</b><span class='stag "+tg.cls+"'>"+esc(g.type)+"</span></div>"+
+      (g.address?"<div class=saddr>"+_dsv+esc(g.address)+"</div>":"")+
+      "<div class=sdate>"+meta+"</div>"+
+      (g.link?"<div style='margin-top:10px'><a class=slink href='"+g.link+"' target=_blank rel=noopener>"+_dsv+"קישור לחתימה</a></div>":"")+
+    "</div>";
+  }).join("")):"<div class=card><div class=muted>אין חתימות בטווח.</div></div>");
   seenSig=maxS;
 }).catch(function(){});}
 
