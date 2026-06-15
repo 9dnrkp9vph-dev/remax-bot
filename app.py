@@ -4370,7 +4370,7 @@ function viewSigs(){
   bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,60000);
 }
 // ── מסך החתמת לקוח (במקום) ─────────────────────────────────────
-var SG_DATE="",SG_CONTRACT="";
+var SG_DATE="",SG_CONTRACT="",SG_AUD="buyer";
 function validILID(v){var s=(v||"").replace(/\D/g,"");if(!s||s.length>9)return false;s=("000000000"+s).slice(-9);var t=0;for(var i=0;i<9;i++){var d=parseInt(s[i],10)*(i%2===0?1:2);t+=d>9?d-9:d;}return t%10===0;}
 function sgCheckId(){var el=$("sg_cid"),m=$("sg_idmsg");if(!el||!m)return;var v=el.value.trim();if(!v){m.textContent="";return;}if(validILID(v)){m.textContent="✓ תעודת זהות תקינה";m.style.color="#1a7f37";}else{m.textContent="✗ תעודת זהות לא תקינה";m.style.color="#c0322f";}}
 function initSigPad(id){var c=$(id);if(!c)return;var rect=c.getBoundingClientRect();c.width=rect.width||320;c.height=rect.height||160;var ctx=c.getContext("2d");ctx.lineWidth=2.2;ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle="#0D1B2A";var drawing=false;
@@ -4385,24 +4385,31 @@ function sgFill(body,v){var map={
   "EXCLUSIVE_FROM":(v.exfrom||"____"),"EXCLUSIVE_TO":(v.exto||"____"),"CON_REF_ID":(v.refid||"____"),"CON_REF_DATE":(v.refdate||v.date),
   "{תאריך}":v.date,"{שם_הסוכן}":v.agent,"{שם_הלקוח}":v.cname,"{טלפון_הלקוח}":v.cphone,"{תז_הלקוח}":v.cid,"{כתובת_הנכס}":v.addr,"{מחיר_מבוקש}":v.price,"{עמלת_קניה}":v.cbuy,"{עמלת_שכירות}":v.crent};
   var out=body||"";for(var k in map){out=out.split(k).join(map[k]==null?"":map[k]);}return out;}
-function sgResolveKey(){var a=$("sg_aud")?$("sg_aud").value:"buyer";
-  if(a=="buyer"){var b=$("sg_buy").checked,r=$("sg_rent").checked;return (b&&r)?"buyer_both":(r&&!b?"buyer_rent":"buyer_buy");}
-  var s=$("sg_sell").checked,sr=$("sg_srent").checked;return (s&&sr)?"seller_both":((sr&&!s)?"seller_both":"seller_sell");}
+function sgResolveKey(){var a=SG_AUD||"buyer";
+  if(a=="buyer"){var b=$("sg_buy")&&$("sg_buy").checked,r=$("sg_rent")&&$("sg_rent").checked;return (b&&r)?"buyer_both":(r&&!b?"buyer_rent":"buyer_buy");}
+  var s=$("sg_sell")&&$("sg_sell").checked,sr=$("sg_srent")&&$("sg_srent").checked;return (s&&sr)?"seller_both":((sr&&!s)?"seller_both":"seller_sell");}
 function sgAudUI(){var a=$("sg_aud")?$("sg_aud").value:"buyer";var bd=$("sg_buyerdeal"),sd=$("sg_sellerdeal");if(bd)bd.style.display=(a=="buyer")?"":"none";if(sd)sd.style.display=(a=="seller")?"":"none";}
 function sgExclUI(){var on=$("sg_exon")&&$("sg_exon").checked;var w=$("sg_exdates");if(w)w.style.display=on?"":"none";}
 function fmtDate(iso){if(!iso)return "";var p=String(iso).split("-");return p.length==3?(p[2]+"/"+p[1]+"/"+p[0]):iso;}
 function openSign(){if(timer){clearInterval(timer);timer=null;}
+  var cards=[["buyer","החתמת מתעניין","🧑","#2f9bc4"],["seller","החתמת בעל נכס","🧔","#e09a3a"],["shtaf","הסכם שת״פ","🤝","#8e44ad"],["referral","הפניית לקוח","↪️","#15a085"]];
+  var grid=cards.map(function(c){return '<div onclick="openSignCard(\''+c[0]+'\')" style="cursor:pointer;text-align:center;padding:8px 4px"><div style="width:80px;height:80px;border-radius:50%;background:'+c[3]+';display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 8px;box-shadow:0 3px 10px rgba(0,0,0,.18)">'+c[2]+'</div><div style="font-weight:700;font-size:14px;line-height:1.2">'+c[1]+'</div></div>';}).join("");
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>✍️ מערכת חתימות</b><button class="btn-ghost" onclick="tab(\'sigs\')">✕ סגור</button></div><div class=muted style="margin-top:4px">בחר סוג החתמה</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px">'+grid+'</div></div><div id=sg_preview></div>';}
+function openSignCard(aud){if(aud=="shtaf"||aud=="referral"){alert("בקרוב 🙂 — כרגע זמינים: החתמת מתעניין והחתמת בעל נכס.");return;}openSignForm(aud);}
+function openSignForm(aud){SG_AUD=aud;
   var d=new Date();SG_DATE=("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>✍️ החתמת לקוח</b><button class="btn-ghost" onclick="tab(\'sigs\')">✕ סגור</button></div>'
-   +'<div style="margin-top:8px"><div class=muted>סוג ההחתמה</div><select id="sg_aud" class="chip" style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgAudUI()"><option value="buyer">מתעניין (קונה/שוכר)</option><option value="seller">בעל נכס (מוכר/משכיר)</option></select></div>'
-   +'<div id="sg_buyerdeal" style="margin-top:12px"><div class=muted>סוג עסקה + עמלה</div>'
-   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_cbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
-   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_rent"> שכירות — עמלה <input id="sg_crent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label></div>'
-   +'<div id="sg_sellerdeal" style="margin-top:12px;display:none"><div class=muted>סוג עסקה + עמלה</div>'
-   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_scbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
-   +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
-   +'<label style="display:flex;gap:6px;align-items:center;margin-top:10px"><input type=checkbox id="sg_exon" onchange="sgExclUI()"> כולל הסכם בלעדיות (הלקוח חותם על 2 טפסים)</label>'
-   +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">בלעדיות מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>'
+  var title=(aud=="seller")?"🧔 החתמת בעל נכס":"🧑 החתמת מתעניין";
+  var deal=(aud=="buyer")
+   ? '<div id="sg_buyerdeal" style="margin-top:12px"><div class=muted>סוג עסקה + עמלה</div>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_cbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_rent"> שכירות — עמלה <input id="sg_crent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label></div>'
+   : '<div id="sg_sellerdeal" style="margin-top:12px"><div class=muted>סוג עסקה + עמלה</div>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_scbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:10px"><input type=checkbox id="sg_exon" onchange="sgExclUI()"> כולל הסכם בלעדיות (הלקוח חותם על 2 טפסים)</label>'
+     +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">בלעדיות מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>';
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" onclick="openSign()">→ חזרה</button></div>'
+   + deal
    +'<div style="margin-top:12px"><div class=muted>פרטי הלקוח</div>'
    +'<input id="sg_cname" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="שם הלקוח (התחל להקליד — קונה שמור מ״הקונים שלי״)" list="sg_clientlist" autocomplete="off" oninput="sgClientType()"><datalist id="sg_clientlist"></datalist>'
    +'<input id="sg_cphone" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="טלפון" inputmode=tel>'
@@ -4428,7 +4435,7 @@ function sgGenerate(){
   if(cid&&!validILID(cid)){alert("תעודת הזהות אינה תקינה");return;}
   if(!($("sg_cname").value||"").trim()){alert("חסר שם לקוח");return;}
   var pad=$("sg_pad");if(!pad||pad.dataset.signed!="1"){alert("חסרה חתימת הלקוח");return;}
-  var aud=$("sg_aud").value;
+  var aud=SG_AUD||"buyer";
   var v={date:SG_DATE,agent:NAME||"",cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:$("sg_addr").value.trim(),price:$("sg_price").value.trim(),
     cbuy:(aud=="buyer"?$("sg_cbuy").value.trim():$("sg_scbuy").value.trim()),
     cbuyunit:(aud=="buyer"?($("sg_cbuyunit")?$("sg_cbuyunit").value:"%"):($("sg_scbuyunit")?$("sg_scbuyunit").value:"%")),
