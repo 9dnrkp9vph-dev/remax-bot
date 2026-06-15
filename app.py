@@ -2869,13 +2869,11 @@ def api_sign_properties():
     out, seen = [], set()
     for r in rows:
         if not is_all and not _agent_owns_row(r, name, phs): continue
-        street = (r.get("רחוב1", "") or r.get("רחוב", "") or "").strip()
-        house = (r.get("מספר בית", "") or "").strip()
+        street = (r.get("רחוב1", "") or r.get("רחוב", "") or r.get("כתובת", "") or "").strip()
+        house = (r.get("מספר בית", "") or r.get("מס בית", "") or r.get("מס' בית", "") or r.get("בית", "") or "").strip()
         if street and house and house not in street.split():
             street = (street + " " + house).strip()
-        elif not street:
-            street = (r.get("כתובת", "") or "").strip()
-        city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()
+        city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or r.get("ישוב", "") or "").strip()
         addr = ", ".join([x for x in [street, city] if x])
         if not addr or addr in seen: continue
         seen.add(addr)
@@ -4852,11 +4850,11 @@ function openSignForm(aud){SG_AUD=aud;
   var title=(aud=="seller")?"החתמת בעל נכס":"החתמת מתעניין";
   var deal=(aud=="buyer")
    ? '<div id="sg_buyerdeal" style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><path d="M11.8 3.4l2.8 2.8L6 14.8 3 15.4l.6-3z"/><path d="M10.6 4.6l2.8 2.8"/></svg>סוג עסקה ועמלה</div>'
-     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_cbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
-     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap"><input type=checkbox id="sg_rent"> שכירות — עמלה <input id="sg_crent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label></div>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap;white-space:nowrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_cbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap;white-space:nowrap"><input type=checkbox id="sg_rent"> שכירות — עמלה <input id="sg_crent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label></div>'
    : '<div id="sg_sellerdeal" style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><path d="M11.8 3.4l2.8 2.8L6 14.8 3 15.4l.6-3z"/><path d="M10.6 4.6l2.8 2.8"/></svg>סוג עסקה ועמלה</div>'
-     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_scbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
-     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap;white-space:nowrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_scbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap;white-space:nowrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
      +'<div style="margin-top:10px"><div class=muted>תקופת בלעדיות (כולל = הלקוח חותם על 2 טפסים)</div><select id="sg_exsel" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgExclSel()"><option value="">ללא בלעדיות</option><option value="1">בלעדיות חודש 1</option><option value="2">בלעדיות 2 חודשים</option><option value="3">בלעדיות 3 חודשים</option><option value="4">בלעדיות 4 חודשים</option><option value="5">בלעדיות 5 חודשים</option><option value="6">בלעדיות 6 חודשים</option><option value="custom">* תאריך מותאם אישית</option></select></div>'
      +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>';
   var propsec=(aud=="buyer")
