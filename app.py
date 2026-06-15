@@ -4529,6 +4529,19 @@ th{border-bottom-color:var(--line)}td{border-bottom-color:var(--line)}
 input.chip,textarea.chip,select.chip{background:#fff!important;border:1px solid #e7e3da!important;color:var(--ink)!important;font-weight:600}
 input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 .eico{width:14px;height:14px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:inline-block;margin-inline-end:3px}
+/* ===== באטץ' 6: מסך שיחות לפי המוקאפ ===== */
+#view h2{border-inline-start:none;padding-inline-start:0;font-size:22px}
+#callkpi{grid-template-columns:1fr 1fr;margin-top:10px}
+#callkpi:empty{display:none}
+.callrow .crow1{display:flex;align-items:center;gap:11px;margin-bottom:2px}
+.callrow .cstat{width:40px;height:40px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.callrow .cstat svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.callrow .cstat.ok{background:#e6f4ec;color:var(--green)}
+.callrow .cstat.no{background:#fae8e8;color:var(--red)}
+.callrow .cmain{flex:1;min-width:0}
+.callrow .csub{color:var(--muted);font-size:12.5px;font-weight:600;margin-top:1px}
+.callrow .cdetails{background:none!important;border-inline-start:none!important;border-radius:0!important;padding:0!important;margin-top:8px!important;color:#5b6473}
+.callrow .cdetails b{display:none}
 .brandname:empty{display:none!important}
 /* ===== כרטיסי נכסים / שת"פ עשירים (מוקאפ 05/06) ===== */
 .pcard{background:#fff;border:1.5px solid #e7d6a8;border-radius:18px;padding:14px 16px;margin-bottom:11px;box-shadow:0 8px 22px rgba(20,30,50,.05)}
@@ -4763,7 +4776,7 @@ function toggleHidden(){HIDDENMODE=!HIDDENMODE;loadCalls();}
 function hideCall(id){if(!id){alert("חסר מזהה");return;}api("/api/calls/hide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok)loadCalls();else alert("הסתרה נכשלה");}).catch(function(){alert("שגיאה");});}
 function unhideCall(id){if(!id)return;api("/api/calls/unhide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok)loadCalls();else alert("שחזור נכשל");}).catch(function(){alert("שגיאה");});}
 function viewCalls(){
-  $("view").innerHTML='<div class=card><h2>שיחות'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div><div style=text-align:center;margin-top:6px><span id=vphone class=vphone></span><span class=hlink id=htoggle onclick=toggleHidden()>הצג מוסתרות</span></div></div><div id=calls></div>';
+  $("view").innerHTML='<div class=card><h2>שיחות שלי'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div><div class=grid id=callkpi></div><div style=text-align:center;margin-top:6px><span id=vphone class=vphone></span><span class=hlink id=htoggle onclick=toggleHidden()>הצג מוסתרות</span></div></div><div id=calls></div>';
   bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,45000);
 }
 function viewSigs(){
@@ -4920,6 +4933,8 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
   if(r.tabs&&!IMP){TABS=r.tabs;try{localStorage.setItem("fbTabs",JSON.stringify(TABS));}catch(e){}applyTabPerms();}
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
   $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+(HIDDENMODE?" מוסתרות":" שיחות");
+  var _ans=calls.filter(function(c){return c.status=="ANSWER";}).length;
+  var _kp=$("callkpi");if(_kp)_kp.innerHTML=calls.length?(kpi(calls.length,"שיחות")+kpi(_ans,"נענו")):"";
   var ht=$("htoggle");if(ht)ht.textContent=HIDDENMODE?"חזרה לשיחות":"הצג מוסתרות";
   VPHONE=r.vphone||"";var vp=$("vphone");if(vp)vp.innerHTML=VPHONE?("🤖📞 <span class=vpnum>"+esc(VPHONE)+"</span> <span id=vpcopybtn class=vpcopy onclick=copyVphone()>📋 העתק</span>"):"";
   var maxC=calls.length?calls[0].ts:0;
@@ -4928,13 +4943,16 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
     var callerLink=c.caller?("<a href='tel:"+(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
     var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener>🔁 חייג חזרה</a>"):"";
     var bsum=(c.summary||"")+(c.clientDetails?("\n"+c.clientDetails):"");
-    var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\">➕ קונה</button>";
+    var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\"><svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>הוסף קונה</button>";
     var hideb=" <button class=hidecall data-id=\""+esc(c.id||"")+"\" data-act=\""+(HIDDENMODE?"unhide":"hide")+"\">"+(HIDDENMODE?"שחזר":"הסתר")+"</button>";
     var wab=c.wa?(" <a class=wab href='https://wa.me/"+c.wa+"' target=_blank rel=noopener><svg class=eico viewBox='0 0 18 18'><path d='M15.5 8.6a6.3 6.3 0 0 1-9.2 5.6L3 15l.9-3.2A6.3 6.3 0 1 1 15.5 8.6z'/></svg>וואטסאפ</a>"):"";
+    var _phsvg="<svg viewBox='0 0 18 18'><path d='M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z'/></svg>";
+    var _ok=(c.status=="ANSWER");
+    var _statusWord=_ok?"נענתה":(c.status||"");
+    var _sub=c.time+(c.duration?(" · "+c.duration+"ש׳"):"")+" · "+_statusWord+((isMulti()&&c.agent)?(" · "+esc(c.agent)):"");
     return "<div class='callrow"+(isNew?" new":"")+"'>"+
-      "<div class=ctop>"+st+"<span class=ctime>"+c.time+(c.duration?(" · "+c.duration+'ש׳'):"")+"</span></div>"+
-      "<div class=cphone>"+callerLink+"</div>"+
-      (isMulti()&&c.agent?"<div class=cmeta><svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>קיבל: "+esc(c.agent)+"</div>":"")+
+      "<div class=crow1><div class='cstat "+(_ok?"ok":"no")+"'>"+_phsvg+"</div>"+
+        "<div class=cmain><div class=cphone>"+callerLink+"</div><div class=csub>"+_sub+"</div></div></div>"+
       callDetails(c)+
       "<div class=cbtns>"+wab+cb+addb+hideb+"</div>"+
     "</div>";
