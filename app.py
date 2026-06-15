@@ -4502,6 +4502,8 @@ button.sec,.btn-ghost,.sec{background:#fff!important;color:var(--ink)!important;
 .bmore{color:var(--gold)!important}
 .bsearch{background:linear-gradient(180deg,#16273c,#0D1B2A)!important;border:none!important;color:#fff!important;border-radius:11px!important}
 .bsearch[data-k=excl]{background:#fff!important;color:var(--ink)!important;border:1px solid var(--line)!important}
+.bsearch[data-k=props]{background:linear-gradient(180deg,#2f6fd6,#1f5fbe)!important;color:#fff!important;border:none!important;box-shadow:0 4px 12px rgba(31,95,190,.28)!important}
+.searchbtn{background:linear-gradient(180deg,#2f6fd6,#1f5fbe)!important;color:#fff!important;border:none!important;box-shadow:0 6px 16px rgba(31,95,190,.26)!important}
 /* ===== באטץ' 4: נכסים + שת"פ + נכס נולד ===== */
 .score{background:#e6f4ec!important;color:var(--green)!important;border-radius:999px}
 .ouroffice{background:#fae8e8!important;color:var(--red)!important;border:1px solid #f0c9cc!important}
@@ -4993,7 +4995,7 @@ function viewSearch(kind){
   var cfg={props:{t:"🏢 נכסים במשרד",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
            excl:{t:"🏘️ נכסים בשת״פ",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
            buyers:{t:"👤 הקונים שלי",ph:"4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
-  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button>'+(kind=="buyers"?' <button class=sec onclick=openBuyerForm({})>➕ הוסף קונה</button>':'')+'<div id=recent></div><div id=sres></div>'+(kind=="props"?'<div id=myprops></div>':'')+(kind=="buyers"?'<div id=mybuyers></div>':'')+'</div>';
+  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button class=searchbtn onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button>'+(kind=="buyers"?' <button class=sec onclick=openBuyerForm({})>➕ הוסף קונה</button>':'')+'<div id=recent></div><div id=sres></div>'+(kind=="props"?'<div id=myprops></div>':'')+(kind=="buyers"?'<div id=mybuyers></div>':'')+'</div>';
   CUR_EP=cfg.ep;CUR_KIND=kind;
   if(kind=="props"||kind=="excl")loadRecent(kind);
   if(kind=="props")loadMyProps();
@@ -5054,7 +5056,7 @@ function buyerCard(x){
   var meta=[(ph?_ps+ph:""),(x.wa?"<a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":""),(x.date?esc(x.date):""),((isMulti()&&x.agent)?_us+esc(x.agent):"")].filter(Boolean).join(" · ");
   var q=encodeURIComponent(((x.budget||"")+" "+(x.summary||"")).trim().slice(0,800));
   return "<div class='row buyerrow'>"+
-    "<div class=bhead><span class=btag>קונה</span> <b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>"+esc(fmtBudget(x.budget))+"</span>":"")+"<button class=bdel onclick=\"delBuyer('"+esc(String(x.row||""))+"')\" title='מחק קונה'><svg class=eico viewBox='0 0 18 18'><path d='M3.5 5h11M7 5V3.5h4V5M5 5l.6 9.5a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9L13 5'/><path d='M8 8v4M10 8v4'/></svg></button></div>"+
+    "<div class=bhead><b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>"+esc(fmtBudget(x.budget))+"</span>":"")+"<button class=bdel onclick=\"delBuyer('"+esc(String(x.row||""))+"')\" title='מחק קונה'><svg class=eico viewBox='0 0 18 18'><path d='M3.5 5h11M7 5V3.5h4V5M5 5l.6 9.5a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9L13 5'/><path d='M8 8v4M10 8v4'/></svg></button></div>"+
     (meta?"<div class=muted bmeta>"+meta+"</div>":"")+
     (x.summary?("<div class=bsum id="+sid+">"+esc(x.summary)+"</div><span class=bmore onclick=\"var e=document.getElementById('"+sid+"');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'הצג פחות':'הצג עוד';\">הצג עוד</span>"):"")+
     "<input class=bqedit id=q"+n+" value=\""+esc(x.search||"").replace(/\"/g,"&quot;")+"\" placeholder=\"חידוד חיפוש (לא חובה): למשל 4 חדרים קרית ביאליק עד 2 מיליון\">"+
