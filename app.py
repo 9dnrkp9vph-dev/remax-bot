@@ -2869,7 +2869,12 @@ def api_sign_properties():
     out, seen = [], set()
     for r in rows:
         if not is_all and not _agent_owns_row(r, name, phs): continue
-        street = (r.get("רחוב1", "") or r.get("רחוב", "") or r.get("כתובת", "") or "").strip()
+        street = (r.get("רחוב1", "") or r.get("רחוב", "") or "").strip()
+        house = (r.get("מספר בית", "") or "").strip()
+        if street and house and house not in street.split():
+            street = (street + " " + house).strip()
+        elif not street:
+            street = (r.get("כתובת", "") or "").strip()
         city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()
         addr = ", ".join([x for x in [street, city] if x])
         if not addr or addr in seen: continue
@@ -2887,23 +2892,32 @@ def api_sign_submit():
     docs = body.get("docs") or []
     agent = (body.get("agent") or s.get("name", "")).strip()
     client = (body.get("client") or "").strip()
+    cid = re.sub(r"\D", "", (body.get("cid") or ""))
     address = (body.get("address") or "").strip()
-    commission = (body.get("commission") or "").strip()
+    notes = (body.get("notes") or "").strip()
     if not docs:
         return jsonify({"ok": False, "reason": "no_docs"}), 400
+    # פיצול כתובת לרחוב + עיר (כמו בגליון: address נפרד מ-city)
+    city = ""
+    if "," in address:
+        _p = address.rsplit(",", 1)
+        address, city = _p[0].strip(), _p[1].strip()
+    else:
+        _c = _detect_city(address)
+        if _c and _c != "אחר": city = _c
     import datetime as _dt
     try:
         from zoneinfo import ZoneInfo
         now_iso = _dt.datetime.now(ZoneInfo("Asia/Jerusalem")).isoformat()
     except Exception:
         now_iso = _dt.datetime.utcnow().isoformat()
-    eid = "SIGN%d" % int(time.time() * 1000)   # event_id משותף לכל מסמכי החתימה (כמו חתימה טובה)
+    eid = cid if cid else ("SIGN%d" % int(time.time() * 1000))   # event_id = ת"ז הלקוח (משותף לכל מסמכי החתימה)
     ok_any = False
     for d in docs:
         j = _buyers_apps_post("addsigning", {
             "event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
-            "client_name": client, "address": address, "city": "",
-            "commission_pct": commission, "received_at": now_iso})
+            "client_name": client, "address": address, "city": city,
+            "commission_pct": "", "received_at": now_iso, "notes": notes})   # commission_pct יישמר לקישור ה-PDF (שלב הבא)
         if j and j.get("ok"):
             ok_any = True
     if ok_any:
@@ -4423,8 +4437,10 @@ function sgResolveKey(){var a=SG_AUD||"buyer";
   if(a=="buyer"){var b=$("sg_buy")&&$("sg_buy").checked,r=$("sg_rent")&&$("sg_rent").checked;return (b&&r)?"buyer_both":(r&&!b?"buyer_rent":"buyer_buy");}
   var s=$("sg_sell")&&$("sg_sell").checked,sr=$("sg_srent")&&$("sg_srent").checked;return (s&&sr)?"seller_both":((sr&&!s)?"seller_both":"seller_sell");}
 function sgAudUI(){var a=$("sg_aud")?$("sg_aud").value:"buyer";var bd=$("sg_buyerdeal"),sd=$("sg_sellerdeal");if(bd)bd.style.display=(a=="buyer")?"":"none";if(sd)sd.style.display=(a=="seller")?"":"none";}
-function sgExclUI(){var on=$("sg_exon")&&$("sg_exon").checked;var w=$("sg_exdates");if(w)w.style.display=on?"":"none";}
+function sgExclSel(){var w=$("sg_exdates");if(w)w.style.display=($("sg_exsel")&&$("sg_exsel").value=="custom")?"":"none";}
 function fmtDate(iso){if(!iso)return "";var p=String(iso).split("-");return p.length==3?(p[2]+"/"+p[1]+"/"+p[0]):iso;}
+function fmtD(d){return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();}
+function sgMode(){var m=document.querySelector('input[name=sgmode]:checked');var remote=m&&m.value=="remote";var pw=$("sg_padwrap"),rw=$("sg_remotewrap");if(pw)pw.style.display=remote?"none":"";if(rw)rw.style.display=remote?"":"none";}
 function openSign(){if(timer){clearInterval(timer);timer=null;}
   var cards=[["buyer","החתמת מתעניין","🧑","#2f9bc4"],["seller","החתמת בעל נכס","🧔","#e09a3a"],["shtaf","הסכם שת״פ","🤝","#8e44ad"],["referral","הפניית לקוח","↪️","#15a085"]];
   var grid=cards.map(function(c){return '<div onclick="openSignCard(\''+c[0]+'\')" style="cursor:pointer;text-align:center;padding:8px 4px"><div style="width:80px;height:80px;border-radius:50%;background:'+c[3]+';display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 8px;box-shadow:0 3px 10px rgba(0,0,0,.18)">'+c[2]+'</div><div style="font-weight:700;font-size:14px;line-height:1.2">'+c[1]+'</div></div>';}).join("");
@@ -4440,18 +4456,23 @@ function openSignForm(aud){SG_AUD=aud;
    : '<div id="sg_sellerdeal" style="margin-top:12px"><div class=muted>סוג עסקה + עמלה</div>'
      +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_scbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
      +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
-     +'<label style="display:block;margin-top:10px;line-height:1.5"><input type=checkbox id="sg_exon" onchange="sgExclUI()" style="vertical-align:middle;margin-left:6px"> כולל הסכם בלעדיות (הלקוח חותם על 2 טפסים)</label>'
-     +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">בלעדיות מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>';
+     +'<div style="margin-top:10px"><div class=muted>תקופת בלעדיות (כולל = הלקוח חותם על 2 טפסים)</div><select id="sg_exsel" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgExclSel()"><option value="">ללא בלעדיות</option><option value="1">בלעדיות חודש 1</option><option value="2">בלעדיות 2 חודשים</option><option value="3">בלעדיות 3 חודשים</option><option value="4">בלעדיות 4 חודשים</option><option value="5">בלעדיות 5 חודשים</option><option value="6">בלעדיות 6 חודשים</option><option value="custom">* תאריך מותאם אישית</option></select></div>'
+     +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>';
   $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" onclick="openSign()">→ חזרה</button></div>'
    + deal
    +'<div style="margin-top:12px"><div class=muted>פרטי הלקוח</div>'
    +'<input id="sg_cname" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="שם הלקוח (התחל להקליד — קונה שמור מ״הקונים שלי״)" list="sg_clientlist" autocomplete="off" oninput="sgClientType()"><datalist id="sg_clientlist"></datalist>'
    +'<input id="sg_cphone" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="טלפון" inputmode=tel>'
-   +'<input id="sg_cid" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="תעודת זהות" inputmode=numeric oninput="sgCheckId()"><div id="sg_idmsg" style="font-size:12px;margin-top:3px"></div></div>'
+   +'<input id="sg_cid" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="תעודת זהות" inputmode=numeric name="sg_tz" autocomplete="off" autocorrect="off" data-form-type="other" oninput="sgCheckId()"><div id="sg_idmsg" style="font-size:12px;margin-top:3px"></div></div>'
    +'<div style="margin-top:12px"><div class=muted>פרטי הנכס</div>'
    +'<input id="sg_addr" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="כתובת הנכס (התחל להקליד — מהמודעות שלך)" list="sg_proplist" autocomplete="off" oninput="sgPropType()"><datalist id="sg_proplist"></datalist>'
    +'<input id="sg_price" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="מחיר מבוקש (₪)" inputmode=numeric></div>'
-   +'<div style="margin-top:14px"><div class=muted>✍️ חתימת הלקוח</div><canvas id="sg_pad" style="width:100%;height:160px;border:1px solid rgba(127,127,127,.4);border-radius:10px;touch-action:none;background:#fff;margin-top:6px;display:block"></canvas><div style="text-align:left;margin-top:4px"><button class="btn-ghost" onclick="clearSig(\'sg_pad\')">נקה</button></div></div>'
+   +'<div style="margin-top:12px"><div class=muted>הערות (לא חובה)</div><textarea id="sg_notes" class=chip style="width:100%;box-sizing:border-box;min-height:60px;margin-top:6px" placeholder="הערות שיתווספו לתחתית ההסכם"></textarea></div>'
+   +'<div style="margin-top:14px"><div class=muted>אופן ההחתמה</div>'
+   +'<label style="display:block;margin-top:6px;line-height:1.5"><input type=radio name="sgmode" value="local" checked onchange="sgMode()" style="vertical-align:middle;margin-left:6px"> הפקה ללא שליחה (חתימה במקום)</label>'
+   +'<label style="display:block;margin-top:6px;line-height:1.5"><input type=radio name="sgmode" value="remote" onchange="sgMode()" style="vertical-align:middle;margin-left:6px"> שליחה לחתימה ב-SMS ומייל</label></div>'
+   +'<div id="sg_padwrap" style="margin-top:14px"><div class=muted>✍️ חתימת הלקוח</div><canvas id="sg_pad" style="width:100%;height:160px;border:1px solid rgba(127,127,127,.4);border-radius:10px;touch-action:none;background:#fff;margin-top:6px;display:block"></canvas><div style="text-align:left;margin-top:4px"><button class="btn-ghost" onclick="clearSig(\'sg_pad\')">נקה</button></div></div>'
+   +'<div id="sg_remotewrap" style="display:none;margin-top:14px"><div class=muted style="padding:10px;background:rgba(127,127,127,.08);border-radius:8px">📲 שליחה מרחוק (SMS+מייל) — בקרוב. כרגע בחר ״הפקה ללא שליחה״.</div></div>'
    +'<button class="btn-gold" style="width:100%;margin-top:14px" onclick="sgGenerate()">צור הסכם וחתום</button></div><div id="sg_preview"></div>';
   setTimeout(function(){initSigPad("sg_pad");},60);loadSignPickers();}
 var SG_CLIENTS={},SG_PROPS={};
@@ -4465,31 +4486,37 @@ function loadSignPickers(){
 function sgClientType(){var nm=String(($("sg_cname")||{}).value||"").trim();var c=SG_CLIENTS[nm];if(c&&c.phone)$("sg_cphone").value=c.phone;}
 function sgPropType(){var ad=String(($("sg_addr")||{}).value||"").trim();var p=SG_PROPS[ad];if(p&&p.price)$("sg_price").value=p.price;}
 function sgGenerate(){
+  var m=document.querySelector('input[name=sgmode]:checked');
+  if(m&&m.value=="remote"){alert("שליחה מרחוק (SMS+מייל) — בקרוב 🙂 כרגע בחר ״הפקה ללא שליחה״.");return;}
   var cid=($("sg_cid").value||"").trim();
   if(cid&&!validILID(cid)){alert("תעודת הזהות אינה תקינה");return;}
   if(!($("sg_cname").value||"").trim()){alert("חסר שם לקוח");return;}
   var pad=$("sg_pad");if(!pad||pad.dataset.signed!="1"){alert("חסרה חתימת הלקוח");return;}
   var aud=SG_AUD||"buyer";
+  var exfrom="",exto="",exclOn=false;
+  if(aud=="seller"){var xsel=$("sg_exsel")?$("sg_exsel").value:"";
+    if(xsel=="custom"){if($("sg_exfrom").value&&$("sg_exto").value){exclOn=true;exfrom=fmtDate($("sg_exfrom").value);exto=fmtDate($("sg_exto").value);}}
+    else if(xsel){var xn=parseInt(xsel,10);var xf=new Date(),xt=new Date();xt.setMonth(xt.getMonth()+xn);exclOn=true;exfrom=fmtD(xf);exto=fmtD(xt);}}
   var v={date:SG_DATE,agent:NAME||"",cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:$("sg_addr").value.trim(),price:$("sg_price").value.trim(),
     cbuy:(aud=="buyer"?$("sg_cbuy").value.trim():$("sg_scbuy").value.trim()),
     cbuyunit:(aud=="buyer"?($("sg_cbuyunit")?$("sg_cbuyunit").value:"%"):($("sg_scbuyunit")?$("sg_scbuyunit").value:"%")),
     crent:(aud=="buyer"?$("sg_crent").value.trim():$("sg_scrent").value.trim()),
-    exfrom:($("sg_exfrom")?fmtDate($("sg_exfrom").value):""),exto:($("sg_exto")?fmtDate($("sg_exto").value):""),
-    refid:("RF"+Date.now().toString().slice(-8)),refdate:SG_DATE};
+    notes:($("sg_notes")?$("sg_notes").value.trim():""),
+    exfrom:exfrom,exto:exto,refid:("RF"+Date.now().toString().slice(-8)),refdate:SG_DATE};
   var sig=pad.toDataURL("image/png");
   var keys=[sgResolveKey()];
-  if(aud=="seller"&&$("sg_exon")&&$("sg_exon").checked)keys.push("exclusive");
+  if(exclOn)keys.push("exclusive");
   $("sg_preview").innerHTML='<div class=muted style="text-align:center;padding:12px">מפיק…</div>';
   var docs=[];
   function step(i){if(i>=keys.length){renderSignDocs(docs,v,sig);return;}
-    api("/api/sign/contract?type="+encodeURIComponent(keys[i])).then(function(r){docs.push({title:(r&&r.title)||"",body:sgFill((r&&r.body)||"",v),deal_type:sgDealType(keys[i])});step(i+1);}).catch(function(){docs.push({title:"שגיאה",body:"",deal_type:""});step(i+1);});}
+    api("/api/sign/contract?type="+encodeURIComponent(keys[i])).then(function(r){var fb=sgFill((r&&r.body)||"",v);if(v.notes)fb=fb+String.fromCharCode(10)+String.fromCharCode(10)+"הערות: "+v.notes;docs.push({title:(r&&r.title)||"",body:fb,deal_type:sgDealType(keys[i])});step(i+1);}).catch(function(){docs.push({title:"שגיאה",body:"",deal_type:""});step(i+1);});}
   step(0);}
 function sgDealType(key){return {buyer_buy:"CLIENT_SALE",buyer_both:"CLIENT_SALE",buyer_rent:"CLIENT_RENT",seller_sell:"OWNER_SALE",seller_both:"OWNER_SALE",exclusive:"OWNER_EXCLUSIVE"}[key]||"";}
 var SG_LASTDOCS=null,SG_LASTV=null,SG_LASTSIG="";
 function sgSubmit(){
   if(!SG_LASTDOCS||!SG_LASTDOCS.length){alert("אין מה לשמור");return;}
-  var v=SG_LASTV;var commission=(v.cbuy?(v.cbuy+(v.cbuyunit=="₪"?"₪":"%")):(v.crent?(v.crent+" חודשים"):""));
-  api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,address:v.addr,commission:commission,docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type};})})}).then(function(r){
+  var v=SG_LASTV;
+  api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,cid:v.cid,address:v.addr,notes:(v.notes||""),docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type};})})}).then(function(r){
     if(r&&r.ok){$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div><button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
     else{alert("השמירה נכשלה — ודא שה-Apps Script פרוס בגרסה חדשה (עם הפעולה addsigning).");}
   }).catch(function(){alert("שגיאת רשת");});}
