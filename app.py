@@ -4531,7 +4531,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 .eico{width:14px;height:14px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:inline-block;margin-inline-end:3px}
 /* ===== באטץ' 6: מסך שיחות לפי המוקאפ ===== */
 #view h2{border-inline-start:none;padding-inline-start:0;font-size:22px}
-#callkpi{grid-template-columns:1fr 1fr;margin-top:10px}
+#callkpi{grid-template-columns:1fr 1fr 1fr;margin-top:10px}
 #callkpi:empty{display:none}
 .callrow .crow1{display:flex;align-items:center;gap:11px;margin-bottom:2px}
 .callrow .cstat{width:40px;height:40px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
@@ -4542,6 +4542,8 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 .callrow .csub{color:var(--muted);font-size:12.5px;font-weight:600;margin-top:1px}
 .callrow .cdetails{background:none!important;border-inline-start:none!important;border-radius:0!important;padding:0!important;margin-top:8px!important;color:#5b6473}
 .callrow .cdetails b{display:none}
+.callrow .cbtns .addbuyer{background:linear-gradient(180deg,#2f6fd6,#1f5fbe)!important;color:#fff!important;border:none!important;box-shadow:0 4px 12px rgba(31,95,190,.28)!important}
+.callrow .cbtns .addbuyer .eico{stroke:#fff}
 .brandname:empty{display:none!important}
 /* ===== כרטיסי נכסים / שת"פ עשירים (מוקאפ 05/06) ===== */
 .pcard{background:#fff;border:1.5px solid #e7d6a8;border-radius:18px;padding:14px 16px;margin-bottom:11px;box-shadow:0 8px 22px rgba(20,30,50,.05)}
@@ -4928,13 +4930,23 @@ function callDetails(c){
   if(c.summary)return "<div class=csumwrap>"+sum+"</div>";
   return "";
 }
+var NEWBUYERS=0,_nbTs=0;
+function loadNewBuyers(){var now=Date.now();if(now-_nbTs<60000)return;_nbTs=now;
+  var d=new Date();var today=("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();
+  api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?(IMP||""):"")})}).then(function(r){
+    if(!r||!r.ok)return;
+    NEWBUYERS=(r.results||[]).filter(function(b){return String(b.date||"").indexOf(today)===0;}).length;
+    var kp=$("callkpi");if(kp&&kp.children&&kp.children[2]){var n=kp.children[2].querySelector(".n");if(n)n.textContent=NEWBUYERS;}
+  }).catch(function(){});}
 function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"):"")+(HIDDENMODE?"hidden=1":"")).then(function(r){
   if(!r.ok){relogin();return;}
   if(r.tabs&&!IMP){TABS=r.tabs;try{localStorage.setItem("fbTabs",JSON.stringify(TABS));}catch(e){}applyTabPerms();}
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
   $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+(HIDDENMODE?" מוסתרות":" שיחות");
   var _ans=calls.filter(function(c){return c.status=="ANSWER";}).length;
-  var _kp=$("callkpi");if(_kp)_kp.innerHTML=calls.length?(kpi(calls.length,"שיחות")+kpi(_ans,"נענו")):"";
+  var _newb=(typeof NEWBUYERS!=="undefined"?NEWBUYERS:0);
+  var _kp=$("callkpi");if(_kp)_kp.innerHTML=calls.length?(kpi(calls.length,"שיחות")+kpi(_ans,"נענו")+kpi(_newb,"קונים חדשים")):"";
+  loadNewBuyers();
   var ht=$("htoggle");if(ht)ht.textContent=HIDDENMODE?"חזרה לשיחות":"הצג מוסתרות";
   VPHONE=r.vphone||"";var vp=$("vphone");if(vp)vp.innerHTML=VPHONE?("🤖📞 <span class=vpnum>"+esc(VPHONE)+"</span> <span id=vpcopybtn class=vpcopy onclick=copyVphone()>📋 העתק</span>"):"";
   var maxC=calls.length?calls[0].ts:0;
