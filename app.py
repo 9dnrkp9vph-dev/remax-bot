@@ -4404,22 +4404,25 @@ function openSign(){if(timer){clearInterval(timer);timer=null;}
    +'<label style="display:flex;gap:6px;align-items:center;margin-top:10px"><input type=checkbox id="sg_exon" onchange="sgExclUI()"> כולל הסכם בלעדיות (הלקוח חותם על 2 טפסים)</label>'
    +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">בלעדיות מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>'
    +'<div style="margin-top:12px"><div class=muted>פרטי הלקוח</div>'
-   +'<select id="sg_clientpick" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgPickClient()"><option value="">— קונה שמור (מתוך השיחות שלך) —</option></select>'
-   +'<input id="sg_cname" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="שם מלא">'
+   +'<input id="sg_cname" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="שם הלקוח (התחל להקליד — קונה שמור מ״הקונים שלי״)" list="sg_clientlist" autocomplete="off" oninput="sgClientType()"><datalist id="sg_clientlist"></datalist>'
    +'<input id="sg_cphone" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="טלפון" inputmode=tel>'
    +'<input id="sg_cid" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="תעודת זהות" inputmode=numeric oninput="sgCheckId()"><div id="sg_idmsg" style="font-size:12px;margin-top:3px"></div></div>'
    +'<div style="margin-top:12px"><div class=muted>פרטי הנכס</div>'
-   +'<select id="sg_proppick" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgPickProp()"><option value="">— מהמודעות שלך —</option></select>'
-   +'<input id="sg_addr" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="כתובת הנכס">'
+   +'<input id="sg_addr" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="כתובת הנכס (התחל להקליד — מהמודעות שלך)" list="sg_proplist" autocomplete="off" oninput="sgPropType()"><datalist id="sg_proplist"></datalist>'
    +'<input id="sg_price" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="מחיר מבוקש (₪)" inputmode=numeric></div>'
    +'<div style="margin-top:14px"><div class=muted>✍️ חתימת הלקוח</div><canvas id="sg_pad" style="width:100%;height:160px;border:1px solid rgba(127,127,127,.4);border-radius:10px;touch-action:none;background:#fff;margin-top:6px;display:block"></canvas><div style="text-align:left;margin-top:4px"><button class="btn-ghost" onclick="clearSig(\'sg_pad\')">נקה</button></div></div>'
    +'<button class="btn-gold" style="width:100%;margin-top:14px" onclick="sgGenerate()">צור הסכם וחתום</button></div><div id="sg_preview"></div>';
   setTimeout(function(){initSigPad("sg_pad");},60);loadSignPickers();}
+var SG_CLIENTS={},SG_PROPS={};
 function loadSignPickers(){
-  api("/api/sign/clients").then(function(r){if(!r||!r.ok)return;var el=$("sg_clientpick");if(!el)return;el.innerHTML='<option value="">— קונה שמור (מתוך השיחות שלך) —</option>'+(r.clients||[]).map(function(c){return '<option value="'+esc(c.phone)+'">'+esc(c.phone)+(c.date?(" · "+esc(c.date)):"")+'</option>';}).join("");}).catch(function(){});
-  api("/api/sign/properties").then(function(r){if(!r||!r.ok)return;var el=$("sg_proppick");if(!el)return;el.innerHTML='<option value="">— מהמודעות שלך —</option>'+(r.properties||[]).map(function(p){return '<option value="'+esc(p.address)+'" data-price="'+esc(p.price||"")+'">'+esc(p.address)+'</option>';}).join("");}).catch(function(){});}
-function sgPickClient(){var el=$("sg_clientpick");if(el&&el.value)$("sg_cphone").value=el.value;}
-function sgPickProp(){var el=$("sg_proppick");if(!el||!el.value)return;$("sg_addr").value=el.value;var pr=el.options[el.selectedIndex].getAttribute("data-price");if(pr&&$("sg_price"))$("sg_price").value=pr;}
+  api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?(IMP||""):"")})}).then(function(r){
+    if(!r||!r.ok)return;SG_CLIENTS={};var opts="";(r.results||[]).forEach(function(b){var nm=String(b.name||"").trim();if(!nm||SG_CLIENTS[nm])return;SG_CLIENTS[nm]={phone:(b.phone||"")};opts+='<option value="'+esc(nm)+'">'+(b.phone?esc(b.phone):"")+(b.budget?(" · "+esc(b.budget)):"")+'</option>';});var dl=$("sg_clientlist");if(dl)dl.innerHTML=opts;
+  }).catch(function(){});
+  api("/api/sign/properties"+(typeof IMP!="undefined"&&IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
+    if(!r||!r.ok)return;SG_PROPS={};var opts="";(r.properties||[]).forEach(function(p){var ad=String(p.address||"").trim();if(!ad||SG_PROPS[ad])return;SG_PROPS[ad]={price:(p.price||"")};opts+='<option value="'+esc(ad)+'"></option>';});var dl=$("sg_proplist");if(dl)dl.innerHTML=opts;
+  }).catch(function(){});}
+function sgClientType(){var nm=String(($("sg_cname")||{}).value||"").trim();var c=SG_CLIENTS[nm];if(c&&c.phone)$("sg_cphone").value=c.phone;}
+function sgPropType(){var ad=String(($("sg_addr")||{}).value||"").trim();var p=SG_PROPS[ad];if(p&&p.price)$("sg_price").value=p.price;}
 function sgGenerate(){
   var cid=($("sg_cid").value||"").trim();
   if(cid&&!validILID(cid)){alert("תעודת הזהות אינה תקינה");return;}
