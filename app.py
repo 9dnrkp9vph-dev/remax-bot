@@ -4470,8 +4470,21 @@ button:hover{filter:brightness(1.06)}
 .btn-primary{background:linear-gradient(180deg,#16273c,#0D1B2A)!important;color:#fff!important;border:none!important;box-shadow:0 6px 18px rgba(20,30,50,.2)!important}
 button.gold,.btn-gold{background:linear-gradient(180deg,#d4a437,#c0901f)!important;color:#231700!important;border:none!important;box-shadow:0 6px 16px rgba(187,138,44,.28)!important;font-weight:800}
 button.sec,.btn-ghost,.sec{background:#fff!important;color:var(--ink)!important;border:1px solid var(--line)!important;box-shadow:0 2px 8px rgba(20,30,50,.04)!important}
+/* ===== באטץ' 2: כותרת + טאב-בר + אייקוני SVG ===== */
+.tic svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:block}
+.tab .tic{width:36px;height:28px}
+.tab{color:#9aa1ac}
+.tab.on{color:var(--ink)!important}
+.tab.on .tic{background:linear-gradient(180deg,rgba(187,138,44,.22),rgba(187,138,44,.07));box-shadow:inset 0 0 0 1px rgba(187,138,44,.3)}
+.tabs{background:rgba(255,255,255,.96);border-top:1px solid var(--line)}
+.hicon{width:18px;height:18px;fill:none;stroke:var(--ink);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
+.sharebtn{background:#fff!important;border:1px solid var(--line)!important}
+.brand{padding-bottom:14px}
+.brand:after{background:linear-gradient(90deg,transparent,rgba(187,138,44,.5),transparent)}
+.brandname{background:#fff!important;border:1px solid var(--line)!important;color:var(--ink)!important;font-weight:800!important;box-shadow:0 2px 8px rgba(20,30,50,.05)!important;border-radius:999px!important;padding:6px 14px!important}
+.brandname:before{background:var(--green)!important;box-shadow:0 0 0 3px rgba(31,138,76,.16)!important}
 </style></head><body><div class="wrap">
-<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט">☰</button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="loginlogo"><img src="/assets/icon" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
@@ -4493,11 +4506,11 @@ button.sec,.btn-ghost,.sec{background:#fff!important;color:var(--ink)!important;
 <div id="appui" class="hidden">
   <div id="view"></div>
   <div class="tabs">
-    <div class="tab on" data-t="calls" onclick="tab('calls')"><span class="tic">📞</span>שיחות שלי</div>
-    <div class="tab" data-t="buyers" onclick="tab('buyers')"><span class="tic">👤</span>הקונים שלי</div>
-    <div class="tab" data-t="sigs" onclick="tab('sigs')"><span class="tic">✍️</span>חתימות שלי</div>
-    <div class="tab" data-t="props" onclick="tab('props')"><span class="tic">🏢</span>נכסים במשרד</div>
-    <div class="tab" data-t="excl" onclick="tab('excl')"><span class="tic">🏘️</span>נכסים בשת״פ</div>
+    <div class="tab on" data-t="calls" onclick="tab('calls')"><span class="tic"><svg viewBox="0 0 18 18"><path d="M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z"/></svg></span>שיחות שלי</div>
+    <div class="tab" data-t="buyers" onclick="tab('buyers')"><span class="tic"><svg viewBox="0 0 18 18"><circle cx="9" cy="6" r="3"/><path d="M3.6 16a5.4 5.4 0 0 1 10.8 0"/></svg></span>הקונים שלי</div>
+    <div class="tab" data-t="sigs" onclick="tab('sigs')"><span class="tic"><svg viewBox="0 0 18 18"><path d="M11.8 3.4l2.8 2.8L6 14.8 3 15.4l.6-3z"/><path d="M10.6 4.6l2.8 2.8"/></svg></span>חתימות שלי</div>
+    <div class="tab" data-t="props" onclick="tab('props')"><span class="tic"><svg viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg></span>נכסים במשרד</div>
+    <div class="tab" data-t="excl" onclick="tab('excl')"><span class="tic"><svg viewBox="0 0 18 18"><rect x="2.4" y="6" width="6.4" height="9.4" rx="1"/><rect x="9.4" y="3" width="6.2" height="12.4" rx="1"/></svg></span>נכסים בשת״פ</div>
     <div class="tab" data-t="newborn" id="nbtab" onclick="tab('newborn')"><span class="tic">🐥</span>נכס נולד<span class="tabbadge hidden" id="nbtabbadge"></span></div>
   </div>
   <div id="nbmodal" class="nbmodal hidden" onclick="if(event.target===this)closeNewborn()"></div>
