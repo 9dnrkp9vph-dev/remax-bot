@@ -2901,7 +2901,9 @@ def api_sign_submit():
         return jsonify({"ok": False, "reason": "no_docs"}), 400
     # פיצול כתובת לרחוב + עיר (כמו בגליון: address נפרד מ-city)
     city = ""
-    if "," in address:
+    if "|" in address:
+        pass  # מתעניין על כמה נכסים — לא מפצלים לעיר
+    elif "," in address:
         _p = address.rsplit(",", 1)
         address, city = _p[0].strip(), _p[1].strip()
     else:
@@ -2972,7 +2974,9 @@ def api_sign_send_remote():
     last9 = digits.lstrip("0")[-9:]
     # פיצול כתובת לרחוב + עיר
     city = ""
-    if "," in address:
+    if "|" in address:
+        pass  # מתעניין על כמה נכסים — לא מפצלים לעיר
+    elif "," in address:
         _p = address.rsplit(",", 1)
         address, city = _p[0].strip(), _p[1].strip()
     else:
@@ -3062,6 +3066,29 @@ def api_sign_complete():
     _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
     return jsonify({"ok": upd_ok, "link": link})
 
+@app.route("/api/sign/share", methods=["POST"])
+def api_sign_share():
+    """שיתוף קישור החתימה החתומה ללקוח (אחרי הפקה במקום) — WhatsApp + SMS."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    body = request.get_json(silent=True) or {}
+    phone = (body.get("phone") or "").strip()
+    link = (body.get("link") or "").strip()
+    client = (body.get("client") or "").strip()
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) < 9 or not link:
+        return jsonify({"ok": False, "reason": "bad_input"}), 400
+    last9 = digits.lstrip("0")[-9:]
+    msg = ("שלום %s,\nמצורף קישור למסמך החתום שלך מ-RE/MAX Family:\n%s" % (client, link))
+    wa_ok = False; sms_ok = False
+    try:
+        wa = _wa_phone(phone)
+        if wa: send_text(wa, msg); wa_ok = True
+    except Exception: wa_ok = False
+    try: sms_ok = bool(web_send_sms(last9, msg))
+    except Exception: sms_ok = False
+    return jsonify({"ok": (wa_ok or sms_ok), "wa": wa_ok, "sms": sms_ok})
+
 @app.route("/s/<token>")
 def public_sign_doc(token):
     """עמוד ציבורי של ההסכם החתום (ללא התחברות) — נפתח מהקישור בשורת החתימה / מה-SMS."""
@@ -3109,7 +3136,7 @@ def public_sign_doc(token):
     if status == "pending":
         _form = ("</div>" + docs_html +
                  "<div class=signbox><div class=signlbl>תעודת זהות</div>"
-                 "<input id=cid class=signinp inputmode=numeric name=sg_tz autocomplete=off autocorrect=off data-form-type=other placeholder='9 ספרות' oninput='chkId()'>"
+                 "<input id=cid class=signinp type=text inputmode=numeric maxlength=9 name=sg_tz autocomplete=off autocorrect=off data-form-type=other data-lpignore=true placeholder='9 ספרות' oninput='chkId()'>"
                  "<div id=idmsg></div>"
                  "<div class=signlbl style='margin-top:14px'>✍️ חתימה</div>"
                  "<canvas id=pad class=signpad></canvas>"
@@ -4642,7 +4669,7 @@ function viewCalls(){
   bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,45000);
 }
 function viewSigs(){
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">✍️ חתימות'+scopeLabel()+'</h2><button class="btn-gold" onclick="openSign()">➕ החתם לקוח</button></div>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">✍️ חתימות'+scopeLabel()+'</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn-gold" onclick="openSignForm(\'buyer\')">🧑 החתם מתעניין</button><button class="btn-gold" onclick="openSignForm(\'seller\')">🧔 החתם בעל נכס</button></div></div>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
   bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,60000);
 }
 // ── מסך החתמת לקוח (במקום) ─────────────────────────────────────
@@ -4656,10 +4683,13 @@ function initSigPad(id){var c=$(id);if(!c)return;var rect=c.getBoundingClientRec
   function en(){drawing=false;}
   c.onmousedown=st;c.onmousemove=mv;c.onmouseup=en;c.onmouseleave=en;c.ontouchstart=st;c.ontouchmove=mv;c.ontouchend=en;}
 function clearSig(id){var c=$(id);if(!c)return;c.getContext("2d").clearRect(0,0,c.width,c.height);c.dataset.signed="";}
-function sgFill(body,v){var map={
+function sgFill(body,v){
+  var addrTxt=(v.props&&v.props.length)?v.props.map(function(p){return p.addr;}).join(", "):(v.addr||"");
+  var priceTxt=(v.props&&v.props.length)?v.props.map(function(p){return p.price;}).filter(Boolean).join(" / "):(v.price||"");
+  var map={
   "SALE_FEE":(v.cbuy?(v.cbuy+(v.cbuyunit=="₪"?" ₪":"%")):"____"),"RENT_FEE":(v.crent?(v.crent+" חודשי שכירות"):"____"),
   "EXCLUSIVE_FROM":(v.exfrom||"____"),"EXCLUSIVE_TO":(v.exto||"____"),"CON_REF_ID":(v.refid||"____"),"CON_REF_DATE":(v.refdate||v.date),
-  "{תאריך}":v.date,"{שם_הסוכן}":v.agent,"{שם_הלקוח}":v.cname,"{טלפון_הלקוח}":v.cphone,"{תז_הלקוח}":v.cid,"{כתובת_הנכס}":v.addr,"{מחיר_מבוקש}":v.price,"{עמלת_קניה}":v.cbuy,"{עמלת_שכירות}":v.crent};
+  "{תאריך}":v.date,"{שם_הסוכן}":v.agent,"{שם_הלקוח}":v.cname,"{טלפון_הלקוח}":v.cphone,"{תז_הלקוח}":v.cid,"{כתובת_הנכס}":addrTxt,"{מחיר_מבוקש}":priceTxt,"{עמלת_קניה}":v.cbuy,"{עמלת_שכירות}":v.crent};
   var out=body||"";for(var k in map){out=out.split(k).join(map[k]==null?"":map[k]);}return out;}
 function sgResolveKey(){var a=SG_AUD||"buyer";
   if(a=="buyer"){var b=$("sg_buy")&&$("sg_buy").checked,r=$("sg_rent")&&$("sg_rent").checked;return (b&&r)?"buyer_both":(r&&!b?"buyer_rent":"buyer_buy");}
@@ -4686,15 +4716,16 @@ function openSignForm(aud){SG_AUD=aud;
      +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
      +'<div style="margin-top:10px"><div class=muted>תקופת בלעדיות (כולל = הלקוח חותם על 2 טפסים)</div><select id="sg_exsel" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgExclSel()"><option value="">ללא בלעדיות</option><option value="1">בלעדיות חודש 1</option><option value="2">בלעדיות 2 חודשים</option><option value="3">בלעדיות 3 חודשים</option><option value="4">בלעדיות 4 חודשים</option><option value="5">בלעדיות 5 חודשים</option><option value="6">בלעדיות 6 חודשים</option><option value="custom">* תאריך מותאם אישית</option></select></div>'
      +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>';
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" onclick="openSign()">→ חזרה</button></div>'
+  var propsec=(aud=="buyer")
+   ? '<div style="margin-top:12px"><div class=muted>פרטי הנכס (אפשר להוסיף יותר מנכס אחד)</div><div id="sg_proplist_rows"></div><datalist id="sg_proplist"></datalist><button class="btn-ghost" style="margin-top:8px" onclick="sgAddProp()">➕ הוסף נכס</button></div>'
+   : '<div style="margin-top:12px"><div class=muted>פרטי הנכס</div><input id="sg_addr" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="כתובת הנכס (התחל להקליד — מהמודעות שלך)" list="sg_proplist" autocomplete="off" oninput="sgPropType()"><datalist id="sg_proplist"></datalist><input id="sg_price" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="מחיר מבוקש (₪)" inputmode=numeric></div>';
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" onclick="tab(\'sigs\')">→ חזרה</button></div>'
    + deal
    +'<div style="margin-top:12px"><div class=muted>פרטי הלקוח</div>'
    +'<input id="sg_cname" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="שם הלקוח (התחל להקליד — קונה שמור מ״הקונים שלי״)" list="sg_clientlist" autocomplete="off" oninput="sgClientType()"><datalist id="sg_clientlist"></datalist>'
    +'<input id="sg_cphone" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="טלפון" inputmode=tel>'
-   +'<input id="sg_cid" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="תעודת זהות" inputmode=numeric name="sg_tz" autocomplete="off" autocorrect="off" data-form-type="other" oninput="sgCheckId()"><div id="sg_idmsg" style="font-size:12px;margin-top:3px"></div></div>'
-   +'<div style="margin-top:12px"><div class=muted>פרטי הנכס</div>'
-   +'<input id="sg_addr" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="כתובת הנכס (התחל להקליד — מהמודעות שלך)" list="sg_proplist" autocomplete="off" oninput="sgPropType()"><datalist id="sg_proplist"></datalist>'
-   +'<input id="sg_price" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="מחיר מבוקש (₪)" inputmode=numeric></div>'
+   +'<input id="sg_cid" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="תעודת זהות" type="text" inputmode=numeric maxlength="9" name="sg_tz" autocomplete="off" autocorrect="off" data-form-type="other" data-lpignore="true" oninput="sgCheckId()"><div id="sg_idmsg" style="font-size:12px;margin-top:3px"></div></div>'
+   + propsec
    +'<div style="margin-top:12px"><div class=muted>הערות (לא חובה)</div><textarea id="sg_notes" class=chip style="width:100%;box-sizing:border-box;min-height:60px;margin-top:6px" placeholder="הערות שיתווספו לתחתית ההסכם"></textarea></div>'
    +'<div style="margin-top:14px"><div class=muted>אופן ההחתמה</div>'
    +'<label style="display:block;margin-top:6px;line-height:1.5"><input type=radio name="sgmode" value="local" checked onchange="sgMode()" style="vertical-align:middle;margin-left:6px"> הפקה ללא שליחה (חתימה במקום)</label>'
@@ -4702,7 +4733,12 @@ function openSignForm(aud){SG_AUD=aud;
    +'<div id="sg_padwrap" style="margin-top:14px"><div class=muted>✍️ חתימת הלקוח</div><canvas id="sg_pad" style="width:100%;height:160px;border:1px solid rgba(127,127,127,.4);border-radius:10px;touch-action:none;background:#fff;margin-top:6px;display:block"></canvas><div style="text-align:left;margin-top:4px"><button class="btn-ghost" onclick="clearSig(\'sg_pad\')">נקה</button></div></div>'
    +'<div id="sg_remotewrap" style="display:none;margin-top:14px"><div class=muted style="padding:10px;background:rgba(127,127,127,.08);border-radius:8px">📲 קישור לחתימה יישלח ללקוח ב-SMS וב-WhatsApp. הלקוח ימלא ת״ז ויחתום במכשירו, והקישור החתום יתווסף לשורת החתימה.</div></div>'
    +'<button id="sg_gobtn" class="btn-gold" style="width:100%;margin-top:14px" onclick="sgGenerate()">צור הסכם וחתום</button></div><div id="sg_preview"></div>';
+  if(aud=="buyer")sgAddProp();
   setTimeout(function(){initSigPad("sg_pad");},60);loadSignPickers();}
+function sgAddProp(){var box=$("sg_proplist_rows");if(!box)return;var row=document.createElement("div");row.className="sg_prow";row.style.cssText="display:flex;gap:6px;margin-top:6px;align-items:center";row.innerHTML='<input class="sg_addr_m chip" style="flex:2;min-width:110px;box-sizing:border-box" placeholder="כתובת הנכס" list="sg_proplist" autocomplete="off" oninput="sgPropTypeM(this)"><input class="sg_price_m chip" style="flex:1;min-width:70px;box-sizing:border-box" placeholder="מחיר ₪" inputmode=numeric><button class="btn-ghost" type=button style="padding:4px 9px" onclick="sgDelProp(this)">✕</button>';box.appendChild(row);}
+function sgDelProp(btn){var box=$("sg_proplist_rows");var row=btn.parentNode;if(box&&box.querySelectorAll(".sg_prow").length<=1){row.querySelector(".sg_addr_m").value="";row.querySelector(".sg_price_m").value="";return;}row.parentNode.removeChild(row);}
+function sgPropTypeM(el){var ad=String(el.value||"").trim();var p=SG_PROPS[ad];if(p&&p.price){var pr=el.parentNode.querySelector(".sg_price_m");if(pr&&!pr.value)pr.value=p.price;}}
+function sgCollectProps(){var out=[];var rows=document.querySelectorAll("#sg_proplist_rows .sg_prow");for(var i=0;i<rows.length;i++){var a=String((rows[i].querySelector(".sg_addr_m")||{}).value||"").trim();var p=String((rows[i].querySelector(".sg_price_m")||{}).value||"").trim();if(a)out.push({addr:a,price:p});}return out;}
 var SG_CLIENTS={},SG_PROPS={};
 function loadSignPickers(){
   api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?(IMP||""):"")})}).then(function(r){
@@ -4727,7 +4763,9 @@ function sgGenerate(){
   if(aud=="seller"){var xsel=$("sg_exsel")?$("sg_exsel").value:"";
     if(xsel=="custom"){if($("sg_exfrom").value&&$("sg_exto").value){exclOn=true;exfrom=fmtDate($("sg_exfrom").value);exto=fmtDate($("sg_exto").value);}}
     else if(xsel){var xn=parseInt(xsel,10);var xf=new Date(),xt=new Date();xt.setMonth(xt.getMonth()+xn);exclOn=true;exfrom=sgFmtD(xf);exto=sgFmtD(xt);}}
-  var v={date:SG_DATE,agent:(((typeof IMP!="undefined"&&IMP)?(IMPNAME||IMP):NAME)||""),cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:$("sg_addr").value.trim(),price:$("sg_price").value.trim(),
+  var props=(aud=="buyer")?sgCollectProps():(($("sg_addr")&&$("sg_addr").value.trim())?[{addr:$("sg_addr").value.trim(),price:($("sg_price")?$("sg_price").value.trim():"")}]:[]);
+  var vAddr=props.map(function(p){return p.addr;}).join(" | ");var vPrice=(props[0]?props[0].price:"");
+  var v={date:SG_DATE,agent:(((typeof IMP!="undefined"&&IMP)?(IMPNAME||IMP):NAME)||""),cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:vAddr,price:vPrice,props:props,
     cbuy:(aud=="buyer"?$("sg_cbuy").value.trim():$("sg_scbuy").value.trim()),
     cbuyunit:(aud=="buyer"?($("sg_cbuyunit")?$("sg_cbuyunit").value:"%"):($("sg_scbuyunit")?$("sg_scbuyunit").value:"%")),
     crent:(aud=="buyer"?$("sg_crent").value.trim():$("sg_scrent").value.trim()),
@@ -4736,7 +4774,7 @@ function sgGenerate(){
   var sig=isRemote?"":sgShrinkSig(pad);
   var keys=[sgResolveKey()];
   if(exclOn)keys.push("exclusive");
-  $("sg_preview").innerHTML='<div class=muted style="text-align:center;padding:12px">'+(isRemote?"מכין ושולח…":"מפיק…")+'</div>';
+  $("sg_preview").innerHTML='<div class=card style="text-align:center;padding:18px"><div style="font-size:28px">⏳</div><b>'+(isRemote?"מכין ושולח ללקוח…":"מפיק את ההסכם…")+'</b></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth",block:"center"});}catch(e){}
   var docs=[];
   function step(i){if(i>=keys.length){if(isRemote){sgSendRemote(docs,v);}else{renderSignDocs(docs,v,sig);}return;}
     api("/api/sign/contract?type="+encodeURIComponent(keys[i])).then(function(r){var fb=sgFill((r&&r.body)||"",v);if(v.notes)fb=fb+String.fromCharCode(10)+String.fromCharCode(10)+"הערות: "+v.notes;docs.push({title:(r&&r.title)||"",body:fb,deal_type:sgDealType(keys[i])});step(i+1);}).catch(function(){docs.push({title:"שגיאה",body:"",deal_type:""});step(i+1);});}
@@ -4748,18 +4786,23 @@ function sgSubmit(){
   if(!SG_LASTDOCS||!SG_LASTDOCS.length){alert("אין מה לשמור");return;}
   var v=SG_LASTV;
   api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,cid:v.cid,address:v.addr,notes:(v.notes||""),signature:SG_LASTSIG,header:SG_LASTHDR,docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type,title:d.title,body:d.body};})})}).then(function(r){
-    if(r&&r.ok){var _warn=(r.doc_saved===false)?'<div class=muted style="margin-top:8px;color:#c0392b">⚠️ המסמך עצמו לא נשמר (Apps Script) — הקישור לא יעבוד. צלם לי מסך.<br><span style="font-size:10px;direction:ltr;display:block;word-break:break-all">'+(r.doc_resp||'')+'</span></div>':'';$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div>'+_warn+'<button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
+    if(r&&r.ok){var _warn=(r.doc_saved===false)?'<div class=muted style="margin-top:8px;color:#c0392b">⚠️ המסמך עצמו לא נשמר (Apps Script) — הקישור לא יעבוד. צלם לי מסך.<br><span style="font-size:10px;direction:ltr;display:block;word-break:break-all">'+(r.doc_resp||'')+'</span></div>':'';window._sgShare={phone:(v.cphone||""),link:(r.link||""),name:(v.cname||"")};var _wabtn=(v.cphone&&r.link)?'<button class="btn-gold" style="width:100%;margin-top:10px;background:#25D366;border-color:#25D366" onclick="sgShareWA()">📲 שלח ללקוח בוואטסאפ</button>':'';$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div>'+_warn+_wabtn+'<button class="btn-ghost" style="width:100%;margin-top:8px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth",block:"center"});}catch(e){}}
     else{alert("השמירה נכשלה — ודא שה-Apps Script פרוס בגרסה חדשה (עם הפעולה addsigning).");}
   }).catch(function(){alert("שגיאת רשת");});}
-function sgBuildHeader(v){return "תאריך: "+v.date+" · המתווך/הסוכן: "+v.agent+"\nלקוח: "+v.cname+(v.cphone?(" · טל' "+v.cphone):"")+(v.cid?(" · ת״ז "+v.cid):"")+"\nנכס: "+(v.addr||"—")+(v.price?(" · מחיר מבוקש: "+v.price+" ₪"):"");}
+function sgBuildHeader(v){var ph;if(v.props&&v.props.length>1){ph="נכסים:\n"+v.props.map(function(p,i){return "  "+(i+1)+". "+p.addr+(p.price?(" — "+p.price+" ₪"):"");}).join("\n");}else{ph="נכס: "+(v.addr||"—")+(v.price?(" · מחיר מבוקש: "+v.price+" ₪"):"");}return "תאריך: "+v.date+" · המתווך/הסוכן: "+v.agent+"\nלקוח: "+v.cname+(v.cphone?(" · טל' "+v.cphone):"")+(v.cid?(" · ת״ז "+v.cid):"")+"\n"+ph;}
 function sgSendRemote(docs,v){
   var hdr=sgBuildHeader(v);
   api("/api/sign/send_remote",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,phone:v.cphone,address:v.addr,notes:(v.notes||""),header:hdr,docs:docs.map(function(d){return {deal_type:d.deal_type,title:d.title,body:d.body};})})}).then(function(r){
     if(r&&r.ok){var ch=[];if(r.sms)ch.push("SMS");if(r.wa)ch.push("WhatsApp");var chs=ch.length?ch.join(" + "):"(בדוק הגדרות שליחה)";
       $("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">📲</div><b>נשלח ללקוח!</b><div class=muted style="margin-top:6px">קישור לחתימה נשלח אל '+esc(v.cname)+' ('+chs+').<br>החתימה תופיע בטאב ״חתימות״ — הקישור החתום יתווסף ברגע שהלקוח יחתום.</div><button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';
-      try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
+      try{$("sg_preview").scrollIntoView({behavior:"smooth",block:"center"});}catch(e){}}
     else{$("sg_preview").innerHTML='';alert("השליחה נכשלה: "+((r&&r.reason)||"שגיאה")+". ודא שה-Apps Script פרוס בגרסה חדשה.");}
   }).catch(function(){$("sg_preview").innerHTML='';alert("שגיאת רשת");});}
+function sgShareWA(){var d=window._sgShare||{};if(!d.phone||!d.link){alert("אין טלפון/קישור לשליחה");return;}
+  api("/api/sign/share",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:d.phone,link:d.link,client:d.name})}).then(function(r){
+    if(r&&r.ok){alert("📲 נשלח ללקוח"+((r.wa&&r.sms)?" (וואטסאפ + SMS)":(r.wa?" בוואטסאפ":" ב-SMS")));}
+    else{alert("השליחה נכשלה — ודא שיש טלפון תקין");}
+  }).catch(function(){alert("שגיאת רשת");});}
 function renderSignDocs(docs,v,sig){
   SG_LASTDOCS=docs;SG_LASTV=v;SG_LASTSIG=sig;
   var hdr=sgBuildHeader(v);
