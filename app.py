@@ -4458,6 +4458,18 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .tab .tic{display:inline-flex;align-items:center;justify-content:center;width:34px;height:27px;border-radius:9px;font-size:15px;margin-bottom:2px}
 .tab.on{border-top-color:transparent!important;background:none!important}
 .tab.on .tic{background:linear-gradient(180deg,rgba(201,151,42,.2),rgba(201,151,42,.06));box-shadow:inset 0 0 0 1px rgba(201,151,42,.28)}
+/* ===== ריענון 2 (Claude design) — באטץ' 1: יסודות · פלטת נייבי+זהב ===== */
+:root{--ink:#15263b;--gold:#bb8a2c;--green:#1f8a4c;--red:#d23b3b;--blue:#003DA5;--muted:#8b93a1;--line:#efece6}
+body{background:#f6f5f2!important;background-color:#f6f5f2!important;color:var(--ink);letter-spacing:-.012em}
+.card{background:#fff;border-radius:20px;box-shadow:0 8px 22px rgba(20,30,50,.05);border:1px solid var(--line)}
+h2{border-inline-start-color:var(--gold)}
+input,textarea{background:#fbfcfd;border:1.5px solid #e7e3da}
+input:focus,textarea:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(21,38,59,.09)}
+button{background:linear-gradient(180deg,#16273c,#0D1B2A);color:#fff;box-shadow:0 6px 18px rgba(20,30,50,.18);border-radius:12px}
+button:hover{filter:brightness(1.06)}
+.btn-primary{background:linear-gradient(180deg,#16273c,#0D1B2A)!important;color:#fff!important;border:none!important;box-shadow:0 6px 18px rgba(20,30,50,.2)!important}
+button.gold,.btn-gold{background:linear-gradient(180deg,#d4a437,#c0901f)!important;color:#231700!important;border:none!important;box-shadow:0 6px 16px rgba(187,138,44,.28)!important;font-weight:800}
+button.sec,.btn-ghost,.sec{background:#fff!important;color:var(--ink)!important;border:1px solid var(--line)!important;box-shadow:0 2px 8px rgba(20,30,50,.04)!important}
 </style></head><body><div class="wrap">
 <div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט">☰</button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
