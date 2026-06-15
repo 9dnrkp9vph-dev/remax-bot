@@ -3109,7 +3109,7 @@ def public_sign_doc(token):
     if status == "pending":
         _form = ("</div>" + docs_html +
                  "<div class=signbox><div class=signlbl>תעודת זהות</div>"
-                 "<input id=cid class=signinp inputmode=numeric autocomplete=off placeholder='9 ספרות' oninput='chkId()'>"
+                 "<input id=cid class=signinp inputmode=numeric name=sg_tz autocomplete=off autocorrect=off data-form-type=other placeholder='9 ספרות' oninput='chkId()'>"
                  "<div id=idmsg></div>"
                  "<div class=signlbl style='margin-top:14px'>✍️ חתימה</div>"
                  "<canvas id=pad class=signpad></canvas>"
