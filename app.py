@@ -2878,6 +2878,40 @@ def api_sign_properties():
         if len(out) >= 300: break
     return jsonify({"ok": True, "properties": out})
 
+@app.route("/api/sign/submit", methods=["POST"])
+def api_sign_submit():
+    """שמירת חתימה דיגיטלית → רשומה בגליון 'חתימות' (נכנס לדוחות) + שמירת המסמך לצפייה."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    body = request.get_json(silent=True) or {}
+    docs = body.get("docs") or []
+    agent = (body.get("agent") or s.get("name", "")).strip()
+    client = (body.get("client") or "").strip()
+    address = (body.get("address") or "").strip()
+    commission = (body.get("commission") or "").strip()
+    if not docs:
+        return jsonify({"ok": False, "reason": "no_docs"}), 400
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        now_iso = _dt.datetime.now(ZoneInfo("Asia/Jerusalem")).isoformat()
+    except Exception:
+        now_iso = _dt.datetime.utcnow().isoformat()
+    eid = "SIGN%d" % int(time.time() * 1000)   # event_id משותף לכל מסמכי החתימה (כמו חתימה טובה)
+    ok_any = False
+    for d in docs:
+        j = _buyers_apps_post("addsigning", {
+            "event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
+            "client_name": client, "address": address, "city": "",
+            "commission_pct": commission, "received_at": now_iso})
+        if j and j.get("ok"):
+            ok_any = True
+    if ok_any:
+        _cache_clear("signings_sheet")
+        _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+        _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
+    return jsonify({"ok": ok_any, "event_id": eid})
+
 @app.route("/api/dev/newborn_default", methods=["POST"])
 def api_dev_nb_default():
     """ברירת מחדל לימי השהיה של נכס נולד (לכל סוכן ללא הגדרה אישית)."""
@@ -4406,7 +4440,7 @@ function openSignForm(aud){SG_AUD=aud;
    : '<div id="sg_sellerdeal" style="margin-top:12px"><div class=muted>סוג עסקה + עמלה</div>'
      +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_scbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
      +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
-     +'<label style="display:flex;gap:6px;align-items:center;margin-top:10px"><input type=checkbox id="sg_exon" onchange="sgExclUI()"> כולל הסכם בלעדיות (הלקוח חותם על 2 טפסים)</label>'
+     +'<label style="display:block;margin-top:10px;line-height:1.5"><input type=checkbox id="sg_exon" onchange="sgExclUI()" style="vertical-align:middle;margin-left:6px"> כולל הסכם בלעדיות (הלקוח חותם על 2 טפסים)</label>'
      +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">בלעדיות מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>';
   $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" onclick="openSign()">→ חזרה</button></div>'
    + deal
@@ -4448,12 +4482,22 @@ function sgGenerate(){
   $("sg_preview").innerHTML='<div class=muted style="text-align:center;padding:12px">מפיק…</div>';
   var docs=[];
   function step(i){if(i>=keys.length){renderSignDocs(docs,v,sig);return;}
-    api("/api/sign/contract?type="+encodeURIComponent(keys[i])).then(function(r){docs.push({title:(r&&r.title)||"",body:sgFill((r&&r.body)||"",v)});step(i+1);}).catch(function(){docs.push({title:"שגיאה",body:""});step(i+1);});}
+    api("/api/sign/contract?type="+encodeURIComponent(keys[i])).then(function(r){docs.push({title:(r&&r.title)||"",body:sgFill((r&&r.body)||"",v),deal_type:sgDealType(keys[i])});step(i+1);}).catch(function(){docs.push({title:"שגיאה",body:"",deal_type:""});step(i+1);});}
   step(0);}
+function sgDealType(key){return {buyer_buy:"CLIENT_SALE",buyer_both:"CLIENT_SALE",buyer_rent:"CLIENT_RENT",seller_sell:"OWNER_SALE",seller_both:"OWNER_SALE",exclusive:"OWNER_EXCLUSIVE"}[key]||"";}
+var SG_LASTDOCS=null,SG_LASTV=null,SG_LASTSIG="";
+function sgSubmit(){
+  if(!SG_LASTDOCS||!SG_LASTDOCS.length){alert("אין מה לשמור");return;}
+  var v=SG_LASTV;var commission=(v.cbuy?(v.cbuy+(v.cbuyunit=="₪"?"₪":"%")):(v.crent?(v.crent+" חודשים"):""));
+  api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,address:v.addr,commission:commission,docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type};})})}).then(function(r){
+    if(r&&r.ok){$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div><button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
+    else{alert("השמירה נכשלה — ודא שה-Apps Script פרוס בגרסה חדשה (עם הפעולה addsigning).");}
+  }).catch(function(){alert("שגיאת רשת");});}
 function renderSignDocs(docs,v,sig){
+  SG_LASTDOCS=docs;SG_LASTV=v;SG_LASTSIG=sig;
   var hdr="תאריך: "+v.date+" · המתווך/הסוכן: "+v.agent+"\nלקוח: "+v.cname+(v.cphone?(" · טל' "+v.cphone):"")+(v.cid?(" · ת״ז "+v.cid):"")+"\nנכס: "+(v.addr||"—")+(v.price?(" · מחיר מבוקש: "+v.price+" ₪"):"");
   var html=docs.map(function(dn){return '<div class=card><b>📄 '+esc(dn.title)+'</b><div style="white-space:pre-wrap;line-height:1.7;margin-top:8px;border:1px solid rgba(127,127,127,.25);border-radius:10px;padding:12px;background:#fff;color:#111;direction:rtl">'+esc(hdr)+"\\n\\n"+esc(dn.body)+'<div style="margin-top:14px;border-top:1px dashed #bbb;padding-top:8px;color:#111">חתימת '+esc(v.cname)+':<br><img src="'+sig+'" style="max-height:80px;background:#fff"></div></div></div>';}).join("");
-  html+='<div class=muted style="margin:4px 0 12px">תצוגה לבדיקה'+(docs.length>1?' — בעל נכס + בלעדיות = 2 מסמכים (כפי שציינת)':'')+'. המיילסטון הבא: שמירה לדוחות + הפקת PDF.</div>';
+  html+='<div class=card>'+(docs.length>1?'<div class=muted style="margin-bottom:8px">בעל נכס + בלעדיות = 2 מסמכים</div>':'')+'<button class="btn-gold" style="width:100%" onclick="sgSubmit()">✅ אשר, חתום ושמור</button><div class=muted style="margin-top:6px;text-align:center;font-size:12px">השמירה תיכנס לגליון חתימות ולדוחות</div></div>';
   $("sg_preview").innerHTML=html;try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
 function csumMore(el){var s=el.nextElementSibling;if(!s||!s.classList.contains("csum"))return;var hidden=s.classList.toggle("collapsed");el.textContent=hidden?"עוד — סיכום שיחה ▾":"פחות ▴";}
 function callDetails(c){
