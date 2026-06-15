@@ -5040,22 +5040,25 @@ function loadMyBuyers(){var box=$("mybuyers");if(!box)return;box.innerHTML="<div
   api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){
     if(!$("mybuyers"))return;if(!r||!r.ok){$("mybuyers").innerHTML="";return;}
     if(!r.results.length){$("mybuyers").innerHTML="<div class=muted style=margin:8px_0>אין קונים שמורים עדיין. הוסף קונה משיחה (➕ קונה) או בכפתור למעלה.</div>";return;}
-    var h="<div class=muted style=margin:12px_0_4px>👤 הקונים שלי ("+r.results.length+")</div>";
+    var h="<div class=muted style=margin:12px_0_4px>הקונים שלי ("+r.results.length+")</div>";
     h+=r.results.map(function(x){return buyerCard(x);}).join("");
     $("mybuyers").innerHTML=h;
     document.querySelectorAll("#mybuyers .bsearch").forEach(function(b){b.onclick=function(){buyerSearch(b);};});
   }).catch(function(){if($("mybuyers"))$("mybuyers").innerHTML="";});}
+function fmtBudget(v){v=String(v||"").trim();if(!v)return"";var n=v.replace(/[,\s₪]/g,"");if(/^[0-9]+$/.test(n))return Number(n).toLocaleString('he-IL')+" ₪";return v;}
 function buyerCard(x){
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"";
   var n=BSEQ++,sid="bs"+n,rid="br"+n;
-  var meta=[(ph?"📞 "+ph:""),(x.wa?"<a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":""),(x.date?"📅 "+esc(x.date):""),((isMulti()&&x.agent)?"👤 "+esc(x.agent):"")].filter(Boolean).join(" · ");
+  var _ps="<svg class=eico viewBox='0 0 18 18'><path d='M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z'/></svg>";
+  var _us="<svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>";
+  var meta=[(ph?_ps+ph:""),(x.wa?"<a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":""),(x.date?esc(x.date):""),((isMulti()&&x.agent)?_us+esc(x.agent):"")].filter(Boolean).join(" · ");
   var q=encodeURIComponent(((x.budget||"")+" "+(x.summary||"")).trim().slice(0,800));
   return "<div class='row buyerrow'>"+
-    "<div class=bhead><span class=btag>👤 קונה</span> <b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>💰 "+esc(x.budget)+"</span>":"")+"<button class=bdel onclick=\"delBuyer('"+esc(String(x.row||""))+"')\" title='מחק קונה'>🗑</button></div>"+
+    "<div class=bhead><span class=btag>קונה</span> <b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>"+esc(fmtBudget(x.budget))+"</span>":"")+"<button class=bdel onclick=\"delBuyer('"+esc(String(x.row||""))+"')\" title='מחק קונה'><svg class=eico viewBox='0 0 18 18'><path d='M3.5 5h11M7 5V3.5h4V5M5 5l.6 9.5a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9L13 5'/><path d='M8 8v4M10 8v4'/></svg></button></div>"+
     (meta?"<div class=muted bmeta>"+meta+"</div>":"")+
     (x.summary?("<div class=bsum id="+sid+">"+esc(x.summary)+"</div><span class=bmore onclick=\"var e=document.getElementById('"+sid+"');e.classList.toggle('open');this.textContent=e.classList.contains('open')?'הצג פחות':'הצג עוד';\">הצג עוד</span>"):"")+
     "<input class=bqedit id=q"+n+" value=\""+esc(x.search||"").replace(/\"/g,"&quot;")+"\" placeholder=\"חידוד חיפוש (לא חובה): למשל 4 חדרים קרית ביאליק עד 2 מיליון\">"+
-    "<div class=bbtns><button class=bsearch data-k=props data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\">🏢 חפש במשרד</button><button class=bsearch data-k=excl data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\">🏘️ חפש בשת״פ</button></div>"+
+    "<div class=bbtns><button class=bsearch data-k=props data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\"><svg class=eico viewBox='0 0 18 18'><rect x='4.2' y='2.6' width='9.6' height='12.8' rx='1'/><path d='M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4'/><path d='M2.6 15.4h12.8'/></svg>חפש במשרד</button><button class=bsearch data-k=excl data-q=\""+q+"\" data-e=q"+n+" data-row=\""+esc(String(x.row||""))+"\" data-r=\""+rid+"\"><svg class=eico viewBox='0 0 18 18'><rect x='2.4' y='6' width='6.4' height='9.4' rx='1'/><rect x='9.4' y='3' width='6.2' height='12.4' rx='1'/></svg>חפש בשת״פ</button></div>"+
     "<div id="+rid+" class=bresults></div>"+
     "</div>";
 }
