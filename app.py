@@ -4502,6 +4502,16 @@ button.sec,.btn-ghost,.sec{background:#fff!important;color:var(--ink)!important;
 .bmore{color:var(--gold)!important}
 .bsearch{background:linear-gradient(180deg,#16273c,#0D1B2A)!important;border:none!important;color:#fff!important;border-radius:11px!important}
 .bsearch[data-k=excl]{background:#fff!important;color:var(--ink)!important;border:1px solid var(--line)!important}
+/* ===== באטץ' 4: נכסים + שת"פ + נכס נולד ===== */
+.score{background:#e6f4ec!important;color:var(--green)!important;border-radius:999px}
+.ouroffice{background:#fae8e8!important;color:var(--red)!important;border:1px solid #f0c9cc!important}
+.rchip{background:rgba(21,38,59,.05)!important;color:var(--ink)!important;border:1px solid var(--line)!important}
+.cbtn{background:linear-gradient(180deg,#16273c,#0D1B2A)!important}
+.nbcardx:before{display:none!important}
+.nbcardx{padding:14px 16px;border-color:var(--line);box-shadow:0 8px 22px rgba(20,30,50,.05)}
+.nbcardx .nbprice{color:var(--ink)!important}
+.nbcardx .nbbtn.link{background:linear-gradient(180deg,#16273c,#0D1B2A)!important;border-color:transparent!important}
+.nbbanner{background:linear-gradient(90deg,#fbf3df,#f7ead0)!important;border:1px solid #e7d6a8!important;color:#6b4e0e!important}
 </style></head><body><div class="wrap">
 <div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
