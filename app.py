@@ -4530,6 +4530,21 @@ input.chip,textarea.chip,select.chip{background:#fff!important;border:1px solid 
 input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 .eico{width:14px;height:14px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:inline-block;margin-inline-end:3px}
 .brandname:empty{display:none!important}
+/* ===== כרטיסי נכסים / שת"פ עשירים (מוקאפ 05/06) ===== */
+.pcard{background:#fff;border:1.5px solid #e7d6a8;border-radius:18px;padding:14px 16px;margin-bottom:11px;box-shadow:0 8px 22px rgba(20,30,50,.05)}
+.pcard .ptop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.pcard .ptitle{font-size:15.5px;font-weight:800;color:var(--ink);line-height:1.35}
+.pcard .pscore{flex:0 0 auto;background:#e6f4ec;color:var(--green);font-weight:800;font-size:12px;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.pcard .pmeta{color:var(--muted);font-size:13px;margin-top:5px;line-height:1.5}
+.pcard .pdesc{color:#5b6473;font-size:13.5px;margin-top:5px;line-height:1.55}
+.pcard .pprice{font-size:19px;font-weight:900;color:var(--ink);margin-top:7px}
+.pcard .pagent{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:13.5px;font-weight:700;color:var(--ink)}
+.pcard .pagent span{display:inline-flex;align-items:center}
+.pcard .pwa{display:inline-flex;align-items:center;background:#e6f4ec;color:var(--green)!important;border:1px solid #bfe3cd;font-weight:800;font-size:12px;padding:6px 13px;border-radius:10px;text-decoration:none}
+.pcard .pacts{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.pcard .pacts .lreq{width:auto;margin:0;padding:8px 13px;font-size:12.5px;font-weight:800;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+.pcard .pacts .plink{background:linear-gradient(180deg,#16273c,#0D1B2A);color:#fff;font-weight:800;font-size:12.5px;padding:9px 15px;border-radius:10px;text-decoration:none}
+.pcard .lpend{background:#fff3d6;color:#7a5c12;border:1px solid #e7d39a;font-weight:800;font-size:12px;padding:5px 11px;border-radius:9px}
 /* ===== מסך התחברות לפי המוקאפ ===== */
 .wrap:has(#login:not(.hidden)) .brand{display:none!important}
 .loginlogo{margin:34px 0 8px}
@@ -5058,13 +5073,25 @@ function doSearch(ep,kind){
   }).catch(function(){$("sres").innerHTML="<span class=err>שגיאה</span>";});
 }
 function card(kind,x){
-  if(kind=="props"){return "<div class=row>"+((x.score!==undefined&&x.score!=="")?"<span class=score>"+x.score+"%</span>":"")+"<b>"+esc(x.type||"נכס")+"</b> · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+
-    "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
-    (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+(x.own?("<div class=lbtns>"+(x.pending?"<span class=lpend>🔧 בטיפול אצל המזכירה</span> <button class=lreq data-k=done data-id=\""+esc(x.id||"")+"\">✓ בוצע</button>":("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">🗑 הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">💰 עדכן מחיר</button>"))+"</div>"):"")+"</div>";}
-  if(kind=="excl"){var _dd=daysSince(x.date);return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
-    (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price?esc(x.price):"",(x.office?(isOurOffice(x.office)?"<span class=ouroffice>🏠 "+esc(x.office)+"</span>":esc(x.office)):""),x.date?esc(x.date):""].filter(Boolean).join(" · ")+"</div>"+
-    (_dd!=null?"<div class=muted>⏳ "+daysLabel(_dd)+"</div>":"")+
-    (x.link?"<div><a class=cbtn style=background:#0D1B2A href='"+x.link+"' target=_blank rel=noopener>🔗 נדל\"ן וואן</a></div>":"")+"</div>";}
+  var _usvg="<svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>";
+  if(kind=="props"){
+    var pmeta=[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.date?esc(x.date):""].filter(Boolean).join(" · ");
+    var pacts=x.own?(x.pending?
+        "<span class=lpend>בטיפול אצל המזכירה</span> <button class=lreq data-k=done data-id=\""+esc(x.id||"")+"\">✓ בוצע</button>":
+        ("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">עדכן מחיר</button>")):"";
+    return "<div class=pcard><div class=ptop><div class=ptitle>"+esc(x.type||"נכס")+" · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+"</div>"+((x.score!==undefined&&x.score!=="")?"<span class=pscore>"+x.score+"%</span>":"")+"</div>"+
+      (pmeta?"<div class=pmeta>"+pmeta+"</div>":"")+
+      (x.price?"<div class=pprice>"+esc(x.price)+"</div>":"")+
+      (x.agent?"<div class=pagent><span>"+_usvg+esc(x.agent)+"</span>"+(x.wa?"<a class=pwa href='https://wa.me/"+x.wa+"' target=_blank rel=noopener>וואטסאפ</a>":"")+"</div>":"")+
+      (pacts?"<div class=pacts>"+pacts+"</div>":"")+"</div>";}
+  if(kind=="excl"){var _dd=daysSince(x.date);
+    var emeta=[(x.office?(isOurOffice(x.office)?"<span class=ouroffice>"+esc(x.office)+"</span>":esc(x.office)):""),x.date?esc(x.date):"",(_dd!=null?daysLabel(_dd):"")].filter(Boolean).join(" · ");
+    return "<div class=pcard><div class=ptop><div class=ptitle>"+esc(x.street)+"</div><span class=pscore>"+x.score+"%</span></div>"+
+      (x.dest?"<div class=pmeta>"+esc(x.dest)+"</div>":"")+
+      (x.desc?"<div class=pdesc>"+esc(x.desc)+"</div>":"")+
+      (x.price?"<div class=pprice>"+esc(x.price)+"</div>":"")+
+      (emeta?"<div class=pmeta>"+emeta+"</div>":"")+
+      (x.link?"<div class=pacts><a class=plink href='"+x.link+"' target=_blank rel=noopener>נדל\"ן וואן</a></div>":"")+"</div>";}
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"-";
   return "<div class=row>📞 <b>"+ph+"</b>"+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
     (x.agent?" · 👤 קיבל: "+esc(x.agent):"")+
