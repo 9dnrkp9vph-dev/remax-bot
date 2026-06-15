@@ -2925,20 +2925,21 @@ def api_sign_submit():
             "commission_pct": link, "received_at": now_iso, "notes": notes})
         if j and j.get("ok"):
             ok_any = True
-    doc_saved = False
+    doc_saved = False; doc_resp = ""
     try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה)
         jd = _buyers_apps_post("savesigndoc", {
             "token": token, "event_id": eid, "status": "signed",
             "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
             "signature": signature, "signed_at": now_iso})
         doc_saved = bool(jd and jd.get("ok"))
-    except Exception:
-        doc_saved = False
+        doc_resp = str(jd)[:200] if jd is not None else "None (אין תגובה)"
+    except Exception as _e:
+        doc_saved = False; doc_resp = "EXC: " + str(_e)[:160]
     if ok_any:
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
-    return jsonify({"ok": ok_any, "event_id": eid, "link": link, "doc_saved": doc_saved})
+    return jsonify({"ok": ok_any, "event_id": eid, "link": link, "doc_saved": doc_saved, "doc_resp": doc_resp})
 
 @app.route("/s/<token>")
 def public_sign_doc(token):
@@ -4572,7 +4573,7 @@ function sgGenerate(){
     crent:(aud=="buyer"?$("sg_crent").value.trim():$("sg_scrent").value.trim()),
     notes:($("sg_notes")?$("sg_notes").value.trim():""),
     exfrom:exfrom,exto:exto,refid:("RF"+Date.now().toString().slice(-8)),refdate:SG_DATE};
-  var sig=pad.toDataURL("image/png");
+  var sig=sgShrinkSig(pad);
   var keys=[sgResolveKey()];
   if(exclOn)keys.push("exclusive");
   $("sg_preview").innerHTML='<div class=muted style="text-align:center;padding:12px">מפיק…</div>';
@@ -4580,13 +4581,14 @@ function sgGenerate(){
   function step(i){if(i>=keys.length){renderSignDocs(docs,v,sig);return;}
     api("/api/sign/contract?type="+encodeURIComponent(keys[i])).then(function(r){var fb=sgFill((r&&r.body)||"",v);if(v.notes)fb=fb+String.fromCharCode(10)+String.fromCharCode(10)+"הערות: "+v.notes;docs.push({title:(r&&r.title)||"",body:fb,deal_type:sgDealType(keys[i])});step(i+1);}).catch(function(){docs.push({title:"שגיאה",body:"",deal_type:""});step(i+1);});}
   step(0);}
+function sgShrinkSig(pad){try{var tw=440;var th=Math.round(tw*(pad.height||160)/(pad.width||440));var c=document.createElement("canvas");c.width=tw;c.height=th;var x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,tw,th);x.drawImage(pad,0,0,tw,th);return c.toDataURL("image/jpeg",0.55);}catch(e){return pad.toDataURL("image/jpeg",0.5);}}
 function sgDealType(key){return {buyer_buy:"CLIENT_SALE",buyer_both:"CLIENT_SALE",buyer_rent:"CLIENT_RENT",seller_sell:"OWNER_SALE",seller_both:"OWNER_SALE",exclusive:"OWNER_EXCLUSIVE"}[key]||"";}
 var SG_LASTDOCS=null,SG_LASTV=null,SG_LASTSIG="",SG_LASTHDR="";
 function sgSubmit(){
   if(!SG_LASTDOCS||!SG_LASTDOCS.length){alert("אין מה לשמור");return;}
   var v=SG_LASTV;
   api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,cid:v.cid,address:v.addr,notes:(v.notes||""),signature:SG_LASTSIG,header:SG_LASTHDR,docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type,title:d.title,body:d.body};})})}).then(function(r){
-    if(r&&r.ok){var _warn=(r.doc_saved===false)?'<div class=muted style="margin-top:8px;color:#c0392b">⚠️ המסמך עצמו לא נשמר (Apps Script) — הקישור לא יעבוד. צלם לי מסך.</div>':'';$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div>'+_warn+'<button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
+    if(r&&r.ok){var _warn=(r.doc_saved===false)?'<div class=muted style="margin-top:8px;color:#c0392b">⚠️ המסמך עצמו לא נשמר (Apps Script) — הקישור לא יעבוד. צלם לי מסך.<br><span style="font-size:10px;direction:ltr;display:block;word-break:break-all">'+(r.doc_resp||'')+'</span></div>':'';$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div>'+_warn+'<button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
     else{alert("השמירה נכשלה — ודא שה-Apps Script פרוס בגרסה חדשה (עם הפעולה addsigning).");}
   }).catch(function(){alert("שגיאת רשת");});}
 function renderSignDocs(docs,v,sig){
