@@ -4481,8 +4481,27 @@ button.sec,.btn-ghost,.sec{background:#fff!important;color:var(--ink)!important;
 .sharebtn{background:#fff!important;border:1px solid var(--line)!important}
 .brand{padding-bottom:14px}
 .brand:after{background:linear-gradient(90deg,transparent,rgba(187,138,44,.5),transparent)}
-.brandname{background:#fff!important;border:1px solid var(--line)!important;color:var(--ink)!important;font-weight:800!important;box-shadow:0 2px 8px rgba(20,30,50,.05)!important;border-radius:999px!important;padding:6px 14px!important}
-.brandname:before{background:var(--green)!important;box-shadow:0 0 0 3px rgba(31,138,76,.16)!important}
+.brandname{position:relative;background:linear-gradient(180deg,#22364f,#15263b)!important;color:#fff!important;width:40px;height:40px;border-radius:50%!important;padding:0!important;display:inline-flex!important;align-items:center;justify-content:center;font-size:14px!important;font-weight:800!important;border:none!important;box-shadow:0 3px 10px rgba(20,30,50,.2)!important;gap:0!important}
+.brandname:before{content:""!important;position:absolute;bottom:1px;inset-inline-end:1px;width:10px;height:10px;border-radius:50%;background:var(--green)!important;border:2px solid #f6f5f2;box-shadow:none!important}
+/* ===== באטץ' 3: שיחות + קונים ===== */
+.callrow:before{display:none!important}
+.callrow{padding:14px 16px;border-color:var(--line);box-shadow:0 8px 22px rgba(20,30,50,.05)}
+.callrow.new{box-shadow:0 0 0 1.5px rgba(187,138,44,.55),0 8px 22px rgba(20,30,50,.05)}
+.callrow .cphone{font-size:19px;white-space:nowrap}
+.callrow .csum{border-top:none!important;color:#5b6473;padding-top:2px}
+.callrow .csummore{color:var(--gold)}
+.ans{background:#e6f4ec!important;color:var(--green)!important}
+.noans{background:#fae8e8!important;color:var(--red)!important}
+.callrow .cbtns .addbuyer{background:linear-gradient(180deg,#16273c,#0D1B2A)!important;color:#fff!important;border:none!important;padding:7px 14px!important;border-radius:10px!important;font-size:12.5px!important;box-shadow:0 3px 10px rgba(20,30,50,.16)!important}
+.callrow .cbtns .wab{background:#e6f4ec!important;color:var(--green)!important;border:1px solid #bfe3cd!important}
+.callrow .cbtns .hidecall{background:#fff!important;border:1px solid var(--line)!important;color:#6b7280!important}
+.buyerrow{border-right:none!important;background:#fff!important;border:1.5px solid #e7d6a8;border-radius:18px;box-shadow:0 8px 22px rgba(20,30,50,.05);padding:14px 16px}
+.btag{background:#fbf3df!important;color:#7a5c12!important;border:1px solid #ead9ab}
+.bbudget{background:#fbf3df!important;color:#7a5c12!important;border:1px solid #ead9ab!important}
+.bsum{color:#5b6473}
+.bmore{color:var(--gold)!important}
+.bsearch{background:linear-gradient(180deg,#16273c,#0D1B2A)!important;border:none!important;color:#fff!important;border-radius:11px!important}
+.bsearch[data-k=excl]{background:#fff!important;color:var(--ink)!important;border:1px solid var(--line)!important}
 </style></head><body><div class="wrap">
 <div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
@@ -4534,7 +4553,7 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);localStorage.setItem("fbDev",DEV?"1":"");localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){bn.textContent=NAME?("שלום, "+NAME):"";}if(ROLE=="admin"){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(ROLE=="admin"){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);}
 function firstAllowedTab(){var order=["calls","buyers","sigs","props","excl","newborn"];if(!TABS||!TABS.length)return "calls";for(var i=0;i<order.length;i++){if(TABS.indexOf(order[i])>=0)return order[i];}return "calls";}
 function applyTabPerms(){
   var navKeys=["calls","buyers","sigs","props","excl","newborn"];
