@@ -4526,14 +4526,26 @@ th{border-bottom-color:var(--line)}td{border-bottom-color:var(--line)}
 .ovlbox{border-radius:18px}
 .chip{background:#f1efe9;border-color:#e7e3da;color:var(--ink)}
 .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+input.chip,textarea.chip,select.chip{background:#fff!important;border:1px solid #e7e3da!important;color:var(--ink)!important;font-weight:600}
+input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 .eico{width:14px;height:14px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:inline-block;margin-inline-end:3px}
 .brandname:empty{display:none!important}
-.loginlogo img{border-radius:0!important;border:none!important}
+/* ===== מסך התחברות לפי המוקאפ ===== */
+.wrap:has(#login:not(.hidden)) .brand{display:none!important}
+.loginlogo{margin:34px 0 8px}
+.loginlogo img{width:auto!important;height:62px!important;max-width:64%!important;border-radius:0!important;border:none!important;mix-blend-mode:multiply}
+.loginhead{text-align:center;font-size:24px;font-weight:800;color:var(--ink);margin:6px 0 4px}
+.loginsub{text-align:center;font-size:14px;color:var(--muted);line-height:1.6;max-width:330px;margin:0 auto 6px;padding:0 12px}
+#login .card{margin-top:14px;box-shadow:0 10px 30px rgba(20,30,50,.07)}
+#login .card label{display:block;text-align:right;margin-bottom:6px}
+#login #phone,#login #code{text-align:center;direction:ltr;font-size:18px;font-weight:700;letter-spacing:.5px}
 </style></head><body><div class="wrap">
 <div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="loginlogo"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
+  <div class="loginhead">ברוך הבא</div>
+  <div class="loginsub">התחבר עם מספר הטלפון שלך — נשלח לך קוד אימות חד-פעמי ב-SMS.</div>
   <div class="card" id="s1">
     <label class="muted">מספר הטלפון שלך</label>
     <input id="phone" type="tel" inputmode="numeric" placeholder="05X-XXXXXXX">
@@ -4591,7 +4603,7 @@ function applyTabPerms(){
 }
 
 // ── קונסולת מפתח ──────────────────────────────────────────────
-function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>⚙️ קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadContracts();}
+function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadContracts();}
 function devDiag(){$("devdiag").textContent=" בודק…";api("/api/dev/diag").then(function(r){$("devdiag").textContent=" "+((r&&r.msg)||"שגיאה");}).catch(function(){$("devdiag").textContent=" שגיאת רשת";});}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
 var DEVAGENTS=[],DEVDATA=null,DEVALL=false,DEVFILTER="";
@@ -4663,7 +4675,7 @@ function viewReport(){
   var MN=["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
   var cm=new Date().getMonth()+1,opts='<option value="">החודש</option>';
   for(var m=1;m<=cm;m++)opts+='<option value="'+m+'">'+MN[m-1]+'</option>';
-  $("view").innerHTML='<div class=card><h2>📊 דוחות מנהל</h2><div class=chips id=rpc><div class=chip data-r=lastweek>שבוע שעבר</div><div class=chip data-r=week>השבוע</div><select id=monthsel class="chip monthsel on" title="בחר חודש">'+opts+'</select><div class=chip data-r=year>השנה</div></div></div><div id=rep></div>';
+  $("view").innerHTML='<div class=card><h2>דוחות מנהל</h2><div class=chips id=rpc><div class=chip data-r=lastweek>שבוע שעבר</div><div class=chip data-r=week>השבוע</div><select id=monthsel class="chip monthsel on" title="בחר חודש">'+opts+'</select><div class=chip data-r=year>השנה</div></div></div><div id=rep></div>';
   document.querySelectorAll("#rpc .chip").forEach(function(c){if(c.tagName=="SELECT")return;c.onclick=function(){document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});c.classList.add("on");var ms=$("monthsel");if(ms){ms.classList.remove("on");ms.value="";}loadReport(c.dataset.r);};});
   var msel=$("monthsel");if(msel)msel.onchange=function(){document.querySelectorAll("#rpc .chip").forEach(function(x){x.classList.remove("on");});msel.classList.add("on");if(this.value)loadReport("month",this.value);else loadReport("month");};
   loadReport("month");
@@ -4675,7 +4687,7 @@ function toggleSigs(){var b=$("sigslist");if(!b)return;if(b.innerHTML){b.innerHT
   if(REPSIGS&&REPSIGS.length){var arr=REPSIGS.slice().sort(function(a,c){return String(c.date).localeCompare(String(a.date));});
     list=arr.map(function(e){return "<div class=row><b>"+esc(e.type||"חתימה")+"</b>"+(e.client?" · "+esc(e.client):"")+"<div class=muted>"+[e.address?esc(e.address):"",e.agent?"👤 "+esc(e.agent):"",e.date?"📅 "+fmtD(e.date):""].filter(Boolean).join(" · ")+"</div></div>";}).join("");
   }else{list="<div class=muted>אין חתימות בתקופה.</div>";}
-  b.innerHTML="<div class=card><h2>✍️ חתימות ("+(g.total||0)+")</h2>"+head+"<div style=margin-top:8px>"+list+"</div></div>";}
+  b.innerHTML="<div class=card><h2>חתימות ("+(g.total||0)+")</h2>"+head+"<div style=margin-top:8px>"+list+"</div></div>";}
 function fmtD(s){s=String(s||"");if(s.indexOf("T")>-1){var pp=s.slice(0,10).split("-");if(pp.length==3)return pp[2]+"/"+pp[1]+"/"+pp[0];}return s.slice(0,16);}
 function toggleExc(){var b=$("exclist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}if(!REPEXC||!REPEXC.length){b.innerHTML="<div class=card><div class=muted>אין בלעדיות בתקופה.</div></div>";return;}var list=REPEXC.slice().sort(function(a,c){return String(c.date).localeCompare(String(a.date));});b.innerHTML="<div class=card><h2>🏘️ בלעדיות ("+REPEXC.length+")</h2>"+list.map(function(e){return "<div class=row><b>"+esc(e.address||"—")+"</b><div class=muted>"+[e.agent?"👤 "+esc(e.agent):"",e.date?"📅 "+fmtD(e.date):""].filter(Boolean).join(" · ")+"</div></div>";}).join("")+"</div>";}
 function toggleAds(){var b=$("adslist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}
@@ -4684,19 +4696,19 @@ function toggleAds(){var b=$("adslist");if(!b)return;if(b.innerHTML){b.innerHTML
     if(!r||!r.ok){b.innerHTML="<div class=card class=err>שגיאה</div>";return;}
     var items=r.results||[];
     if(!items.length){b.innerHTML="<div class=card><div class=muted>אין מודעות על שם הסוכן.</div></div>";return;}
-    b.innerHTML="<div class=card><h2>📋 מודעות הסוכן ("+items.length+")</h2>"+items.map(function(x){var y={};for(var k in x)y[k]=x[k];y.own=false;return card("props",y);}).join("")+"</div>";
+    b.innerHTML="<div class=card><h2>מודעות הסוכן ("+items.length+")</h2>"+items.map(function(x){var y={};for(var k in x)y[k]=x[k];y.own=false;return card("props",y);}).join("")+"</div>";
   }).catch(function(){b.innerHTML="<div class=card><div class=err>שגיאה</div></div>";});}
 function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p+(month?"&month="+month:"")+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
   if(!r.ok){if(r.auth===false){relogin();return;}$("rep").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
   REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;REPEXC=sm.exclusives||[];REPSIGS=sm.sigsList||[];REPSIGB=sg;
   var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+"<div class=stat style=cursor:pointer onclick=toggleSigs()><div class=n>"+sg.total+"</div><div class=l>חתימות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleExc()><div class=n>"+sm.exclusives.length+"</div><div class=l>בלעדיות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleAds()><div class=n>"+(r.listings!=null?r.listings:0)+"</div><div class=l>מודעות 👁</div></div></div></div><div id=sigslist></div><div id=exclist></div><div id=adslist></div>";
-  if(r.insights&&r.insights.length){h+="<div class=card><h2>📊 תובנות</h2>"+r.insights.map(function(t){return "<div class=insight>"+esc(t)+"</div>";}).join("")+"</div>";}
+  if(r.insights&&r.insights.length){h+="<div class=card><h2>תובנות</h2>"+r.insights.map(function(t){return "<div class=insight>"+esc(t)+"</div>";}).join("")+"</div>";}
   if(r.scope=="כל המשרד"){var ag="<table><tr><th style=text-align:start>מתווך</th><th>שיחות</th><th>נענו</th><th>%</th></tr>";sm.agents.slice(0,10).forEach(function(a,i){ag+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center>"+a.total+"</td><td style=text-align:center>"+a.answered+"</td><td style=text-align:center>"+a.rate+"%</td></tr>";});ag+="</table>";
-  h+="<div class=card><h2>👥 מתווכים מובילים</h2>"+ag+"</div>";
-  if(sm.topGius&&sm.topGius.length){var tg="<table><tr><th style=text-align:start>מתווך</th><th>נכסים</th></tr>";sm.topGius.forEach(function(a,i){tg+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tg+="</table>";h+="<div class=card><h2>🏆 מובילים בגיוס נכסים</h2>"+tg+"</div>";}
-  if(sm.topKonim&&sm.topKonim.length){var tk="<table><tr><th style=text-align:start>מתווך</th><th>קונים</th></tr>";sm.topKonim.forEach(function(a,i){tk+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tk+="</table>";h+="<div class=card><h2>🤝 מובילים בהחתמת קונים</h2>"+tk+"</div>";}}
-  if(r.shtaf&&r.shtaf.length){var tot=(r.shtaf_total!=null?r.shtaf_total:r.shtaf.reduce(function(a,o){return a+o.count;},0));var noff=(r.shtaf_offices!=null?r.shtaf_offices:r.shtaf.length);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>🤝 גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+noff+" משרדים · סה״כ "+tot+" נכסים"+(noff>10?" · מציג 10 מובילים":"")+"</div>"+st+"</div>";}
-  if(r.scope=="כל המשרד"&&r.nbCities&&r.nbCities.length){var nc="<table><tr><th style=text-align:start>עיר</th><th>נכסים</th></tr>";r.nbCities.forEach(function(c){nc+="<tr><td>"+esc(c.city)+"</td><td style=text-align:center><b>"+c.n+"</b></td></tr>";});nc+="</table>";h+="<div class=card><h2>🏙️ נכס נולד לפי ערים</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · סה״כ "+(r.nbTotal||0)+" נכסים</div>"+nc+"</div>";}
+  h+="<div class=card><h2>מתווכים מובילים</h2>"+ag+"</div>";
+  if(sm.topGius&&sm.topGius.length){var tg="<table><tr><th style=text-align:start>מתווך</th><th>נכסים</th></tr>";sm.topGius.forEach(function(a,i){tg+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tg+="</table>";h+="<div class=card><h2>מובילים בגיוס נכסים</h2>"+tg+"</div>";}
+  if(sm.topKonim&&sm.topKonim.length){var tk="<table><tr><th style=text-align:start>מתווך</th><th>קונים</th></tr>";sm.topKonim.forEach(function(a,i){tk+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tk+="</table>";h+="<div class=card><h2>מובילים בהחתמת קונים</h2>"+tk+"</div>";}}
+  if(r.shtaf&&r.shtaf.length){var tot=(r.shtaf_total!=null?r.shtaf_total:r.shtaf.reduce(function(a,o){return a+o.count;},0));var noff=(r.shtaf_offices!=null?r.shtaf_offices:r.shtaf.length);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+noff+" משרדים · סה״כ "+tot+" נכסים"+(noff>10?" · מציג 10 מובילים":"")+"</div>"+st+"</div>";}
+  if(r.scope=="כל המשרד"&&r.nbCities&&r.nbCities.length){var nc="<table><tr><th style=text-align:start>עיר</th><th>נכסים</th></tr>";r.nbCities.forEach(function(c){nc+="<tr><td>"+esc(c.city)+"</td><td style=text-align:center><b>"+c.n+"</b></td></tr>";});nc+="</table>";h+="<div class=card><h2>נכס נולד לפי ערים</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · סה״כ "+(r.nbTotal||0)+" נכסים</div>"+nc+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
 }).catch(function(){$("rep").innerHTML="<div class=card err>שגיאה</div>";});}
@@ -4740,7 +4752,7 @@ function viewCalls(){
   bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,45000);
 }
 function viewSigs(){
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">✍️ חתימות'+scopeLabel()+'</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn-gold" onclick="openSignForm(\'buyer\')">🧑 החתם מתעניין</button><button class="btn-gold" onclick="openSignForm(\'seller\')">🧔 החתם בעל נכס</button></div></div>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">חתימות'+scopeLabel()+'</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn-gold" onclick="openSignForm(\'buyer\')">החתם מתעניין</button><button class="btn-gold" onclick="openSignForm(\'seller\')">החתם בעל נכס</button></div></div>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
   bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,60000);
 }
 // ── מסך החתמת לקוח (במקום) ─────────────────────────────────────
@@ -4777,7 +4789,7 @@ function openSign(){if(timer){clearInterval(timer);timer=null;}
 function openSignCard(aud){if(aud=="shtaf"||aud=="referral"){alert("בקרוב 🙂 — כרגע זמינים: החתמת מתעניין והחתמת בעל נכס.");return;}openSignForm(aud);}
 function openSignForm(aud){SG_AUD=aud;
   var d=new Date();SG_DATE=("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();
-  var title=(aud=="seller")?"🧔 החתמת בעל נכס":"🧑 החתמת מתעניין";
+  var title=(aud=="seller")?"החתמת בעל נכס":"החתמת מתעניין";
   var deal=(aud=="buyer")
    ? '<div id="sg_buyerdeal" style="margin-top:12px"><div class=muted>סוג עסקה + עמלה</div>'
      +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_cbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
