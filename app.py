@@ -3183,7 +3183,7 @@ def public_sign_doc(token):
              ".page{max-width:820px;margin:0 auto;background:#fff;padding:30px 32px 26px;border-radius:18px;box-shadow:0 1px 2px rgba(20,30,50,.04),0 14px 40px rgba(20,30,50,.07);border:1px solid var(--line)}"
              ".logobar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:16px;margin-bottom:6px;position:relative;border-bottom:none}"
              ".logobar:after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}"
-             ".logobar img{height:48px;width:auto;object-fit:contain;flex:0 0 auto;mix-blend-mode:multiply}"
+             ".logobar img{height:48px;width:auto;object-fit:contain;flex:0 0 auto}"
              ".agentbox .an{font-size:17px;font-weight:800}"
              ".agentbox .al{font-size:12.5px;color:var(--muted);font-weight:600;margin-top:2px}"
              ".docnum{font-size:12px;font-weight:800;color:var(--gold);letter-spacing:.04em;margin:14px 0 4px}"
@@ -3608,10 +3608,6 @@ def _report_wa_text(sm, label, frm, to):
     for e in sorted(_exc, key=lambda x: str(x.get("date", "")), reverse=True):
         L.append("• " + (e.get("agent", "") or "—") + " · " + (e.get("address", "") or "—")
                  + ((" · " + e.get("date")) if e.get("date") else ""))
-    # מודעות פעילות
-    if pr.get("total") is not None:
-        L.append("")
-        L.append(f"📋 *מודעות פעילות:* {pr.get('total')}")
     return "\n".join(L)
 
 @app.route("/api/report", methods=["GET"])
@@ -3719,6 +3715,8 @@ def api_report():
             _ps = _pe - _delta
             insights = _agent_insights(frm, to, _ps.strftime("%d/%m/%Y"), _pe.strftime("%d/%m/%Y"), eff_name, eff_phones, sm, eff_keys)
         wa = _report_wa_text(sm, label + " · " + scope, frm, to)
+        if listings_total:
+            wa = wa + "\n\n📋 *מודעות פעילות:* " + str(listings_total)
         if insights:
             wa = "📊 *תובנות:*\n" + "\n".join(insights) + "\n\n" + wa
         if shtaf:
@@ -4381,6 +4379,22 @@ def _fetch_hidden_calls():
     _cache_put("hidden_calls", ids)
     return ids
 
+@app.route("/api/help", methods=["POST"])
+def api_help():
+    """דיווח תקלה / הצעת ייעול — נשלח במייל למנהל דרך Apps Script (MailApp)."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    body = request.get_json(silent=True) or {}
+    msg = (body.get("message") or "").strip()
+    kind = (body.get("kind") or "פנייה").strip()
+    if not msg:
+        return jsonify({"ok": False, "reason": "empty"}), 400
+    to = os.environ.get("HELP_EMAIL", "eyalshmul@gmail.com")
+    j = _buyers_apps_post("sendhelp", {"to": to, "kind": kind, "message": msg[:4000],
+                                       "agent": s.get("name", ""), "phone": s.get("phone", "")})
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עזרה/הצעה", (kind + ": " + msg)[:120])
+    return jsonify({"ok": bool(j and j.get("ok"))})
+
 @app.route("/api/calls/hide", methods=["POST"])
 def api_calls_hide():
     s = _web_auth()
@@ -4425,7 +4439,7 @@ def family_icon():
 
 @app.route("/assets/logo", methods=["GET"])
 def family_logo():
-    names = ["family-logo.jpg", "family-logo.jpeg", "family-logo.png", "family-logo.webp",
+    names = ["family-logo.png", "family-logo.webp", "family-logo.jpg", "family-logo.jpeg",
              "family-logo.png.jpg", "logo.png", "logo.jpg"]
     dirs = [Path(__file__).parent, Path("."), Path("/app")]
     for d in dirs:
@@ -4699,6 +4713,8 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 .sgbtn .eico{stroke:#231700;margin:0}
 .scard{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px 16px;margin-bottom:11px;box-shadow:0 8px 22px rgba(20,30,50,.05)}
 .scard.excl{border:1.5px solid #e7d6a8}
+.scard.pending{border:1.5px dashed #e0c98a;background:#fffdf8}
+.pendlbl{color:var(--gold);font-weight:800}
 .scard.new{box-shadow:0 0 0 1.5px rgba(187,138,44,.5),0 8px 22px rgba(20,30,50,.05)}
 .scard .stop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .scard .sname{font-size:15.5px;font-weight:800;color:var(--ink)}
@@ -4733,15 +4749,14 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 /* ===== מסך התחברות לפי המוקאפ ===== */
 .wrap:has(#login:not(.hidden)) .brand{display:none!important}
 .loginlogo{margin:34px 0 8px}
-.loginlogo img{width:auto!important;height:62px!important;max-width:64%!important;border-radius:0!important;border:none!important;mix-blend-mode:multiply}
-.brand img{mix-blend-mode:multiply}
+.loginlogo img{width:auto!important;height:62px!important;max-width:64%!important;border-radius:0!important;border:none!important}
 .loginhead{text-align:center;font-size:24px;font-weight:800;color:var(--ink);margin:6px 0 4px}
 .loginsub{text-align:center;font-size:14px;color:var(--muted);line-height:1.6;max-width:330px;margin:0 auto 6px;padding:0 12px}
 #login .card{margin-top:14px;box-shadow:0 10px 30px rgba(20,30,50,.07)}
 #login .card label{display:block;text-align:right;margin-bottom:6px}
 #login #phone,#login #code{text-align:center;direction:ltr;font-size:18px;font-weight:700;letter-spacing:.5px}
 </style></head><body><div class="wrap">
-<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();openHelp()">💬 עזרה / דיווח תקלה</div><div class="mi" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();window.open('https://www.instagram.com/remax.family?igsh=bXdmdzJjMWVkc3li&utm_source=qr','_blank')"><svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:none;stroke:#E1306C;stroke-width:1.9;flex:0 0 auto"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.6" cy="6.4" r="1.2" fill="#E1306C" stroke="none"/></svg> אינסטגרם של המשרד</div><div class="mi" onclick="closeMenu();window.open('https://www.madlan.co.il/madad/2026/%D7%A7%D7%A8%D7%99%D7%95%D7%AA','_blank')">🏅 מדד המתווכים — מדלן 2026</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="loginlogo"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
@@ -5158,8 +5173,9 @@ function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")
   var _dsv="<svg class=eico viewBox='0 0 18 18'><rect x='4' y='2.5' width='10' height='13' rx='1.4'/><path d='M6.5 6h5M6.5 9h5M6.5 12h3'/></svg>";
   $("sigs").innerHTML=(sigs.length?('<div class=muted style="margin:2px 2px 10px;font-weight:700">חתימות אחרונות</div>'+sigs.map(function(g){
     var isNew=seenSig&&g.ts>seenSig;var tg=sigTag(g.type);
-    var meta="נחתם · "+g.time+((isMulti()&&g.agent)?(" · "+esc(g.agent)):"")+((g.pct!=null)?(" · "+g.pct+"%"):"");
-    return "<div class='scard"+(tg.excl?" excl":"")+(isNew?" new":"")+"'>"+
+    var signed=!!(g.link||(g.pct!=null&&g.pct!==""));
+    var meta="<span class='"+(signed?"":"pendlbl")+"'>"+(signed?"נחתם":"ממתין לחתימה")+"</span> · "+g.time+((isMulti()&&g.agent)?(" · "+esc(g.agent)):"");
+    return "<div class='scard"+(tg.excl?" excl":"")+(signed?"":" pending")+(isNew?" new":"")+"'>"+
       "<div class=stop><b class=sname>"+esc(g.client||g.type||"חתימה")+"</b><span class='stag "+tg.cls+"'>"+esc(g.type)+"</span></div>"+
       (g.address?"<div class=saddr>"+_dsv+esc(g.address)+"</div>":"")+
       "<div class=sdate>"+meta+"</div>"+
@@ -5191,6 +5207,9 @@ function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div c
   }).catch(function(){if($("myprops"))$("myprops").innerHTML="";});}
 function listingReq(kind,id,addr,np){api("/api/listing/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:kind,id:id,address:addr,new_price:np,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){if(r&&r.ok){alert("✅ הבקשה נשלחה למזכירה");loadMyProps();}else alert("שליחה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));}).catch(function(){alert("שגיאה");});}
 function listingDone(id){api("/api/listing/done",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok){loadMyProps();}else alert("עדכון נכשל");}).catch(function(){alert("שגיאה");});}
+function openHelp(){closeHelp();var h='<div class=ovl id=helpovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>עזרה / דיווח תקלה</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="closeHelp()">✕</button></div><div class=muted style="margin:6px 0 10px">דווח על תקלה או שלח הצעת ייעול — יישלח ישירות במייל לאייל.</div><select id=help_kind class=chip style="width:100%;box-sizing:border-box"><option>תקלה / באג</option><option>הצעת ייעול</option><option>אחר</option></select><textarea id=help_msg placeholder="תאר/י את הבעיה או ההצעה..." style="width:100%;box-sizing:border-box;min-height:120px;margin-top:8px"></textarea><div id=help_st class=muted style="margin-top:6px;min-height:16px"></div><button class="btn-gold" style="width:100%;margin-top:8px" onclick="sendHelp()">שלח</button></div></div>';var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("helpovl");if(o)o.onclick=function(e){if(e.target.id=="helpovl")closeHelp();};}
+function closeHelp(){var o=$("helpovl");if(o)o.parentNode.removeChild(o);}
+function sendHelp(){var m=($("help_msg").value||"").trim();var st=$("help_st");if(!m){st.innerHTML="<span class=err>נא לכתוב הודעה</span>";return;}var k=$("help_kind").value;st.textContent="שולח…";api("/api/help",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:m,kind:k})}).then(function(r){if(r&&r.ok){st.innerHTML="<span style='color:#1f8a4c;font-weight:700'>✓ נשלח בהצלחה! תודה.</span>";setTimeout(closeHelp,1200);}else{st.innerHTML="<span class=err>השליחה נכשלה — נסה שוב מאוחר יותר.</span>";}}).catch(function(){st.innerHTML="<span class=err>שגיאת רשת</span>";});}
 function shareApp(){var u=location.origin+"/app";var t="📞 תמלול שיחות אוטומטי\n👥 ניהול קונים ולידים במקום אחד\n✍️ חתימה דיגיטלית על מסמכים\n🤖 מציאת נכסים באמצעות AI\n🏠 \"נכס נולד\" – איתור נכסים חדשים לפני כולם\n"+u;window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank");}
 var DEFERRED_INSTALL=null;
 window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();DEFERRED_INSTALL=e;});
