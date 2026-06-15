@@ -4547,6 +4547,10 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 /* ===== באטץ' 8: טאב חתימות (כפתורים + כרטיסים) ===== */
 .chips .chip.on{background:linear-gradient(180deg,#2f6fd6,#1f5fbe)!important;color:#fff!important;box-shadow:0 4px 12px rgba(31,95,190,.28)!important}
 .chips .chip.on:after{display:none!important}
+.sgdel{flex:0 0 auto!important;width:34px!important;height:34px!important;min-width:34px!important;padding:0!important;margin:0!important;display:inline-flex!important;align-items:center;justify-content:center;font-size:15px;border-radius:9px!important}
+.sg_prow .chip{height:34px;padding-top:0;padding-bottom:0}
+.sgback{width:auto!important;margin:0!important;display:inline-flex;align-items:center;gap:5px;background:linear-gradient(180deg,#d4a437,#c0901f)!important;color:#231700!important;border:none!important;font-weight:800;font-size:13px;padding:9px 15px!important;border-radius:11px!important;box-shadow:0 4px 12px rgba(187,138,44,.26)!important;cursor:pointer;flex:0 0 auto}
+.sgback svg{width:15px;height:15px;fill:none;stroke:#231700;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .sglbl{display:flex;align-items:center;gap:5px;font-weight:700}
 .sglbl .eico{stroke:var(--gold);margin:0;width:15px;height:15px}
 .sgbtns{display:flex;gap:8px;margin-top:12px}
@@ -4589,13 +4593,14 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 .wrap:has(#login:not(.hidden)) .brand{display:none!important}
 .loginlogo{margin:34px 0 8px}
 .loginlogo img{width:auto!important;height:62px!important;max-width:64%!important;border-radius:0!important;border:none!important;mix-blend-mode:multiply}
+.brand img{mix-blend-mode:multiply}
 .loginhead{text-align:center;font-size:24px;font-weight:800;color:var(--ink);margin:6px 0 4px}
 .loginsub{text-align:center;font-size:14px;color:var(--muted);line-height:1.6;max-width:330px;margin:0 auto 6px;padding:0 12px}
 #login .card{margin-top:14px;box-shadow:0 10px 30px rgba(20,30,50,.07)}
 #login .card label{display:block;text-align:right;margin-bottom:6px}
 #login #phone,#login #code{text-align:center;direction:ltr;font-size:18px;font-weight:700;letter-spacing:.5px}
 </style></head><body><div class="wrap">
-<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="loginlogo"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
@@ -4847,17 +4852,17 @@ function openSignForm(aud){SG_AUD=aud;
   var title=(aud=="seller")?"החתמת בעל נכס":"החתמת מתעניין";
   var deal=(aud=="buyer")
    ? '<div id="sg_buyerdeal" style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><path d="M11.8 3.4l2.8 2.8L6 14.8 3 15.4l.6-3z"/><path d="M10.6 4.6l2.8 2.8"/></svg>סוג עסקה ועמלה</div>'
-     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_cbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
-     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_rent"> שכירות — עמלה <input id="sg_crent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label></div>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap"><input type=checkbox id="sg_buy" checked> קניה — עמלה <input id="sg_cbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_cbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap"><input type=checkbox id="sg_rent"> שכירות — עמלה <input id="sg_crent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label></div>'
    : '<div id="sg_sellerdeal" style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><path d="M11.8 3.4l2.8 2.8L6 14.8 3 15.4l.6-3z"/><path d="M10.6 4.6l2.8 2.8"/></svg>סוג עסקה ועמלה</div>'
-     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_scbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
-     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap"><input type=checkbox id="sg_sell" checked> מכירה — עמלה <input id="sg_scbuy" class=chip style="width:56px" inputmode=decimal value="2"> <select id="sg_scbuyunit" class=chip style="width:56px"><option>%</option><option>₪</option></select></label>'
+     +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:nowrap"><input type=checkbox id="sg_srent"> השכרה — עמלה <input id="sg_scrent" class=chip style="width:56px" inputmode=decimal value="1"> חודשים</label>'
      +'<div style="margin-top:10px"><div class=muted>תקופת בלעדיות (כולל = הלקוח חותם על 2 טפסים)</div><select id="sg_exsel" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgExclSel()"><option value="">ללא בלעדיות</option><option value="1">בלעדיות חודש 1</option><option value="2">בלעדיות 2 חודשים</option><option value="3">בלעדיות 3 חודשים</option><option value="4">בלעדיות 4 חודשים</option><option value="5">בלעדיות 5 חודשים</option><option value="6">בלעדיות 6 חודשים</option><option value="custom">* תאריך מותאם אישית</option></select></div>'
      +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>';
   var propsec=(aud=="buyer")
    ? '<div style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>פרטי הנכס (אפשר להוסיף יותר מנכס אחד)</div><div id="sg_proplist_rows"></div><datalist id="sg_proplist"></datalist><button class="btn-ghost" style="margin-top:8px" onclick="sgAddProp()">➕ הוסף נכס</button></div>'
    : '<div style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>פרטי הנכס</div><input id="sg_addr" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="כתובת הנכס (התחל להקליד — מהמודעות שלך)" list="sg_proplist" autocomplete="off" oninput="sgPropType()"><datalist id="sg_proplist"></datalist><input id="sg_price" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="מחיר מבוקש (₪)" inputmode=numeric></div>';
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" onclick="tab(\'sigs\')">→ חזרה</button></div>'
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 style="margin:0">'+title+'</h2><button class="sgback" onclick="tab(\'sigs\')"><svg viewBox="0 0 18 18"><path d="M7 4l5 5-5 5"/></svg>חזרה</button></div>'
    + deal
    +'<div style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><circle cx="9" cy="6" r="2.6"/><path d="M4 15a5 5 0 0 1 10 0"/></svg>פרטי הלקוח</div>'
    +'<input id="sg_cname" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="שם הלקוח (התחל להקליד — קונה שמור מ״הקונים שלי״)" list="sg_clientlist" autocomplete="off" oninput="sgClientType()"><datalist id="sg_clientlist"></datalist>'
@@ -4873,7 +4878,7 @@ function openSignForm(aud){SG_AUD=aud;
    +'<button id="sg_gobtn" class="btn-gold" style="width:100%;margin-top:14px" onclick="sgGenerate()">צור הסכם וחתום</button></div><div id="sg_preview"></div>';
   if(aud=="buyer")sgAddProp();
   sgMode();loadSignPickers();}
-function sgAddProp(){var box=$("sg_proplist_rows");if(!box)return;var row=document.createElement("div");row.className="sg_prow";row.style.cssText="display:flex;gap:6px;margin-top:6px;align-items:center";row.innerHTML='<input class="sg_addr_m chip" style="flex:2;min-width:110px;box-sizing:border-box" placeholder="כתובת הנכס" list="sg_proplist" autocomplete="off" oninput="sgPropTypeM(this)"><input class="sg_price_m chip" style="flex:1;min-width:70px;box-sizing:border-box" placeholder="מחיר ₪" inputmode=numeric><button class="btn-ghost" type=button style="padding:4px 9px" onclick="sgDelProp(this)">✕</button>';box.appendChild(row);}
+function sgAddProp(){var box=$("sg_proplist_rows");if(!box)return;var row=document.createElement("div");row.className="sg_prow";row.style.cssText="display:flex;gap:6px;margin-top:6px;align-items:center";row.innerHTML='<input class="sg_addr_m chip" style="flex:3;min-width:130px;box-sizing:border-box" placeholder="כתובת + מספר בית" list="sg_proplist" autocomplete="off" oninput="sgPropTypeM(this)"><input class="sg_price_m chip" style="flex:1.5;min-width:85px;box-sizing:border-box" placeholder="מחיר ₪" inputmode=numeric><button class="btn-ghost sgdel" type=button onclick="sgDelProp(this)">✕</button>';box.appendChild(row);}
 function sgDelProp(btn){var box=$("sg_proplist_rows");var row=btn.parentNode;if(box&&box.querySelectorAll(".sg_prow").length<=1){row.querySelector(".sg_addr_m").value="";row.querySelector(".sg_price_m").value="";return;}row.parentNode.removeChild(row);}
 function sgPropTypeM(el){var ad=String(el.value||"").trim();var p=SG_PROPS[ad];if(p&&p.price){var pr=el.parentNode.querySelector(".sg_price_m");if(pr&&!pr.value)pr.value=p.price;}}
 function sgCollectProps(){var out=[];var rows=document.querySelectorAll("#sg_proplist_rows .sg_prow");for(var i=0;i<rows.length;i++){var a=String((rows[i].querySelector(".sg_addr_m")||{}).value||"").trim();var p=String((rows[i].querySelector(".sg_price_m")||{}).value||"").trim();if(a)out.push({addr:a,price:p});}return out;}
@@ -4892,7 +4897,9 @@ function sgGenerate(){
   var isRemote=m&&m.value=="remote";
   var cid=($("sg_cid").value||"").trim();
   if(cid&&!validILID(cid)){alert("תעודת הזהות אינה תקינה");return;}
-  if(!($("sg_cname").value||"").trim()){alert("חסר שם לקוח");return;}
+  var _cnm=($("sg_cname").value||"").trim();
+  if(!_cnm){alert("חסר שם לקוח");return;}
+  if(_cnm.split(/\s+/).filter(Boolean).length<2){alert("נא להזין שם מלא — שם פרטי ושם משפחה");return;}
   var pad=$("sg_pad");
   if(isRemote){if(!($("sg_cphone").value||"").trim()){alert("חסר טלפון לקוח לשליחת הקישור");return;}}
   else{if(!pad||pad.dataset.signed!="1"){alert("חסרה חתימת הלקוח");return;}}
@@ -5015,7 +5022,7 @@ function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")
       "<div class=stop><b class=sname>"+esc(g.client||g.type||"חתימה")+"</b><span class='stag "+tg.cls+"'>"+esc(g.type)+"</span></div>"+
       (g.address?"<div class=saddr>"+_dsv+esc(g.address)+"</div>":"")+
       "<div class=sdate>"+meta+"</div>"+
-      (g.link?"<div style='margin-top:10px'><a class=slink href='"+g.link+"' target=_blank rel=noopener>"+_dsv+"קישור לחתימה</a></div>":"")+
+      (g.link?"<div style='margin-top:10px'><a class=slink href='"+g.link+"' target=_blank rel=noopener>"+_dsv+"קישור להסכם</a></div>":"")+
     "</div>";
   }).join("")):"<div class=card><div class=muted>אין חתימות בטווח.</div></div>");
   seenSig=maxS;
@@ -5044,6 +5051,15 @@ function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div c
 function listingReq(kind,id,addr,np){api("/api/listing/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:kind,id:id,address:addr,new_price:np,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){if(r&&r.ok){alert("✅ הבקשה נשלחה למזכירה");loadMyProps();}else alert("שליחה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));}).catch(function(){alert("שגיאה");});}
 function listingDone(id){api("/api/listing/done",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok){loadMyProps();}else alert("עדכון נכשל");}).catch(function(){alert("שגיאה");});}
 function shareApp(){var u=location.origin+"/app";var t="📲 אפליקציית RE/MAX Family\nחיפוש נכסים, קונים, בלעדיות ויצירת מצגות נדל\"ן:\n"+u;window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank");}
+var DEFERRED_INSTALL=null;
+window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();DEFERRED_INSTALL=e;});
+function addToHome(){
+  if(window.navigator.standalone){alert("האפליקציה כבר מותקנת על מסך הבית 🎉");return;}
+  if(DEFERRED_INSTALL){DEFERRED_INSTALL.prompt();DEFERRED_INSTALL.userChoice.then(function(){DEFERRED_INSTALL=null;});return;}
+  var isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  if(isIOS){alert("להוספה למסך הבית (אייפון):\n\n1. לחץ על כפתור השיתוף ⬆️ בתחתית הדפדפן (Safari)\n2. גלול ובחר ״הוספה למסך הבית״\n3. לחץ ״הוסף״\n\nכך תקבל אייקון של RE/MAX Family ישירות במסך הבית.");}
+  else{alert("להוספה למסך הבית:\n\nפתח את תפריט הדפדפן (⋮) ובחר ״הוספה למסך הבית״ / Install app.");}
+}
 function openBuyerForm(pf){pf=pf||{};closeBuyer();
   var ov=document.createElement("div");ov.className="ovl";ov.id="buyerovl";
   ov.innerHTML='<div class=ovlbox><h3 style=margin:0_0_8px>➕ הוספת קונה</h3>'+
