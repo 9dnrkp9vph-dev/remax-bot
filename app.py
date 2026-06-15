@@ -3513,6 +3513,20 @@ def api_listing_request():
     _log_activity(s["name"], s["role"], s["phone"], ("בקשת הסרת מודעה" if kind == "remove" else "בקשת עדכון מחיר"), lid)
     return jsonify({"ok": True})
 
+@app.route("/api/listing/done", methods=["POST"])
+def api_listing_done():
+    """סימון 'בוצע' — מסיר את הנכס מרשימת 'בטיפול אצל המזכירה'."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    lid = str((request.get_json(silent=True) or {}).get("id") or "").strip()
+    if not lid: return jsonify({"ok": False, "reason": "bad_request"}), 400
+    j = _buyers_apps_post("donelisting", {"listing_id": lid})
+    if not j or not j.get("ok"):
+        return jsonify({"ok": False, "reason": (j or {}).get("error", "fail")}), 502
+    _cache_clear("pending_listings")
+    _log_activity(s["name"], s["role"], s["phone"], "סימון בוצע (הסרת בטיפול)", lid)
+    return jsonify({"ok": True})
+
 # ── "נכס נולד" — נכסים חדשים עם חשיפה מושהית פר-סוכן ─────────────────────────────
 NEWBORN_SHEET_TAB   = os.environ.get("NEWBORN_SHEET_TAB", "נכס נולד")
 NEWBORN_DELAYS_TAB  = os.environ.get("NEWBORN_DELAYS_TAB", "נכסנולד_הגדרות")
@@ -4439,7 +4453,7 @@ function sgResolveKey(){var a=SG_AUD||"buyer";
 function sgAudUI(){var a=$("sg_aud")?$("sg_aud").value:"buyer";var bd=$("sg_buyerdeal"),sd=$("sg_sellerdeal");if(bd)bd.style.display=(a=="buyer")?"":"none";if(sd)sd.style.display=(a=="seller")?"":"none";}
 function sgExclSel(){var w=$("sg_exdates");if(w)w.style.display=($("sg_exsel")&&$("sg_exsel").value=="custom")?"":"none";}
 function fmtDate(iso){if(!iso)return "";var p=String(iso).split("-");return p.length==3?(p[2]+"/"+p[1]+"/"+p[0]):iso;}
-function fmtD(d){return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();}
+function sgFmtD(d){return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();}
 function sgMode(){var m=document.querySelector('input[name=sgmode]:checked');var remote=m&&m.value=="remote";var pw=$("sg_padwrap"),rw=$("sg_remotewrap");if(pw)pw.style.display=remote?"none":"";if(rw)rw.style.display=remote?"":"none";}
 function openSign(){if(timer){clearInterval(timer);timer=null;}
   var cards=[["buyer","החתמת מתעניין","🧑","#2f9bc4"],["seller","החתמת בעל נכס","🧔","#e09a3a"],["shtaf","הסכם שת״פ","🤝","#8e44ad"],["referral","הפניית לקוח","↪️","#15a085"]];
@@ -4496,7 +4510,7 @@ function sgGenerate(){
   var exfrom="",exto="",exclOn=false;
   if(aud=="seller"){var xsel=$("sg_exsel")?$("sg_exsel").value:"";
     if(xsel=="custom"){if($("sg_exfrom").value&&$("sg_exto").value){exclOn=true;exfrom=fmtDate($("sg_exfrom").value);exto=fmtDate($("sg_exto").value);}}
-    else if(xsel){var xn=parseInt(xsel,10);var xf=new Date(),xt=new Date();xt.setMonth(xt.getMonth()+xn);exclOn=true;exfrom=fmtD(xf);exto=fmtD(xt);}}
+    else if(xsel){var xn=parseInt(xsel,10);var xf=new Date(),xt=new Date();xt.setMonth(xt.getMonth()+xn);exclOn=true;exfrom=sgFmtD(xf);exto=sgFmtD(xt);}}
   var v={date:SG_DATE,agent:NAME||"",cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:$("sg_addr").value.trim(),price:$("sg_price").value.trim(),
     cbuy:(aud=="buyer"?$("sg_cbuy").value.trim():$("sg_scbuy").value.trim()),
     cbuyunit:(aud=="buyer"?($("sg_cbuyunit")?$("sg_cbuyunit").value:"%"):($("sg_scbuyunit")?$("sg_scbuyunit").value:"%")),
@@ -4591,9 +4605,10 @@ function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div c
     var h="<div class=muted style=margin:12px_0_4px>🏠 הנכסים שלי במשרד ("+r.results.length+")</div>";
     h+=r.results.map(function(x){return card("props",x);}).join("");
     $("myprops").innerHTML=h;
-    document.querySelectorAll("#myprops .lreq").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id"),addr=decodeURIComponent(b.getAttribute("data-addr")||""),k=b.getAttribute("data-k");if(k=="remove"){if(confirm("לשלוח בקשה למזכירה להסיר את המודעה?\n"+addr))listingReq("remove",id,addr,"");}else{var np=prompt("מחיר חדש למודעה:\n"+addr);if(np&&np.trim())listingReq("price",id,addr,np.trim());}};});
+    document.querySelectorAll("#myprops .lreq").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id"),addr=decodeURIComponent(b.getAttribute("data-addr")||""),k=b.getAttribute("data-k");if(k=="done"){if(confirm("לסמן שהטיפול בוצע? הנכס לא יסומן יותר כ׳בטיפול אצל המזכירה׳."))listingDone(id);}else if(k=="remove"){if(confirm("לשלוח בקשה למזכירה להסיר את המודעה?\n"+addr))listingReq("remove",id,addr,"");}else{var np=prompt("מחיר חדש למודעה:\n"+addr);if(np&&np.trim())listingReq("price",id,addr,np.trim());}};});
   }).catch(function(){if($("myprops"))$("myprops").innerHTML="";});}
 function listingReq(kind,id,addr,np){api("/api/listing/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:kind,id:id,address:addr,new_price:np,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){if(r&&r.ok){alert("✅ הבקשה נשלחה למזכירה");loadMyProps();}else alert("שליחה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));}).catch(function(){alert("שגיאה");});}
+function listingDone(id){api("/api/listing/done",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok){loadMyProps();}else alert("עדכון נכשל");}).catch(function(){alert("שגיאה");});}
 function shareApp(){var u=location.origin+"/app";var t="📲 אפליקציית RE/MAX Family\nחיפוש נכסים, קונים, בלעדיות ויצירת מצגות נדל\"ן:\n"+u;window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank");}
 function openBuyerForm(pf){pf=pf||{};closeBuyer();
   var ov=document.createElement("div");ov.className="ovl";ov.id="buyerovl";
@@ -4692,7 +4707,7 @@ function doSearch(ep,kind){
 function card(kind,x){
   if(kind=="props"){return "<div class=row>"+((x.score!==undefined&&x.score!=="")?"<span class=score>"+x.score+"%</span>":"")+"<b>"+esc(x.type||"נכס")+"</b> · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+
     "<div class=muted>"+[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
-    (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+(x.own?("<div class=lbtns>"+(x.pending?"<span class=lpend>🔧 בטיפול אצל המזכירה</span>":("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">🗑 הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">💰 עדכן מחיר</button>"))+"</div>"):"")+"</div>";}
+    (x.agent?"<div>👤 "+esc(x.agent)+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+"</div>":"")+(x.own?("<div class=lbtns>"+(x.pending?"<span class=lpend>🔧 בטיפול אצל המזכירה</span> <button class=lreq data-k=done data-id=\""+esc(x.id||"")+"\">✓ בוצע</button>":("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">🗑 הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">💰 עדכן מחיר</button>"))+"</div>"):"")+"</div>";}
   if(kind=="excl"){var _dd=daysSince(x.date);return "<div class=row><span class=score>"+x.score+"%</span><b>"+esc(x.street)+"</b><div class=muted>"+esc(x.dest)+"</div>"+
     (x.desc?"<div>"+esc(x.desc)+"</div>":"")+"<div class=muted>"+[x.price?esc(x.price):"",(x.office?(isOurOffice(x.office)?"<span class=ouroffice>🏠 "+esc(x.office)+"</span>":esc(x.office)):""),x.date?esc(x.date):""].filter(Boolean).join(" · ")+"</div>"+
     (_dd!=null?"<div class=muted>⏳ "+daysLabel(_dd)+"</div>":"")+
