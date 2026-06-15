@@ -4544,6 +4544,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold)}
 .callrow .cdetails b{display:none}
 .callrow .cbtns .addbuyer{background:linear-gradient(180deg,#2f6fd6,#1f5fbe)!important;color:#fff!important;border:none!important;box-shadow:0 4px 12px rgba(31,95,190,.28)!important}
 .callrow .cbtns .addbuyer .eico{stroke:#fff}
+.callrow .cbtns .cbtn{display:inline-flex!important;align-items:center;justify-content:center;background:#eef1f6!important;color:#46505f!important;border:1px solid var(--line)!important;box-shadow:none!important;font-weight:800!important;font-size:12px!important;padding:6px 12px!important;border-radius:10px!important}
 .brandname:empty{display:none!important}
 /* ===== כרטיסי נכסים / שת"פ עשירים (מוקאפ 05/06) ===== */
 .pcard{background:#fff;border:1.5px solid #e7d6a8;border-radius:18px;padding:14px 16px;margin-bottom:11px;box-shadow:0 8px 22px rgba(20,30,50,.05)}
@@ -4930,14 +4931,17 @@ function callDetails(c){
   if(c.summary)return "<div class=csumwrap>"+sum+"</div>";
   return "";
 }
-var NEWBUYERS=0,_nbTs=0;
-function loadNewBuyers(){var now=Date.now();if(now-_nbTs<60000)return;_nbTs=now;
-  var d=new Date();var today=("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();
-  api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?(IMP||""):"")})}).then(function(r){
-    if(!r||!r.ok)return;
-    NEWBUYERS=(r.results||[]).filter(function(b){return String(b.date||"").indexOf(today)===0;}).length;
-    var kp=$("callkpi");if(kp&&kp.children&&kp.children[2]){var n=kp.children[2].querySelector(".n");if(n)n.textContent=NEWBUYERS;}
+var NEWBUYERS=0,_nbTs=0,_nbList=null,_nbImp="";
+function _nbCount(){if(!_nbList)return;
+  NEWBUYERS=_nbList.filter(function(b){var s=String(b.date||"");var m=s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);if(!m)return false;var ts=new Date(+m[3],+m[2]-1,+m[1]).getTime()/1000;return inRange(ts);}).length;
+  var kp=$("callkpi");if(kp&&kp.children&&kp.children[2]){var n=kp.children[2].querySelector(".n");if(n)n.textContent=NEWBUYERS;}}
+function loadNewBuyers(){_nbCount();
+  var imp=(typeof IMP!="undefined"?(IMP||""):"");var now=Date.now();
+  if(_nbList&&imp===_nbImp&&now-_nbTs<60000)return;_nbTs=now;_nbImp=imp;
+  api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:imp})}).then(function(r){
+    if(!r||!r.ok)return;_nbList=r.results||[];_nbCount();
   }).catch(function(){});}
+function statusHe(s){var k=String(s||"").toUpperCase().replace(/[_-]/g," ").replace(/\s+/g," ").trim();var m={"ANSWER":"נענתה","ANSWERED":"נענתה","NO ANSWER":"ללא מענה","NOANSWER":"ללא מענה","BUSY":"תפוס","CALLER CANCEL":"המתקשר ניתק","CALLER CANCELLED":"המתקשר ניתק","CANCEL":"בוטלה","CANCELLED":"בוטלה","CANCELED":"בוטלה","FAILED":"נכשלה","REJECTED":"נדחתה","MISSED":"שיחה שלא נענתה","VOICEMAIL":"תא קולי","CONGESTION":"עומס ברשת","UNKNOWN":"לא ידוע"};return m[k]||s;}
 function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"):"")+(HIDDENMODE?"hidden=1":"")).then(function(r){
   if(!r.ok){relogin();return;}
   if(r.tabs&&!IMP){TABS=r.tabs;try{localStorage.setItem("fbTabs",JSON.stringify(TABS));}catch(e){}applyTabPerms();}
@@ -4960,7 +4964,7 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
     var wab=c.wa?(" <a class=wab href='https://wa.me/"+c.wa+"' target=_blank rel=noopener><svg class=eico viewBox='0 0 18 18'><path d='M15.5 8.6a6.3 6.3 0 0 1-9.2 5.6L3 15l.9-3.2A6.3 6.3 0 1 1 15.5 8.6z'/></svg>וואטסאפ</a>"):"";
     var _phsvg="<svg viewBox='0 0 18 18'><path d='M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z'/></svg>";
     var _ok=(c.status=="ANSWER");
-    var _statusWord=_ok?"נענתה":(c.status||"");
+    var _statusWord=statusHe(c.status);
     var _sub=c.time+(c.duration?(" · "+c.duration+"ש׳"):"")+" · "+_statusWord+((isMulti()&&c.agent)?(" · "+esc(c.agent)):"");
     return "<div class='callrow"+(isNew?" new":"")+"'>"+
       "<div class=crow1><div class='cstat "+(_ok?"ok":"no")+"'>"+_phsvg+"</div>"+
