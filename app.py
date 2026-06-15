@@ -2925,18 +2925,20 @@ def api_sign_submit():
             "commission_pct": link, "received_at": now_iso, "notes": notes})
         if j and j.get("ok"):
             ok_any = True
+    doc_saved = False
     try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה)
-        _buyers_apps_post("savesigndoc", {
+        jd = _buyers_apps_post("savesigndoc", {
             "token": token, "event_id": eid, "status": "signed",
             "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
             "signature": signature, "signed_at": now_iso})
+        doc_saved = bool(jd and jd.get("ok"))
     except Exception:
-        pass
+        doc_saved = False
     if ok_any:
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
-    return jsonify({"ok": ok_any, "event_id": eid, "link": link})
+    return jsonify({"ok": ok_any, "event_id": eid, "link": link, "doc_saved": doc_saved})
 
 @app.route("/s/<token>")
 def public_sign_doc(token):
@@ -2944,10 +2946,13 @@ def public_sign_doc(token):
     import html as _h
     j = _buyers_apps_post("getsigndoc", {"token": token})
     if not (j and j.get("ok") and j.get("found")):
+        _dbg = _h.escape(str(j)[:400]) if j else "אין תגובה מ-Apps Script (None)"
         return ("<!DOCTYPE html><html dir=rtl lang=he><head><meta charset=utf-8>"
                 "<meta name=viewport content='width=device-width,initial-scale=1'><title>מסמך</title></head>"
                 "<body style='font-family:Arial;text-align:center;padding:40px'><h2>המסמך לא נמצא</h2>"
-                "<p>ייתכן שהקישור שגוי או שפג תוקפו.</p></body></html>"), 404
+                "<p>ייתכן שהקישור שגוי או שפג תוקפו.</p>"
+                "<p style='color:#bbb;font-size:11px;direction:ltr;word-break:break-all'>token=" + _h.escape(token) +
+                "<br>resp=" + _dbg + "</p></body></html>"), 404
     doc = j.get("doc", {})
     header = str(doc.get("header", ""))
     try:
@@ -4581,7 +4586,7 @@ function sgSubmit(){
   if(!SG_LASTDOCS||!SG_LASTDOCS.length){alert("אין מה לשמור");return;}
   var v=SG_LASTV;
   api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,cid:v.cid,address:v.addr,notes:(v.notes||""),signature:SG_LASTSIG,header:SG_LASTHDR,docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type,title:d.title,body:d.body};})})}).then(function(r){
-    if(r&&r.ok){$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div><button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
+    if(r&&r.ok){var _warn=(r.doc_saved===false)?'<div class=muted style="margin-top:8px;color:#c0392b">⚠️ המסמך עצמו לא נשמר (Apps Script) — הקישור לא יעבוד. צלם לי מסך.</div>':'';$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div>'+_warn+'<button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth"});}catch(e){}}
     else{alert("השמירה נכשלה — ודא שה-Apps Script פרוס בגרסה חדשה (עם הפעולה addsigning).");}
   }).catch(function(){alert("שגיאת רשת");});}
 function renderSignDocs(docs,v,sig){
