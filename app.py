@@ -3409,6 +3409,8 @@ def api_history():
                  if isinstance(g.get("commission_pct"), str) and re.search(r"https?://", str(g.get("commission_pct"))) else ""),
         "agent": (g.get("agent", "") or "").strip(),
         "ts": _excl_epoch(g.get("received_at", "")),
+        "eid": str(g.get("event_id", "") or "").strip(),
+        "raw": str(g.get("received_at", "") or "").strip(),
     } for g in sigs[:500]]
     vphone = _vphone_for_name(eff["name"])
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"],
@@ -4396,6 +4398,27 @@ def api_help():
     _resp = (str(j)[:240] if j is not None else "None")
     return jsonify({"ok": bool(j and j.get("ok")), "resp": _resp})
 
+@app.route("/api/sign/delete", methods=["POST"])
+def api_sign_delete():
+    """מחיקת הסכם מגיליון 'חתימות' — מפתח בלבד. נמחק גם מהרשימה וגם מהדוחות (אותו מקור)."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    if not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    body = request.get_json(silent=True) or {}
+    eid = str(body.get("eid", "") or "").strip()
+    received = str(body.get("received", "") or "").strip()
+    client = str(body.get("client", "") or "").strip()
+    if not (eid or (client and received)):
+        return jsonify({"ok": False, "reason": "no_key"}), 400
+    j = _buyers_apps_post("deletesigning", {"event_id": eid, "received_at": received, "client_name": client})
+    ok = bool(j and j.get("ok"))
+    if ok:
+        _cache_clear("signings_sheet")
+        _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+        _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת הסכם", (client + " " + eid)[:80])
+    return jsonify({"ok": ok, "deleted": (j.get("deleted") if j else 0)})
+
 @app.route("/api/calls/hide", methods=["POST"])
 def api_calls_hide():
     s = _web_auth()
@@ -4716,6 +4739,9 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 .scard.excl{border:1.5px solid #e7d6a8}
 .scard.pending{border:1.5px dashed #e0c98a;background:#fffdf8}
 .pendlbl{color:var(--gold);font-weight:800}
+.scard .sdel{flex:0 0 auto;width:32px;height:32px;min-width:32px;padding:0;margin:0;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid #f0c9cc;border-radius:9px;color:var(--red);cursor:pointer}
+.scard .sdel .eico{stroke:var(--red);margin:0}
+.scard .stop{align-items:center}
 .scard.new{box-shadow:0 0 0 1.5px rgba(187,138,44,.5),0 8px 22px rgba(20,30,50,.05)}
 .scard .stop{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .scard .sname{font-size:15.5px;font-weight:800;color:var(--ink)}
@@ -5165,6 +5191,12 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
   document.querySelectorAll("#calls .hidecall").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");if(b.getAttribute("data-act")=="unhide")unhideCall(id);else hideCall(id);};});
   seenCall=maxC;
 }).catch(function(){});}
+function sigDelete(eid,raw,client){
+  if(!confirm("למחוק את ההסכם לצמיתות? (יימחק גם מהגיליון וגם מהדוחות)"))return;
+  api("/api/sign/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({eid:decodeURIComponent(eid||""),received:decodeURIComponent(raw||""),client:decodeURIComponent(client||"")})}).then(function(r){
+    if(r&&r.ok){loadSigs();}
+    else{alert(r&&r.reason=="forbidden"?"רק למשתמש מורשה":"המחיקה נכשלה — ודא שה-Apps Script פרוס עם deletesigning.");}
+  }).catch(function(){alert("שגיאת רשת");});}
 function sigTag(t){t=String(t||"");if(/בלעד/.test(t))return {cls:"t-excl",excl:true};if(/מוכר|מכיר|בעל/.test(t))return {cls:"t-seller",excl:false};if(/שכיר/.test(t))return {cls:"t-rent",excl:false};return {cls:"t-buyer",excl:false};}
 function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
   if(!r.ok){relogin();return;}
@@ -5176,8 +5208,9 @@ function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")
     var isNew=seenSig&&g.ts>seenSig;var tg=sigTag(g.type);
     var signed=!!(g.link||(g.pct!=null&&g.pct!==""));
     var meta="<span class='"+(signed?"":"pendlbl")+"'>"+(signed?"נחתם":"ממתין לחתימה")+"</span> · "+g.time+((isMulti()&&g.agent)?(" · "+esc(g.agent)):"");
+    var delb=(typeof DEV!="undefined"&&DEV)?("<button class=sdel title='מחק הסכם' onclick=\"sigDelete('"+encodeURIComponent(g.eid||"")+"','"+encodeURIComponent(g.raw||"")+"','"+encodeURIComponent(g.client||"")+"')\"><svg class=eico viewBox='0 0 18 18'><path d='M3.5 5h11M7 5V3.5h4V5M5 5l.6 9.5a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9L13 5'/><path d='M8 8v4M10 8v4'/></svg></button>"):"";
     return "<div class='scard"+(tg.excl?" excl":"")+(signed?"":" pending")+(isNew?" new":"")+"'>"+
-      "<div class=stop><b class=sname>"+esc(g.client||g.type||"חתימה")+"</b><span class='stag "+tg.cls+"'>"+esc(g.type)+"</span></div>"+
+      "<div class=stop><b class=sname>"+esc(g.client||g.type||"חתימה")+"</b><span class='stag "+tg.cls+"'>"+esc(g.type)+"</span>"+delb+"</div>"+
       (g.address?"<div class=saddr>"+_dsv+esc(g.address)+"</div>":"")+
       "<div class=sdate>"+meta+"</div>"+
       (g.link?"<div style='margin-top:10px'><a class=slink href='"+g.link+"' target=_blank rel=noopener>"+_dsv+"קישור להסכם</a></div>":"")+
