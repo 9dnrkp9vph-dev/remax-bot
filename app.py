@@ -2459,13 +2459,16 @@ def api_admin_loginas():
         return jsonify({"ok": False, "reason": "no_name"}), 400
     phones = _phones_for_name(name)
     phone = next(iter(phones)) if phones else ""
-    # פתרון התפקיד (drole) של הסוכן הנבדק — כדי שהטאבים יוצגו לפי ההרשאות שלו
+    # פתרון התפקיד והסקופ של הנבדק — כדי שהטאבים *וגם הנתונים* יוצגו בדיוק כמו בכניסה אמיתית שלו
     _scope, drole = _resolve_roles(_last9(phone)) if phone else ("agent", "agent")
     token = _secrets.token_urlsafe(24)
-    _web_sessions[token] = {"phone": phone, "role": "agent", "drole": drole, "name": name,
-                            "exp": time.time() + _SESS_TTL}
+    sess = {"phone": phone, "role": _scope, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
+    if _scope == "coordinator" and _last9(phone) in _COORDINATORS:
+        sess["agents"] = list(_COORDINATORS[_last9(phone)]["agents"])
+        sess["agent_names"] = list(_COORDINATORS[_last9(phone)]["names"])
+    _web_sessions[token] = sess
     _log_activity(s["name"], s["role"], s["phone"], "כניסת בדיקה כסוכן", name)
-    return jsonify({"ok": True, "token": token, "role": "agent", "drole": drole,
+    return jsonify({"ok": True, "token": token, "role": _scope, "drole": drole,
                     "name": name, "tabs": _tabs_for_role(drole)})
 
 # ── קונסולת מפתח: קריאה/כתיבה של הקונפיג המרכזי (מוגן ל-DEV בלבד) ──────────────
