@@ -2169,29 +2169,32 @@ def _tabs_for_role(drole):
     return list(_ALL_TABS)
 
 def _login_name(phone, scope, drole):
-    if drole == "coordinator" and phone in _COORDINATORS:
-        return _COORDINATORS[phone]["name"]
+    _cc = _coordinators_all()
+    if drole == "coordinator" and phone in _cc:
+        return _cc[phone]["name"]
     if scope == "admin" and drole in ("manager", "developer"):
         return "מנהל"
     return web_contacts_phone_name().get(phone) or web_phone_name_map().get(phone) or ("מנהל" if scope == "admin" else "סוכן")
 
 def _team_for(name):
     """צוות הסוכן: (phones:set, keys:set) של כל החברים כולל עצמו. None אם אין צוות.
-    אדיטיבי — חל רק אם הסוכן חבר בצוות שהוגדר בקונפיג."""
+    אדיטיבי והדדי — מאחד את כל הצוותים שהסוכן חבר בהם (לא רק הראשון),
+    כך שאם סוכן מופיע בכמה צוותים הוא מקושר לכולם וכל החברים רואים זה את זה."""
     ck = _canon_key(name)
     if not ck: return None
+    phones = set(); keys = set(); found = False
     for grp in (_load_config().get("teams") or []):
         if not isinstance(grp, list): continue
         gkeys = set(_canon_key(m) for m in grp if m)
         if ck in gkeys:
-            phones = set(); keys = set()
+            found = True
             for m in grp:
                 k = _canon_key(m)
                 if k: keys.add(k)
                 for ph in _phones_for_name(m):
                     if ph: phones.add(ph)
-            return phones, keys
-    return None
+    keys.discard("")
+    return (phones, keys) if found else None
 
 def _row_owned(row, keys, phones):
     """האם שורת נכס שייכת לאחד מחברי הצוות (שם קנוני או טלפון)."""
@@ -2202,6 +2205,37 @@ def _row_owned(row, keys, phones):
             ph = _last9(row.get(col, ""))
             if ph and ph in phones: return True
     return False
+
+def _scope_keys_phones(role, name, own_phones, agents=None, agent_names=None):
+    """מחזיר (keys:set, phones:set, multi:bool) לסינון נכסים/קונים.
+    - מתאמת: כל הסוכנים שלה (חד-כיווני) — הסוכנים עצמם אינם מקבלים את הצוות הזה.
+    - צוות (קונפיג teams): הדדי — כל חברי הצוות.
+    - יחיד: רק הסוכן עצמו.
+    multi=True כשהתצוגה כוללת כמה סוכנים (כדי להציג את שם הסוכן על כל כרטיס)."""
+    keys = set(); phones = set(_last9(p) for p in (own_phones or set()) if _last9(p))
+    nk = _canon_key(name)
+    if nk: keys.add(nk)
+    # מתאמת — רואה את כל הסוכנים שלה (לא הדדי בין הסוכנים)
+    if role == "coordinator":
+        for a in (agents or []):
+            aa = _last9(a)
+            if aa: phones.add(aa)
+            k = _canon_key(web_phone_name_map().get(aa, ""))
+            if k: keys.add(k)
+        for nm in (agent_names or []):
+            k = _canon_key(nm)
+            if k: keys.add(k)
+        keys.discard("")
+        return keys, phones, True
+    # צוות הדדי
+    t = _team_for(name)
+    if t:
+        tphones, tkeys = t
+        keys |= tkeys; phones |= tphones
+        keys.discard("")
+        return keys, phones, True
+    keys.discard("")
+    return keys, phones, False
 
 def _valid_il_id(idnum):
     """בדיקת תקינות תעודת זהות ישראלית (ספרת ביקורת לפי התקן)."""
@@ -2349,9 +2383,44 @@ def _parse_coordinators():
     return out
 _COORDINATORS = _parse_coordinators()
 
+def _coordinators_all():
+    """כל המתאמות: env (_COORDINATORS) + קונפיג מרכזי (coordinators).
+    הקונפיג נשמר לפי שמות (מתאמת + סוכנים) ומומר כאן לטלפונים.
+    מחזיר { טלפון_מתאמת(9): {name, agents:set(טלפונים), names:set(שמות)} }."""
+    out = {}
+    for k, v in _COORDINATORS.items():
+        kk = _last9(k)
+        if kk:
+            out[kk] = {"name": v.get("name") or "מתאמת",
+                       "agents": set(v.get("agents") or set()),
+                       "names": set(v.get("names") or set())}
+    cc = _load_config().get("coordinators")
+    items = cc if isinstance(cc, list) else []
+    for it in items:
+        if not isinstance(it, dict): continue
+        cname = str(it.get("coordinator") or it.get("name") or "").strip()
+        agnames = it.get("agents")
+        if not cname or not isinstance(agnames, list): continue
+        ag_phones = set(); ag_names = set()
+        for an in agnames:
+            an = str(an).strip()
+            if not an: continue
+            ag_names.add(_norm_name(an))
+            for ph in _phones_for_name(an):
+                if ph: ag_phones.add(ph)
+        for cp in _phones_for_name(cname):
+            cp = _last9(cp)
+            if not cp: continue
+            ex = out.get(cp) or {"name": cname, "agents": set(), "names": set()}
+            ex["name"] = cname or ex["name"]
+            ex["agents"] = set(ex["agents"]) | ag_phones
+            ex["names"] = set(ex["names"]) | ag_names
+            out[cp] = ex
+    return out
+
 def web_role_for(last9):
     if last9 in set(_last9(a) for a in ADMIN_PHONES): return "admin"
-    if last9 in _COORDINATORS: return "coordinator"
+    if last9 in _coordinators_all(): return "coordinator"
     if web_contacts_phone_name().get(last9) or web_phone_name_map().get(last9): return "agent"
     return None
 
@@ -2426,9 +2495,10 @@ def api_auth_verify():
         token = _secrets.token_urlsafe(24)
         sess = {"phone": phone, "role": role, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
         if _is_dev(phone): sess["dev"] = True
-        if role == "coordinator" and phone in _COORDINATORS:
-            sess["agents"] = list(_COORDINATORS[phone]["agents"])
-            sess["agent_names"] = list(_COORDINATORS[phone]["names"])
+        _cc = _coordinators_all()
+        if role == "coordinator" and phone in _cc:
+            sess["agents"] = list(_cc[phone]["agents"])
+            sess["agent_names"] = list(_cc[phone]["names"])
         _web_sessions[token] = sess
         _log_activity(name, sess["role"], phone, "כניסה (קוד קבוע)")
         return jsonify({"ok": True, "token": token, "role": role, "drole": drole, "name": name, "dev": sess.get("dev", False), "tabs": _tabs_for_role(drole)})
@@ -2445,9 +2515,10 @@ def api_auth_verify():
     token = _secrets.token_urlsafe(24)
     sess = {"phone": phone, "role": role, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
     if _is_dev(phone): sess["dev"] = True
-    if role == "coordinator" and phone in _COORDINATORS:
-        sess["agents"] = list(_COORDINATORS[phone]["agents"])
-        sess["agent_names"] = list(_COORDINATORS[phone]["names"])
+    _cc = _coordinators_all()
+    if role == "coordinator" and phone in _cc:
+        sess["agents"] = list(_cc[phone]["agents"])
+        sess["agent_names"] = list(_cc[phone]["names"])
     _web_sessions[token] = sess
     _log_activity(name, sess["role"], phone, "כניסה")
     return jsonify({"ok": True, "token": token, "role": role, "drole": drole, "name": name, "dev": sess.get("dev", False), "tabs": _tabs_for_role(drole)})
@@ -2467,9 +2538,10 @@ def api_admin_loginas():
     _scope, drole = _resolve_roles(_last9(phone)) if phone else ("agent", "agent")
     token = _secrets.token_urlsafe(24)
     sess = {"phone": phone, "role": _scope, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
-    if _scope == "coordinator" and _last9(phone) in _COORDINATORS:
-        sess["agents"] = list(_COORDINATORS[_last9(phone)]["agents"])
-        sess["agent_names"] = list(_COORDINATORS[_last9(phone)]["names"])
+    _cc = _coordinators_all()
+    if _scope == "coordinator" and _last9(phone) in _cc:
+        sess["agents"] = list(_cc[_last9(phone)]["agents"])
+        sess["agent_names"] = list(_cc[_last9(phone)]["names"])
     _web_sessions[token] = sess
     _log_activity(s["name"], s["role"], s["phone"], "כניסת בדיקה כסוכן", name)
     return jsonify({"ok": True, "token": token, "role": _scope, "drole": drole,
@@ -2711,6 +2783,38 @@ def api_dev_teams():
     cfg["teams"] = clean
     ok = _save_config(cfg)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון צוותים", str(len(clean)))
+    return jsonify({"ok": ok})
+
+@app.route("/api/dev/coordinators", methods=["GET", "POST"])
+def api_dev_coordinators():
+    """מתאמות (מי רואה אילו סוכנים — חד-כיווני). GET=קריאה,
+    POST {coordinators:[{coordinator:name, agents:[name,...]},...]}=שמירה."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    cfg = _load_config()
+    if request.method == "GET":
+        cc = cfg.get("coordinators")
+        out = cc if isinstance(cc, list) else []
+        return jsonify({"ok": True, "coordinators": out})
+    body = request.get_json(silent=True) or {}
+    coords = body.get("coordinators")
+    if not isinstance(coords, list):
+        return jsonify({"ok": False, "reason": "bad"}), 400
+    clean = []
+    for it in coords:
+        if not isinstance(it, dict): continue
+        cname = str(it.get("coordinator") or it.get("name") or "").strip()
+        if not cname: continue
+        agents = []
+        for a in (it.get("agents") or []):
+            a = str(a).strip()
+            if a and a != cname and a not in agents: agents.append(a)
+        if agents:
+            clean.append({"coordinator": cname, "agents": agents})
+    cfg["coordinators"] = clean
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון מתאמות", str(len(clean)))
     return jsonify({"ok": ok})
 
 _CONTRACT_TYPES = {
@@ -3818,21 +3922,24 @@ def api_my_properties():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     try:
-        # מנהל יכול לצפות כסוכן עם as; אחרת הזהות של המחובר עצמו
+        # מנהל/מתאמת יכולים לצפות כסוכן עם as; אחרת הזהות של המחובר עצמו
         as_name = ""
-        if s["role"] == "admin":
+        if s["role"] in ("admin", "coordinator"):
             as_name = ((request.get_json(silent=True) or {}).get("as", "")
                        or request.args.get("as", "")).strip()
         if as_name:
             eff_name = as_name
             eff_phones = set(_phones_for_name(as_name))
+            keys, phones, multi = _scope_keys_phones("agent", eff_name, eff_phones)
         else:
             eff_name = s.get("name", "")
             eff_phones = set(_phones_for_name(eff_name))
             if s.get("phone"):
                 eff_phones.add(_last9(s["phone"]))
+            keys, phones, multi = _scope_keys_phones(
+                s["role"], eff_name, eff_phones, s.get("agents"), s.get("agent_names"))
         rows = fetch_sheet_rows()
-        mine = [r for r in rows if _agent_owns_row(r, eff_name, eff_phones)]
+        mine = [r for r in rows if _row_owned(r, keys, phones)]
         phones_map = fetch_agents_phones()
         pending = _fetch_pending_listings()
         out = []
@@ -3841,7 +3948,7 @@ def api_my_properties():
             lid = (r.get("מספר מודעה", "") or "").strip()
             out.append({
                 "id": lid,
-                "own": True,
+                "own": _agent_owns_row(r, eff_name, eff_phones),
                 "pending": lid in pending,
                 "type": (r.get("סוג נכס", "") or "").strip(),
                 "city": (r.get("עיר / ישוב", "") or "").strip(),
@@ -3856,7 +3963,7 @@ def api_my_properties():
             })
         _log_activity(s["name"], s["role"], s["phone"], "הנכסים שלי",
                       eff_name if as_name else "")
-        return jsonify({"ok": True, "count": len(out), "name": eff_name, "results": out})
+        return jsonify({"ok": True, "count": len(out), "name": eff_name, "multi": multi, "results": out})
     except Exception as e:
         log.error(f"my properties error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -4323,16 +4430,24 @@ def api_my_buyers():
             as_name = ((request.get_json(silent=True) or {}).get("as", "")
                        or request.args.get("as", "")).strip()
         if s["role"] == "admin" and not as_name:
-            mine = rows  # מנהל רואה את כל הקונים
-        else:
-            eff_name = as_name or s.get("name", "")
+            mine = rows; multi = True  # מנהל רואה את כל הקונים
+        elif as_name:
+            eff_name = as_name
             eff_phones = set(_phones_for_name(eff_name))
-            if not as_name and s.get("phone"):
-                eff_phones.add(_last9(s["phone"]))
-            nn = _norm_name(eff_name)
+            keys, phones, multi = _scope_keys_phones("agent", eff_name, eff_phones)
             mine = [r for r in rows
-                    if (_norm_name(r.get("agent", "")) == nn and nn)
-                    or (_last9(r.get("agent_phone", "")) in eff_phones)]
+                    if (_canon_key(r.get("agent", "")) in keys)
+                    or (_last9(r.get("agent_phone", "")) in phones)]
+        else:
+            eff_name = s.get("name", "")
+            eff_phones = set(_phones_for_name(eff_name))
+            if s.get("phone"):
+                eff_phones.add(_last9(s["phone"]))
+            keys, phones, multi = _scope_keys_phones(
+                s["role"], eff_name, eff_phones, s.get("agents"), s.get("agent_names"))
+            mine = [r for r in rows
+                    if (_canon_key(r.get("agent", "")) in keys)
+                    or (_last9(r.get("agent_phone", "")) in phones)]
         mine.sort(key=lambda r: _excl_epoch(r.get("date", "")), reverse=True)
         out = []
         for r in mine:
@@ -4347,7 +4462,7 @@ def api_my_buyers():
                 "row": r.get("row", ""),
                 "search": str(r.get("search", "") or "").strip(),
             })
-        return jsonify({"ok": True, "count": len(out), "results": out})
+        return jsonify({"ok": True, "count": len(out), "multi": multi, "results": out})
     except Exception as e:
         log.error(f"my buyers error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -4863,7 +4978,7 @@ function applyTabPerms(){
 }
 
 // ── קונסולת מפתח ──────────────────────────────────────────────
-function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadContracts();}
+function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcoords></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadCoords();loadContracts();}
 function devDiag(){$("devdiag").textContent=" בודק…";api("/api/dev/diag").then(function(r){$("devdiag").textContent=" "+((r&&r.msg)||"שגיאה");}).catch(function(){$("devdiag").textContent=" שגיאת רשת";});}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
 var DEVAGENTS=[],DEVDATA=null,DEVALL=false,DEVFILTER="";
@@ -4882,7 +4997,7 @@ function renderDevPeople(r){DEVDATA=r;DEVAGENTS=r.agents||[];
   var more=(!flt&&DEVAGENTS.length>NSHOW)?('<div style="text-align:center;margin-top:10px"><button class="btn-ghost" onclick="devToggleAll()">'+(DEVALL?"פחות ▲":("עוד "+(DEVAGENTS.length-NSHOW)+" ▼"))+'</button></div>'):'';
   var srch='<input id="devsearch" class="chip" style="width:100%;box-sizing:border-box;margin:2px 0 8px" placeholder="🔍 חפש סוכן לפי שם" value="'+esc(flt)+'" oninput="devSearch(this.value)">';
   var dir='<div class=card><b>👥 ספריית סוכנים ('+DEVAGENTS.length+')</b><div class=muted style="margin:4px 0 6px">מספר וירטואלי · ימי נכס נולד (ריק=ברירת מחדל, ✓מוסתר=לא רואה כלום) · תפקיד</div>'+srch+cards+more+'<div style="display:flex;gap:6px;margin-top:12px"><input id="newag" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="שם סוכן חדש"><button class="btn-gold" onclick="devAddAgent()">➕ הוסף</button></div></div>';
-  $("devbody").innerHTML=block("🔴 לא מזוהה — חתימות",r.unmatchedSignings,"sg")+block("🔴 לא מזוהה — נכסים",r.unmatchedListings,"ls")+defc+dir;renderTeams();}
+  $("devbody").innerHTML=block("🔴 לא מזוהה — חתימות",r.unmatchedSignings,"sg")+block("🔴 לא מזוהה — נכסים",r.unmatchedListings,"ls")+defc+dir;renderTeams();renderCoords();}
 function devPost(url,body){api(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("השמירה נכשלה — לחץ '🔧 בדיקת חיבור' כדי לראות למה (כנראה ה-Apps Script לא פרוס בגרסה חדשה).");}}).catch(function(){alert("שגיאת רשת");});}
 function devAssign(nameEnc,selId){var sel=$(selId);var agent=sel?sel.value:"";if(!agent){alert("בחר סוכן מהרשימה");return;}devPost("/api/dev/alias",{alias:decodeURIComponent(nameEnc),agent:agent});}
 function devNewAgent(nameEnc){var name=decodeURIComponent(nameEnc);if(!confirm("ליצור סוכן חדש בשם: "+name+"?"))return;devPost("/api/dev/agent_add",{name:name});}
@@ -4914,6 +5029,19 @@ function saveTeams(){api("/api/dev/teams",{method:"POST",headers:{"Content-Type"
 function teamCreate(){var a=$("tnew1").value,b=$("tnew2").value;if(!a||!b||a==b){alert("בחר שני סוכנים שונים");return;}TEAMS.push([a,b]);saveTeams();}
 function teamAdd(i){var v=$("tm"+i).value;if(!v){alert("בחר סוכן");return;}if(TEAMS[i].indexOf(v)<0)TEAMS[i].push(v);saveTeams();}
 function teamDel(i){if(!confirm("להסיר את הצוות?"))return;TEAMS.splice(i,1);saveTeams();}
+var COORDS=[];
+function loadCoords(){api("/api/dev/coordinators").then(function(r){if(r&&r.ok){COORDS=r.coordinators||[];renderCoords();}}).catch(function(){});}
+function renderCoords(){if(!$("devcoords"))return;
+  var aopts='<option value="">— בחר סוכן —</option>'+(DEVAGENTS||[]).map(function(a){return '<option value="'+esc(a.name)+'">'+esc(a.name)+'</option>';}).join("");
+  var html='<div class=card><b>🧭 מתאמות (רואות סוכנים — חד-כיווני)</b><div class=muted style="margin:4px 0 8px">המתאמת רואה את הנכסים והקונים של הסוכנים שלה. הסוכנים <b>לא</b> רואים זה את זה ולא את המתאמת.</div>';
+  html+=(COORDS.length?COORDS.map(function(c,i){return '<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div><b>🧭 '+esc(c.coordinator)+'</b> <span class=muted>רואה:</span> '+(((c.agents||[]).map(function(a,j){return '<span class=rchip>'+esc(a)+' <span style="cursor:pointer;font-weight:700" onclick="coordDelAgent('+i+','+j+')">✕</span></span>';}).join(" "))||'<span class=muted>אין סוכנים</span>')+'</div><div style="display:flex;gap:6px;margin-top:5px"><select id="cm'+i+'" class="chip" style="flex:1;min-width:0">'+aopts+'</select><button class="btn-gold" onclick="coordAddAgent('+i+')">➕ הוסף סוכן</button><button class="btn-ghost" onclick="coordDel('+i+')">✖</button></div></div>';}).join(""):'<div class=muted style="padding:4px 0">אין מתאמות מוגדרות.</div>');
+  html+='<div style="margin-top:10px"><div class=muted style="margin-bottom:4px">מתאמת חדשה:</div><div style="display:flex;gap:6px;flex-wrap:wrap"><select id="cnew_c" class="chip" style="flex:1;min-width:120px">'+aopts+'</select><select id="cnew_a" class="chip" style="flex:1;min-width:120px">'+aopts+'</select><button class="btn-gold" onclick="coordCreate()">צור</button></div><div class=muted style="margin-top:4px;font-size:12px">בחר את המתאמת (ימין) ואת הסוכן הראשון שלה (שמאל). הוסף עוד סוכנים אחרי היצירה.</div></div></div>';
+  $("devcoords").innerHTML=html;}
+function saveCoords(){api("/api/dev/coordinators",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({coordinators:COORDS})}).then(function(r){if(r&&r.ok)loadCoords();else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
+function coordCreate(){var c=$("cnew_c").value,a=$("cnew_a").value;if(!c||!a){alert("בחר מתאמת וסוכן");return;}if(c==a){alert("המתאמת והסוכן חייבים להיות שונים");return;}COORDS.push({coordinator:c,agents:[a]});saveCoords();}
+function coordAddAgent(i){var v=$("cm"+i).value;if(!v){alert("בחר סוכן");return;}if(v==COORDS[i].coordinator){alert("המתאמת אינה יכולה להיות סוכן של עצמה");return;}if((COORDS[i].agents||[]).indexOf(v)<0)COORDS[i].agents.push(v);saveCoords();}
+function coordDelAgent(i,j){COORDS[i].agents.splice(j,1);if(!COORDS[i].agents.length){if(!confirm("לא נשארו סוכנים — להסיר את המתאמת?")){loadCoords();return;}COORDS.splice(i,1);}saveCoords();}
+function coordDel(i){if(!confirm("להסיר את המתאמת?"))return;COORDS.splice(i,1);saveCoords();}
 var CONTRACTS={},CTYPES={},CTYPE="seller";
 function loadContracts(){api("/api/dev/contract").then(function(r){if(r&&r.ok){CONTRACTS=r.contracts||{};CTYPES=r.types||{};if(!CTYPES[CTYPE]){var ks=Object.keys(CTYPES);if(ks.length)CTYPE=ks[0];}renderContracts();}}).catch(function(){});}
 function renderContracts(){if(!$("devcontracts"))return;
@@ -4994,6 +5122,8 @@ function inRange(ts){var d=new Date();var start;if(RANGE=="day"){start=new Date(
 function periodLabel(){return RANGE=="day"?"היום":(RANGE=="week"?"השבוע":(RANGE=="month"?"החודש":"מתחילת השנה"));}
 
 function isMulti(){return (ROLE=="admin"||ROLE=="coordinator")&&!IMP;}
+function selfName(){return (typeof IMP!="undefined"&&IMP)?(IMPNAME||IMP):NAME;}
+function notSelf(n){var a=String(n||"").trim(),b=String(selfName()||"").trim();return !!a&&a!=b;}
 function scopeLabel(){if(IMP)return ' <span class=badge>👁 צופה כ: '+esc(IMPNAME)+'</span>';return ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':(ROLE=="coordinator"?' <span class=badge>הסוכנים שלי</span>':' — '+esc(NAME));}
 function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}loadNbBanner();render();}
 function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;var sel=$("impsel"),ts=$("testsel");r.agents.forEach(function(a){if(sel){var o=document.createElement("option");o.value=a.name;o.textContent=a.name;sel.appendChild(o);}if(ts){var o2=document.createElement("option");o2.value=a.name;o2.textContent=a.name;ts.appendChild(o2);}});}).catch(function(){});}
@@ -5310,7 +5440,7 @@ function buyerCard(x){
   var n=BSEQ++,sid="bs"+n,rid="br"+n;
   var _ps="<svg class=eico viewBox='0 0 18 18'><path d='M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z'/></svg>";
   var _us="<svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>";
-  var meta=[(ph?_ps+ph:""),(x.wa?"<a href='whatsapp://send?phone="+x.wa+"'>וואטסאפ</a>":""),(x.date?esc(x.date):""),((isMulti()&&x.agent)?_us+esc(x.agent):"")].filter(Boolean).join(" · ");
+  var meta=[(ph?_ps+ph:""),(x.wa?"<a href='whatsapp://send?phone="+x.wa+"'>וואטסאפ</a>":""),(x.date?esc(x.date):""),((isMulti()||notSelf(x.agent))&&x.agent?_us+esc(x.agent):"")].filter(Boolean).join(" · ");
   var q=encodeURIComponent(((x.budget||"")+" "+(x.summary||"")).trim().slice(0,800));
   return "<div class='row buyerrow'>"+
     "<div class=bhead><b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>"+esc(fmtBudget(x.budget))+"</span>":"")+"<button class=bdel onclick=\"delBuyer('"+esc(String(x.row||""))+"')\" title='מחק קונה'><svg class=eico viewBox='0 0 18 18'><path d='M3.5 5h11M7 5V3.5h4V5M5 5l.6 9.5a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9L13 5'/><path d='M8 8v4M10 8v4'/></svg></button></div>"+
