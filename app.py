@@ -4778,6 +4778,9 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 .pcard .pdesc{color:#5b6473;font-size:13.5px;margin-top:7px;line-height:1.6;white-space:pre-line}
 .pcard .pdesc.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pcard .pmore{display:inline-block;margin-top:3px;color:var(--gold);font-weight:800;font-size:12.5px;cursor:pointer}
+.pcard .ptop .shchk{flex:0 0 auto;margin:2px 0 0 0}
+#sharebar{position:fixed;bottom:74px;left:50%;transform:translateX(-50%);width:calc(100% - 28px);max-width:592px;background:linear-gradient(180deg,#2f6fd6,#1f5fbe);color:#fff;text-align:center;padding:14px;font-weight:800;font-size:15px;border-radius:14px;box-shadow:0 8px 24px rgba(31,95,190,.35);z-index:55;cursor:pointer}
+#sharebar.hidden{display:none}
 .pcard .pprice{font-size:19px;font-weight:900;color:var(--ink);margin-top:7px}
 .pcard .pagent{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:13.5px;font-weight:700;color:var(--ink)}
 .pcard .pagent span{display:inline-flex;align-items:center}
@@ -4819,6 +4822,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 
 <div id="appui" class="hidden">
   <div id="view"></div>
+  <div id="sharebar" class="hidden" onclick="shareOpen()">📤 שלח ללקוח (<span id="sharecount">0</span>)</div>
   <div class="tabs">
     <div class="tab on" data-t="calls" onclick="tab('calls')"><span class="tic"><svg viewBox="0 0 18 18"><path d="M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z"/></svg></span>שיחות שלי</div>
     <div class="tab" data-t="buyers" onclick="tab('buyers')"><span class="tic"><svg viewBox="0 0 18 18"><circle cx="9" cy="6" r="3"/><path d="M3.6 16a5.4 5.4 0 0 1 10.8 0"/></svg></span>הקונים שלי</div>
@@ -4923,7 +4927,7 @@ function renderContracts(){if(!$("devcontracts"))return;
   $("devcontracts").innerHTML=html;}
 function ctypeChange(v){var ta=$("cbody");if(ta)CONTRACTS[CTYPE]=ta.value;CTYPE=v;renderContracts();}
 function saveContract(){var ta=$("cbody");if(!ta)return;CONTRACTS[CTYPE]=ta.value;api("/api/dev/contract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:CTYPE,body:ta.value})}).then(function(r){if(r&&r.ok)alert("נשמר ✓");else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
-function tab(t){var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();}
+function tab(t){var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();setTimeout(shareUpd,50);}
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else viewSearch(TABNOW);}
 var REPTEXT="";
 function kpi(n,l){return "<div class=stat><div class=n>"+n+"</div><div class=l>"+l+"</div></div>";}
@@ -5317,7 +5321,7 @@ function buyerCard(x){
     "<div id="+rid+" class=bresults></div>"+
     "</div>";
 }
-var BSEQ=0,PDSEQ=0;
+var BSEQ=0,PDSEQ=0,SHARE_REG={},SHARE_SEQ=0;
 function delBuyer(row){
   if(!row){alert("לא ניתן למחוק (חסר מזהה)");return;}
   if(!confirm("למחוק את הקונה לצמיתות?"))return;
@@ -5360,10 +5364,23 @@ function doSearch(ep,kind){
     if(!r.results.length){$("sres").innerHTML="<div class=muted>לא נמצאו תוצאות. נסה עם פחות פרטים.</div>";return;}
     var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
     h+=r.results.map(function(x){return card(kind,x);}).join("");
-    $("sres").innerHTML=h;
+    $("sres").innerHTML=h;shareUpd();
     if(kind=="props"||kind=="excl")loadRecent(kind);
   }).catch(function(){$("sres").innerHTML="<span class=err>שגיאה</span>";});
 }
+var SHARE_CLI={};
+function shareUpd(){var n=document.querySelectorAll(".shchk:checked").length;var b=$("sharebar");if(!b)return;var sc=$("sharecount");if(sc)sc.textContent=n;if(n>0)b.classList.remove("hidden");else b.classList.add("hidden");}
+function shareClose(){var o=$("shareovl");if(o)o.parentNode.removeChild(o);}
+function shareOpen(){var n=document.querySelectorAll(".shchk:checked").length;if(!n)return;shareClose();
+  var h='<div class=ovl id=shareovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>שלח '+n+' נכסים ללקוח</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="shareClose()">✕</button></div><div class=muted style="margin:6px 0 10px">בחר לקוח מ״הקונים שלי״ — תיפתח שיחת וואטסאפ שלך עם ההודעה מוכנה, בלי פרטי המקור.</div><input id=share_cli class=chip style="width:100%;box-sizing:border-box" placeholder="שם הלקוח (התחל להקליד)" list=share_clilist autocomplete=off><datalist id=share_clilist></datalist><div id=share_st class=muted style="margin-top:6px;min-height:16px"></div><button class="btn-gold" style="width:100%;margin-top:8px" onclick="shareSend()">פתח וואטסאפ ושלח</button></div></div>';
+  var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("shareovl");if(o)o.onclick=function(e){if(e.target.id=="shareovl")shareClose();};
+  api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?(IMP||""):"")})}).then(function(r){if(!r||!r.ok)return;SHARE_CLI={};var opts="";(r.results||[]).forEach(function(b){var nm=String(b.name||"").trim();if(!nm||SHARE_CLI[nm])return;SHARE_CLI[nm]={wa:(b.wa||""),phone:(b.phone||"")};opts+='<option value="'+esc(nm)+'">'+(b.phone?esc(b.phone):"")+'</option>';});var dl=$("share_clilist");if(dl)dl.innerHTML=opts;}).catch(function(){});}
+function shareSend(){var nm=($("share_cli")?$("share_cli").value:"").trim();var c=SHARE_CLI[nm];var st=$("share_st");if(!c||!c.wa){if(st)st.innerHTML="<span class=err>בחר לקוח מהרשימה (עם מספר טלפון)</span>";return;}
+  var ids=[];document.querySelectorAll(".shchk:checked").forEach(function(x){ids.push(x.dataset.sid);});
+  if(!ids.length){if(st)st.innerHTML="<span class=err>לא נבחרו נכסים</span>";return;}
+  var parts=ids.map(function(id){var p=SHARE_REG[id];if(!p)return"";var L=[];L.push("🏠 "+(p.type?p.type+" · ":"")+p.address+(p.city?", "+p.city:"")+(p.neighborhood?" ("+p.neighborhood+")":""));var meta=[p.rooms?p.rooms+" חד׳":"",p.size?p.size+" מ״ר":"",p.floor?"קומה "+p.floor:""].filter(Boolean).join(" · ");if(meta)L.push(meta);if(p.price)L.push("מחיר: "+p.price+" ₪");if(p.desc)L.push(p.desc);return L.join("\n");}).filter(Boolean);
+  var msg="שלום"+(nm?" "+nm:"")+",\nריכזתי עבורך כמה נכסים שיכולים להתאים:\n\n"+parts.join("\n\n——————\n\n");
+  window.open("https://wa.me/"+c.wa+"?text="+encodeURIComponent(msg),"_blank");shareClose();}
 function card(kind,x){
   var _usvg="<svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>";
   if(kind=="props"){
@@ -5373,7 +5390,8 @@ function card(kind,x){
         ("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">עדכן מחיר</button>")):"";
     var did="pd"+(PDSEQ++);
     var pdesc=x.desc?("<div class='pdesc clamp' id="+did+">"+esc(x.desc)+"</div><span class=pmore onclick=\"var e=$('"+did+"');e.classList.toggle('clamp');this.textContent=e.classList.contains('clamp')?'עוד ▾':'פחות ▴';\">עוד ▾</span>"):"";
-    return "<div class=pcard><div class=ptop><div class=ptitle>"+esc(x.type||"נכס")+" · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+"</div>"+((x.score!==undefined&&x.score!=="")?"<span class=pscore>"+x.score+"%</span>":"")+"</div>"+
+    var sid="sh"+(SHARE_SEQ++);SHARE_REG[sid]={type:(x.type||""),address:(x.address||""),city:(x.city||""),neighborhood:(x.neighborhood||""),rooms:(x.rooms||""),size:(x.size||""),floor:(x.floor||""),price:(x.price||""),desc:(x.desc||"")};
+    return "<div class=pcard><div class=ptop><input type=checkbox class=shchk data-sid="+sid+" onchange=shareUpd() title='בחר לשליחה ללקוח'><div class=ptitle>"+esc(x.type||"נכס")+" · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+"</div>"+((x.score!==undefined&&x.score!=="")?"<span class=pscore>"+x.score+"%</span>":"")+"</div>"+
       (pmeta?"<div class=pmeta>"+pmeta+"</div>":"")+
       (x.price?"<div class=pprice>"+esc(fmtBudget(x.price))+"</div>":"")+
       pdesc+
@@ -5381,7 +5399,8 @@ function card(kind,x){
       (pacts?"<div class=pacts>"+pacts+"</div>":"")+"</div>";}
   if(kind=="excl"){var _dd=daysSince(x.date);
     var emeta=[(x.office?(isOurOffice(x.office)?"<span class=ouroffice>"+esc(x.office)+"</span>":esc(x.office)):""),x.date?esc(x.date):"",(_dd!=null?daysLabel(_dd):"")].filter(Boolean).join(" · ");
-    return "<div class=pcard><div class=ptop><div class=ptitle>"+esc(x.street)+"</div><span class=pscore>"+x.score+"%</span></div>"+
+    var esid="sh"+(SHARE_SEQ++);SHARE_REG[esid]={type:"",address:(x.street||""),city:"",neighborhood:"",rooms:"",size:"",floor:"",price:(x.price||""),desc:((x.dest?x.dest+(x.desc?"\n":""):"")+(x.desc||""))};
+    return "<div class=pcard><div class=ptop><input type=checkbox class=shchk data-sid="+esid+" onchange=shareUpd() title='בחר לשליחה ללקוח'><div class=ptitle>"+esc(x.street)+"</div><span class=pscore>"+x.score+"%</span></div>"+
       (x.dest?"<div class=pmeta>"+esc(x.dest)+"</div>":"")+
       (x.desc?"<div class=pdesc>"+esc(x.desc)+"</div>":"")+
       (x.price?"<div class=pprice>"+esc(fmtBudget(x.price))+"</div>":"")+
