@@ -4824,12 +4824,12 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 </div>
 
 <script>
-var TOKEN=null,ROLE=null,NAME=null,DEV=false,TABS=null,TABNOW="calls",RANGE="month",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null;
+var TOKEN=null,ROLE=null,DROLE=null,NAME=null,DEV=false,TABS=null,TABNOW="calls",RANGE="month",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null;
 function $(id){return document.getElementById(id);}
 function show(id){$("s1").classList.add("hidden");$("s2").classList.add("hidden");$(id).classList.remove("hidden");}
 function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};if(TOKEN)opt.headers["X-Auth-Token"]=TOKEN;return fetch(path,opt).then(function(r){return r.json();});}
 try{var sp=localStorage.getItem("fbPhone");if(sp)$("phone").value=sp;}catch(e){}
-try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}enter();}}catch(e){}
+try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");DROLE=localStorage.getItem("fbDrole")||"";NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}enter();}}catch(e){}
 function sendCode(){var p=$("phone").value.trim();if(!p){alert("הזן מספר");return;}try{localStorage.setItem("fbPhone",p);}catch(e){}$("m1").textContent="שולח…";
   api("/api/auth/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p})}).then(function(r){
     if(r.ok){show("s2");$("m2").textContent="";startOtp();}
@@ -4838,10 +4838,10 @@ function sendCode(){var p=$("phone").value.trim();if(!p){alert("הזן מספר"
 function startOtp(){if(!("OTPCredential" in window))return;try{navigator.credentials.get({otp:{transport:["sms"]}}).then(function(o){if(o&&o.code){$("code").value=o.code;verify();}}).catch(function(){});}catch(e){}}
 function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){alert("הזן קוד");return;}$("m2").textContent="בודק…";
   api("/api/auth/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p,code:c})}).then(function(r){
-    if(r.ok){TOKEN=r.token;ROLE=r.role;NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbName",NAME);localStorage.setItem("fbDev",DEV?"1":"");localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}enter();}
+    if(r.ok){TOKEN=r.token;ROLE=r.role;DROLE=r.drole||"";NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbDrole",DROLE);localStorage.setItem("fbName",NAME);localStorage.setItem("fbDev",DEV?"1":"");localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(ROLE=="admin"){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);}
 function firstAllowedTab(){var order=["calls","buyers","sigs","props","excl","newborn"];if(!TABS||!TABS.length)return "calls";for(var i=0;i<order.length;i++){if(TABS.indexOf(order[i])>=0)return order[i];}return "calls";}
 function applyTabPerms(){
   var navKeys=["calls","buyers","sigs","props","excl","newborn"];
@@ -4989,7 +4989,7 @@ function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;va
 function loginAsAgent(name){if(!name)return;if(!confirm("להיכנס למערכת כסוכן '"+name+"' (בדיקה אמיתית)?\nכדי לחזור למנהל — צא והתחבר מחדש עם המספר שלך.")){var t=$("testsel");if(t)t.value="";return;}
   api("/api/admin/loginas",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name})}).then(function(r){
     if(!r||!r.ok){alert("נכשל"+(r&&r.reason?" ("+r.reason+")":""));return;}
-    try{localStorage.setItem("fbTok",r.token);localStorage.setItem("fbRole",r.role);localStorage.setItem("fbName",r.name);localStorage.setItem("fbDev","0");if(r.tabs)localStorage.setItem("fbTabs",JSON.stringify(r.tabs));else localStorage.removeItem("fbTabs");}catch(e){}
+    try{localStorage.setItem("fbTok",r.token);localStorage.setItem("fbRole",r.role);localStorage.setItem("fbDrole",r.drole||"");localStorage.setItem("fbName",r.name);localStorage.setItem("fbDev","0");if(r.tabs)localStorage.setItem("fbTabs",JSON.stringify(r.tabs));else localStorage.removeItem("fbTabs");}catch(e){}
     closeMenu();location.reload();
   }).catch(function(){alert("שגיאה");});}
 var HIDDENMODE=false;
