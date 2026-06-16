@@ -2174,7 +2174,8 @@ def _login_name(phone, scope, drole):
         return _cc[phone]["name"]
     if scope == "admin" and drole in ("manager", "developer"):
         return "מנהל"
-    return web_contacts_phone_name().get(phone) or web_phone_name_map().get(phone) or ("מנהל" if scope == "admin" else "סוכן")
+    return (web_contacts_phone_name().get(phone) or web_phone_name_map().get(phone)
+            or _config_agent_phones().get(phone) or ("מנהל" if scope == "admin" else "סוכן"))
 
 def _team_for(name):
     """צוות הסוכן: (phones:set, keys:set) של כל החברים כולל עצמו. None אם אין צוות.
@@ -2418,10 +2419,27 @@ def _coordinators_all():
             out[cp] = ex
     return out
 
+def _config_agent_phones():
+    """{last9(phone): name} מתוך טלפונים אישיים שהוגדרו ידנית בקונסולה (agents[].phone)."""
+    out = {}
+    for ag in (_load_config().get("agents") or []):
+        nm = (ag.get("name") or "").strip()
+        ph = _last9(ag.get("phone", ""))
+        if nm and ph: out[ph] = nm
+    return out
+
+def _removed_agent_keys():
+    """name_key של סוכנים שנמחקו בקונסולה — לא מופיעים בספרייה ולא יכולים להתחבר."""
+    return set(_name_key(n) for n in (_load_config().get("removedAgents") or []) if _name_key(n))
+
 def web_role_for(last9):
     if last9 in set(_last9(a) for a in ADMIN_PHONES): return "admin"
     if last9 in _coordinators_all(): return "coordinator"
-    if web_contacts_phone_name().get(last9) or web_phone_name_map().get(last9): return "agent"
+    nm = (web_contacts_phone_name().get(last9) or web_phone_name_map().get(last9)
+          or _config_agent_phones().get(last9))
+    if nm:
+        if _name_key(nm) in _removed_agent_keys(): return None   # סוכן שנמחק — חסום
+        return "agent"
     return None
 
 def _web_auth():
@@ -2613,8 +2631,10 @@ def api_dev_people():
     list_names = []
     for r in fetch_sheet_rows():
         list_names.append(r.get("סוכן 1", "")); list_names.append(r.get("סוכן 2", ""))
+    removed = _removed_agent_keys()
     agents = []
     for v in sorted(known.values(), key=lambda x: x["name"]):
+        if _name_key(v["name"]) in removed: continue   # סוכן שנמחק — מוסתר מהספרייה
         role = ""
         for ph in v["phones"]:
             if ph in cfg_roles: role = cfg_roles[ph]; break
@@ -2676,6 +2696,9 @@ def api_dev_agent_add():
         if (body.get("phone") or "").strip():  ent["phone"]  = _last9(body["phone"])
         if (body.get("vphone") or "").strip(): ent["vphone"] = body["vphone"].strip()
         agents.append(ent)
+    # אם הסוכן היה מסומן כמחוק — להחזיר אותו
+    rem = [x for x in (cfg.get("removedAgents") or []) if _name_key(x) != _name_key(name)]
+    cfg["removedAgents"] = rem
     ok = _save_config(cfg)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "הוספת סוכן", name)
     return jsonify({"ok": ok})
@@ -2713,6 +2736,46 @@ def api_dev_agent_update():
             except Exception: pass
     ok = _save_config(cfg)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון סוכן", name)
+    return jsonify({"ok": ok})
+
+@app.route("/api/dev/agent_delete", methods=["POST"])
+def api_dev_agent_delete():
+    """מחיקת סוכן מהקונסולה: מסיר רשומת קונפיג, תפקיד ושיוכי צוות/מתאמת,
+    מסתיר אותו מהספרייה (גם אם מקורו ב'אנשי קשר') וחוסם כניסה."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    name = ((request.get_json(silent=True) or {}).get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "reason": "missing"}), 400
+    nk = _name_key(name); ck = _canon_key(name)
+    phs = set(_phones_for_name(name))
+    cfg = _load_config()
+    cfg["agents"] = [a for a in (cfg.get("agents") or [])
+                     if _name_key(a.get("name", "")) != nk]
+    roles = cfg.get("roles") or {}
+    for ph in list(roles.keys()):
+        if _last9(ph) in phs: roles.pop(ph, None)
+    cfg["roles"] = roles
+    new_teams = []
+    for grp in (cfg.get("teams") or []):
+        if not isinstance(grp, list): continue
+        members = [m for m in grp if _canon_key(m) != ck]
+        if len(members) >= 2: new_teams.append(members)
+    cfg["teams"] = new_teams
+    new_co = []
+    for it in (cfg.get("coordinators") or []):
+        if not isinstance(it, dict): continue
+        if _canon_key(it.get("coordinator", "")) == ck: continue
+        ags = [a for a in (it.get("agents") or []) if _canon_key(a) != ck]
+        if ags: new_co.append({"coordinator": it.get("coordinator"), "agents": ags})
+    cfg["coordinators"] = new_co
+    rem = cfg.get("removedAgents") or []
+    if not any(_name_key(x) == nk for x in rem):
+        rem.append(name)
+    cfg["removedAgents"] = rem
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת סוכן", name)
     return jsonify({"ok": ok})
 
 @app.route("/api/dev/role", methods=["POST"])
@@ -4991,7 +5054,7 @@ function renderDevPeople(r){DEVDATA=r;DEVAGENTS=r.agents||[];
       return '<div style="padding:8px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div><b>'+esc(u.name)+'</b> <span class=muted>('+u.count+')</span></div><select id="'+id+'" class="chip" style="width:100%;box-sizing:border-box;margin-top:5px">'+opts+'</select><div style="display:flex;gap:6px;margin-top:5px"><button class="btn-gold" style="flex:1" onclick="devAssign(\''+encodeURIComponent(u.name)+'\',\''+id+'\')">שייך</button><button class="btn-ghost" style="flex:1" onclick="devNewAgent(\''+encodeURIComponent(u.name)+'\')">➕ חדש</button></div></div>';}).join("")+'</div>';}
   var defc='<div class=card><b>🐥 ימי נכס נולד — ברירת מחדל</b><div class=muted style="margin:4px 0 6px">ימים לכל סוכן ללא הגדרה אישית</div><div style="display:flex;gap:6px;align-items:center"><input id="nbdef" class="chip" style="width:90px;box-sizing:border-box" type="number" value="'+esc(r.nbDefault)+'"><button class="btn-gold" style="flex:1" onclick="devSetDefault()">שמור</button></div></div>';
   var NSHOW=5;var flt=(DEVFILTER||"").trim();
-  function devCard(a,i){return '<div style="padding:10px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:6px"><input id="vp'+i+'" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"><input id="nb'+i+'" class="chip" style="width:72px;box-sizing:border-box" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"></div><div style="display:flex;gap:12px;margin-top:7px;align-items:center"><label class=muted style="display:flex;gap:4px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר</label><button class="btn-gold" style="flex:1" onclick="devSaveAgent('+i+')">שמור</button></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center"><span class=muted style="font-size:12px">תפקיד:</span><select id="rl'+i+'" class="chip" style="flex:1;min-width:0" onchange="devSetRole('+i+')">'+roleOpts(a.role)+'</select></div></div>';}
+  function devCard(a,i){return '<div style="padding:10px 0;border-bottom:1px solid rgba(127,127,127,.18)"><div style="font-weight:600">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div><div style="display:flex;gap:6px;margin-top:6px"><input id="pp'+i+'" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="📱 נייד אישי" value="'+esc(a.phone||"")+'"><input id="vp'+i+'" class="chip" style="flex:1;min-width:0;box-sizing:border-box" placeholder="📞 וירטואלי" value="'+esc(a.vphone||"")+'"></div><div style="display:flex;gap:12px;margin-top:7px;align-items:center"><input id="nb'+i+'" class="chip" style="width:72px;box-sizing:border-box" type="number" placeholder="ימים" value="'+esc(a.nbHidden?"":a.nbDelay)+'"><label class=muted style="display:flex;gap:4px;align-items:center"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר (נכס נולד)</label></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center"><span class=muted style="font-size:12px">תפקיד:</span><select id="rl'+i+'" class="chip" style="flex:1;min-width:0" onchange="devSetRole('+i+')">'+roleOpts(a.role)+'</select></div><div style="display:flex;gap:6px;margin-top:8px;align-items:center"><button class="btn-gold" style="flex:1" onclick="devSaveAgent('+i+')">💾 שמור</button><button class="btn-ghost" style="flex:0 0 auto;color:#c0392b" onclick="devDelAgent('+i+')">🗑 מחק</button></div></div>';}
   var cards="";DEVAGENTS.forEach(function(a,i){var show=flt?(String(a.name).indexOf(flt)>=0):(DEVALL||i<NSHOW);if(show)cards+=devCard(a,i);});
   if(flt&&!cards)cards='<div class=muted style="padding:8px 0">לא נמצא סוכן בשם זה.</div>';
   var more=(!flt&&DEVAGENTS.length>NSHOW)?('<div style="text-align:center;margin-top:10px"><button class="btn-ghost" onclick="devToggleAll()">'+(DEVALL?"פחות ▲":("עוד "+(DEVAGENTS.length-NSHOW)+" ▼"))+'</button></div>'):'';
@@ -5002,7 +5065,8 @@ function devPost(url,body){api(url,{method:"POST",headers:{"Content-Type":"appli
 function devAssign(nameEnc,selId){var sel=$(selId);var agent=sel?sel.value:"";if(!agent){alert("בחר סוכן מהרשימה");return;}devPost("/api/dev/alias",{alias:decodeURIComponent(nameEnc),agent:agent});}
 function devNewAgent(nameEnc){var name=decodeURIComponent(nameEnc);if(!confirm("ליצור סוכן חדש בשם: "+name+"?"))return;devPost("/api/dev/agent_add",{name:name});}
 function devAddAgent(){var el=$("newag");var name=el?el.value.trim():"";if(!name){alert("הקלד שם סוכן");return;}devPost("/api/dev/agent_add",{name:name});}
-function devSaveAgent(i){var a=DEVAGENTS[i];if(!a)return;var hid=$("hd"+i).checked;var nb=$("nb"+i).value.trim();devPost("/api/dev/agent_update",{name:a.name,vphone:$("vp"+i).value.trim(),newbornDelay:(hid?"hidden":nb)});}
+function devSaveAgent(i){var a=DEVAGENTS[i];if(!a)return;var hid=$("hd"+i).checked;var nb=$("nb"+i).value.trim();devPost("/api/dev/agent_update",{name:a.name,phone:$("pp"+i).value.trim(),vphone:$("vp"+i).value.trim(),newbornDelay:(hid?"hidden":nb)});}
+function devDelAgent(i){var a=DEVAGENTS[i];if(!a)return;if(!confirm("למחוק את הסוכן '"+a.name+"'?\\nהוא יוסר מהספרייה, מהתפקידים ומשיוכי צוות/מתאמת, ולא יוכל להתחבר.\\nאפשר להחזיר אותו ע״י הוספה מחדש באותו שם."))return;devPost("/api/dev/agent_delete",{name:a.name});}
 function devSetDefault(){devPost("/api/dev/newborn_default",{days:$("nbdef").value.trim()});}
 function roleOpts(cur){var rs=[["","— תפקיד (ברירת מחדל) —"],["manager","מנהל"],["accountant","מנהלת חשבונות"],["secretary","מזכירה"],["coordinator","מתאמת"],["agent","סוכן"]];return rs.map(function(x){return '<option value="'+x[0]+'"'+(cur==x[0]?" selected":"")+'>'+x[1]+'</option>';}).join("");}
 function devSetRole(i){var a=DEVAGENTS[i];if(!a)return;var ph=a.phone||(a.phones&&a.phones[0]);if(!ph){alert("לסוכן אין מספר טלפון — אי אפשר לשייך תפקיד");loadDevPeople();return;}devPost("/api/dev/role",{phone:ph,role:$("rl"+i).value});}
