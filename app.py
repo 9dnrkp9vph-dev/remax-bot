@@ -2459,11 +2459,14 @@ def api_admin_loginas():
         return jsonify({"ok": False, "reason": "no_name"}), 400
     phones = _phones_for_name(name)
     phone = next(iter(phones)) if phones else ""
+    # פתרון התפקיד (drole) של הסוכן הנבדק — כדי שהטאבים יוצגו לפי ההרשאות שלו
+    _scope, drole = _resolve_roles(_last9(phone)) if phone else ("agent", "agent")
     token = _secrets.token_urlsafe(24)
-    _web_sessions[token] = {"phone": phone, "role": "agent", "name": name,
+    _web_sessions[token] = {"phone": phone, "role": "agent", "drole": drole, "name": name,
                             "exp": time.time() + _SESS_TTL}
     _log_activity(s["name"], s["role"], s["phone"], "כניסת בדיקה כסוכן", name)
-    return jsonify({"ok": True, "token": token, "role": "agent", "name": name})
+    return jsonify({"ok": True, "token": token, "role": "agent", "drole": drole,
+                    "name": name, "tabs": _tabs_for_role(drole)})
 
 # ── קונסולת מפתח: קריאה/כתיבה של הקונפיג המרכזי (מוגן ל-DEV בלבד) ──────────────
 @app.route("/api/dev/config", methods=["GET"])
@@ -4983,7 +4986,7 @@ function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;va
 function loginAsAgent(name){if(!name)return;if(!confirm("להיכנס למערכת כסוכן '"+name+"' (בדיקה אמיתית)?\nכדי לחזור למנהל — צא והתחבר מחדש עם המספר שלך.")){var t=$("testsel");if(t)t.value="";return;}
   api("/api/admin/loginas",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name})}).then(function(r){
     if(!r||!r.ok){alert("נכשל"+(r&&r.reason?" ("+r.reason+")":""));return;}
-    try{localStorage.setItem("fbTok",r.token);localStorage.setItem("fbRole",r.role);localStorage.setItem("fbName",r.name);}catch(e){}
+    try{localStorage.setItem("fbTok",r.token);localStorage.setItem("fbRole",r.role);localStorage.setItem("fbName",r.name);localStorage.setItem("fbDev","0");if(r.tabs)localStorage.setItem("fbTabs",JSON.stringify(r.tabs));else localStorage.removeItem("fbTabs");}catch(e){}
     closeMenu();location.reload();
   }).catch(function(){alert("שגיאה");});}
 var HIDDENMODE=false;
