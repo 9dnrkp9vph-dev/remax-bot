@@ -1132,7 +1132,11 @@ def _fetch_sheet_rows_raw() -> list:
         rows = []
         for row in data[1:]:
             row_padded = row + [""] * (len(headers_row) - len(row))
-            rows.append(dict(zip(headers_row, row_padded)))
+            d = dict(zip(headers_row, row_padded))
+            # תיאור הנכס מעמודה AE (אינדקס 30) — לתצוגת "עוד" בכרטיס
+            if len(row_padded) > 30:
+                d["_desc_ae"] = str(row_padded[30] or "").strip()
+            rows.append(d)
         EXCLUDED_AGENTS = {"אווה אזולאי"}
         rows = [r for r in rows
                 if (r.get("סוכן 1","") or "").strip() not in EXCLUDED_AGENTS
@@ -2042,7 +2046,7 @@ ADMIN_PHONES = _DEFAULT_ADMIN_PHONES + [p.strip() for p in os.environ.get("ADMIN
 # קודי כניסה קבועים שעוקפים את ה-SMS (Twilio) — { 9 ספרות אחרונות של הטלפון: קוד }
 # לשימוש אישי בלבד. מי שמכניס מספר+קוד תואמים נכנס בלי SMS.
 _BYPASS_LOGINS = {
-    "505709865": "1324",   # אייל שמול
+    "505709865": "1324",   # אייל שמול — קוד קבוע, בלי SMS
 }
 
 # --- in-memory OTP + sessions ---
@@ -3770,6 +3774,7 @@ def api_search_properties():
                 "date": (row.get("תאריך יצירה", "") or "").strip(),
                 "agent": ag,
                 "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
+                "desc": (row.get("_desc_ae", "") or "").strip(),
             }
             if score is not None:
                 d["score"] = min(100, int(score))
@@ -4642,7 +4647,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .tab.on .tic{background:linear-gradient(180deg,rgba(201,151,42,.2),rgba(201,151,42,.06));box-shadow:inset 0 0 0 1px rgba(201,151,42,.28)}
 /* ===== ריענון 2 (Claude design) — באטץ' 1: יסודות · פלטת נייבי+זהב ===== */
 :root{--ink:#15263b;--gold:#bb8a2c;--green:#1f8a4c;--red:#d23b3b;--blue:#003DA5;--muted:#8b93a1;--line:#efece6}
-html,body{overflow-x:hidden;max-width:100%}
+body{overflow-x:clip}
 body{background:#f6f5f2!important;background-color:#f6f5f2!important;color:var(--ink);letter-spacing:-.012em}
 .wrap{overflow-x:hidden}
 .sg_prow{max-width:100%}
@@ -4770,7 +4775,9 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 .pcard .ptitle{font-size:15.5px;font-weight:800;color:var(--ink);line-height:1.35}
 .pcard .pscore{flex:0 0 auto;background:#e6f4ec;color:var(--green);font-weight:800;font-size:12px;padding:3px 10px;border-radius:999px;white-space:nowrap}
 .pcard .pmeta{color:var(--muted);font-size:13px;margin-top:5px;line-height:1.5}
-.pcard .pdesc{color:#5b6473;font-size:13.5px;margin-top:5px;line-height:1.55}
+.pcard .pdesc{color:#5b6473;font-size:13.5px;margin-top:7px;line-height:1.6;white-space:pre-line}
+.pcard .pdesc.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pcard .pmore{display:inline-block;margin-top:3px;color:var(--gold);font-weight:800;font-size:12.5px;cursor:pointer}
 .pcard .pprice{font-size:19px;font-weight:900;color:var(--ink);margin-top:7px}
 .pcard .pagent{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:13.5px;font-weight:700;color:var(--ink)}
 .pcard .pagent span{display:inline-flex;align-items:center}
@@ -5310,7 +5317,7 @@ function buyerCard(x){
     "<div id="+rid+" class=bresults></div>"+
     "</div>";
 }
-var BSEQ=0;
+var BSEQ=0,PDSEQ=0;
 function delBuyer(row){
   if(!row){alert("לא ניתן למחוק (חסר מזהה)");return;}
   if(!confirm("למחוק את הקונה לצמיתות?"))return;
@@ -5364,9 +5371,12 @@ function card(kind,x){
     var pacts=x.own?(x.pending?
         "<span class=lpend>בטיפול אצל המזכירה</span> <button class=lreq data-k=done data-id=\""+esc(x.id||"")+"\">✓ בוצע</button>":
         ("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">עדכן מחיר</button>")):"";
+    var did="pd"+(PDSEQ++);
+    var pdesc=x.desc?("<div class='pdesc clamp' id="+did+">"+esc(x.desc)+"</div><span class=pmore onclick=\"var e=$('"+did+"');e.classList.toggle('clamp');this.textContent=e.classList.contains('clamp')?'עוד ▾':'פחות ▴';\">עוד ▾</span>"):"";
     return "<div class=pcard><div class=ptop><div class=ptitle>"+esc(x.type||"נכס")+" · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+"</div>"+((x.score!==undefined&&x.score!=="")?"<span class=pscore>"+x.score+"%</span>":"")+"</div>"+
       (pmeta?"<div class=pmeta>"+pmeta+"</div>":"")+
       (x.price?"<div class=pprice>"+esc(fmtBudget(x.price))+"</div>":"")+
+      pdesc+
       (x.agent?"<div class=pagent><span>"+_usvg+esc(x.agent)+"</span>"+(x.wa?"<a class=pwa href='https://wa.me/"+x.wa+"' target=_blank rel=noopener>וואטסאפ</a>":"")+"</div>":"")+
       (pacts?"<div class=pacts>"+pacts+"</div>":"")+"</div>";}
   if(kind=="excl"){var _dd=daysSince(x.date);
