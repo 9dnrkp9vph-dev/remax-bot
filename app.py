@@ -4831,7 +4831,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 </div>
 
 <script>
-var TOKEN=null,ROLE=null,DROLE=null,NAME=null,DEV=false,TABS=null,TABNOW="calls",RANGE="month",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null;
+var TOKEN=null,ROLE=null,DROLE=null,NAME=null,DEV=false,TABS=null,TABNOW="calls",RANGE="day",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null;
 function $(id){return document.getElementById(id);}
 function show(id){$("s1").classList.add("hidden");$("s2").classList.add("hidden");$(id).classList.remove("hidden");}
 function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};if(TOKEN)opt.headers["X-Auth-Token"]=TOKEN;return fetch(path,opt).then(function(r){return r.json();});}
