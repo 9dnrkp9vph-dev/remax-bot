@@ -4972,7 +4972,7 @@ function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</di
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
 }).catch(function(){$("rep").innerHTML="<div class=card err>שגיאה</div>";});}
-function exportWa(){window.open("https://wa.me/?text="+encodeURIComponent(REPTEXT),"_blank");}
+function exportWa(){window.location.href="whatsapp://send?text="+encodeURIComponent(REPTEXT);}
 function copyRep(){try{navigator.clipboard.writeText(REPTEXT).then(function(){alert("הטקסט הועתק");});}catch(e){alert("העתקה נכשלה");}}
 function viewActivity(){
   $("view").innerHTML='<div class=card><h2>📣 עדכונים — שימוש במערכת</h2><div class=muted id=acthdr>טוען…</div></div><div id=actlist></div>';
@@ -5192,7 +5192,7 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
     var bsum=(c.summary||"")+(c.clientDetails?("\n"+c.clientDetails):"");
     var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\"><svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>הוסף קונה</button>";
     var hideb=" <button class=hidecall data-id=\""+esc(c.id||"")+"\" data-act=\""+(HIDDENMODE?"unhide":"hide")+"\">"+(HIDDENMODE?"שחזר":"הסתר")+"</button>";
-    var wab=c.wa?(" <a class=wab href='https://wa.me/"+c.wa+"' target=_blank rel=noopener><svg class=eico viewBox='0 0 18 18'><path d='M15.5 8.6a6.3 6.3 0 0 1-9.2 5.6L3 15l.9-3.2A6.3 6.3 0 1 1 15.5 8.6z'/></svg>וואטסאפ</a>"):"";
+    var wab=c.wa?(" <a class=wab href='whatsapp://send?phone="+c.wa+"'><svg class=eico viewBox='0 0 18 18'><path d='M15.5 8.6a6.3 6.3 0 0 1-9.2 5.6L3 15l.9-3.2A6.3 6.3 0 1 1 15.5 8.6z'/></svg>וואטסאפ</a>"):"";
     var _phsvg="<svg viewBox='0 0 18 18'><path d='M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z'/></svg>";
     var _ok=(c.status=="ANSWER");
     var _statusWord=statusHe(c.status);
@@ -5261,7 +5261,7 @@ function listingDone(id){api("/api/listing/done",{method:"POST",headers:{"Conten
 function openHelp(){closeHelp();var h='<div class=ovl id=helpovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>עזרה / דיווח תקלה</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="closeHelp()">✕</button></div><div class=muted style="margin:6px 0 10px">דווח על תקלה או שלח הצעת ייעול — יישלח ישירות במייל לאייל.</div><select id=help_kind class=chip style="width:100%;box-sizing:border-box"><option>תקלה / באג</option><option>הצעת ייעול</option><option>אחר</option></select><textarea id=help_msg placeholder="תאר/י את הבעיה או ההצעה..." style="width:100%;box-sizing:border-box;min-height:120px;margin-top:8px"></textarea><div id=help_st class=muted style="margin-top:6px;min-height:16px"></div><button class="btn-gold" style="width:100%;margin-top:8px" onclick="sendHelp()">שלח</button></div></div>';var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("helpovl");if(o)o.onclick=function(e){if(e.target.id=="helpovl")closeHelp();};}
 function closeHelp(){var o=$("helpovl");if(o)o.parentNode.removeChild(o);}
 function sendHelp(){var m=($("help_msg").value||"").trim();var st=$("help_st");if(!m){st.innerHTML="<span class=err>נא לכתוב הודעה</span>";return;}var k=$("help_kind").value;st.textContent="שולח…";api("/api/help",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:m,kind:k})}).then(function(r){if(r&&r.ok){st.innerHTML="<span style='color:#1f8a4c;font-weight:700'>✓ נשלח בהצלחה! תודה.</span>";setTimeout(closeHelp,1200);}else{st.innerHTML="<span class=err>השליחה נכשלה — נסה שוב מאוחר יותר.</span>";}}).catch(function(){st.innerHTML="<span class=err>שגיאת רשת</span>";});}
-function shareApp(){var u=location.origin+"/app";var t="📞 תמלול שיחות אוטומטי\n👥 ניהול קונים ולידים במקום אחד\n✍️ חתימה דיגיטלית על מסמכים\n🤖 מציאת נכסים באמצעות AI\n🏠 \"נכס נולד\" – איתור נכסים חדשים לפני כולם\n"+u;window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank");}
+function shareApp(){var u=location.origin+"/app";var t="📞 תמלול שיחות אוטומטי\n👥 ניהול קונים ולידים במקום אחד\n✍️ חתימה דיגיטלית על מסמכים\n🤖 מציאת נכסים באמצעות AI\n🏠 \"נכס נולד\" – איתור נכסים חדשים לפני כולם\n"+u;window.location.href="whatsapp://send?text="+encodeURIComponent(t);}
 var DEFERRED_INSTALL=null;
 window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();DEFERRED_INSTALL=e;});
 function addToHome(){
@@ -5310,7 +5310,7 @@ function buyerCard(x){
   var n=BSEQ++,sid="bs"+n,rid="br"+n;
   var _ps="<svg class=eico viewBox='0 0 18 18'><path d='M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z'/></svg>";
   var _us="<svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>";
-  var meta=[(ph?_ps+ph:""),(x.wa?"<a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":""),(x.date?esc(x.date):""),((isMulti()&&x.agent)?_us+esc(x.agent):"")].filter(Boolean).join(" · ");
+  var meta=[(ph?_ps+ph:""),(x.wa?"<a href='whatsapp://send?phone="+x.wa+"'>וואטסאפ</a>":""),(x.date?esc(x.date):""),((isMulti()&&x.agent)?_us+esc(x.agent):"")].filter(Boolean).join(" · ");
   var q=encodeURIComponent(((x.budget||"")+" "+(x.summary||"")).trim().slice(0,800));
   return "<div class='row buyerrow'>"+
     "<div class=bhead><b class=bname>"+esc(x.name||"ללא שם")+"</b>"+(x.budget?"<span class=bbudget>"+esc(fmtBudget(x.budget))+"</span>":"")+"<button class=bdel onclick=\"delBuyer('"+esc(String(x.row||""))+"')\" title='מחק קונה'><svg class=eico viewBox='0 0 18 18'><path d='M3.5 5h11M7 5V3.5h4V5M5 5l.6 9.5a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9L13 5'/><path d='M8 8v4M10 8v4'/></svg></button></div>"+
@@ -5402,7 +5402,7 @@ function card(kind,x){
       (pmeta?"<div class=pmeta>"+pmeta+"</div>":"")+
       (x.price?"<div class=pprice>"+esc(fmtBudget(x.price))+"</div>":"")+
       pdesc+
-      (x.agent?"<div class=pagent><span>"+_usvg+esc(x.agent)+"</span>"+(x.wa?"<a class=pwa href='https://wa.me/"+x.wa+"' target=_blank rel=noopener>וואטסאפ</a>":"")+"</div>":"")+
+      (x.agent?"<div class=pagent><span>"+_usvg+esc(x.agent)+"</span>"+(x.wa?"<a class=pwa href='whatsapp://send?phone="+x.wa+"'>וואטסאפ</a>":"")+"</div>":"")+
       (pacts?"<div class=pacts>"+pacts+"</div>":"")+"</div>";}
   if(kind=="excl"){var _dd=daysSince(x.date);
     var emeta=[(x.office?(isOurOffice(x.office)?"<span class=ouroffice>"+esc(x.office)+"</span>":esc(x.office)):""),x.date?esc(x.date):"",(_dd!=null?daysLabel(_dd):"")].filter(Boolean).join(" · ");
@@ -5414,7 +5414,7 @@ function card(kind,x){
       (emeta?"<div class=pmeta>"+emeta+"</div>":"")+
       (x.link?"<div class=pacts><a class=plink href='"+x.link+"' target=_blank rel=noopener>נדל\"ן וואן</a></div>":"")+"</div>";}
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"-";
-  return "<div class=row>📞 <b>"+ph+"</b>"+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank>וואטסאפ</a>":"")+
+  return "<div class=row>📞 <b>"+ph+"</b>"+(x.wa?" · <a href='whatsapp://send?phone="+x.wa+"'>וואטסאפ</a>":"")+
     (x.agent?" · 👤 קיבל: "+esc(x.agent):"")+
     "<div class=muted>"+[x.date,x.budget].filter(Boolean).map(esc).join(" · ")+"</div>"+(x.summary?"<div>"+esc(x.summary)+"</div>":"")+"</div>";
 }
@@ -5440,7 +5440,7 @@ function openNewborn(){
           (x.desc?"<div>"+esc(x.desc)+"</div>":"")+
           "<div class=muted>"+[x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
           (x.notes?"<div class=muted>"+esc(x.notes)+"</div>":"")+
-          ((x.owner||x.phone)?"<div>👤 "+esc(x.owner||"בעל הנכס")+(x.wa?" · <a href='https://wa.me/"+x.wa+"' target=_blank rel=noopener onclick=\"nbWa('"+encodeURIComponent(x.key||'')+"','"+encodeURIComponent(x.address||'')+"')\">וואטסאפ</a>":(x.phone?" · <a href='tel:"+esc(x.phone)+"'>"+esc(x.phone)+"</a>":""))+"</div>":"")+
+          ((x.owner||x.phone)?"<div>👤 "+esc(x.owner||"בעל הנכס")+(x.wa?" · <a href='whatsapp://send?phone="+x.wa+"' onclick=\"nbWa('"+encodeURIComponent(x.key||'')+"','"+encodeURIComponent(x.address||'')+"')\">וואטסאפ</a>":(x.phone?" · <a href='tel:"+esc(x.phone)+"'>"+esc(x.phone)+"</a>":""))+"</div>":"")+
           (x.contacted&&x.contacted.length?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
           (x.link?"<div><a class=cbtn style=background:#0D1B2A href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 פרטים</a></div>":"")+"</div>";
       }
@@ -5487,7 +5487,7 @@ function nbCard(x){
     "<div class=nbowner>👤 "+esc(x.owner||"בעל הנכס")+(ph?" · "+esc(ph):"")+"</div>"+
     "<div class=nbacts>"+
       (ph?"<a class='nbbtn call' href='tel:"+esc(ph)+"' onclick=\"nbMark('"+k+"','"+a+"')\">📞 חייג</a>":"")+
-      (x.wa?"<a class='nbbtn wa' href='https://wa.me/"+x.wa+"?text="+nbWaMsg(x)+"' target=_blank rel=noopener onclick=\"nbMark('"+k+"','"+a+"')\">💬 וואטסאפ</a>":"")+
+      (x.wa?"<a class='nbbtn wa' href='whatsapp://send?phone="+x.wa+"&text="+nbWaMsg(x)+"' onclick=\"nbMark('"+k+"','"+a+"')\">💬 וואטסאפ</a>":"")+
       (x.link?"<a class='nbbtn link' href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 צפייה במודעה</a>":"")+
     "</div>"+
     ((ROLE=="admin"&&x.contacted&&x.contacted.length)?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
