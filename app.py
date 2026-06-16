@@ -5369,6 +5369,13 @@ function doSearch(ep,kind){
   }).catch(function(){$("sres").innerHTML="<span class=err>שגיאה</span>";});
 }
 var SHARE_CLI={};
+function stripAgent(desc,agent){if(!desc)return"";var d=String(desc);
+  if(agent){var a=String(agent).trim();if(a.length>1){d=d.split(a).join("");
+    var rv=a.split(/\s+/).reverse().join(" ");if(rv.length>1)d=d.split(rv).join("");}}
+  d=d.replace(/0\d{1,2}[-.\s]?\d{3}[-.\s]?\d{4}/g,"");          /* טלפונים ישראליים */
+  d=d.replace(/RE\/?MAX|רימקס|רי\/?מקס|פמילי/gi,"");
+  d=d.replace(/[ \t]+\n/g,"\n").replace(/\n[ \t]*\n[ \t]*\n+/g,"\n\n").replace(/\s+$/,"").trim();
+  return d;}
 function shareUpd(){var n=document.querySelectorAll(".shchk:checked").length;var b=$("sharebar");if(!b)return;var sc=$("sharecount");if(sc)sc.textContent=n;if(n>0)b.classList.remove("hidden");else b.classList.add("hidden");}
 function shareClose(){var o=$("shareovl");if(o)o.parentNode.removeChild(o);}
 function shareOpen(){var n=document.querySelectorAll(".shchk:checked").length;if(!n)return;shareClose();
@@ -5380,7 +5387,7 @@ function shareSend(){var nm=($("share_cli")?$("share_cli").value:"").trim();var 
   if(!ids.length){if(st)st.innerHTML="<span class=err>לא נבחרו נכסים</span>";return;}
   var parts=ids.map(function(id){var p=SHARE_REG[id];if(!p)return"";var L=[];L.push("🏠 "+(p.type?p.type+" · ":"")+p.address+(p.city?", "+p.city:"")+(p.neighborhood?" ("+p.neighborhood+")":""));var meta=[p.rooms?p.rooms+" חד׳":"",p.size?p.size+" מ״ר":"",p.floor?"קומה "+p.floor:""].filter(Boolean).join(" · ");if(meta)L.push(meta);if(p.price)L.push("מחיר: "+p.price+" ₪");if(p.desc)L.push(p.desc);return L.join("\n");}).filter(Boolean);
   var msg="שלום"+(nm?" "+nm:"")+",\nריכזתי עבורך כמה נכסים שיכולים להתאים:\n\n"+parts.join("\n\n——————\n\n");
-  window.open("https://wa.me/"+c.wa+"?text="+encodeURIComponent(msg),"_blank");shareClose();}
+  shareClose();window.location.href="whatsapp://send?phone="+c.wa+"&text="+encodeURIComponent(msg);}
 function card(kind,x){
   var _usvg="<svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>";
   if(kind=="props"){
@@ -5390,7 +5397,7 @@ function card(kind,x){
         ("<button class=lreq data-k=remove data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">הסר מודעה</button> <button class=lreq data-k=price data-id=\""+esc(x.id||"")+"\" data-addr=\""+encodeURIComponent(x.address||"")+"\">עדכן מחיר</button>")):"";
     var did="pd"+(PDSEQ++);
     var pdesc=x.desc?("<div class='pdesc clamp' id="+did+">"+esc(x.desc)+"</div><span class=pmore onclick=\"var e=$('"+did+"');e.classList.toggle('clamp');this.textContent=e.classList.contains('clamp')?'עוד ▾':'פחות ▴';\">עוד ▾</span>"):"";
-    var sid="sh"+(SHARE_SEQ++);SHARE_REG[sid]={type:(x.type||""),address:(x.address||""),city:(x.city||""),neighborhood:(x.neighborhood||""),rooms:(x.rooms||""),size:(x.size||""),floor:(x.floor||""),price:(x.price||""),desc:(x.desc||"")};
+    var sid="sh"+(SHARE_SEQ++);SHARE_REG[sid]={type:(x.type||""),address:(x.address||""),city:(x.city||""),neighborhood:(x.neighborhood||""),rooms:(x.rooms||""),size:(x.size||""),floor:(x.floor||""),price:(x.price||""),desc:stripAgent(x.desc,x.agent)};
     return "<div class=pcard><div class=ptop><input type=checkbox class=shchk data-sid="+sid+" onchange=shareUpd() title='בחר לשליחה ללקוח'><div class=ptitle>"+esc(x.type||"נכס")+" · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+"</div>"+((x.score!==undefined&&x.score!=="")?"<span class=pscore>"+x.score+"%</span>":"")+"</div>"+
       (pmeta?"<div class=pmeta>"+pmeta+"</div>":"")+
       (x.price?"<div class=pprice>"+esc(fmtBudget(x.price))+"</div>":"")+
@@ -5399,7 +5406,7 @@ function card(kind,x){
       (pacts?"<div class=pacts>"+pacts+"</div>":"")+"</div>";}
   if(kind=="excl"){var _dd=daysSince(x.date);
     var emeta=[(x.office?(isOurOffice(x.office)?"<span class=ouroffice>"+esc(x.office)+"</span>":esc(x.office)):""),x.date?esc(x.date):"",(_dd!=null?daysLabel(_dd):"")].filter(Boolean).join(" · ");
-    var esid="sh"+(SHARE_SEQ++);SHARE_REG[esid]={type:"",address:(x.street||""),city:"",neighborhood:"",rooms:"",size:"",floor:"",price:(x.price||""),desc:((x.dest?x.dest+(x.desc?"\n":""):"")+(x.desc||""))};
+    var esid="sh"+(SHARE_SEQ++);SHARE_REG[esid]={type:"",address:(x.street||""),city:"",neighborhood:"",rooms:"",size:"",floor:"",price:(x.price||""),desc:stripAgent((x.dest?x.dest+(x.desc?"\n":""):"")+(x.desc||""),x.office)};
     return "<div class=pcard><div class=ptop><input type=checkbox class=shchk data-sid="+esid+" onchange=shareUpd() title='בחר לשליחה ללקוח'><div class=ptitle>"+esc(x.street)+"</div><span class=pscore>"+x.score+"%</span></div>"+
       (x.dest?"<div class=pmeta>"+esc(x.dest)+"</div>":"")+
       (x.desc?"<div class=pdesc>"+esc(x.desc)+"</div>":"")+
