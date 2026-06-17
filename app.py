@@ -5018,7 +5018,37 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 #login .card{margin-top:14px;box-shadow:0 10px 30px rgba(20,30,50,.07)}
 #login .card label{display:block;text-align:right;margin-bottom:6px}
 #login #phone,#login #code{text-align:center;direction:ltr;font-size:18px;font-weight:700;letter-spacing:.5px}
-</style></head><body><div class="wrap">
+#splash{position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;background:linear-gradient(160deg,#0D1B2A 0%,#16324f 60%,#1c4a6e 100%);color:#fff;font-family:"Heebo",Arial,sans-serif;transition:opacity .45s ease,transform .45s ease}
+#splash.sp-hide{opacity:0;transform:scale(1.05);pointer-events:none}
+#splash .sp-card{max-width:340px}
+#splash .sp-logo{height:64px;margin-bottom:22px;filter:drop-shadow(0 6px 18px rgba(0,0,0,.35))}
+#splash .sp-title{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
+#splash .sp-sub{font-size:16px;color:#cfe0f3;line-height:1.5;margin-bottom:24px}
+#splash .sp-note{font-size:13px;color:#9fb4d8}
+#splash .sp-dots{display:flex;gap:7px;justify-content:center;margin-top:14px}
+#splash .sp-dots span{width:8px;height:8px;border-radius:50%;background:#caa14a;animation:spb 1s infinite ease-in-out}
+#splash .sp-dots span:nth-child(2){animation-delay:.15s}#splash .sp-dots span:nth-child(3){animation-delay:.3s}
+@keyframes spb{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-6px)}}
+#splash .sp-foot{position:absolute;bottom:26px;font-size:12px;letter-spacing:3px;color:#7f97bd;font-weight:700}
+</style></head><body>
+<!-- ✏️✏️ חלון פתיחה שיווקי — ערוך כאן בחופשיות את הטקסט. מופיע בכניסה בזמן שהאפליקציה נטענת ברקע, ונסגר אוטומטית ✏️✏️ -->
+<div id="splash" onclick="hideSplash()">
+  <div class="sp-card">
+    <img src="/assets/logo" class="sp-logo" alt="">
+    <div class="sp-title">ברוכים הבאים ל-Family Bot</div>
+    <div class="sp-sub">המערכת החכמה שמרכזת לך את כל הנדל"ן במקום אחד 🏠</div>
+    <div class="sp-note">טוען את הנתונים שלך…</div>
+    <div class="sp-dots"><span></span><span></span><span></span></div>
+  </div>
+  <div class="sp-foot">RE/MAX FAMILY</div>
+</div>
+<script>
+  var SPLASH_SECONDS = 3;   /* משך הצגת חלון הפתיחה בשניות — שנה כרצונך */
+  function hideSplash(){var s=document.getElementById("splash");if(!s)return;s.classList.add("sp-hide");setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},450);}
+  setTimeout(hideSplash, SPLASH_SECONDS*1000);
+</script>
+<!-- ✏️✏️ סוף חלון הפתיחה ✏️✏️ -->
+<div class="wrap">
 <div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();openHelp()">💬 עזרה / דיווח תקלה</div><div class="mi" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();window.open('https://www.instagram.com/remax.family?igsh=bXdmdzJjMWVkc3li&utm_source=qr','_blank')"><svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:none;stroke:#E1306C;stroke-width:1.9;flex:0 0 auto"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.6" cy="6.4" r="1.2" fill="#E1306C" stroke="none"/></svg> אינסטגרם של המשרד</div><div class="mi" onclick="closeMenu();window.open('https://www.madlan.co.il/madad/2026/%D7%A7%D7%A8%D7%99%D7%95%D7%AA','_blank')">🏅 מדד המתווכים — מדלן 2026</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
@@ -5055,7 +5085,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 </div>
 
 <script>
-var TOKEN=null,ROLE=null,DROLE=null,NAME=null,DEV=false,TABS=null,TABNOW="calls",RANGE="day",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null,VCACHE={};
+var TOKEN=null,ROLE=null,DROLE=null,NAME=null,DEV=false,TABS=null,TABNOW="calls",RANGE="week",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null,VCACHE={};
 function $(id){return document.getElementById(id);}
 function show(id){$("s1").classList.add("hidden");$("s2").classList.add("hidden");$(id).classList.remove("hidden");}
 function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};if(TOKEN)opt.headers["X-Auth-Token"]=TOKEN;return fetch(path,opt).then(function(r){return r.json();});}
