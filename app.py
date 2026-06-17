@@ -4723,7 +4723,8 @@ FAMILY_BOT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 <style>
 :root{--ink:#0D1B2A;--gold:#C9972A;--red:#E11B22;--blue:#003DA5;--bg:#eef1f5;--muted:#6b7280;--line:#eef0f3}
 *{box-sizing:border-box}
-body{font-family:"Heebo","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;margin:0;background:linear-gradient(180deg,#f4f7fb 0,var(--bg) 240px) no-repeat;background-color:var(--bg);min-height:100vh;color:var(--ink);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+html{background:var(--bg)}
+body{font-family:"Heebo","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;margin:0;background:var(--bg);min-height:100vh;color:var(--ink);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
 .wrap{max-width:620px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top,0)) 14px 100px}
 .brand{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;margin:6px 0 12px;padding-bottom:12px;border-bottom:2px solid var(--gold)}
 .brand img{max-height:42px;max-width:60%;object-fit:contain}.brandtxt{font-size:20px;font-weight:800}
@@ -5058,7 +5059,14 @@ function $(id){return document.getElementById(id);}
 function show(id){$("s1").classList.add("hidden");$("s2").classList.add("hidden");$(id).classList.remove("hidden");}
 function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};if(TOKEN)opt.headers["X-Auth-Token"]=TOKEN;return fetch(path,opt).then(function(r){return r.json();});}
 try{var sp=localStorage.getItem("fbPhone");if(sp)$("phone").value=sp;}catch(e){}
-try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");DROLE=localStorage.getItem("fbDrole")||"";NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}enter();}}catch(e){}
+try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");DROLE=localStorage.getItem("fbDrole")||"";NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}fbAutoLogin();}}catch(e){}
+function fbIsNative(){try{return !!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());}catch(e){return false;}}
+function fbBio(){try{return (window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.NativeBiometric)||null;}catch(e){return null;}}
+function fbAutoLogin(){if(!fbIsNative()){enter();return;}var bp=fbBio();if(!bp){enter();return;}bp.isAvailable().then(function(res){if(res&&res.isAvailable){fbShowLock();fbDoBio();}else{enter();}}).catch(function(){enter();});}
+function fbDoBio(){var bp=fbBio();if(!bp){fbHideLock();enter();return;}var b=$("fbbiobtn");if(b){b.textContent="מאמת…";b.disabled=true;}bp.verifyIdentity({reason:"כניסה מאובטחת ל-Family Bot",title:"Family Bot",subtitle:"",description:"אמת את זהותך כדי להיכנס",useFallback:true,maxAttempts:3}).then(function(){fbHideLock();enter();}).catch(function(){var b2=$("fbbiobtn");if(b2){b2.textContent="🔓 נסה שוב";b2.disabled=false;}});}
+function fbShowLock(){if($("fblock"))return;var d=document.createElement("div");d.id="fblock";d.setAttribute("style","position:fixed;inset:0;z-index:99999;background:#eef1f5;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;font-family:Heebo,Arial,sans-serif");d.innerHTML='<img src="/assets/logo" style="height:52px;margin-bottom:24px"><div style="font-size:44px;margin-bottom:12px">🔒</div><div style="font-size:20px;font-weight:800;color:#0D1B2A;margin-bottom:6px">האפליקציה נעולה</div><div style="font-size:14px;color:#6b7280;margin-bottom:26px;max-width:300px">אמת את זהותך כדי להיכנס</div><button id="fbbiobtn" onclick="fbDoBio()" style="width:100%;max-width:320px;padding:15px;background:#0D1B2A;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;font-family:inherit">🔓 כניסה עם Face ID</button><button onclick="fbPhoneLogin()" style="margin-top:16px;background:none;border:none;color:#6b7280;font-size:14px;font-family:inherit;text-decoration:underline">כניסה עם מספר טלפון</button>';document.body.appendChild(d);}
+function fbHideLock(){var d=$("fblock");if(d&&d.parentNode)d.parentNode.removeChild(d);}
+function fbPhoneLogin(){fbHideLock();try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}
 function sendCode(){var p=$("phone").value.trim();if(!p){alert("הזן מספר");return;}try{localStorage.setItem("fbPhone",p);}catch(e){}$("m1").textContent="שולח…";
   api("/api/auth/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p})}).then(function(r){
     if(r.ok){show("s2");$("m2").textContent="";startOtp();}
