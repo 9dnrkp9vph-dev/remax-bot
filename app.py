@@ -4723,8 +4723,7 @@ FAMILY_BOT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 <style>
 :root{--ink:#0D1B2A;--gold:#C9972A;--red:#E11B22;--blue:#003DA5;--bg:#eef1f5;--muted:#6b7280;--line:#eef0f3}
 *{box-sizing:border-box}
-html{background:var(--bg)}
-body{font-family:"Heebo","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;margin:0;background:var(--bg);min-height:100vh;color:var(--ink);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+body{font-family:"Heebo","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;margin:0;background:linear-gradient(180deg,#f4f7fb 0,var(--bg) 240px) no-repeat;background-color:var(--bg);min-height:100vh;color:var(--ink);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
 .wrap{max-width:620px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top,0)) 14px 100px}
 .brand{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;margin:6px 0 12px;padding-bottom:12px;border-bottom:2px solid var(--gold)}
 .brand img{max-height:42px;max-width:60%;object-fit:contain}.brandtxt{font-size:20px;font-weight:800}
@@ -5054,19 +5053,12 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 </div>
 
 <script>
-var TOKEN=null,ROLE=null,DROLE=null,NAME=null,DEV=false,TABS=null,TABNOW="calls",RANGE="day",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null;
+var TOKEN=null,ROLE=null,DROLE=null,NAME=null,DEV=false,TABS=null,TABNOW="calls",RANGE="day",timer=null,seenCall=0,seenSig=0,IMP=null,IMPNAME=null,CUR_EP=null,CUR_KIND=null,VCACHE={};
 function $(id){return document.getElementById(id);}
 function show(id){$("s1").classList.add("hidden");$("s2").classList.add("hidden");$(id).classList.remove("hidden");}
 function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};if(TOKEN)opt.headers["X-Auth-Token"]=TOKEN;return fetch(path,opt).then(function(r){return r.json();});}
 try{var sp=localStorage.getItem("fbPhone");if(sp)$("phone").value=sp;}catch(e){}
-try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");DROLE=localStorage.getItem("fbDrole")||"";NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}fbAutoLogin();}}catch(e){}
-function fbIsNative(){try{return !!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());}catch(e){return false;}}
-function fbBio(){try{return (window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.NativeBiometric)||null;}catch(e){return null;}}
-function fbAutoLogin(){if(!fbIsNative()){enter();return;}var bp=fbBio();if(!bp){enter();return;}bp.isAvailable().then(function(res){if(res&&res.isAvailable){fbShowLock();fbDoBio();}else{enter();}}).catch(function(){enter();});}
-function fbDoBio(){var bp=fbBio();if(!bp){fbHideLock();enter();return;}var b=$("fbbiobtn");if(b){b.textContent="מאמת…";b.disabled=true;}bp.verifyIdentity({reason:"כניסה מאובטחת ל-Family Bot",title:"Family Bot",subtitle:"",description:"אמת את זהותך כדי להיכנס",useFallback:true,maxAttempts:3}).then(function(){fbHideLock();enter();}).catch(function(){var b2=$("fbbiobtn");if(b2){b2.textContent="🔓 נסה שוב";b2.disabled=false;}});}
-function fbShowLock(){if($("fblock"))return;var d=document.createElement("div");d.id="fblock";d.setAttribute("style","position:fixed;inset:0;z-index:99999;background:#eef1f5;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;font-family:Heebo,Arial,sans-serif");d.innerHTML='<img src="/assets/logo" style="height:52px;margin-bottom:24px"><div style="font-size:44px;margin-bottom:12px">🔒</div><div style="font-size:20px;font-weight:800;color:#0D1B2A;margin-bottom:6px">האפליקציה נעולה</div><div style="font-size:14px;color:#6b7280;margin-bottom:26px;max-width:300px">אמת את זהותך כדי להיכנס</div><button id="fbbiobtn" onclick="fbDoBio()" style="width:100%;max-width:320px;padding:15px;background:#0D1B2A;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;font-family:inherit">🔓 כניסה עם Face ID</button><button onclick="fbPhoneLogin()" style="margin-top:16px;background:none;border:none;color:#6b7280;font-size:14px;font-family:inherit;text-decoration:underline">כניסה עם מספר טלפון</button>';document.body.appendChild(d);}
-function fbHideLock(){var d=$("fblock");if(d&&d.parentNode)d.parentNode.removeChild(d);}
-function fbPhoneLogin(){fbHideLock();try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}
+try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");DROLE=localStorage.getItem("fbDrole")||"";NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}enter();}}catch(e){}
 function sendCode(){var p=$("phone").value.trim();if(!p){alert("הזן מספר");return;}try{localStorage.setItem("fbPhone",p);}catch(e){}$("m1").textContent="שולח…";
   api("/api/auth/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p})}).then(function(r){
     if(r.ok){show("s2");$("m2").textContent="";startOtp();}
@@ -5078,7 +5070,7 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     if(r.ok){TOKEN=r.token;ROLE=r.role;DROLE=r.drole||"";NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbDrole",DROLE);localStorage.setItem("fbName",NAME);localStorage.setItem("fbDev",DEV?"1":"");localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);}
+function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
 function firstAllowedTab(){var order=["calls","buyers","sigs","props","excl","newborn"];if(!TABS||!TABS.length)return "calls";for(var i=0;i<order.length;i++){if(TABS.indexOf(order[i])>=0)return order[i];}return "calls";}
 function applyTabPerms(){
   var navKeys=["calls","buyers","sigs","props","excl","newborn"];
@@ -5205,8 +5197,13 @@ function loadAdsList(){var b=$("adslist");if(!b)return;
     $("adslist").innerHTML="<div class=card><h2>מודעות הסוכן ("+items.length+")</h2>"+items.map(function(x){return card("props",x,{noShare:true});}).join("")+"</div>";
     document.querySelectorAll("#adslist .lreq").forEach(function(btn){btn.onclick=function(){var id=btn.getAttribute("data-id"),addr=decodeURIComponent(btn.getAttribute("data-addr")||""),k=btn.getAttribute("data-k");if(k=="done"){if(confirm("לסמן שהטיפול בוצע? הנכס לא יסומן יותר כ׳בטיפול אצל המזכירה׳."))listingDone(id,loadAdsList);}else if(k=="remove"){if(confirm("לשלוח בקשה למזכירה להסיר את המודעה?\\n"+addr))listingReq("remove",id,addr,"",loadAdsList);}else{var np=prompt("מחיר חדש למודעה:\\n"+addr);if(np&&np.trim())listingReq("price",id,addr,np.trim(),loadAdsList);}};});
   }).catch(function(){if($("adslist"))$("adslist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";});}
-function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p+(month?"&month="+month:"")+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
+function loadReport(p,month){var ck="report:"+p+":"+(month||"")+":"+((typeof IMP!="undefined"&&IMP)?IMP:"");
+  if(VCACHE[ck])renderReport(VCACHE[ck]);else $("rep").innerHTML="<div class=card>טוען…</div>";
+  api("/api/report?period="+p+(month?"&month="+month:"")+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
   if(!r.ok){if(r.auth===false){relogin();return;}$("rep").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
+  VCACHE[ck]=r;renderReport(r);
+}).catch(function(){$("rep").innerHTML="<div class=card err>שגיאה</div>";});}
+function renderReport(r){
   REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;REPEXC=sm.exclusives||[];REPSIGS=sm.sigsList||[];REPSIGB=sg;
   var h="<div class=card><div class=muted>📊 "+esc(r.label)+(r.scope?" · "+esc(r.scope):"")+" · "+r.from+"–"+r.to+"</div><div class=grid>"+kpi(c.total,"שיחות")+kpi(c.answered,"נענו")+kpi(c.rate+"%","אחוז מענה")+"<div class=stat style=cursor:pointer onclick=toggleSigs()><div class=n>"+sg.total+"</div><div class=l>חתימות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleExc()><div class=n>"+sm.exclusives.length+"</div><div class=l>בלעדיות 👁</div></div>"+"<div class=stat style=cursor:pointer onclick=toggleAds()><div class=n>"+(r.listings!=null?r.listings:0)+"</div><div class=l>מודעות 👁</div></div></div></div><div id=sigslist></div><div id=exclist></div><div id=adslist></div>";
   if(r.insights&&r.insights.length){h+="<div class=card><h2>תובנות</h2>"+r.insights.map(function(t){return "<div class=insight>"+esc(t)+"</div>";}).join("")+"</div>";}
@@ -5218,7 +5215,7 @@ function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</di
   if(r.scope=="כל המשרד"&&r.nbCities&&r.nbCities.length){var nc="<table><tr><th style=text-align:start>עיר</th><th>נכסים</th></tr>";r.nbCities.forEach(function(c){nc+="<tr><td>"+esc(c.city)+"</td><td style=text-align:center><b>"+c.n+"</b></td></tr>";});nc+="</table>";h+="<div class=card><h2>נכס נולד לפי ערים</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · סה״כ "+(r.nbTotal||0)+" נכסים</div>"+nc+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
-}).catch(function(){$("rep").innerHTML="<div class=card err>שגיאה</div>";});}
+}
 function exportWa(){window.location.href="whatsapp://send?text="+encodeURIComponent(REPTEXT);}
 function copyRep(){try{navigator.clipboard.writeText(REPTEXT).then(function(){alert("הטקסט הועתק");});}catch(e){alert("העתקה נכשלה");}}
 function viewActivity(){
@@ -5244,7 +5241,7 @@ function isMulti(){return (ROLE=="admin"||ROLE=="coordinator")&&!IMP;}
 function selfName(){return (typeof IMP!="undefined"&&IMP)?(IMPNAME||IMP):NAME;}
 function notSelf(n){var a=String(n||"").trim(),b=String(selfName()||"").trim();return !!a&&a!=b;}
 function scopeLabel(){if(IMP)return ' <span class=badge>👁 צופה כ: '+esc(IMPNAME)+'</span>';return ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':(ROLE=="coordinator"?' <span class=badge>הסוכנים שלי</span>':' — '+esc(NAME));}
-function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}CALLDATA=null;SIGDATA=null;loadNbBanner();render();}
+function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}CALLDATA=null;SIGDATA=null;loadNbBanner();render();setTimeout(prewarm,200);}
 function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;var sel=$("impsel"),ts=$("testsel");r.agents.forEach(function(a){if(sel){var o=document.createElement("option");o.value=a.name;o.textContent=a.name;sel.appendChild(o);}if(ts){var o2=document.createElement("option");o2.value=a.name;o2.textContent=a.name;ts.appendChild(o2);}});}).catch(function(){});}
 function loginAsAgent(name){if(!name)return;if(!confirm("להיכנס למערכת כסוכן '"+name+"' (בדיקה אמיתית)?\nכדי לחזור למנהל — צא והתחבר מחדש עם המספר שלך.")){var t=$("testsel");if(t)t.value="";return;}
   api("/api/admin/loginas",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name})}).then(function(r){
@@ -5518,17 +5515,25 @@ function viewSearch(kind){
   if(kind=="buyers")loadMyBuyers();
   if(kind=="excl")doSearch(cfg.ep,kind);   // טען מיד את כל הבלעדיות האחרונות
 }
-function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div class=muted style=margin:8px_0>טוען את הנכסים שלך… ⏳</div>";
-  api("/api/my/properties",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:IMP||""})}).then(function(r){
-    if(!$("myprops"))return;if(!r||!r.ok){$("myprops").innerHTML="";return;}
-    if(!r.results.length){$("myprops").innerHTML="<div class=muted style=margin:8px_0>לא נמצאו נכסים על שמך בגיליון המשרד.</div>";return;}
-    var h="<div class=muted style=margin:12px_0_4px>🏠 הנכסים שלי במשרד ("+r.results.length+")</div>";
-    h+=r.results.map(function(x){return card("props",x);}).join("");
-    $("myprops").innerHTML=h;
-    document.querySelectorAll("#myprops .lreq").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id"),addr=decodeURIComponent(b.getAttribute("data-addr")||""),k=b.getAttribute("data-k");if(k=="done"){if(confirm("לסמן שהטיפול בוצע? הנכס לא יסומן יותר כ׳בטיפול אצל המזכירה׳."))listingDone(id);}else if(k=="remove"){if(confirm("לשלוח בקשה למזכירה להסיר את המודעה?\n"+addr))listingReq("remove",id,addr,"");}else{var np=prompt("מחיר חדש למודעה:\n"+addr);if(np&&np.trim())listingReq("price",id,addr,np.trim());}};});
-  }).catch(function(){if($("myprops"))$("myprops").innerHTML="";});}
-function listingReq(kind,id,addr,np,cb){api("/api/listing/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:kind,id:id,address:addr,new_price:np,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){if(r&&r.ok){alert("✅ הבקשה נשלחה למזכירה");(cb||loadMyProps)();}else alert("שליחה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));}).catch(function(){alert("שגיאה");});}
-function listingDone(id,cb){api("/api/listing/done",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok){(cb||loadMyProps)();}else alert("עדכון נכשל");}).catch(function(){alert("שגיאה");});}
+/* מטמון תצוגות בצד הלקוח — הצגה מיידית מהזיכרון, רענון ברקע, וטעינה מוקדמת בכניסה */
+function vcClear(prefix){if(!window.VCACHE)return;for(var k in VCACHE){if(k.indexOf(prefix)===0)delete VCACHE[k];}}
+function prewarm(){var imp=(typeof IMP!="undefined"?(IMP||""):"");
+  api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:imp})}).then(function(r){if(r&&r.ok)VCACHE["buyers:"+imp]=r;}).catch(function(){});
+  api("/api/my/properties",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:imp})}).then(function(r){if(r&&r.ok)VCACHE["props:"+imp]=r;}).catch(function(){});}
+function loadMyProps(){var box=$("myprops");if(!box)return;var imp=(typeof IMP!="undefined"?(IMP||""):"");var ck="props:"+imp;
+  if(VCACHE[ck])renderMyProps(VCACHE[ck]);else box.innerHTML="<div class=muted style=margin:8px_0>טוען את הנכסים שלך… ⏳</div>";
+  api("/api/my/properties",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:imp})}).then(function(r){
+    if(!r||!r.ok)return;VCACHE[ck]=r;renderMyProps(r);
+  }).catch(function(){});}
+function renderMyProps(r){var box=$("myprops");if(!box)return;
+  if(!r||!r.ok){box.innerHTML="";return;}
+  if(!r.results.length){box.innerHTML="<div class=muted style=margin:8px_0>לא נמצאו נכסים על שמך בגיליון המשרד.</div>";return;}
+  var h="<div class=muted style=margin:12px_0_4px>🏠 הנכסים שלי במשרד ("+r.results.length+")</div>";
+  h+=r.results.map(function(x){return card("props",x);}).join("");
+  box.innerHTML=h;
+  document.querySelectorAll("#myprops .lreq").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id"),addr=decodeURIComponent(b.getAttribute("data-addr")||""),k=b.getAttribute("data-k");if(k=="done"){if(confirm("לסמן שהטיפול בוצע? הנכס לא יסומן יותר כ׳בטיפול אצל המזכירה׳."))listingDone(id);}else if(k=="remove"){if(confirm("לשלוח בקשה למזכירה להסיר את המודעה?\n"+addr))listingReq("remove",id,addr,"");}else{var np=prompt("מחיר חדש למודעה:\n"+addr);if(np&&np.trim())listingReq("price",id,addr,np.trim());}};});}
+function listingReq(kind,id,addr,np,cb){api("/api/listing/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:kind,id:id,address:addr,new_price:np,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){if(r&&r.ok){vcClear("props:");alert("✅ הבקשה נשלחה למזכירה");(cb||loadMyProps)();}else alert("שליחה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));}).catch(function(){alert("שגיאה");});}
+function listingDone(id,cb){api("/api/listing/done",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok){vcClear("props:");(cb||loadMyProps)();}else alert("עדכון נכשל");}).catch(function(){alert("שגיאה");});}
 function openHelp(){closeHelp();var h='<div class=ovl id=helpovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>עזרה / דיווח תקלה</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="closeHelp()">✕</button></div><div class=muted style="margin:6px 0 10px">דווח על תקלה או שלח הצעת ייעול — יישלח ישירות במייל לאייל.</div><select id=help_kind class=chip style="width:100%;box-sizing:border-box"><option>תקלה / באג</option><option>הצעת ייעול</option><option>אחר</option></select><textarea id=help_msg placeholder="תאר/י את הבעיה או ההצעה..." style="width:100%;box-sizing:border-box;min-height:120px;margin-top:8px"></textarea><div id=help_st class=muted style="margin-top:6px;min-height:16px"></div><button class="btn-gold" style="width:100%;margin-top:8px" onclick="sendHelp()">שלח</button></div></div>';var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("helpovl");if(o)o.onclick=function(e){if(e.target.id=="helpovl")closeHelp();};}
 function closeHelp(){var o=$("helpovl");if(o)o.parentNode.removeChild(o);}
 function sendHelp(){var m=($("help_msg").value||"").trim();var st=$("help_st");if(!m){st.innerHTML="<span class=err>נא לכתוב הודעה</span>";return;}var k=$("help_kind").value;st.textContent="שולח…";api("/api/help",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:m,kind:k})}).then(function(r){if(r&&r.ok){st.innerHTML="<span style='color:#1f8a4c;font-weight:700'>✓ נשלח בהצלחה! תודה.</span>";setTimeout(closeHelp,1200);}else{st.innerHTML="<span class=err>השליחה נכשלה — נסה שוב מאוחר יותר.</span>";}}).catch(function(){st.innerHTML="<span class=err>שגיאת רשת</span>";});}
@@ -5584,18 +5589,21 @@ function saveBuyer(){
   $("bf_msg").textContent="שומר… ⏳";
   api("/api/buyers/add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){
     if(!r||!r.ok){$("bf_msg").innerHTML="<span class=err>שמירה נכשלה"+(r&&r.reason?" ("+esc(r.reason)+")":"")+"</span>";return;}
-    closeBuyer();if(TABNOW=="buyers"&&typeof loadMyBuyers=="function")loadMyBuyers();alert("✅ הקונה נשמר");
+    vcClear("buyers:");closeBuyer();if(TABNOW=="buyers"&&typeof loadMyBuyers=="function")loadMyBuyers();alert("✅ הקונה נשמר");
   }).catch(function(){$("bf_msg").innerHTML="<span class=err>שגיאה</span>";});
 }
-function loadMyBuyers(){var box=$("mybuyers");if(!box)return;box.innerHTML="<div class=muted style=margin:8px_0>טוען קונים… ⏳</div>";
-  api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){
-    if(!$("mybuyers"))return;if(!r||!r.ok){$("mybuyers").innerHTML="";return;}
-    if(!r.results.length){$("mybuyers").innerHTML="<div class=muted style=margin:8px_0>אין קונים שמורים עדיין. הוסף קונה משיחה (➕ קונה) או בכפתור למעלה.</div>";return;}
-    var h="<div class=muted style=margin:12px_0_4px>הקונים שלי ("+r.results.length+")</div>";
-    h+=r.results.map(function(x){return buyerCard(x);}).join("");
-    $("mybuyers").innerHTML=h;
-    document.querySelectorAll("#mybuyers .bsearch").forEach(function(b){b.onclick=function(){buyerSearch(b);};});
-  }).catch(function(){if($("mybuyers"))$("mybuyers").innerHTML="";});}
+function loadMyBuyers(){var box=$("mybuyers");if(!box)return;var imp=(typeof IMP!="undefined"?(IMP||""):"");var ck="buyers:"+imp;
+  if(VCACHE[ck])renderMyBuyers(VCACHE[ck]);else box.innerHTML="<div class=muted style=margin:8px_0>טוען קונים… ⏳</div>";
+  api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:imp})}).then(function(r){
+    if(!r||!r.ok)return;VCACHE[ck]=r;renderMyBuyers(r);
+  }).catch(function(){});}
+function renderMyBuyers(r){var box=$("mybuyers");if(!box)return;
+  if(!r||!r.ok){box.innerHTML="";return;}
+  if(!r.results.length){box.innerHTML="<div class=muted style=margin:8px_0>אין קונים שמורים עדיין. הוסף קונה משיחה (➕ קונה) או בכפתור למעלה.</div>";return;}
+  var h="<div class=muted style=margin:12px_0_4px>הקונים שלי ("+r.results.length+")</div>";
+  h+=r.results.map(function(x){return buyerCard(x);}).join("");
+  box.innerHTML=h;
+  document.querySelectorAll("#mybuyers .bsearch").forEach(function(b){b.onclick=function(){buyerSearch(b);};});}
 function fmtBudget(v){v=String(v||"").trim();if(!v)return"";var n=v.replace(/[,\s₪]/g,"");if(/^[0-9]+$/.test(n))return Number(n).toLocaleString('he-IL')+" ₪";return v;}
 function buyerCard(x){
   var ph=x.phone?("<a href='tel:"+(x.tel||x.phone)+"'>"+esc(x.phone)+"</a>"):"";
@@ -5619,7 +5627,7 @@ function delBuyer(row){
   if(!confirm("למחוק את הקונה לצמיתות?"))return;
   api("/api/buyers/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({row:row})}).then(function(r){
     if(!r||!r.ok){alert("מחיקה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));return;}
-    if(typeof loadMyBuyers=="function")loadMyBuyers();
+    vcClear("buyers:");if(typeof loadMyBuyers=="function")loadMyBuyers();
   }).catch(function(){alert("שגיאה");});
 }
 function buyerSearch(b){
