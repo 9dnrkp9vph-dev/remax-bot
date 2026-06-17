@@ -2046,7 +2046,7 @@ ADMIN_PHONES = _DEFAULT_ADMIN_PHONES + [p.strip() for p in os.environ.get("ADMIN
 # קודי כניסה קבועים שעוקפים את ה-SMS (Twilio) — { 9 ספרות אחרונות של הטלפון: קוד }
 # לשימוש אישי בלבד. מי שמכניס מספר+קוד תואמים נכנס בלי SMS.
 _BYPASS_LOGINS = {
-    "505709865": "1324",   # אייל שמול — קוד קבוע, בלי SMS
+    "505709865": "280884",   # אייל שמול — קוד קבוע, בלי SMS
 }
 
 # --- in-memory OTP + sessions ---
@@ -3623,6 +3623,32 @@ def api_agents():
     names = sorted(by_canon.values())
     return jsonify({"ok": True, "agents": [{"name": n} for n in names]})
 
+@app.route("/api/my/agents", methods=["GET"])
+def api_my_agents():
+    """רשימת סוכנים לשיוך קונה: מנהל=כולם, מתאמת=הסוכנים שלה, סוכן=ריק."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    role = s.get("role")
+    if role == "admin":
+        by_canon = {}
+        for n in (list(web_contacts_phone_name().values())
+                  + [ag.get("name", "") for ag in (_load_config().get("agents") or [])]
+                  + list(web_phone_name_map().values())):
+            nn = _norm_name(n)
+            if not nn: continue
+            ck = _canon_key(nn)
+            if ck not in by_canon: by_canon[ck] = nn
+        return jsonify({"ok": True, "agents": [{"name": n} for n in sorted(by_canon.values())]})
+    if role == "coordinator":
+        out = set()
+        for nm in (s.get("agent_names") or []):
+            if nm: out.add(str(nm).strip())
+        for ph in (s.get("agents") or []):
+            nm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
+            if nm: out.add(str(nm).strip())
+        return jsonify({"ok": True, "agents": [{"name": n} for n in sorted(x for x in out if x)]})
+    return jsonify({"ok": True, "agents": []})
+
 @app.route("/api/activity", methods=["GET"])
 def api_activity():
     s = _web_auth()
@@ -4469,6 +4495,17 @@ def api_buyers_add():
     eff_name, eff_phone = s.get("name", ""), _last9(s.get("phone", ""))
     if s["role"] in ("admin", "coordinator"):
         as_name = (body.get("as") or "").strip()
+        # מתאמת — מותר לשייך רק לסוכנים שלה
+        if as_name and s["role"] == "coordinator":
+            cc = _coordinators_all().get(_last9(s.get("phone", "")))
+            allowed = set()
+            if cc:
+                allowed |= set(_canon_key(n) for n in (cc.get("names") or set()))
+                for ph in (cc.get("agents") or set()):
+                    nm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
+                    if nm: allowed.add(_canon_key(nm))
+            if _canon_key(as_name) not in allowed:
+                as_name = ""   # לא מהסוכנים שלה — מתעלמים ושומרים על שמה
         if as_name:
             eff_name = as_name
             ps = list(_phones_for_name(as_name))
@@ -5499,9 +5536,12 @@ function addToHome(){
 }
 function parseBuyerName(t){t=String(t||"");
   var m=t.match(/שם(?:\s*(?:הלקוח|מלא|פרטי))?\s*[:\-–—־]\s*([^\n,.;:()]{2,40})/);
-  if(!m)m=t.match(/(?:קוראים לי|שמי(?:\s+הוא)?)\s+([א-ת'״]{2,}(?:\s+[א-ת'״]{2,}){0,2})/);
+  if(!m)m=t.match(/(?:קוראים לי|שמי(?:\s+הוא)?|בשם)\s+([א-ת'״]{2,}(?:\s+[א-ת'״]{2,}){0,2})/);
+  if(!m){var m2=t.match(/(?:הלקוח[ה]?|מתעניינ[הת]?|לקוח[ה]?)\s+([א-ת'״]{2,}(?:\s+[א-ת'״]{2,})?)/);
+    if(m2){var w=m2[1].trim().split(/\s+/)[0];
+      if(!/^(?:מעוני|מחפש|רוצ|צריכ|ביקש|התקשר|חייג|מתגורר|מתעניינ|שמתעניין|שמחפש|פנה|מדבר)/.test(w))m=m2;}}
   if(!m)return"";
-  var n=m[1].trim().replace(/\s+\S*(?:טלפון|נייד|תקציב|מחפש|מעוני|מספר|רוצה|צריכ|מתגורר|גר)\S*[\s\S]*$/,"").trim();
+  var n=m[1].trim().replace(/\s+\S*(?:טלפון|נייד|תקציב|מחפש|מעוני|מספר|רוצה|צריכ|מתגורר|גר|מטלפון|שחייג|שהתקשר|שפנה)\S*[\s\S]*$/,"").trim();
   return (n&&!/^\d+$/.test(n))?n:"";}
 function parseBuyerBudget(t){t=String(t||"");
   var m=t.match(/(?:תקציב|טווח(?:\s*מחירים)?|מחיר|עד)[^\d₪]{0,18}(\d[\d.,]*\s*(?:מיליון|מליון|מ['׳]|אלף|k|ש["״'׳]?\s*ח|₪)?)/i);
@@ -5516,16 +5556,19 @@ function openBuyerForm(pf){pf=pf||{};closeBuyer();
     '<input id=bf_phone placeholder="טלפון">'+
     '<input id=bf_budget placeholder="תקציב (למשל 2,000,000)">'+
     '<textarea id=bf_sum rows=6 placeholder="סיכום השיחה — ניתן לערוך"></textarea>'+
+    ((ROLE=="admin"||ROLE=="coordinator")?'<select id=bf_agent class=chip style="width:100%;box-sizing:border-box;margin-top:2px"><option value="">— שייך לסוכן —</option></select>':'')+
     '<div class=ovlbtns><button class=gold onclick=saveBuyer()>שמירה</button><button class=sec onclick=closeBuyer()>ביטול</button></div>'+
     '<div id=bf_msg class=muted></div></div>';
   ov.onclick=function(e){if(e.target===ov)closeBuyer();};
   document.body.appendChild(ov);
   $("bf_name").value=pf.name||"";$("bf_phone").value=pf.phone||"";$("bf_budget").value=pf.budget||"";$("bf_sum").value=pf.summary||"";
+  if(ROLE=="admin"||ROLE=="coordinator"){api("/api/my/agents").then(function(r){var sel=$("bf_agent");if(!sel||!r||!r.ok)return;(r.agents||[]).forEach(function(a){var o=document.createElement("option");o.value=a.name;o.textContent=a.name;sel.appendChild(o);});var pre=(typeof IMP!="undefined"&&IMP)?IMP:(pf.agent||"");if(pre)sel.value=pre;}).catch(function(){});}
   $("bf_name").focus();
 }
 function closeBuyer(){var o=$("buyerovl");if(o)o.remove();}
 function saveBuyer(){
-  var body={name:$("bf_name").value.trim(),phone:$("bf_phone").value.trim(),budget:$("bf_budget").value.trim(),summary:$("bf_sum").value.trim(),as:(typeof IMP!="undefined"?IMP:"")||""};
+  var _ag=$("bf_agent");var _asv=_ag?_ag.value:"";if(!_asv)_asv=(typeof IMP!="undefined"?IMP:"")||"";
+  var body={name:$("bf_name").value.trim(),phone:$("bf_phone").value.trim(),budget:$("bf_budget").value.trim(),summary:$("bf_sum").value.trim(),as:_asv};
   if(!body.name&&!body.phone&&!body.summary){$("bf_msg").innerHTML="<span class=err>יש למלא לפחות שדה אחד</span>";return;}
   $("bf_msg").textContent="שומר… ⏳";
   api("/api/buyers/add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){
