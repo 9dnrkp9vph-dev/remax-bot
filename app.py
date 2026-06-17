@@ -5117,7 +5117,7 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
 /* ✏️✏️ חלון פתיחה שיווקי — מופיע מיד אחרי הכניסה, בזמן שהאפליקציה נטענת ברקע. ערוך כאן בחופשיות את הטקסט והזמן ✏️✏️ */
-var SPLASH_SECONDS=3;   /* משך הצגת החלון בשניות — שנה כרצונך */
+var SPLASH_SECONDS=10;   /* משך הצגת החלון בשניות — שנה כרצונך */
 function hideSplash(){var s=$("splash");if(!s)return;s.classList.add("sp-hide");setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},450);}
 function showSplash(){if($("splash"))return;
   var nm=(NAME||"").trim().split(/\s+/)[0];if(!nm)nm="שותף";
