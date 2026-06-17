@@ -4723,8 +4723,7 @@ FAMILY_BOT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 <style>
 :root{--ink:#0D1B2A;--gold:#C9972A;--red:#E11B22;--blue:#003DA5;--bg:#eef1f5;--muted:#6b7280;--line:#eef0f3}
 *{box-sizing:border-box}
-html{background:var(--bg)}
-body{font-family:"Heebo","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;margin:0;background:var(--bg);min-height:100vh;color:var(--ink);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+body{font-family:"Heebo","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;margin:0;background:linear-gradient(180deg,#f4f7fb 0,var(--bg) 240px) no-repeat;background-color:var(--bg);min-height:100vh;color:var(--ink);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
 .wrap{max-width:620px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top,0)) 14px 100px}
 .brand{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;margin:6px 0 12px;padding-bottom:12px;border-bottom:2px solid var(--gold)}
 .brand img{max-height:42px;max-width:60%;object-fit:contain}.brandtxt{font-size:20px;font-weight:800}
@@ -5541,6 +5540,9 @@ function parseBuyerName(t){t=String(t||"");
   if(!m){var m2=t.match(/(?:הלקוח[ה]?|מתעניינ[הת]?|לקוח[ה]?)\s+([א-ת'״]{2,}(?:\s+[א-ת'״]{2,})?)/);
     if(m2){var w=m2[1].trim().split(/\s+/)[0];
       if(!/^(?:מעוני|מחפש|רוצ|צריכ|ביקש|התקשר|חייג|מתגורר|מתעניינ|שמתעניין|שמחפש|פנה|מדבר)/.test(w))m=m2;}}
+  if(!m){var m3=t.match(/(?:^|\n|\.\s+)([א-ת'״]{2,}(?:\s+[א-ת'״]{2,})?)\s*(?:🔹|🔷|🔶|🔸|💠|💎|◆|◇|🟦|⬦)/);
+    if(m3){var w3=m3[1].trim().split(/\s+/)[0];
+      if(!/^(?:מעוני|מחפש|רוצ|צריכ|ביקש|התקשר|חייג|מתגורר|מתעניינ|שמתעניין|שמחפש|פנה|מדבר|דחיפות|רצון|חדרים|תקציב|מחיר|עיר|שכונה|דירה|נכס|סיכום)/.test(w3))m=m3;}}
   if(!m)return"";
   var n=m[1].trim().replace(/\s+\S*(?:טלפון|נייד|תקציב|מחפש|מעוני|מספר|רוצה|צריכ|מתגורר|גר|מטלפון|שחייג|שהתקשר|שפנה)\S*[\s\S]*$/,"").trim();
   return (n&&!/^\d+$/.test(n))?n:"";}
