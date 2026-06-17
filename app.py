@@ -3081,7 +3081,10 @@ def api_sign_properties():
         addr = ", ".join([x for x in [street, city] if x])
         if not addr or addr in seen: continue
         seen.add(addr)
-        out.append({"address": addr, "price": (r.get("מחיר", "") or "").strip()})
+        out.append({"address": addr, "price": (r.get("מחיר", "") or "").strip(),
+                    "type": (r.get("סוג נכס", "") or "").strip(),
+                    "rooms": (r.get("חדרים", "") or "").strip(),
+                    "size": (r.get('מ"ר', "") or r.get("מ״ר", "") or "").strip()})
         if len(out) >= 300: break
     return jsonify({"ok": True, "properties": out})
 
@@ -5261,7 +5264,7 @@ function openSignForm(aud){SG_AUD=aud;
      +'<div style="margin-top:10px"><div class=muted>תקופת בלעדיות (כולל = הלקוח חותם על 2 טפסים)</div><select id="sg_exsel" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgExclSel()"><option value="">ללא בלעדיות</option><option value="1">בלעדיות חודש 1</option><option value="2">בלעדיות 2 חודשים</option><option value="3">בלעדיות 3 חודשים</option><option value="4">בלעדיות 4 חודשים</option><option value="5">בלעדיות 5 חודשים</option><option value="6">בלעדיות 6 חודשים</option><option value="custom">* תאריך מותאם אישית</option></select></div>'
      +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>';
   var propsec=(aud=="buyer")
-   ? '<div style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>פרטי הנכס (אפשר להוסיף יותר מנכס אחד)</div><div id="sg_proplist_rows"></div><datalist id="sg_proplist"></datalist><button class="btn-ghost" style="margin-top:8px" onclick="sgAddProp()">➕ הוסף נכס</button></div>'
+   ? '<div style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>פרטי הנכס (אפשר להוסיף יותר מנכס אחד)</div><div id="sg_proplist_rows"></div><datalist id="sg_proplist"></datalist><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn-ghost" onclick="sgAddProp()">➕ הוסף נכס</button><button class="btn-ghost" onclick="sgShowMyProps()">📋 בחר מהנכסים שלי</button></div><div id="sg_mypropbox" class="hidden" style="margin-top:8px"></div></div>'
    : '<div style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>פרטי הנכס</div><input id="sg_addr" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="כתובת הנכס (התחל להקליד — מהמודעות שלך)" list="sg_proplist" autocomplete="off" oninput="sgPropType()"><datalist id="sg_proplist"></datalist><input id="sg_price" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="מחיר מבוקש (₪)" inputmode=numeric></div>';
   $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 style="margin:0">'+title+'</h2><button class="sgback" onclick="tab(\'sigs\')"><svg viewBox="0 0 18 18"><path d="M7 4l5 5-5 5"/></svg>חזרה</button></div>'
    + deal
@@ -5283,13 +5286,26 @@ function sgAddProp(){var box=$("sg_proplist_rows");if(!box)return;var row=docume
 function sgDelProp(btn){var box=$("sg_proplist_rows");var row=btn.parentNode;if(box&&box.querySelectorAll(".sg_prow").length<=1){row.querySelector(".sg_addr_m").value="";row.querySelector(".sg_price_m").value="";return;}row.parentNode.removeChild(row);}
 function sgPropTypeM(el){var ad=String(el.value||"").trim();var p=SG_PROPS[ad];if(p&&p.price){var pr=el.parentNode.querySelector(".sg_price_m");if(pr&&!pr.value)pr.value=p.price;}}
 function sgCollectProps(){var out=[];var rows=document.querySelectorAll("#sg_proplist_rows .sg_prow");for(var i=0;i<rows.length;i++){var a=String((rows[i].querySelector(".sg_addr_m")||{}).value||"").trim();var p=String((rows[i].querySelector(".sg_price_m")||{}).value||"").trim();if(a)out.push({addr:a,price:p});}return out;}
-var SG_CLIENTS={},SG_PROPS={};
+var SG_CLIENTS={},SG_PROPS={},SG_PROPLIST=[];
+function sgShowMyProps(){var box=$("sg_mypropbox");if(!box)return;
+  if(box.innerHTML){box.innerHTML="";box.classList.add("hidden");return;}
+  if(!SG_PROPLIST||!SG_PROPLIST.length){box.innerHTML='<div class=muted style="padding:6px 2px">לא נמצאו נכסים על שמך בגיליון המשרד.</div>';box.classList.remove("hidden");return;}
+  var h='<div class=muted style="margin:2px 2px 6px">לחץ על נכס כדי להוסיף אותו לטופס:</div>';
+  h+=SG_PROPLIST.map(function(p,i){
+    return '<div onclick="sgPickProp('+i+')" style="cursor:pointer;padding:9px 10px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px"><b>'+esc(p.address)+'</b></div>';}).join("");
+  box.innerHTML=h;box.classList.remove("hidden");}
+function sgPickProp(i){var p=SG_PROPLIST[i];if(!p)return;
+  var rows=document.querySelectorAll("#sg_proplist_rows .sg_prow");var target=null;
+  for(var k=0;k<rows.length;k++){var a=rows[k].querySelector(".sg_addr_m");if(a&&!a.value.trim()){target=rows[k];break;}}
+  if(!target){sgAddProp();var all=document.querySelectorAll("#sg_proplist_rows .sg_prow");target=all[all.length-1];}
+  if(target){var a=target.querySelector(".sg_addr_m"),pr=target.querySelector(".sg_price_m");if(a)a.value=p.address;if(pr&&p.price)pr.value=p.price;}
+  var box=$("sg_mypropbox");if(box){box.innerHTML="";box.classList.add("hidden");}}
 function loadSignPickers(){
   api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?(IMP||""):"")})}).then(function(r){
     if(!r||!r.ok)return;SG_CLIENTS={};var opts="";(r.results||[]).forEach(function(b){var nm=String(b.name||"").trim();if(!nm||SG_CLIENTS[nm])return;SG_CLIENTS[nm]={phone:(b.phone||"")};opts+='<option value="'+esc(nm)+'">'+(b.phone?esc(b.phone):"")+(b.budget?(" · "+esc(b.budget)):"")+'</option>';});var dl=$("sg_clientlist");if(dl)dl.innerHTML=opts;
   }).catch(function(){});
   api("/api/sign/properties"+(typeof IMP!="undefined"&&IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
-    if(!r||!r.ok)return;SG_PROPS={};var opts="";(r.properties||[]).forEach(function(p){var ad=String(p.address||"").trim();if(!ad||SG_PROPS[ad])return;SG_PROPS[ad]={price:(p.price||"")};opts+='<option value="'+esc(ad)+'"></option>';});var dl=$("sg_proplist");if(dl)dl.innerHTML=opts;
+    if(!r||!r.ok)return;SG_PROPS={};SG_PROPLIST=[];var opts="";(r.properties||[]).forEach(function(p){var ad=String(p.address||"").trim();if(!ad||SG_PROPS[ad])return;SG_PROPS[ad]={price:(p.price||""),type:(p.type||""),rooms:(p.rooms||""),size:(p.size||"")};SG_PROPLIST.push({address:ad,price:(p.price||""),type:(p.type||""),rooms:(p.rooms||""),size:(p.size||"")});opts+='<option value="'+esc(ad)+'"></option>';});var dl=$("sg_proplist");if(dl)dl.innerHTML=opts;
   }).catch(function(){});}
 function sgClientType(){var nm=String(($("sg_cname")||{}).value||"").trim();var c=SG_CLIENTS[nm];if(c&&c.phone)$("sg_cphone").value=c.phone;}
 function sgPropType(){var ad=String(($("sg_addr")||{}).value||"").trim();var p=SG_PROPS[ad];if(p&&p.price)$("sg_price").value=p.price;}
