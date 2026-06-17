@@ -5018,36 +5018,42 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 #login .card{margin-top:14px;box-shadow:0 10px 30px rgba(20,30,50,.07)}
 #login .card label{display:block;text-align:right;margin-bottom:6px}
 #login #phone,#login #code{text-align:center;direction:ltr;font-size:18px;font-weight:700;letter-spacing:.5px}
-#splash{position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;background:linear-gradient(160deg,#0D1B2A 0%,#16324f 60%,#1c4a6e 100%);color:#fff;font-family:"Heebo",Arial,sans-serif;transition:opacity .45s ease,transform .45s ease}
-#splash.sp-hide{opacity:0;transform:scale(1.05);pointer-events:none}
-#splash .sp-card{max-width:340px}
-#splash .sp-logo{height:64px;margin-bottom:22px;filter:drop-shadow(0 6px 18px rgba(0,0,0,.35))}
-#splash .sp-title{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
-#splash .sp-sub{font-size:16px;color:#cfe0f3;line-height:1.5;margin-bottom:24px}
-#splash .sp-note{font-size:13px;color:#9fb4d8}
-#splash .sp-dots{display:flex;gap:7px;justify-content:center;margin-top:14px}
-#splash .sp-dots span{width:8px;height:8px;border-radius:50%;background:#caa14a;animation:spb 1s infinite ease-in-out}
-#splash .sp-dots span:nth-child(2){animation-delay:.15s}#splash .sp-dots span:nth-child(3){animation-delay:.3s}
-@keyframes spb{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-6px)}}
-#splash .sp-foot{position:absolute;bottom:26px;font-size:12px;letter-spacing:3px;color:#7f97bd;font-weight:700}
+#splash{position:fixed;inset:0;z-index:100000;--gold2:#e0b85a;background:radial-gradient(130% 80% at 50% -10%,#21364f 0%,#16273c 42%,#0D1B2A 78%,#081320 100%);overflow:hidden;display:flex;flex-direction:column;font-family:"Heebo",Arial,sans-serif;transition:opacity .45s ease,transform .45s ease}
+#splash.sp-hide{opacity:0;transform:scale(1.04);pointer-events:none}
+#splash .orb{position:absolute;border-radius:50%;filter:blur(50px);opacity:.45;animation:spf 8s ease-in-out infinite}
+#splash .orb.g{width:300px;height:300px;background:#C9972A;top:-90px;right:-70px}
+#splash .orb.b{width:260px;height:260px;background:#1f4f8f;bottom:60px;left:-80px;animation-delay:-3s}
+@keyframes spf{0%,100%{transform:translateY(0)}50%{transform:translateY(-26px)}}
+#splash .vign{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.03) 0 1px,transparent 1px 64px),repeating-linear-gradient(90deg,rgba(255,255,255,.03) 0 1px,transparent 1px 64px);-webkit-mask:radial-gradient(70% 60% at 50% 30%,#000,transparent 75%);mask:radial-gradient(70% 60% at 50% 30%,#000,transparent 75%);opacity:.5}
+#splash .inner{position:relative;z-index:5;flex:1;display:flex;flex-direction:column;align-items:center;padding:calc(46px + env(safe-area-inset-top,0)) 30px calc(26px + env(safe-area-inset-bottom,0));text-align:center;overflow-y:auto}
+#splash .plate{background:#fff;border-radius:28px;padding:22px 26px;box-shadow:0 24px 60px rgba(0,0,0,.35);position:relative}
+#splash .plate:before{content:"";position:absolute;inset:-2px;border-radius:30px;background:linear-gradient(140deg,var(--gold2),transparent 40%);opacity:.5;z-index:-1}
+#splash .plate img{display:block;width:180px;height:auto}
+#splash .bfloat{animation:spbf 5s ease-in-out infinite}
+@keyframes spbf{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+#splash .aibadge{margin-top:24px;display:inline-flex;align-items:center;gap:8px;background:linear-gradient(180deg,rgba(224,184,90,.22),rgba(224,184,90,.10));border:1px solid rgba(224,184,90,.45);color:var(--gold2);font-size:13px;font-weight:800;padding:7px 15px;border-radius:999px}
+#splash .kick{margin-top:14px;font-size:13px;font-weight:800;letter-spacing:.26em;color:var(--gold2)}
+#splash .head{margin-top:10px;font-size:38px;font-weight:900;line-height:1.08;letter-spacing:-.03em;color:#fff}
+#splash .head .g{color:var(--gold2)}
+#splash .sub{margin-top:12px;font-size:17px;font-weight:500;line-height:1.5;color:#aebbcd;max-width:320px}
+#splash .feats{margin-top:22px;display:flex;flex-direction:column;gap:10px;width:100%;max-width:330px}
+#splash .feat{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:13px 15px;text-align:right}
+#splash .feat .fi{width:40px;height:40px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:linear-gradient(150deg,rgba(201,151,42,.25),rgba(201,151,42,.12));color:var(--gold2)}
+#splash .feat .ft{font-size:16px;font-weight:700;color:#eaf0f7}
+#splash .feat .fs{font-size:13px;font-weight:500;color:#93a2b6;margin-top:1px}
+#splash .cta-wrap{margin-top:auto;width:100%;max-width:340px;padding-top:24px}
+#splash .cta{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:18px;border-radius:18px;background:linear-gradient(180deg,#e0b85a,#c0901f);color:#231700;font-size:20px;font-weight:800;font-family:inherit;border:none;box-shadow:0 16px 36px rgba(201,151,42,.32);cursor:pointer}
+#splash .cta:active{transform:translateY(1px)}
+#splash .dots{display:flex;gap:7px;justify-content:center;margin-top:18px}
+#splash .dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.25)}
+#splash .dots i.on{width:22px;border-radius:5px;background:var(--gold2)}
+#splash .u{opacity:1}
+#splash.play .u{animation:spup .8s cubic-bezier(.2,.7,.2,1) backwards}
+#splash.play .u.d2{animation-delay:.20s}#splash.play .u.d3{animation-delay:.32s}#splash.play .u.d4{animation-delay:.44s}#splash.play .u.d5{animation-delay:.56s}#splash.play .u.d6{animation-delay:.68s}#splash.play .u.d7{animation-delay:.80s}
+@keyframes spup{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+#splash.play .pop{animation:sppop .9s cubic-bezier(.2,.8,.2,1) backwards}
+@keyframes sppop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
 </style></head><body>
-<!-- ✏️✏️ חלון פתיחה שיווקי — ערוך כאן בחופשיות את הטקסט. מופיע בכניסה בזמן שהאפליקציה נטענת ברקע, ונסגר אוטומטית ✏️✏️ -->
-<div id="splash" onclick="hideSplash()">
-  <div class="sp-card">
-    <img src="/assets/logo" class="sp-logo" alt="">
-    <div class="sp-title">ברוכים הבאים ל-Family Bot</div>
-    <div class="sp-sub">המערכת החכמה שמרכזת לך את כל הנדל"ן במקום אחד 🏠</div>
-    <div class="sp-note">טוען את הנתונים שלך…</div>
-    <div class="sp-dots"><span></span><span></span><span></span></div>
-  </div>
-  <div class="sp-foot">RE/MAX FAMILY</div>
-</div>
-<script>
-  var SPLASH_SECONDS = 3;   /* משך הצגת חלון הפתיחה בשניות — שנה כרצונך */
-  function hideSplash(){var s=document.getElementById("splash");if(!s)return;s.classList.add("sp-hide");setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},450);}
-  setTimeout(hideSplash, SPLASH_SECONDS*1000);
-</script>
-<!-- ✏️✏️ סוף חלון הפתיחה ✏️✏️ -->
 <div class="wrap">
 <div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();openHelp()">💬 עזרה / דיווח תקלה</div><div class="mi" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();window.open('https://www.instagram.com/remax.family?igsh=bXdmdzJjMWVkc3li&utm_source=qr','_blank')"><svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:none;stroke:#E1306C;stroke-width:1.9;flex:0 0 auto"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.6" cy="6.4" r="1.2" fill="#E1306C" stroke="none"/></svg> אינסטגרם של המשרד</div><div class="mi" onclick="closeMenu();window.open('https://www.madlan.co.il/madad/2026/%D7%A7%D7%A8%D7%99%D7%95%D7%AA','_blank')">🏅 מדד המתווכים — מדלן 2026</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
@@ -5110,7 +5116,30 @@ function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){
     if(r.ok){TOKEN=r.token;ROLE=r.role;DROLE=r.drole||"";NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbTok",TOKEN);localStorage.setItem("fbRole",ROLE);localStorage.setItem("fbDrole",DROLE);localStorage.setItem("fbName",NAME);localStorage.setItem("fbDev",DEV?"1":"");localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}enter();}
     else{$("m2").innerHTML="<span class=err>"+(r.reason=="wrong"?"קוד שגוי":(r.reason=="expired"?"הקוד פג":"שגיאה"))+"</span>";}
   }).catch(function(){$("m2").innerHTML="<span class=err>שגיאה</span>";});}
-function enter(){$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
+/* ✏️✏️ חלון פתיחה שיווקי — מופיע מיד אחרי הכניסה, בזמן שהאפליקציה נטענת ברקע. ערוך כאן בחופשיות את הטקסט והזמן ✏️✏️ */
+var SPLASH_SECONDS=3;   /* משך הצגת החלון בשניות — שנה כרצונך */
+function hideSplash(){var s=$("splash");if(!s)return;s.classList.add("sp-hide");setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},450);}
+function showSplash(){if($("splash"))return;
+  var nm=(NAME||"").trim().split(/\s+/)[0];if(!nm)nm="שותף";
+  var d=document.createElement("div");d.id="splash";
+  d.innerHTML='<div class="orb g"></div><div class="orb b"></div><div class="vign"></div>'+
+  '<div class="inner">'+
+    '<div class="plate pop"><img class="bfloat" src="/assets/logo" alt="RE/MAX Family"></div>'+
+    '<div class="aibadge u d2"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9 2.2l1.7 4.9 4.9 1.7-4.9 1.7L9 15.4l-1.7-4.9L2.4 8.8l4.9-1.7z"/></svg>מופעל על בינה מלאכותית</div>'+
+    '<div class="kick u d2">העוזר הדיגיטלי שלך</div>'+
+    '<div class="head u d3">שלום, <span class="g">'+esc(nm)+'.</span></div>'+
+    '<div class="sub u d4">בינה מלאכותית שמסכמת שיחות, מזהה נכסים ומחתימה דיגיטלית — הכל במקום אחד.</div>'+
+    '<div class="feats">'+
+      '<div class="feat u d5"><span class="fi"><svg width="22" height="22" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z"/></svg></span><div><div class="ft">שיחות מסוכמות לבד</div><div class="fs">AI מזהה כל קונה פוטנציאלי</div></div></div>'+
+      '<div class="feat u d6"><span class="fi"><svg width="22" height="22" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11.8 3.4l2.8 2.8L6 14.8 3 15.4l.6-3z"/><path d="M10.6 4.6l2.8 2.8"/></svg></span><div><div class="ft">חתימה דיגיטלית</div><div class="fs">חוזה חתום תוך דקה</div></div></div>'+
+    '</div>'+
+    '<div class="cta-wrap u d7"><button class="cta" onclick="hideSplash()">בוא נתחיל <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#231700" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><div class="dots"><i class="on"></i><i></i><i></i></div></div>'+
+  '</div>';
+  document.body.appendChild(d);
+  requestAnimationFrame(function(){d.classList.add("play");});
+  setTimeout(hideSplash,SPLASH_SECONDS*1000);}
+/* ✏️✏️ סוף חלון הפתיחה ✏️✏️ */
+function enter(){showSplash();$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
 function firstAllowedTab(){var order=["calls","buyers","sigs","props","excl","newborn"];if(!TABS||!TABS.length)return "calls";for(var i=0;i<order.length;i++){if(TABS.indexOf(order[i])>=0)return order[i];}return "calls";}
 function applyTabPerms(){
   var navKeys=["calls","buyers","sigs","props","excl","newborn"];
