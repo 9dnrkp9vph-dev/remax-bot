@@ -5120,6 +5120,11 @@ function renderContracts(){if(!$("devcontracts"))return;
 function ctypeChange(v){var ta=$("cbody");if(ta)CONTRACTS[CTYPE]=ta.value;CTYPE=v;renderContracts();}
 function saveContract(){var ta=$("cbody");if(!ta)return;CONTRACTS[CTYPE]=ta.value;api("/api/dev/contract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:CTYPE,body:ta.value})}).then(function(r){if(r&&r.ok)alert("נשמר ✓");else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
 function tab(t){var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();setTimeout(shareUpd,50);}
+/* iOS: אחרי חזרה מאפליקציה אחרת (וואטסאפ/טלפון) הסרגל הקבוע "קופץ" כי ה-viewport עוד לא התעדכן — נדנוד גלילה קטן מאלץ את iOS למקם אותו מחדש */
+function snapBars(){try{var _b=document.body;_b.style.position="";_b.style.top="";_b.style.width="";var y=window.pageYOffset||document.documentElement.scrollTop||0;window.scrollTo(0,y+1);window.scrollTo(0,y);var t=document.querySelector(".tabs");if(t){void t.offsetHeight;}}catch(e){}}
+document.addEventListener("visibilitychange",function(){if(!document.hidden){setTimeout(snapBars,20);setTimeout(snapBars,250);}});
+window.addEventListener("pageshow",function(){setTimeout(snapBars,20);});
+window.addEventListener("focus",function(){setTimeout(snapBars,20);});
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else viewSearch(TABNOW);}
 var REPTEXT="";
 function kpi(n,l){return "<div class=stat><div class=n>"+n+"</div><div class=l>"+l+"</div></div>";}
@@ -5142,14 +5147,16 @@ function toggleSigs(){var b=$("sigslist");if(!b)return;if(b.innerHTML){b.innerHT
   b.innerHTML="<div class=card><h2>חתימות ("+(g.total||0)+")</h2>"+head+"<div style=margin-top:8px>"+list+"</div></div>";}
 function fmtD(s){s=String(s||"");if(s.indexOf("T")>-1){var pp=s.slice(0,10).split("-");if(pp.length==3)return pp[2]+"/"+pp[1]+"/"+pp[0];}return s.slice(0,16);}
 function toggleExc(){var b=$("exclist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}if(!REPEXC||!REPEXC.length){b.innerHTML="<div class=card><div class=muted>אין בלעדיות בתקופה.</div></div>";return;}var list=REPEXC.slice().sort(function(a,c){return String(c.date).localeCompare(String(a.date));});b.innerHTML="<div class=card><h2>🏘️ בלעדיות ("+REPEXC.length+")</h2>"+list.map(function(e){return "<div class=row><b>"+esc(e.address||"—")+"</b><div class=muted>"+[e.agent?"👤 "+esc(e.agent):"",e.date?"📅 "+fmtD(e.date):""].filter(Boolean).join(" · ")+"</div></div>";}).join("")+"</div>";}
-function toggleAds(){var b=$("adslist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}
+function toggleAds(){var b=$("adslist");if(!b)return;if(b.innerHTML){b.innerHTML="";return;}loadAdsList();}
+function loadAdsList(){var b=$("adslist");if(!b)return;
   b.innerHTML="<div class=card><div class=muted>טוען מודעות… ⏳</div></div>";
   api("/api/my/properties",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:IMP||""})}).then(function(r){
-    if(!r||!r.ok){b.innerHTML="<div class=card class=err>שגיאה</div>";return;}
+    if(!$("adslist"))return;if(!r||!r.ok){$("adslist").innerHTML="<div class=card class=err>שגיאה</div>";return;}
     var items=r.results||[];
-    if(!items.length){b.innerHTML="<div class=card><div class=muted>אין מודעות על שם הסוכן.</div></div>";return;}
-    b.innerHTML="<div class=card><h2>מודעות הסוכן ("+items.length+")</h2>"+items.map(function(x){var y={};for(var k in x)y[k]=x[k];y.own=false;return card("props",y);}).join("")+"</div>";
-  }).catch(function(){b.innerHTML="<div class=card><div class=err>שגיאה</div></div>";});}
+    if(!items.length){$("adslist").innerHTML="<div class=card><div class=muted>אין מודעות על שם הסוכן.</div></div>";return;}
+    $("adslist").innerHTML="<div class=card><h2>מודעות הסוכן ("+items.length+")</h2>"+items.map(function(x){return card("props",x,{noShare:true});}).join("")+"</div>";
+    document.querySelectorAll("#adslist .lreq").forEach(function(btn){btn.onclick=function(){var id=btn.getAttribute("data-id"),addr=decodeURIComponent(btn.getAttribute("data-addr")||""),k=btn.getAttribute("data-k");if(k=="done"){if(confirm("לסמן שהטיפול בוצע? הנכס לא יסומן יותר כ׳בטיפול אצל המזכירה׳."))listingDone(id,loadAdsList);}else if(k=="remove"){if(confirm("לשלוח בקשה למזכירה להסיר את המודעה?\\n"+addr))listingReq("remove",id,addr,"",loadAdsList);}else{var np=prompt("מחיר חדש למודעה:\\n"+addr);if(np&&np.trim())listingReq("price",id,addr,np.trim(),loadAdsList);}};});
+  }).catch(function(){if($("adslist"))$("adslist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";});}
 function loadReport(p,month){$("rep").innerHTML="<div class=card>טוען…</div>";api("/api/report?period="+p+(month?"&month="+month:"")+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
   if(!r.ok){if(r.auth===false){relogin();return;}$("rep").innerHTML="<div class=card err>"+(r.reason=="forbidden"?"למנהל בלבד":"שגיאה")+"</div>";return;}
   REPTEXT=r.wa_text;var sm=r.summary,c=sm.calls,sg=sm.sigs;REPEXC=sm.exclusives||[];REPSIGS=sm.sigsList||[];REPSIGB=sg;
@@ -5450,8 +5457,8 @@ function loadMyProps(){var box=$("myprops");if(!box)return;box.innerHTML="<div c
     $("myprops").innerHTML=h;
     document.querySelectorAll("#myprops .lreq").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id"),addr=decodeURIComponent(b.getAttribute("data-addr")||""),k=b.getAttribute("data-k");if(k=="done"){if(confirm("לסמן שהטיפול בוצע? הנכס לא יסומן יותר כ׳בטיפול אצל המזכירה׳."))listingDone(id);}else if(k=="remove"){if(confirm("לשלוח בקשה למזכירה להסיר את המודעה?\n"+addr))listingReq("remove",id,addr,"");}else{var np=prompt("מחיר חדש למודעה:\n"+addr);if(np&&np.trim())listingReq("price",id,addr,np.trim());}};});
   }).catch(function(){if($("myprops"))$("myprops").innerHTML="";});}
-function listingReq(kind,id,addr,np){api("/api/listing/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:kind,id:id,address:addr,new_price:np,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){if(r&&r.ok){alert("✅ הבקשה נשלחה למזכירה");loadMyProps();}else alert("שליחה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));}).catch(function(){alert("שגיאה");});}
-function listingDone(id){api("/api/listing/done",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok){loadMyProps();}else alert("עדכון נכשל");}).catch(function(){alert("שגיאה");});}
+function listingReq(kind,id,addr,np,cb){api("/api/listing/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:kind,id:id,address:addr,new_price:np,as:(typeof IMP!="undefined"?IMP:"")||""})}).then(function(r){if(r&&r.ok){alert("✅ הבקשה נשלחה למזכירה");(cb||loadMyProps)();}else alert("שליחה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));}).catch(function(){alert("שגיאה");});}
+function listingDone(id,cb){api("/api/listing/done",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok){(cb||loadMyProps)();}else alert("עדכון נכשל");}).catch(function(){alert("שגיאה");});}
 function openHelp(){closeHelp();var h='<div class=ovl id=helpovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>עזרה / דיווח תקלה</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="closeHelp()">✕</button></div><div class=muted style="margin:6px 0 10px">דווח על תקלה או שלח הצעת ייעול — יישלח ישירות במייל לאייל.</div><select id=help_kind class=chip style="width:100%;box-sizing:border-box"><option>תקלה / באג</option><option>הצעת ייעול</option><option>אחר</option></select><textarea id=help_msg placeholder="תאר/י את הבעיה או ההצעה..." style="width:100%;box-sizing:border-box;min-height:120px;margin-top:8px"></textarea><div id=help_st class=muted style="margin-top:6px;min-height:16px"></div><button class="btn-gold" style="width:100%;margin-top:8px" onclick="sendHelp()">שלח</button></div></div>';var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("helpovl");if(o)o.onclick=function(e){if(e.target.id=="helpovl")closeHelp();};}
 function closeHelp(){var o=$("helpovl");if(o)o.parentNode.removeChild(o);}
 function sendHelp(){var m=($("help_msg").value||"").trim();var st=$("help_st");if(!m){st.innerHTML="<span class=err>נא לכתוב הודעה</span>";return;}var k=$("help_kind").value;st.textContent="שולח…";api("/api/help",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:m,kind:k})}).then(function(r){if(r&&r.ok){st.innerHTML="<span style='color:#1f8a4c;font-weight:700'>✓ נשלח בהצלחה! תודה.</span>";setTimeout(closeHelp,1200);}else{st.innerHTML="<span class=err>השליחה נכשלה — נסה שוב מאוחר יותר.</span>";}}).catch(function(){st.innerHTML="<span class=err>שגיאת רשת</span>";});}
@@ -5582,7 +5589,7 @@ function shareSend(){var nm=($("share_cli")?$("share_cli").value:"").trim();var 
   var parts=ids.map(function(id){var p=SHARE_REG[id];if(!p)return"";var L=[];L.push("🏠 "+(p.type?p.type+" · ":"")+p.address+(p.city?", "+p.city:"")+(p.neighborhood?" ("+p.neighborhood+")":""));var meta=[p.rooms?p.rooms+" חד׳":"",p.size?p.size+" מ״ר":"",p.floor?"קומה "+p.floor:""].filter(Boolean).join(" · ");if(meta)L.push(meta);if(p.price)L.push("מחיר: "+p.price+" ₪");if(p.desc)L.push(p.desc);return L.join("\n");}).filter(Boolean);
   var msg="שלום"+(nm?" "+nm:"")+",\nריכזתי עבורך כמה נכסים שיכולים להתאים:\n\n"+parts.join("\n\n——————\n\n");
   shareClose();window.location.href="whatsapp://send?phone="+c.wa+"&text="+encodeURIComponent(msg);}
-function card(kind,x){
+function card(kind,x,opts){opts=opts||{};
   var _usvg="<svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>";
   if(kind=="props"){
     var pmeta=[x.rooms?x.rooms+" חד׳":"",x.size?x.size+' מ״ר':"",x.floor?"קומה "+x.floor:"",x.date?esc(x.date):""].filter(Boolean).join(" · ");
@@ -5592,7 +5599,7 @@ function card(kind,x){
     var did="pd"+(PDSEQ++);
     var pdesc=x.desc?("<div class='pdesc clamp' id="+did+">"+esc(x.desc)+"</div><span class=pmore onclick=\"var e=$('"+did+"');e.classList.toggle('clamp');this.textContent=e.classList.contains('clamp')?'עוד ▾':'פחות ▴';\">עוד ▾</span>"):"";
     var sid="sh"+(SHARE_SEQ++);SHARE_REG[sid]={type:(x.type||""),address:(x.address||""),city:(x.city||""),neighborhood:(x.neighborhood||""),rooms:(x.rooms||""),size:(x.size||""),floor:(x.floor||""),price:(x.price||""),desc:stripAgent(x.desc,x.agent)};
-    return "<div class=pcard><div class=ptop><input type=checkbox class=shchk data-sid="+sid+" onchange=shareUpd() title='בחר לשליחה ללקוח'><div class=ptitle>"+esc(x.type||"נכס")+" · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+"</div>"+((x.score!==undefined&&x.score!=="")?"<span class=pscore>"+x.score+"%</span>":"")+"</div>"+
+    return "<div class=pcard><div class=ptop>"+(opts.noShare?"":"<input type=checkbox class=shchk data-sid="+sid+" onchange=shareUpd() title='בחר לשליחה ללקוח'>")+"<div class=ptitle>"+esc(x.type||"נכס")+" · "+esc(x.address)+(x.neighborhood?" — "+esc(x.neighborhood):"")+", "+esc(x.city)+"</div>"+((x.score!==undefined&&x.score!=="")?"<span class=pscore>"+x.score+"%</span>":"")+"</div>"+
       (pmeta?"<div class=pmeta>"+pmeta+"</div>":"")+
       (x.price?"<div class=pprice>"+esc(fmtBudget(x.price))+"</div>":"")+
       pdesc+
