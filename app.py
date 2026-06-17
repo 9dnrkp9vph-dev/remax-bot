@@ -5426,7 +5426,7 @@ function renderCalls(){var r=CALLDATA;if(!r||TABNOW!="calls"||!$("calls"))return
       "<div class=cbtns>"+wab+cb+addb+hideb+"</div>"+
     "</div>";
   }).join(""):"<div class=card><div class=muted>אין שיחות בטווח.</div></div>");
-  document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:decodeURIComponent(b.getAttribute("data-sum")||"")});};});
+  document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){var sum=decodeURIComponent(b.getAttribute("data-sum")||"");openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:sum,name:parseBuyerName(sum),budget:parseBuyerBudget(sum)});};});
   document.querySelectorAll("#calls .hidecall").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");if(b.getAttribute("data-act")=="unhide")unhideCall(id);else hideCall(id);};});
   seenCall=maxC;
 }
@@ -5497,6 +5497,18 @@ function addToHome(){
   if(isIOS){alert("להוספה למסך הבית (אייפון):\n\n1. לחץ על כפתור השיתוף ⬆️ בתחתית הדפדפן (Safari)\n2. גלול ובחר ״הוספה למסך הבית״\n3. לחץ ״הוסף״\n\nכך תקבל אייקון של RE/MAX Family ישירות במסך הבית.");}
   else{alert("להוספה למסך הבית:\n\nפתח את תפריט הדפדפן (⋮) ובחר ״הוספה למסך הבית״ / Install app.");}
 }
+function parseBuyerName(t){t=String(t||"");
+  var m=t.match(/שם(?:\s*(?:הלקוח|מלא|פרטי))?\s*[:\-–—־]\s*([^\n,.;:()]{2,40})/);
+  if(!m)m=t.match(/(?:קוראים לי|שמי(?:\s+הוא)?)\s+([א-ת'״]{2,}(?:\s+[א-ת'״]{2,}){0,2})/);
+  if(!m)return"";
+  var n=m[1].trim().replace(/\s+\S*(?:טלפון|נייד|תקציב|מחפש|מעוני|מספר|רוצה|צריכ|מתגורר|גר)\S*[\s\S]*$/,"").trim();
+  return (n&&!/^\d+$/.test(n))?n:"";}
+function parseBuyerBudget(t){t=String(t||"");
+  var m=t.match(/(?:תקציב|טווח(?:\s*מחירים)?|מחיר|עד)[^\d₪]{0,18}(\d[\d.,]*\s*(?:מיליון|מליון|מ['׳]|אלף|k|ש["״'׳]?\s*ח|₪)?)/i);
+  if(!m)m=t.match(/(\d+(?:[.,]\d+)?)\s*(?:מיליון|מליון)/);
+  if(!m)m=t.match(/(\d{1,3}(?:[,.]\d{3}){1,3})/);
+  if(!m)return"";
+  return m[1].replace(/\s+/g," ").trim();}
 function openBuyerForm(pf){pf=pf||{};closeBuyer();
   var ov=document.createElement("div");ov.className="ovl";ov.id="buyerovl";
   ov.innerHTML='<div class=ovlbox><h3 style=margin:0_0_8px>➕ הוספת קונה</h3>'+
