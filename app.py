@@ -5199,7 +5199,7 @@ function isMulti(){return (ROLE=="admin"||ROLE=="coordinator")&&!IMP;}
 function selfName(){return (typeof IMP!="undefined"&&IMP)?(IMPNAME||IMP):NAME;}
 function notSelf(n){var a=String(n||"").trim(),b=String(selfName()||"").trim();return !!a&&a!=b;}
 function scopeLabel(){if(IMP)return ' <span class=badge>👁 צופה כ: '+esc(IMPNAME)+'</span>';return ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':(ROLE=="coordinator"?' <span class=badge>הסוכנים שלי</span>':' — '+esc(NAME));}
-function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}loadNbBanner();render();}
+function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}CALLDATA=null;SIGDATA=null;loadNbBanner();render();}
 function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;var sel=$("impsel"),ts=$("testsel");r.agents.forEach(function(a){if(sel){var o=document.createElement("option");o.value=a.name;o.textContent=a.name;sel.appendChild(o);}if(ts){var o2=document.createElement("option");o2.value=a.name;o2.textContent=a.name;ts.appendChild(o2);}});}).catch(function(){});}
 function loginAsAgent(name){if(!name)return;if(!confirm("להיכנס למערכת כסוכן '"+name+"' (בדיקה אמיתית)?\nכדי לחזור למנהל — צא והתחבר מחדש עם המספר שלך.")){var t=$("testsel");if(t)t.value="";return;}
   api("/api/admin/loginas",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name})}).then(function(r){
@@ -5208,16 +5208,16 @@ function loginAsAgent(name){if(!name)return;if(!confirm("להיכנס למערכ
     closeMenu();location.reload();
   }).catch(function(){alert("שגיאה");});}
 var HIDDENMODE=false;
-function toggleHidden(){HIDDENMODE=!HIDDENMODE;loadCalls();}
+function toggleHidden(){HIDDENMODE=!HIDDENMODE;CALLDATA=null;loadCalls();}
 function hideCall(id){if(!id){alert("חסר מזהה");return;}api("/api/calls/hide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok)loadCalls();else alert("הסתרה נכשלה");}).catch(function(){alert("שגיאה");});}
 function unhideCall(id){if(!id)return;api("/api/calls/unhide",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok)loadCalls();else alert("שחזור נכשל");}).catch(function(){alert("שגיאה");});}
 function viewCalls(){
   $("view").innerHTML='<div class=card><h2>שיחות שלי'+scopeLabel()+'</h2>'+rangeChips()+'<div class=muted id=live>טוען…</div><div class=grid id=callkpi></div><div style=text-align:center;margin-top:6px><span id=vphone class=vphone></span><span class=hlink id=htoggle onclick=toggleHidden()>הצג מוסתרות</span></div></div><div id=calls></div>';
-  bindChips(loadCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,45000);
+  bindChips(renderCalls);seenCall=0;loadCalls();timer=setInterval(loadCalls,45000);
 }
 function viewSigs(){
   $("view").innerHTML='<div class=card><h2 style="margin:0 0 2px">חתימות שלי'+scopeLabel()+'</h2><div class=sgbtns><button class="btn-gold sgbtn" onclick="openSignForm(\'buyer\')"><svg class=eico viewBox=\'0 0 18 18\'><circle cx=\'9\' cy=\'6\' r=\'2.6\'/><path d=\'M4 15a5 5 0 0 1 10 0\'/></svg>החתם מתעניין</button><button class="btn-gold sgbtn" onclick="openSignForm(\'seller\')"><svg class=eico viewBox=\'0 0 18 18\'><rect x=\'4.2\' y=\'2.6\' width=\'9.6\' height=\'12.8\' rx=\'1\'/><path d=\'M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4\'/><path d=\'M2.6 15.4h12.8\'/></svg>החתם בעל נכס</button></div>'+rangeChips()+'<div class=muted id=live>טוען…</div></div><div id=sigs></div>';
-  bindChips(loadSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,60000);
+  bindChips(renderSigs);seenSig=0;loadSigs();timer=setInterval(loadSigs,60000);
 }
 // ── מסך החתמת לקוח (במקום) ─────────────────────────────────────
 var SG_DATE="",SG_CONTRACT="",SG_AUD="buyer";
@@ -5390,9 +5390,14 @@ function loadNewBuyers(){_nbCount();
     if(!r||!r.ok)return;_nbList=r.results||[];_nbCount();
   }).catch(function(){});}
 function statusHe(s){var k=String(s||"").toUpperCase().replace(/[_-]/g," ").replace(/\s+/g," ").trim();var m={"ANSWER":"נענתה","ANSWERED":"נענתה","NO ANSWER":"ללא מענה","NOANSWER":"ללא מענה","BUSY":"תפוס","CALLER CANCEL":"המתקשר ניתק","CALLER CANCELLED":"המתקשר ניתק","CANCEL":"בוטלה","CANCELLED":"בוטלה","CANCELED":"בוטלה","FAILED":"נכשלה","REJECTED":"נדחתה","MISSED":"שיחה שלא נענתה","VOICEMAIL":"תא קולי","CONGESTION":"עומס ברשת","UNKNOWN":"לא ידוע"};return m[k]||s;}
-function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"):"")+(HIDDENMODE?"hidden=1":"")).then(function(r){
-  if(!r.ok){relogin();return;}
-  if(r.tabs&&!IMP){TABS=r.tabs;try{localStorage.setItem("fbTabs",JSON.stringify(TABS));}catch(e){}applyTabPerms();}
+var CALLDATA=null,SIGDATA=null;
+function loadCalls(){if(CALLDATA)renderCalls();   /* הצגה מיידית מהמטמון, מתרענן ברקע */
+  api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"):"")+(HIDDENMODE?"hidden=1":"")).then(function(r){
+    if(!r.ok){relogin();return;}
+    if(r.tabs&&!IMP){TABS=r.tabs;try{localStorage.setItem("fbTabs",JSON.stringify(TABS));}catch(e){}applyTabPerms();}
+    CALLDATA=r;renderCalls();
+  }).catch(function(){});}
+function renderCalls(){var r=CALLDATA;if(!r||TABNOW!="calls"||!$("calls"))return;
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
   $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+(HIDDENMODE?" מוסתרות":" שיחות");
   var _ans=calls.filter(function(c){return c.status=="ANSWER";}).length;
@@ -5424,7 +5429,7 @@ function loadCalls(){api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"
   document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:decodeURIComponent(b.getAttribute("data-sum")||"")});};});
   document.querySelectorAll("#calls .hidecall").forEach(function(b){b.onclick=function(){var id=b.getAttribute("data-id");if(b.getAttribute("data-act")=="unhide")unhideCall(id);else hideCall(id);};});
   seenCall=maxC;
-}).catch(function(){});}
+}
 function sigDelete(eid,raw,client){
   if(!confirm("למחוק את ההסכם לצמיתות? (יימחק גם מהגיליון וגם מהדוחות)"))return;
   api("/api/sign/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({eid:decodeURIComponent(eid||""),received:decodeURIComponent(raw||""),client:decodeURIComponent(client||"")})}).then(function(r){
@@ -5432,8 +5437,12 @@ function sigDelete(eid,raw,client){
     else{alert(r&&r.reason=="forbidden"?"רק למשתמש מורשה":"המחיקה נכשלה — ודא שה-Apps Script פרוס עם deletesigning.");}
   }).catch(function(){alert("שגיאת רשת");});}
 function sigTag(t){t=String(t||"");if(/בלעד/.test(t))return {cls:"t-excl",excl:true};if(/מוכר|מכיר|בעל/.test(t))return {cls:"t-seller",excl:false};if(/שכיר/.test(t))return {cls:"t-rent",excl:false};return {cls:"t-buyer",excl:false};}
-function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
-  if(!r.ok){relogin();return;}
+function loadSigs(){if(SIGDATA)renderSigs();
+  api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
+    if(!r.ok){relogin();return;}
+    SIGDATA=r;renderSigs();
+  }).catch(function(){});}
+function renderSigs(){var r=SIGDATA;if(!r||TABNOW!="sigs"||!$("sigs"))return;
   var sigs=r.signatures.filter(function(g){return inRange(g.ts);});
   $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+sigs.length+" חתימות";
   var maxS=sigs.length?sigs[0].ts:0;
@@ -5451,7 +5460,7 @@ function loadSigs(){api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")
     "</div>";
   }).join("")):"<div class=card><div class=muted>אין חתימות בטווח.</div></div>");
   seenSig=maxS;
-}).catch(function(){});}
+}
 
 function viewSearch(kind){
   var cfg={props:{t:"🏢 נכסים במשרד",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
