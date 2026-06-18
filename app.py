@@ -3130,6 +3130,8 @@ def api_sign_submit():
     header = body.get("header") or ""
     if not docs:
         return jsonify({"ok": False, "reason": "no_docs"}), 400
+    if not cid:
+        return jsonify({"ok": False, "reason": "no_id"}), 400
     # פיצול כתובת לרחוב + עיר (כמו בגליון: address נפרד מ-city)
     city = ""
     if "|" in address:
@@ -3523,7 +3525,7 @@ def public_sign_doc(token):
                "cv.addEventListener('mousedown',dn);cv.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);"
                "cv.addEventListener('touchstart',dn,{passive:false});cv.addEventListener('touchmove',mv,{passive:false});cv.addEventListener('touchend',up);"
                "function clrPad(){cx.clearRect(0,0,cv.width,cv.height);signed=false;}"
-               "function doSign(){var id=document.getElementById('cid').value;if(!validIL(id)){alert('תעודת הזהות אינה תקינה');return;}if(!signed){alert('נא לחתום בתיבת החתימה');return;}"
+               "function doSign(){var id=(document.getElementById('cid').value||'').replace(/\\D/g,'');if(!id){alert('נא להזין תעודת זהות');return;}if(!validIL(id)){alert('תעודת הזהות אינה תקינה');return;}if(!signed){alert('נא לחתום בתיבת החתימה');return;}"
                "var tw=440,th=Math.round(tw*cv.height/cv.width);var c=document.createElement('canvas');c.width=tw;c.height=th;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,tw,th);x.drawImage(cv,0,0,tw,th);var sig=c.toDataURL('image/jpeg',0.55);"
                "var b=document.getElementById('sbtn');b.disabled=true;b.textContent='שומר…';"
                "fetch('/api/sign/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,cid:id,signature:sig})}).then(function(r){return r.json();}).then(function(r){if(r&&r.ok){location.reload();}else{b.disabled=false;b.textContent='✅ אשר וחתום';alert('שמירה נכשלה: '+((r&&r.reason)||'שגיאה'));}}).catch(function(){b.disabled=false;b.textContent='✅ אשר וחתום';alert('שגיאת רשת');});}"
@@ -5526,6 +5528,7 @@ function sgGenerate(){
   var m=document.querySelector('input[name=sgmode]:checked');
   var isRemote=m&&m.value=="remote";
   var cid=($("sg_cid").value||"").trim();
+  if(!isRemote&&!cid){alert("נא להזין תעודת זהות של הלקוח");return;}
   if(cid&&!validILID(cid)){alert("תעודת הזהות אינה תקינה");return;}
   var _cnm=($("sg_cname").value||"").trim();
   if(!_cnm){alert("חסר שם לקוח");return;}
