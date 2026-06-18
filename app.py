@@ -5061,7 +5061,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 /* MOBILE-PATCH 2: רקע אחיד למעלה ולמטה (status bar + סרגל תחתון) + צמצום רווח עליון — נחוץ לנייד, לא להסיר */
 html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
 .tabs{background:#f6f5f2!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-top:1px solid var(--line)!important}
-.wrap{padding-top:calc(env(safe-area-inset-top,0) + 2px)!important}
+.wrap{padding-top:calc(env(safe-area-inset-top,0px) + 6px)!important;padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))!important}
 .brand{margin-top:0!important}
 #splash{position:fixed;inset:0;z-index:100000;--gold2:#e0b85a;background:radial-gradient(130% 80% at 50% -10%,#21364f 0%,#16273c 42%,#0D1B2A 78%,#081320 100%);overflow:hidden;display:flex;flex-direction:column;font-family:"Heebo",Arial,sans-serif;transition:opacity .45s ease,transform .45s ease}
 #splash.sp-hide{opacity:0;transform:scale(1.04);pointer-events:none}
@@ -5070,7 +5070,7 @@ html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
 #splash .orb.b{width:260px;height:260px;background:#1f4f8f;bottom:60px;left:-80px;animation-delay:-3s}
 @keyframes spf{0%,100%{transform:translateY(0)}50%{transform:translateY(-26px)}}
 #splash .vign{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.03) 0 1px,transparent 1px 64px),repeating-linear-gradient(90deg,rgba(255,255,255,.03) 0 1px,transparent 1px 64px);-webkit-mask:radial-gradient(70% 60% at 50% 30%,#000,transparent 75%);mask:radial-gradient(70% 60% at 50% 30%,#000,transparent 75%);opacity:.5}
-#splash .inner{position:relative;z-index:5;flex:1;display:flex;flex-direction:column;align-items:center;padding:calc(46px + env(safe-area-inset-top,0)) 30px calc(26px + env(safe-area-inset-bottom,0));text-align:center;overflow-y:auto}
+#splash .inner{position:relative;z-index:5;flex:1;display:flex;flex-direction:column;align-items:center;padding:calc(40px + env(safe-area-inset-top,0px)) 30px calc(26px + env(safe-area-inset-bottom,0px));text-align:center;overflow-y:auto}
 #splash .plate{background:#fff;border-radius:28px;padding:22px 26px;box-shadow:0 24px 60px rgba(0,0,0,.35);position:relative}
 #splash .plate:before{content:"";position:absolute;inset:-2px;border-radius:30px;background:linear-gradient(140deg,var(--gold2),transparent 40%);opacity:.5;z-index:-1}
 #splash .plate img{display:block;width:180px;height:auto}
