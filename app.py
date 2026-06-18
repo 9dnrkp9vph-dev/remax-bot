@@ -1222,12 +1222,24 @@ def get_signings(frm="01/01/2020", to="31/12/2099"):
     גם בלי הדבקה ידנית כל יום. אם אין טאב מלא — נופלים חזרה למקור האוטומטי בלבד."""
     manual = fetch_signings_from_sheet()
     if manual:
-        max_e = max((_excl_epoch(g.get("received_at", "")) for g in manual), default=0)
         try:
             auto = web_fetch_raw("חתימות")
         except Exception:
             auto = []
-        extra = [g for g in auto if _excl_epoch(g.get("received_at", "")) > max_e]
+        # מפתח זהות לזיהוי כפילות בין הייצוא מהקרם לבין החתימות הדיגיטליות (סוכן+לקוח+יום).
+        # לא משווים לפי חותמת זמן — חתימה דיגיטלית נושאת אזור-זמן ישראל, מה שהיה גורם לה
+        # ליפול מתחת לחותמת של רשומות קרם מאותו יום ולהיעלם מהטאב.
+        def _sig_day(s):
+            e = _excl_epoch(s)
+            if not e: return ""
+            import datetime as _dt
+            try: return _dt.datetime.fromtimestamp(e).strftime("%d/%m/%Y")
+            except Exception: return ""
+        def _sig_key(g):
+            return (_canon_key(g.get("agent", "")), _canon_key(g.get("client_name", "")),
+                    _sig_day(g.get("received_at", "")))
+        seen = set(_sig_key(g) for g in manual)
+        extra = [g for g in auto if _sig_key(g) not in seen]
         allsig = manual + extra
     else:
         allsig = web_fetch_raw("חתימות", frm, to)
@@ -3174,8 +3186,9 @@ def api_sign_submit():
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
-        # המתעניין נכנס אוטומטית כקונה ל"קונים שלי" של הסוכן
-        _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית")
+        # רק חתימת קונה (לא מוכר/בלעדיות) נכנסת אוטומטית ל"קונים שלי" של הסוכן
+        if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
+            _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית")
     return jsonify({"ok": ok_any, "event_id": eid, "link": link, "doc_saved": doc_saved, "doc_resp": doc_resp})
 
 def _sign_now_iso():
@@ -3297,8 +3310,9 @@ def api_sign_send_remote():
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שליחת חתימה מרחוק", (client + " · " + address).strip(" ·"))
-        # גם אם הלקוח עדיין לא חתם — עצם שליחת החתימה מכניסה אותו כקונה ל"קונים שלי"
-        _add_buyer_from_signing(agent, client, phone, address, "נשלחה חתימה")
+        # רק חתימת קונה (לא מוכר/בלעדיות) — גם אם עוד לא חתם — נכנסת ל"קונים שלי"
+        if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
+            _add_buyer_from_signing(agent, client, phone, address, "נשלחה חתימה")
     return jsonify({"ok": ok_any, "sms": sms_ok, "wa": wa_ok, "phone": last9})
 
 @app.route("/api/sign/complete", methods=["POST"])
@@ -5476,7 +5490,7 @@ function openSignForm(aud){SG_AUD=aud;
    : '<div id="sg_sellerdeal" style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><path d="M11.8 3.4l2.8 2.8L6 14.8 3 15.4l.6-3z"/><path d="M10.6 4.6l2.8 2.8"/></svg>סוג עסקה ועמלה</div>'
      +'<label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type=checkbox id="sg_sell" checked><span style="flex:1;min-width:0">מכירה — עמלה</span><input id="sg_scbuy" class=chip style="width:54px;flex:0 0 auto" inputmode=decimal value="2"><select id="sg_scbuyunit" class=chip style="width:56px;flex:0 0 auto"><option>%</option><option>₪</option></select></label>'
      +'<label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type=checkbox id="sg_srent"><span style="flex:1;min-width:0">השכרה — עמלה</span><input id="sg_scrent" class=chip style="width:54px;flex:0 0 auto" inputmode=decimal value="1"><span style="flex:0 0 auto;color:var(--muted);font-size:13px">חודשים</span></label>'
-     +'<div style="margin-top:10px"><div class=muted>תקופת בלעדיות (כולל = הלקוח חותם על 2 טפסים)</div><select id="sg_exsel" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgExclSel()"><option value="">ללא בלעדיות</option><option value="1">בלעדיות חודש 1</option><option value="2">בלעדיות 2 חודשים</option><option value="3">בלעדיות 3 חודשים</option><option value="4">בלעדיות 4 חודשים</option><option value="5">בלעדיות 5 חודשים</option><option value="6">בלעדיות 6 חודשים</option><option value="custom">* תאריך מותאם אישית</option></select></div>'
+     +'<div style="margin-top:10px"><div class=muted>תקופת בלעדיות (כולל = הלקוח חותם על 2 טפסים)</div><select id="sg_exsel" class=chip style="width:100%;box-sizing:border-box;margin-top:6px" onchange="sgExclSel()"><option value="6" selected>בלעדיות 6 חודשים</option><option value="5">בלעדיות 5 חודשים</option><option value="4">בלעדיות 4 חודשים</option><option value="3">בלעדיות 3 חודשים</option><option value="2">בלעדיות 2 חודשים</option><option value="1">בלעדיות חודש 1</option><option value="custom">* תאריך מותאם אישית</option><option value="">ללא בלעדיות</option></select></div>'
      +'<div id="sg_exdates" style="display:none;margin-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap"><label class=muted style="flex:1;min-width:130px">מתאריך<input id="sg_exfrom" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label><label class=muted style="flex:1;min-width:130px">עד תאריך<input id="sg_exto" type=date class=chip style="width:100%;box-sizing:border-box;margin-top:3px"></label></div></div></div>';
   var propsec=(aud=="buyer")
    ? '<div style="margin-top:12px"><div class="muted sglbl"><svg class=eico viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>פרטי הנכס (אפשר להוסיף יותר מנכס אחד)</div><div id="sg_proplist_rows"></div><datalist id="sg_proplist"></datalist><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn-ghost" onclick="sgAddProp()">➕ הוסף נכס</button><button class="btn-ghost" onclick="sgShowMyProps()">📋 בחר מהנכסים שלי</button></div><div id="sg_mypropbox" class="hidden" style="margin-top:8px"></div></div>'
