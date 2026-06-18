@@ -32,6 +32,31 @@ APPS_SCRIPT_TOKEN = os.environ.get("APPS_SCRIPT_TOKEN", "")
 BUYER_SEARCH_TRIGGERS = ["מחפש קונה", "מחפשת קונה"]
 _buyer_calls_cache = {"data": None, "ts": 0}
 MAYTAPI_BASE = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT}/{MAYTAPI_PHONE_ID}"
+# ── Push notifications (OneSignal) — נחוץ לאפליקציה הנייד, לא להסיר ──────────────
+ONESIGNAL_APP_ID   = "f13c245a-17c2-415d-a81d-41a3df58e1a9"
+ONESIGNAL_REST_KEY = os.environ.get("ONESIGNAL_REST_KEY", "")   # נשמר ב-Render בלבד, לא בקוד
+def send_push(title, body, segment="Subscribed Users"):
+    """שולח התראת Push לכל המכשירים הרשומים דרך OneSignal. מחזיר True/False."""
+    if not ONESIGNAL_REST_KEY:
+        return False
+    try:
+        r = requests.post(
+            "https://api.onesignal.com/notifications",
+            headers={"Authorization": "Key " + ONESIGNAL_REST_KEY,
+                     "Content-Type": "application/json"},
+            json={
+                "app_id": ONESIGNAL_APP_ID,
+                "target_channel": "push",
+                "included_segments": [segment],
+                "headings": {"en": title},
+                "contents": {"en": body},
+            },
+            timeout=10,
+        )
+        return r.ok
+    except Exception as e:
+        log.error(f"push error: {e}")
+        return False
 # ── Temp dir for processing ────────────────────────────────────────────────────
 WORK_DIR = Path(tempfile.gettempdir()) / "remax_bot"
 WORK_DIR.mkdir(exist_ok=True)
@@ -4520,7 +4545,22 @@ def api_buyers_add():
         return jsonify({"ok": False, "reason": (j or {}).get("error", "save_failed")}), 502
     _cache_clear("buyers")
     _log_activity(s["name"], s["role"], s["phone"], "הוספת קונה", name or phone)
+    # התראת Push — ליד חדש (לא חוסם את התשובה; שקט אם OneSignal לא מוגדר)
+    try:
+        _who = (name or phone or "לקוח חדש")
+        threading.Thread(target=send_push, args=("ליד חדש 🔔", "נוסף קונה חדש: " + _who), daemon=True).start()
+    except Exception:
+        pass
     return jsonify({"ok": True})
+
+@app.route("/api/push/test", methods=["GET", "POST"])
+def api_push_test():
+    """בדיקת התראת Push — למפתח בלבד. מאמת שכל הצינור (OneSignal) עובד."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    ok = send_push("בדיקת התראה 🔔", "Push עובד! התראת בדיקה מ-Family Bot")
+    return jsonify({"ok": ok, "configured": bool(ONESIGNAL_REST_KEY)})
 
 @app.route("/api/my/buyers", methods=["GET", "POST"])
 def api_my_buyers():
@@ -5018,6 +5058,11 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 #login .card{margin-top:14px;box-shadow:0 10px 30px rgba(20,30,50,.07)}
 #login .card label{display:block;text-align:right;margin-bottom:6px}
 #login #phone,#login #code{text-align:center;direction:ltr;font-size:18px;font-weight:700;letter-spacing:.5px}
+/* MOBILE-PATCH 2: רקע אחיד למעלה ולמטה (status bar + סרגל תחתון) + צמצום רווח עליון — נחוץ לנייד, לא להסיר */
+html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
+.tabs{background:#f6f5f2!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-top:1px solid var(--line)!important}
+.wrap{padding-top:calc(env(safe-area-inset-top,0) + 2px)!important}
+.brand{margin-top:0!important}
 #splash{position:fixed;inset:0;z-index:100000;--gold2:#e0b85a;background:radial-gradient(130% 80% at 50% -10%,#21364f 0%,#16273c 42%,#0D1B2A 78%,#081320 100%);overflow:hidden;display:flex;flex-direction:column;font-family:"Heebo",Arial,sans-serif;transition:opacity .45s ease,transform .45s ease}
 #splash.sp-hide{opacity:0;transform:scale(1.04);pointer-events:none}
 #splash .orb{position:absolute;border-radius:50%;filter:blur(50px);opacity:.45;animation:spf 8s ease-in-out infinite}
@@ -5055,7 +5100,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 @keyframes sppop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
 </style></head><body>
 <div class="wrap">
-<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();openHelp()">💬 עזרה / דיווח תקלה</div><div class="mi" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();window.open('https://www.instagram.com/remax.family?igsh=bXdmdzJjMWVkc3li&utm_source=qr','_blank')"><svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:none;stroke:#E1306C;stroke-width:1.9;flex:0 0 auto"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.6" cy="6.4" r="1.2" fill="#E1306C" stroke="none"/></svg> אינסטגרם של המשרד</div><div class="mi" onclick="closeMenu();window.open('https://www.madlan.co.il/madad/2026/%D7%A7%D7%A8%D7%99%D7%95%D7%AA','_blank')">🏅 מדד המתווכים — מדלן 2026</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();openHelp()">💬 עזרה / דיווח תקלה</div><div class="mi" id="mi-addhome" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();window.open('https://www.instagram.com/remax.family?igsh=bXdmdzJjMWVkc3li&utm_source=qr','_blank')"><svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:none;stroke:#E1306C;stroke-width:1.9;flex:0 0 auto"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.6" cy="6.4" r="1.2" fill="#E1306C" stroke="none"/></svg> אינסטגרם של המשרד</div><div class="mi" onclick="closeMenu();window.open('https://www.madlan.co.il/madad/2026/%D7%A7%D7%A8%D7%99%D7%95%D7%AA','_blank')">🏅 מדד המתווכים — מדלן 2026</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
   <div class="loginlogo"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
@@ -5139,7 +5184,7 @@ function showSplash(){if($("splash"))return;
   requestAnimationFrame(function(){d.classList.add("play");});
   setTimeout(hideSplash,SPLASH_SECONDS*1000);}
 /* ✏️✏️ סוף חלון הפתיחה ✏️✏️ */
-function enter(){showSplash();$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
+function enter(){showSplash();if(typeof fbIsNative=="function"&&fbIsNative()){var _ah=$("mi-addhome");if(_ah)_ah.style.display="none";}$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
 function firstAllowedTab(){var order=["calls","buyers","sigs","props","excl","newborn"];if(!TABS||!TABS.length)return "calls";for(var i=0;i<order.length;i++){if(TABS.indexOf(order[i])>=0)return order[i];}return "calls";}
 function applyTabPerms(){
   var navKeys=["calls","buyers","sigs","props","excl","newborn"];
