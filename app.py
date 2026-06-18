@@ -47,7 +47,7 @@ def send_push(title, body, external_id="owner"):
             json={
                 "app_id": ONESIGNAL_APP_ID,
                 "target_channel": "push",
-                "include_aliases": {"external_id": [external_id]},
+                "include_aliases": {"external_id": (external_id if isinstance(external_id, list) else [external_id])},
                 "headings": {"en": title},
                 "contents": {"en": body},
             },
@@ -3189,6 +3189,8 @@ def api_sign_submit():
         # רק חתימת קונה (לא מוכר/בלעדיות) נכנסת אוטומטית ל"קונים שלי" של הסוכן
         if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
             _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית")
+        # פוש לכל המנהלים על חתימה חדשה
+        _notify_managers_signing("נחתם", client, agent, address)
     return jsonify({"ok": ok_any, "event_id": eid, "link": link, "doc_saved": doc_saved, "doc_resp": doc_resp})
 
 def _sign_now_iso():
@@ -3244,6 +3246,33 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
     except Exception:
         pass
     return False
+
+def _manager_push_ids():
+    """external_id (=9 ספרות אחרונות של הטלפון) של כל מי שמוגדר 'מנהל' — לקבלת פוש על חתימות.
+    כולל גם 'owner' כדי שמכשיר הבעלים הקיים (שרשום כ-owner ב-OneSignal) ימשיך לקבל."""
+    ids = set()
+    for p in ADMIN_PHONES:
+        l = _last9(p)
+        if l: ids.add(l)
+    for ph, role in (_load_config().get("roles") or {}).items():
+        if _ROLE_SCOPE.get(role) == "admin":
+            l = _last9(ph)
+            if l: ids.add(l)
+    ids.add("owner")
+    return [i for i in ids if i]
+
+def _notify_managers_signing(status_label, client, agent, address):
+    """פוש לכל המנהלים על חתימה שנכנסה לטאב 'חתימות' — לא חוסם את התשובה."""
+    try:
+        ids = _manager_push_ids()
+        if not ids:
+            return
+        body = status_label + ": " + (client or "לקוח")
+        if agent:   body += " · 👤 " + agent
+        if address: body += " · " + address
+        threading.Thread(target=send_push, args=("חתימה חדשה ✍️", body, ids), daemon=True).start()
+    except Exception:
+        pass
 
 @app.route("/api/sign/send_remote", methods=["POST"])
 def api_sign_send_remote():
@@ -3361,6 +3390,20 @@ def api_sign_complete():
         pass
     _cache_clear("signings_sheet")
     _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+    # פוש לכל המנהלים — הלקוח השלים חתימה מרחוק (חתום)
+    try:
+        _ag = _cl = _addr = ""
+        for _ln in header.split("\n"):
+            _ln = _ln.strip()
+            if "הסוכן:" in _ln:
+                _ag = _ln.split("הסוכן:", 1)[1].strip()
+            elif _ln.startswith("לקוח"):
+                _cl = re.split(r"\s*·\s*", _ln.split(":", 1)[-1].strip())[0].strip() if ":" in _ln else _ln[4:].strip()
+            elif _ln.startswith("נכס"):
+                _addr = re.split(r"\s*·\s*", _ln.split(":", 1)[-1].strip())[0].strip()
+        _notify_managers_signing("נחתם", _cl, _ag, _addr)
+    except Exception:
+        pass
     return jsonify({"ok": upd_ok, "link": link})
 
 @app.route("/api/sign/share", methods=["POST"])
