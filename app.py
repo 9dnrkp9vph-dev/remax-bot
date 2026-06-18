@@ -4144,6 +4144,7 @@ def api_my_properties():
                 "price": (r.get("מחיר", "") or "").strip(),
                 "agent": ag,
                 "wa": _wa_phone(phones_map.get(ag, r.get("טלפון 1", ""))),
+                "desc": (r.get("_desc_ae", "") or "").strip(),
             })
         _log_activity(s["name"], s["role"], s["phone"], "הנכסים שלי",
                       eff_name if as_name else "")
