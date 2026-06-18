@@ -3124,6 +3124,7 @@ def api_sign_submit():
     client = (body.get("client") or "").strip()
     cid = re.sub(r"\D", "", (body.get("cid") or ""))
     address = (body.get("address") or "").strip()
+    phone = (body.get("phone") or "").strip()
     notes = (body.get("notes") or "").strip()
     signature = body.get("signature") or ""
     header = body.get("header") or ""
@@ -3171,6 +3172,8 @@ def api_sign_submit():
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
+        # המתעניין נכנס אוטומטית כקונה ל"קונים שלי" של הסוכן
+        _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית")
     return jsonify({"ok": ok_any, "event_id": eid, "link": link, "doc_saved": doc_saved, "doc_resp": doc_resp})
 
 def _sign_now_iso():
@@ -3180,6 +3183,52 @@ def _sign_now_iso():
         return _dt.datetime.now(ZoneInfo("Asia/Jerusalem")).isoformat()
     except Exception:
         return _dt.datetime.utcnow().isoformat()
+
+def _add_buyer_from_signing(agent, client, phone="", address="", origin="החתמה דיגיטלית"):
+    """כל מתעניין שחותם / שנשלחה לו חתימה — נכנס אוטומטית כקונה אצל הסוכן (אם עוד לא קיים)."""
+    try:
+        agent = (agent or "").strip()
+        client = (client or "").strip()
+        phone = (phone or "").strip()
+        if not (client or phone):
+            return False
+        ps = list(_phones_for_name(agent))
+        agent_phone = ps[0] if ps else ""
+        ln = _last9(phone)
+        # מניעת כפילות — אם כבר קיים קונה לאותו סוכן עם אותו טלפון (או אותו שם כשאין טלפון)
+        try:
+            rows = _fetch_manual_buyers()
+            ak = _canon_key(agent)
+            for r in rows:
+                same_agent = (_canon_key(r.get("agent", "")) == ak) or (
+                    agent_phone and _last9(r.get("agent_phone", "")) == _last9(agent_phone))
+                if not same_agent:
+                    continue
+                if ln and _last9(r.get("phone", "")) == ln:
+                    return False
+                if (not ln) and client and _canon_key(r.get("name", "")) == _canon_key(client):
+                    return False
+        except Exception:
+            pass
+        from datetime import datetime, timezone, timedelta
+        try:
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo("Asia/Jerusalem"))
+        except Exception:
+            now = datetime.now(timezone.utc) + timedelta(hours=3)
+        summary = origin + ((" · " + address) if address else "")
+        payload = {
+            "date": now.strftime("%d/%m/%Y %H:%M"),
+            "name": client, "phone": phone, "budget": "", "summary": summary,
+            "agent": agent, "agent_phone": agent_phone,
+        }
+        j = _buyers_apps_post("addbuyer", payload)
+        if j and j.get("ok"):
+            _cache_clear("buyers")
+            return True
+    except Exception:
+        pass
+    return False
 
 @app.route("/api/sign/send_remote", methods=["POST"])
 def api_sign_send_remote():
@@ -3246,6 +3295,8 @@ def api_sign_send_remote():
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שליחת חתימה מרחוק", (client + " · " + address).strip(" ·"))
+        # גם אם הלקוח עדיין לא חתם — עצם שליחת החתימה מכניסה אותו כקונה ל"קונים שלי"
+        _add_buyer_from_signing(agent, client, phone, address, "נשלחה חתימה")
     return jsonify({"ok": ok_any, "sms": sms_ok, "wa": wa_ok, "phone": last9})
 
 @app.route("/api/sign/complete", methods=["POST"])
@@ -5509,7 +5560,7 @@ var SG_LASTDOCS=null,SG_LASTV=null,SG_LASTSIG="",SG_LASTHDR="";
 function sgSubmit(){
   if(!SG_LASTDOCS||!SG_LASTDOCS.length){alert("אין מה לשמור");return;}
   var v=SG_LASTV;
-  api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,cid:v.cid,address:v.addr,notes:(v.notes||""),signature:SG_LASTSIG,header:SG_LASTHDR,docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type,title:d.title,body:d.body};})})}).then(function(r){
+  api("/api/sign/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({agent:v.agent,client:v.cname,cid:v.cid,address:v.addr,phone:(v.cphone||""),notes:(v.notes||""),signature:SG_LASTSIG,header:SG_LASTHDR,docs:SG_LASTDOCS.map(function(d){return {deal_type:d.deal_type,title:d.title,body:d.body};})})}).then(function(r){
     if(r&&r.ok){var _warn=(r.doc_saved===false)?'<div class=muted style="margin-top:8px;color:#c0392b">⚠️ המסמך עצמו לא נשמר (Apps Script) — הקישור לא יעבוד. צלם לי מסך.<br><span style="font-size:10px;direction:ltr;display:block;word-break:break-all">'+(r.doc_resp||'')+'</span></div>':'';window._sgShare={phone:(v.cphone||""),link:(r.link||""),name:(v.cname||"")};var _wabtn=(v.cphone&&r.link)?'<button class="btn-gold" style="width:100%;margin-top:10px;background:#25D366;border-color:#25D366" onclick="sgShareWA()">📲 שלח ללקוח בוואטסאפ</button>':'';$("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">✅</div><b>נשמר בהצלחה!</b><div class=muted style="margin-top:6px">הרשומה נכנסה לגליון חתימות ולדוחות.</div>'+_warn+_wabtn+'<button class="btn-ghost" style="width:100%;margin-top:8px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';try{$("sg_preview").scrollIntoView({behavior:"smooth",block:"center"});}catch(e){}}
     else{alert("השמירה נכשלה — ודא שה-Apps Script פרוס בגרסה חדשה (עם הפעולה addsigning).");}
   }).catch(function(){alert("שגיאת רשת");});}
