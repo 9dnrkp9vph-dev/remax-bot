@@ -35,10 +35,15 @@ MAYTAPI_BASE = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT}/{MAYTAPI_PHONE_ID
 # ── Push notifications (OneSignal) — נחוץ לאפליקציה הנייד, לא להסיר ──────────────
 ONESIGNAL_APP_ID   = "f13c245a-17c2-415d-a81d-41a3df58e1a9"
 ONESIGNAL_REST_KEY = os.environ.get("ONESIGNAL_REST_KEY", "")   # נשמר ב-Render בלבד, לא בקוד
+_PUSH_LAST = {}   # אבחון אחרון של שליחת Push — לצפייה ב-/api/push/test
 def send_push(title, body, external_id="owner"):
-    """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False."""
+    """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False.
+    שומר אבחון מלא ב-_PUSH_LAST (סטטוס + תגובת OneSignal) לצורך /api/push/test."""
+    global _PUSH_LAST
     if not ONESIGNAL_REST_KEY:
+        _PUSH_LAST = {"ok": False, "reason": "no_rest_key (משתנה הסביבה ONESIGNAL_REST_KEY לא מוגדר ב-Render)"}
         return False
+    ids = external_id if isinstance(external_id, list) else [external_id]
     try:
         r = requests.post(
             "https://api.onesignal.com/notifications",
@@ -47,14 +52,19 @@ def send_push(title, body, external_id="owner"):
             json={
                 "app_id": ONESIGNAL_APP_ID,
                 "target_channel": "push",
-                "include_aliases": {"external_id": (external_id if isinstance(external_id, list) else [external_id])},
+                "include_aliases": {"external_id": ids},
                 "headings": {"en": title},
                 "contents": {"en": body},
             },
             timeout=10,
         )
+        _PUSH_LAST = {"ok": r.ok, "status": r.status_code, "ids": ids,
+                      "resp": (r.text or "")[:600]}
+        if not r.ok:
+            log.error(f"push http {r.status_code}: {(r.text or '')[:300]}")
         return r.ok
     except Exception as e:
+        _PUSH_LAST = {"ok": False, "ids": ids, "reason": str(e)[:300]}
         log.error(f"push error: {e}")
         return False
 # ── Temp dir for processing ────────────────────────────────────────────────────
@@ -4656,10 +4666,11 @@ def api_buyers_add():
         return jsonify({"ok": False, "reason": (j or {}).get("error", "save_failed")}), 502
     _cache_clear("buyers")
     _log_activity(s["name"], s["role"], s["phone"], "הוספת קונה", name or phone)
-    # התראת Push — ליד חדש (לא חוסם את התשובה; שקט אם OneSignal לא מוגדר)
+    # התראת Push — קונה חדש ל"קונים שלי": לכל המנהלים (לא חוסם; שקט אם OneSignal לא מוגדר)
     try:
         _who = (name or phone or "לקוח חדש")
-        threading.Thread(target=send_push, args=("ליד חדש 🔔", "נוסף קונה חדש: " + _who), daemon=True).start()
+        _bd = "נוסף קונה חדש: " + _who + (" · 👤 " + eff_name if eff_name else "")
+        threading.Thread(target=send_push, args=("קונה חדש 🔔", _bd, _manager_push_ids()), daemon=True).start()
     except Exception:
         pass
     return jsonify({"ok": True})
@@ -4670,8 +4681,12 @@ def api_push_test():
     s = _web_auth()
     if not s or not _is_dev(s.get("phone", "")):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
-    ok = send_push("בדיקת התראה 🔔", "Push עובד! התראת בדיקה מ-Family Bot")
-    return jsonify({"ok": ok, "configured": bool(ONESIGNAL_REST_KEY)})
+    # אפשר לבדוק יעד ספציפי: /api/push/test?id=505709865 (ברירת מחדל: כל המנהלים)
+    target = (request.args.get("id") or "").strip()
+    ids = [_last9(target)] if target else _manager_push_ids()
+    ok = send_push("בדיקת התראה 🔔", "Push עובד! התראת בדיקה מ-Family Bot", ids)
+    return jsonify({"ok": ok, "configured": bool(ONESIGNAL_REST_KEY),
+                    "targeted_ids": ids, "onesignal": _PUSH_LAST})
 
 @app.route("/api/my/buyers", methods=["GET", "POST"])
 def api_my_buyers():
@@ -5312,8 +5327,9 @@ function applyTabPerms(){
 }
 
 // ── קונסולת מפתח ──────────────────────────────────────────────
-function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcoords></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadCoords();loadContracts();}
+function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span> <button class="btn-ghost" onclick="devPush()">🔔 בדיקת פוש</button><div id=devpush class=muted style="white-space:pre-wrap;word-break:break-word;font-size:11px;direction:ltr;text-align:left;margin-top:6px"></div></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcoords></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadCoords();loadContracts();}
 function devDiag(){$("devdiag").textContent=" בודק…";api("/api/dev/diag").then(function(r){$("devdiag").textContent=" "+((r&&r.msg)||"שגיאה");}).catch(function(){$("devdiag").textContent=" שגיאת רשת";});}
+function devPush(){var d=$("devpush");if(d)d.textContent="שולח פוש בדיקה…";api("/api/push/test").then(function(r){if(d)d.textContent=JSON.stringify(r,null,2);}).catch(function(){if(d)d.textContent="שגיאת רשת";});}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
 var DEVAGENTS=[],DEVDATA=null,DEVALL=false,DEVFILTER="";
 function devToggleAll(){DEVALL=!DEVALL;if(DEVDATA)renderDevPeople(DEVDATA);}
