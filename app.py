@@ -4824,9 +4824,12 @@ button.gold{background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;box
 .score{float:left;background:var(--ink);color:#fff;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800}
 a{color:var(--blue);font-weight:700;text-decoration:none}a:hover{text-decoration:underline}
 .err{color:var(--red);font-weight:700}.hidden{display:none}
-.vphone{display:inline-block;font-size:12px;font-weight:800;color:#0d5aa7;background:#eaf3fb;border:1px solid #bcd9f0;border-radius:9px;padding:2px 9px;margin-inline-end:8px}
-.vpnum{user-select:all;-webkit-user-select:all;letter-spacing:.3px}
-.vpcopy{cursor:pointer;color:#0d5aa7;font-weight:800;margin-inline-start:6px;border-inline-start:1px solid #bcd9f0;padding-inline-start:6px}
+.vphone{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px 11px 5px 6px;margin-inline-end:8px;box-shadow:0 2px 8px rgba(20,30,50,.06)}
+.vphone .vpico{width:15px;height:15px;color:var(--gold);flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.vpnum{user-select:all;-webkit-user-select:all;letter-spacing:.4px;font-variant-numeric:tabular-nums}
+.vpcopy{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:#f4f1e9;color:var(--ink);flex:0 0 auto}
+.vpcopy svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.vpcopy:active{transform:scale(.94)}
 .cbtn{display:inline-block;background:#137a3a;color:#fff!important;border-radius:10px;padding:4px 12px;font-size:12.5px;font-weight:800;text-decoration:none;margin-top:5px}
 .rchips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}.rchip{background:rgba(0,61,165,.08);color:var(--blue);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid rgba(0,61,165,.15);max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:8px}
@@ -5063,6 +5066,9 @@ html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
 .tabs{background:#f6f5f2!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-top:1px solid var(--line)!important}
 .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 6px)!important;padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))!important}
 .brand{margin-top:0!important}
+/* MOBILE-PATCH 3: תפריט שלא נחתך כשהתוכן קצר + גלילה פנימית אם ארוך מהמסך — נחוץ לנייד */
+.wrap{overflow:visible!important}
+.appmenu{max-height:calc(100vh - env(safe-area-inset-top,0px) - 120px)!important;overflow-y:auto;-webkit-overflow-scrolling:touch}
 #splash{position:fixed;inset:0;z-index:100000;--gold2:#e0b85a;background:radial-gradient(130% 80% at 50% -10%,#21364f 0%,#16273c 42%,#0D1B2A 78%,#081320 100%);overflow:hidden;display:flex;flex-direction:column;font-family:"Heebo",Arial,sans-serif;transition:opacity .45s ease,transform .45s ease}
 #splash.sp-hide{opacity:0;transform:scale(1.04);pointer-events:none}
 #splash .orb{position:absolute;border-radius:50%;filter:blur(50px);opacity:.45;animation:spf 8s ease-in-out infinite}
@@ -5561,7 +5567,7 @@ function renderCalls(){var r=CALLDATA;if(!r||TABNOW!="calls"||!$("calls"))return
   var _kp=$("callkpi");if(_kp)_kp.innerHTML=calls.length?(kpi(calls.length,"שיחות")+kpi(_ans,"נענו")+kpi(_newb,"קונים חדשים")):"";
   loadNewBuyers();
   var ht=$("htoggle");if(ht)ht.textContent=HIDDENMODE?"חזרה לשיחות":"הצג מוסתרות";
-  VPHONE=r.vphone||"";var vp=$("vphone");if(vp)vp.innerHTML=VPHONE?("🤖📞 <span class=vpnum>"+esc(VPHONE)+"</span> <span id=vpcopybtn class=vpcopy onclick=copyVphone()>📋 העתק</span>"):"";
+  VPHONE=r.vphone||"";var vp=$("vphone");if(vp)vp.innerHTML=VPHONE?("<svg class=vpico viewBox='0 0 18 18'><path d='M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z'/></svg><span class=vpnum>"+esc(VPHONE)+"</span><span id=vpcopybtn class=vpcopy onclick=copyVphone() title='העתק מספר'><svg viewBox='0 0 18 18'><rect x='6.5' y='6.5' width='8.5' height='8.5' rx='2'/><path d='M11.5 6.5V4.5a2 2 0 0 0-2-2h-5a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h2'/></svg></span>"):"";
   var maxC=calls.length?calls[0].ts:0;
   $("calls").innerHTML=(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
@@ -5911,7 +5917,7 @@ function nbWaMsg(x){var who=NAME?(" מדבר/ת "+NAME):"";var m="שלום!"+who
 function nbMark(k,a,reload){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).then(function(){if(reload)loadNewbornPage();}).catch(function(){});}catch(e){}return true;}
 function closeNewborn(){$("nbmodal").classList.add("hidden");nbLock(false);}
 var VPHONE="";
-function copyVphone(){if(!VPHONE)return;var b=$("vpcopybtn");var ok=function(){if(b){var t=b.innerHTML;b.innerHTML="✓ הועתק";setTimeout(function(){b.innerHTML=t;},1500);}};
+function copyVphone(){if(!VPHONE)return;var b=$("vpcopybtn");var ok=function(){if(b){var t=b.innerHTML;b.innerHTML="<svg viewBox='0 0 18 18' style='width:15px;height:15px;fill:none;stroke:#1f8a4c;stroke-width:2;stroke-linecap:round;stroke-linejoin:round'><path d='M4 9.5l3.2 3.2L14 5.5'/></svg>";setTimeout(function(){b.innerHTML=t;},1500);}};
   try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(VPHONE).then(ok,function(){vpFallbackCopy(VPHONE);ok();});return;}}catch(e){}
   vpFallbackCopy(VPHONE);ok();}
 function vpFallbackCopy(t){try{var ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}catch(e){}}
