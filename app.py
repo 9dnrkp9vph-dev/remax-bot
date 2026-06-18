@@ -35,8 +35,8 @@ MAYTAPI_BASE = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT}/{MAYTAPI_PHONE_ID
 # ── Push notifications (OneSignal) — נחוץ לאפליקציה הנייד, לא להסיר ──────────────
 ONESIGNAL_APP_ID   = "f13c245a-17c2-415d-a81d-41a3df58e1a9"
 ONESIGNAL_REST_KEY = os.environ.get("ONESIGNAL_REST_KEY", "")   # נשמר ב-Render בלבד, לא בקוד
-def send_push(title, body, segment="Subscribed Users"):
-    """שולח התראת Push לכל המכשירים הרשומים דרך OneSignal. מחזיר True/False."""
+def send_push(title, body, external_id="owner"):
+    """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False."""
     if not ONESIGNAL_REST_KEY:
         return False
     try:
@@ -47,7 +47,7 @@ def send_push(title, body, segment="Subscribed Users"):
             json={
                 "app_id": ONESIGNAL_APP_ID,
                 "target_channel": "push",
-                "included_segments": [segment],
+                "include_aliases": {"external_id": [external_id]},
                 "headings": {"en": title},
                 "contents": {"en": body},
             },
