@@ -44,24 +44,31 @@ def send_push(title, body, external_id="owner"):
         _PUSH_LAST = {"ok": False, "reason": "no_rest_key (משתנה הסביבה ONESIGNAL_REST_KEY לא מוגדר ב-Render)"}
         return False
     ids = external_id if isinstance(external_id, list) else [external_id]
-    try:
-        r = requests.post(
+    payload = {
+        "app_id": ONESIGNAL_APP_ID,
+        "target_channel": "push",
+        "include_aliases": {"external_id": ids},
+        "headings": {"en": title},
+        "contents": {"en": body},
+    }
+    def _post(scheme):
+        return requests.post(
             "https://api.onesignal.com/notifications",
-            headers={"Authorization": "Key " + ONESIGNAL_REST_KEY,
+            headers={"Authorization": scheme + " " + ONESIGNAL_REST_KEY,
                      "Content-Type": "application/json"},
-            json={
-                "app_id": ONESIGNAL_APP_ID,
-                "target_channel": "push",
-                "include_aliases": {"external_id": ids},
-                "headings": {"en": title},
-                "contents": {"en": body},
-            },
-            timeout=10,
-        )
-        _PUSH_LAST = {"ok": r.ok, "status": r.status_code, "ids": ids,
-                      "resp": (r.text or "")[:600]}
+            json=payload, timeout=10)
+    try:
+        scheme = "Key"
+        r = _post(scheme)
+        # מפתח legacy של OneSignal דורש 'Basic' במקום 'Key' — ננסה אוטומטית אם נדחה
+        if r.status_code in (401, 403):
+            r2 = _post("Basic")
+            if r2.status_code not in (401, 403):
+                r, scheme = r2, "Basic"
+        _PUSH_LAST = {"ok": r.ok, "status": r.status_code, "scheme": scheme,
+                      "ids": ids, "resp": (r.text or "")[:600]}
         if not r.ok:
-            log.error(f"push http {r.status_code}: {(r.text or '')[:300]}")
+            log.error(f"push http {r.status_code} ({scheme}): {(r.text or '')[:300]}")
         return r.ok
     except Exception as e:
         _PUSH_LAST = {"ok": False, "ids": ids, "reason": str(e)[:300]}
