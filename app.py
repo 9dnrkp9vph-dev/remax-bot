@@ -37,9 +37,9 @@ ONESIGNAL_APP_ID   = "f13c245a-17c2-415d-a81d-41a3df58e1a9"
 ONESIGNAL_REST_KEY = os.environ.get("ONESIGNAL_REST_KEY", "")   # נשמר ב-Render בלבד, לא בקוד
 # ── Google Sign-In + Calendar — נחוץ לכניסה עם גוגל וסנכרון יומן (לא להסיר) ───────
 # כל המפתחות נשמרים ב-Render בלבד, לא בקוד. ריק = הפיצ'ר רדום והכניסה הרגילה לא מושפעת.
-GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "https://remax-bot.onrender.com/auth/google/callback")
+GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "https://remax-bot.onrender.com/auth/google/callback").strip()
 _PUSH_LAST = {}   # אבחון אחרון של שליחת Push — לצפייה ב-/api/push/test
 def send_push(title, body, external_id="owner"):
     """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False.
