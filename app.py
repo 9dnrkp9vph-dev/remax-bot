@@ -10,7 +10,7 @@ import os, re, json, time, uuid, base64, tempfile, subprocess, logging, threadin
 from pathlib import Path
 from io import BytesIO
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -35,6 +35,11 @@ MAYTAPI_BASE = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT}/{MAYTAPI_PHONE_ID
 # ── Push notifications (OneSignal) — נחוץ לאפליקציה הנייד, לא להסיר ──────────────
 ONESIGNAL_APP_ID   = "f13c245a-17c2-415d-a81d-41a3df58e1a9"
 ONESIGNAL_REST_KEY = os.environ.get("ONESIGNAL_REST_KEY", "")   # נשמר ב-Render בלבד, לא בקוד
+# ── Google Sign-In + Calendar — נחוץ לכניסה עם גוגל וסנכרון יומן (לא להסיר) ───────
+# כל המפתחות נשמרים ב-Render בלבד, לא בקוד. ריק = הפיצ'ר רדום והכניסה הרגילה לא מושפעת.
+GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "https://remax-bot.onrender.com/auth/google/callback")
 _PUSH_LAST = {}   # אבחון אחרון של שליחת Push — לצפייה ב-/api/push/test
 def send_push(title, body, external_id="owner"):
     """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False.
@@ -2602,6 +2607,284 @@ def api_auth_verify():
     _web_sessions[token] = sess
     _log_activity(name, sess["role"], phone, "כניסה")
     return jsonify({"ok": True, "token": token, "role": role, "drole": drole, "name": name, "dev": sess.get("dev", False), "tabs": _tabs_for_role(drole)})
+
+# ── Google Sign-In (OAuth) + יומן Google ────────────────────────────────────────
+# כניסה עם Google כאופציה ראשית; SMS נשאר כגיבוי. בכניסה ראשונה הסוכן מקשר את
+# חשבון הגוגל לטלפון שלו (אימות SMS פעם אחת) ומאז נכנס בקליק. רדום אם אין מפתחות.
+from urllib.parse import urlencode as _urlencode
+_goauth_state   = {}   # state(csrf) -> exp
+_goauth_pending = {}   # glink token -> {"email","name","refresh_token","exp"} לאימייל שעוד לא מקושר
+
+def _gauth_enabled():
+    return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+def _gauth_all():
+    m = _load_config().get("gauth")
+    return m if isinstance(m, dict) else {}
+
+def _gauth_email_for_phone(phone):
+    phone = _last9(phone)
+    for em, rec in _gauth_all().items():
+        if _last9((rec or {}).get("phone", "")) == phone:
+            return em
+    return ""
+
+def _gauth_link(email, phone, refresh_token=None, name=""):
+    """מקשר אימייל-גוגל ↔ טלפון-סוכן ושומר refresh_token לשימוש ביומן."""
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    cfg = _load_config()
+    g = cfg.get("gauth")
+    if not isinstance(g, dict):
+        g = {}
+    rec = g.get(email) or {}
+    rec["phone"] = _last9(phone)
+    if name:
+        rec["name"] = name
+    if refresh_token:                 # גוגל מחזירה refresh_token רק בהסכמה הראשונה — לא לדרוס בריק
+        rec["refresh_token"] = refresh_token
+    rec["ts"] = int(time.time())
+    g[email] = rec
+    cfg["gauth"] = g
+    _save_config(cfg)
+
+def _g_token_exchange(code):
+    try:
+        r = requests.post("https://oauth2.googleapis.com/token", data={
+            "code": code, "client_id": GOOGLE_CLIENT_ID, "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": GOOGLE_REDIRECT_URI, "grant_type": "authorization_code"}, timeout=15)
+        return r.json() if r.ok else None
+    except Exception as e:
+        log.error(f"google token exchange: {e}"); return None
+
+def _g_access_from_refresh(rt):
+    try:
+        r = requests.post("https://oauth2.googleapis.com/token", data={
+            "refresh_token": rt, "client_id": GOOGLE_CLIENT_ID, "client_secret": GOOGLE_CLIENT_SECRET,
+            "grant_type": "refresh_token"}, timeout=15)
+        return (r.json() or {}).get("access_token") if r.ok else None
+    except Exception as e:
+        log.error(f"google refresh: {e}"); return None
+
+def _g_userinfo(access_token):
+    try:
+        r = requests.get("https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": "Bearer " + access_token}, timeout=15)
+        return r.json() if r.ok else None
+    except Exception as e:
+        log.error(f"google userinfo: {e}"); return None
+
+def _g_mint(phone, label="כניסה עם Google"):
+    """מנפיק את אותו סשן/טוקן בדיוק כמו כניסת SMS — כדי שהתפקידים/הטאבים זהים."""
+    phone = _last9(phone)
+    scope, drole = _resolve_roles(phone)
+    if not scope: scope = "agent"
+    if _is_dev(phone): scope = "admin"; drole = "developer"
+    role = scope
+    name = _login_name(phone, scope, drole)
+    token = _secrets.token_urlsafe(24)
+    sess = {"phone": phone, "role": role, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
+    if _is_dev(phone): sess["dev"] = True
+    _cc = _coordinators_all()
+    if role == "coordinator" and phone in _cc:
+        sess["agents"] = list(_cc[phone]["agents"])
+        sess["agent_names"] = list(_cc[phone]["names"])
+    _web_sessions[token] = sess
+    _log_activity(name, role, phone, label)
+    return token, {"token": token, "role": role, "drole": drole, "name": name,
+                   "dev": sess.get("dev", False), "tabs": _tabs_for_role(drole)}
+
+def _g_page(inner):
+    return ("<!doctype html><html lang=he dir=rtl><head><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1,maximum-scale=1'>"
+            "<title>Family Bot</title></head>"
+            "<body style=\"margin:0;background:#eef1f5;font-family:Heebo,Arial,sans-serif;"
+            "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px\">"
+            "<div style=\"width:100%;max-width:340px;text-align:center\">"
+            "<img src='/assets/logo' style='height:46px;margin-bottom:22px' onerror=\"this.style.display='none'\">"
+            + inner + "</div></body></html>")
+
+def _g_msg(title, sub="", href="/app", btn="חזרה לכניסה"):
+    return _g_page(
+        "<div style='font-size:20px;font-weight:800;color:#0D1B2A;margin-bottom:8px'>" + title + "</div>"
+        + ("<div style='font-size:14px;color:#6b7280;margin-bottom:22px'>" + sub + "</div>" if sub else "")
+        + "<a href='" + href + "' style='display:inline-block;padding:13px 22px;background:#0D1B2A;color:#fff;"
+          "border-radius:13px;font-weight:800;text-decoration:none'>" + btn + "</a>")
+
+def _g_done_page(payload):
+    js = _json.dumps(payload, ensure_ascii=False)
+    return _g_page(
+        "<div style='font-size:18px;font-weight:800;color:#0D1B2A'>מתחבר…</div>"
+        "<script>var p=" + js + ";try{localStorage.setItem('fbTok',p.token);"
+        "localStorage.setItem('fbRole',p.role||'');localStorage.setItem('fbDrole',p.drole||'');"
+        "localStorage.setItem('fbName',p.name||'');localStorage.setItem('fbDev',p.dev?'1':'0');"
+        "localStorage.setItem('fbTabs',JSON.stringify(p.tabs||null));}catch(e){}"
+        "location.replace('/app');</script>")
+
+def _g_link_page(glink, email):
+    return _g_page(
+        "<div style='font-size:19px;font-weight:800;color:#0D1B2A;margin-bottom:6px'>חיבור ראשון</div>"
+        "<div style='font-size:14px;color:#6b7280;margin-bottom:18px'>" + email +
+        "<br>הזן את מספר הטלפון שלך כדי לקשר את החשבון פעם אחת</div>"
+        "<input id='ph' type='tel' inputmode='numeric' placeholder='מספר טלפון' "
+        "style='width:100%;padding:13px;border:1px solid #cbd5e1;border-radius:12px;font-size:16px;text-align:center;margin-bottom:10px'>"
+        "<div id='codewrap' style='display:none'><input id='cd' type='tel' inputmode='numeric' placeholder='קוד מ-SMS' "
+        "style='width:100%;padding:13px;border:1px solid #cbd5e1;border-radius:12px;font-size:16px;text-align:center;margin-bottom:10px'></div>"
+        "<button id='btn' onclick='go()' style='width:100%;padding:14px;background:#0D1B2A;color:#fff;border:none;"
+        "border-radius:13px;font-size:16px;font-weight:800'>שלח קוד</button>"
+        "<div id='err' style='color:#dc2626;font-size:13px;margin-top:10px;min-height:18px'></div>"
+        "<script>var G='" + glink + "',stage=0;"
+        "function px(u,d){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(function(r){return r.json()})}"
+        "function go(){var e=document.getElementById('err');e.textContent='';"
+        "var ph=document.getElementById('ph').value.replace(/\\D/g,'');"
+        "if(stage===0){px('/api/auth/glink_request',{glink:G,phone:ph}).then(function(j){"
+        "if(!j.ok){e.textContent=(j.reason==='unknown')?'המספר לא רשום במערכת':'שגיאה, נסה שוב';return;}"
+        "stage=1;document.getElementById('codewrap').style.display='block';document.getElementById('btn').textContent='התחבר';"
+        "});}else{var cd=document.getElementById('cd').value.replace(/\\D/g,'');"
+        "px('/api/auth/glink_verify',{glink:G,phone:ph,code:cd}).then(function(p){"
+        "if(!p.ok){e.textContent='קוד שגוי, נסה שוב';return;}"
+        "try{localStorage.setItem('fbTok',p.token);localStorage.setItem('fbRole',p.role||'');"
+        "localStorage.setItem('fbDrole',p.drole||'');localStorage.setItem('fbName',p.name||'');"
+        "localStorage.setItem('fbDev',p.dev?'1':'0');localStorage.setItem('fbTabs',JSON.stringify(p.tabs||null));}catch(x){}"
+        "location.replace('/app');});}}"
+        "</script>")
+
+@app.route("/auth/google/login")
+def auth_google_login():
+    if not _gauth_enabled():
+        return _g_msg("התחברות Google אינה פעילה עדיין", "פנה למנהל המערכת"), 200
+    state = _secrets.token_urlsafe(16)
+    _goauth_state[state] = time.time() + 600
+    params = {"client_id": GOOGLE_CLIENT_ID, "redirect_uri": GOOGLE_REDIRECT_URI,
+              "response_type": "code",
+              "scope": "openid email profile https://www.googleapis.com/auth/calendar.events",
+              "access_type": "offline", "prompt": "consent", "include_granted_scopes": "true",
+              "state": state}
+    return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + _urlencode(params))
+
+@app.route("/auth/google/callback")
+def auth_google_callback():
+    if not _gauth_enabled():
+        return _g_msg("התחברות Google אינה פעילה עדיין", "פנה למנהל המערכת"), 200
+    if request.args.get("error"):
+        return _g_msg("הכניסה בוטלה", "אפשר לנסות שוב או להיכנס עם טלפון")
+    state = request.args.get("state", "")
+    if state not in _goauth_state or _goauth_state.get(state, 0) < time.time():
+        return _g_msg("פג תוקף ההתחברות", "נסה להתחבר שוב")
+    _goauth_state.pop(state, None)
+    tok = _g_token_exchange(request.args.get("code", ""))
+    if not tok or not tok.get("access_token"):
+        return _g_msg("שגיאת התחברות מול Google", "נסה שוב")
+    info = _g_userinfo(tok["access_token"]) or {}
+    email = (info.get("email") or "").strip().lower()
+    name = info.get("name") or ""
+    rt = tok.get("refresh_token")
+    if not email:
+        return _g_msg("לא הצלחנו לקרוא את כתובת האימייל", "נסה שוב")
+    rec = _gauth_all().get(email)
+    if rec and rec.get("phone"):
+        if rt:
+            _gauth_link(email, rec["phone"], rt, name)   # רענון הטוקן אם הגיע חדש
+        _, payload = _g_mint(rec["phone"])
+        return _g_done_page(payload)
+    # אימייל שעוד לא מקושר → דף קישור חד-פעמי עם אימות טלפון
+    glink = _secrets.token_urlsafe(18)
+    _goauth_pending[glink] = {"email": email, "name": name, "refresh_token": rt, "exp": time.time() + 900}
+    return _g_link_page(glink, email)
+
+@app.route("/api/auth/glink_request", methods=["POST"])
+def api_glink_request():
+    b = request.get_json(silent=True) or {}
+    glink = b.get("glink", ""); phone = _last9(b.get("phone", ""))
+    pend = _goauth_pending.get(glink)
+    if not pend or pend["exp"] < time.time():
+        return jsonify({"ok": False, "reason": "expired"})
+    if not phone:
+        return jsonify({"ok": False, "reason": "bad_phone"})
+    if not web_role_for(phone) and phone not in _BYPASS_LOGINS:
+        return jsonify({"ok": False, "reason": "unknown"})
+    if phone in _BYPASS_LOGINS:
+        return jsonify({"ok": True})   # קוד קבוע — אין SMS
+    code = f"{_secrets.randbelow(900000) + 100000}"
+    _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
+    _host = (request.host or "remax-bot.onrender.com").split(":")[0]
+    _sms = f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)\n\n@{_host} #{code}"
+    if not web_send_sms(phone, _sms):
+        return jsonify({"ok": False, "reason": "sms_failed"})
+    return jsonify({"ok": True})
+
+@app.route("/api/auth/glink_verify", methods=["POST"])
+def api_glink_verify():
+    b = request.get_json(silent=True) or {}
+    glink = b.get("glink", ""); phone = _last9(b.get("phone", "")); code = str(b.get("code", "")).strip()
+    pend = _goauth_pending.get(glink)
+    if not pend or pend["exp"] < time.time():
+        return jsonify({"ok": False, "reason": "expired"})
+    if phone in _BYPASS_LOGINS and code == _BYPASS_LOGINS[phone]:
+        pass
+    else:
+        rec = _otp_store.get(phone)
+        if not rec or rec["exp"] < time.time():
+            return jsonify({"ok": False, "reason": "expired"})
+        if rec["tries"] >= 5:
+            _otp_store.pop(phone, None); return jsonify({"ok": False, "reason": "too_many"})
+        if code != rec["code"]:
+            rec["tries"] += 1; return jsonify({"ok": False, "reason": "wrong"})
+        _otp_store.pop(phone, None)
+    _gauth_link(pend["email"], phone, pend.get("refresh_token"), pend.get("name", ""))
+    _goauth_pending.pop(glink, None)
+    _, payload = _g_mint(phone, "כניסה עם Google (קישור ראשון)")
+    return jsonify({"ok": True, **payload})
+
+def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
+                      location=None, tz="Asia/Jerusalem"):
+    """יוצר אירוע ביומן הראשי של הסוכן (לפי האימייל המקושר). מחזיר eventId או None.
+    לעולם לא זורק חריגה — כשל ביומן לא ישבור את הפעולה במערכת.
+    start_iso/end_iso = '2026-06-25T17:00:00' לאירוע עם שעה, או '2026-06-25' ליום שלם."""
+    try:
+        email = (email or "").strip().lower()
+        rec = _gauth_all().get(email) or {}
+        rt = rec.get("refresh_token")
+        if not rt:
+            return None
+        if rec.get("cal_off"):           # הסוכן כיבה סנכרון יומן
+            return None
+        access = _g_access_from_refresh(rt)
+        if not access:
+            return None
+        ev = {"summary": summary or "", "description": description or ""}
+        if location:
+            ev["location"] = location
+        if start_iso and end_iso and "T" in start_iso:
+            ev["start"] = {"dateTime": start_iso, "timeZone": tz}
+            ev["end"]   = {"dateTime": end_iso, "timeZone": tz}
+        elif start_iso:
+            ev["start"] = {"date": start_iso[:10]}
+            ev["end"]   = {"date": (end_iso or start_iso)[:10]}
+        r = requests.post("https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            headers={"Authorization": "Bearer " + access, "Content-Type": "application/json"},
+            json=ev, timeout=15)
+        if r.ok:
+            return (r.json() or {}).get("id")
+        log.error(f"gcal create {r.status_code}: {(r.text or '')[:200]}")
+        return None
+    except Exception as e:
+        log.error(f"gcal error: {e}"); return None
+
+@app.route("/api/gcal/test", methods=["GET", "POST"])
+def api_gcal_test():
+    """בדיקת יומן: יוצר אירוע דמו ביומן של המשתמש המחובר (לאימות שהחיבור עובד)."""
+    s = _web_auth()
+    if not s:
+        return jsonify({"ok": False, "reason": "no_session"}), 401
+    email = _gauth_email_for_phone(s.get("phone", ""))
+    if not email:
+        return jsonify({"ok": False, "reason": "no_google_link (התחבר פעם אחת עם Google)"})
+    eid = gcal_create_event(email, "בדיקת Family Bot ✅",
+                            "אירוע בדיקה — אם אתה רואה אותו, סנכרון היומן עובד.",
+                            start_iso=None, end_iso=None)
+    return jsonify({"ok": bool(eid), "eventId": eid, "email": email})
 
 @app.route("/api/admin/loginas", methods=["POST"])
 def api_admin_loginas():
@@ -5255,7 +5538,12 @@ html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
 <div id="login">
   <div class="loginlogo"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
   <div class="loginhead">ברוך הבא</div>
-  <div class="loginsub">התחבר עם מספר הטלפון שלך — נשלח לך קוד אימות חד-פעמי ב-SMS.</div>
+  <div class="loginsub">התחבר כדי להמשיך לאזור האישי שלך.</div>
+  <a id="gbtn" href="/auth/google/login" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:360px;margin:0 auto 12px;padding:14px;background:#fff;border:1px solid #dadce0;border-radius:13px;font-size:16px;font-weight:700;color:#3c4043;text-decoration:none;box-sizing:border-box">
+    <svg width="19" height="19" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.4 0 24 0 14.6 0 6.4 5.4 2.6 13.3l7.9 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.1 5.5c4.2-3.9 6.6-9.6 6.6-16z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.7-2.9-.7-4.6s.3-3.2.7-4.6l-7.9-6.1C1 16.5 0 20.1 0 24s1 7.5 2.6 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.1-5.5c-2 1.3-4.5 2.1-8.8 2.1-6.3 0-11.7-3.7-13.5-9.9l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
+    התחבר עם Google
+  </a>
+  <div class="loginsub" style="margin:8px 0 12px;font-size:13px;opacity:.8">או התחבר עם מספר טלפון</div>
   <div class="card" id="s1">
     <label class="muted">מספר הטלפון שלך</label>
     <input id="phone" type="tel" inputmode="numeric" placeholder="05X-XXXXXXX">
