@@ -1683,9 +1683,17 @@ def _epoch_from_iso(s: str) -> float:
     except:
         return 0
 def _fmt_il_dt(s: str) -> str:
-    from datetime import datetime
+    from datetime import datetime, timezone, timedelta
     try:
         d = datetime.fromisoformat(str(s).replace("Z","+00:00"))
+        # ערך ללא אזור-זמן נחשב UTC (כך מגיע מהמקור), וממירים לשעון ישראל
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        try:
+            from zoneinfo import ZoneInfo
+            d = d.astimezone(ZoneInfo("Asia/Jerusalem"))
+        except Exception:
+            d = d.astimezone(timezone.utc) + timedelta(hours=3)
         return d.strftime("%d/%m/%Y %H:%M")
     except:
         return ""
@@ -2610,6 +2618,9 @@ def api_admin_loginas():
     _scope, drole = _resolve_roles(_last9(phone)) if phone else ("agent", "agent")
     token = _secrets.token_urlsafe(24)
     sess = {"phone": phone, "role": _scope, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
+    # סינון שיחות/נתונים לפי *כל* הטלפונים של הסוכן (כמו ב"צפה כסוכן") — לא רק טלפון אחד שרירותי
+    if phones:
+        sess["phones"] = [_last9(p) for p in phones if _last9(p)]
     _cc = _coordinators_all()
     if _scope == "coordinator" and _last9(phone) in _cc:
         sess["agents"] = list(_cc[_last9(phone)]["agents"])
@@ -5694,6 +5705,15 @@ function loadCalls(){if(CALLDATA)renderCalls();   /* הצגה מיידית מה�
     if(r.tabs&&!IMP){TABS=r.tabs;try{localStorage.setItem("fbTabs",JSON.stringify(TABS));}catch(e){}applyTabPerms();}
     CALLDATA=r;renderCalls();
   }).catch(function(){});}
+/* "חייג חזרה" — חסם של 20 דקות לכל לקוח, מרגע הלחיצה, כדי לא להטריד בחיוגים חוזרים */
+function cbGuard(el,ph){ph=String(ph||"").replace(/\D/g,"");if(!ph)return true;
+  var key="cbk:"+ph,now=Date.now(),WIN=1200000;
+  try{var last=parseInt(localStorage.getItem(key)||"0",10);
+    if(last&&(now-last)<WIN){var mins=Math.ceil((WIN-(now-last))/60000);
+      alert("כבר חויג חזרה ללקוח הזה. אפשר לחייג שוב בעוד "+mins+" דק׳.");return false;}
+    localStorage.setItem(key,String(now));
+  }catch(e){}
+  return true;}
 function renderCalls(){var r=CALLDATA;if(!r||TABNOW!="calls"||!$("calls"))return;
   var calls=r.calls.filter(function(c){return inRange(c.ts);});
   $("live").innerHTML="🟢 חי · "+periodLabel()+" · "+calls.length+(HIDDENMODE?" מוסתרות":" שיחות");
@@ -5707,7 +5727,7 @@ function renderCalls(){var r=CALLDATA;if(!r||TABNOW!="calls"||!$("calls"))return
   $("calls").innerHTML=(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
     var callerLink=c.caller?("<a href='tel:"+(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
-    var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener>🔁 חייג חזרה</a>"):"";
+    var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener onclick=\"return cbGuard(this,'"+esc(c.tel||c.caller||"")+"')\">🔁 חייג חזרה</a>"):"";
     var bsum=(c.summary||"")+(c.clientDetails?("\n"+c.clientDetails):"");
     var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\"><svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>הוסף קונה</button>";
     var hideb=" <button class=hidecall data-id=\""+esc(c.id||"")+"\" data-act=\""+(HIDDENMODE?"unhide":"hide")+"\">"+(HIDDENMODE?"שחזר":"הסתר")+"</button>";
