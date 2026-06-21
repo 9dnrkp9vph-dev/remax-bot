@@ -2659,7 +2659,8 @@ def api_auth_verify():
 # כניסה עם Google כאופציה ראשית; SMS נשאר כגיבוי. בכניסה ראשונה הסוכן מקשר את
 # חשבון הגוגל לטלפון שלו (אימות SMS פעם אחת) ומאז נכנס בקליק. רדום אם אין מפתחות.
 from urllib.parse import urlencode as _urlencode
-_goauth_state   = {}   # state(csrf) -> exp
+_goauth_state   = {}   # state(csrf) -> {"exp", "native"}
+NATIVE_URL_SCHEME = os.environ.get("NATIVE_URL_SCHEME", "remaxfamily")   # deep-link חזרה לאפליקציה
 _goauth_pending = {}   # glink token -> {"email","name","refresh_token","exp"} לאימייל שעוד לא מקושר
 
 def _gauth_enabled():
@@ -2791,6 +2792,7 @@ def _g_link_page(glink, email):
         "});}else{var cd=document.getElementById('cd').value.replace(/\\D/g,'');"
         "px('/api/auth/glink_verify',{glink:G,phone:ph,code:cd}).then(function(p){"
         "if(!p.ok){e.textContent='קוד שגוי, נסה שוב';return;}"
+        "if(p.native){location.href='" + NATIVE_URL_SCHEME + "://login?token='+p.token;return;}"
         "try{localStorage.setItem('fbTok',p.token);localStorage.setItem('fbRole',p.role||'');"
         "localStorage.setItem('fbDrole',p.drole||'');localStorage.setItem('fbName',p.name||'');"
         "localStorage.setItem('fbDev',p.dev?'1':'0');localStorage.setItem('fbTabs',JSON.stringify(p.tabs||null));}catch(x){}"
@@ -2802,7 +2804,8 @@ def auth_google_login():
     if not _gauth_enabled():
         return _g_msg("התחברות Google אינה פעילה עדיין", "פנה למנהל המערכת"), 200
     state = _secrets.token_urlsafe(16)
-    _goauth_state[state] = time.time() + 600
+    native = request.args.get("native") == "1"
+    _goauth_state[state] = {"exp": time.time() + 600, "native": native}
     params = {"client_id": GOOGLE_CLIENT_ID, "redirect_uri": GOOGLE_REDIRECT_URI,
               "response_type": "code",
               "scope": "openid email profile https://www.googleapis.com/auth/calendar.events",
@@ -2817,9 +2820,11 @@ def auth_google_callback():
     if request.args.get("error"):
         return _g_msg("הכניסה בוטלה", "אפשר לנסות שוב או להיכנס עם טלפון")
     state = request.args.get("state", "")
-    if state not in _goauth_state or _goauth_state.get(state, 0) < time.time():
+    st = _goauth_state.get(state)
+    if not st or st.get("exp", 0) < time.time():
         return _g_msg("פג תוקף ההתחברות", "נסה להתחבר שוב")
     _goauth_state.pop(state, None)
+    native = bool(st.get("native"))
     tok = _g_token_exchange(request.args.get("code", ""))
     if not tok or not tok.get("access_token"):
         return _g_msg("שגיאת התחברות מול Google", "נסה שוב")
@@ -2833,11 +2838,14 @@ def auth_google_callback():
     if rec and rec.get("phone"):
         if rt:
             _gauth_link(email, rec["phone"], rt, name)   # רענון הטוקן אם הגיע חדש
-        _, payload = _g_mint(rec["phone"])
+        token, payload = _g_mint(rec["phone"])
+        if native:   # אפליקציה — חזרה דרך deep-link עם הטוקן
+            return redirect(NATIVE_URL_SCHEME + "://login?token=" + token)
         return _g_done_page(payload)
     # אימייל שעוד לא מקושר → דף קישור חד-פעמי עם אימות טלפון
     glink = _secrets.token_urlsafe(18)
-    _goauth_pending[glink] = {"email": email, "name": name, "refresh_token": rt, "exp": time.time() + 900}
+    _goauth_pending[glink] = {"email": email, "name": name, "refresh_token": rt,
+                              "native": native, "exp": time.time() + 900}
     return _g_link_page(glink, email)
 
 @app.route("/api/auth/glink_request", methods=["POST"])
@@ -2881,8 +2889,18 @@ def api_glink_verify():
         _otp_store.pop(phone, None)
     _gauth_link(pend["email"], phone, pend.get("refresh_token"), pend.get("name", ""))
     _goauth_pending.pop(glink, None)
-    _, payload = _g_mint(phone, "כניסה עם Google (קישור ראשון)")
-    return jsonify({"ok": True, **payload})
+    token, payload = _g_mint(phone, "כניסה עם Google (קישור ראשון)")
+    return jsonify({"ok": True, "native": bool(pend.get("native")), **payload})
+
+@app.route("/api/auth/whoami", methods=["GET", "POST"])
+def api_auth_whoami():
+    """החזרת תפקיד/שם/טאבים מהטוקן — ל-hydration אחרי כניסת Google ב-deep-link (טוקן בלבד)."""
+    s = _web_auth()
+    if not s:
+        return jsonify({"ok": False, "auth": False}), 401
+    return jsonify({"ok": True, "role": s.get("role"), "drole": s.get("drole", ""),
+                    "name": s.get("name", ""), "dev": bool(s.get("dev", False)),
+                    "tabs": _tabs_for_role(s.get("drole", ""))})
 
 def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
                       location=None, tz="Asia/Jerusalem"):
@@ -5586,7 +5604,7 @@ html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
   <div class="loginlogo"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
   <div class="loginhead">ברוך הבא</div>
   <div class="loginsub">התחבר כדי להמשיך לאזור האישי שלך.</div>
-  <a id="gbtn" href="/auth/google/login" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:360px;margin:0 auto 12px;padding:14px;background:#fff;border:1px solid #dadce0;border-radius:13px;font-size:16px;font-weight:700;color:#3c4043;text-decoration:none;box-sizing:border-box">
+  <a id="gbtn" href="/auth/google/login" onclick="if(typeof fbIsNative=='function'&&fbIsNative()){this.href='/auth/google/login?native=1';}return true;" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:360px;margin:0 auto 12px;padding:14px;background:#fff;border:1px solid #dadce0;border-radius:13px;font-size:16px;font-weight:700;color:#3c4043;text-decoration:none;box-sizing:border-box">
     <svg width="19" height="19" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.4 0 24 0 14.6 0 6.4 5.4 2.6 13.3l7.9 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.1 5.5c4.2-3.9 6.6-9.6 6.6-16z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.7-2.9-.7-4.6s.3-3.2.7-4.6l-7.9-6.1C1 16.5 0 20.1 0 24s1 7.5 2.6 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.1-5.5c-2 1.3-4.5 2.1-8.8 2.1-6.3 0-11.7-3.7-13.5-9.9l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
     התחבר עם Google
   </a>
@@ -5626,7 +5644,13 @@ function $(id){return document.getElementById(id);}
 function show(id){$("s1").classList.add("hidden");$("s2").classList.add("hidden");$(id).classList.remove("hidden");}
 function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};if(TOKEN)opt.headers["X-Auth-Token"]=TOKEN;return fetch(path,opt).then(function(r){return r.json();});}
 try{var sp=localStorage.getItem("fbPhone");if(sp)$("phone").value=sp;}catch(e){}
-try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");DROLE=localStorage.getItem("fbDrole")||"";NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}fbAutoLogin();}}catch(e){}
+try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");DROLE=localStorage.getItem("fbDrole")||"";NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}if(!ROLE){fbHydrate(fbAutoLogin);}else{fbAutoLogin();}}}catch(e){}
+/* Deep-link מ-Google login שחזר מ-Safari: remaxfamily://login?token=... (אפליקציה בלבד; בדפדפן no-op) */
+(function(){try{var A=(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App)?Capacitor.Plugins.App:null;if(!A)return;
+  A.addListener("appUrlOpen",function(data){try{var url=(data&&data.url)||"";var m=url.match(/[?&#]token=([^&]+)/);if(!m)return;var token=decodeURIComponent(m[1]);localStorage.setItem("fbTok",token);try{localStorage.removeItem("fbRole");localStorage.removeItem("fbName");localStorage.removeItem("fbTabs");}catch(e){}try{if(Capacitor.Plugins.Browser)Capacitor.Plugins.Browser.close();}catch(e){}location.replace("/app");}catch(e){}});
+}catch(e){}})();
+/* Hydration: כשיש fbTok בלי תפקיד (חזרה מ-deep-link) — מושכים תפקיד/שם/טאבים מהשרת לפי הטוקן */
+function fbHydrate(cb){cb=cb||enter;api("/api/auth/whoami").then(function(r){if(r&&r.ok){ROLE=r.role;DROLE=r.drole||"";NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbRole",ROLE||"");localStorage.setItem("fbDrole",DROLE||"");localStorage.setItem("fbName",NAME||"");localStorage.setItem("fbDev",DEV?"1":"0");localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}cb();}else{try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}}).catch(function(){cb();});}
 /* MOBILE-PATCH: שער Face ID — פעיל רק בתוך אפליקציית Capacitor; בדפדפן נופל ל-enter(). נחוץ לנייד, לא להסיר */
 function fbIsNative(){try{return !!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());}catch(e){return false;}}
 function fbBio(){try{return (window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.NativeBiometric)||null;}catch(e){return null;}}
