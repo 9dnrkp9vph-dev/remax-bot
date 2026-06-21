@@ -2122,6 +2122,46 @@ _web_sessions = {}  # token -> {"phone","role","name","exp"}
 _OTP_TTL  = 300
 _SESS_TTL = 6 * 3600
 
+# ── טוקן חתום (stateless) ששורד רסטארט/cold-start של Render ──────────────────────
+import hmac as _hmac, hashlib as _hashlib
+_SESSION_SECRET = (os.environ.get("SESSION_SECRET") or os.environ.get("APPS_SCRIPT_TOKEN")
+                   or "fb-static-session-secret-v1").encode()
+def _b64u(b): return base64.urlsafe_b64encode(b).decode().rstrip("=")
+def _b64u_dec(s):
+    s = str(s) + "=" * (-len(str(s)) % 4)
+    return base64.urlsafe_b64decode(s.encode())
+def _mint_token(phone, ttl=_SESS_TTL):
+    """טוקן חתום: טלפון + תוקף, חתום ב-HMAC. תקף גם אחרי שהשרת התעורר מחדש."""
+    exp = int(time.time() + ttl)
+    data = _b64u(json.dumps({"p": _last9(phone), "e": exp}).encode())
+    sig = _b64u(_hmac.new(_SESSION_SECRET, data.encode(), _hashlib.sha256).digest())
+    return data + "." + sig
+def _verify_token(tok):
+    """מאמת חתימה+תוקף ומחזיר את הטלפון, או None."""
+    try:
+        data, sig = str(tok).split(".", 1)
+        good = _b64u(_hmac.new(_SESSION_SECRET, data.encode(), _hashlib.sha256).digest())
+        if not _hmac.compare_digest(sig, good): return None
+        obj = json.loads(_b64u_dec(data))
+        if int(obj.get("e", 0)) < time.time(): return None
+        return _last9(str(obj.get("p", "")))
+    except Exception:
+        return None
+def _session_from_phone(phone):
+    """בונה מחדש סשן מהטלפון בלבד (לשחזור אחרי רסטארט) — זהה לכניסה רגילה."""
+    phone = _last9(phone)
+    scope, drole = _resolve_roles(phone)
+    if not scope: scope = "agent"
+    if _is_dev(phone): scope = "admin"; drole = "developer"
+    name = _login_name(phone, scope, drole)
+    sess = {"phone": phone, "role": scope, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
+    if _is_dev(phone): sess["dev"] = True
+    _cc = _coordinators_all()
+    if scope == "coordinator" and phone in _cc:
+        sess["agents"] = list(_cc[phone]["agents"])
+        sess["agent_names"] = list(_cc[phone]["names"])
+    return sess
+
 def _last9(s):
     d = re.sub(r"\D", "", str(s or ""))
     return d[-9:]
@@ -2514,10 +2554,17 @@ def _web_auth():
            or ((request.get_json(silent=True) or {}).get("token") if request.method == "POST" else None))
     if not tok: return None
     s = _web_sessions.get(tok)
-    if not s: return None
-    if s["exp"] < time.time():
-        _web_sessions.pop(tok, None); return None
-    return s
+    if s:
+        if s["exp"] < time.time():
+            _web_sessions.pop(tok, None); return None
+        return s
+    # נפילה לטוקן חתום (stateless) — שורד רסטארט של השרת, בלי לזרוק את המשתמש החוצה
+    phone = _verify_token(tok)
+    if phone:
+        sess = _session_from_phone(phone)
+        _web_sessions[tok] = sess
+        return sess
+    return None
 
 # --- activity log (in-memory, newest last) ---
 _activity = []
@@ -2577,7 +2624,7 @@ def api_auth_verify():
         if _is_dev(phone): scope = "admin"; drole = "developer"
         role = scope
         name = _login_name(phone, scope, drole)
-        token = _secrets.token_urlsafe(24)
+        token = _mint_token(phone)
         sess = {"phone": phone, "role": role, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
         if _is_dev(phone): sess["dev"] = True
         _cc = _coordinators_all()
@@ -2597,7 +2644,7 @@ def api_auth_verify():
     if _is_dev(phone): scope = "admin"; drole = "developer"
     role = scope
     name = _login_name(phone, scope, drole)
-    token = _secrets.token_urlsafe(24)
+    token = _mint_token(phone)
     sess = {"phone": phone, "role": role, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
     if _is_dev(phone): sess["dev"] = True
     _cc = _coordinators_all()
@@ -2683,7 +2730,7 @@ def _g_mint(phone, label="כניסה עם Google"):
     if _is_dev(phone): scope = "admin"; drole = "developer"
     role = scope
     name = _login_name(phone, scope, drole)
-    token = _secrets.token_urlsafe(24)
+    token = _mint_token(phone)
     sess = {"phone": phone, "role": role, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
     if _is_dev(phone): sess["dev"] = True
     _cc = _coordinators_all()
