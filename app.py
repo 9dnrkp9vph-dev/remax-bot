@@ -6649,9 +6649,10 @@ function loadNewbornPage(){
 }
 var NBSTL={meeting:"📅 נקבעה פגישה",followup:"🔁 פולו-אפ",not_interested:"✖ לא מעוניין",cannot:"🚫 לא ניתן לגיוס"};
 function nbFmtDate(s){s=String(s||"");var t="";if(s.indexOf("T")>-1){t=" "+s.slice(11,16);s=s.slice(0,10);}var p=s.split("-");if(p.length==3)return p[2]+"/"+p[1]+"/"+p[0]+t;return s+t;}
+function nbEnc(s){return encodeURIComponent(String(s||"")).replace(/'/g,"%27").replace(/\(/g,"%28").replace(/\)/g,"%29");}
 function nbCard(x){
-  var k=encodeURIComponent(x.key||""),a=encodeURIComponent(x.address||""),ph=x.phone||"";
-  var pr=encodeURIComponent(x.price||""),pn=encodeURIComponent(ph||"");
+  var k=nbEnc(x.key||""),a=nbEnc(x.address||""),ph=x.phone||"";
+  var pr=nbEnc(x.price||""),pn=nbEnc(ph||"");
   var sbtn="padding:9px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:13px;font-weight:700;color:#0D1B2A;flex:1;min-width:calc(50% - 4px);cursor:pointer";
   var stat=x.stat?("<div style='margin-top:8px;font-size:13px;font-weight:800;color:#1f8a4c'>"+esc(NBSTL[x.stat.status]||x.stat.status)+(x.stat.date?(" · "+esc(nbFmtDate(x.stat.date))):"")+(x.stat.agent&&isMulti()?(" · "+esc(x.stat.agent)):"")+"</div>"):"";
   var sbtns="<div style='display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'>"+
@@ -6683,7 +6684,7 @@ function nbStatSend(k,a,type,date,agent,price,phone){api("/api/newborn/status",{
   if(r&&r.ok){var msg=(type=="meeting"||type=="followup")?(r.calendar?"נשמר ונוסף ליומן Google ✅":"נשמר ✅ (לא נוסף ליומן — צריך להתחבר עם Google כדי לסנכרן יומן)"):"נשמר ✅";alert(msg);loadNewbornPage();}
   else alert("השמירה נכשלה"+((r&&r.reason=="no_date")?" — חסר תאריך":""));}).catch(function(){alert("שגיאת רשת");});}
 function nbDateDialog(type,cb){var dt=(type=="meeting");var title=dt?"בחר תאריך ושעה לפגישה":"בחר תאריך לפולו-אפ";
-  var inp=dt?"<input id=nbdt type=datetime-local class=chip style='width:100%;box-sizing:border-box'>":"<input id=nbdt type=date class=chip style='width:100%;box-sizing:border-box'>";
+  var inp=dt?"<input id=nbdt type=datetime-local step=900 class=chip style='width:100%;box-sizing:border-box'>":"<input id=nbdt type=date class=chip style='width:100%;box-sizing:border-box'>";
   var agSel=(ROLE=="coordinator")?"<select id=nbag class=chip style='width:100%;box-sizing:border-box;margin-top:8px'><option value=''>בחר סוכן…</option></select>":"";
   var h='<div class=ovl id=nbdovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbdClose()">✕</button></div><div style="margin-top:10px">'+inp+'</div>'+agSel+'<button class="btn-gold" style="width:100%;margin-top:10px" onclick="nbdOk()">אישור</button></div></div>';
   var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbdovl");if(o)o.onclick=function(e){if(e.target.id=="nbdovl")nbdClose();};window._nbdCb=cb;
