@@ -41,7 +41,8 @@ GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "https://remax-bot.onrender.com/auth/google/callback").strip()
 _PUSH_LAST = {}   # אבחון אחרון של שליחת Push — לצפייה ב-/api/push/test
-def send_push(title, body, external_id="owner"):
+OWNER_PUSH_ID = "505709865"   # טלפון אייל (9 ספרות) — אליאס הפוש של הבעלים (במקום "owner" שירד)
+def send_push(title, body, external_id=OWNER_PUSH_ID):
     """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False.
     שומר אבחון מלא ב-_PUSH_LAST (סטטוס + תגובת OneSignal) לצורך /api/push/test."""
     global _PUSH_LAST
@@ -2823,7 +2824,7 @@ def _g_mint(phone, label="כניסה עם Google"):
     _web_sessions[token] = sess
     _log_activity(name, role, phone, label)
     return token, {"token": token, "role": role, "drole": drole, "name": name,
-                   "dev": sess.get("dev", False), "tabs": _tabs_for_role(drole)}
+                   "phone": phone, "dev": sess.get("dev", False), "tabs": _tabs_for_role(drole)}
 
 def _g_page(inner):
     return ("<!doctype html><html lang=he dir=rtl><head><meta charset=utf-8>"
@@ -2849,6 +2850,7 @@ def _g_done_page(payload):
         "<script>var p=" + js + ";try{localStorage.setItem('fbTok',p.token);"
         "localStorage.setItem('fbRole',p.role||'');localStorage.setItem('fbDrole',p.drole||'');"
         "localStorage.setItem('fbName',p.name||'');localStorage.setItem('fbDev',p.dev?'1':'0');"
+        "if(p.phone)localStorage.setItem('fbPhone',p.phone);"
         "localStorage.setItem('fbTabs',JSON.stringify(p.tabs||null));}catch(e){}"
         "location.replace('/app');</script>")
 
@@ -2876,6 +2878,7 @@ def _g_link_page(glink, email):
         "if(!p.ok){e.textContent='קוד שגוי, נסה שוב';return;}"
         "if(p.native){location.href='" + NATIVE_URL_SCHEME + "://login?token='+p.token;return;}"
         "try{localStorage.setItem('fbTok',p.token);localStorage.setItem('fbRole',p.role||'');"
+        "if(p.phone)localStorage.setItem('fbPhone',p.phone);"
         "localStorage.setItem('fbDrole',p.drole||'');localStorage.setItem('fbName',p.name||'');"
         "localStorage.setItem('fbDev',p.dev?'1':'0');localStorage.setItem('fbTabs',JSON.stringify(p.tabs||null));}catch(x){}"
         "location.replace('/app');});}}"
@@ -2981,7 +2984,8 @@ def api_auth_whoami():
     if not s:
         return jsonify({"ok": False, "auth": False}), 401
     return jsonify({"ok": True, "role": s.get("role"), "drole": s.get("drole", ""),
-                    "name": s.get("name", ""), "dev": bool(s.get("dev", False)),
+                    "name": s.get("name", ""), "phone": _last9(s.get("phone", "")),
+                    "dev": bool(s.get("dev", False)),
                     "tabs": _tabs_for_role(s.get("drole", ""))})
 
 def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
@@ -3743,7 +3747,7 @@ def _manager_push_ids():
         if _ROLE_SCOPE.get(role) == "admin":
             l = _last9(ph)
             if l: ids.add(l)
-    ids.add("owner")
+    ids.add(OWNER_PUSH_ID)   # אייל (במקום אליאס "owner" שירד מ-OneSignal)
     return [i for i in ids if i]
 
 def _notify_managers_signing(status_label, client, agent, address):
@@ -5337,7 +5341,12 @@ def api_buyers_add():
     try:
         _who = (name or phone or "לקוח חדש")
         _bd = "נוסף קונה חדש: " + _who + (" · 👤 " + eff_name if eff_name else "")
-        threading.Thread(target=send_push, args=("קונה חדש 🔔", _bd, _manager_push_ids()), daemon=True).start()
+        # יעד: הסוכן שהקונה שויך אליו (לפי הטלפון שלו) + המנהלים
+        _targets = list(_manager_push_ids())
+        for _ph in _phones_for_name(eff_name):
+            if _last9(_ph) and _last9(_ph) not in _targets: _targets.append(_last9(_ph))
+        if _last9(eff_phone) and _last9(eff_phone) not in _targets: _targets.append(_last9(eff_phone))
+        threading.Thread(target=send_push, args=("קונה חדש 🔔", _bd, _targets), daemon=True).start()
     except Exception:
         pass
     return jsonify({"ok": True})
@@ -5966,7 +5975,7 @@ try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getIt
   A.addListener("appUrlOpen",function(data){try{var url=(data&&data.url)||"";var m=url.match(/[?&#]token=([^&]+)/);if(!m)return;var token=decodeURIComponent(m[1]);localStorage.setItem("fbTok",token);try{localStorage.removeItem("fbRole");localStorage.removeItem("fbName");localStorage.removeItem("fbTabs");}catch(e){}try{if(Capacitor.Plugins.Browser)Capacitor.Plugins.Browser.close();}catch(e){}location.replace("/app");}catch(e){}});
 }catch(e){}})();
 /* Hydration: כשיש fbTok בלי תפקיד (חזרה מ-deep-link) — מושכים תפקיד/שם/טאבים מהשרת לפי הטוקן */
-function fbHydrate(cb){cb=cb||enter;api("/api/auth/whoami").then(function(r){if(r&&r.ok){ROLE=r.role;DROLE=r.drole||"";NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbRole",ROLE||"");localStorage.setItem("fbDrole",DROLE||"");localStorage.setItem("fbName",NAME||"");localStorage.setItem("fbDev",DEV?"1":"0");localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}cb();}else{try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}}).catch(function(){cb();});}
+function fbHydrate(cb){cb=cb||enter;api("/api/auth/whoami").then(function(r){if(r&&r.ok){ROLE=r.role;DROLE=r.drole||"";NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbRole",ROLE||"");localStorage.setItem("fbDrole",DROLE||"");localStorage.setItem("fbName",NAME||"");localStorage.setItem("fbDev",DEV?"1":"0");if(r.phone)localStorage.setItem("fbPhone",r.phone);localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}cb();}else{try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}}).catch(function(){cb();});}
 /* MOBILE-PATCH: שער Face ID — פעיל רק בתוך אפליקציית Capacitor; בדפדפן נופל ל-enter(). נחוץ לנייד, לא להסיר */
 function fbIsNative(){try{return !!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());}catch(e){return false;}}
 function fbBio(){try{return (window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.NativeBiometric)||null;}catch(e){return null;}}
