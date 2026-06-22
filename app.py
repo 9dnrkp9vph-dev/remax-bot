@@ -90,11 +90,27 @@ SESSION_TIMEOUT = 45
 # ══════════════════════════════════════════════════════════════════════════════
 def maytapi_headers():
     return {"x-maytapi-key": MAYTAPI_TOKEN, "Content-Type": "application/json"}
+_WA_LAST = {}   # אבחון אחרון של שליחת WhatsApp — לצפייה ב-/api/wa/test
 def send_text(to: str, text: str):
-    r = requests.post(f"{MAYTAPI_BASE}/sendMessage",
-        headers=maytapi_headers(),
-        json={"to_number": to, "type": "text", "message": text})
-    log.info(f"send_text → {r.status_code}")
+    """שולח הודעת WhatsApp דרך Maytapi. מחזיר True/False לפי הצלחה אמיתית (success מ-Maytapi)."""
+    global _WA_LAST
+    try:
+        r = requests.post(f"{MAYTAPI_BASE}/sendMessage",
+            headers=maytapi_headers(),
+            json={"to_number": to, "type": "text", "message": text}, timeout=20)
+        ok = False
+        try:
+            j = r.json()
+            ok = bool(r.ok and isinstance(j, dict) and j.get("success"))
+        except Exception:
+            pass
+        _WA_LAST = {"ok": ok, "status": r.status_code, "to": to, "resp": (r.text or "")[:400]}
+        log.info(f"send_text → {r.status_code} ok={ok}")
+        return ok
+    except Exception as e:
+        _WA_LAST = {"ok": False, "to": to, "reason": str(e)[:200]}
+        log.error(f"send_text error: {e}")
+        return False
 def download_profile_pic(phone: str, dest: Path) -> bool:
     """הורד תמונת פרופיל ושמור לקובץ — מנסה כמה endpoints"""
     try:
@@ -1082,6 +1098,7 @@ def fetch_agents_full() -> dict:
             name = (row[0] if len(row) > 0 else "").strip()
             phone = (row[1] if len(row) > 1 else "").strip()
             lic = (row[3] if len(row) > 3 else "").strip()
+            if "@" in lic: lic = ""   # עמודה D מכילה מייל, לא רישיון — לא להציג כרישיון על מסמכים
             if name and name not in ("שם מלא", "משרד", "משרד ביאליק", "רישיון תיווך"):
                 out[_norm_name(name)] = {"name": name, "phone": phone, "license": lic}
         _agents_full_cache["data"] = out
@@ -1090,6 +1107,45 @@ def fetch_agents_full() -> dict:
     except Exception as e:
         log.error(f"agents full error: {e}")
         return {}
+
+_agent_emails_cache = {"data": None, "ts": 0}
+def web_agent_emails():
+    """מיילים של סוכנים מגיליון 'אנשי קשר' (A=שם, B=טלפון, E=מייל). מפתחות: canon(שם) ו-'p:'+last9(טלפון)."""
+    if _agent_emails_cache["data"] is not None and (time.time() - _agent_emails_cache["ts"]) < 300:
+        return _agent_emails_cache["data"]
+    out = {}
+    if not GOOGLE_SHEETS_API_KEY:
+        return out
+    from urllib.parse import quote
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(CONTACTS_SHEET_NAME)}!A1:E200?key={GOOGLE_SHEETS_API_KEY}"
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            for row in r.json().get("values", []):
+                name = (row[0] if len(row) > 0 else "").strip()
+                phone = (row[1] if len(row) > 1 else "").strip()
+                # מייל בעמודה D; אם יש עמודה E עם מייל — עדיפה (גמיש לשני המבנים)
+                email = (row[3] if len(row) > 3 else "").strip().lower()
+                _e5 = (row[4] if len(row) > 4 else "").strip().lower()
+                if "@" in _e5: email = _e5
+                if not email or "@" not in email:
+                    continue
+                if name: out[_canon_key(name)] = email
+                _l9 = _last9(phone)
+                if _l9: out["p:" + _l9] = email
+            _agent_emails_cache["data"] = out
+            _agent_emails_cache["ts"] = time.time()
+    except Exception as e:
+        log.error(f"agent emails error: {e}")
+    return out
+def _agent_email_for(name="", phone=""):
+    m = web_agent_emails()
+    if phone:
+        e = m.get("p:" + _last9(phone))
+        if e: return e
+    if name:
+        return m.get(_canon_key(name), "")
+    return ""
 
 def _fmt_vphone(v):
     """נרמול טלפון ישראלי לתצוגה: 0XXXXXXXXX."""
@@ -2929,8 +2985,9 @@ def api_auth_whoami():
                     "tabs": _tabs_for_role(s.get("drole", ""))})
 
 def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
-                      location=None, tz="Asia/Jerusalem"):
+                      location=None, tz="Asia/Jerusalem", attendees=None, send_updates="none"):
     """יוצר אירוע ביומן הראשי של הסוכן (לפי האימייל המקושר). מחזיר eventId או None.
+    attendees = רשימת מיילים שיוזמנו (מקבלים הזמנה במייל אם send_updates='all').
     לעולם לא זורק חריגה — כשל ביומן לא ישבור את הפעולה במערכת.
     start_iso/end_iso = '2026-06-25T17:00:00' לאירוע עם שעה, או '2026-06-25' ליום שלם."""
     try:
@@ -2947,13 +3004,19 @@ def gcal_create_event(email, summary, description="", start_iso=None, end_iso=No
         ev = {"summary": summary or "", "description": description or ""}
         if location:
             ev["location"] = location
+        if attendees:
+            _at = [{"email": a} for a in attendees if a and "@" in a]
+            if _at: ev["attendees"] = _at
         if start_iso and end_iso and "T" in start_iso:
             ev["start"] = {"dateTime": start_iso, "timeZone": tz}
             ev["end"]   = {"dateTime": end_iso, "timeZone": tz}
         elif start_iso:
             ev["start"] = {"date": start_iso[:10]}
             ev["end"]   = {"date": (end_iso or start_iso)[:10]}
-        r = requests.post("https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        _url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+        if send_updates and send_updates != "none":
+            _url += "?sendUpdates=" + send_updates
+        r = requests.post(_url,
             headers={"Authorization": "Bearer " + access, "Content-Type": "application/json"},
             json=ev, timeout=15)
         if r.ok:
@@ -3735,7 +3798,7 @@ def api_sign_send_remote():
     except Exception: sms_ok = False
     try:
         wa = _wa_phone(phone)
-        if wa: send_text(wa, msg); wa_ok = True
+        if wa: wa_ok = bool(send_text(wa, msg))
     except Exception: wa_ok = False
     if ok_any:
         _cache_clear("signings_sheet")
@@ -3825,7 +3888,7 @@ def api_sign_share():
     wa_ok = False; sms_ok = False
     try:
         wa = _wa_phone(phone)
-        if wa: send_text(wa, msg); wa_ok = True
+        if wa: wa_ok = bool(send_text(wa, msg))
     except Exception: wa_ok = False
     try: sms_ok = bool(web_send_sms(last9, msg))
     except Exception: sms_ok = False
@@ -4928,7 +4991,7 @@ def api_newborn_status():
               "date": (date if status in ("meeting", "followup") else "")}
     cfg["nbStatus"] = m
     _save_config(cfg)
-    # אירוע יומן לפגישה/פולואפ — ביומן הסוכן וגם ביומן המתאמת/מנהל שקבע (אם שונה)
+    # אירוע יומן לפגישה/פולואפ
     cal_ok = False
     if status in ("meeting", "followup") and date:
         label = _NB_STATUS_LABELS[status]
@@ -4942,15 +5005,19 @@ def api_newborn_status():
                 end_iso = (_dtm.fromisoformat(start_iso) + _td(hours=1)).isoformat()
             except Exception:
                 end_iso = None
-        emails = []
+        # מייל הסוכן היעד: קודם חיבור Google, אחרת מאנשי קשר (עמודה E)
         _ps = list(_phones_for_name(nm))
-        _ae = _gauth_email_for_phone(_ps[0]) if _ps else ""
-        if _ae: emails.append(_ae)
-        _me = _gauth_email_for_phone(s.get("phone", ""))   # המתאמת/מנהל שקבע
-        if _me and _me not in emails: emails.append(_me)
-        for _em in emails:
-            if gcal_create_event(_em, summary, desc, start_iso, end_iso):
-                cal_ok = True
+        _agent_g = _gauth_email_for_phone(_ps[0]) if _ps else ""
+        _agent_mail = _agent_g or _agent_email_for(nm, _ps[0] if _ps else "")
+        _organizer = _gauth_email_for_phone(s.get("phone", ""))   # מי שקבע (סוכן/מתאמת/מנהל) — חייב מחובר Google
+        if _organizer:
+            # אירוע ביומן הקובע, והסוכן מוזמן במייל (אם שונה) — מקבל הזמנה ליומן גם בלי להתחבר
+            _atts = [_agent_mail] if (_agent_mail and _agent_mail.lower() != _organizer.lower()) else []
+            cal_ok = bool(gcal_create_event(_organizer, summary, desc, start_iso, end_iso,
+                                            attendees=_atts, send_updates=("all" if _atts else "none")))
+        elif _agent_g:
+            # הקובע לא מחובר ל-Google אבל הסוכן כן — נוצר ישירות ביומן הסוכן
+            cal_ok = bool(gcal_create_event(_agent_g, summary, desc, start_iso, end_iso))
     _log_activity(nm, s["role"], s.get("phone", ""), "סטטוס נכס נולד",
                   (_NB_STATUS_LABELS.get(status, status) + " · " + (addr or key))[:80])
     return jsonify({"ok": True, "calendar": cal_ok, "status": status, "date": date})
@@ -5182,6 +5249,20 @@ def api_push_test():
     ok = send_push("בדיקת התראה 🔔", "Push עובד! התראת בדיקה מ-Family Bot", ids)
     return jsonify({"ok": ok, "configured": bool(ONESIGNAL_REST_KEY),
                     "targeted_ids": ids, "onesignal": _PUSH_LAST})
+
+@app.route("/api/wa/test", methods=["GET", "POST"])
+def api_wa_test():
+    """בדיקת WhatsApp (Maytapi) — למפתח בלבד. /api/wa/test?to=0501234567"""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    to = (request.args.get("to") or s.get("phone", "")).strip()
+    wa = _wa_phone(to)
+    ok = send_text(wa, "בדיקת WhatsApp ✅ — Family Bot") if wa else False
+    # אבחון התצורה (בלי לחשוף את הטוקן)
+    cfg = {"phone_id": MAYTAPI_PHONE_ID, "product": MAYTAPI_PRODUCT,
+           "token_set": bool(MAYTAPI_TOKEN), "base": MAYTAPI_BASE}
+    return jsonify({"ok": ok, "to": wa, "config": cfg, "maytapi": _WA_LAST})
 
 @app.route("/api/my/buyers", methods=["GET", "POST"])
 def api_my_buyers():
@@ -6259,8 +6340,8 @@ function renderSigs(){var r=SIGDATA;if(!r||TABNOW!="sigs"||!$("sigs"))return;
     var meta="<span class='"+(signed?"":"pendlbl")+"'>"+(signed?"נחתם":"ממתין לחתימה")+"</span> · "+g.time+((isMulti()&&g.agent)?(" · "+esc(g.agent)):"");
     var delb=(typeof DEV!="undefined"&&DEV)?("<button class=sdel title='מחק הסכם' onclick=\"sigDelete('"+encodeURIComponent(g.eid||"")+"','"+encodeURIComponent(g.raw||"")+"','"+encodeURIComponent(g.client||"")+"')\"><svg class=eico viewBox='0 0 18 18'><path d='M3.5 5h11M7 5V3.5h4V5M5 5l.6 9.5a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9L13 5'/><path d='M8 8v4M10 8v4'/></svg></button>"):"";
     return "<div class='scard"+(tg.excl?" excl":"")+(signed?"":" pending")+(isNew?" new":"")+"'>"+
-      "<div class=stop><b class=sname>"+esc(g.client||g.type||"חתימה")+"</b><span class='stag "+tg.cls+"'>"+esc(g.type)+"</span>"+delb+"</div>"+
-      (g.address?"<div class=saddr>"+_dsv+esc(g.address)+"</div>":"")+
+      "<div class=stop><b class=sname>"+_dsv+esc(g.address||g.client||g.type||"חתימה")+"</b><span class='stag "+tg.cls+"'>"+esc(g.type)+"</span>"+delb+"</div>"+
+      ((g.address&&g.client)?"<div class=saddr>"+esc(g.client)+"</div>":"")+
       "<div class=sdate>"+meta+"</div>"+
       (g.link?"<div style='margin-top:10px'><a class=slink href='"+g.link+"' target=_blank rel=noopener>"+_dsv+"קישור להסכם</a></div>":"")+
     "</div>";
