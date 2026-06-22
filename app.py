@@ -4706,6 +4706,16 @@ def _fetch_newborn_contacts():
     _cache_put("newborn_contacts", d)
     return d
 
+# ── סטטוס טיפול לכל נכס נולד (פגישה/פולואפ/לא מעוניין/לא ניתן לגיוס) — נשמר בקונפיג ──
+_NB_STATUS_LABELS = {
+    "meeting": "נקבעה פגישה", "followup": "פולו-אפ",
+    "not_interested": "לא מעוניין", "cannot": "לא ניתן לגיוס",
+}
+def _nb_statuses():
+    """{key: {status,date,agent,ts}} מהקונפיג."""
+    m = _load_config().get("nbStatus")
+    return m if isinstance(m, dict) else {}
+
 def _newborn_created_epoch(r):
     raw = (r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "") or "").strip()
     if not raw:
@@ -4761,6 +4771,7 @@ def api_newborn():
             return jsonify({"ok": True, "count": 0, "released": 0, "delay": delay, "results": []})
         now = time.time()
         contacts = _fetch_newborn_contacts()
+        nbstatuses = _nb_statuses()
         rows = [r for r in fetch_newborn() if _newborn_created_epoch(r)]
         rows.sort(key=_newborn_created_epoch, reverse=True)
         out = []
@@ -4796,6 +4807,7 @@ def api_newborn():
                 "agent": lister,
                 "link": _nb(r.get("קישור", "")),
                 "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
+                "stat": nbstatuses.get(_k) or None,
             })
             if len(out) >= 300:   # תקרת בטיחות; הפרונט מציג 20 בכל פעם עם "טען עוד"
                 break
@@ -4825,6 +4837,56 @@ def api_newborn_contact():
             pass
         _cache_clear("newborn_contacts")
     return jsonify({"ok": True})
+
+@app.route("/api/newborn/status", methods=["POST"])
+def api_newborn_status():
+    """עדכון סטטוס טיפול לנכס נולד. meeting/followup עם תאריך → אירוע ביומן Google של הסוכן."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    d = request.get_json(silent=True) or {}
+    key = (d.get("key", "") or "").strip()
+    addr = (d.get("addr", "") or "").strip()
+    status = (d.get("status", "") or "").strip()
+    date = (d.get("date", "") or "").strip()   # 'YYYY-MM-DD' או 'YYYY-MM-DDTHH:MM'
+    as_name = (d.get("as", "") or "").strip() if s["role"] in ("admin", "coordinator") else ""
+    nm = as_name or s.get("name", "")
+    if not key or status not in _NB_STATUS_LABELS:
+        return jsonify({"ok": False, "reason": "bad_input"}), 400
+    if status in ("meeting", "followup") and not date:
+        return jsonify({"ok": False, "reason": "no_date"}), 400
+    # שמירה בקונפיג
+    cfg = _load_config()
+    m = cfg.get("nbStatus")
+    if not isinstance(m, dict): m = {}
+    if status in ("not_interested", "cannot") and not date:
+        m[key] = {"status": status, "date": "", "agent": nm, "ts": int(time.time())}
+    else:
+        m[key] = {"status": status, "date": date, "agent": nm, "ts": int(time.time())}
+    cfg["nbStatus"] = m
+    _save_config(cfg)
+    # אירוע יומן לפגישה/פולואפ
+    cal_ok = False
+    if status in ("meeting", "followup") and date:
+        email = _gauth_email_for_phone(s.get("phone", ""))
+        if not email and as_name:
+            ps = list(_phones_for_name(as_name))
+            if ps: email = _gauth_email_for_phone(ps[0])
+        if email:
+            label = _NB_STATUS_LABELS[status]
+            summary = label + " · " + (addr or "נכס נולד")
+            desc = "נקבע מ-Family Bot (נכס נולד)" + (("\nבעל הנכס: " + addr) if addr else "")
+            start_iso = date; end_iso = None
+            if "T" in date:                       # תאריך+שעה → אירוע של שעה
+                if len(date) == 16: start_iso = date + ":00"
+                try:
+                    from datetime import datetime as _dtm, timedelta as _td
+                    end_iso = (_dtm.fromisoformat(start_iso) + _td(hours=1)).isoformat()
+                except Exception:
+                    end_iso = None
+            cal_ok = bool(gcal_create_event(email, summary, desc, start_iso, end_iso))
+    _log_activity(nm, s["role"], s.get("phone", ""), "סטטוס נכס נולד",
+                  (_NB_STATUS_LABELS.get(status, status) + " · " + (addr or key))[:80])
+    return jsonify({"ok": True, "calendar": cal_ok, "status": status, "date": date})
 
 # ── Exclusivity search ─────────────────────────────────────────────────────────
 def _web_num(v):
@@ -6410,8 +6472,18 @@ function loadNewbornPage(){
     renderNewborn();
   }).catch(function(){if($("nblist"))$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";});
 }
+var NBSTL={meeting:"📅 נקבעה פגישה",followup:"🔁 פולו-אפ",not_interested:"✖ לא מעוניין",cannot:"🚫 לא ניתן לגיוס"};
+function nbFmtDate(s){s=String(s||"");var t="";if(s.indexOf("T")>-1){t=" "+s.slice(11,16);s=s.slice(0,10);}var p=s.split("-");if(p.length==3)return p[2]+"/"+p[1]+"/"+p[0]+t;return s+t;}
 function nbCard(x){
   var k=encodeURIComponent(x.key||""),a=encodeURIComponent(x.address||""),ph=x.phone||"";
+  var sbtn="padding:9px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:13px;font-weight:700;color:#0D1B2A;flex:1;min-width:calc(50% - 4px);cursor:pointer";
+  var stat=x.stat?("<div style='margin-top:8px;font-size:13px;font-weight:800;color:#1f8a4c'>"+esc(NBSTL[x.stat.status]||x.stat.status)+(x.stat.date?(" · "+esc(nbFmtDate(x.stat.date))):"")+(x.stat.agent&&isMulti()?(" · "+esc(x.stat.agent)):"")+"</div>"):"";
+  var sbtns="<div style='display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','meeting')\">📅 נקבעה פגישה</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','followup')\">🔁 פולו-אפ</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','not_interested')\">✖ לא מעוניין</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','cannot')\">🚫 לא ניתן לגיוס</button>"+
+  "</div>";
   return "<div class=nbcardx>"+
     "<div class=nbtop><b class=nbaddr>🏠 "+esc(x.address||x.city||"נכס")+"</b>"+(x.date?"<span class=nbdate>📅 "+esc(x.date)+"</span>":"")+"</div>"+
     ((x.city&&x.address)?"<div class=muted>"+esc(x.city)+"</div>":"")+
@@ -6424,9 +6496,22 @@ function nbCard(x){
       (x.wa?"<a class='nbbtn wa' href='whatsapp://send?phone="+x.wa+"&text="+nbWaMsg(x)+"' onclick=\"nbMark('"+k+"','"+a+"')\">💬 וואטסאפ</a>":"")+
       (x.link?"<a class='nbbtn link' href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 צפייה במודעה</a>":"")+
     "</div>"+
+    stat+sbtns+
     ((ROLE=="admin"&&x.contacted&&x.contacted.length)?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
   "</div>";
 }
+function nbStat(k,a,type){k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");
+  if(type=="not_interested"||type=="cannot"){var lbl=type=="not_interested"?"לא מעוניין":"לא ניתן לגיוס";if(!confirm("לסמן את הנכס כ״"+lbl+"״?"))return;nbStatSend(k,a,type,"");return;}
+  nbDateDialog(type,function(date){nbStatSend(k,a,type,date);});}
+function nbStatSend(k,a,type,date){api("/api/newborn/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,status:type,date:date,as:IMP||""})}).then(function(r){
+  if(r&&r.ok){var msg=(type=="meeting"||type=="followup")?(r.calendar?"נשמר ונוסף ליומן Google ✅":"נשמר ✅ (לא נוסף ליומן — התחבר עם Google כדי לסנכרן יומן)"):"נשמר ✅";alert(msg);loadNewbornPage();}
+  else alert("השמירה נכשלה"+((r&&r.reason=="no_date")?" — חסר תאריך":""));}).catch(function(){alert("שגיאת רשת");});}
+function nbDateDialog(type,cb){var dt=(type=="meeting");var title=dt?"בחר תאריך ושעה לפגישה":"בחר תאריך לפולו-אפ";
+  var inp=dt?"<input id=nbdt type=datetime-local class=chip style='width:100%;box-sizing:border-box'>":"<input id=nbdt type=date class=chip style='width:100%;box-sizing:border-box'>";
+  var h='<div class=ovl id=nbdovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbdClose()">✕</button></div><div style="margin-top:10px">'+inp+'</div><button class="btn-gold" style="width:100%;margin-top:10px" onclick="nbdOk()">אישור</button></div></div>';
+  var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbdovl");if(o)o.onclick=function(e){if(e.target.id=="nbdovl")nbdClose();};window._nbdCb=cb;}
+function nbdClose(){var o=$("nbdovl");if(o&&o.parentNode)o.parentNode.removeChild(o);window._nbdCb=null;}
+function nbdOk(){var v=($("nbdt")&&$("nbdt").value)||"";if(!v){alert("נא לבחור תאריך");return;}var cb=window._nbdCb;nbdClose();if(cb)cb(v);}
 function nbWaMsg(x){var who=NAME?(" מדבר/ת "+NAME):"";var m="שלום!"+who+" מ-RE/MAX Family 🏠 ראיתי את הנכס שלך"+(x.address?(" ב"+x.address):"")+" למכירה, ואשמח לעזור לך למכור אותו במחיר הטוב ביותר ובליווי מקצועי. אפשר לדבר?";return encodeURIComponent(m);}
 function nbMark(k,a,reload){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).then(function(){if(reload)loadNewbornPage();}).catch(function(){});}catch(e){}return true;}
 function closeNewborn(){$("nbmodal").classList.add("hidden");nbLock(false);}
