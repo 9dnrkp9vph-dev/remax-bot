@@ -5075,14 +5075,14 @@ def api_newborn_meetings():
     elif s["role"] != "admin":
         allowed = {_canon_key(s.get("name", ""))}
     out = []
-    for st in (_nb_statuses() or {}).values():
+    for k, st in (_nb_statuses() or {}).items():
         if st.get("status") not in ("meeting", "followup"):
             continue
         if allowed is not None and _canon_key(st.get("agent", "")) not in allowed:
             continue
         out.append({"status": st.get("status"), "label": _NB_STATUS_LABELS.get(st.get("status"), ""),
                     "date": st.get("date", ""), "agent": st.get("agent", ""),
-                    "addr": st.get("addr", ""), "pkey": st.get("pkey", "")})
+                    "addr": st.get("addr", ""), "skey": k})
     out.sort(key=lambda x: str(x.get("date", "")))
     return jsonify({"ok": True, "results": out})
 
@@ -5092,10 +5092,20 @@ def api_newborn_status_delete():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     d = request.get_json(silent=True) or {}
-    pkey = (d.get("pkey", "") or d.get("key", "") or "").strip()
-    agent = (d.get("agent", "") or "").strip() or s.get("name", "")
-    if not pkey:
-        return jsonify({"ok": False, "reason": "no_key"}), 400
+    cfg = _load_config()
+    m = cfg.get("nbStatus")
+    if not isinstance(m, dict): m = {}
+    # מחיקה לפי מפתח האחסון המדויק (skey) — תומך גם ברשומות ישנות ללא pkey
+    skey = (d.get("skey", "") or "").strip()
+    if not skey:
+        pkey = (d.get("pkey", "") or d.get("key", "") or "").strip()
+        agent = (d.get("agent", "") or "").strip() or s.get("name", "")
+        if not pkey:
+            return jsonify({"ok": False, "reason": "no_key"}), 400
+        skey = _canon_key(agent) + "::" + pkey
+    rec = m.get(skey)
+    if not rec:
+        return jsonify({"ok": False, "reason": "not_found"}), 404
     # הרשאה: סוכן מוחק את שלו; מתאמת את הסוכנים שלה; מנהל הכל
     if s["role"] != "admin":
         allowed = {_canon_key(s.get("name", ""))}
@@ -5106,15 +5116,8 @@ def api_newborn_status_delete():
                 for ph in (cc.get("agents") or set()):
                     nm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
                     if nm: allowed.add(_canon_key(nm))
-        if _canon_key(agent) not in allowed:
+        if _canon_key(rec.get("agent", "")) not in allowed:
             return jsonify({"ok": False, "reason": "forbidden"}), 403
-    cfg = _load_config()
-    m = cfg.get("nbStatus")
-    if not isinstance(m, dict): m = {}
-    skey = _canon_key(agent) + "::" + pkey
-    rec = m.get(skey)
-    if not rec:
-        return jsonify({"ok": False, "reason": "not_found"}), 404
     for ev in (rec.get("cal") or []):   # מחיקה מהיומן
         try: gcal_delete_event(ev.get("email", ""), ev.get("id", ""))
         except Exception: pass
@@ -6726,21 +6729,29 @@ function nbMeetings(){api("/api/newborn/meetings").then(function(r){
   var body=list.length?list.map(function(m){
     var isMeet=m.status=="meeting";
     var badge="<span style='display:inline-block;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800;"+(isMeet?"background:#e8f0fe;color:#1a56db":"background:#fff4e5;color:#b25e09")+"'>"+esc(NBSTL[m.status]||m.label||"")+"</span>";
-    var del="<button onclick=\"nbMtDel('"+nbEnc(m.pkey||"")+"','"+nbEnc(m.agent||"")+"')\" title='מחק' style='width:auto;background:none;border:none;box-shadow:none;color:#c0392b;font-size:17px;cursor:pointer;padding:4px;margin:0'>🗑</button>";
+    var del="<button onclick=\"nbMtDel('"+nbEnc(m.skey||"")+"')\" title='מחק' style='width:auto;background:none;border:none;box-shadow:none;color:#c0392b;font-size:17px;cursor:pointer;padding:4px;margin:0'>🗑</button>";
     return "<div style='border:1px solid var(--line);border-radius:14px;padding:12px 13px;margin-bottom:10px;background:#fff;box-shadow:0 2px 8px rgba(13,27,42,.05)'>"+
       "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px'>"+badge+del+"</div>"+
-      "<div style='margin-top:9px;font-weight:800;font-size:15px;color:#0D1B2A'>🗓️ "+esc(nbFmtDate(m.date))+"</div>"+
+      "<div style='margin-top:9px;font-weight:800;font-size:15px;color:#0D1B2A'>🗓️ "+esc(nbDayLabel(m.date))+"</div>"+
       "<div style='margin-top:5px;color:#374151'>🏠 "+esc(m.addr||"—")+"</div>"+
       ((isMulti()&&m.agent)?"<div class=muted style='margin-top:5px'>👤 "+esc(m.agent)+"</div>":"")+
     "</div>";
   }).join(""):"<div class=muted style='padding:16px 2px;text-align:center'>אין פגישות או פולו-אפ.</div>";
   var h='<div class=ovl id=nbmtovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>📅 פגישות ופולו-אפ ('+list.length+')</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbmtClose()">✕</button></div><div style="margin-top:12px;max-height:62vh;overflow:auto">'+body+'</div></div></div>';
-  var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbmtovl");if(o)o.onclick=function(e){if(e.target.id=="nbmtovl")nbmtClose();};
+  var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);ovlLock();var o=$("nbmtovl");if(o)o.onclick=function(e){if(e.target.id=="nbmtovl")nbmtClose();};
 }).catch(function(){alert("שגיאת רשת");});}
-function nbmtClose(){var o=$("nbmtovl");if(o&&o.parentNode)o.parentNode.removeChild(o);}
-function nbMtDel(pkey,agent){pkey=decodeURIComponent(pkey||"");agent=decodeURIComponent(agent||"");if(!confirm("למחוק את הפגישה/פולו-אפ? (יימחק גם מהיומן)"))return;
-  api("/api/newborn/status/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pkey:pkey,agent:agent})}).then(function(r){
+function nbmtClose(){var o=$("nbmtovl");if(o&&o.parentNode)o.parentNode.removeChild(o);ovlUnlock();}
+function nbMtDel(skey){skey=decodeURIComponent(skey||"");if(!confirm("למחוק את הפגישה/פולו-אפ? (יימחק גם מהיומן)"))return;
+  api("/api/newborn/status/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({skey:skey})}).then(function(r){
     if(r&&r.ok){nbmtClose();nbMeetings();if(typeof loadNewbornPage=="function")loadNewbornPage();}else alert("המחיקה נכשלה"+((r&&r.reason)?" ("+r.reason+")":""));}).catch(function(){alert("שגיאת רשת");});}
+/* תווית יום: "היום"/"מחר"/תאריך — לפי תאריך הפגישה */
+function nbDayLabel(s){s=String(s||"");if(!s)return "";var hasT=s.indexOf("T")>-1;var dp=s.slice(0,10);var tp=hasT?s.slice(11,16):"";var p=dp.split("-");if(p.length!=3)return nbFmtDate(s);
+  var d=new Date(parseInt(p[0],10),parseInt(p[1],10)-1,parseInt(p[2],10));var t=new Date();t.setHours(0,0,0,0);var diff=Math.round((d-t)/86400000);
+  var lbl=(diff===0)?"היום":(diff===1)?"מחר":(p[2]+"/"+p[1]+"/"+p[0]);return lbl+(tp?" "+tp:"");}
+/* נעילת גלילת הרקע כשעולה חלון צף (מונע "זזיזה" של הרקע ב-iOS) */
+var _ovlScrollY=0;
+function ovlLock(){_ovlScrollY=window.scrollY||window.pageYOffset||0;var b=document.body;b.style.position="fixed";b.style.top=(-_ovlScrollY)+"px";b.style.left="0";b.style.right="0";b.style.width="100%";}
+function ovlUnlock(){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";window.scrollTo(0,_ovlScrollY);}
 function renderNewborn(){
   if(!$("nblist"))return;
   if(!NBITEMS.length){$("nblist").innerHTML="<div class=card><div class=muted>אין נכסים זמינים עבורך כרגע.</div></div>";if($("nbmore"))$("nbmore").innerHTML="";return;}
