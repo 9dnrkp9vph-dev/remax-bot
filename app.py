@@ -3571,6 +3571,8 @@ def api_sign_properties():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     name, phs, is_all = _eff_agent_ctx(s)
+    if request.args.get("all") == "1":   # השלמה אוטומטית מכל מודעות המשרד (לא רק של הסוכן)
+        is_all = True
     rows = fetch_sheet_rows()
     out, seen = [], set()
     for r in rows:
@@ -4908,6 +4910,9 @@ def api_newborn():
             city = _nb(r.get("עיר", "") or r.get("עיר / ישוב", ""))
             ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
             _k = _nb_key(r)
+            _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
+            if _vstat and _vstat.get("status") == "cannot" and not admin_all:
+                continue   # הסוכן סימן "לא ניתן לגיוס" — מסתירים אצלו
             out.append({
                 "released": True,
                 "own": own,
@@ -4924,7 +4929,7 @@ def api_newborn():
                 "agent": lister,
                 "link": _nb(r.get("קישור", "")),
                 "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
-                "stat": nbstatuses.get(_k) or None,
+                "stat": _vstat or None,
             })
             if len(out) >= 300:   # תקרת בטיחות; הפרונט מציג 20 בכל פעם עם "טען עוד"
                 break
@@ -4963,6 +4968,8 @@ def api_newborn_status():
     d = request.get_json(silent=True) or {}
     key = (d.get("key", "") or "").strip()
     addr = (d.get("addr", "") or "").strip()
+    price = (d.get("price", "") or "").strip()
+    owner_phone = (d.get("phone", "") or "").strip()
     status = (d.get("status", "") or "").strip()
     date = (d.get("date", "") or "").strip()   # 'YYYY-MM-DD' או 'YYYY-MM-DDTHH:MM'
     as_name = (d.get("as", "") or "").strip() if s["role"] in ("admin", "coordinator") else ""
@@ -4987,8 +4994,10 @@ def api_newborn_status():
     cfg = _load_config()
     m = cfg.get("nbStatus")
     if not isinstance(m, dict): m = {}
-    m[key] = {"status": status, "addr": addr, "agent": nm, "ts": int(time.time()),
-              "date": (date if status in ("meeting", "followup") else "")}
+    # מפתח לפי סוכן+נכס — כך שכל סוכן רואה את הסטטוס שלו והסתרת "לא ניתן לגיוס" היא אישית
+    skey = _canon_key(nm) + "::" + key
+    m[skey] = {"status": status, "addr": addr, "agent": nm, "pkey": key, "ts": int(time.time()),
+               "date": (date if status in ("meeting", "followup") else "")}
     cfg["nbStatus"] = m
     _save_config(cfg)
     # אירוע יומן לפגישה/פולואפ
@@ -4996,7 +5005,10 @@ def api_newborn_status():
     if status in ("meeting", "followup") and date:
         label = _NB_STATUS_LABELS[status]
         summary = label + " · " + (addr or "נכס נולד")
-        desc = "נקבע מ-Family Bot (נכס נולד)" + (("\nבעל הנכס: " + addr) if addr else "")
+        desc = "נכס נולד · נקבע מ-Family Bot"
+        if addr:        desc += "\nכתובת: " + addr
+        if price:       desc += "\nמחיר: " + price
+        if owner_phone: desc += "\nטלפון בעל הנכס: " + owner_phone
         start_iso = date; end_iso = None
         if "T" in date:                       # תאריך+שעה → אירוע של שעה
             if len(date) == 16: start_iso = date + ":00"
@@ -6194,8 +6206,14 @@ function loadSignPickers(){
   api("/api/my/buyers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({as:(typeof IMP!="undefined"?(IMP||""):"")})}).then(function(r){
     if(!r||!r.ok)return;SG_CLIENTS={};var opts="";(r.results||[]).forEach(function(b){var nm=String(b.name||"").trim();if(!nm||SG_CLIENTS[nm])return;SG_CLIENTS[nm]={phone:(b.phone||"")};opts+='<option value="'+esc(nm)+'">'+(b.phone?esc(b.phone):"")+(b.budget?(" · "+esc(b.budget)):"")+'</option>';});var dl=$("sg_clientlist");if(dl)dl.innerHTML=opts;
   }).catch(function(){});
+  SG_PROPS={};SG_PROPLIST=[];
+  // הנכסים של הסוכן — ל"בחר מהנכסים שלי" (נשאר אישי)
   api("/api/sign/properties"+(typeof IMP!="undefined"&&IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
-    if(!r||!r.ok)return;SG_PROPS={};SG_PROPLIST=[];var opts="";(r.properties||[]).forEach(function(p){var ad=String(p.address||"").trim();if(!ad||SG_PROPS[ad])return;SG_PROPS[ad]={price:(p.price||""),type:(p.type||""),rooms:(p.rooms||""),size:(p.size||"")};SG_PROPLIST.push({address:ad,price:(p.price||""),type:(p.type||""),rooms:(p.rooms||""),size:(p.size||"")});opts+='<option value="'+esc(ad)+'"></option>';});var dl=$("sg_proplist");if(dl)dl.innerHTML=opts;
+    if(!r||!r.ok)return;(r.properties||[]).forEach(function(p){var ad=String(p.address||"").trim();if(!ad)return;if(!SG_PROPS[ad])SG_PROPS[ad]={price:(p.price||""),type:(p.type||""),rooms:(p.rooms||""),size:(p.size||"")};SG_PROPLIST.push({address:ad,price:(p.price||""),type:(p.type||""),rooms:(p.rooms||""),size:(p.size||"")});});
+  }).catch(function(){});
+  // כל מודעות המשרד — להשלמה אוטומטית בהקלדת הכתובת (לא רק של הסוכן)
+  api("/api/sign/properties?all=1").then(function(r){
+    if(!r||!r.ok)return;var opts="";(r.properties||[]).forEach(function(p){var ad=String(p.address||"").trim();if(!ad)return;if(!SG_PROPS[ad])SG_PROPS[ad]={price:(p.price||""),type:(p.type||""),rooms:(p.rooms||""),size:(p.size||"")};opts+='<option value="'+esc(ad)+'"></option>';});var dl=$("sg_proplist");if(dl)dl.innerHTML=opts;
   }).catch(function(){});}
 function sgClientType(){var nm=String(($("sg_cname")||{}).value||"").trim();var c=SG_CLIENTS[nm];if(c&&c.phone)$("sg_cphone").value=c.phone;}
 function sgPropType(){var ad=String(($("sg_addr")||{}).value||"").trim();var p=SG_PROPS[ad];if(p&&p.price)$("sg_price").value=p.price;}
@@ -6218,6 +6236,7 @@ function sgGenerate(){
     else if(xsel){var xn=parseInt(xsel,10);var xf=new Date(),xt=new Date();xt.setMonth(xt.getMonth()+xn);exclOn=true;exfrom=sgFmtD(xf);exto=sgFmtD(xt);}}
   var props=(aud=="buyer")?sgCollectProps():(($("sg_addr")&&$("sg_addr").value.trim())?[{addr:$("sg_addr").value.trim(),price:($("sg_price")?$("sg_price").value.trim():"")}]:[]);
   var vAddr=props.map(function(p){return p.addr;}).join(" | ");var vPrice=(props[0]?props[0].price:"");
+  if(!vAddr){alert("נא להזין כתובת נכס לפני שליחת/הפקת החתימה");return;}
   var v={date:SG_DATE,agent:(((typeof IMP!="undefined"&&IMP)?(IMPNAME||IMP):NAME)||""),cname:$("sg_cname").value.trim(),cphone:$("sg_cphone").value.trim(),cid:cid,addr:vAddr,price:vPrice,props:props,
     cbuy:(aud=="buyer"?$("sg_cbuy").value.trim():$("sg_scbuy").value.trim()),
     cbuyunit:(aud=="buyer"?($("sg_cbuyunit")?$("sg_cbuyunit").value:"%"):($("sg_scbuyunit")?$("sg_scbuyunit").value:"%")),
@@ -6249,8 +6268,9 @@ function sgSendRemote(docs,v){
     if(r&&r.ok){var ch=[];if(r.sms)ch.push("SMS");if(r.wa)ch.push("WhatsApp");var chs=ch.length?ch.join(" + "):"(בדוק הגדרות שליחה)";
       $("sg_preview").innerHTML='<div class=card style="text-align:center"><div style="font-size:42px">📲</div><b>נשלח ללקוח!</b><div class=muted style="margin-top:6px">קישור לחתימה נשלח אל '+esc(v.cname)+' ('+chs+').<br>החתימה תופיע בטאב ״חתימות״ — הקישור החתום יתווסף ברגע שהלקוח יחתום.</div><button class="btn-gold" style="width:100%;margin-top:12px" onclick="tab(\'sigs\')">לטאב חתימות</button></div>';
       try{$("sg_preview").scrollIntoView({behavior:"smooth",block:"center"});}catch(e){}}
-    else{$("sg_preview").innerHTML='';alert("השליחה נכשלה: "+((r&&r.reason)||"שגיאה")+". ודא שה-Apps Script פרוס בגרסה חדשה.");}
+    else{$("sg_preview").innerHTML='';var rs=(r&&r.reason)||"";var msg=(rs=="bad_phone")?"מספר הטלפון של הלקוח אינו תקין — הזן מספר נייד מלא (10 ספרות)":(rs=="no_client")?"חסר שם לקוח":(rs=="no_phone")?"חסר מספר טלפון לשליחה":(rs=="no_docs")?"לא נוצר מסמך לחתימה — נסה שוב":("השליחה נכשלה ("+rs+"). ודא שה-Apps Script פרוס בגרסה חדשה.");alert(msg);}
   }).catch(function(){$("sg_preview").innerHTML='';alert("שגיאת רשת");});}
+function sgWaPending(eid,client){eid=decodeURIComponent(eid||"");client=decodeURIComponent(client||"");if(!eid){alert("אין קישור זמין");return;}var link=location.origin+"/s/"+eid;var msg="שלום"+(client?" "+client:"")+",\nהתבקשת לחתום על מסמך מטעם RE/MAX Family.\nלצפייה וחתימה:\n"+link;window.location.href="whatsapp://send?text="+encodeURIComponent(msg);}
 function sgShareWA(){var d=window._sgShare||{};if(!d.phone||!d.link){alert("אין טלפון/קישור לשליחה");return;}
   api("/api/sign/share",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:d.phone,link:d.link,client:d.name})}).then(function(r){
     if(r&&r.ok){alert("📲 נשלח ללקוח"+((r.wa&&r.sms)?" (וואטסאפ + SMS)":(r.wa?" בוואטסאפ":" ב-SMS")));}
@@ -6357,6 +6377,7 @@ function renderSigs(){var r=SIGDATA;if(!r||TABNOW!="sigs"||!$("sigs"))return;
       ((g.address&&g.client)?"<div class=saddr>"+esc(g.client)+"</div>":"")+
       "<div class=sdate>"+meta+"</div>"+
       (g.link?"<div style='margin-top:10px'><a class=slink href='"+g.link+"' target=_blank rel=noopener>"+_dsv+"קישור להסכם</a></div>":"")+
+      (!signed?"<div style='margin-top:10px'><button onclick=\"sgWaPending('"+encodeURIComponent(g.eid||"")+"','"+encodeURIComponent(g.client||"")+"')\" style='display:inline-flex;align-items:center;gap:6px;background:#25D366;border:none;color:#fff;font-weight:800;font-size:12.5px;padding:9px 15px;border-radius:11px;cursor:pointer'>📲 שלח קישור בוואטסאפ</button></div>":"")+
     "</div>";
   }).join("")):"<div class=card><div class=muted>אין חתימות בטווח.</div></div>");
   seenSig=maxS;
@@ -6593,15 +6614,7 @@ function openNewborn(){
   api("/api/newborn"+nbAs()).then(function(r){
     if(!r||!r.ok)return;NBDATA=r;
     var rows=(r.results||[]).slice(0,20).map(function(x){
-      if(x.released){
-        return "<div class=row><b>🏠 "+esc(x.address||x.city||"נכס")+"</b>"+(x.city&&x.address?", "+esc(x.city):"")+(x.own?" <span class=badge>שלי</span>":"")+
-          (x.desc?"<div>"+esc(x.desc)+"</div>":"")+
-          "<div class=muted>"+[x.price,x.date?"📅 "+x.date:""].filter(Boolean).join(" · ")+"</div>"+
-          (x.notes?"<div class=muted>"+esc(x.notes)+"</div>":"")+
-          ((x.owner||x.phone)?"<div>👤 "+esc(x.owner||"בעל הנכס")+(x.wa?" · <a href='whatsapp://send?phone="+x.wa+"' onclick=\"nbWa('"+encodeURIComponent(x.key||'')+"','"+encodeURIComponent(x.address||'')+"')\">וואטסאפ</a>":(x.phone?" · <a href='tel:"+esc(x.phone)+"'>"+esc(x.phone)+"</a>":""))+"</div>":"")+
-          (x.contacted&&x.contacted.length?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
-          (x.link?"<div><a class=cbtn style=background:#0D1B2A href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 פרטים</a></div>":"")+"</div>";
-      }
+      if(x.released){return nbCard(x);}   // אותו כרטיס כמו בטאב — כולל כפתורי הסטטוס/פגישה
       return "<div class='row nblock'>🔒 <b>נכס חדש"+(x.city?" ב"+esc(x.city):"")+"</b>"+(x.type?" · "+esc(x.type):"")+"<div class=muted>ייחשף עבורך בעוד "+x.release_in+" ימים</div></div>";
     }).join("");
     if(!rows)rows="<div class=muted>אין נכסים זמינים עבורך כרגע.</div>";
@@ -6638,13 +6651,14 @@ var NBSTL={meeting:"📅 נקבעה פגישה",followup:"🔁 פולו-אפ",no
 function nbFmtDate(s){s=String(s||"");var t="";if(s.indexOf("T")>-1){t=" "+s.slice(11,16);s=s.slice(0,10);}var p=s.split("-");if(p.length==3)return p[2]+"/"+p[1]+"/"+p[0]+t;return s+t;}
 function nbCard(x){
   var k=encodeURIComponent(x.key||""),a=encodeURIComponent(x.address||""),ph=x.phone||"";
+  var pr=encodeURIComponent(x.price||""),pn=encodeURIComponent(ph||"");
   var sbtn="padding:9px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:13px;font-weight:700;color:#0D1B2A;flex:1;min-width:calc(50% - 4px);cursor:pointer";
   var stat=x.stat?("<div style='margin-top:8px;font-size:13px;font-weight:800;color:#1f8a4c'>"+esc(NBSTL[x.stat.status]||x.stat.status)+(x.stat.date?(" · "+esc(nbFmtDate(x.stat.date))):"")+(x.stat.agent&&isMulti()?(" · "+esc(x.stat.agent)):"")+"</div>"):"";
   var sbtns="<div style='display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'>"+
-    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','meeting')\">📅 נקבעה פגישה</button>"+
-    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','followup')\">🔁 פולו-אפ</button>"+
-    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','not_interested')\">✖ לא מעוניין</button>"+
-    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','cannot')\">🚫 לא ניתן לגיוס</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','meeting','"+pr+"','"+pn+"')\">📅 נקבעה פגישה</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','followup','"+pr+"','"+pn+"')\">🔁 פולו-אפ</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','not_interested','"+pr+"','"+pn+"')\">✖ לא מעוניין</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','cannot','"+pr+"','"+pn+"')\">🚫 לא ניתן לגיוס</button>"+
   "</div>";
   return "<div class=nbcardx>"+
     "<div class=nbtop><b class=nbaddr>🏠 "+esc(x.address||x.city||"נכס")+"</b>"+(x.date?"<span class=nbdate>📅 "+esc(x.date)+"</span>":"")+"</div>"+
@@ -6662,10 +6676,10 @@ function nbCard(x){
     ((ROLE=="admin"&&x.contacted&&x.contacted.length)?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
   "</div>";
 }
-function nbStat(k,a,type){k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");
-  if(type=="not_interested"||type=="cannot"){var lbl=type=="not_interested"?"לא מעוניין":"לא ניתן לגיוס";if(!confirm("לסמן את הנכס כ״"+lbl+"״?"))return;nbStatSend(k,a,type,"","");return;}
-  nbDateDialog(type,function(date,agent){nbStatSend(k,a,type,date,agent);});}
-function nbStatSend(k,a,type,date,agent){api("/api/newborn/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,status:type,date:date,agent:agent||"",as:IMP||""})}).then(function(r){
+function nbStat(k,a,type,pr,pn){k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");pr=decodeURIComponent(pr||"");pn=decodeURIComponent(pn||"");
+  if(type=="not_interested"||type=="cannot"){var lbl=type=="not_interested"?"לא מעוניין":"לא ניתן לגיוס";if(!confirm("לסמן את הנכס כ״"+lbl+"״?"))return;nbStatSend(k,a,type,"","",pr,pn);return;}
+  nbDateDialog(type,function(date,agent){nbStatSend(k,a,type,date,agent,pr,pn);});}
+function nbStatSend(k,a,type,date,agent,price,phone){api("/api/newborn/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,status:type,date:date,agent:agent||"",price:price||"",phone:phone||"",as:IMP||""})}).then(function(r){
   if(r&&r.ok){var msg=(type=="meeting"||type=="followup")?(r.calendar?"נשמר ונוסף ליומן Google ✅":"נשמר ✅ (לא נוסף ליומן — צריך להתחבר עם Google כדי לסנכרן יומן)"):"נשמר ✅";alert(msg);loadNewbornPage();}
   else alert("השמירה נכשלה"+((r&&r.reason=="no_date")?" — חסר תאריך":""));}).catch(function(){alert("שגיאת רשת");});}
 function nbDateDialog(type,cb){var dt=(type=="meeting");var title=dt?"בחר תאריך ושעה לפגישה":"בחר תאריך לפולו-אפ";
