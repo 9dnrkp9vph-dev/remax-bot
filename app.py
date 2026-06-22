@@ -3026,6 +3026,24 @@ def gcal_create_event(email, summary, description="", start_iso=None, end_iso=No
     except Exception as e:
         log.error(f"gcal error: {e}"); return None
 
+def gcal_delete_event(email, event_id):
+    """מוחק אירוע מהיומן (ומודיע למוזמנים על הביטול). מחזיר True/False."""
+    try:
+        email = (email or "").strip().lower()
+        rec = _gauth_all().get(email) or {}
+        rt = rec.get("refresh_token")
+        if not rt or not event_id:
+            return False
+        access = _g_access_from_refresh(rt)
+        if not access:
+            return False
+        r = requests.delete(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events/" + str(event_id) + "?sendUpdates=all",
+            headers={"Authorization": "Bearer " + access}, timeout=15)
+        return r.status_code in (200, 204, 404, 410)   # 404/410 = כבר נמחק
+    except Exception as e:
+        log.error(f"gcal delete: {e}"); return False
+
 @app.route("/api/gcal/test", methods=["GET", "POST"])
 def api_gcal_test():
     """בדיקת יומן: יוצר אירוע דמו ביומן של המשתמש המחובר (לאימות שהחיבור עובד)."""
@@ -4971,6 +4989,7 @@ def api_newborn_status():
     addr = (d.get("addr", "") or "").strip()
     price = (d.get("price", "") or "").strip()
     owner_phone = (d.get("phone", "") or "").strip()
+    owner_name = (d.get("owner", "") or "").strip()
     status = (d.get("status", "") or "").strip()
     date = (d.get("date", "") or "").strip()   # 'YYYY-MM-DD' או 'YYYY-MM-DDTHH:MM'
     as_name = (d.get("as", "") or "").strip() if s["role"] in ("admin", "coordinator") else ""
@@ -4991,22 +5010,17 @@ def api_newborn_status():
         return jsonify({"ok": False, "reason": "bad_input"}), 400
     if status in ("meeting", "followup") and not date:
         return jsonify({"ok": False, "reason": "no_date"}), 400
-    # שמירה בקונפיג
-    cfg = _load_config()
-    m = cfg.get("nbStatus")
-    if not isinstance(m, dict): m = {}
     # מפתח לפי סוכן+נכס — כך שכל סוכן רואה את הסטטוס שלו והסתרת "לא ניתן לגיוס" היא אישית
     skey = _canon_key(nm) + "::" + key
-    m[skey] = {"status": status, "addr": addr, "agent": nm, "pkey": key, "ts": int(time.time()),
-               "date": (date if status in ("meeting", "followup") else "")}
-    cfg["nbStatus"] = m
-    _save_config(cfg)
-    # אירוע יומן לפגישה/פולואפ
+    rec = {"status": status, "addr": addr, "agent": nm, "pkey": key, "ts": int(time.time()),
+           "date": (date if status in ("meeting", "followup") else ""), "cal": []}
+    # אירוע יומן לפגישה/פולואפ (שומרים מזהי אירוע למחיקה עתידית)
     cal_ok = False
     if status in ("meeting", "followup") and date:
         label = _NB_STATUS_LABELS[status]
         summary = label + " · " + (addr or "נכס נולד")
         desc = "נכס נולד · נקבע מ-Family Bot"
+        if owner_name:  desc += "\nבעל הנכס: " + owner_name
         if addr:        desc += "\nכתובת: " + addr
         if price:       desc += "\nמחיר: " + price
         if owner_phone: desc += "\nטלפון בעל הנכס: " + owner_phone
@@ -5022,18 +5036,93 @@ def api_newborn_status():
         _ps = list(_phones_for_name(nm))
         _agent_g = _gauth_email_for_phone(_ps[0]) if _ps else ""
         _agent_mail = _agent_g or _agent_email_for(nm, _ps[0] if _ps else "")
-        _organizer = _gauth_email_for_phone(s.get("phone", ""))   # מי שקבע (סוכן/מתאמת/מנהל) — חייב מחובר Google
+        _organizer = _gauth_email_for_phone(s.get("phone", ""))   # מי שקבע — חייב מחובר Google
         if _organizer:
-            # אירוע ביומן הקובע, והסוכן מוזמן במייל (אם שונה) — מקבל הזמנה ליומן גם בלי להתחבר
             _atts = [_agent_mail] if (_agent_mail and _agent_mail.lower() != _organizer.lower()) else []
-            cal_ok = bool(gcal_create_event(_organizer, summary, desc, start_iso, end_iso,
-                                            attendees=_atts, send_updates=("all" if _atts else "none")))
+            _eid = gcal_create_event(_organizer, summary, desc, start_iso, end_iso,
+                                     attendees=_atts, send_updates=("all" if _atts else "none"))
+            if _eid: rec["cal"].append({"email": _organizer, "id": _eid})
         elif _agent_g:
-            # הקובע לא מחובר ל-Google אבל הסוכן כן — נוצר ישירות ביומן הסוכן
-            cal_ok = bool(gcal_create_event(_agent_g, summary, desc, start_iso, end_iso))
+            _eid = gcal_create_event(_agent_g, summary, desc, start_iso, end_iso)
+            if _eid: rec["cal"].append({"email": _agent_g, "id": _eid})
+        cal_ok = bool(rec["cal"])
+    # שמירה בקונפיג
+    cfg = _load_config()
+    m = cfg.get("nbStatus")
+    if not isinstance(m, dict): m = {}
+    m[skey] = rec
+    cfg["nbStatus"] = m
+    _save_config(cfg)
     _log_activity(nm, s["role"], s.get("phone", ""), "סטטוס נכס נולד",
                   (_NB_STATUS_LABELS.get(status, status) + " · " + (addr or key))[:80])
     return jsonify({"ok": True, "calendar": cal_ok, "status": status, "date": date})
+
+@app.route("/api/newborn/meetings", methods=["GET"])
+def api_newborn_meetings():
+    """פגישות ופולו-אפ מ'נכס נולד' — סוכן רואה את שלו, מתאמת את כל הצוות שלה, מנהל את הכל."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    allowed = None   # None = הכל (מנהל)
+    if s["role"] == "coordinator":
+        allowed = set()
+        cc = _coordinators_all().get(_last9(s.get("phone", "")))
+        if cc:
+            allowed |= set(_canon_key(n) for n in (cc.get("names") or set()))
+            for ph in (cc.get("agents") or set()):
+                nm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
+                if nm: allowed.add(_canon_key(nm))
+        allowed.add(_canon_key(s.get("name", "")))
+    elif s["role"] != "admin":
+        allowed = {_canon_key(s.get("name", ""))}
+    out = []
+    for st in (_nb_statuses() or {}).values():
+        if st.get("status") not in ("meeting", "followup"):
+            continue
+        if allowed is not None and _canon_key(st.get("agent", "")) not in allowed:
+            continue
+        out.append({"status": st.get("status"), "label": _NB_STATUS_LABELS.get(st.get("status"), ""),
+                    "date": st.get("date", ""), "agent": st.get("agent", ""),
+                    "addr": st.get("addr", ""), "pkey": st.get("pkey", "")})
+    out.sort(key=lambda x: str(x.get("date", "")))
+    return jsonify({"ok": True, "results": out})
+
+@app.route("/api/newborn/status/delete", methods=["POST"])
+def api_newborn_status_delete():
+    """מחיקת פגישה/פולו-אפ — מסיר מהקונפיג וגם מוחק את אירוע היומן."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    d = request.get_json(silent=True) or {}
+    pkey = (d.get("pkey", "") or d.get("key", "") or "").strip()
+    agent = (d.get("agent", "") or "").strip() or s.get("name", "")
+    if not pkey:
+        return jsonify({"ok": False, "reason": "no_key"}), 400
+    # הרשאה: סוכן מוחק את שלו; מתאמת את הסוכנים שלה; מנהל הכל
+    if s["role"] != "admin":
+        allowed = {_canon_key(s.get("name", ""))}
+        if s["role"] == "coordinator":
+            cc = _coordinators_all().get(_last9(s.get("phone", "")))
+            if cc:
+                allowed |= set(_canon_key(n) for n in (cc.get("names") or set()))
+                for ph in (cc.get("agents") or set()):
+                    nm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
+                    if nm: allowed.add(_canon_key(nm))
+        if _canon_key(agent) not in allowed:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+    cfg = _load_config()
+    m = cfg.get("nbStatus")
+    if not isinstance(m, dict): m = {}
+    skey = _canon_key(agent) + "::" + pkey
+    rec = m.get(skey)
+    if not rec:
+        return jsonify({"ok": False, "reason": "not_found"}), 404
+    for ev in (rec.get("cal") or []):   # מחיקה מהיומן
+        try: gcal_delete_event(ev.get("email", ""), ev.get("id", ""))
+        except Exception: pass
+    m.pop(skey, None)
+    cfg["nbStatus"] = m
+    _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת פגישה/פולו-אפ", (rec.get("addr") or pkey)[:80])
+    return jsonify({"ok": True})
 
 # ── Exclusivity search ─────────────────────────────────────────────────────────
 def _web_num(v):
@@ -6073,7 +6162,6 @@ function renderReport(r){
   if(sm.topKonim&&sm.topKonim.length){var tk="<table><tr><th style=text-align:start>מתווך</th><th>קונים</th></tr>";sm.topKonim.forEach(function(a,i){tk+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tk+="</table>";h+="<div class=card><h2>מובילים בהחתמת קונים</h2>"+tk+"</div>";}}
   if(r.shtaf&&r.shtaf.length){var tot=(r.shtaf_total!=null?r.shtaf_total:r.shtaf.reduce(function(a,o){return a+o.count;},0));var noff=(r.shtaf_offices!=null?r.shtaf_offices:r.shtaf.length);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+noff+" משרדים · סה״כ "+tot+" נכסים"+(noff>10?" · מציג 10 מובילים":"")+"</div>"+st+"</div>";}
   if(r.scope=="כל המשרד"&&r.nbCities&&r.nbCities.length){var nc="<table><tr><th style=text-align:start>עיר</th><th>נכסים</th></tr>";r.nbCities.forEach(function(c){nc+="<tr><td>"+esc(c.city)+"</td><td style=text-align:center><b>"+c.n+"</b></td></tr>";});nc+="</table>";h+="<div class=card><h2>נכס נולד לפי ערים</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · סה״כ "+(r.nbTotal||0)+" נכסים</div>"+nc+"</div>";}
-  if(r.meetings&&r.meetings.length){var mt="<table><tr><th style=text-align:start>כתובת</th><th>סוכן</th><th>סוג</th><th>תאריך</th></tr>";r.meetings.forEach(function(m){mt+="<tr><td>"+esc(m.addr||"—")+"</td><td style=text-align:center>"+esc(m.agent||"")+"</td><td style=text-align:center>"+esc(m.label||"")+"</td><td style=text-align:center>"+esc(nbFmtDate(m.date))+"</td></tr>";});mt+="</table>";h+="<div class=card><h2>📅 פגישות ופולו-אפ</h2><div class=muted style=margin-bottom:8px>סה״כ "+r.meetings.length+"</div>"+mt+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
 }
@@ -6628,9 +6716,28 @@ function nbLock(on){var b=document.body;b.style.position="";b.style.top="";b.sty
 var NBITEMS=[],NBSHOWN=20;
 function viewNewborn(){
   NBSHOWN=20;
-  $("view").innerHTML='<div class=card><h2>🐥 נכס נולד'+scopeLabel()+'</h2><div class=muted>צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
   loadNewbornPage();
 }
+function nbMeetings(){api("/api/newborn/meetings").then(function(r){
+  if(!r||!r.ok){alert("שגיאה בטעינה");return;}
+  var list=r.results||[];
+  var body=list.length?list.map(function(m){
+    var del="<button onclick=\"nbMtDel('"+nbEnc(m.pkey||"")+"','"+nbEnc(m.agent||"")+"')\" style='background:none;border:none;color:#c0392b;font-size:18px;cursor:pointer;padding:0 4px' title='מחק'>🗑</button>";
+    return "<div style='border:1px solid var(--line);border-radius:12px;padding:11px;margin-bottom:8px;background:#fff'>"+
+      "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px'><b style='color:#0D1B2A'>"+esc(NBSTL[m.status]||m.label||"")+"</b>"+del+"</div>"+
+      "<div style='margin-top:4px;font-weight:700'>📅 "+esc(nbFmtDate(m.date))+"</div>"+
+      "<div style='margin-top:2px'>🏠 "+esc(m.addr||"—")+"</div>"+
+      ((isMulti()&&m.agent)?"<div class=muted style='margin-top:2px'>👤 "+esc(m.agent)+"</div>":"")+
+    "</div>";
+  }).join(""):"<div class=muted style='padding:10px 2px'>אין פגישות או פולו-אפ.</div>";
+  var h='<div class=ovl id=nbmtovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>📅 פגישות ופולו-אפ ('+list.length+')</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbmtClose()">✕</button></div><div style="margin-top:12px;max-height:62vh;overflow:auto">'+body+'</div></div></div>';
+  var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbmtovl");if(o)o.onclick=function(e){if(e.target.id=="nbmtovl")nbmtClose();};
+}).catch(function(){alert("שגיאת רשת");});}
+function nbmtClose(){var o=$("nbmtovl");if(o&&o.parentNode)o.parentNode.removeChild(o);}
+function nbMtDel(pkey,agent){pkey=decodeURIComponent(pkey||"");agent=decodeURIComponent(agent||"");if(!confirm("למחוק את הפגישה/פולו-אפ? (יימחק גם מהיומן)"))return;
+  api("/api/newborn/status/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pkey:pkey,agent:agent})}).then(function(r){
+    if(r&&r.ok){nbmtClose();nbMeetings();if(typeof loadNewbornPage=="function")loadNewbornPage();}else alert("המחיקה נכשלה"+((r&&r.reason)?" ("+r.reason+")":""));}).catch(function(){alert("שגיאת רשת");});}
 function renderNewborn(){
   if(!$("nblist"))return;
   if(!NBITEMS.length){$("nblist").innerHTML="<div class=card><div class=muted>אין נכסים זמינים עבורך כרגע.</div></div>";if($("nbmore"))$("nbmore").innerHTML="";return;}
@@ -6653,14 +6760,14 @@ function nbFmtDate(s){s=String(s||"");var t="";if(s.indexOf("T")>-1){t=" "+s.sli
 function nbEnc(s){return encodeURIComponent(String(s||"")).replace(/'/g,"%27").replace(/\(/g,"%28").replace(/\)/g,"%29");}
 function nbCard(x){
   var k=nbEnc(x.key||""),a=nbEnc(x.address||""),ph=x.phone||"";
-  var pr=nbEnc(x.price||""),pn=nbEnc(ph||"");
+  var pr=nbEnc(x.price||""),pn=nbEnc(ph||""),ow=nbEnc(x.owner||"");
   var sbtn="padding:9px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:13px;font-weight:700;color:#0D1B2A;flex:1;min-width:calc(50% - 4px);cursor:pointer";
   var stat=x.stat?("<div style='margin-top:8px;font-size:13px;font-weight:800;color:#1f8a4c'>"+esc(NBSTL[x.stat.status]||x.stat.status)+(x.stat.date?(" · "+esc(nbFmtDate(x.stat.date))):"")+(x.stat.agent&&isMulti()?(" · "+esc(x.stat.agent)):"")+"</div>"):"";
   var sbtns="<div style='display:flex;flex-wrap:wrap;gap:6px;margin-top:8px'>"+
-    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','meeting','"+pr+"','"+pn+"')\">📅 נקבעה פגישה</button>"+
-    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','followup','"+pr+"','"+pn+"')\">🔁 פולו-אפ</button>"+
-    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','not_interested','"+pr+"','"+pn+"')\">✖ לא מעוניין</button>"+
-    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','cannot','"+pr+"','"+pn+"')\">🚫 לא ניתן לגיוס</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','meeting','"+pr+"','"+pn+"','"+ow+"')\">📅 נקבעה פגישה</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','followup','"+pr+"','"+pn+"','"+ow+"')\">🔁 פולו-אפ</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','not_interested','"+pr+"','"+pn+"','"+ow+"')\">✖ לא מעוניין</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','cannot','"+pr+"','"+pn+"','"+ow+"')\">🚫 לא ניתן לגיוס</button>"+
   "</div>";
   return "<div class=nbcardx>"+
     "<div class=nbtop><b class=nbaddr>🏠 "+esc(x.address||x.city||"נכס")+"</b>"+(x.date?"<span class=nbdate>📅 "+esc(x.date)+"</span>":"")+"</div>"+
@@ -6678,10 +6785,10 @@ function nbCard(x){
     ((ROLE=="admin"&&x.contacted&&x.contacted.length)?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
   "</div>";
 }
-function nbStat(k,a,type,pr,pn){k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");pr=decodeURIComponent(pr||"");pn=decodeURIComponent(pn||"");
-  if(type=="not_interested"||type=="cannot"){var lbl=type=="not_interested"?"לא מעוניין":"לא ניתן לגיוס";if(!confirm("לסמן את הנכס כ״"+lbl+"״?"))return;nbStatSend(k,a,type,"","",pr,pn);return;}
-  nbDateDialog(type,function(date,agent){nbStatSend(k,a,type,date,agent,pr,pn);});}
-function nbStatSend(k,a,type,date,agent,price,phone){api("/api/newborn/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,status:type,date:date,agent:agent||"",price:price||"",phone:phone||"",as:IMP||""})}).then(function(r){
+function nbStat(k,a,type,pr,pn,ow){k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");pr=decodeURIComponent(pr||"");pn=decodeURIComponent(pn||"");ow=decodeURIComponent(ow||"");
+  if(type=="not_interested"||type=="cannot"){var lbl=type=="not_interested"?"לא מעוניין":"לא ניתן לגיוס";if(!confirm("לסמן את הנכס כ״"+lbl+"״?"))return;nbStatSend(k,a,type,"","",pr,pn,ow);return;}
+  nbDateDialog(type,function(date,agent){nbStatSend(k,a,type,date,agent,pr,pn,ow);});}
+function nbStatSend(k,a,type,date,agent,price,phone,owner){api("/api/newborn/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,status:type,date:date,agent:agent||"",price:price||"",phone:phone||"",owner:owner||"",as:IMP||""})}).then(function(r){
   if(r&&r.ok){var msg=(type=="meeting"||type=="followup")?(r.calendar?"נשמר ונוסף ליומן Google ✅":"נשמר ✅ (לא נוסף ליומן — צריך להתחבר עם Google כדי לסנכרן יומן)"):"נשמר ✅";alert(msg);loadNewbornPage();}
   else alert("השמירה נכשלה"+((r&&r.reason=="no_date")?" — חסר תאריך":""));}).catch(function(){alert("שגיאת רשת");});}
 function nbDateDialog(type,cb){var dt=(type=="meeting");var title=dt?"בחר תאריך ושעה לפגישה":"בחר תאריך לפולו-אפ";
