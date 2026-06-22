@@ -2259,12 +2259,38 @@ _ROLE_SCOPE = {"developer": "admin", "manager": "admin", "accountant": "admin",
                "secretary": "admin", "coordinator": "coordinator", "agent": "agent"}
 _ALL_TABS = ["calls", "buyers", "sigs", "props", "excl", "newborn", "report", "activity"]
 
+# מנהלים עם השהיית צפייה בשיחות (לפי שם) — רואים הכל מיד, אבל שיחות רק אחרי X ימים, ו"נכס נולד" לא מיידי
+_DELAYED_ADMINS = {"אווה אזולאי": 60}          # שם → ימי השהיה לשיחות
+_DELAYED_ADMIN_PHONES = {"546612292": 60}      # טלפון (9 ספרות) → ימי השהיה (אמין יותר מהשם)
+def _delayed_admin_days(name=None, phone=None):
+    if phone:
+        d = _DELAYED_ADMIN_PHONES.get(_last9(phone))
+        if d:
+            try: return int(d)
+            except Exception: pass
+    ck = _canon_key(name or "")
+    if ck:
+        for nm, days in _DELAYED_ADMINS.items():
+            if _canon_key(nm) == ck:
+                try: return int(days)
+                except Exception: return 0
+    return 0
+def _name_for_phone(last9):
+    return (web_phone_name_map().get(last9) or web_contacts_phone_name().get(last9)
+            or _config_agent_phones().get(last9) or "")
+
 def _resolve_roles(last9):
     """מחזיר (scope_role, display_role). scope ל-data (admin/coordinator/agent), display ל-UI/טאבים.
     אם אין תפקיד בקונפיג — נופל בדיוק להתנהגות הקיימת (web_role_for)."""
     disp = (_load_config().get("roles") or {}).get(last9)
     if disp in _ROLE_SCOPE:
         return _ROLE_SCOPE[disp], disp
+    # מנהל מושהה לפי טלפון/שם (כמו אווה אזולאי) — סקופ מנהל מלא
+    try:
+        if _delayed_admin_days(_name_for_phone(last9), last9) > 0:
+            return "admin", "manager"
+    except Exception:
+        pass
     base = web_role_for(last9) or "agent"
     return base, {"admin": "manager", "coordinator": "coordinator", "agent": "agent"}.get(base, "agent")
 
@@ -4056,6 +4082,12 @@ def api_history():
         calls = [c for c in calls if str(c.get("event_id", "")) in _hidden]
     else:
         calls = [c for c in calls if str(c.get("event_id", "")) not in _hidden]
+    # מנהל מושהה (כמו אווה אזולאי) — רואה שיחות רק אחרי X ימים. המפתח רואה הכל מיד.
+    _dly = _delayed_admin_days(eff.get("name", ""), eff.get("phone", ""))
+    if _dly and not _is_dev(s.get("phone", "")):
+        _cut = time.time() - _dly * 86400
+        calls = [c for c in calls
+                 if 0 < _epoch_from_iso(c.get("received_at", "")) <= _cut]
     calls.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
     sigs.sort(key=lambda g: _excl_epoch(g.get("received_at", "")), reverse=True)
     call_out = []
@@ -4447,10 +4479,27 @@ def api_report():
             _ncl = "\n".join("• " + cc["city"] + ": " + str(cc["n"]) for cc in nb_cities)
             wa = wa + '\n\n🏙️ *נכס נולד לפי ערים* (סה"כ ' + str(nb_total) + ' נכסים)\n' + _ncl
         wa = wa + "\n\n_הופק מ-Family Bot 🏠_"
+        # טבלת פגישות ופולו-אפ מ"נכס נולד" — לפי הסטטוסים שנשמרו, בהתאם להיקף הדוח
+        meetings = []
+        try:
+            _allowed = None
+            if eff_name:
+                _allowed = {_canon_key(eff_name)}
+                if eff_keys: _allowed |= set(eff_keys)
+            for _st in (_nb_statuses() or {}).values():
+                if _st.get("status") not in ("meeting", "followup"): continue
+                if _allowed is not None and _canon_key(_st.get("agent", "")) not in _allowed: continue
+                meetings.append({"status": _st.get("status"),
+                                 "label": _NB_STATUS_LABELS.get(_st.get("status"), ""),
+                                 "date": _st.get("date", ""), "agent": _st.get("agent", ""),
+                                 "addr": _st.get("addr", "")})
+            meetings.sort(key=lambda x: str(x.get("date", "")))
+        except Exception:
+            meetings = []
         return jsonify({"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
                         "insights": insights, "summary": sm, "listings": listings_total,
                         "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices,
-                        "nbCities": nb_cities, "nbTotal": nb_total, "wa_text": wa})
+                        "nbCities": nb_cities, "nbTotal": nb_total, "meetings": meetings, "wa_text": wa})
     except Exception as e:
         log.error(f"report error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -4764,9 +4813,14 @@ def api_newborn():
                        or request.args.get("as", "")).strip()
         eff_name = as_name or s.get("name", "")
         eff_norm = _norm_name(eff_name)
-        admin_all = (s["role"] == "admin" and not as_name)
+        # מנהל מושהה (כמו אווה אזולאי) אינו רואה "נכס נולד" מיד — נכנס למסלול ההשהיה הרגיל
+        _dphone = "" if as_name else s.get("phone", "")
+        admin_all = (s["role"] == "admin" and not as_name and not _delayed_admin_days(eff_name, _dphone))
         delays = _fetch_newborn_delays()
         delay = 0 if admin_all else int(delays.get(eff_norm, delays.get("_default", 0)))
+        _dadays = _delayed_admin_days(eff_name, _dphone)
+        if _dadays and not admin_all and eff_norm not in delays:   # בלי הגדרה אישית → השהיית ברירת מחדל
+            delay = _dadays
         if not admin_all and delay >= NEWBORN_HIDDEN:   # מוסתר — לא רואה כלום, אין באנר
             return jsonify({"ok": True, "count": 0, "released": 0, "delay": delay, "results": []})
         now = time.time()
@@ -4849,7 +4903,19 @@ def api_newborn_status():
     status = (d.get("status", "") or "").strip()
     date = (d.get("date", "") or "").strip()   # 'YYYY-MM-DD' או 'YYYY-MM-DDTHH:MM'
     as_name = (d.get("as", "") or "").strip() if s["role"] in ("admin", "coordinator") else ""
-    nm = as_name or s.get("name", "")
+    # סוכן יעד: מתאמת/מנהל בוחרים סוכן; סוכן רגיל = עצמו. מתאמת מוגבלת לסוכנים שלה.
+    chosen = (d.get("agent", "") or "").strip() if s["role"] in ("admin", "coordinator") else ""
+    if chosen and s["role"] == "coordinator":
+        cc = _coordinators_all().get(_last9(s.get("phone", "")))
+        allowed = set()
+        if cc:
+            allowed |= set(_canon_key(n) for n in (cc.get("names") or set()))
+            for ph in (cc.get("agents") or set()):
+                _nmm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
+                if _nmm: allowed.add(_canon_key(_nmm))
+        if _canon_key(chosen) not in allowed:
+            chosen = ""   # לא מהסוכנים שלה — מתעלמים
+    nm = chosen or as_name or s.get("name", "")
     if not key or status not in _NB_STATUS_LABELS:
         return jsonify({"ok": False, "reason": "bad_input"}), 400
     if status in ("meeting", "followup") and not date:
@@ -4858,32 +4924,33 @@ def api_newborn_status():
     cfg = _load_config()
     m = cfg.get("nbStatus")
     if not isinstance(m, dict): m = {}
-    if status in ("not_interested", "cannot") and not date:
-        m[key] = {"status": status, "date": "", "agent": nm, "ts": int(time.time())}
-    else:
-        m[key] = {"status": status, "date": date, "agent": nm, "ts": int(time.time())}
+    m[key] = {"status": status, "addr": addr, "agent": nm, "ts": int(time.time()),
+              "date": (date if status in ("meeting", "followup") else "")}
     cfg["nbStatus"] = m
     _save_config(cfg)
-    # אירוע יומן לפגישה/פולואפ
+    # אירוע יומן לפגישה/פולואפ — ביומן הסוכן וגם ביומן המתאמת/מנהל שקבע (אם שונה)
     cal_ok = False
     if status in ("meeting", "followup") and date:
-        email = _gauth_email_for_phone(s.get("phone", ""))
-        if not email and as_name:
-            ps = list(_phones_for_name(as_name))
-            if ps: email = _gauth_email_for_phone(ps[0])
-        if email:
-            label = _NB_STATUS_LABELS[status]
-            summary = label + " · " + (addr or "נכס נולד")
-            desc = "נקבע מ-Family Bot (נכס נולד)" + (("\nבעל הנכס: " + addr) if addr else "")
-            start_iso = date; end_iso = None
-            if "T" in date:                       # תאריך+שעה → אירוע של שעה
-                if len(date) == 16: start_iso = date + ":00"
-                try:
-                    from datetime import datetime as _dtm, timedelta as _td
-                    end_iso = (_dtm.fromisoformat(start_iso) + _td(hours=1)).isoformat()
-                except Exception:
-                    end_iso = None
-            cal_ok = bool(gcal_create_event(email, summary, desc, start_iso, end_iso))
+        label = _NB_STATUS_LABELS[status]
+        summary = label + " · " + (addr or "נכס נולד")
+        desc = "נקבע מ-Family Bot (נכס נולד)" + (("\nבעל הנכס: " + addr) if addr else "")
+        start_iso = date; end_iso = None
+        if "T" in date:                       # תאריך+שעה → אירוע של שעה
+            if len(date) == 16: start_iso = date + ":00"
+            try:
+                from datetime import datetime as _dtm, timedelta as _td
+                end_iso = (_dtm.fromisoformat(start_iso) + _td(hours=1)).isoformat()
+            except Exception:
+                end_iso = None
+        emails = []
+        _ps = list(_phones_for_name(nm))
+        _ae = _gauth_email_for_phone(_ps[0]) if _ps else ""
+        if _ae: emails.append(_ae)
+        _me = _gauth_email_for_phone(s.get("phone", ""))   # המתאמת/מנהל שקבע
+        if _me and _me not in emails: emails.append(_me)
+        for _em in emails:
+            if gcal_create_event(_em, summary, desc, start_iso, end_iso):
+                cal_ok = True
     _log_activity(nm, s["role"], s.get("phone", ""), "סטטוס נכס נולד",
                   (_NB_STATUS_LABELS.get(status, status) + " · " + (addr or key))[:80])
     return jsonify({"ok": True, "calendar": cal_ok, "status": status, "date": date})
@@ -5899,6 +5966,7 @@ function renderReport(r){
   if(sm.topKonim&&sm.topKonim.length){var tk="<table><tr><th style=text-align:start>מתווך</th><th>קונים</th></tr>";sm.topKonim.forEach(function(a,i){tk+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tk+="</table>";h+="<div class=card><h2>מובילים בהחתמת קונים</h2>"+tk+"</div>";}}
   if(r.shtaf&&r.shtaf.length){var tot=(r.shtaf_total!=null?r.shtaf_total:r.shtaf.reduce(function(a,o){return a+o.count;},0));var noff=(r.shtaf_offices!=null?r.shtaf_offices:r.shtaf.length);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+noff+" משרדים · סה״כ "+tot+" נכסים"+(noff>10?" · מציג 10 מובילים":"")+"</div>"+st+"</div>";}
   if(r.scope=="כל המשרד"&&r.nbCities&&r.nbCities.length){var nc="<table><tr><th style=text-align:start>עיר</th><th>נכסים</th></tr>";r.nbCities.forEach(function(c){nc+="<tr><td>"+esc(c.city)+"</td><td style=text-align:center><b>"+c.n+"</b></td></tr>";});nc+="</table>";h+="<div class=card><h2>נכס נולד לפי ערים</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · סה״כ "+(r.nbTotal||0)+" נכסים</div>"+nc+"</div>";}
+  if(r.meetings&&r.meetings.length){var mt="<table><tr><th style=text-align:start>כתובת</th><th>סוכן</th><th>סוג</th><th>תאריך</th></tr>";r.meetings.forEach(function(m){mt+="<tr><td>"+esc(m.addr||"—")+"</td><td style=text-align:center>"+esc(m.agent||"")+"</td><td style=text-align:center>"+esc(m.label||"")+"</td><td style=text-align:center>"+esc(nbFmtDate(m.date))+"</td></tr>";});mt+="</table>";h+="<div class=card><h2>📅 פגישות ופולו-אפ</h2><div class=muted style=margin-bottom:8px>סה״כ "+r.meetings.length+"</div>"+mt+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
 }
@@ -6501,17 +6569,19 @@ function nbCard(x){
   "</div>";
 }
 function nbStat(k,a,type){k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");
-  if(type=="not_interested"||type=="cannot"){var lbl=type=="not_interested"?"לא מעוניין":"לא ניתן לגיוס";if(!confirm("לסמן את הנכס כ״"+lbl+"״?"))return;nbStatSend(k,a,type,"");return;}
-  nbDateDialog(type,function(date){nbStatSend(k,a,type,date);});}
-function nbStatSend(k,a,type,date){api("/api/newborn/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,status:type,date:date,as:IMP||""})}).then(function(r){
-  if(r&&r.ok){var msg=(type=="meeting"||type=="followup")?(r.calendar?"נשמר ונוסף ליומן Google ✅":"נשמר ✅ (לא נוסף ליומן — התחבר עם Google כדי לסנכרן יומן)"):"נשמר ✅";alert(msg);loadNewbornPage();}
+  if(type=="not_interested"||type=="cannot"){var lbl=type=="not_interested"?"לא מעוניין":"לא ניתן לגיוס";if(!confirm("לסמן את הנכס כ״"+lbl+"״?"))return;nbStatSend(k,a,type,"","");return;}
+  nbDateDialog(type,function(date,agent){nbStatSend(k,a,type,date,agent);});}
+function nbStatSend(k,a,type,date,agent){api("/api/newborn/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,status:type,date:date,agent:agent||"",as:IMP||""})}).then(function(r){
+  if(r&&r.ok){var msg=(type=="meeting"||type=="followup")?(r.calendar?"נשמר ונוסף ליומן Google ✅":"נשמר ✅ (לא נוסף ליומן — צריך להתחבר עם Google כדי לסנכרן יומן)"):"נשמר ✅";alert(msg);loadNewbornPage();}
   else alert("השמירה נכשלה"+((r&&r.reason=="no_date")?" — חסר תאריך":""));}).catch(function(){alert("שגיאת רשת");});}
 function nbDateDialog(type,cb){var dt=(type=="meeting");var title=dt?"בחר תאריך ושעה לפגישה":"בחר תאריך לפולו-אפ";
   var inp=dt?"<input id=nbdt type=datetime-local class=chip style='width:100%;box-sizing:border-box'>":"<input id=nbdt type=date class=chip style='width:100%;box-sizing:border-box'>";
-  var h='<div class=ovl id=nbdovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbdClose()">✕</button></div><div style="margin-top:10px">'+inp+'</div><button class="btn-gold" style="width:100%;margin-top:10px" onclick="nbdOk()">אישור</button></div></div>';
-  var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbdovl");if(o)o.onclick=function(e){if(e.target.id=="nbdovl")nbdClose();};window._nbdCb=cb;}
+  var agSel=(ROLE=="coordinator")?"<select id=nbag class=chip style='width:100%;box-sizing:border-box;margin-top:8px'><option value=''>בחר סוכן…</option></select>":"";
+  var h='<div class=ovl id=nbdovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbdClose()">✕</button></div><div style="margin-top:10px">'+inp+'</div>'+agSel+'<button class="btn-gold" style="width:100%;margin-top:10px" onclick="nbdOk()">אישור</button></div></div>';
+  var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbdovl");if(o)o.onclick=function(e){if(e.target.id=="nbdovl")nbdClose();};window._nbdCb=cb;
+  if(agSel){api("/api/my/agents").then(function(r){var sel=$("nbag");if(!sel||!r||!r.ok)return;(r.agents||[]).forEach(function(ag){var o2=document.createElement("option");o2.value=ag.name;o2.textContent=ag.name;sel.appendChild(o2);});}).catch(function(){});}}
 function nbdClose(){var o=$("nbdovl");if(o&&o.parentNode)o.parentNode.removeChild(o);window._nbdCb=null;}
-function nbdOk(){var v=($("nbdt")&&$("nbdt").value)||"";if(!v){alert("נא לבחור תאריך");return;}var cb=window._nbdCb;nbdClose();if(cb)cb(v);}
+function nbdOk(){var v=($("nbdt")&&$("nbdt").value)||"";if(!v){alert("נא לבחור תאריך");return;}var ag=($("nbag")&&$("nbag").value)||"";if($("nbag")&&!ag){alert("נא לבחור סוכן");return;}var cb=window._nbdCb;nbdClose();if(cb)cb(v,ag);}
 function nbWaMsg(x){var who=NAME?(" מדבר/ת "+NAME):"";var m="שלום!"+who+" מ-RE/MAX Family 🏠 ראיתי את הנכס שלך"+(x.address?(" ב"+x.address):"")+" למכירה, ואשמח לעזור לך למכור אותו במחיר הטוב ביותר ובליווי מקצועי. אפשר לדבר?";return encodeURIComponent(m);}
 function nbMark(k,a,reload){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).then(function(){if(reload)loadNewbornPage();}).catch(function(){});}catch(e){}return true;}
 function closeNewborn(){$("nbmodal").classList.add("hidden");nbLock(false);}
