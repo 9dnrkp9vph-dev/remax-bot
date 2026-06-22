@@ -5703,6 +5703,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .menuwrap{position:relative}
 .appmenu{position:absolute;top:46px;inset-inline-start:0;z-index:60;background:#fff;border:1px solid #e6e9ef;border-radius:14px;box-shadow:0 16px 40px rgba(13,27,42,.22);padding:6px;min-width:218px}
 .appmenu .mi{display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:10px;font-size:14.5px;font-weight:700;color:var(--ink);cursor:pointer}
+.appmenu .mi.hidden{display:none!important}
 .appmenu .mi:active,.appmenu .mi:hover{background:#f3f5f9}
 .appmenu .mi-danger{color:#c0322f}
 .appmenu hr{border:none;border-top:1px solid #eef0f4;margin:4px 4px}
@@ -6723,14 +6724,16 @@ function nbMeetings(){api("/api/newborn/meetings").then(function(r){
   if(!r||!r.ok){alert("שגיאה בטעינה");return;}
   var list=r.results||[];
   var body=list.length?list.map(function(m){
-    var del="<button onclick=\"nbMtDel('"+nbEnc(m.pkey||"")+"','"+nbEnc(m.agent||"")+"')\" style='background:none;border:none;color:#c0392b;font-size:18px;cursor:pointer;padding:0 4px' title='מחק'>🗑</button>";
-    return "<div style='border:1px solid var(--line);border-radius:12px;padding:11px;margin-bottom:8px;background:#fff'>"+
-      "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px'><b style='color:#0D1B2A'>"+esc(NBSTL[m.status]||m.label||"")+"</b>"+del+"</div>"+
-      "<div style='margin-top:4px;font-weight:700'>📅 "+esc(nbFmtDate(m.date))+"</div>"+
-      "<div style='margin-top:2px'>🏠 "+esc(m.addr||"—")+"</div>"+
-      ((isMulti()&&m.agent)?"<div class=muted style='margin-top:2px'>👤 "+esc(m.agent)+"</div>":"")+
+    var isMeet=m.status=="meeting";
+    var badge="<span style='display:inline-block;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800;"+(isMeet?"background:#e8f0fe;color:#1a56db":"background:#fff4e5;color:#b25e09")+"'>"+esc(NBSTL[m.status]||m.label||"")+"</span>";
+    var del="<button onclick=\"nbMtDel('"+nbEnc(m.pkey||"")+"','"+nbEnc(m.agent||"")+"')\" title='מחק' style='width:auto;background:none;border:none;box-shadow:none;color:#c0392b;font-size:17px;cursor:pointer;padding:4px;margin:0'>🗑</button>";
+    return "<div style='border:1px solid var(--line);border-radius:14px;padding:12px 13px;margin-bottom:10px;background:#fff;box-shadow:0 2px 8px rgba(13,27,42,.05)'>"+
+      "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px'>"+badge+del+"</div>"+
+      "<div style='margin-top:9px;font-weight:800;font-size:15px;color:#0D1B2A'>🗓️ "+esc(nbFmtDate(m.date))+"</div>"+
+      "<div style='margin-top:5px;color:#374151'>🏠 "+esc(m.addr||"—")+"</div>"+
+      ((isMulti()&&m.agent)?"<div class=muted style='margin-top:5px'>👤 "+esc(m.agent)+"</div>":"")+
     "</div>";
-  }).join(""):"<div class=muted style='padding:10px 2px'>אין פגישות או פולו-אפ.</div>";
+  }).join(""):"<div class=muted style='padding:16px 2px;text-align:center'>אין פגישות או פולו-אפ.</div>";
   var h='<div class=ovl id=nbmtovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>📅 פגישות ופולו-אפ ('+list.length+')</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbmtClose()">✕</button></div><div style="margin-top:12px;max-height:62vh;overflow:auto">'+body+'</div></div></div>';
   var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbmtovl");if(o)o.onclick=function(e){if(e.target.id=="nbmtovl")nbmtClose();};
 }).catch(function(){alert("שגיאת רשת");});}
