@@ -4665,7 +4665,8 @@ def api_my_properties():
             lid = (r.get("מספר מודעה", "") or "").strip()
             out.append({
                 "id": lid,
-                "own": _agent_owns_row(r, eff_name, eff_phones),
+                # מתאמת/מנהל יכולים לעדכן מחיר/להסיר מודעה של הסוכנים שלהם (התוצאות כבר מסוננות להיקף שלהם)
+                "own": (s["role"] in ("admin", "coordinator")) or _agent_owns_row(r, eff_name, eff_phones),
                 "pending": lid in pending,
                 "type": (r.get("סוג נכס", "") or "").strip(),
                 "city": (r.get("עיר / ישוב", "") or "").strip(),
@@ -6684,13 +6685,19 @@ function nbStatSend(k,a,type,date,agent,price,phone){api("/api/newborn/status",{
   if(r&&r.ok){var msg=(type=="meeting"||type=="followup")?(r.calendar?"נשמר ונוסף ליומן Google ✅":"נשמר ✅ (לא נוסף ליומן — צריך להתחבר עם Google כדי לסנכרן יומן)"):"נשמר ✅";alert(msg);loadNewbornPage();}
   else alert("השמירה נכשלה"+((r&&r.reason=="no_date")?" — חסר תאריך":""));}).catch(function(){alert("שגיאת רשת");});}
 function nbDateDialog(type,cb){var dt=(type=="meeting");var title=dt?"בחר תאריך ושעה לפגישה":"בחר תאריך לפולו-אפ";
-  var inp=dt?"<input id=nbdt type=datetime-local step=900 class=chip style='width:100%;box-sizing:border-box'>":"<input id=nbdt type=date class=chip style='width:100%;box-sizing:border-box'>";
+  var inp;
+  if(dt){var topts="";for(var H=7;H<=21;H++){for(var M=0;M<60;M+=15){var hh=("0"+H).slice(-2),mm=("0"+M).slice(-2);topts+='<option value="'+hh+':'+mm+'"'+((hh=="10"&&mm=="00")?" selected":"")+'>'+hh+':'+mm+'</option>';}}
+    inp="<input id=nbdt_d type=date class=chip style='width:100%;box-sizing:border-box'><div style='display:flex;align-items:center;gap:8px;margin-top:8px'><span class=muted style='font-size:13px'>שעה</span><select id=nbdt_t class=chip style='flex:1;box-sizing:border-box'>"+topts+"</select></div>";
+  }else{inp="<input id=nbdt type=date class=chip style='width:100%;box-sizing:border-box'>";}
   var agSel=(ROLE=="coordinator")?"<select id=nbag class=chip style='width:100%;box-sizing:border-box;margin-top:8px'><option value=''>בחר סוכן…</option></select>":"";
   var h='<div class=ovl id=nbdovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbdClose()">✕</button></div><div style="margin-top:10px">'+inp+'</div>'+agSel+'<button class="btn-gold" style="width:100%;margin-top:10px" onclick="nbdOk()">אישור</button></div></div>';
   var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbdovl");if(o)o.onclick=function(e){if(e.target.id=="nbdovl")nbdClose();};window._nbdCb=cb;
   if(agSel){api("/api/my/agents").then(function(r){var sel=$("nbag");if(!sel||!r||!r.ok)return;(r.agents||[]).forEach(function(ag){var o2=document.createElement("option");o2.value=ag.name;o2.textContent=ag.name;sel.appendChild(o2);});}).catch(function(){});}}
 function nbdClose(){var o=$("nbdovl");if(o&&o.parentNode)o.parentNode.removeChild(o);window._nbdCb=null;}
-function nbdOk(){var v=($("nbdt")&&$("nbdt").value)||"";if(!v){alert("נא לבחור תאריך");return;}var ag=($("nbag")&&$("nbag").value)||"";if($("nbag")&&!ag){alert("נא לבחור סוכן");return;}var cb=window._nbdCb;nbdClose();if(cb)cb(v,ag);}
+function nbdOk(){var v;
+  if($("nbdt_d")){var dd=$("nbdt_d").value||"";if(!dd){alert("נא לבחור תאריך");return;}var tt=($("nbdt_t")&&$("nbdt_t").value)||"10:00";v=dd+"T"+tt;}
+  else{v=($("nbdt")&&$("nbdt").value)||"";if(!v){alert("נא לבחור תאריך");return;}}
+  var ag=($("nbag")&&$("nbag").value)||"";if($("nbag")&&!ag){alert("נא לבחור סוכן");return;}var cb=window._nbdCb;nbdClose();if(cb)cb(v,ag);}
 function nbWaMsg(x){var who=NAME?(" מדבר/ת "+NAME):"";var m="שלום!"+who+" מ-RE/MAX Family 🏠 ראיתי את הנכס שלך"+(x.address?(" ב"+x.address):"")+" למכירה, ואשמח לעזור לך למכור אותו במחיר הטוב ביותר ובליווי מקצועי. אפשר לדבר?";return encodeURIComponent(m);}
 function nbMark(k,a,reload){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).then(function(){if(reload)loadNewbornPage();}).catch(function(){});}catch(e){}return true;}
 function closeNewborn(){$("nbmodal").classList.add("hidden");nbLock(false);}
