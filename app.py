@@ -5977,7 +5977,7 @@ html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
 #splash .dots i.on{width:22px;border-radius:5px;background:var(--gold2)}
 #splash .u{opacity:1}
 #splash.play .u{animation:spup .8s cubic-bezier(.2,.7,.2,1) backwards}
-#splash.play .u.d2{animation-delay:.20s}#splash.play .u.d3{animation-delay:.32s}#splash.play .u.d4{animation-delay:.44s}#splash.play .u.d5{animation-delay:.56s}#splash.play .u.d6{animation-delay:.68s}#splash.play .u.d7{animation-delay:.80s}
+#splash.play .u.d2{animation-delay:.20s}#splash.play .u.d3{animation-delay:.32s}#splash.play .u.d4{animation-delay:.44s}#splash.play .u.d5{animation-delay:.56s}#splash.play .u.d6{animation-delay:.68s}#splash.play .u.d7{animation-delay:.80s}#splash.play .u.d8{animation-delay:.92s}
 @keyframes spup{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
 #splash.play .pop{animation:sppop .9s cubic-bezier(.2,.8,.2,1) backwards}
 @keyframes sppop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
@@ -6072,8 +6072,9 @@ function showSplash(){if($("splash"))return;
     '<div class="feats">'+
       '<div class="feat u d5"><span class="fi"><svg width="22" height="22" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z"/></svg></span><div><div class="ft">שיחות מסוכמות לבד</div><div class="fs">AI מזהה כל קונה פוטנציאלי</div></div></div>'+
       '<div class="feat u d6"><span class="fi"><svg width="22" height="22" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11.8 3.4l2.8 2.8L6 14.8 3 15.4l.6-3z"/><path d="M10.6 4.6l2.8 2.8"/></svg></span><div><div class="ft">חתימה דיגיטלית</div><div class="fs">חוזה חתום תוך דקה</div></div></div>'+
+      '<div class="feat u d7"><span class="fi"><svg width="22" height="22" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.8l6.5 4.2v8.4a1.2 1.2 0 0 1-1.2 1.2H3.7a1.2 1.2 0 0 1-1.2-1.2V6z"/><path d="M6.6 15.6V9.4h4.8v6.2"/></svg></span><div><div class="ft">נכס חדש נולד</div><div class="fs">צפייה מיידית בלקוח שפרסם נכס למכירה</div></div></div>'+
     '</div>'+
-    '<div class="cta-wrap u d7"><button class="cta" onclick="hideSplash()">בוא נתחיל <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#231700" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><div class="dots"><i class="on"></i><i></i><i></i></div></div>'+
+    '<div class="cta-wrap u d8"><button class="cta" onclick="hideSplash()">בוא נתחיל <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#231700" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><div class="dots"><i class="on"></i><i></i><i></i></div></div>'+
   '</div>';
   document.body.appendChild(d);
   requestAnimationFrame(function(){d.classList.add("play");});
