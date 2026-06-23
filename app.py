@@ -5102,9 +5102,13 @@ def api_newborn_meetings():
             continue
         if allowed is not None and _canon_key(st.get("agent", "")) not in allowed:
             continue
+        _oph = (st.get("ophone", "") or "").strip()
+        _dig = "".join(ch for ch in _oph if ch.isdigit())
+        _wa = ("" if not _dig else (_dig if _dig.startswith("972") else "972" + _dig.lstrip("0")))
         out.append({"status": st.get("status"), "label": _NB_STATUS_LABELS.get(st.get("status"), ""),
                     "date": st.get("date", ""), "agent": st.get("agent", ""),
-                    "addr": st.get("addr", ""), "skey": k})
+                    "addr": st.get("addr", ""), "skey": k,
+                    "ophone": _oph, "wa": _wa, "owner": st.get("owner", ""), "note": st.get("note", "")})
     out.sort(key=lambda x: str(x.get("date", "")))
     return jsonify({"ok": True, "results": out})
 
@@ -5157,7 +5161,9 @@ def api_newborn_status_edit():
     d = request.get_json(silent=True) or {}
     skey = (d.get("skey", "") or "").strip()
     new_date = (d.get("date", "") or "").strip()
-    if not skey or not new_date:
+    new_status = (d.get("status", "") or "").strip()
+    note_in = d.get("note", None)   # None = לא נשלח (לא לגעת); "" = ניקוי הערה
+    if not skey or (not new_date and new_status not in ("meeting", "followup") and note_in is None):
         return jsonify({"ok": False, "reason": "bad_input"}), 400
     cfg = _load_config()
     m = cfg.get("nbStatus")
@@ -5179,12 +5185,21 @@ def api_newborn_status_edit():
                     if nm: allowed.add(_canon_key(nm))
         if _canon_key(rec.get("agent", "")) not in allowed:
             return jsonify({"ok": False, "reason": "forbidden"}), 403
-    for ev in (rec.get("cal") or []):   # מחיקת אירוע היומן הישן
-        try: gcal_delete_event(ev.get("email", ""), ev.get("id", ""))
-        except Exception: pass
-    rec["date"] = new_date
+    cal_changed = False
+    if new_status in ("meeting", "followup") and new_status != rec.get("status"):
+        rec["status"] = new_status
+        cal_changed = True
+    if note_in is not None:
+        rec["note"] = str(note_in)[:1000]
+    if new_date and new_date != rec.get("date", ""):
+        rec["date"] = new_date
+        cal_changed = True
+    if cal_changed:
+        for ev in (rec.get("cal") or []):   # מחיקת אירוע היומן הישן
+            try: gcal_delete_event(ev.get("email", ""), ev.get("id", ""))
+            except Exception: pass
+        rec["cal"] = _nb_cal_create(rec, rec.get("date", ""), _gauth_email_for_phone(s.get("phone", "")))
     rec["ts"] = int(time.time())
-    rec["cal"] = _nb_cal_create(rec, new_date, _gauth_email_for_phone(s.get("phone", "")))
     m[skey] = rec
     cfg["nbStatus"] = m
     _save_config(cfg)
@@ -6797,29 +6812,65 @@ function viewNewborn(){
 }
 function nbMeetings(){api("/api/newborn/meetings").then(function(r){
   if(!r||!r.ok){alert("שגיאה בטעינה");return;}
-  var list=r.results||[];
+  var list=r.results||[];window._NBMT={};
   var body=list.length?list.map(function(m){
+    window._NBMT[m.skey]=m;
     var isMeet=m.status=="meeting";
     var badge="<span style='display:inline-block;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800;"+(isMeet?"background:#e8f0fe;color:#1a56db":"background:#fff4e5;color:#b25e09")+"'>"+esc(NBSTL[m.status]||m.label||"")+"</span>";
     var del="<button onclick=\"nbMtDel('"+nbEnc(m.skey||"")+"')\" title='מחק' style='width:auto;background:none;border:none;box-shadow:none;color:#c0392b;font-size:17px;cursor:pointer;padding:4px;margin:0'>🗑</button>";
-    var edt="<button onclick=\"nbMtEdit('"+nbEnc(m.skey||"")+"','"+m.status+"')\" title='ערוך' style='width:auto;background:none;border:none;box-shadow:none;color:#1a56db;font-size:16px;cursor:pointer;padding:4px;margin:0'>✏️</button>";
+    var edt="<button onclick=\"nbMtEdit('"+nbEnc(m.skey||"")+"')\" title='ערוך' style='width:auto;background:none;border:none;box-shadow:none;color:#1a56db;font-size:16px;cursor:pointer;padding:4px;margin:0'>✏️</button>";
+    var contact="";
+    if(m.ophone){
+      var wa=m.wa?"<a href='whatsapp://send?phone="+esc(m.wa)+"' style='display:inline-flex;align-items:center;gap:5px;background:#25d366;color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:6px 12px;border-radius:9px'>וואטסאפ</a>":"";
+      var call="<a href='tel:"+esc(m.ophone)+"' style='display:inline-flex;align-items:center;gap:5px;background:#0D1B2A;color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:6px 12px;border-radius:9px'>📞 חיוג</a>";
+      contact="<div style='margin-top:9px'><div class=muted style='font-size:13px;margin-bottom:6px'>בעל הנכס: "+esc(m.owner||"—")+" · "+esc(m.ophone)+"</div><div style='display:flex;gap:8px'>"+wa+call+"</div></div>";
+    }
+    var note=m.note?"<div style='margin-top:9px;background:#f6f8fb;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px;color:#374151;white-space:pre-wrap'>📝 "+esc(m.note)+"</div>":"";
     return "<div style='border:1px solid var(--line);border-radius:14px;padding:12px 13px;margin-bottom:10px;background:#fff;box-shadow:0 2px 8px rgba(13,27,42,.05)'>"+
       "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px'>"+badge+"<div style='display:flex;gap:2px'>"+edt+del+"</div></div>"+
       "<div style='margin-top:9px;font-weight:800;font-size:15px;color:#0D1B2A'>🗓️ "+esc(nbDayLabel(m.date))+"</div>"+
       "<div style='margin-top:5px;color:#374151'>🏠 "+esc(m.addr||"—")+"</div>"+
       ((isMulti()&&m.agent)?"<div class=muted style='margin-top:5px'>👤 "+esc(m.agent)+"</div>":"")+
+      contact+note+
     "</div>";
   }).join(""):"<div class=muted style='padding:16px 2px;text-align:center'>אין פגישות או פולו-אפ.</div>";
   var h='<div class=ovl id=nbmtovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>📅 פגישות ופולו-אפ ('+list.length+')</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbmtClose()">✕</button></div><div style="margin-top:12px;max-height:62vh;overflow:auto">'+body+'</div></div></div>';
   var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);ovlLock();var o=$("nbmtovl");if(o)o.onclick=function(e){if(e.target.id=="nbmtovl")nbmtClose();};
 }).catch(function(){alert("שגיאת רשת");});}
 function nbmtClose(){var o=$("nbmtovl");if(o&&o.parentNode)o.parentNode.removeChild(o);ovlUnlock();}
-function nbMtEdit(skey,status){skey=decodeURIComponent(skey||"");
-  nbDateDialog(status,function(date){
-    api("/api/newborn/status/edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({skey:skey,date:date})}).then(function(r){
-      if(r&&r.ok){nbmtClose();nbMeetings();if(typeof loadNewbornPage=="function")loadNewbornPage();alert(r.calendar?"עודכן ונשמר ביומן ✅":"עודכן ✅");}
-      else alert("העדכון נכשל"+((r&&r.reason)?" ("+r.reason+")":""));}).catch(function(){alert("שגיאת רשת");});
-  },true);}
+function nbMtEdit(skeyEnc){var skey=decodeURIComponent(skeyEnc||"");
+  var m=(window._NBMT&&window._NBMT[skey])||{};
+  var dpart=(m.date||"").slice(0,10);
+  var tpart=((m.date||"").indexOf("T")>-1)?(m.date.slice(11,16)):"10:00";
+  var topts="";for(var H=7;H<=21;H++){for(var M=0;M<60;M+=15){var hh=("0"+H).slice(-2),mm=("0"+M).slice(-2);topts+='<option value="'+hh+':'+mm+'"'+((hh+":"+mm==tpart)?" selected":"")+'>'+hh+':'+mm+'</option>';}}
+  var bs="flex:1;padding:11px;border-radius:11px;border:2px solid var(--line);background:#fff;color:#6b7280;font-weight:800;cursor:pointer;width:auto;margin:0";
+  var h='<div class=ovl id=nbmeovl><div class=ovlbox>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center"><b>עריכת פגישה / פולו-אפ</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbMeClose()">✕</button></div>'+
+    '<div class=muted style="margin:12px 0 5px;font-size:13px">סוג</div>'+
+    '<div style="display:flex;gap:8px"><button type=button id=nbme_meet onclick="nbMeType(\'meeting\')" style="'+bs+'">📅 פגישה</button><button type=button id=nbme_follow onclick="nbMeType(\'followup\')" style="'+bs+'">🔁 פולו-אפ</button></div>'+
+    '<div class=muted style="margin:14px 0 5px;font-size:13px">תאריך ושעה</div>'+
+    '<input id=nbme_d type=date class=chip style="width:100%;box-sizing:border-box" value="'+dpart+'">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-top:8px"><span class=muted style="font-size:13px">שעה</span><select id=nbme_t class=chip style="flex:1;box-sizing:border-box">'+topts+'</select></div>'+
+    '<div class=muted style="margin:14px 0 5px;font-size:13px">הערה / עדכון</div>'+
+    '<textarea id=nbme_note class=chip style="width:100%;box-sizing:border-box;min-height:84px" placeholder="למשל: התקשרתי, יחזור אליי בשבוע הבא">'+esc(m.note||"")+'</textarea>'+
+    '<button class="btn-gold" style="width:100%;margin-top:13px" onclick="nbMtSave(\''+nbEnc(skey)+'\')">שמירה</button>'+
+  '</div></div>';
+  var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);
+  nbMeType(m.status=="followup"?"followup":"meeting");
+  var o=$("nbmeovl");if(o)o.onclick=function(e){if(e.target.id=="nbmeovl")nbMeClose();};}
+function nbMeType(t){window._nbmeType=t;var on="flex:1;padding:11px;border-radius:11px;font-weight:800;cursor:pointer;width:auto;margin:0;border:2px solid ",off="flex:1;padding:11px;border-radius:11px;font-weight:800;cursor:pointer;width:auto;margin:0;border:2px solid var(--line);background:#fff;color:#6b7280";
+  var mb=$("nbme_meet"),fb=$("nbme_follow");
+  if(mb)mb.style.cssText=(t=="meeting")?(on+"#1a56db;background:#e8f0fe;color:#1a56db"):off;
+  if(fb)fb.style.cssText=(t=="followup")?(on+"#b25e09;background:#fff4e5;color:#b25e09"):off;}
+function nbMeClose(){var o=$("nbmeovl");if(o&&o.parentNode)o.parentNode.removeChild(o);}
+function nbMtSave(skeyEnc){var skey=decodeURIComponent(skeyEnc||"");
+  var dd=($("nbme_d")&&$("nbme_d").value)||"";if(!dd){alert("נא לבחור תאריך");return;}
+  var tt=($("nbme_t")&&$("nbme_t").value)||"10:00";
+  var note=($("nbme_note")&&$("nbme_note").value)||"";
+  var status=window._nbmeType||"meeting";
+  api("/api/newborn/status/edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({skey:skey,date:dd+"T"+tt,status:status,note:note})}).then(function(r){
+    if(r&&r.ok){nbMeClose();nbmtClose();nbMeetings();if(typeof loadNewbornPage=="function")loadNewbornPage();alert(r.calendar?"עודכן ונשמר ביומן ✅":"עודכן ✅");}
+    else alert("העדכון נכשל"+((r&&r.reason)?" ("+r.reason+")":""));}).catch(function(){alert("שגיאת רשת");});}
 function nbMtDel(skey){skey=decodeURIComponent(skey||"");if(!confirm("למחוק את הפגישה/פולו-אפ? (יימחק גם מהיומן)"))return;
   api("/api/newborn/status/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({skey:skey})}).then(function(r){
     if(r&&r.ok){nbmtClose();nbMeetings();if(typeof loadNewbornPage=="function")loadNewbornPage();}else alert("המחיקה נכשלה"+((r&&r.reason)?" ("+r.reason+")":""));}).catch(function(){alert("שגיאת רשת");});}
