@@ -5979,7 +5979,8 @@ function fbHydrate(cb){cb=cb||enter;api("/api/auth/whoami").then(function(r){if(
 /* MOBILE-PATCH: שער Face ID — פעיל רק בתוך אפליקציית Capacitor; בדפדפן נופל ל-enter(). נחוץ לנייד, לא להסיר */
 function fbIsNative(){try{return !!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());}catch(e){return false;}}
 function fbBio(){try{return (window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.NativeBiometric)||null;}catch(e){return null;}}
-function fbAutoLogin(){if(!fbIsNative()){enter();return;}var bp=fbBio();if(!bp){enter();return;}bp.isAvailable().then(function(res){if(res&&res.isAvailable){fbShowLock();fbDoBio();}else{enter();}}).catch(function(){enter();});}
+function fbAutoLogin(){try{if(sessionStorage.getItem('fbSkipLock')){sessionStorage.removeItem('fbSkipLock');enter();return;}}catch(e){}
+  if(!fbIsNative()){enter();return;}var bp=fbBio();if(!bp){enter();return;}bp.isAvailable().then(function(res){if(res&&res.isAvailable){fbShowLock();fbDoBio();}else{enter();}}).catch(function(){enter();});}
 function fbDoBio(){var bp=fbBio();if(!bp){fbHideLock();enter();return;}var b=$("fbbiobtn");if(b){b.textContent="מאמת…";b.disabled=true;}bp.verifyIdentity({reason:"כניסה מאובטחת ל-Family Bot",title:"Family Bot",subtitle:"",description:"אמת את זהותך כדי להיכנס",useFallback:true,maxAttempts:3}).then(function(){fbHideLock();enter();}).catch(function(){var b2=$("fbbiobtn");if(b2){b2.textContent="🔓 נסה שוב";b2.disabled=false;}});}
 function fbShowLock(){if($("fblock"))return;var d=document.createElement("div");d.id="fblock";d.setAttribute("style","position:fixed;inset:0;z-index:99999;background:#eef1f5;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;font-family:Heebo,Arial,sans-serif");d.innerHTML='<img src="/assets/logo" style="height:52px;margin-bottom:24px"><div style="font-size:44px;margin-bottom:12px">🔒</div><div style="font-size:20px;font-weight:800;color:#0D1B2A;margin-bottom:6px">האפליקציה נעולה</div><div style="font-size:14px;color:#6b7280;margin-bottom:26px;max-width:300px">אמת את זהותך כדי להיכנס</div><button id="fbbiobtn" onclick="fbDoBio()" style="width:100%;max-width:320px;padding:15px;background:#0D1B2A;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;font-family:inherit">🔓 כניסה עם Face ID</button><button onclick="fbPhoneLogin()" style="margin-top:16px;background:none;border:none;color:#6b7280;font-size:14px;font-family:inherit;text-decoration:underline">כניסה עם מספר טלפון</button>';document.body.appendChild(d);}
 function fbHideLock(){var d=$("fblock");if(d&&d.parentNode)d.parentNode.removeChild(d);}
@@ -6728,8 +6729,8 @@ var _nbScrollY=0;
 function nbLock(on){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";}
 var NBITEMS=[],NBSHOWN=20;
 function viewNewborn(){
-  NBSHOWN=20;
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
+  NBSHOWN=20;NBFILTER="";
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי שם בעל הנכס או כתובת" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
   loadNewbornPage();
 }
 function nbMeetings(){api("/api/newborn/meetings").then(function(r){
@@ -6761,11 +6762,16 @@ function nbDayLabel(s){s=String(s||"");if(!s)return "";var hasT=s.indexOf("T")>-
 var _ovlScrollY=0;
 function ovlLock(){_ovlScrollY=window.scrollY||window.pageYOffset||0;var b=document.body;b.style.position="fixed";b.style.top=(-_ovlScrollY)+"px";b.style.left="0";b.style.right="0";b.style.width="100%";}
 function ovlUnlock(){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";window.scrollTo(0,_ovlScrollY);}
+var NBFILTER="";
+function nbSearch(v){NBFILTER=(v||"").trim();NBSHOWN=20;renderNewborn();}
+function nbFiltered(){var f=(NBFILTER||"").trim().toLowerCase();if(!f)return NBITEMS;
+  return NBITEMS.filter(function(x){return (((x.address||"")+" "+(x.owner||"")+" "+(x.city||"")).toLowerCase().indexOf(f)>=0);});}
 function renderNewborn(){
   if(!$("nblist"))return;
-  if(!NBITEMS.length){$("nblist").innerHTML="<div class=card><div class=muted>אין נכסים זמינים עבורך כרגע.</div></div>";if($("nbmore"))$("nbmore").innerHTML="";return;}
-  $("nblist").innerHTML=NBITEMS.slice(0,NBSHOWN).map(nbCard).join("");
-  var m=$("nbmore");if(m){m.innerHTML=(NBITEMS.length>NBSHOWN)?"<button class=sec onclick=nbLoadMore() style=width:auto;display:inline-block;padding:11px 24px>טען עוד ("+(NBITEMS.length-NBSHOWN)+")</button>":"";}
+  var items=nbFiltered();
+  if(!items.length){$("nblist").innerHTML="<div class=card><div class=muted>"+(NBFILTER?"לא נמצאו מודעות לחיפוש זה.":"אין נכסים זמינים עבורך כרגע.")+"</div></div>";if($("nbmore"))$("nbmore").innerHTML="";return;}
+  $("nblist").innerHTML=items.slice(0,NBSHOWN).map(nbCard).join("");
+  var m=$("nbmore");if(m){m.innerHTML=(items.length>NBSHOWN)?"<button class=sec onclick=nbLoadMore() style=width:auto;display:inline-block;padding:11px 24px>טען עוד ("+(items.length-NBSHOWN)+")</button>":"";}
 }
 function nbLoadMore(){NBSHOWN+=20;renderNewborn();}
 function loadNewbornPage(){
