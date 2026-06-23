@@ -4853,6 +4853,41 @@ def _nb_statuses():
     m = _load_config().get("nbStatus")
     return m if isinstance(m, dict) else {}
 
+def _nb_cal_create(rec, date, organizer_email):
+    """יוצר אירועי יומן לפגישה/פולואפ לפי הרשומה והתאריך — ביומן הקובע + הסוכן. מחזיר [{email,id}]."""
+    label = _NB_STATUS_LABELS.get(rec.get("status"), "")
+    addr = rec.get("addr", "")
+    summary = label + " · " + (addr or "נכס נולד")
+    desc = "נכס נולד · נקבע מ-Family Bot"
+    if rec.get("owner"):  desc += "\nבעל הנכס: " + rec["owner"]
+    if addr:              desc += "\nכתובת: " + addr
+    if rec.get("price"):  desc += "\nמחיר: " + rec["price"]
+    if rec.get("ophone"): desc += "\nטלפון בעל הנכס: " + rec["ophone"]
+    start_iso = date; end_iso = None
+    if "T" in date:
+        if len(date) == 16: start_iso = date + ":00"
+        try:
+            from datetime import datetime as _dtm, timedelta as _td
+            end_iso = (_dtm.fromisoformat(start_iso) + _td(hours=1)).isoformat()
+        except Exception:
+            end_iso = None
+    nm = rec.get("agent", "")
+    _ps = list(_phones_for_name(nm))
+    _agent_g = _gauth_email_for_phone(_ps[0]) if _ps else ""
+    _agent_mail = _agent_g or _agent_email_for(nm, _ps[0] if _ps else "")
+    targets = []
+    if organizer_email: targets.append(organizer_email)
+    if _agent_g and all(_agent_g.lower() != e.lower() for e in targets):
+        targets.append(_agent_g)
+    invite = [_agent_mail] if (not _agent_g and _agent_mail and organizer_email and _agent_mail.lower() != organizer_email.lower()) else []
+    cal = []
+    for em in targets:
+        atts = invite if em == organizer_email else []
+        eid = gcal_create_event(em, summary, desc, start_iso, end_iso,
+                                attendees=atts, send_updates=("all" if atts else "none"))
+        if eid: cal.append({"email": em, "id": eid})
+    return cal
+
 def _newborn_created_epoch(r):
     raw = (r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "") or "").strip()
     if not raw:
@@ -4901,6 +4936,8 @@ def api_newborn():
                        or request.args.get("as", "")).strip()
         eff_name = as_name or s.get("name", "")
         eff_norm = _norm_name(eff_name)
+        # חיפוש: מחזיר התאמות מכל הפול (300 האחרונים) — גם נכסים שעוד לא נחשפו לסוכן
+        q = (request.args.get("q", "") or ((request.get_json(silent=True) or {}).get("q", "")) or "").strip().lower()
         # מנהל מושהה (כמו אווה אזולאי) אינו רואה "נכס נולד" מיד — נכנס למסלול ההשהיה הרגיל
         _dphone = "" if as_name else s.get("phone", "")
         admin_all = (s["role"] == "admin" and not as_name and not _delayed_admin_days(eff_name, _dphone))
@@ -4928,21 +4965,28 @@ def api_newborn():
             own = bool(eff_norm) and bool(lister) and _norm_name(lister) == eff_norm
             rel_epoch = created + delay * 86400
             released = admin_all or own or now >= rel_epoch
-            if not released:
-                continue   # מציגים רק נכסים שכבר נחשפו לסוכן (14+ ימים מהיצירה)
             city = _nb(r.get("עיר", "") or r.get("עיר / ישוב", ""))
-            ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
+            _addr = _nb(r.get("רחוב1", "") or r.get("רחוב", ""))
+            _owner = _nb(r.get("שם בעל הנכס", ""))
             _k = _nb_key(r)
             _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
-            if _vstat and _vstat.get("status") == "cannot" and not admin_all:
-                continue   # הסוכן סימן "לא ניתן לגיוס" — מסתירים אצלו
+            if q:
+                # מצב חיפוש — מכל הפול, ללא השהיה/הסתרה; סינון לפי טקסט (כתובת/בעל נכס/עיר)
+                if q not in (_addr + " " + _owner + " " + city).lower():
+                    continue
+            else:
+                if not released:
+                    continue   # מציגים רק נכסים שכבר נחשפו לסוכן
+                if _vstat and _vstat.get("status") == "cannot" and not admin_all:
+                    continue   # הסוכן סימן "לא ניתן לגיוס" — מסתירים אצלו
+            ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
             out.append({
                 "released": True,
                 "own": own,
                 "key": _k,
                 "contacted": contacts.get(_k, []),
                 "city": city,
-                "address": _nb(r.get("רחוב1", "") or r.get("רחוב", "")),
+                "address": _addr,
                 "desc": _nb(r.get("תיאור נכס", "")),
                 "price": _newborn_price(r.get("מחיר", "")),
                 "notes": _nb(r.get("הערות חדש", ""))[:160],
@@ -5017,38 +5061,12 @@ def api_newborn_status():
     # מפתח לפי סוכן+נכס — כך שכל סוכן רואה את הסטטוס שלו והסתרת "לא ניתן לגיוס" היא אישית
     skey = _canon_key(nm) + "::" + key
     rec = {"status": status, "addr": addr, "agent": nm, "pkey": key, "ts": int(time.time()),
+           "owner": owner_name, "price": price, "ophone": owner_phone,
            "date": (date if status in ("meeting", "followup") else ""), "cal": []}
-    # אירוע יומן לפגישה/פולואפ (שומרים מזהי אירוע למחיקה עתידית)
+    # אירוע יומן לפגישה/פולואפ (שומרים מזהי אירוע למחיקה/עריכה עתידית)
     cal_ok = False
     if status in ("meeting", "followup") and date:
-        label = _NB_STATUS_LABELS[status]
-        summary = label + " · " + (addr or "נכס נולד")
-        desc = "נכס נולד · נקבע מ-Family Bot"
-        if owner_name:  desc += "\nבעל הנכס: " + owner_name
-        if addr:        desc += "\nכתובת: " + addr
-        if price:       desc += "\nמחיר: " + price
-        if owner_phone: desc += "\nטלפון בעל הנכס: " + owner_phone
-        start_iso = date; end_iso = None
-        if "T" in date:                       # תאריך+שעה → אירוע של שעה
-            if len(date) == 16: start_iso = date + ":00"
-            try:
-                from datetime import datetime as _dtm, timedelta as _td
-                end_iso = (_dtm.fromisoformat(start_iso) + _td(hours=1)).isoformat()
-            except Exception:
-                end_iso = None
-        # מייל הסוכן היעד: קודם חיבור Google, אחרת מאנשי קשר (עמודה E)
-        _ps = list(_phones_for_name(nm))
-        _agent_g = _gauth_email_for_phone(_ps[0]) if _ps else ""
-        _agent_mail = _agent_g or _agent_email_for(nm, _ps[0] if _ps else "")
-        _organizer = _gauth_email_for_phone(s.get("phone", ""))   # מי שקבע — חייב מחובר Google
-        if _organizer:
-            _atts = [_agent_mail] if (_agent_mail and _agent_mail.lower() != _organizer.lower()) else []
-            _eid = gcal_create_event(_organizer, summary, desc, start_iso, end_iso,
-                                     attendees=_atts, send_updates=("all" if _atts else "none"))
-            if _eid: rec["cal"].append({"email": _organizer, "id": _eid})
-        elif _agent_g:
-            _eid = gcal_create_event(_agent_g, summary, desc, start_iso, end_iso)
-            if _eid: rec["cal"].append({"email": _agent_g, "id": _eid})
+        rec["cal"] = _nb_cal_create(rec, date, _gauth_email_for_phone(s.get("phone", "")))
         cal_ok = bool(rec["cal"])
     # שמירה בקונפיג
     cfg = _load_config()
@@ -5128,8 +5146,50 @@ def api_newborn_status_delete():
     m.pop(skey, None)
     cfg["nbStatus"] = m
     _save_config(cfg)
-    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת פגישה/פולו-אפ", (rec.get("addr") or pkey)[:80])
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
     return jsonify({"ok": True})
+
+@app.route("/api/newborn/status/edit", methods=["POST"])
+def api_newborn_status_edit():
+    """עריכת תאריך/שעה של פגישה/פולו-אפ — מעדכן ביומן (מוחק את הישן ויוצר חדש)."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    d = request.get_json(silent=True) or {}
+    skey = (d.get("skey", "") or "").strip()
+    new_date = (d.get("date", "") or "").strip()
+    if not skey or not new_date:
+        return jsonify({"ok": False, "reason": "bad_input"}), 400
+    cfg = _load_config()
+    m = cfg.get("nbStatus")
+    if not isinstance(m, dict): m = {}
+    rec = m.get(skey)
+    if not rec:
+        return jsonify({"ok": False, "reason": "not_found"}), 404
+    if rec.get("status") not in ("meeting", "followup"):
+        return jsonify({"ok": False, "reason": "not_editable"}), 400
+    # הרשאה: סוכן את שלו; מתאמת את הסוכנים שלה; מנהל הכל
+    if s["role"] != "admin":
+        allowed = {_canon_key(s.get("name", ""))}
+        if s["role"] == "coordinator":
+            cc = _coordinators_all().get(_last9(s.get("phone", "")))
+            if cc:
+                allowed |= set(_canon_key(n) for n in (cc.get("names") or set()))
+                for ph in (cc.get("agents") or set()):
+                    nm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
+                    if nm: allowed.add(_canon_key(nm))
+        if _canon_key(rec.get("agent", "")) not in allowed:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+    for ev in (rec.get("cal") or []):   # מחיקת אירוע היומן הישן
+        try: gcal_delete_event(ev.get("email", ""), ev.get("id", ""))
+        except Exception: pass
+    rec["date"] = new_date
+    rec["ts"] = int(time.time())
+    rec["cal"] = _nb_cal_create(rec, new_date, _gauth_email_for_phone(s.get("phone", "")))
+    m[skey] = rec
+    cfg["nbStatus"] = m
+    _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עריכת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
+    return jsonify({"ok": True, "calendar": bool(rec.get("cal"))})
 
 # ── Exclusivity search ─────────────────────────────────────────────────────────
 def _web_num(v):
@@ -6740,8 +6800,9 @@ function nbMeetings(){api("/api/newborn/meetings").then(function(r){
     var isMeet=m.status=="meeting";
     var badge="<span style='display:inline-block;padding:4px 11px;border-radius:999px;font-size:12px;font-weight:800;"+(isMeet?"background:#e8f0fe;color:#1a56db":"background:#fff4e5;color:#b25e09")+"'>"+esc(NBSTL[m.status]||m.label||"")+"</span>";
     var del="<button onclick=\"nbMtDel('"+nbEnc(m.skey||"")+"')\" title='מחק' style='width:auto;background:none;border:none;box-shadow:none;color:#c0392b;font-size:17px;cursor:pointer;padding:4px;margin:0'>🗑</button>";
+    var edt="<button onclick=\"nbMtEdit('"+nbEnc(m.skey||"")+"','"+m.status+"')\" title='ערוך' style='width:auto;background:none;border:none;box-shadow:none;color:#1a56db;font-size:16px;cursor:pointer;padding:4px;margin:0'>✏️</button>";
     return "<div style='border:1px solid var(--line);border-radius:14px;padding:12px 13px;margin-bottom:10px;background:#fff;box-shadow:0 2px 8px rgba(13,27,42,.05)'>"+
-      "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px'>"+badge+del+"</div>"+
+      "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px'>"+badge+"<div style='display:flex;gap:2px'>"+edt+del+"</div></div>"+
       "<div style='margin-top:9px;font-weight:800;font-size:15px;color:#0D1B2A'>🗓️ "+esc(nbDayLabel(m.date))+"</div>"+
       "<div style='margin-top:5px;color:#374151'>🏠 "+esc(m.addr||"—")+"</div>"+
       ((isMulti()&&m.agent)?"<div class=muted style='margin-top:5px'>👤 "+esc(m.agent)+"</div>":"")+
@@ -6751,6 +6812,12 @@ function nbMeetings(){api("/api/newborn/meetings").then(function(r){
   var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);ovlLock();var o=$("nbmtovl");if(o)o.onclick=function(e){if(e.target.id=="nbmtovl")nbmtClose();};
 }).catch(function(){alert("שגיאת רשת");});}
 function nbmtClose(){var o=$("nbmtovl");if(o&&o.parentNode)o.parentNode.removeChild(o);ovlUnlock();}
+function nbMtEdit(skey,status){skey=decodeURIComponent(skey||"");
+  nbDateDialog(status,function(date){
+    api("/api/newborn/status/edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({skey:skey,date:date})}).then(function(r){
+      if(r&&r.ok){nbmtClose();nbMeetings();if(typeof loadNewbornPage=="function")loadNewbornPage();alert(r.calendar?"עודכן ונשמר ביומן ✅":"עודכן ✅");}
+      else alert("העדכון נכשל"+((r&&r.reason)?" ("+r.reason+")":""));}).catch(function(){alert("שגיאת רשת");});
+  },true);}
 function nbMtDel(skey){skey=decodeURIComponent(skey||"");if(!confirm("למחוק את הפגישה/פולו-אפ? (יימחק גם מהיומן)"))return;
   api("/api/newborn/status/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({skey:skey})}).then(function(r){
     if(r&&r.ok){nbmtClose();nbMeetings();if(typeof loadNewbornPage=="function")loadNewbornPage();}else alert("המחיקה נכשלה"+((r&&r.reason)?" ("+r.reason+")":""));}).catch(function(){alert("שגיאת רשת");});}
@@ -6762,8 +6829,15 @@ function nbDayLabel(s){s=String(s||"");if(!s)return "";var hasT=s.indexOf("T")>-
 var _ovlScrollY=0;
 function ovlLock(){_ovlScrollY=window.scrollY||window.pageYOffset||0;var b=document.body;b.style.position="fixed";b.style.top=(-_ovlScrollY)+"px";b.style.left="0";b.style.right="0";b.style.width="100%";}
 function ovlUnlock(){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";window.scrollTo(0,_ovlScrollY);}
-var NBFILTER="";
-function nbSearch(v){NBFILTER=(v||"").trim();NBSHOWN=20;renderNewborn();}
+var NBFILTER="",_nbSearchT=null;
+function nbSearch(v){v=(v||"").trim();if(_nbSearchT)clearTimeout(_nbSearchT);
+  if(v.length<2){NBFILTER="";_nbSearchT=setTimeout(function(){loadNewbornPage();},150);return;}
+  _nbSearchT=setTimeout(function(){
+    api("/api/newborn?q="+encodeURIComponent(v)+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
+      if(!$("nblist"))return;if(!r||!r.ok)return;NBITEMS=(r.results||[]);NBFILTER="";NBSHOWN=20;renderNewborn();
+      var lv=$("nblive");if(lv)lv.innerHTML="🔍 "+NBITEMS.length+" תוצאות (מכל המערכת)";
+    }).catch(function(){});
+  },300);}
 function nbFiltered(){var f=(NBFILTER||"").trim().toLowerCase();if(!f)return NBITEMS;
   return NBITEMS.filter(function(x){return (((x.address||"")+" "+(x.owner||"")+" "+(x.city||"")).toLowerCase().indexOf(f)>=0);});}
 function renderNewborn(){
@@ -6820,12 +6894,12 @@ function nbStat(k,a,type,pr,pn,ow){k=decodeURIComponent(k||"");a=decodeURICompon
 function nbStatSend(k,a,type,date,agent,price,phone,owner){api("/api/newborn/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,status:type,date:date,agent:agent||"",price:price||"",phone:phone||"",owner:owner||"",as:IMP||""})}).then(function(r){
   if(r&&r.ok){var msg=(type=="meeting"||type=="followup")?(r.calendar?"נשמר ונוסף ליומן Google ✅":"נשמר ✅ (לא נוסף ליומן — צריך להתחבר עם Google כדי לסנכרן יומן)"):"נשמר ✅";alert(msg);loadNewbornPage();}
   else alert("השמירה נכשלה"+((r&&r.reason=="no_date")?" — חסר תאריך":""));}).catch(function(){alert("שגיאת רשת");});}
-function nbDateDialog(type,cb){var dt=(type=="meeting");var title=dt?"בחר תאריך ושעה לפגישה":"בחר תאריך לפולו-אפ";
+function nbDateDialog(type,cb,noAgent){var dt=(type=="meeting");var title=dt?"בחר תאריך ושעה לפגישה":"בחר תאריך לפולו-אפ";
   var inp;
   if(dt){var topts="";for(var H=7;H<=21;H++){for(var M=0;M<60;M+=15){var hh=("0"+H).slice(-2),mm=("0"+M).slice(-2);topts+='<option value="'+hh+':'+mm+'"'+((hh=="10"&&mm=="00")?" selected":"")+'>'+hh+':'+mm+'</option>';}}
     inp="<input id=nbdt_d type=date class=chip style='width:100%;box-sizing:border-box'><div style='display:flex;align-items:center;gap:8px;margin-top:8px'><span class=muted style='font-size:13px'>שעה</span><select id=nbdt_t class=chip style='flex:1;box-sizing:border-box'>"+topts+"</select></div>";
   }else{inp="<input id=nbdt type=date class=chip style='width:100%;box-sizing:border-box'>";}
-  var agSel=(ROLE=="coordinator")?"<select id=nbag class=chip style='width:100%;box-sizing:border-box;margin-top:8px'><option value=''>בחר סוכן…</option></select>":"";
+  var agSel=(ROLE=="coordinator"&&!noAgent)?"<select id=nbag class=chip style='width:100%;box-sizing:border-box;margin-top:8px'><option value=''>בחר סוכן…</option></select>":"";
   var h='<div class=ovl id=nbdovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>'+title+'</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbdClose()">✕</button></div><div style="margin-top:10px">'+inp+'</div>'+agSel+'<button class="btn-gold" style="width:100%;margin-top:10px" onclick="nbdOk()">אישור</button></div></div>';
   var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbdovl");if(o)o.onclick=function(e){if(e.target.id=="nbdovl")nbdClose();};window._nbdCb=cb;
   if(agSel){api("/api/my/agents").then(function(r){var sel=$("nbag");if(!sel||!r||!r.ok)return;(r.agents||[]).forEach(function(ag){var o2=document.createElement("option");o2.value=ag.name;o2.textContent=ag.name;sel.appendChild(o2);});}).catch(function(){});}}
