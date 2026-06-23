@@ -6013,7 +6013,7 @@ html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
 #ws-screen .ws-pop{animation:ws-pop .8s cubic-bezier(.2,.8,.2,1) backwards}
 </style></head><body>
 <div class="wrap">
-<div id="ws-screen">
+<div id="ws-screen" style="display:none">
   <div class="ws-orb g"></div><div class="ws-orb b"></div><div class="ws-vign"></div>
   <div class="ws-inner">
     <div class="ws-plate ws-pop"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
@@ -6141,7 +6141,7 @@ function showSplash(){if($("splash"))return;
   requestAnimationFrame(function(){d.classList.add("play");});
   setTimeout(hideSplash,SPLASH_SECONDS*1000);}
 /* ✏️✏️ סוף חלון הפתיחה ✏️✏️ */
-function enter(){if(typeof fbIsNative=="function"&&fbIsNative()){var _ah=$("mi-addhome");if(_ah)_ah.style.display="none";}$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
+function enter(){try{wsShow();}catch(e){}if(typeof fbIsNative=="function"&&fbIsNative()){var _ah=$("mi-addhome");if(_ah)_ah.style.display="none";}$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
 function firstAllowedTab(){var order=["calls","buyers","sigs","props","excl","newborn"];if(!TABS||!TABS.length)return "calls";for(var i=0;i<order.length;i++){if(TABS.indexOf(order[i])>=0)return order[i];}return "calls";}
 function applyTabPerms(){
   var navKeys=["calls","buyers","sigs","props","excl","newborn"];
@@ -6983,19 +6983,15 @@ function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"
 function isOurOffice(o){var t=String(o||"").toLowerCase().replace(/[\s\/\\.\-_'"׳״]/g,"");var rmx=t.indexOf("remax")>-1||t.indexOf("רימקס")>-1||t.indexOf("רמקס")>-1;var fam=t.indexOf("family")>-1||t.indexOf("פמילי")>-1||t.indexOf("פמלי")>-1;return rmx&&fam;}
 function daysSince(s){if(!s)return null;s=String(s).trim();var d;var m=s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);if(m){d=new Date(+m[3],+m[2]-1,+m[1]);}else{d=new Date(s.slice(0,10));}if(isNaN(d))return null;var n=Math.floor((Date.now()-d.getTime())/86400000);return n<0?0:n;}
 function daysLabel(dd){return dd==0?"נכנס לבלעדיות היום":(dd==1?"יום אחד בבלעדיות":dd+" ימים בבלעדיות");}
-(function(){
+/* מסך הפתיחה — מוצג רק אחרי Face ID + התחברות (מתוך enter()), לא בטעינת הדף */
+function wsShow(){
   var ws=document.getElementById('ws-screen');
   if(!ws) return;
-  // מציג בכל כניסה. כדי להציג פעם אחת בלבד למכשיר — בטל את ההערה מהשורה הבאה:
-  // try{ if(localStorage.getItem('ws_seen')==='1'){ ws.remove(); return; } }catch(e){}
-  function dismiss(){
-    try{ localStorage.setItem('ws_seen','1'); }catch(e){}
-    ws.style.opacity='0';
-    setTimeout(function(){ if(ws&&ws.parentNode) ws.parentNode.removeChild(ws); }, 360);
-  }
-  var b=document.getElementById('ws-start'); if(b) b.addEventListener('click', dismiss);
-  var s=document.getElementById('ws-skip');  if(s) s.addEventListener('click', dismiss);
-})();
+  ws.style.display='flex'; ws.style.opacity='1';
+  function dismiss(){ ws.style.opacity='0'; setTimeout(function(){ ws.style.display='none'; }, 360); }
+  var b=document.getElementById('ws-start'); if(b) b.onclick=dismiss;
+  var s=document.getElementById('ws-skip');  if(s) s.onclick=dismiss;
+}
 </script></div></body></html>'''
 
 # ══════════════════════════════════════════════════════════════════════════════
