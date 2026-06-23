@@ -6984,7 +6984,11 @@ def _start_warmer():
     except Exception as _e:
         log.error("warmer start failed: %s" % _e)
 
-_start_warmer()
+# ⚠️ ה-warmer הרקעי כובה כברירת מחדל: בריצה כל 30ש' הוא מונופוליזציה של Apps Script
+# וחנק כתיבות/קריאות (add/activity נתקעו). החימום נעשה ממילא פר-משתמש ב-prewarm().
+# להחזרה: הגדר משתנה סביבה ENABLE_WARMER=1
+if os.environ.get("ENABLE_WARMER", "") == "1":
+    _start_warmer()
 
 # ── פוש "נכס נולד 🐥" — גלאי שמזהה נכס חדש שנכנס למערכת ושולח לכל הסוכנים והמנהלים ──
 def _all_agent_push_ids():
@@ -7043,10 +7047,11 @@ def check_new_newborns():
 
 def _newborn_push_loop():
     import time as _t
+    _t.sleep(180)                      # השהיה ראשונית — לא להתחרות בטעינה הראשונה אחרי boot
     while True:
         try: check_new_newborns()
         except Exception: pass
-        _t.sleep(120)
+        _t.sleep(600)                  # כל 10 דק' במקום 120ש' — עומס זניח על Apps Script
 try:
     threading.Thread(target=_newborn_push_loop, daemon=True).start()
 except Exception:
