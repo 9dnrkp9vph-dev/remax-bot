@@ -5981,70 +5981,8 @@ html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
 @keyframes spup{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
 #splash.play .pop{animation:sppop .9s cubic-bezier(.2,.8,.2,1) backwards}
 @keyframes sppop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
-/* ===== מסך פתיחה (overlay) ===== */
-#ws-screen{position:fixed;inset:0;z-index:9999;background:radial-gradient(130% 80% at 50% -10%,#21364f 0%,#16273c 42%,#0D1B2A 78%,#081320 100%);overflow:hidden;display:flex;flex-direction:column;transition:opacity .35s ease;font-family:"Heebo",system-ui,sans-serif}
-#ws-screen .ws-orb{position:absolute;border-radius:50%;filter:blur(50px);opacity:.45;animation:ws-float 8s ease-in-out infinite}
-#ws-screen .ws-orb.g{width:300px;height:300px;background:#C9972A;top:-90px;right:-70px}
-#ws-screen .ws-orb.b{width:260px;height:260px;background:#1f4f8f;bottom:60px;left:-80px;animation-delay:-3s}
-@keyframes ws-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-26px)}}
-#ws-screen .ws-vign{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.03) 0 1px,transparent 1px 64px),repeating-linear-gradient(90deg,rgba(255,255,255,.03) 0 1px,transparent 1px 64px);-webkit-mask:radial-gradient(70% 60% at 50% 30%,#000,transparent 75%);mask:radial-gradient(70% 60% at 50% 30%,#000,transparent 75%);opacity:.5}
-#ws-screen .ws-inner{position:relative;z-index:5;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:max(58px,8vh) 30px 32px;text-align:center;overflow:auto}
-#ws-screen .ws-plate{background:#fff;border-radius:28px;padding:24px 28px;box-shadow:0 24px 60px rgba(0,0,0,.35);position:relative}
-#ws-screen .ws-plate:before{content:"";position:absolute;inset:-2px;border-radius:30px;background:linear-gradient(140deg,#e0b85a,transparent 40%);opacity:.5;z-index:-1}
-#ws-screen .ws-plate img{display:block;width:190px;max-width:62vw;height:auto;animation:ws-bfloat 2.4s ease-in-out infinite}
-@keyframes ws-bfloat{0%,100%{transform:translateY(0) rotate(-.4deg)}50%{transform:translateY(-16px) rotate(.4deg)}}
-#ws-screen .ws-badge{margin-top:26px;display:inline-flex;align-items:center;gap:8px;background:linear-gradient(180deg,rgba(224,184,90,.22),rgba(224,184,90,.10));border:1px solid rgba(224,184,90,.45);color:#e0b85a;font-size:14px;font-weight:800;padding:8px 16px;border-radius:999px}
-#ws-screen .ws-head{margin-top:14px;font-size:42px;font-weight:900;line-height:1.08;letter-spacing:-.03em;color:#fff}
-#ws-screen .ws-head b{color:#e0b85a;font-weight:900}
-#ws-screen .ws-sub{margin-top:14px;font-size:18px;font-weight:500;line-height:1.5;color:#aebbcd;max-width:330px}
-#ws-screen .ws-feats{margin-top:22px;display:flex;flex-direction:column;gap:10px;width:100%;max-width:340px}
-#ws-screen .ws-feat{display:flex;align-items:center;gap:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:13px 15px;text-align:right}
-#ws-screen .ws-fi{width:42px;height:42px;border-radius:12px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:linear-gradient(150deg,rgba(201,151,42,.25),rgba(201,151,42,.12));color:#e0b85a}
-#ws-screen .ws-ft{font-size:16px;font-weight:700;color:#eaf0f7}
-#ws-screen .ws-fs{font-size:13px;font-weight:500;color:#93a2b6;margin-top:1px}
-#ws-screen .ws-cta-wrap{margin-top:auto;width:100%;max-width:350px;padding-top:26px}
-#ws-screen .ws-cta{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:18px;border-radius:18px;background:linear-gradient(180deg,#e0b85a,#c0901f);color:#231700;font-size:20px;font-weight:800;font-family:inherit;border:none;box-shadow:0 16px 36px rgba(201,151,42,.32);cursor:pointer}
-#ws-screen .ws-cta:active{transform:translateY(1px)}
-#ws-screen .ws-skip{margin-top:15px;font-size:15px;font-weight:600;color:#8aa;cursor:pointer}
-#ws-screen .ws-u{animation:ws-up .7s cubic-bezier(.2,.7,.2,1) backwards}
-#ws-screen .ws-u.d2{animation-delay:.12s}#ws-screen .ws-u.d3{animation-delay:.24s}#ws-screen .ws-u.d4{animation-delay:.36s}#ws-screen .ws-u.d5{animation-delay:.48s}#ws-screen .ws-u.d6{animation-delay:.6s}#ws-screen .ws-u.d7{animation-delay:.72s}#ws-screen .ws-u.d8{animation-delay:.84s}
-@keyframes ws-up{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
-@keyframes ws-pop{from{opacity:0;transform:scale(.84)}to{opacity:1;transform:scale(1)}}
-#ws-screen .ws-pop{animation:ws-pop .8s cubic-bezier(.2,.8,.2,1) backwards}
 </style></head><body>
 <div class="wrap">
-<div id="ws-screen" style="display:none">
-  <div class="ws-orb g"></div><div class="ws-orb b"></div><div class="ws-vign"></div>
-  <div class="ws-inner">
-    <div class="ws-plate ws-pop"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
-    <div class="ws-badge ws-u d2">
-      <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9 2.2l1.7 4.9 4.9 1.7-4.9 1.7L9 15.4l-1.7-4.9L2.4 8.8l4.9-1.7z"/></svg>
-      מופעל על בינה מלאכותית
-    </div>
-    <div class="ws-head ws-u d3">שלום, <b>שותף.</b></div>
-    <div class="ws-sub ws-u d4">בינה מלאכותית שמסכמת שיחות, מזהה נכסים ומחתימה דיגיטלית — הכל במקום אחד.</div>
-    <div class="ws-feats">
-      <div class="ws-feat ws-u d5">
-        <span class="ws-fi"><svg width="22" height="22" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z"/></svg></span>
-        <div><div class="ws-ft">שיחות מתומללות אוטומטית.</div><div class="ws-fs">AI מזהה כל קונה פוטנציאלי</div></div>
-      </div>
-      <div class="ws-feat ws-u d6">
-        <span class="ws-fi"><svg width="22" height="22" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11.8 3.4l2.8 2.8L6 14.8 3 15.4l.6-3z"/><path d="M10.6 4.6l2.8 2.8"/></svg></span>
-        <div><div class="ws-ft">חתימה דיגיטלית</div><div class="ws-fs">חוזה חתום תוך דקה</div></div>
-      </div>
-      <div class="ws-feat ws-u d7">
-        <span class="ws-fi"><svg width="22" height="22" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.8l6.5 4.2v8.4a1.2 1.2 0 0 1-1.2 1.2H3.7a1.2 1.2 0 0 1-1.2-1.2V6z"/><path d="M6.6 15.6V9.4h4.8v6.2"/></svg></span>
-        <div><div class="ws-ft">נכס חדש נולד</div><div class="ws-fs">צפייה מיידית בלקוח שפרסם נכס למכירה</div></div>
-      </div>
-    </div>
-    <div class="ws-cta-wrap ws-u d8">
-      <button class="ws-cta" id="ws-start">בוא נתחיל
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#231700" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
-      </button>
-      <div class="ws-skip" id="ws-skip">דלג</div>
-    </div>
-  </div>
-</div>
 <div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();openHelp()">💬 עזרה / דיווח תקלה</div><div class="mi" id="mi-addhome" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();window.open('https://www.instagram.com/remax.family?igsh=bXdmdzJjMWVkc3li&utm_source=qr','_blank')"><svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:none;stroke:#E1306C;stroke-width:1.9;flex:0 0 auto"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.6" cy="6.4" r="1.2" fill="#E1306C" stroke="none"/></svg> אינסטגרם של המשרד</div><div class="mi" onclick="closeMenu();window.open('https://www.madlan.co.il/madad/2026/%D7%A7%D7%A8%D7%99%D7%95%D7%AA','_blank')">🏅 מדד המתווכים — מדלן 2026</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
 
 <div id="login">
@@ -6141,7 +6079,7 @@ function showSplash(){if($("splash"))return;
   requestAnimationFrame(function(){d.classList.add("play");});
   setTimeout(hideSplash,SPLASH_SECONDS*1000);}
 /* ✏️✏️ סוף חלון הפתיחה ✏️✏️ */
-function enter(){if(typeof fbIsNative=="function"&&fbIsNative()){var _ah=$("mi-addhome");if(_ah)_ah.style.display="none";}$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
+function enter(){showSplash();if(typeof fbIsNative=="function"&&fbIsNative()){var _ah=$("mi-addhome");if(_ah)_ah.style.display="none";}$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
 function firstAllowedTab(){var order=["calls","buyers","sigs","props","excl","newborn"];if(!TABS||!TABS.length)return "calls";for(var i=0;i<order.length;i++){if(TABS.indexOf(order[i])>=0)return order[i];}return "calls";}
 function applyTabPerms(){
   var navKeys=["calls","buyers","sigs","props","excl","newborn"];
@@ -6983,15 +6921,6 @@ function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"
 function isOurOffice(o){var t=String(o||"").toLowerCase().replace(/[\s\/\\.\-_'"׳״]/g,"");var rmx=t.indexOf("remax")>-1||t.indexOf("רימקס")>-1||t.indexOf("רמקס")>-1;var fam=t.indexOf("family")>-1||t.indexOf("פמילי")>-1||t.indexOf("פמלי")>-1;return rmx&&fam;}
 function daysSince(s){if(!s)return null;s=String(s).trim();var d;var m=s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);if(m){d=new Date(+m[3],+m[2]-1,+m[1]);}else{d=new Date(s.slice(0,10));}if(isNaN(d))return null;var n=Math.floor((Date.now()-d.getTime())/86400000);return n<0?0:n;}
 function daysLabel(dd){return dd==0?"נכנס לבלעדיות היום":(dd==1?"יום אחד בבלעדיות":dd+" ימים בבלעדיות");}
-/* מסך הפתיחה — מוצג רק אחרי Face ID + התחברות (מתוך enter()), לא בטעינת הדף */
-function wsShow(){
-  var ws=document.getElementById('ws-screen');
-  if(!ws) return;
-  ws.style.display='flex'; ws.style.opacity='1';
-  function dismiss(){ ws.style.opacity='0'; setTimeout(function(){ ws.style.display='none'; }, 360); }
-  var b=document.getElementById('ws-start'); if(b) b.onclick=dismiss;
-  var s=document.getElementById('ws-skip');  if(s) s.onclick=dismiss;
-}
 </script></div></body></html>'''
 
 # ══════════════════════════════════════════════════════════════════════════════
