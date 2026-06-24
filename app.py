@@ -2894,7 +2894,7 @@ def auth_google_login():
     params = {"client_id": GOOGLE_CLIENT_ID, "redirect_uri": GOOGLE_REDIRECT_URI,
               "response_type": "code",
               "scope": "openid email profile https://www.googleapis.com/auth/calendar.events",
-              "access_type": "offline", "prompt": "select_account", "include_granted_scopes": "true",
+              "access_type": "offline", "prompt": ("consent" if native else "select_account"), "include_granted_scopes": "true",
               "state": state}
     return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + _urlencode(params))
 
