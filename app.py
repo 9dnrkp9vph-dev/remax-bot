@@ -6810,6 +6810,12 @@ function viewNewborn(){
   $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי שם בעל הנכס או כתובת" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
   loadNewbornPage();
 }
+function nbMtWaMsg(m){var nm=String((m&&m.owner)||"").trim();var hi=nm?("היי "+nm):"היי";
+  var who=NAME?(" כאן "+NAME+" מ-RE/MAX Family"):" מ-RE/MAX Family";
+  var body=(m&&m.status=="followup")
+    ? (hi+"! 🙂"+who+". רציתי לחזור אליך.")
+    : (hi+"! 🙂"+who+". לקראת הפגישה שלנו רציתי שנכיר.");
+  return encodeURIComponent(body);}
 function nbMeetings(){api("/api/newborn/meetings").then(function(r){
   if(!r||!r.ok){alert("שגיאה בטעינה");return;}
   var list=r.results||[];window._NBMT={};
@@ -6821,7 +6827,7 @@ function nbMeetings(){api("/api/newborn/meetings").then(function(r){
     var edt="<button onclick=\"nbMtEdit('"+nbEnc(m.skey||"")+"')\" title='ערוך' style='width:auto;background:none;border:none;box-shadow:none;color:#1a56db;font-size:16px;cursor:pointer;padding:4px;margin:0'>✏️</button>";
     var contact="";
     if(m.ophone){
-      var wa=m.wa?"<a href='whatsapp://send?phone="+esc(m.wa)+"' style='display:inline-flex;align-items:center;gap:5px;background:#25d366;color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:6px 12px;border-radius:9px'>וואטסאפ</a>":"";
+      var wa=m.wa?"<a href='whatsapp://send?phone="+esc(m.wa)+"&text="+nbMtWaMsg(m)+"' style='display:inline-flex;align-items:center;gap:5px;background:#25d366;color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:6px 12px;border-radius:9px'>וואטסאפ</a>":"";
       var call="<a href='tel:"+esc(m.ophone)+"' style='display:inline-flex;align-items:center;gap:5px;background:#0D1B2A;color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:6px 12px;border-radius:9px'>📞 חיוג</a>";
       contact="<div style='margin-top:9px'><div class=muted style='font-size:13px;margin-bottom:6px'>בעל הנכס: "+esc(m.owner||"—")+" · "+esc(m.ophone)+"</div><div style='display:flex;gap:8px'>"+wa+call+"</div></div>";
     }
@@ -6961,7 +6967,15 @@ function nbdOk(){var v;
   if($("nbdt_d")){var dd=$("nbdt_d").value||"";if(!dd){alert("נא לבחור תאריך");return;}var tt=($("nbdt_t")&&$("nbdt_t").value)||"10:00";v=dd+"T"+tt;}
   else{v=($("nbdt")&&$("nbdt").value)||"";if(!v){alert("נא לבחור תאריך");return;}}
   var ag=($("nbag")&&$("nbag").value)||"";if($("nbag")&&!ag){alert("נא לבחור סוכן");return;}var cb=window._nbdCb;nbdClose();if(cb)cb(v,ag);}
-function nbWaMsg(x){var who=NAME?(" מדבר/ת "+NAME):"";var m="שלום!"+who+" מ-RE/MAX Family 🏠 ראיתי את הנכס שלך"+(x.address?(" ב"+x.address):"")+" למכירה, ואשמח לעזור לך למכור אותו במחיר הטוב ביותר ובליווי מקצועי. אפשר לדבר?";return encodeURIComponent(m);}
+function nbWaMsg(x){
+  var eff=((typeof IMPNAME!="undefined"&&IMPNAME)?IMPNAME:NAME)||"";eff=String(eff);
+  if(eff.indexOf("אוצר")>-1||eff.indexOf("אייל")>-1){   /* נוסח מיוחד לאוצר ולאייל */
+    var nm=String((x&&x.owner)||"").trim();
+    var greet=nm?("היי "+nm+" מה נשמע 🙂"):"היי 🙂";
+    var body=greet+" מאמינה שמחייגים בלי הפסקה בקשר לדירה, אז אני שולחת הודעה כדי להקל קצת ☺️ מדברת אוצר מרימקס פמילי התעניינתי בדירה שפרסמת ואשמח לתאם הגעה קצרה להתרשם. כמובן ללא שום התחייבות, רק בודקת אם היא מתאימה לאחד הלקוחות שלנו. מתי נוח שאגיע? 🙏";
+    return encodeURIComponent(body);
+  }
+  var who=NAME?(" מדבר/ת "+NAME):"";var m="שלום!"+who+" מ-RE/MAX Family 🏠 ראיתי את הנכס שלך"+(x.address?(" ב"+x.address):"")+" למכירה, ואשמח לעזור לך למכור אותו במחיר הטוב ביותר ובליווי מקצועי. אפשר לדבר?";return encodeURIComponent(m);}
 function nbMark(k,a,reload){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).then(function(){if(reload)loadNewbornPage();}).catch(function(){});}catch(e){}return true;}
 function closeNewborn(){$("nbmodal").classList.add("hidden");nbLock(false);}
 var VPHONE="";
