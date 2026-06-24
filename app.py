@@ -4925,6 +4925,42 @@ def _newborn_price(p):
     except Exception:
         return p
 
+def _addr_tokens(*parts):
+    """מנרמל כתובת לאסימונים: (מספרים, מילות רחוב/עיר משמעותיות) — לצורך הצלבה."""
+    t = " ".join(str(p or "") for p in parts)
+    t = re.sub(r"[^0-9֐-׿ ]", " ", t)
+    _noise = {"רחוב", "רח", "שדרות", "שד", "דרך", "סמטה", "ככר", "כיכר", "דירה", "בית", "קומה"}
+    toks = [w for w in t.split() if w]
+    nums = set(w for w in toks if w.isdigit())
+    words = set(w for w in toks if (not w.isdigit()) and len(w) >= 2 and w not in _noise)
+    return nums, words
+
+def _famexcl_addr_list():
+    """רשימת כתובות בבלעדיות RE/MAX Family (לסימון ב'נכס נולד'). כל פריט: (nums, words)."""
+    out = []
+    try:
+        for r in (fetch_external_exclusives() or []):
+            if _is_our_office(r.get("office", "")):
+                nums, words = _addr_tokens(r.get("street", ""))
+                if nums and words:
+                    out.append((nums, words))
+    except Exception:
+        pass
+    return out
+
+def _is_famexcl(addr, city, fam_list):
+    """האם הכתובת כבר בבלעדיות RE/MAX Family — שמרני: כל אסימוני הנכס (מספר+רחוב+עיר) חייבים להופיע בבלעדיות."""
+    if not fam_list:
+        return False
+    nb_nums, nb_words = _addr_tokens(addr, city)
+    if not nb_nums or not nb_words:
+        return False
+    need = nb_nums | nb_words
+    for ex_nums, ex_words in fam_list:
+        if need <= (ex_nums | ex_words):
+            return True
+    return False
+
 @app.route("/api/newborn", methods=["GET", "POST"])
 def api_newborn():
     s = _web_auth()
@@ -4951,6 +4987,7 @@ def api_newborn():
         now = time.time()
         contacts = _fetch_newborn_contacts()
         nbstatuses = _nb_statuses()
+        fam_list = _famexcl_addr_list()
         rows = [r for r in fetch_newborn() if _newborn_created_epoch(r)]
         rows.sort(key=_newborn_created_epoch, reverse=True)
         out = []
@@ -4997,6 +5034,7 @@ def api_newborn():
                 "link": _nb(r.get("קישור", "")),
                 "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
                 "stat": _vstat or None,
+                "famexcl": _is_famexcl(_addr, city, fam_list),
             })
             if len(out) >= 300:   # תקרת בטיחות; הפרונט מציג 20 בכל פעם עם "טען עוד"
                 break
@@ -6938,6 +6976,7 @@ function nbCard(x){
   return "<div class=nbcardx>"+
     "<div class=nbtop><b class=nbaddr>🏠 "+esc(x.address||x.city||"נכס")+"</b>"+(x.date?"<span class=nbdate>📅 "+esc(x.date)+"</span>":"")+"</div>"+
     ((x.city&&x.address)?"<div class=muted>"+esc(x.city)+"</div>":"")+
+    (x.famexcl?"<div style='display:inline-flex;align-items:center;gap:5px;background:#fdeaea;color:#c0392b;border:1px solid #f0b8b8;font-weight:800;font-size:12px;padding:5px 11px;border-radius:999px;margin-top:7px'>🔴 כבר בבלעדיות RE/MAX Family</div>":"")+
     (x.desc?"<div class=nbdesc>"+esc(x.desc)+"</div>":"")+
     (x.price?"<div class=nbprice>💰 "+esc(x.price)+"</div>":"")+
     (x.notes?"<div class=muted style=margin-top:4px>"+esc(x.notes)+"</div>":"")+
