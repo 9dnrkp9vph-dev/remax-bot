@@ -6004,23 +6004,26 @@ html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
   <div class="loginlogo"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
   <div class="loginhead">ברוך הבא</div>
   <div class="loginsub">התחבר כדי להמשיך לאזור האישי שלך.</div>
-  <a id="gbtn" href="/auth/google/login" onclick="if(typeof fbIsNative=='function'&&fbIsNative()){this.href='/auth/google/login?native=1';}return true;" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:360px;margin:0 auto 12px;padding:14px;background:#fff;border:1px solid #dadce0;border-radius:13px;font-size:16px;font-weight:700;color:#3c4043;text-decoration:none;box-sizing:border-box">
-    <svg width="19" height="19" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.4 0 24 0 14.6 0 6.4 5.4 2.6 13.3l7.9 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.1 5.5c4.2-3.9 6.6-9.6 6.6-16z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.7-2.9-.7-4.6s.3-3.2.7-4.6l-7.9-6.1C1 16.5 0 20.1 0 24s1 7.5 2.6 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.1-5.5c-2 1.3-4.5 2.1-8.8 2.1-6.3 0-11.7-3.7-13.5-9.9l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
+  <a id="gbtn" href="/auth/google/login" onclick="if(typeof fbIsNative=='function'&&fbIsNative()){this.href='/auth/google/login?native=1';}return true;" style="display:flex;align-items:center;justify-content:center;gap:11px;width:100%;max-width:360px;margin:8px auto 0;padding:17px;background:#fff;border:1.5px solid #dadce0;border-radius:15px;font-size:17px;font-weight:800;color:#3c4043;text-decoration:none;box-sizing:border-box;box-shadow:0 12px 28px rgba(13,27,42,.15)">
+    <svg width="21" height="21" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.4 0 24 0 14.6 0 6.4 5.4 2.6 13.3l7.9 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.1 5.5c4.2-3.9 6.6-9.6 6.6-16z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.7-2.9-.7-4.6s.3-3.2.7-4.6l-7.9-6.1C1 16.5 0 20.1 0 24s1 7.5 2.6 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.1-5.5c-2 1.3-4.5 2.1-8.8 2.1-6.3 0-11.7-3.7-13.5-9.9l-7.9 6.1C6.4 42.6 14.6 48 24 48z"/></svg>
     התחבר עם Google
   </a>
-  <div class="loginsub" style="margin:8px 0 12px;font-size:13px;opacity:.8">או התחבר עם מספר טלפון</div>
-  <div class="card" id="s1">
-    <label class="muted">מספר הטלפון שלך</label>
-    <input id="phone" type="tel" inputmode="numeric" placeholder="05X-XXXXXXX">
-    <button onclick="sendCode()">שלח קוד ב-SMS</button>
-    <div id="m1" class="muted"></div>
-  </div>
-  <div class="card hidden" id="s2">
-    <label class="muted">הזן את הקוד מה-SMS</label>
-    <input id="code" type="tel" inputmode="numeric" autocomplete="one-time-code" placeholder="______">
-    <button onclick="verify()">כניסה</button>
-    <button class="sec" onclick="show('s1')">החלף מספר</button>
-    <div id="m2" class="muted"></div>
+  <div id="smstoggle" style="text-align:center;margin-top:18px"><span onclick="showSms()" style="font-size:13px;color:#9aa3af;text-decoration:underline;cursor:pointer">כניסה עם מספר טלפון</span></div>
+  <div id="smswrap" style="display:none">
+    <div class="loginsub" style="margin:16px 0 10px;font-size:12px;opacity:.65">או התחבר עם מספר טלפון</div>
+    <div class="card" id="s1">
+      <label class="muted">מספר הטלפון שלך</label>
+      <input id="phone" type="tel" inputmode="numeric" placeholder="05X-XXXXXXX">
+      <button onclick="sendCode()">שלח קוד ב-SMS</button>
+      <div id="m1" class="muted"></div>
+    </div>
+    <div class="card hidden" id="s2">
+      <label class="muted">הזן את הקוד מה-SMS</label>
+      <input id="code" type="tel" inputmode="numeric" autocomplete="one-time-code" placeholder="______">
+      <button onclick="verify()">כניסה</button>
+      <button class="sec" onclick="show('s1')">החלף מספר</button>
+      <div id="m2" class="muted"></div>
+    </div>
   </div>
 </div>
 
@@ -6060,6 +6063,7 @@ function fbDoBio(){var bp=fbBio();if(!bp){fbHideLock();enter();return;}var b=$("
 function fbShowLock(){if($("fblock"))return;var d=document.createElement("div");d.id="fblock";d.setAttribute("style","position:fixed;inset:0;z-index:99999;background:#eef1f5;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;font-family:Heebo,Arial,sans-serif");d.innerHTML='<img src="/assets/logo" style="height:52px;margin-bottom:24px"><div style="font-size:44px;margin-bottom:12px">🔒</div><div style="font-size:20px;font-weight:800;color:#0D1B2A;margin-bottom:6px">האפליקציה נעולה</div><div style="font-size:14px;color:#6b7280;margin-bottom:26px;max-width:300px">אמת את זהותך כדי להיכנס</div><button id="fbbiobtn" onclick="fbDoBio()" style="width:100%;max-width:320px;padding:15px;background:#0D1B2A;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;font-family:inherit">🔓 כניסה עם Face ID</button><button onclick="fbPhoneLogin()" style="margin-top:16px;background:none;border:none;color:#6b7280;font-size:14px;font-family:inherit;text-decoration:underline">כניסה עם מספר טלפון</button>';document.body.appendChild(d);}
 function fbHideLock(){var d=$("fblock");if(d&&d.parentNode)d.parentNode.removeChild(d);}
 function fbPhoneLogin(){fbHideLock();try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}
+function showSms(){var w=$("smswrap");if(w)w.style.display="block";var t=$("smstoggle");if(t)t.style.display="none";var ph=$("phone");if(ph){try{ph.focus();}catch(e){}}}
 function sendCode(){var p=$("phone").value.trim();if(!p){alert("הזן מספר");return;}try{localStorage.setItem("fbPhone",p);}catch(e){}$("m1").textContent="שולח…";
   api("/api/auth/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p})}).then(function(r){
     if(r.ok){show("s2");$("m2").textContent="";startOtp();}
