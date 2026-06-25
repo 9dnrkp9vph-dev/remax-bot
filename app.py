@@ -6961,7 +6961,7 @@ function _mapFocusOn(q){
   function tryGeo(i){
     if(i>=cands.length){cityFallback();return;}
     try{
-      fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&q="+encodeURIComponent(cands[i]+", ישראל"))
+      fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&viewbox=34.92,32.95,35.22,32.68&bounded=1&q="+encodeURIComponent(cands[i]+", ישראל"))
         .then(function(r){return r.json();})
         .then(function(d){if(d&&d.length){focusAt([parseFloat(d[0].lat),parseFloat(d[0].lon)],cands[i]);}else{tryGeo(i+1);}})
         .catch(function(){tryGeo(i+1);});
