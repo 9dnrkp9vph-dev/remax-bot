@@ -979,6 +979,33 @@ _CITY_NB_MAP_HE = """נרמול ערים — הערים האפשריות:
 2. שכונות עם אותו שם בערים שונות (גבעת הרקפות / מרכז העיר / ותיקה) — חכה לציון מפורש של העיר. אם לא צוינה עיר, שאל: השתמש בברירת המחדל הנפוצה (לרוב מוצקין).
 3. אם השכונה לא מופיעה ברשימה ולא צוינה עיר — השאר city=null ואל תנחש."""
 
+# מיפוי שכונות חד-משמעיות → עיר (לאכיפה בצד השרת, כדי שלא ייכנסו נכסים מעיר אחרת עם אותו שם רחוב)
+_NB_TO_CITY = {
+    "נווה גנים": "קרית מוצקין", "אביבים": "קרית מוצקין", "משכנות": "קרית מוצקין", "לב מוצקין": "קרית מוצקין",
+    "אפק": "קרית ביאליק", "צור שלום": "קרית ביאליק", "הפרפר": "קרית ביאליק", "ביאליק דרום": "קרית ביאליק",
+    "פסגות ים": "קרית ים", "סביונ": "קרית ים", "גלי ים": "קרית ים", "אלמוגים": "קרית ים",
+    "יוספטל": "קרית ים", "נווה חוף": "קרית ים", "לכיש": "קרית ים",
+    "גבעת רם": "קרית אתא", "גבעת טל": "קרית אתא", "אלונים": "קרית אתא", "קרית בנימין": "קרית אתא",
+    "בית וגן": "קרית אתא", "בן גוריון": "קרית אתא", "נווה חן": "קרית אתא", "נווה אברהם": "קרית אתא",
+    "אברמסקי": "קרית אתא", "פרוסטיג": "קרית אתא", "דשנים": "קרית אתא", "גבעת הכלניות": "קרית אתא",
+}
+# שכונות עמומות (אותו שם בכמה ערים) — לא אוכפים: גבעת הרקפות, מרכז, ותיק, בנה ביתך, שביט, גבעה א'
+
+def _enforce_nb_city(parsed):
+    """אם צוינה שכונה אחת חד-משמעית — אוכפים את העיר שלה (מונע דליפת נכסים מעיר אחרת)."""
+    try:
+        if isinstance(parsed, dict) and not parsed.get("neighborhoods"):
+            pn = (parsed.get("neighborhood") or "").strip()
+            if pn:
+                for nb, ct in _NB_TO_CITY.items():
+                    if pn == nb or nb in pn:   # שם השכונה המלא מופיע בערך שחזר מהפענוח
+                        parsed["city"] = ct
+                        parsed["cities"] = None
+                        break
+    except Exception:
+        pass
+    return parsed
+
 def parse_search_query(text: str) -> dict:
     prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש נכסים במאגר המשרד עבור לקוח.
 הסוכן שלח לך הודעה עם דרישות הלקוח. חלץ פרמטרים ל-JSON בלבד (ללא markdown, ללא backticks).
@@ -1053,7 +1080,7 @@ def parse_search_query(text: str) -> dict:
     if match:
         text_out = match.group()
     try:
-        return json.loads(text_out)
+        return _enforce_nb_city(json.loads(text_out))
     except Exception as e:
         log.error(f"Search JSON parse error: {e}")
         return {}
@@ -1967,7 +1994,7 @@ def parse_exclusivity_search_query(text: str) -> dict:
         if m: out = m.group()
         parsed = json.loads(out)
         parsed["query_text"] = cleaned
-        return parsed
+        return _enforce_nb_city(parsed)
     except Exception as e:
         log.error(f"Exclusivity query parse error: {e}")
         return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget_max": None, "city": None, "neighborhood": None, "rooms": None}
