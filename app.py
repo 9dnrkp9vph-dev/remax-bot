@@ -989,11 +989,11 @@ def parse_search_query(text: str) -> dict:
 - "עם מעלית" → must_have כולל "מעלית"
 - "עם ממ"ד" → must_have כולל "ממ\"ד"
 - "עם מרפסת" → must_have כולל "מרפסת"
-- "קרקע" / "קומת קרקע" → must_have כולל "גינה", property_type = "דירת גן"
+- "קרקע" / "קומת קרקע" / "קומה 0" → must_have כולל "גינה", property_type = "דירת גן"
 חוקי property_type — חשוב מאוד!
-- "דירת גן" → property_type = "דירת גן" (לא "דירה"! לא פנטהאוז!)
+- קבוצת "גן" (כולן נחשבות חיפוש דירת גן): "דירת גן" / "קרקע" / "קומת קרקע" / "קומה 0" / "קוטג'" / "מיני קוטג'" → property_type = "דירת גן" (לא "דירה"! לא פנטהאוז!) וגם must_have כולל "גינה"
 - "פנטהאוז" / "גג" / "קומה עליונה" → property_type = "פנטהאוז"
-- "קוטג'" / "דו משפחתי" / "בית פרטי" → property_type = "קוטג'"
+- "דו משפחתי" / "בית פרטי" → property_type = "קוטג'"
 - "וילה" → property_type = "וילה"
 - "דופלקס" → property_type = "דופלקס"
 - דירה רגילה ללא ציון מיוחד → property_type = "דירה"
@@ -1475,7 +1475,15 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
     q_ptype = (query.get("property_type") or "").strip()
     r_ptype = (row.get("סוג נכס", "") or "").strip()
     PENTHOUSE_TYPES = {"פנטהאוז", "גג", "מיני פנטהאוז"}
-    if q_ptype and r_ptype:
+    if q_ptype == "דירת גן":
+        # "כוונת גן" — לא מסנן: מציג את כל הנכסים בשכונה, ומדרג גן/קרקע/קומה 0/קוטג'/מיני קוטג' למעלה
+        r_floor_g = (row.get("קומה", "") or "").strip()
+        ground0 = False
+        try: ground0 = (r_floor_g != "" and int(float(r_floor_g)) == 0)
+        except ValueError: pass
+        if any(t in r_ptype for t in ("גן", "גינה", "קרקע", "קוטג", "דו משפח")) or ground0:
+            score += 30
+    elif q_ptype and r_ptype:
         if q_ptype == r_ptype:
             score += 15
         elif q_ptype in r_ptype or r_ptype in q_ptype:
@@ -1498,15 +1506,23 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             "גישה לנכים": "גישה לנכים",
         }
         missing_features = 0
+        garden_only = True
         for feature in must_have:
             feature_clean = feature.strip()
             if feature_clean == "גינה":
-                prop_type_val = (row.get("סוג נכס", "") or "").strip()
-                has_feature = "גן" in prop_type_val or "גינה" in prop_type_val or "קרקע" in prop_type_val
-            else:
-                col = col_map.get(feature_clean, feature_clean)
-                val = (row.get(col, "") or "").strip()
-                has_feature = val and val not in ("ללא", "לא", "", "0", "אין")
+                # רך — לא מסנן (מציג את כל הנכסים בשכונה); גן/גינה/קרקע/קוטג'/קומה 0 מקבלים בונוס דירוג
+                pv = (row.get("סוג נכס", "") or "").strip()
+                fr2 = (row.get("קומה", "") or "").strip()
+                g0 = False
+                try: g0 = (fr2 != "" and int(float(fr2)) == 0)
+                except ValueError: pass
+                if any(t in pv for t in ("גן", "גינה", "קרקע", "קוטג", "דו משפח")) or g0:
+                    score += 20
+                continue
+            garden_only = False
+            col = col_map.get(feature_clean, feature_clean)
+            val = (row.get(col, "") or "").strip()
+            has_feature = val and val not in ("ללא", "לא", "", "0", "אין")
             if has_feature:
                 score += 10
             else:
@@ -1514,7 +1530,7 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
                 if flex_level <= 1:
                     return 0
                 score -= 15
-        if flex_level == 2 and missing_features == len(must_have):
+        if flex_level == 2 and not garden_only and missing_features == len([f for f in must_have if f.strip() != "גינה"]):
             return 0
     return max(0, score)
 def search_listings_in_sheet(query: dict) -> list:
@@ -1523,6 +1539,8 @@ def search_listings_in_sheet(query: dict) -> list:
         return []
     q_ptype = (query.get("property_type") or "").strip()
     is_garden = q_ptype == "דירת גן"
+    _has_nb = bool((query.get("neighborhoods")) or (query.get("neighborhood") or "").strip())
+    cap = 40 if _has_nb else 12   # שכונה צוינה → הצג את כל נכסי השכונה (מדורגים); אחרת 12
     for flex in [0, 1, 2]:
         scored = []
         for row in rows:
@@ -1531,7 +1549,7 @@ def search_listings_in_sheet(query: dict) -> list:
                 scored.append((s, row, flex))
         scored.sort(key=lambda x: -x[0])
         if len(scored) >= 3 or flex == 2:
-            results = [(s, r, f) for (s, r, f) in scored[:10]]
+            results = [(s, r, f) for (s, r, f) in scored[:cap]]
             if is_garden and len(results) < 3:
                 fallback_query = dict(query)
                 fallback_query["property_type"] = "קוטג'"
