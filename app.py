@@ -6927,7 +6927,7 @@ function buyerSearch(b){
     if(!r||!r.ok){box.innerHTML="<span class=err>שגיאה בחיפוש"+(r&&r.reason?" ("+esc(r.reason)+")":"")+"</span>";return;}
     if(!r.results.length){box.innerHTML="<div class=muted style=margin:6px_0>לא נמצאו נכסים תואמים "+(kind=="props"?"במשרד":"בשת״פ")+".</div>";return;}
     window._lastSearchQ=(r.summary||q||"");
-    window._mapMatchAddrs=(r.results||[]).map(function(y){return y.address||y.street||"";}).filter(Boolean);
+    window._mapMatchAddrs=(r.results||[]).map(function(y){return {a:(y.address||y.street||""),c:(y.city||"")};}).filter(function(o){return o.a;});
     if(r.summary)api("/api/recent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:r.summary,kind:kind})}).catch(function(){});
     var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+"</div><div class=\"maprow\">"+_mapBtnHTML(kind)+"</div>";
     h+=r.results.map(function(y){return card(kind,y);}).join("");
@@ -6986,8 +6986,11 @@ function mapRender(){
   var matchFn=null;
   if(resultsMode){
     var nrm=function(s){return String(s||"").replace(/[^0-9֐-׿]/g,"");};
-    var want=window._mapMatchAddrs.map(nrm).filter(function(w){return w.length>2;});
-    matchFn=function(p){var pa=nrm(p.a);return pa&&want.some(function(w){return pa===w||pa.indexOf(w)>-1||w.indexOf(pa)>-1;});};
+    var want=window._mapMatchAddrs.map(function(o){return {a:nrm(o.a),c:nrm(o.c)};}).filter(function(w){return w.a.length>2;});
+    matchFn=function(p){var pa=nrm(p.a),pc=nrm(p.c);return pa&&want.some(function(w){
+      var am=(pa===w.a||pa.indexOf(w.a)>-1||w.a.indexOf(pa)>-1);
+      var cm=(!w.c||!pc||pc.indexOf(w.c)>-1||w.c.indexOf(pc)>-1);  // אם ידועה עיר — חייבת להתאים (מונע רחוב באותו שם בעיר אחרת)
+      return am&&cm;});};
   }
   var selEl=document.getElementById("mapcity"),city=(!resultsMode&&selEl)?selEl.value:"",n=0,b=[];
   MAP_PTS.forEach(function(p){
@@ -7040,13 +7043,6 @@ function _mapFocusOn(q){
     try{_mapObj.fitBounds(_meC.getBounds(),{padding:[20,20]});}catch(e){_mapObj.setView(ll,15);}
     var near=MAP_PTS.filter(function(p){return _mapDist(ll,[p.lat,p.lng])<=1;}).length;
     var sh=document.getElementById("mapshown");if(sh)sh.textContent=near+' נכסים ברדיוס 1 ק"מ'+(label?(" · "+label):"");
-  }
-  /* 1) הכי מדויק — מרכז על הנכסים שתואמים לתוצאות החיפוש בפועל */
-  if(window._mapUseMatch&&window._mapMatchAddrs&&window._mapMatchAddrs.length){
-    var nrm=function(s){return String(s||"").replace(/[^0-9֐-׿]/g,"");};
-    var want=window._mapMatchAddrs.map(nrm).filter(function(w){return w.length>2;});
-    var pts=MAP_PTS.filter(function(p){var pa=nrm(p.a);return pa&&want.some(function(w){return pa===w||pa.indexOf(w)>-1||w.indexOf(pa)>-1;});});
-    if(pts.length){var la=0,lo=0;pts.forEach(function(p){la+=p.lat;lo+=p.lng;});focusAt([la/pts.length,lo/pts.length],pts.length+" תוצאות");return;}
   }
   if(!q)return;
   var loc=String(q).replace(/[0-9₪,]/g," ").replace(/מיליון|מליון|אלף|חדרים|חד['׳]?|מ["״]ר|מ"?ר|מטר|עד|מעל|תקציב|מתחת|דיר(?:ה|ת|ות)?|פנטהאוז|פנטהאוס|קוטג['׳]?|וילה|גג|מרתף|חניה|מעלית|ש"?ח|שח/g," ").replace(/(^|\s)[א-ת](?=\s|$)/g," ").replace(/\s+/g," ").trim();
@@ -7134,7 +7130,7 @@ function doSearch(ep,kind){
     if(!r.ok){if(r.auth===false){relogin();return;}$("sres").innerHTML="<span class=err>שגיאה בשרת: "+esc(r.reason||"")+"</span>";return;}
     if(!r.results.length){$("sres").innerHTML="<div class=muted>לא נמצאו תוצאות. נסה עם פחות פרטים.</div>";return;}
     window._lastSearchQ=(r.summary||q||"");
-    window._mapMatchAddrs=(r.results||[]).map(function(y){return y.address||y.street||"";}).filter(Boolean);
+    window._mapMatchAddrs=(r.results||[]).map(function(y){return {a:(y.address||y.street||""),c:(y.city||"")};}).filter(function(o){return o.a;});
     var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
     if(kind=="props"||kind=="excl")h+='<div class="maprow">'+_mapBtnHTML(kind)+'</div>';
     h+=r.results.map(function(x){return card(kind,x);}).join("");
