@@ -1000,7 +1000,8 @@ def parse_search_query(text: str) -> dict:
 שדות JSON:
 - city: עיר ראשית (אחת מהערים למעלה או null) — אם ציינו עיר אחת
 - cities: רשימת ערים (אם ציינו יותר מעיר אחת, למשל ["קרית מוצקין","קרית ביאליק"]) — אחרת null
-- neighborhood: שכונה (substring לחיפוש, או null)
+- neighborhood: שכונה (substring לחיפוש, או null) — אם ציינו שכונה אחת
+- neighborhoods: רשימת שכונות (אם ציינו יותר משכונה אחת, למשל ["סביונ","פסגות ים"]) — אחרת null
 - street: שם רחוב (אם הסוכן ציין, או null)
 - rooms_min: מספר חדרים מינימלי (מספר עשרוני, או null)
 - rooms_max: מספר חדרים מקסימלי (מספר עשרוני, או null) - "4 חדרים" → min=max=4
@@ -1024,6 +1025,12 @@ def parse_search_query(text: str) -> dict:
 - "מחפש דירה 4 חדרים בקרית מוצקין עד 2 מיליון" →
   city="קרית מוצקין", rooms_min=4, rooms_max=4, budget_max=2000000,
   property_type="דירה", must_have=[]
+- "אני מחפש דירת גן בסביוני ים" → (שכונה בלי ציון עיר מפורש — הסק את העיר מהשכונה)
+  city="קרית ים", neighborhood="סביונ", property_type="דירת גן", must_have=["גינה"]
+- "4 חדרים בפסגות ים או בסביונים" → (כמה שכונות)
+  city="קרית ים", neighborhoods=["פסגות ים","סביונ"], rooms_min=4, rooms_max=4
+- "דירה בקרית מוצקין או קרית ביאליק" → (כמה ערים)
+  cities=["קרית מוצקין","קרית ביאליק"], property_type="דירה"
 טקסט:
 {text}"""
     r = requests.post("https://api.anthropic.com/v1/messages",
@@ -1385,15 +1392,23 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
     else:
         score += 5
     # ── שכונה — חובה ב-flex 0 ו-1, בונוס/קנס ב-flex 2 ──
-    q_neigh = (query.get("neighborhood") or "").strip()
-    r_neigh = (row.get("שכונה", "") or "").strip()
-    if q_neigh:
-        if r_neigh and (q_neigh in r_neigh or r_neigh in q_neigh):
+    q_neighs_raw = query.get("neighborhoods") or []
+    if not (isinstance(q_neighs_raw, list) and q_neighs_raw):
+        _qn = (query.get("neighborhood") or "").strip()
+        q_neighs_raw = [_qn] if _qn else []
+    q_neighs = [str(n).strip() for n in q_neighs_raw if str(n).strip()]
+    if q_neighs:
+        r_neigh = (row.get("שכונה", "") or "").strip()
+        r_addr_n = (row.get("כתובת", "") or "").strip()
+        hit_nb = False
+        for qn in q_neighs:
+            # התאמה גם אם השכונה מופיעה רק בכתובת (עמודת "שכונה" לרוב ריקה)
+            if (r_neigh and (qn in r_neigh or (len(r_neigh) >= 2 and r_neigh in qn))) or (qn in r_addr_n):
+                hit_nb = True; break
+        if hit_nb:
             score += 30
         else:
-            if flex_level <= 1:
-                return 0
-            score -= 15
+            return 0   # שכונה צוינה — תוצאות רק מהשכונה/ות, בכל רמות הגמישות
     q_street = (query.get("street") or "").strip()
     r_street = (row.get("כתובת", "") or "").strip()
     if q_street and r_street:
@@ -1914,8 +1929,10 @@ def parse_exclusivity_search_query(text: str) -> dict:
 {_CITY_NB_MAP_HE}
 חלץ JSON בלבד (ללא markdown):
 - keywords: רשימת מילות מפתח חשובות בעברית לחיפוש בתיאורי נכסים
-- city: עיר מנורמלת לפי הרשימה למעלה, או null
-- neighborhood: שכונה מנורמלת לפי הרשימה למעלה (substring לחיפוש), או null
+- city: עיר מנורמלת לפי הרשימה למעלה, או null — אם ציינו עיר אחת
+- cities: רשימת ערים (אם ציינו יותר מעיר אחת) — אחרת null
+- neighborhood: שכונה מנורמלת לפי הרשימה למעלה (substring לחיפוש), או null — אם ציינו שכונה אחת
+- neighborhoods: רשימת שכונות (אם ציינו יותר משכונה אחת) — אחרת null
 - rooms: מספר חדרים (מספר עשרוני) או null
 - budget_max: תקציב מקסימלי בש"ח כמספר (לדוגמה "עד 2 מיליון" → 2000000), או null
 - summary_he: סיכום קצר בעברית של מה הסוכן מחפש"""
@@ -1954,18 +1971,30 @@ def score_exclusivity_match(row: dict, query: dict) -> int:
     desti = (row.get("desti","") or "")
     combined = f"{street} {dest} {desti}".lower()
 
-    # עיר
-    q_city = (query.get("city") or "").strip()
-    if q_city:
-        if q_city.lower() in combined or q_city.replace("קרית","קריית").lower() in combined:
+    # עיר — תמיכה בכמה ערים; אם צוינו ערים, חובה התאמה לאחת מהן
+    q_cities = query.get("cities") or []
+    if not (isinstance(q_cities, list) and q_cities):
+        _qc = (query.get("city") or "").strip()
+        q_cities = [_qc] if _qc else []
+    q_cities = [str(c).strip() for c in q_cities if str(c).strip()]
+    if q_cities:
+        hit_city = any((c.lower() in combined) or (c.replace("קרית","קריית").lower() in combined) for c in q_cities)
+        if hit_city:
             score += 30
         else:
             return 0
 
-    # שכונה (התאמה רכה)
-    q_nb = (query.get("neighborhood") or "").strip()
-    if q_nb and q_nb.lower() in combined:
-        score += 20
+    # שכונה — אם צוינו שכונות, חובה התאמה לאחת מהן (תוצאות רק מהשכונה/ות)
+    q_nbs = query.get("neighborhoods") or []
+    if not (isinstance(q_nbs, list) and q_nbs):
+        _qn = (query.get("neighborhood") or "").strip()
+        q_nbs = [_qn] if _qn else []
+    q_nbs = [str(n).strip() for n in q_nbs if str(n).strip()]
+    if q_nbs:
+        if any(n.lower() in combined for n in q_nbs):
+            score += 25
+        else:
+            return 0
 
     # חדרים
     q_rooms = query.get("rooms")
@@ -2040,7 +2069,7 @@ def handle_exclusivity_search_request(sender_phone: str, message_text: str):
             return
 
         # אם אין קריטריונים — החזר את 5 האחרונות
-        if not (parsed.get("city") or parsed.get("neighborhood") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
+        if not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
             all_rows.sort(key=lambda r: _excl_epoch(r.get("received_at","")), reverse=True)
             matches = all_rows[:5]
         else:
@@ -5368,7 +5397,7 @@ def api_search_exclusives():
         parsed["budget_max"] = _web_num(parsed.get("budget_max"))   # מנע TypeError בכפל
         parsed["rooms"]      = _web_num(parsed.get("rooms"))
         rows = _dedupe_exclusives(fetch_external_exclusives())
-        if not (parsed.get("city") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
+        if not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
             rows = sorted(rows, key=lambda r: _excl_epoch(r.get("received_at", "")), reverse=True)
             matches = [(1, r) for r in rows[:30]]
         else:
@@ -6954,16 +6983,23 @@ function _mapFocusOn(q){
     var la=0,lo=0;pts.forEach(function(p){la+=p.lat;lo+=p.lng;});focusAt([la/pts.length,lo/pts.length],hit);
   }
   if(!loc){cityFallback();return;}
-  /* 2) גאוקוד עם כמה וריאציות — כולל הסרת תחיליות (ב/ל/מ/ה...) שמבלבלות את Nominatim */
+  /* 2) גאוקוד מדורג: קודם תיבת הקריות הצמודה, ואז מפרץ חיפה הרחב. כולל הסרת תחיליות (ב/ל/מ/ה...) */
   var cands=[loc];
   var strip=loc.replace(/^[בהלמוכש](?=[֐-׿]{3,})/,"").trim();
   if(strip&&strip!==loc)cands.push(strip);
+  var boxes=["35.02,32.88,35.15,32.79","34.92,32.95,35.22,32.68"];  // קריות (צמוד) → מפרץ חיפה (רחב)
+  var att=[];boxes.forEach(function(vb){cands.forEach(function(c){att.push({q:c,vb:vb});});});
   function tryGeo(i){
-    if(i>=cands.length){cityFallback();return;}
+    if(i>=att.length){cityFallback();return;}
     try{
-      fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&viewbox=34.92,32.95,35.22,32.68&bounded=1&q="+encodeURIComponent(cands[i]+", ישראל"))
+      fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&countrycodes=il&bounded=1&viewbox="+att[i].vb+"&q="+encodeURIComponent(att[i].q+", ישראל"))
         .then(function(r){return r.json();})
-        .then(function(d){if(d&&d.length){focusAt([parseFloat(d[0].lat),parseFloat(d[0].lon)],cands[i]);}else{tryGeo(i+1);}})
+        .then(function(d){if(d&&d.length){
+            var pick=d[0];  // ברירת מחדל: התוצאה הראשונה
+            for(var j=0;j<d.length;j++){var at=(d[j].addresstype||d[j].type||"");
+              if(/neighbourhood|suburb|quarter|residential|hamlet|locality|city_block/.test(at)){pick=d[j];break;}}  // העדף שכונה/רובע על פני עיר
+            focusAt([parseFloat(pick.lat),parseFloat(pick.lon)],att[i].q);
+          }else{tryGeo(i+1);}})
         .catch(function(){tryGeo(i+1);});
     }catch(e){tryGeo(i+1);}
   }
