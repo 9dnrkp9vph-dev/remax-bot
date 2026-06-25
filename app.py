@@ -4962,7 +4962,7 @@ def _mdate(s):
 def _mnb(v): v=str(v or "").strip(); return "" if v in ("","-","—") else v
 _MBB=(32.74,32.95,34.95,35.20)  # קריות/חיפה — סינון outliers
 # cache: נטען מ-map-geocache.json אם קיים (seed אופציונלי שמזרז), אחרת ריק ובונה את עצמו.
-_MGEO_PATH=_os2.path.join(_os2.path.dirname(__file__),"map-geocache.json")
+_MGEO_PATH=_os2.path.join(_os2.environ.get("MAP_CACHE_DIR","") or _os2.path.dirname(__file__),"map-geocache.json")  # MAP_CACHE_DIR=דיסק קבוע ב-Render → שורד פריסות
 try: _mgeo=_j2.load(open(_MGEO_PATH,encoding="utf-8"))
 except Exception: _mgeo={}
 _mq=[]; _mbusy=[False]; _mlock=_th.Lock()
@@ -6858,6 +6858,7 @@ function openMap(){
     var st=document.createElement("style");st.id="mapcss";st.textContent=MAP_CSS;document.head.appendChild(st);
   }
   ovl=document.createElement("div");ovl.id="mapovl";ovl.className="mapovl";ovl.innerHTML=MAP_HTML;
+  ovl.onclick=function(e){if(e.target===ovl)mapClose();};
   document.body.appendChild(ovl);
   if(window.L&&window.L.markerClusterGroup)mapBoot();
   else _mapLoadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",function(){
