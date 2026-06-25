@@ -7052,8 +7052,8 @@ var MAP_HTML='<div class="mapsheet">'+
  '<div class="mapctrl"><span class="mchip on" data-f="all" onclick="mapSetF(this,\'all\')">הכל</span>'+
  '<span class="mchip" data-f="office" onclick="mapSetF(this,\'office\')"><svg viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>משרד</span>'+
  '<span class="mchip" data-f="coop" onclick="mapSetF(this,\'coop\')"><svg viewBox="0 0 18 18"><rect x="2.4" y="6" width="6.4" height="9.4" rx="1"/><rect x="9.4" y="3" width="6.2" height="12.4" rx="1"/></svg>שת"פ</span>'+
- '<select id="mapcity" onchange="mapRender()"><option value="">כל הערים</option></select>'+
- '<span class="mshown" id="mapshown"></span></div>'+
+ '<select id="mapcity" onchange="mapRender()"><option value="">כל הערים</option></select></div>'+
+ '<span class="mshown" id="mapshown"></span>'+
  '<button class="mloc" onclick="mapLocate()" title="חיפוש במיקום שלי"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button>'+
  '</div>';
 var MAP_CSS='.mapovl{position:fixed;left:0;right:0;z-index:2000;background:transparent;display:flex;align-items:stretch;justify-content:center}'+
@@ -7064,7 +7064,7 @@ var MAP_CSS='.mapovl{position:fixed;left:0;right:0;z-index:2000;background:trans
  '.mchip svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}'+
  '.mchip.on{background:#003DA5;color:#fff;border-color:#003DA5}'+
  '.mapctrl select{border:1px solid rgba(13,27,42,.08);background:rgba(255,255,255,.96);border-radius:11px;padding:7px 11px;font-size:13px;font-weight:700;font-family:inherit;color:#0D1B2A;box-shadow:0 2px 9px rgba(13,27,42,.2)}'+
- '.mshown{font-size:12px;font-weight:800;color:#0D1B2A;background:rgba(255,255,255,.92);border-radius:9px;padding:6px 10px;box-shadow:0 2px 9px rgba(13,27,42,.2)}'+
+ '.mshown{position:absolute;bottom:82px;inset-inline-end:14px;z-index:1200;font-size:12px;font-weight:800;color:#0D1B2A;background:rgba(255,255,255,.95);border-radius:9px;padding:6px 11px;box-shadow:0 2px 9px rgba(13,27,42,.22)}'+
  '#lmap{position:absolute;inset:0;background:#dfe6ee}'+
  '.mloc{position:absolute;bottom:18px;inset-inline-end:14px;z-index:1200;width:54px;height:54px;border-radius:50%;background:#fff;border:none;box-shadow:0 4px 16px rgba(13,27,42,.32);cursor:pointer;display:flex;align-items:center;justify-content:center}'+
  '.mloc svg{width:24px;height:24px;stroke:#003DA5;fill:none;stroke-width:2}'+
@@ -7080,16 +7080,29 @@ var MAP_CSS='.mapovl{position:fixed;left:0;right:0;z-index:2000;background:trans
 function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
   var box=$("recent");if(!box)return;
   if(!r||!r.ok||!r.items.length){box.innerHTML="";return;}
-  box.innerHTML="<div class=muted style=margin:6px_0>🗺️ חיפושים אחרונים (לחיצה פותחת את מפת הנכסים):</div><div id=rchips class=rchips></div>";
+  box.innerHTML="<div class=muted style=margin:6px_0>🔍 חיפושים אחרונים (לחיצה — תוצאות · לחיצה שנייה — מפה):</div><div id=rchips class=rchips></div>";
   var c=$("rchips");
-  r.items.forEach(function(q){var sp=document.createElement("span");sp.className="rchip";sp.textContent=q;sp.onclick=function(){openMap(q,kind=="props"?"office":"coop");};c.appendChild(sp);});
+  r.items.forEach(function(q){var sp=document.createElement("span");sp.className="rchip";sp.textContent=q;sp.onclick=function(){recentClick(q,kind);};c.appendChild(sp);});
 }).catch(function(){});}
+function recentClick(q,kind){
+  // לחיצה ראשונה — חיפוש רגיל (תוצאות בטאב); לחיצה שנייה על אותו חיפוש — מפה עם תוצאות החיפוש בלבד
+  if(window._lastRecentSearched===q && window._mapMatchAddrs && window._mapMatchAddrs.length){
+    openMap(window._lastSearchQ||q, kind=="props"?"office":"coop", 1);
+    return;
+  }
+  window._lastRecentSearched=q; window._mapMatchAddrs=null;
+  var inp=$("sq"); if(inp) inp.value=q;
+  doSearch(kind=="props"?"/api/search/properties":"/api/search/exclusives", kind);
+}
 function doSearch(ep,kind){
   var q=$("sq").value.trim();$("sres").innerHTML="<div class=muted>מחפש… ⏳</div>";
   api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:IMP||""})}).then(function(r){
     if(!r.ok){if(r.auth===false){relogin();return;}$("sres").innerHTML="<span class=err>שגיאה בשרת: "+esc(r.reason||"")+"</span>";return;}
     if(!r.results.length){$("sres").innerHTML="<div class=muted>לא נמצאו תוצאות. נסה עם פחות פרטים.</div>";return;}
-    var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
+    window._lastSearchQ=(r.summary||q||"");
+    window._mapMatchAddrs=(r.results||[]).map(function(y){return y.address||y.street||"";}).filter(Boolean);
+    var mapbtn=(kind=="props"||kind=="excl")?(" <span onclick=\"openMap(window._lastSearchQ,'"+(kind=="props"?"office":"coop")+"',1)\" style=\"display:inline-block;margin-inline-start:6px;background:#003DA5;color:#fff;font-size:12px;font-weight:800;padding:4px 11px;border-radius:999px;cursor:pointer\">🗺️ הצג במפה</span>"):"";
+    var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+mapbtn+"</div>"):(mapbtn?("<div style=margin:6px_0>"+mapbtn+"</div>"):"");
     h+=r.results.map(function(x){return card(kind,x);}).join("");
     $("sres").innerHTML=h;shareUpd();
     if(kind=="props"||kind=="excl")loadRecent(kind);
