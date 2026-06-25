@@ -6940,9 +6940,6 @@ function mapBoot(){
   setTimeout(function(){try{_mapObj.invalidateSize();}catch(e){}},180);
   api("/api/map/properties").then(function(r){
     MAP_PTS=(r&&r.items)?r.items:[];
-    var cs={};MAP_PTS.forEach(function(p){if(p.c)cs[p.c]=1;});
-    var sel=document.getElementById("mapcity");
-    Object.keys(cs).sort().forEach(function(c){var o=document.createElement("option");o.value=c;o.textContent=c;sel.appendChild(o);});
     mapRender();
     if(window._mapResultsMode){ if(!window._mapShownN)setTimeout(function(){_mapFocusOn(window._mapFocusQ);},250); }  // אם לא נמצאו תוצאות עם קואורדינטות — נפילה למיקוד שכונה
     else if(window._mapFocusQ)setTimeout(function(){_mapFocusOn(window._mapFocusQ);},250);
