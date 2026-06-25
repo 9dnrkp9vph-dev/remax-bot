@@ -4960,7 +4960,7 @@ def _mdate(s):
         except: pass
     return None
 def _mnb(v): v=str(v or "").strip(); return "" if v in ("","-","—") else v
-_MBB=(32.74,32.95,34.95,35.20)  # קריות/חיפה — סינון outliers
+_MBB=(29.4,33.45,34.2,35.95)  # כל ישראל — מציג את כל הנכסים, מסנן רק טעויות גאוקוד מחוץ למדינה
 # cache: נטען מ-map-geocache.json אם קיים (seed אופציונלי שמזרז), אחרת ריק ובונה את עצמו.
 _MGEO_PATH=_os2.path.join(_os2.environ.get("MAP_CACHE_DIR","") or _os2.path.dirname(__file__),"map-geocache.json")  # MAP_CACHE_DIR=דיסק קבוע ב-Render → שורד פריסות
 try: _mgeo=_j2.load(open(_MGEO_PATH,encoding="utf-8"))
@@ -6837,7 +6837,7 @@ function buyerSearch(b){
     if(!box)return;
     if(!r||!r.ok){box.innerHTML="<span class=err>שגיאה בחיפוש"+(r&&r.reason?" ("+esc(r.reason)+")":"")+"</span>";return;}
     if(!r.results.length){box.innerHTML="<div class=muted style=margin:6px_0>לא נמצאו נכסים תואמים "+(kind=="props"?"במשרד":"בשת״פ")+".</div>";return;}
-    var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+"</div>";
+    var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+" <span onclick=\"openMap()\" style=\"display:inline-block;margin-inline-start:6px;background:#003DA5;color:#fff;font-size:12px;font-weight:800;padding:4px 11px;border-radius:999px;cursor:pointer\">🗺️ הצג במפה</span></div>";
     h+=r.results.map(function(y){return card(kind,y);}).join("");
     box.innerHTML=h;
   }).catch(function(){if(box)box.innerHTML="<span class=err>שגיאה</span>";});
