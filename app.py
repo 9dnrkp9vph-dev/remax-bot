@@ -7018,7 +7018,7 @@ function _mapDist(a,b){var R=6371,dy=(b[0]-a[0])*Math.PI/180,dx=(b[1]-a[1])*Math
 function _mapOnLoc(lat,lng,acc){
   var ll=[lat,lng];
   if(_meM)_mapObj.removeLayer(_meM); if(_meC)_mapObj.removeLayer(_meC);
-  _meC=L.circle(ll,{radius:Math.max(acc||120,120),color:"#003DA5",fillColor:"#003DA5",fillOpacity:.1,weight:1}).addTo(_mapObj);
+  _meC=L.circle(ll,{radius:Math.min(Math.max(acc||80,80),350),color:"#003DA5",fillColor:"#003DA5",fillOpacity:.1,weight:1}).addTo(_mapObj);  // מגביל עיגול דיוק כדי שקריאה מקורבת לא תצייר עיגול ענק
   _meM=L.marker(ll,{icon:L.divIcon({className:"",html:'<div class="mme"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(_mapObj);
   _mapObj.setView(ll,15);
   var near=MAP_PTS.filter(function(p){return _mapDist(ll,[p.lat,p.lng])<=1;}).length;
@@ -7027,12 +7027,14 @@ function _mapOnLoc(lat,lng,acc){
 function mapLocate(){
   var G=(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Geolocation)?Capacitor.Plugins.Geolocation:null;
   if(G&&G.getCurrentPosition){   /* אפליקציה — תוסף המיקום הנייטיב */
-    var doGet=function(){   /* קודם מהיר+מקורב (כמו הדפדפן), ואם נכשל — מדויק */
-      return G.getCurrentPosition({enableHighAccuracy:false,timeout:15000,maximumAge:60000})
-        .catch(function(){ return G.getCurrentPosition({enableHighAccuracy:true,timeout:15000,maximumAge:0}); });
+    var run=function(){ var _sh=document.getElementById("mapshown");if(_sh)_sh.textContent="מאתר מיקום…";
+      /* מקורב (מהיר) + מדויק (GPS) במקביל — מציג מיד את המהיר ומחדד לדיוק הטוב ביותר */
+      var best=Infinity,ok=false,done=0;
+      var show=function(p){var a=(p&&p.coords&&p.coords.accuracy)||9999;ok=true;if(a<=best){best=a;_mapOnLoc(p.coords.latitude,p.coords.longitude,a);}};
+      var fin=function(){done++;if(done>=2&&!ok){if(_sh)_sh.textContent="";alert("לא הצלחתי לאתר מיקום — ודא/י שהרשאת מיקום מאושרת ל-Family Bot (הגדרות → Family Bot → מיקום → בעת השימוש).");}};
+      G.getCurrentPosition({enableHighAccuracy:false,timeout:6000,maximumAge:120000}).then(function(p){show(p);fin();},fin);
+      G.getCurrentPosition({enableHighAccuracy:true,timeout:15000,maximumAge:10000}).then(function(p){show(p);fin();},fin);
     };
-    var run=function(){ doGet().then(function(p){_mapOnLoc(p.coords.latitude,p.coords.longitude,p.coords.accuracy);})
-      .catch(function(e){alert("לא הצלחתי לאתר מיקום — ודא/י שהרשאת מיקום מאושרת ל-Family Bot (הגדרות → Family Bot → מיקום → בעת השימוש)."+(e&&e.message?("\n\n("+e.message+")"):""));}); };
     if(G.checkPermissions){
       G.checkPermissions().then(function(st){
         var ok=st&&(st.location==="granted"||st.coarseLocation==="granted");
@@ -7048,8 +7050,12 @@ function mapLocate(){
     return;
   }
   if(!navigator.geolocation){alert("שירותי מיקום לא זמינים");return;}
-  navigator.geolocation.getCurrentPosition(function(pos){_mapOnLoc(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy);},
-    function(){alert("לא הצלחתי לאתר מיקום — אשר/י הרשאת מיקום (בדפדפן: סמל המנעול → מיקום).");},{enableHighAccuracy:true,timeout:15000});
+  var _shb=document.getElementById("mapshown");if(_shb)_shb.textContent="מאתר מיקום…";
+  var _best=Infinity,_ok=false,_done=0;
+  var _show=function(pos){var a=(pos&&pos.coords&&pos.coords.accuracy)||9999;_ok=true;if(a<=_best){_best=a;_mapOnLoc(pos.coords.latitude,pos.coords.longitude,a);}};
+  var _fin=function(){_done++;if(_done>=2&&!_ok){if(_shb)_shb.textContent="";alert("לא הצלחתי לאתר מיקום — אשר/י הרשאת מיקום (בדפדפן: סמל המנעול → מיקום).");}};
+  navigator.geolocation.getCurrentPosition(function(p){_show(p);_fin();},_fin,{enableHighAccuracy:false,timeout:6000,maximumAge:120000});
+  navigator.geolocation.getCurrentPosition(function(p){_show(p);_fin();},_fin,{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
 }
 function _mapFocusOn(q){
   if(!_mapObj)return;
