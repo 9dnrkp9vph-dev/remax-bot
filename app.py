@@ -6390,7 +6390,7 @@ function renderContracts(){if(!$("devcontracts"))return;
   $("devcontracts").innerHTML=html;}
 function ctypeChange(v){var ta=$("cbody");if(ta)CONTRACTS[CTYPE]=ta.value;CTYPE=v;renderContracts();}
 function saveContract(){var ta=$("cbody");if(!ta)return;CONTRACTS[CTYPE]=ta.value;api("/api/dev/contract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:CTYPE,body:ta.value})}).then(function(r){if(r&&r.ok)alert("נשמר ✓");else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
-function tab(t){var _mo=document.getElementById("mapovl");if(_mo){_mo.remove();document.body.style.overflow="";}var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();setTimeout(shareUpd,50);}
+function tab(t){var _mo=document.getElementById("mapovl");if(_mo){_mo.remove();document.body.style.overflow="";}window._lastRecentSearched=null;var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();setTimeout(shareUpd,50);}
 /* iOS: אחרי חזרה מאפליקציה אחרת (וואטסאפ/טלפון) הסרגל הקבוע "קופץ" כי ה-viewport עוד לא התעדכן — נדנוד גלילה קטן מאלץ את iOS למקם אותו מחדש */
 function snapBars(){try{var _b=document.body;_b.style.position="";_b.style.top="";_b.style.width="";var y=window.pageYOffset||document.documentElement.scrollTop||0;window.scrollTo(0,y+1);window.scrollTo(0,y);var t=document.querySelector(".tabs");if(t){void t.offsetHeight;}}catch(e){}}
 document.addEventListener("visibilitychange",function(){if(!document.hidden){setTimeout(snapBars,20);setTimeout(snapBars,250);}});
@@ -6918,11 +6918,10 @@ function openMap(focusQ,filt,useMatch){window._mapFocusQ=focusQ||"";window._mapU
   }
   ovl=document.createElement("div");ovl.id="mapovl";ovl.className="mapovl";ovl.innerHTML=MAP_HTML;
   document.body.appendChild(ovl);
-  var _chs=ovl.querySelectorAll(".mchip");for(var _i=0;_i<_chs.length;_i++)_chs[_i].classList.toggle("on",_chs[_i].getAttribute("data-f")===MAP_FILT);
-  if(window._mapResultsMode){  // מצב "תוצאות החיפוש" — מסתירים בורר ערים + צ'יפים (מציגים רק את התוצאות)
-    for(var _j=0;_j<_chs.length;_j++)_chs[_j].style.display="none";
-    var _sel=ovl.querySelector("#mapcity");if(_sel)_sel.style.display="none";
-  }
+  var _active=window._mapResultsMode?"results":MAP_FILT;
+  var _chs=ovl.querySelectorAll(".mchip");for(var _i=0;_i<_chs.length;_i++)_chs[_i].classList.toggle("on",_chs[_i].getAttribute("data-f")===_active);
+  // צ'יפ "חיפוש אחרון" מוצג רק אם יש תוצאות חיפוש אחרונות
+  var _rc=ovl.querySelector('.mchip[data-f="results"]');if(_rc)_rc.style.display=(window._mapMatchAddrs&&window._mapMatchAddrs.length)?"":"none";
   try{window.scrollTo(0,0);var _br=document.querySelector(".brand"),_nv=document.querySelector(".tabs");
     ovl.style.top=(_br?Math.max(0,Math.round(_br.getBoundingClientRect().bottom)):72)+"px";
     ovl.style.bottom=(_nv?Math.round(_nv.getBoundingClientRect().height):60)+"px";
@@ -6975,7 +6974,10 @@ function mapRender(){
   var sh=document.getElementById("mapshown");if(sh)sh.textContent=(resultsMode?("תוצאות החיפוש: "+n):(n+" נכסים"));
   if(b.length)try{_mapObj.fitBounds(b,{padding:[36,36],maxZoom:16});}catch(e){}
 }
-function mapSetF(el,f){MAP_FILT=f;var ch=document.querySelectorAll("#mapovl .mchip");
+function mapSetF(el,f){
+  if(f==="results"){window._mapResultsMode=true;}
+  else{window._mapResultsMode=false;MAP_FILT=f;}
+  var ch=document.querySelectorAll("#mapovl .mchip");
   for(var i=0;i<ch.length;i++)ch[i].classList.toggle("on",ch[i].getAttribute("data-f")==f);mapRender();}
 function _mapDist(a,b){var R=6371,dy=(b[0]-a[0])*Math.PI/180,dx=(b[1]-a[1])*Math.PI/180,l1=a[0]*Math.PI/180,l2=b[0]*Math.PI/180;
   var t=Math.sin(dy/2)*Math.sin(dy/2)+Math.sin(dx/2)*Math.sin(dx/2)*Math.cos(l1)*Math.cos(l2);return R*2*Math.atan2(Math.sqrt(t),Math.sqrt(1-t));}
@@ -7049,10 +7051,10 @@ function _mapFocusOn(q){
 }
 var MAP_HTML='<div class="mapsheet">'+
  '<div id="lmap"></div>'+
- '<div class="mapctrl"><span class="mchip on" data-f="all" onclick="mapSetF(this,\'all\')">הכל</span>'+
+ '<div class="mapctrl"><span class="mchip on" data-f="results" onclick="mapSetF(this,\'results\')"><svg viewBox="0 0 18 18"><circle cx="8" cy="8" r="5"/><path d="M11.7 11.7L16 16"/></svg>חיפוש אחרון</span>'+
  '<span class="mchip" data-f="office" onclick="mapSetF(this,\'office\')"><svg viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>משרד</span>'+
  '<span class="mchip" data-f="coop" onclick="mapSetF(this,\'coop\')"><svg viewBox="0 0 18 18"><rect x="2.4" y="6" width="6.4" height="9.4" rx="1"/><rect x="9.4" y="3" width="6.2" height="12.4" rx="1"/></svg>שת"פ</span>'+
- '<select id="mapcity" onchange="mapRender()"><option value="">כל הערים</option></select></div>'+
+ '<span class="mchip" data-f="all" onclick="mapSetF(this,\'all\')">הכל</span></div>'+
  '<span class="mshown" id="mapshown"></span>'+
  '<button class="mloc" onclick="mapLocate()" title="חיפוש במיקום שלי"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button>'+
  '</div>';
@@ -7064,7 +7066,7 @@ var MAP_CSS='.mapovl{position:fixed;left:0;right:0;z-index:2000;background:trans
  '.mchip svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}'+
  '.mchip.on{background:#003DA5;color:#fff;border-color:#003DA5}'+
  '.mapctrl select{border:1px solid rgba(13,27,42,.08);background:rgba(255,255,255,.96);border-radius:11px;padding:7px 11px;font-size:13px;font-weight:700;font-family:inherit;color:#0D1B2A;box-shadow:0 2px 9px rgba(13,27,42,.2)}'+
- '.mshown{position:absolute;bottom:82px;inset-inline-end:14px;z-index:1200;font-size:12px;font-weight:800;color:#0D1B2A;background:rgba(255,255,255,.95);border-radius:9px;padding:6px 11px;box-shadow:0 2px 9px rgba(13,27,42,.22)}'+
+ '.mshown{position:absolute;bottom:20px;right:14px;z-index:1200;font-size:12px;font-weight:800;color:#0D1B2A;background:rgba(255,255,255,.95);border-radius:9px;padding:6px 11px;box-shadow:0 2px 9px rgba(13,27,42,.22)}'+
  '#lmap{position:absolute;inset:0;background:#dfe6ee}'+
  '.mloc{position:absolute;bottom:18px;inset-inline-end:14px;z-index:1200;width:54px;height:54px;border-radius:50%;background:#fff;border:none;box-shadow:0 4px 16px rgba(13,27,42,.32);cursor:pointer;display:flex;align-items:center;justify-content:center}'+
  '.mloc svg{width:24px;height:24px;stroke:#003DA5;fill:none;stroke-width:2}'+
