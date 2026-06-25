@@ -4997,9 +4997,7 @@ def api_map_properties():
     c=_cache_get("map_props",120)
     if c is not None: return jsonify({"ok":True,"items":c})
     cut=_dt.date.today()-_dt.timedelta(days=92); out=[]
-    for r in fetch_sheet_rows():  # נכסי משרד
-        d=_mdate(r.get("תאריך יצירה",""))
-        if not d or d<cut: continue
+    for r in fetch_sheet_rows():  # נכסי משרד — כל הנכסים (ללא סינון תאריך)
         city=_mnb(r.get("עיר / ישוב","")); street=_mnb(r.get("כתובת","")); house=_mnb(r.get("מספר בית",""))
         if not(city and street): continue
         ll=_mlookup(f"{street} {house}, {city}".strip())
@@ -5799,10 +5797,10 @@ h1{font-size:20px;margin:6px 0;font-weight:800}
 h2{font-size:16px;margin:0 0 12px;font-weight:800;padding-inline-start:10px;border-inline-start:4px solid var(--gold);line-height:1.25}
 input,textarea{font-size:16px;padding:13px 14px;border-radius:13px;border:1.5px solid #e0e4e9;width:100%;font-family:inherit;background:#fbfcfd;transition:border-color .15s,box-shadow .15s}
 input:focus,textarea:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(13,27,42,.08)}
-button{font-size:16px;padding:14px;border-radius:13px;border:none;width:100%;font-family:inherit;background:var(--ink);color:#fff;margin-top:10px;font-weight:800;cursor:pointer;transition:transform .06s,filter .15s,box-shadow .15s;box-shadow:0 4px 14px rgba(13,27,42,.16)}
+button{font-size:16px;padding:14px;border-radius:13px;border:none;width:100%;font-family:inherit;background:linear-gradient(180deg,#5577AD,#42659C);color:#fff;margin-top:10px;font-weight:800;cursor:pointer;transition:transform .06s,filter .15s,box-shadow .15s;box-shadow:0 4px 14px rgba(66,101,156,.28)}
 button:active{transform:translateY(1px)}button:hover{filter:brightness(1.08)}
 button.gold{background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;box-shadow:0 4px 14px rgba(201,151,42,.32)}button.sec{background:#eef1f5;color:var(--ink);border:1px solid #e2e6ea;box-shadow:none}
-.tabs{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.97);backdrop-filter:blur(8px);display:flex;border-top:1px solid #e6e9ee;max-width:620px;margin:0 auto;box-shadow:0 -3px 14px rgba(13,27,42,.06);padding-bottom:env(safe-area-inset-bottom,0)}
+.tabs{position:fixed;z-index:2100;bottom:0;left:0;right:0;background:rgba(255,255,255,.97);backdrop-filter:blur(8px);display:flex;border-top:1px solid #e6e9ee;max-width:620px;margin:0 auto;box-shadow:0 -3px 14px rgba(13,27,42,.06);padding-bottom:env(safe-area-inset-bottom,0)}
 .tab{flex:1;text-align:center;padding:11px 1px;font-size:12px;line-height:1.25;color:var(--muted);cursor:pointer;border-top:3px solid transparent}
 .tab.on{color:var(--ink);font-weight:800;border-top-color:var(--gold);background:linear-gradient(to bottom,rgba(201,151,42,.12),transparent)}
 .chips{display:flex;gap:7px;margin:6px 0 2px}
@@ -5941,7 +5939,7 @@ body{background:#f6f5f2!important;background-color:#f6f5f2!important;color:var(-
 h2{border-inline-start-color:var(--gold)}
 input,textarea{background:#fbfcfd;border:1.5px solid #e7e3da}
 input:focus,textarea:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(21,38,59,.09)}
-button{background:linear-gradient(180deg,#16273c,#0D1B2A);color:#fff;box-shadow:0 6px 18px rgba(20,30,50,.18);border-radius:12px}
+button{background:linear-gradient(180deg,#5577AD,#42659C);color:#fff;box-shadow:0 6px 18px rgba(66,101,156,.3);border-radius:12px}
 button:hover{filter:brightness(1.06)}
 .btn-primary{background:linear-gradient(180deg,#16273c,#0D1B2A)!important;color:#fff!important;border:none!important;box-shadow:0 6px 18px rgba(20,30,50,.2)!important}
 button.gold,.btn-gold{background:linear-gradient(180deg,#d4a437,#c0901f)!important;color:#231700!important;border:none!important;box-shadow:0 6px 16px rgba(187,138,44,.28)!important;font-weight:800}
@@ -6334,7 +6332,7 @@ function renderContracts(){if(!$("devcontracts"))return;
   $("devcontracts").innerHTML=html;}
 function ctypeChange(v){var ta=$("cbody");if(ta)CONTRACTS[CTYPE]=ta.value;CTYPE=v;renderContracts();}
 function saveContract(){var ta=$("cbody");if(!ta)return;CONTRACTS[CTYPE]=ta.value;api("/api/dev/contract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:CTYPE,body:ta.value})}).then(function(r){if(r&&r.ok)alert("נשמר ✓");else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
-function tab(t){var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();setTimeout(shareUpd,50);}
+function tab(t){var _mo=document.getElementById("mapovl");if(_mo){_mo.remove();document.body.style.overflow="";}var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();setTimeout(shareUpd,50);}
 /* iOS: אחרי חזרה מאפליקציה אחרת (וואטסאפ/טלפון) הסרגל הקבוע "קופץ" כי ה-viewport עוד לא התעדכן — נדנוד גלילה קטן מאלץ את iOS למקם אותו מחדש */
 function snapBars(){try{var _b=document.body;_b.style.position="";_b.style.top="";_b.style.width="";var y=window.pageYOffset||document.documentElement.scrollTop||0;window.scrollTo(0,y+1);window.scrollTo(0,y);var t=document.querySelector(".tabs");if(t){void t.offsetHeight;}}catch(e){}}
 document.addEventListener("visibilitychange",function(){if(!document.hidden){setTimeout(snapBars,20);setTimeout(snapBars,250);}});
@@ -6849,7 +6847,7 @@ var MAP_PTS=[],MAP_FILT="all",_mapObj=null,_mapCluster=null,_meM=null,_meC=null;
 function _mapLoadScript(src,cb){var s=document.createElement("script");s.src=src;s.onload=cb;document.head.appendChild(s);}
 function openMap(){
   var ovl=document.getElementById("mapovl");
-  if(ovl){ovl.style.display="flex";return;}
+  if(ovl)ovl.remove();
   if(!document.getElementById("mapcss")){
     ["https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
      "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css",
@@ -6858,19 +6856,23 @@ function openMap(){
     var st=document.createElement("style");st.id="mapcss";st.textContent=MAP_CSS;document.head.appendChild(st);
   }
   ovl=document.createElement("div");ovl.id="mapovl";ovl.className="mapovl";ovl.innerHTML=MAP_HTML;
-  ovl.onclick=function(e){if(e.target===ovl)mapClose();};
   document.body.appendChild(ovl);
+  try{window.scrollTo(0,0);var _br=document.querySelector(".brand"),_nv=document.querySelector(".tabs");
+    ovl.style.top=(_br?Math.max(0,Math.round(_br.getBoundingClientRect().bottom)):72)+"px";
+    ovl.style.bottom=(_nv?Math.round(_nv.getBoundingClientRect().height):60)+"px";
+    document.body.style.overflow="hidden";}catch(e){}
   if(window.L&&window.L.markerClusterGroup)mapBoot();
   else _mapLoadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",function(){
         _mapLoadScript("https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js",mapBoot);});
 }
-function mapClose(){var o=document.getElementById("mapovl");if(o)o.style.display="none";}
+function mapClose(){var o=document.getElementById("mapovl");if(o)o.remove();document.body.style.overflow="";}
 function mapBoot(){
   _mapObj=L.map("lmap",{zoomControl:false}).setView([32.83,35.08],12);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(_mapObj);
   _mapCluster=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:48,spiderfyOnMaxZoom:true,
     iconCreateFunction:function(c){return L.divIcon({html:'<div class="mcl">'+c.getChildCount()+'</div>',className:'',iconSize:[38,38]});}});
   _mapObj.addLayer(_mapCluster);
+  setTimeout(function(){try{_mapObj.invalidateSize();}catch(e){}},180);
   api("/api/map/properties").then(function(r){
     MAP_PTS=(r&&r.items)?r.items:[];
     var cs={};MAP_PTS.forEach(function(p){if(p.c)cs[p.c]=1;});
@@ -6922,7 +6924,6 @@ function mapLocate(){
 }
 var MAP_HTML='<div class="mapsheet">'+
  '<div id="lmap"></div>'+
- '<div class="maphandle" onclick="mapClose()"></div>'+
  '<div class="mapctrl"><span class="mchip on" data-f="all" onclick="mapSetF(this,\'all\')">הכל</span>'+
  '<span class="mchip" data-f="office" onclick="mapSetF(this,\'office\')"><svg viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>משרד</span>'+
  '<span class="mchip" data-f="coop" onclick="mapSetF(this,\'coop\')"><svg viewBox="0 0 18 18"><rect x="2.4" y="6" width="6.4" height="9.4" rx="1"/><rect x="9.4" y="3" width="6.2" height="12.4" rx="1"/></svg>שת"פ</span>'+
@@ -6930,8 +6931,8 @@ var MAP_HTML='<div class="mapsheet">'+
  '<span class="mshown" id="mapshown"></span></div>'+
  '<button class="mloc" onclick="mapLocate()" title="חיפוש במיקום שלי"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button>'+
  '</div>';
-var MAP_CSS='.mapovl{position:fixed;inset:0;z-index:2000;background:rgba(13,27,42,.5);display:flex;align-items:flex-end;justify-content:center}'+
- '.mapsheet{position:relative;background:#eef1f5;width:100%;max-width:620px;height:92vh;border-radius:20px 20px 0 0;overflow:hidden;box-shadow:0 -8px 40px rgba(0,0,0,.3)}'+
+var MAP_CSS='.mapovl{position:fixed;left:0;right:0;z-index:2000;background:transparent;display:flex;align-items:stretch;justify-content:center}'+
+ '.mapsheet{position:relative;background:#eef1f5;width:100%;max-width:620px;height:100%;overflow:hidden;box-shadow:0 0 22px rgba(13,27,42,.16)}'+
  '.maphandle{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:1100;width:46px;height:5px;border-radius:3px;background:rgba(13,27,42,.5);cursor:pointer}'+
  '.mapctrl{position:absolute;top:22px;left:0;right:0;z-index:1000;padding:8px 10px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}'+
  '.mchip{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(13,27,42,.08);background:rgba(255,255,255,.96);border-radius:11px;padding:7px 13px;font-size:13px;font-weight:800;cursor:pointer;color:#0D1B2A;box-shadow:0 2px 9px rgba(13,27,42,.2)}'+
@@ -6940,7 +6941,7 @@ var MAP_CSS='.mapovl{position:fixed;inset:0;z-index:2000;background:rgba(13,27,4
  '.mapctrl select{border:1px solid rgba(13,27,42,.08);background:rgba(255,255,255,.96);border-radius:11px;padding:7px 11px;font-size:13px;font-weight:700;font-family:inherit;color:#0D1B2A;box-shadow:0 2px 9px rgba(13,27,42,.2)}'+
  '.mshown{font-size:12px;font-weight:800;color:#0D1B2A;background:rgba(255,255,255,.92);border-radius:9px;padding:6px 10px;box-shadow:0 2px 9px rgba(13,27,42,.2)}'+
  '#lmap{position:absolute;inset:0;background:#dfe6ee}'+
- '.mloc{position:absolute;bottom:calc(30px + env(safe-area-inset-bottom,0px));inset-inline-end:14px;z-index:1200;width:54px;height:54px;border-radius:50%;background:#fff;border:none;box-shadow:0 4px 16px rgba(13,27,42,.32);cursor:pointer;display:flex;align-items:center;justify-content:center}'+
+ '.mloc{position:absolute;bottom:18px;inset-inline-end:14px;z-index:1200;width:54px;height:54px;border-radius:50%;background:#fff;border:none;box-shadow:0 4px 16px rgba(13,27,42,.32);cursor:pointer;display:flex;align-items:center;justify-content:center}'+
  '.mloc svg{width:24px;height:24px;stroke:#003DA5;fill:none;stroke-width:2}'+
  '.mpin{width:18px;height:18px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45)}'+
  '.mpin.o{background:#003DA5}.mpin.c{background:#C9972A}'+
