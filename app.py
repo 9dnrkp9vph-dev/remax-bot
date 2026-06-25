@@ -5917,7 +5917,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .tab{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:0;position:relative}
 .tabbadge{position:absolute;top:3px;inset-inline-start:50%;transform:translateX(58%);background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;font-size:10px;font-weight:900;min-width:17px;height:17px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 1px 4px rgba(201,151,42,.45)}
 .menuwrap{position:relative}
-.appmenu{position:absolute;top:46px;inset-inline-start:0;z-index:60;background:#fff;border:1px solid #e6e9ef;border-radius:14px;box-shadow:0 16px 40px rgba(13,27,42,.22);padding:6px;min-width:218px}
+.appmenu{position:absolute;top:46px;inset-inline-start:0;z-index:2300;background:#fff;border:1px solid #e6e9ef;border-radius:14px;box-shadow:0 16px 40px rgba(13,27,42,.22);padding:6px;min-width:218px}
 .appmenu .mi{display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:10px;font-size:14.5px;font-weight:700;color:var(--ink);cursor:pointer}
 .appmenu .mi.hidden{display:none!important}
 .appmenu .mi:active,.appmenu .mi:hover{background:#f3f5f9}
