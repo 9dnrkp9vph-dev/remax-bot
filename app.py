@@ -6835,7 +6835,8 @@ function buyerSearch(b){
     if(!box)return;
     if(!r||!r.ok){box.innerHTML="<span class=err>שגיאה בחיפוש"+(r&&r.reason?" ("+esc(r.reason)+")":"")+"</span>";return;}
     if(!r.results.length){box.innerHTML="<div class=muted style=margin:6px_0>לא נמצאו נכסים תואמים "+(kind=="props"?"במשרד":"בשת״פ")+".</div>";return;}
-    var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+" <span onclick=\"openMap()\" style=\"display:inline-block;margin-inline-start:6px;background:#003DA5;color:#fff;font-size:12px;font-weight:800;padding:4px 11px;border-radius:999px;cursor:pointer\">🗺️ הצג במפה</span></div>";
+    window._lastSearchQ=q||"";
+    var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+" <span onclick=\"openMap(window._lastSearchQ)\" style=\"display:inline-block;margin-inline-start:6px;background:#003DA5;color:#fff;font-size:12px;font-weight:800;padding:4px 11px;border-radius:999px;cursor:pointer\">🗺️ הצג במפה</span></div>";
     h+=r.results.map(function(y){return card(kind,y);}).join("");
     box.innerHTML=h;
   }).catch(function(){if(box)box.innerHTML="<span class=err>שגיאה</span>";});
@@ -6843,7 +6844,7 @@ function buyerSearch(b){
 /* ===== 🗺️ מפת נכסים (נפתחת מ-chip "חיפושים אחרונים") ===== */
 var MAP_PTS=[],MAP_FILT="all",_mapObj=null,_mapCluster=null,_meM=null,_meC=null;
 function _mapLoadScript(src,cb){var s=document.createElement("script");s.src=src;s.onload=cb;document.head.appendChild(s);}
-function openMap(){
+function openMap(focusQ){window._mapFocusQ=focusQ||"";
   var ovl=document.getElementById("mapovl");
   if(ovl)ovl.remove();
   if(!document.getElementById("mapcss")){
@@ -6877,6 +6878,7 @@ function mapBoot(){
     var sel=document.getElementById("mapcity");
     Object.keys(cs).sort().forEach(function(c){var o=document.createElement("option");o.value=c;o.textContent=c;sel.appendChild(o);});
     mapRender();
+    if(window._mapFocusQ)setTimeout(function(){_mapFocusOn(window._mapFocusQ);},250);
   }).catch(function(){var sh=document.getElementById("mapshown");if(sh)sh.textContent="שגיאה בטעינה";});
 }
 function mapIcon(t){return L.divIcon({className:"",html:'<div class="mpin '+(t=="office"?"o":"c")+'"></div>',iconSize:[18,18],iconAnchor:[9,18],popupAnchor:[0,-16]});}
@@ -6920,6 +6922,31 @@ function mapLocate(){
   navigator.geolocation.getCurrentPosition(function(pos){_mapOnLoc(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy);},
     function(){alert("לא הצלחתי לאתר מיקום — אשר/י הרשאת מיקום (בדפדפן: סמל המנעול → מיקום).");},{enableHighAccuracy:true,timeout:9000});
 }
+function _mapFocusOn(q){
+  if(!q||!_mapObj)return;
+  var loc=String(q).replace(/[0-9₪,]/g," ").replace(/מיליון|מליון|אלף|חדרים|חד['׳]?|מ["״]ר|מ"?ר|מטר|עד|מעל|תקציב|מתחת|דירת?|פנטהאוז|פנטהאוס|קוטג['׳]?|וילה|גג|מרתף|חניה|מעלית|ש"?ח|שח/g," ").replace(/\s+/g," ").trim();
+  function focusAt(ll,label){
+    if(_meC)try{_mapObj.removeLayer(_meC);}catch(e){}
+    _meC=L.circle(ll,{radius:1500,color:"#003DA5",fillColor:"#003DA5",fillOpacity:.07,weight:1.5,dashArray:"5,5"}).addTo(_mapObj);
+    try{_mapObj.fitBounds(_meC.getBounds(),{padding:[20,20]});}catch(e){_mapObj.setView(ll,14);}
+    var near=MAP_PTS.filter(function(p){return _mapDist(ll,[p.lat,p.lng])<=1.5;}).length;
+    var sh=document.getElementById("mapshown");if(sh)sh.textContent=near+' נכסים ברדיוס 1.5 ק"מ'+(label?(" · "+label):"");
+  }
+  function cityFallback(){
+    var cities={};MAP_PTS.forEach(function(p){if(p.c)cities[p.c]=1;});
+    var hit="";Object.keys(cities).forEach(function(c){if(q.indexOf(c)>-1&&c.length>hit.length)hit=c;});
+    if(!hit)return;
+    var pts=MAP_PTS.filter(function(p){return p.c===hit;});if(!pts.length)return;
+    var la=0,lo=0;pts.forEach(function(p){la+=p.lat;lo+=p.lng;});focusAt([la/pts.length,lo/pts.length],hit);
+  }
+  if(!loc){cityFallback();return;}
+  try{
+    fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=il&q="+encodeURIComponent(loc+", ישראל"))
+      .then(function(r){return r.json();})
+      .then(function(d){if(d&&d.length){focusAt([parseFloat(d[0].lat),parseFloat(d[0].lon)],loc);}else{cityFallback();}})
+      .catch(function(){cityFallback();});
+  }catch(e){cityFallback();}
+}
 var MAP_HTML='<div class="mapsheet">'+
  '<div id="lmap"></div>'+
  '<div class="mapctrl"><span class="mchip on" data-f="all" onclick="mapSetF(this,\'all\')">הכל</span>'+
@@ -6955,7 +6982,7 @@ function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
   if(!r||!r.ok||!r.items.length){box.innerHTML="";return;}
   box.innerHTML="<div class=muted style=margin:6px_0>🗺️ חיפושים אחרונים (לחיצה פותחת את מפת הנכסים):</div><div id=rchips class=rchips></div>";
   var c=$("rchips");
-  r.items.forEach(function(q){var sp=document.createElement("span");sp.className="rchip";sp.textContent=q;sp.onclick=function(){openMap();};c.appendChild(sp);});
+  r.items.forEach(function(q){var sp=document.createElement("span");sp.className="rchip";sp.textContent=q;sp.onclick=function(){openMap(q);};c.appendChild(sp);});
 }).catch(function(){});}
 function doSearch(ep,kind){
   var q=$("sq").value.trim();$("sres").innerHTML="<div class=muted>מחפש… ⏳</div>";
