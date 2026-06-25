@@ -6865,7 +6865,7 @@ function openMap(){
 }
 function mapClose(){var o=document.getElementById("mapovl");if(o)o.style.display="none";}
 function mapBoot(){
-  _mapObj=L.map("lmap",{zoomControl:true}).setView([32.83,35.08],12);
+  _mapObj=L.map("lmap",{zoomControl:false}).setView([32.83,35.08],12);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(_mapObj);
   _mapCluster=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:48,spiderfyOnMaxZoom:true,
     iconCreateFunction:function(c){return L.divIcon({html:'<div class="mcl">'+c.getChildCount()+'</div>',className:'',iconSize:[38,38]});}});
@@ -6920,33 +6920,31 @@ function mapLocate(){
     function(){alert("לא הצלחתי לאתר מיקום — אשר/י הרשאת מיקום (בדפדפן: סמל המנעול → מיקום).");},{enableHighAccuracy:true,timeout:9000});
 }
 var MAP_HTML='<div class="mapsheet">'+
- '<div class="maphead"><div><b>🗺️ מפת נכסים</b><div class="msub">RE/MAX Family · 3 חודשים אחרונים</div></div><button class="mapx" onclick="mapClose()">✕</button></div>'+
+ '<div id="lmap"></div>'+
+ '<div class="maphandle" onclick="mapClose()"></div>'+
  '<div class="mapctrl"><span class="mchip on" data-f="all" onclick="mapSetF(this,\'all\')">הכל</span>'+
- '<span class="mchip" data-f="office" onclick="mapSetF(this,\'office\')">🏠 משרד</span>'+
- '<span class="mchip" data-f="coop" onclick="mapSetF(this,\'coop\')">🤝 שת"פ</span>'+
+ '<span class="mchip" data-f="office" onclick="mapSetF(this,\'office\')"><svg viewBox="0 0 18 18"><rect x="4.2" y="2.6" width="9.6" height="12.8" rx="1"/><path d="M7 6h1.2M9.8 6H11M7 9h1.2M9.8 9H11M7 12h4"/><path d="M2.6 15.4h12.8"/></svg>משרד</span>'+
+ '<span class="mchip" data-f="coop" onclick="mapSetF(this,\'coop\')"><svg viewBox="0 0 18 18"><rect x="2.4" y="6" width="6.4" height="9.4" rx="1"/><rect x="9.4" y="3" width="6.2" height="12.4" rx="1"/></svg>שת"פ</span>'+
  '<select id="mapcity" onchange="mapRender()"><option value="">כל הערים</option></select>'+
- '<span class="mshown" id="mapshown">טוען…</span></div>'+
- '<div class="mapbox"><div id="lmap"></div>'+
- '<button class="mloc" onclick="mapLocate()" title="חיפוש במיקום שלי"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button></div></div>';
+ '<span class="mshown" id="mapshown"></span></div>'+
+ '<button class="mloc" onclick="mapLocate()" title="חיפוש במיקום שלי"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg></button>'+
+ '</div>';
 var MAP_CSS='.mapovl{position:fixed;inset:0;z-index:2000;background:rgba(13,27,42,.5);display:flex;align-items:flex-end;justify-content:center}'+
- '.mapsheet{background:#eef1f5;width:100%;max-width:620px;height:94vh;border-radius:20px 20px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -8px 40px rgba(0,0,0,.3)}'+
- '.maphead{position:relative;background:linear-gradient(180deg,#16273c,#0D1B2A);color:#fff;padding:19px 16px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}'+
- '.maphead:before{content:"";position:absolute;top:7px;left:50%;transform:translateX(-50%);width:40px;height:4px;border-radius:3px;background:rgba(255,255,255,.28)}'+
- '.maphead:after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,transparent,#C9972A,transparent)}'+
- '.maphead b{font-size:16px;font-weight:900}.maphead .msub{font-size:12px;opacity:.82;font-weight:600}'+
- '.mapx{flex:0 0 auto;width:34px;height:34px;padding:0;border-radius:50%;background:rgba(255,255,255,.14);border:none;color:#fff;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}'+
- '.mapctrl{background:#fff;padding:9px 12px;display:flex;gap:7px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #eef0f3}'+
- '.mchip{border:1px solid #e3e7eb;background:#eef1f5;border-radius:11px;padding:7px 14px;font-size:13px;font-weight:800;cursor:pointer;color:#0D1B2A}'+
- '.mchip.on{background:linear-gradient(180deg,#16273c,#0D1B2A);color:#fff;border-color:#0D1B2A}'+
- '.mapctrl select{border:1px solid #e3e7eb;background:#eef1f5;border-radius:11px;padding:7px 11px;font-size:13px;font-weight:700;font-family:inherit;color:#0D1B2A}'+
- '.mshown{font-size:12px;font-weight:700;color:#6b7280;margin-inline-start:auto}'+
- '.mapbox{flex:1;position:relative}#lmap{position:absolute;inset:0;background:#dfe6ee}'+
+ '.mapsheet{position:relative;background:#eef1f5;width:100%;max-width:620px;height:92vh;border-radius:20px 20px 0 0;overflow:hidden;box-shadow:0 -8px 40px rgba(0,0,0,.3)}'+
+ '.maphandle{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:1100;width:46px;height:5px;border-radius:3px;background:rgba(13,27,42,.5);cursor:pointer}'+
+ '.mapctrl{position:absolute;top:22px;left:0;right:0;z-index:1000;padding:8px 10px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}'+
+ '.mchip{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(13,27,42,.08);background:rgba(255,255,255,.96);border-radius:11px;padding:7px 13px;font-size:13px;font-weight:800;cursor:pointer;color:#0D1B2A;box-shadow:0 2px 9px rgba(13,27,42,.2)}'+
+ '.mchip svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}'+
+ '.mchip.on{background:#003DA5;color:#fff;border-color:#003DA5}'+
+ '.mapctrl select{border:1px solid rgba(13,27,42,.08);background:rgba(255,255,255,.96);border-radius:11px;padding:7px 11px;font-size:13px;font-weight:700;font-family:inherit;color:#0D1B2A;box-shadow:0 2px 9px rgba(13,27,42,.2)}'+
+ '.mshown{font-size:12px;font-weight:800;color:#0D1B2A;background:rgba(255,255,255,.92);border-radius:9px;padding:6px 10px;box-shadow:0 2px 9px rgba(13,27,42,.2)}'+
+ '#lmap{position:absolute;inset:0;background:#dfe6ee}'+
  '.mloc{position:absolute;bottom:calc(30px + env(safe-area-inset-bottom,0px));inset-inline-end:14px;z-index:1200;width:54px;height:54px;border-radius:50%;background:#fff;border:none;box-shadow:0 4px 16px rgba(13,27,42,.32);cursor:pointer;display:flex;align-items:center;justify-content:center}'+
  '.mloc svg{width:24px;height:24px;stroke:#003DA5;fill:none;stroke-width:2}'+
  '.mpin{width:18px;height:18px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45)}'+
  '.mpin.o{background:#003DA5}.mpin.c{background:#C9972A}'+
  '.mme{width:18px;height:18px;border-radius:50%;background:#003DA5;border:3px solid #fff;box-shadow:0 0 0 4px rgba(0,61,165,.25)}'+
- '.mcl{width:38px;height:38px;border-radius:50%;background:linear-gradient(180deg,#16273c,#0D1B2A);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(13,27,42,.4)}'+
+ '.mcl{width:38px;height:38px;border-radius:50%;background:#003DA5;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(0,61,165,.45)}'+
  '.mpp{direction:rtl;font-family:inherit;min-width:175px;line-height:1.5}'+
  '.mbadge{display:inline-block;font-size:11px;font-weight:900;border-radius:7px;padding:2px 9px;color:#fff;margin-bottom:6px}'+
  '.mpp b{font-size:15px;color:#0D1B2A}.mmeta{color:#6b7280;font-weight:600;margin-top:2px}'+
