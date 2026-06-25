@@ -5892,6 +5892,10 @@ button.gold{background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;box
 .bresults{margin-top:8px}
 .bresults:empty{margin:0}
 .bresh{font-size:12px;font-weight:700;color:var(--muted);margin:4px 0 6px}
+.maprow{margin:2px 0 12px}
+.mapbtn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(180deg,#2f6fd6,#1f5fbe);color:#fff;font-size:13.5px;font-weight:800;padding:9px 16px;border-radius:12px;cursor:pointer;box-shadow:0 4px 13px rgba(31,95,190,.3);white-space:nowrap;transition:transform .08s}
+.mapbtn:active{transform:scale(.96)}
+.mapbtn svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .insight{padding:7px 2px;border-bottom:1px solid #eef1f5;font-size:14px;font-weight:600}.insight:last-child{border-bottom:none}
 .row{border-bottom:1px solid var(--line);padding:12px 2px;font-size:14.5px;line-height:1.55}.row:last-child{border:none}
 .badge{display:inline-block;background:rgba(13,27,42,.08);color:var(--ink);font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;margin-inline-start:6px;vertical-align:middle}
@@ -6898,7 +6902,7 @@ function buyerSearch(b){
     window._lastSearchQ=(r.summary||q||"");
     window._mapMatchAddrs=(r.results||[]).map(function(y){return y.address||y.street||"";}).filter(Boolean);
     if(r.summary)api("/api/recent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:r.summary,kind:kind})}).catch(function(){});
-    var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+" <span onclick=\"openMap(window._lastSearchQ,'"+(kind=="props"?"office":"coop")+"',1)\" style=\"display:inline-block;margin-inline-start:6px;background:#003DA5;color:#fff;font-size:12px;font-weight:800;padding:4px 11px;border-radius:999px;cursor:pointer\">🗺️ הצג במפה</span></div>";
+    var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+"</div><div class=\"maprow\">"+_mapBtnHTML(kind)+"</div>";
     h+=r.results.map(function(y){return card(kind,y);}).join("");
     box.innerHTML=h;
   }).catch(function(){if(box)box.innerHTML="<span class=err>שגיאה</span>";});
@@ -6924,7 +6928,10 @@ function openMap(focusQ,filt,useMatch){window._mapFocusQ=focusQ||"";window._mapU
   var _rc=ovl.querySelector('.mchip[data-f="results"]');if(_rc)_rc.style.display=(window._mapMatchAddrs&&window._mapMatchAddrs.length)?"":"none";
   try{window.scrollTo(0,0);var _br=document.querySelector(".brand"),_nv=document.querySelector(".tabs");
     ovl.style.top=(_br?Math.max(0,Math.round(_br.getBoundingClientRect().bottom)):72)+"px";
-    ovl.style.bottom=(_nv?Math.round(_nv.getBoundingClientRect().height):60)+"px";
+    var _navH=_nv?Math.round(_nv.getBoundingClientRect().height):60,_bot=_navH;
+    var _sb=document.getElementById("sharebar");
+    if(_sb&&!_sb.classList.contains("hidden")){var _sr=_sb.getBoundingClientRect();_bot=Math.max(_navH,Math.round(window.innerHeight-_sr.top)+8);}  // "שלח ללקוח" גלוי — המפה מעליו
+    ovl.style.bottom=_bot+"px";
     document.body.style.overflow="hidden";}catch(e){}
   if(window.L&&window.L.markerClusterGroup)mapBoot();
   else _mapLoadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",function(){
@@ -7093,6 +7100,7 @@ function recentClick(q,kind){
   var inp=$("sq"); if(inp) inp.value=q;
   doSearch(kind=="props"?"/api/search/properties":"/api/search/exclusives", kind);
 }
+function _mapBtnHTML(kind){return '<span class="mapbtn" onclick="openMap(window._lastSearchQ,\''+(kind=="props"?"office":"coop")+'\',1)"><svg viewBox="0 0 24 24"><path d="M12 21s7-7.2 7-12a7 7 0 1 0-14 0c0 4.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>הצג במפה</span>';}
 function doSearch(ep,kind){
   var q=$("sq").value.trim();$("sres").innerHTML="<div class=muted>מחפש… ⏳</div>";
   api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:IMP||""})}).then(function(r){
@@ -7100,8 +7108,8 @@ function doSearch(ep,kind){
     if(!r.results.length){$("sres").innerHTML="<div class=muted>לא נמצאו תוצאות. נסה עם פחות פרטים.</div>";return;}
     window._lastSearchQ=(r.summary||q||"");
     window._mapMatchAddrs=(r.results||[]).map(function(y){return y.address||y.street||"";}).filter(Boolean);
-    var mapbtn=(kind=="props"||kind=="excl")?(" <span onclick=\"openMap(window._lastSearchQ,'"+(kind=="props"?"office":"coop")+"',1)\" style=\"display:inline-block;margin-inline-start:6px;background:#003DA5;color:#fff;font-size:12px;font-weight:800;padding:4px 11px;border-radius:999px;cursor:pointer\">🗺️ הצג במפה</span>"):"";
-    var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+mapbtn+"</div>"):(mapbtn?("<div style=margin:6px_0>"+mapbtn+"</div>"):"");
+    var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
+    if(kind=="props"||kind=="excl")h+='<div class="maprow">'+_mapBtnHTML(kind)+'</div>';
     h+=r.results.map(function(x){return card(kind,x);}).join("");
     $("sres").innerHTML=h;shareUpd();
     if(kind=="props"||kind=="excl")loadRecent(kind);
