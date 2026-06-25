@@ -5004,9 +5004,7 @@ def api_map_properties():
         if ll and _MBB[0]<=ll[0]<=_MBB[1] and _MBB[2]<=ll[1]<=_MBB[3]:
             out.append({"t":"office","a":f"{street} {house}".strip(),"c":city,"p":_mnb(r.get("מחיר","")),
                 "r":_mnb(r.get("חדרים","")),"g":_mnb(r.get("סוכן 1","")),"l":"","lat":round(ll[0],5),"lng":round(ll[1],5)})
-    for r in fetch_external_exclusives():  # שת"פ
-        d=_mdate(r.get("received_at",""))
-        if not d or d<cut: continue
+    for r in fetch_external_exclusives():  # שת"פ — כל הנכסים (ללא סינון תאריך)
         raw=_mnb(r.get("street",""))
         if not raw: continue
         sp,city=_mcoop(raw); ll=_mlookup(f"{sp}, {city}" if city else sp)
@@ -6063,7 +6061,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:21px!impor
 .pcard .pdesc.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pcard .pmore{display:inline-block;margin-top:3px;color:var(--gold);font-weight:800;font-size:12.5px;cursor:pointer}
 .pcard .ptop .shchk{flex:0 0 auto;margin:2px 0 0 0}
-#sharebar{position:fixed;bottom:74px;left:50%;transform:translateX(-50%);width:calc(100% - 28px);max-width:592px;background:linear-gradient(180deg,#2f6fd6,#1f5fbe);color:#fff;text-align:center;padding:14px;font-weight:800;font-size:15px;border-radius:14px;box-shadow:0 8px 24px rgba(31,95,190,.35);z-index:55;cursor:pointer}
+#sharebar{position:fixed;bottom:calc(78px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);width:calc(100% - 28px);max-width:592px;background:linear-gradient(180deg,#2f6fd6,#1f5fbe);color:#fff;text-align:center;padding:14px;font-weight:800;font-size:15px;border-radius:14px;box-shadow:0 8px 24px rgba(31,95,190,.35);z-index:2120;cursor:pointer}
 #sharebar.hidden{display:none}
 .pcard .pprice{font-size:19px;font-weight:900;color:var(--ink);margin-top:7px}
 .pcard .pagent{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:13.5px;font-weight:700;color:var(--ink)}
