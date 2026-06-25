@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+map-geocache.json
+.DS_Store
