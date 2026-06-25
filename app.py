@@ -7026,14 +7026,30 @@ function _mapOnLoc(lat,lng,acc){
 }
 function mapLocate(){
   var G=(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Geolocation)?Capacitor.Plugins.Geolocation:null;
-  if(G&&G.getCurrentPosition){   /* אפליקציה — תוסף המיקום הנייטיב (מבקש הרשאה אם מוגדר ב-Info.plist) */
-    G.getCurrentPosition({enableHighAccuracy:true,timeout:9000}).then(function(p){_mapOnLoc(p.coords.latitude,p.coords.longitude,p.coords.accuracy);})
-     .catch(function(){alert("לא הצלחתי לאתר מיקום — ודא/י שהרשאת מיקום מאושרת לאפליקציה (הגדרות → פרטיות → מיקום).");});
+  if(G&&G.getCurrentPosition){   /* אפליקציה — תוסף המיקום הנייטיב */
+    var doGet=function(){   /* קודם מהיר+מקורב (כמו הדפדפן), ואם נכשל — מדויק */
+      return G.getCurrentPosition({enableHighAccuracy:false,timeout:15000,maximumAge:60000})
+        .catch(function(){ return G.getCurrentPosition({enableHighAccuracy:true,timeout:15000,maximumAge:0}); });
+    };
+    var run=function(){ doGet().then(function(p){_mapOnLoc(p.coords.latitude,p.coords.longitude,p.coords.accuracy);})
+      .catch(function(e){alert("לא הצלחתי לאתר מיקום — ודא/י שהרשאת מיקום מאושרת ל-Family Bot (הגדרות → Family Bot → מיקום → בעת השימוש)."+(e&&e.message?("\n\n("+e.message+")"):""));}); };
+    if(G.checkPermissions){
+      G.checkPermissions().then(function(st){
+        var ok=st&&(st.location==="granted"||st.coarseLocation==="granted");
+        if(ok){run();}
+        else if(G.requestPermissions){
+          G.requestPermissions().then(function(r){
+            if(r&&(r.location==="granted"||r.coarseLocation==="granted")){run();}
+            else{alert("הרשאת מיקום לא אושרה. להפעלה: הגדרות → Family Bot → מיקום → בעת השימוש.");}
+          }).catch(run);
+        } else {run();}
+      }).catch(run);
+    } else {run();}
     return;
   }
   if(!navigator.geolocation){alert("שירותי מיקום לא זמינים");return;}
   navigator.geolocation.getCurrentPosition(function(pos){_mapOnLoc(pos.coords.latitude,pos.coords.longitude,pos.coords.accuracy);},
-    function(){alert("לא הצלחתי לאתר מיקום — אשר/י הרשאת מיקום (בדפדפן: סמל המנעול → מיקום).");},{enableHighAccuracy:true,timeout:9000});
+    function(){alert("לא הצלחתי לאתר מיקום — אשר/י הרשאת מיקום (בדפדפן: סמל המנעול → מיקום).");},{enableHighAccuracy:true,timeout:15000});
 }
 function _mapFocusOn(q){
   if(!_mapObj)return;
