@@ -4728,7 +4728,7 @@ def api_search_properties():
         parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
         matches = search_listings_in_sheet(parsed) if parsed else []
         out = [_row_out(row, score) for score, row, flex in matches]
-        return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "results": out})
+        return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "ptype": (parsed or {}).get("property_type", ""), "results": out})
     except Exception as e:
         log.error(f"properties search error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -6938,7 +6938,7 @@ function buyerSearch(b){
     if(!r||!r.ok){box.innerHTML="<span class=err>שגיאה בחיפוש"+(r&&r.reason?" ("+esc(r.reason)+")":"")+"</span>";return;}
     if(!r.results.length){box.innerHTML="<div class=muted style=margin:6px_0>לא נמצאו נכסים תואמים "+(kind=="props"?"במשרד":"בשת״פ")+".</div>";return;}
     window._lastSearchQ=(r.summary||q||"");
-    window._mapMatchAddrs=(r.results||[]).map(function(y){return {a:(y.address||y.street||""),c:(y.city||"")};}).filter(function(o){return o.a;});
+    window._mapMatchAddrs=_buildMapMatch(r);
     if(r.summary)api("/api/recent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:r.summary,kind:kind})}).catch(function(){});
     var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+"</div><div class=\"maprow\">"+_mapBtnHTML(kind)+"</div>";
     h+=r.results.map(function(y){return card(kind,y);}).join("");
@@ -7165,13 +7165,21 @@ function recentClick(q,kind){
   doSearch(kind=="props"?"/api/search/properties":"/api/search/exclusives", kind);
 }
 function _mapBtnHTML(kind){return '<span class="mapbtn" onclick="openMap(window._lastSearchQ,\''+(kind=="props"?"office":"coop")+'\',1)"><svg viewBox="0 0 24 24"><path d="M12 21s7-7.2 7-12a7 7 0 1 0-14 0c0 4.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>הצג במפה</span>';}
+function _buildMapMatch(r){   /* הרשימה מציגה הכל; המפה מציגה רק את הסוג שחיפשו — בחיפוש "דירת גן" רק גן/קרקע/קומה 0/קוטג' */
+  var all=(r&&r.results)||[],list=all;
+  if(r&&r.ptype==="דירת גן"){
+    var g=all.filter(function(y){var t=(y.type||""),fl=(""+(y.floor||"")).trim();return /גן|גינה|קרקע|קוטג|דו משפח/.test(t)||fl==="0";});
+    if(g.length)list=g;   // אם אין גן בכלל — לא משאירים מפה ריקה
+  }
+  return list.map(function(y){return {a:(y.address||y.street||""),c:(y.city||"")};}).filter(function(o){return o.a;});
+}
 function doSearch(ep,kind){
   var q=$("sq").value.trim();$("sres").innerHTML="<div class=muted>מחפש… ⏳</div>";
   api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:IMP||""})}).then(function(r){
     if(!r.ok){if(r.auth===false){relogin();return;}$("sres").innerHTML="<span class=err>שגיאה בשרת: "+esc(r.reason||"")+"</span>";return;}
     if(!r.results.length){$("sres").innerHTML="<div class=muted>לא נמצאו תוצאות. נסה עם פחות פרטים.</div>";return;}
     window._lastSearchQ=(r.summary||q||"");
-    window._mapMatchAddrs=(r.results||[]).map(function(y){return {a:(y.address||y.street||""),c:(y.city||"")};}).filter(function(o){return o.a;});
+    window._mapMatchAddrs=_buildMapMatch(r);
     var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
     if(kind=="props"||kind=="excl")h+='<div class="maprow">'+_mapBtnHTML(kind)+'</div>';
     h+=r.results.map(function(x){return card(kind,x);}).join("");
