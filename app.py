@@ -4713,6 +4713,11 @@ def api_search_properties():
             }
             if score is not None:
                 d["score"] = min(100, int(score))
+            # קואורדינטות מה-geocache (אותו מפתח כמו במפה) — כדי לצייר את התוצאה ישירות
+            _st = _mnb(row.get("כתובת", "")); _ho = _mnb(row.get("מספר בית", "")); _ci = _mnb(row.get("עיר / ישוב", ""))
+            _ll = _mlookup(f"{_st} {_ho}, {_ci}".strip()) if (_st and _ci) else None
+            d["lat"] = round(_ll[0], 6) if _ll else None
+            d["lng"] = round(_ll[1], 6) if _ll else None
             return d
 
         # חיפוש ריק = כל הנכסים הפעילים, ממוינים מהחדש לישן (לפי תאריך יצירה)
@@ -5470,16 +5475,23 @@ def api_search_exclusives():
             scored = [(sc, r) for sc, r in scored if sc > 0]
             scored.sort(key=lambda x: -x[0])
             matches = scored[:15]
-        out = [{
-            "score": min(100, int(sc)),
-            "street": str(r.get("street", "") or "").strip(),
-            "dest": str(r.get("dest", "") or "").strip(),
-            "desc": str(r.get("desti", "") or "").strip(),
-            "price": str(r.get("price", "") or "").strip(),
-            "office": str(r.get("office", "") or "").strip(),
-            "date": str(r.get("received_at", "") or "")[:10],
-            "link": str(r.get("link", "") or "").strip(),
-        } for sc, r in matches]
+        out = []
+        for sc, r in matches:
+            _raw = _mnb(r.get("street", "")); _ll = None
+            if _raw:
+                _sp, _ci = _mcoop(_raw); _ll = _mlookup(f"{_sp}, {_ci}" if _ci else _sp)
+            out.append({
+                "score": min(100, int(sc)),
+                "street": str(r.get("street", "") or "").strip(),
+                "dest": str(r.get("dest", "") or "").strip(),
+                "desc": str(r.get("desti", "") or "").strip(),
+                "price": str(r.get("price", "") or "").strip(),
+                "office": str(r.get("office", "") or "").strip(),
+                "date": str(r.get("received_at", "") or "")[:10],
+                "link": str(r.get("link", "") or "").strip(),
+                "lat": round(_ll[0], 6) if _ll else None,
+                "lng": round(_ll[1], 6) if _ll else None,
+            })
         return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "results": out})
     except Exception as e:
         log.error(f"exclusives search error: {e}", exc_info=True)
@@ -6938,7 +6950,7 @@ function buyerSearch(b){
     if(!r||!r.ok){box.innerHTML="<span class=err>שגיאה בחיפוש"+(r&&r.reason?" ("+esc(r.reason)+")":"")+"</span>";return;}
     if(!r.results.length){box.innerHTML="<div class=muted style=margin:6px_0>לא נמצאו נכסים תואמים "+(kind=="props"?"במשרד":"בשת״פ")+".</div>";return;}
     window._lastSearchQ=(r.summary||q||"");
-    window._mapMatchAddrs=_buildMapMatch(r);
+    window._mapResults=_buildMapResults(r,kind);
     if(r.summary)api("/api/recent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:r.summary,kind:kind})}).catch(function(){});
     var h="<div class=bresh>"+(kind=="props"?"🏢 נכסים במשרד":"🏘️ נכסים בשת״פ")+" ("+r.results.length+")"+(r.summary?" · "+esc(r.summary):"")+"</div><div class=\"maprow\">"+_mapBtnHTML(kind)+"</div>";
     h+=r.results.map(function(y){return card(kind,y);}).join("");
@@ -6963,7 +6975,7 @@ function openMap(focusQ,filt,useMatch){window._mapFocusQ=focusQ||"";window._mapU
   var _active=window._mapResultsMode?"results":MAP_FILT;
   var _chs=ovl.querySelectorAll(".mchip");for(var _i=0;_i<_chs.length;_i++)_chs[_i].classList.toggle("on",_chs[_i].getAttribute("data-f")===_active);
   // צ'יפ "חיפוש אחרון" מוצג רק אם יש תוצאות חיפוש אחרונות
-  var _rc=ovl.querySelector('.mchip[data-f="results"]');if(_rc)_rc.style.display=(window._mapMatchAddrs&&window._mapMatchAddrs.length)?"":"none";
+  var _rc=ovl.querySelector('.mchip[data-f="results"]');if(_rc)_rc.style.display=(window._mapResults&&window._mapResults.length)?"":"none";
   try{window.scrollTo(0,0);var _br=document.querySelector(".brand"),_nv=document.querySelector(".tabs");
     ovl.style.top=(_br?Math.max(0,Math.round(_br.getBoundingClientRect().bottom)):72)+"px";
     var _navH=_nv?Math.round(_nv.getBoundingClientRect().height):60,_bot=_navH;
@@ -6993,28 +7005,29 @@ function mapBoot(){
 function mapIcon(t){return L.divIcon({className:"",html:'<div class="mpin '+(t=="office"?"o":"c")+'"></div>',iconSize:[18,18],iconAnchor:[9,18],popupAnchor:[0,-16]});}
 function mapRender(){
   if(!_mapCluster)return;_mapCluster.clearLayers();
-  var resultsMode=!!(window._mapResultsMode&&window._mapMatchAddrs&&window._mapMatchAddrs.length);
-  var matchFn=null;
-  if(resultsMode){
-    var nrm=function(s){return String(s||"").replace(/[^0-9֐-׿]/g,"");};
-    var want=window._mapMatchAddrs.map(function(o){return {a:nrm(o.a),c:nrm(o.c)};}).filter(function(w){return w.a.length>2;});
-    matchFn=function(p){var pa=nrm(p.a),pc=nrm(p.c);return pa&&want.some(function(w){
-      var am=(pa===w.a||pa.indexOf(w.a)>-1||w.a.indexOf(pa)>-1);
-      var cm=(!w.c||!pc||pc.indexOf(w.c)>-1||w.c.indexOf(pc)>-1);  // אם ידועה עיר — חייבת להתאים (מונע רחוב באותו שם בעיר אחרת)
-      return am&&cm;});};
+  var resultsMode=!!(window._mapResultsMode&&window._mapResults&&window._mapResults.length);
+  var n=0,b=[];
+  if(resultsMode){   /* מצב תוצאות — מציירים את תוצאות החיפוש עצמן (עם תיאור ו"עוד") */
+    window._mapResults.forEach(function(p){
+      if(p.lat==null||p.lng==null)return;
+      var t=p._t||"office";
+      var m=L.marker([p.lat,p.lng],{icon:mapIcon(t)});
+      m.bindPopup(_mapPopupHTML(p,t));
+      _mapCluster.addLayer(m);b.push([p.lat,p.lng]);n++;
+    });
+  } else {           /* מצב רגיל — כל הנכסים מהמאגר לפי סינון הצ'יפים */
+    var selEl=document.getElementById("mapcity"),city=selEl?selEl.value:"";
+    MAP_PTS.forEach(function(p){
+      if(MAP_FILT!="all"&&p.t!=MAP_FILT)return; if(city&&p.c!=city)return;
+      var col=p.t=="office"?"#003DA5":"#C9972A";
+      var m=L.marker([p.lat,p.lng],{icon:mapIcon(p.t)});
+      var pn=(""+(p.p||"")).replace(/[^\d]/g,"");
+      var pr=pn?('<div class="mpr"><span>₪</span>'+pn.replace(/\B(?=(\d{3})+(?!\d))/g,",")+'</div>'):"";
+      var link=p.l?'<a href="'+p.l+'" target="_blank">צפייה במודעה ↗</a>':"";
+      m.bindPopup('<div class="mpp"><span class="mbadge" style="background:'+col+'">'+(p.t=="office"?"נכס משרד":"שת\"פ")+'</span><br><b>'+p.a+'</b><div class="mmeta">'+(p.c||"")+(p.r?" · "+p.r+" חד'":"")+'</div>'+pr+(p.g?'<div class="mmeta">'+p.g+'</div>':"")+link+'</div>');
+      _mapCluster.addLayer(m);b.push([p.lat,p.lng]);n++;
+    });
   }
-  var selEl=document.getElementById("mapcity"),city=(!resultsMode&&selEl)?selEl.value:"",n=0,b=[];
-  MAP_PTS.forEach(function(p){
-    if(resultsMode){ if(!matchFn(p))return; }
-    else { if(MAP_FILT!="all"&&p.t!=MAP_FILT)return; if(city&&p.c!=city)return; }
-    var col=p.t=="office"?"#003DA5":"#C9972A";
-    var m=L.marker([p.lat,p.lng],{icon:mapIcon(p.t)});
-    var pn=(""+(p.p||"")).replace(/[^\d]/g,"");
-    var pr=pn?('<div class="mpr"><span>₪</span>'+pn.replace(/\B(?=(\d{3})+(?!\d))/g,",")+'</div>'):"";
-    var link=p.l?'<a href="'+p.l+'" target="_blank">צפייה במודעה ↗</a>':"";
-    m.bindPopup('<div class="mpp"><span class="mbadge" style="background:'+col+'">'+(p.t=="office"?"נכס משרד":"שת\"פ")+'</span><br><b>'+p.a+'</b><div class="mmeta">'+(p.c||"")+(p.r?" · "+p.r+" חד'":"")+'</div>'+pr+(p.g?'<div class="mmeta">'+p.g+'</div>':"")+link+'</div>');
-    _mapCluster.addLayer(m);b.push([p.lat,p.lng]);n++;
-  });
   window._mapShownN=n;
   var sh=document.getElementById("mapshown");if(sh)sh.textContent=(resultsMode?("תוצאות החיפוש: "+n):(n+" נכסים"));
   if(b.length)try{_mapObj.fitBounds(b,{padding:[36,36],maxZoom:16});}catch(e){}
@@ -7146,7 +7159,8 @@ var MAP_CSS='.mapovl{position:fixed;left:0;right:0;z-index:2000;background:trans
  '.mbadge{display:inline-block;font-size:11px;font-weight:900;border-radius:7px;padding:2px 9px;color:#fff;margin-bottom:6px}'+
  '.mpp b{font-size:15px;color:#0D1B2A}.mmeta{color:#6b7280;font-weight:600;margin-top:2px}'+
  '.mpr{color:#0D1B2A;font-weight:900;font-size:16px;margin:5px 0}.mpr span{color:#C9972A}'+
- '.mpp a{display:inline-block;margin-top:7px;color:#003DA5;font-weight:800;text-decoration:none}';
+ '.mpp a{display:inline-block;margin-top:7px;color:#003DA5;font-weight:800;text-decoration:none}'+
+ '.mdesc{color:#374151;font-size:12.5px;margin-top:7px;line-height:1.45;max-width:240px}.mmore{color:#003DA5;font-weight:800;cursor:pointer;white-space:nowrap}';
 function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
   var box=$("recent");if(!box)return;
   if(!r||!r.ok||!r.items.length){box.innerHTML="";return;}
@@ -7156,30 +7170,44 @@ function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
 }).catch(function(){});}
 function recentClick(q,kind){
   // לחיצה ראשונה — חיפוש רגיל (תוצאות בטאב); לחיצה שנייה על אותו חיפוש — מפה עם תוצאות החיפוש בלבד
-  if(window._lastRecentSearched===q && window._mapMatchAddrs && window._mapMatchAddrs.length){
+  if(window._lastRecentSearched===q && window._mapResults && window._mapResults.length){
     openMap(window._lastSearchQ||q, kind=="props"?"office":"coop", 1);
     return;
   }
-  window._lastRecentSearched=q; window._mapMatchAddrs=null;
+  window._lastRecentSearched=q; window._mapResults=null;
   var inp=$("sq"); if(inp) inp.value=q;
   doSearch(kind=="props"?"/api/search/properties":"/api/search/exclusives", kind);
 }
 function _mapBtnHTML(kind){return '<span class="mapbtn" onclick="openMap(window._lastSearchQ,\''+(kind=="props"?"office":"coop")+'\',1)"><svg viewBox="0 0 24 24"><path d="M12 21s7-7.2 7-12a7 7 0 1 0-14 0c0 4.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>הצג במפה</span>';}
-function _buildMapMatch(r){   /* הרשימה מציגה הכל; המפה מציגה רק את הסוג שחיפשו — בחיפוש "דירת גן" רק גן/קרקע/קומה 0/קוטג' */
+function _buildMapResults(r,kind){   /* המפה מציירת את תוצאות החיפוש עצמן (עם קואורדינטות) — בחיפוש "דירת גן" רק גן/קרקע/קומה 0/קוטג' */
   var all=(r&&r.results)||[],list=all;
   if(r&&r.ptype==="דירת גן"){
     var g=all.filter(function(y){var t=(y.type||""),fl=(""+(y.floor||"")).trim();return /גן|גינה|קרקע|קוטג|דו משפח/.test(t)||fl==="0";});
     if(g.length)list=g;   // אם אין גן בכלל — לא משאירים מפה ריקה
   }
-  return list.map(function(y){return {a:(y.address||y.street||""),c:(y.city||"")};}).filter(function(o){return o.a;});
+  var t=(kind=="props"?"office":"coop");
+  return list.filter(function(y){return y.lat!=null&&y.lng!=null;}).map(function(y){y._t=t;return y;});
 }
+function _mapPopupHTML(p,t){
+  var col=t=="office"?"#003DA5":"#C9972A", badge=t=="office"?"נכס משרד":'שת"פ';
+  var addr=p.address||p.street||"";
+  var meta=[(p.rooms?p.rooms+" חד'":""),(p.size?p.size+' מ"ר':""),((""+(p.floor||"")).trim()!==""?"קומה "+p.floor:"")].filter(Boolean).join(" · ");
+  var pn=(""+(p.price||"")).replace(/[^\d]/g,"");
+  var pr=pn?('<div class="mpr"><span>₪</span>'+pn.replace(/\B(?=(\d{3})+(?!\d))/g,",")+'</div>'):"";
+  var ag=(p.agent||p.office||""), desc=((p.desc||"")+"").trim(), dhtml="";
+  if(desc){var s=desc.length>90?desc.slice(0,90):desc;
+    dhtml='<div class="mdesc">'+esc(s)+(desc.length>90?('<span class="mmore" onclick="_mapMore(this)" data-full="'+encodeURIComponent(desc)+'"> … עוד ▾</span>'):'')+'</div>';}
+  var link=p.link?('<a href="'+p.link+'" target="_blank">צפייה במודעה ↗</a>'):'';
+  return '<div class="mpp"><span class="mbadge" style="background:'+col+'">'+badge+'</span><br><b>'+esc(addr)+'</b><div class="mmeta">'+esc(p.city||"")+(meta?(" · "+meta):"")+'</div>'+pr+(ag?'<div class="mmeta">'+esc(ag)+'</div>':'')+dhtml+link+'</div>';
+}
+function _mapMore(el){var f=decodeURIComponent(el.getAttribute("data-full")||"");el.parentNode.textContent=f;}
 function doSearch(ep,kind){
   var q=$("sq").value.trim();$("sres").innerHTML="<div class=muted>מחפש… ⏳</div>";
   api(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({q:q,as:IMP||""})}).then(function(r){
     if(!r.ok){if(r.auth===false){relogin();return;}$("sres").innerHTML="<span class=err>שגיאה בשרת: "+esc(r.reason||"")+"</span>";return;}
     if(!r.results.length){$("sres").innerHTML="<div class=muted>לא נמצאו תוצאות. נסה עם פחות פרטים.</div>";return;}
     window._lastSearchQ=(r.summary||q||"");
-    window._mapMatchAddrs=_buildMapMatch(r);
+    window._mapResults=_buildMapResults(r,kind);
     var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
     if(kind=="props"||kind=="excl")h+='<div class="maprow">'+_mapBtnHTML(kind)+'</div>';
     h+=r.results.map(function(x){return card(kind,x);}).join("");
