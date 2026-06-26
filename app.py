@@ -7018,7 +7018,7 @@ function _mapDist(a,b){var R=6371,dy=(b[0]-a[0])*Math.PI/180,dx=(b[1]-a[1])*Math
 function _mapOnLoc(lat,lng,acc){
   var ll=[lat,lng];
   if(_meM)_mapObj.removeLayer(_meM); if(_meC)_mapObj.removeLayer(_meC);
-  _meC=L.circle(ll,{radius:Math.min(Math.max(acc||80,80),350),color:"#003DA5",fillColor:"#003DA5",fillOpacity:.1,weight:1}).addTo(_mapObj);  // מגביל עיגול דיוק כדי שקריאה מקורבת לא תצייר עיגול ענק
+  _meC=L.circle(ll,{radius:Math.min(Math.max(acc||80,80),350),color:"#003DA5",fillColor:"#003DA5",fillOpacity:.1,weight:1}).addTo(_mapObj);  // מגביל עיגול דיוק
   _meM=L.marker(ll,{icon:L.divIcon({className:"",html:'<div class="mme"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(_mapObj);
   _mapObj.setView(ll,15);
   var near=MAP_PTS.filter(function(p){return _mapDist(ll,[p.lat,p.lng])<=1;}).length;
@@ -7026,14 +7026,19 @@ function _mapOnLoc(lat,lng,acc){
 }
 function mapLocate(){
   var G=(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.Geolocation)?Capacitor.Plugins.Geolocation:null;
-  if(G&&G.getCurrentPosition){   /* אפליקציה — תוסף המיקום הנייטיב */
-    var run=function(){ var _sh=document.getElementById("mapshown");if(_sh)_sh.textContent="מאתר מיקום…";
-      /* מקורב (מהיר) + מדויק (GPS) במקביל — מציג מיד את המהיר ומחדד לדיוק הטוב ביותר */
-      var best=Infinity,ok=false,done=0;
-      var show=function(p){var a=(p&&p.coords&&p.coords.accuracy)||9999;ok=true;if(a<=best){best=a;_mapOnLoc(p.coords.latitude,p.coords.longitude,a);}};
-      var fin=function(){done++;if(done>=2&&!ok){if(_sh)_sh.textContent="";alert("לא הצלחתי לאתר מיקום — ודא/י שהרשאת מיקום מאושרת ל-Family Bot (הגדרות → Family Bot → מיקום → בעת השימוש).");}};
-      G.getCurrentPosition({enableHighAccuracy:false,timeout:6000,maximumAge:120000}).then(function(p){show(p);fin();},fin);
-      G.getCurrentPosition({enableHighAccuracy:true,timeout:15000,maximumAge:10000}).then(function(p){show(p);fin();},fin);
+  if(G&&(G.watchPosition||G.getCurrentPosition)){   /* אפליקציה — תוסף המיקום הנייטיב */
+    var run=function(){
+      var _sh=document.getElementById("mapshown");if(_sh)_sh.textContent="מאתר מיקום…";
+      var best=Infinity,got=false,wid=null,stopped=false;
+      var stop=function(){stopped=true;if(wid!=null){try{G.clearWatch({id:wid});}catch(e){}wid=null;}};
+      var upd=function(p){if(stopped||!p||!p.coords)return;var a=p.coords.accuracy||9999;got=true;if(a<=best){best=a;_mapOnLoc(p.coords.latitude,p.coords.longitude,a);}if(a<=35)stop();};
+      if(G.watchPosition){   /* מאזין יחיד — מחזיר קריאה ראשונה מהר, מחדד, בלי התנגשות */
+        G.watchPosition({enableHighAccuracy:true,timeout:20000,maximumAge:10000},function(p,err){upd(p);})
+          .then(function(id){wid=id;if(stopped){try{G.clearWatch({id:id});}catch(e){}}}).catch(function(){});
+      } else {
+        G.getCurrentPosition({enableHighAccuracy:true,timeout:20000,maximumAge:10000}).then(upd).catch(function(){});
+      }
+      setTimeout(function(){stop();if(!got){if(_sh)_sh.textContent="";alert("לא הצלחתי לאתר מיקום. בדוק/י: שירותי המיקום דלוקים (הגדרות → פרטיות → שירותי מיקום), הרשאת Family Bot על 'בעת השימוש', ואינך במצב חיסכון בסוללה. נסה/י שוב ליד חלון/בחוץ.");}},19000);
     };
     if(G.checkPermissions){
       G.checkPermissions().then(function(st){
@@ -7050,12 +7055,15 @@ function mapLocate(){
     return;
   }
   if(!navigator.geolocation){alert("שירותי מיקום לא זמינים");return;}
-  var _shb=document.getElementById("mapshown");if(_shb)_shb.textContent="מאתר מיקום…";
-  var _best=Infinity,_ok=false,_done=0;
-  var _show=function(pos){var a=(pos&&pos.coords&&pos.coords.accuracy)||9999;_ok=true;if(a<=_best){_best=a;_mapOnLoc(pos.coords.latitude,pos.coords.longitude,a);}};
-  var _fin=function(){_done++;if(_done>=2&&!_ok){if(_shb)_shb.textContent="";alert("לא הצלחתי לאתר מיקום — אשר/י הרשאת מיקום (בדפדפן: סמל המנעול → מיקום).");}};
-  navigator.geolocation.getCurrentPosition(function(p){_show(p);_fin();},_fin,{enableHighAccuracy:false,timeout:6000,maximumAge:120000});
-  navigator.geolocation.getCurrentPosition(function(p){_show(p);_fin();},_fin,{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
+  (function(){
+    var _shb=document.getElementById("mapshown");if(_shb)_shb.textContent="מאתר מיקום…";
+    var best=Infinity,got=false,wid=null,stopped=false;
+    var stop=function(){stopped=true;if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null;}};
+    wid=navigator.geolocation.watchPosition(function(pos){
+      if(stopped)return;var a=pos.coords.accuracy||9999;got=true;if(a<=best){best=a;_mapOnLoc(pos.coords.latitude,pos.coords.longitude,a);}if(a<=35)stop();
+    },function(e){if(e&&e.code===1){stop();if(_shb)_shb.textContent="";alert("הרשאת מיקום נדחתה — אשר/י מיקום לאתר (סמל ה-AA/המנעול בשורת הכתובת → מיקום).");}},{enableHighAccuracy:true,timeout:20000,maximumAge:10000});
+    setTimeout(function(){stop();if(!got){if(_shb)_shb.textContent="";alert("לא הצלחתי לאתר מיקום — ודא/י ששירותי המיקום דלוקים וההרשאה מאושרת. נסה/י שוב.");}},19000);
+  })();
 }
 function _mapFocusOn(q){
   if(!_mapObj)return;
