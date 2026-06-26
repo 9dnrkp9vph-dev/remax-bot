@@ -5046,7 +5046,11 @@ def _mnb(v): v=str(v or "").strip(); return "" if v in ("","-","—") else v
 _MBB=(29.4,33.45,34.2,35.95)  # כל ישראל — מציג את כל הנכסים, מסנן רק טעויות גאוקוד מחוץ למדינה
 # cache: נטען מ-map-geocache.json אם קיים (seed אופציונלי שמזרז), אחרת ריק ובונה את עצמו.
 _MGEO_PATH=_os2.path.join(_os2.environ.get("MAP_CACHE_DIR","") or _os2.path.dirname(__file__),"map-geocache.json")  # MAP_CACHE_DIR=דיסק קבוע ב-Render → שורד פריסות
-try: _mgeo={k:v for k,v in _j2.load(open(_MGEO_PATH,encoding="utf-8")).items() if v}  # רק הצלחות — None ישנים יְנוסו שוב
+_GKEY=_os2.environ.get("GOOGLE_GEOCODE_KEY","")  # אם מוגדר → Google Geocoding (דיוק בניין); אחרת Nominatim/OSM
+_GSRC="google" if _GKEY else "osm"
+try:
+    _raw=_j2.load(open(_MGEO_PATH,encoding="utf-8"))
+    _mgeo=({k:v for k,v in _raw.items() if v and k!="__src__"} if _raw.get("__src__")==_GSRC else {})  # החליפו מקור גאוקוד → בונים מחדש
 except Exception: _mgeo={}
 _mq=[]; _mbusy=[False]; _mlock=_th.Lock(); _mtried=set()  # כתובות שנכשלו בריצה הנוכחית — לא לנסות שוב עד הפעלה הבאה (retry אחרי deploy)
 def _mworker():
@@ -5054,21 +5058,28 @@ def _mworker():
         with _mlock:
             if not _mq: _mbusy[0]=False; return
             addr=_mq.pop(0)
-        k=_mkey(addr)
+        k=_mkey(addr); res=None
         try:
-            r=requests.get("https://nominatim.openstreetmap.org/search",
-                params={"q":addr+", ישראל","format":"json","limit":1,"countrycodes":"il"},
-                headers={"User-Agent":"remax-family-map/1.0"},timeout=15)
-            d=r.json(); res=[float(d[0]["lat"]),float(d[0]["lon"])] if d else None
+            if _GKEY:   # Google — דיוק ברמת בניין
+                r=requests.get("https://maps.googleapis.com/maps/api/geocode/json",
+                    params={"address":addr+", ישראל","key":_GKEY,"region":"il","language":"he"},timeout=15)
+                j=r.json()
+                if j.get("status")=="OK" and j.get("results"):
+                    loc=j["results"][0]["geometry"]["location"]; res=[float(loc["lat"]),float(loc["lng"])]
+            else:
+                r=requests.get("https://nominatim.openstreetmap.org/search",
+                    params={"q":addr+", ישראל","format":"json","limit":1,"countrycodes":"il"},
+                    headers={"User-Agent":"remax-family-map/1.0"},timeout=15)
+                d=r.json(); res=[float(d[0]["lat"]),float(d[0]["lon"])] if d else None
         except Exception: res=None
         with _mlock:
             if res:
                 _mgeo[k]=res
-                try: _j2.dump(_mgeo,open(_MGEO_PATH,"w",encoding="utf-8"))
+                try: _j2.dump(dict(_mgeo,__src__=_GSRC),open(_MGEO_PATH,"w",encoding="utf-8"))
                 except Exception: pass
             else:
                 _mtried.add(k)  # נכשל — לא נשמר לדיסק; יְנוסה שוב בהפעלה הבאה
-        time.sleep(1.1)  # כבוד ל-OSM; רלוונטי רק לכתובות חדשות
+        time.sleep(0.12 if _GKEY else 1.1)  # Google מהיר (3000/min); Nominatim צריך ~1.1s
 def _mlookup(addr):
     k=_mkey(addr)
     if k in _mgeo: return _mgeo[k]
