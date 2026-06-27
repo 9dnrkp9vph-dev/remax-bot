@@ -4507,16 +4507,18 @@ def api_deals_import():
                     "src": "reminders", "by": s["name"], "created": time.strftime("%d/%m/%Y"), "ts": now - i,
                 })
                 added += 1
-        if not any(it.get("src") == "sales2026" for it in items):   # עסקאות 2026 מקובץ המעקב
-            for i, r in enumerate(_SALES_SEED):
-                items.append({
-                    "id": str(int(now * 1000)) + str(5000 + i),
-                    "agents": [_map_agent(a) for a in (r.get("agents") or [])], "side1": r.get("side1", ""), "side2": r.get("side2", ""),
-                    "notes": r.get("notes", ""), "price": "", "lawyers": "",
-                    "deal": True, "sale_price": r.get("sale_price", ""), "close_date": r.get("close_date", ""),
-                    "src": "sales2026", "by": s["name"], "created": r.get("close_date", "") or time.strftime("%d/%m/%Y"), "ts": now - 1000 - i,
-                })
-                added += 1
+        # עסקאות 2026 — רענון: מסירים ייבוא קודם ומכניסים מחדש (כדי לתקן תאריך הוספה וכו')
+        items = [it for it in items if it.get("src") != "sales2026"]
+        _today = time.strftime("%d/%m/%Y")
+        for i, r in enumerate(_SALES_SEED):
+            items.append({
+                "id": str(int(now * 1000)) + str(5000 + i),
+                "agents": [_map_agent(a) for a in (r.get("agents") or [])], "side1": r.get("side1", ""), "side2": r.get("side2", ""),
+                "notes": r.get("notes", ""), "price": "", "lawyers": "",
+                "deal": True, "sale_price": r.get("sale_price", ""), "close_date": r.get("close_date", ""),
+                "src": "sales2026", "by": s["name"], "created": _today, "ts": now - 1000 - i,
+            })
+            added += 1
         if added:
             _deals_save_all(items)
     return jsonify({"ok": True, "count": added, "already": (added == 0)})
@@ -6697,7 +6699,7 @@ function viewDeals(){
   if(DEALS)renderDeals(); else loadDeals();
 }
 function dealsImport(){
-  if(!confirm("לייבא תהליכים ועסקאות 2026? (פעם אחת)"))return;
+  if(!confirm("לייבא/לרענן תהליכים ועסקאות 2026? (עסקאות מיובאות יוטענו מחדש מהקובץ)"))return;
   api("/api/deals/import",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(function(r){
     if(r&&r.ok){alert(r.already?"הכל כבר יובא בעבר":("יובאו "+r.count+" רשומות ✅"));loadDeals();}
     else alert("ייבוא נכשל"+(r&&r.reason?" ("+r.reason+")":""));
@@ -6706,13 +6708,14 @@ function dealsImport(){
 function _ils(n){n=(""+(n||"")).replace(/[^\d]/g,"");return n?("₪"+n.replace(/\B(?=(\d{3})+(?!\d))/g,",")):"";}
 function renderDeals(){
   if(TABNOW!="deals"||!DEALS||!$("dlist"))return;
-  var imp=$("dlimport");if(imp)imp.innerHTML=((DEALS.role=="admin"||DEALS.role=="coordinator")&&!DEALS.imported)?'<button class="dlbtn dlmove" style="margin-bottom:8px" onclick="dealsImport()">⤓ ייבא תהליכים + עסקאות 2026 (פעם אחת)</button>':"";
+  var imp=$("dlimport");if(imp)imp.innerHTML=(DEALS.role=="admin"||DEALS.role=="coordinator")?('<button class="dlbtn dlmove" style="margin-bottom:8px" onclick="dealsImport()">⤓ '+(DEALS.imported?"רענן ייבוא עסקאות 2026":"ייבא תהליכים + עסקאות 2026")+'</button>'):"";
   var q=($("dlq")?$("dlq").value.trim():"");
   var items=(DEALS.items||[]).filter(function(it){if(!q)return true;var hay=((it.agents||[]).join(" ")+" "+(it.notes||"")+" "+(it.price||"")+" "+(it.sale_price||""));return hay.indexOf(q)>-1;});
   var procs=items.filter(function(it){return !it.deal;}),deals=items.filter(function(it){return it.deal;});
-  var h="<div class=bresh>🔄 תהליכים ("+procs.length+")</div>";
+  function _sides(arr){var n=0;arr.forEach(function(it){var two=(it.side1&&it.side2)||it.side1=="מוכר וקונה"||it.side2=="מוכר וקונה";n+=two?2:1;});return n;}
+  var h="<div class=bresh>🔄 תהליכים ("+_sides(procs)+")</div>";
   h+=procs.length?procs.map(dealCard).join(""):"<div class=muted style=margin:4px_0_12px>אין תהליכים פעילים</div>";
-  h+="<div class=bresh style=margin-top:14px>✅ עסקאות שנסגרו ("+deals.length+")</div>";
+  h+="<div class=bresh style=margin-top:14px>✅ עסקאות שנסגרו ("+_sides(deals)+")</div>";
   h+=deals.length?deals.map(dealCard).join(""):"<div class=muted style=margin:4px_0>אין עסקאות</div>";
   $("dlist").innerHTML=h;
 }
