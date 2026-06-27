@@ -6657,7 +6657,7 @@ function dealForm(id,isDeal){
   function sideOpt(v){return '<option value="">—</option><option value="קונה"'+(v=="קונה"?" selected":"")+'>מייצגים קונה</option><option value="מוכר"'+(v=="מוכר"?" selected":"")+'>מייצגים מוכר</option>';}
   var df=isDeal?('<label>מחיר מכירה<input id=dfsp inputmode=numeric value="'+esc((it&&it.sale_price)||(it&&it.price)||"")+'"></label><label>תאריך סגירה<input id=dfcd type=date value="'+esc((it&&it.close_date)||"")+'"></label>'):'';
   var ov=document.createElement("div");ov.id="dfovl";ov.className="ovl";
-  ov.innerHTML='<div class="ovlbox dlf"><h3 style="margin:0 0 6px">'+(isDeal?"💰 עסקה":"🔄 תהליך")+(id?" — עריכה":" חדש")+'</h3>'+dl+
+  ov.innerHTML='<div class="ovlbox dlf"><h3 style="margin:0 0 6px">'+(isDeal?"💰 עסקה":"🔄 תהליך")+(id?" — עריכה":(isDeal?" חדשה":" חדש"))+'</h3>'+dl+
     '<label>סוכן<input id=dfa1 list=dfaglist autocomplete=off placeholder="הקלד או בחר סוכן" value="'+esc(a1)+'"></label>'+
     '<label>מייצג<select id=dfs1>'+sideOpt((it&&it.side1)||(it&&it.side)||"")+'</select></label>'+
     '<label>סוכן 2<input id=dfa2 list=dfaglist autocomplete=off placeholder="הקלד או בחר סוכן" value="'+esc(a2)+'"></label>'+
@@ -6668,10 +6668,14 @@ function dealForm(id,isDeal){
     '<input type=hidden id=dfid value="'+(id||"")+'"><input type=hidden id=dfdeal value="'+(isDeal?"1":"")+'">'+
     '<div class=dlbtns style="margin-top:12px"><button class=searchbtn onclick="dealSave()">שמירה</button><button class=sec onclick="dfClose()">ביטול</button></div></div>';
   ov.onclick=function(e){if(e.target===ov)dfClose();};
+  ov.addEventListener("touchmove",function(e){if(e.target===ov)e.preventDefault();},{passive:false});
   document.body.appendChild(ov);
-  document.body.style.overflow="hidden";   // נעילת גלילת הרקע
+  window._dfSY=window.pageYOffset||document.documentElement.scrollTop||0;   // נעילת מסך מלאה (גם גלילה וגם משיכה צידית)
+  var b=document.body;b.style.overflow="hidden";b.style.position="fixed";b.style.width="100%";b.style.top=(-window._dfSY)+"px";
 }
-function dfClose(){var o=$("dfovl");if(o)o.remove();document.body.style.overflow="";}
+function dfClose(){var o=$("dfovl");if(o)o.remove();
+  var b=document.body;b.style.overflow="";b.style.position="";b.style.width="";b.style.top="";
+  try{window.scrollTo(0,window._dfSY||0);}catch(e){}}
 function dealSave(){
   var a1=($("dfa1")?$("dfa1").value:"").trim(),a2=($("dfa2")?$("dfa2").value:"").trim(),agents=[];
   if(a1)agents.push(a1); if(a2&&a2!=a1)agents.push(a2);
