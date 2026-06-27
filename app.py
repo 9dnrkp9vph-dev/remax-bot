@@ -1006,6 +1006,18 @@ def _enforce_nb_city(parsed):
         pass
     return parsed
 
+def _enforce_ptype(parsed, text):
+    """אכיפת סוג נכס מתוך טקסט החיפוש — אם הפענוח פספס (קבוצת גן / פנטהאוז)."""
+    try:
+        t = str(text or "")
+        if re.search(r"דיר\S*\s*גן|גינה|קומת\s*קרקע|קומה\s*0|קרקע|קוטג", t):
+            parsed["property_type"] = "דירת גן"   # קבוצת גן: גן/קרקע/קומה 0/קוטג'
+        elif re.search(r"פנטהאו", t):
+            parsed["property_type"] = "פנטהאוז"
+    except Exception:
+        pass
+    return parsed
+
 def parse_search_query(text: str) -> dict:
     prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש נכסים במאגר המשרד עבור לקוח.
 הסוכן שלח לך הודעה עם דרישות הלקוח. חלץ פרמטרים ל-JSON בלבד (ללא markdown, ללא backticks).
@@ -1080,7 +1092,7 @@ def parse_search_query(text: str) -> dict:
     if match:
         text_out = match.group()
     try:
-        return _enforce_nb_city(json.loads(text_out))
+        return _enforce_ptype(_enforce_nb_city(json.loads(text_out)), text)
     except Exception as e:
         log.error(f"Search JSON parse error: {e}")
         return {}
@@ -1978,7 +1990,7 @@ def parse_exclusivity_search_query(text: str) -> dict:
         if m: out = m.group()
         parsed = json.loads(out)
         parsed["query_text"] = cleaned
-        return _enforce_nb_city(parsed)
+        return _enforce_ptype(_enforce_nb_city(parsed), cleaned)
     except Exception as e:
         log.error(f"Exclusivity query parse error: {e}")
         return {"query_text": cleaned, "keywords": cleaned.split(), "summary_he": cleaned, "budget_max": None, "city": None, "neighborhood": None, "rooms": None}
