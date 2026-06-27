@@ -4370,6 +4370,89 @@ def api_signatures():
     } for g in sigs[:500]]
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"], "signatures": sig_out})
 
+# ── תהליכים ועסקאות (אחסון מקומי בדיסק — ללא Google) ───────────────────────────
+_DEALS_PATH = _os2.path.join(_os2.environ.get("MAP_CACHE_DIR", "") or _os2.path.dirname(__file__), "deals.json")
+_deals_lock = _th.Lock()
+def _deals_load():
+    try:
+        with open(_DEALS_PATH, encoding="utf-8") as f:
+            d = _j2.load(f)
+            return d if isinstance(d, list) else []
+    except Exception:
+        return []
+def _deals_save_all(items):
+    try:
+        with open(_DEALS_PATH, "w", encoding="utf-8") as f:
+            _j2.dump(items, f, ensure_ascii=False)
+    except Exception as e:
+        log.error(f"deals save error: {e}")
+def _deals_can_see(item, s):
+    if s.get("role") in ("admin", "coordinator"):
+        return True
+    nm = _canon_key(s.get("name", ""))
+    ags = [_canon_key(a) for a in (item.get("agents") or [])]
+    return (nm in ags) or (_canon_key(item.get("by", "")) == nm)
+
+@app.route("/api/deals", methods=["GET"])
+def api_deals():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    items = [it for it in _deals_load() if _deals_can_see(it, s)]
+    items.sort(key=lambda it: it.get("ts", 0), reverse=True)
+    agents = sorted(set(n for n in web_phone_name_map().values() if n and n.strip()))
+    if s["name"] and s["name"] not in agents:
+        agents = [s["name"]] + agents
+    return jsonify({"ok": True, "role": s["role"], "name": s["name"], "items": items, "agents": agents})
+
+@app.route("/api/deals/save", methods=["POST"])
+def api_deals_save():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    b = request.get_json(silent=True) or {}
+    agents = [str(a).strip() for a in (b.get("agents") or []) if str(a).strip()][:2]
+    if not agents and s["role"] not in ("admin", "coordinator"):
+        agents = [s["name"]]
+    with _deals_lock:
+        items = _deals_load()
+        iid = str(b.get("id", "") or "").strip()
+        existing = next((it for it in items if it.get("id") == iid), None) if iid else None
+        if existing and not _deals_can_see(existing, s):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        rec = {
+            "id": iid or (str(int(time.time() * 1000)) + str(_secrets.randbelow(1000))),
+            "agents": agents,
+            "notes": str(b.get("notes", "") or "").strip(),
+            "price": str(b.get("price", "") or "").strip(),
+            "deal": bool(b.get("deal")),
+            "sale_price": str(b.get("sale_price", "") or "").strip(),
+            "close_date": str(b.get("close_date", "") or "").strip(),
+        }
+        if existing:
+            rec["created"] = existing.get("created", "")
+            rec["ts"] = existing.get("ts", time.time())
+            rec["by"] = existing.get("by", s["name"])
+            items = [rec if it.get("id") == rec["id"] else it for it in items]
+        else:
+            rec["created"] = time.strftime("%d/%m/%Y")
+            rec["ts"] = time.time()
+            rec["by"] = s["name"]
+            items.append(rec)
+        _deals_save_all(items)
+    return jsonify({"ok": True, "id": rec["id"]})
+
+@app.route("/api/deals/delete", methods=["POST"])
+def api_deals_delete():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    iid = str((request.get_json(silent=True) or {}).get("id", "") or "").strip()
+    with _deals_lock:
+        items = _deals_load()
+        it = next((x for x in items if x.get("id") == iid), None)
+        if it and not _deals_can_see(it, s):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        _deals_save_all([x for x in items if x.get("id") != iid])
+    return jsonify({"ok": True})
+
 # ── Activity log (admin only) ──────────────────────────────────────────────────
 @app.route("/api/recent", methods=["GET", "POST"])
 def api_recent():
@@ -5999,6 +6082,18 @@ button.gold{background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;box
 .bresults{margin-top:8px}
 .bresults:empty{margin:0}
 .bresh{font-size:12px;font-weight:700;color:var(--muted);margin:4px 0 6px}
+.dlbtns{display:flex;gap:8px;margin:8px 0}.dlbtns button{flex:1;width:auto}
+.dlcard{border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin:8px 0;background:#fff}
+.dlcard-deal{border-color:#C9972A;background:#fffdf6}
+.dlmeta{color:var(--muted);font-size:13px;font-weight:600;margin:2px 0}
+.dlprice{font-weight:900;font-size:16px;color:#0D1B2A;margin:4px 0}
+.dlnotes{color:#374151;font-size:13px;margin-top:5px;white-space:pre-wrap;line-height:1.45}
+.dlacts{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.dlbtn{width:auto!important;border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 11px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#0D1B2A}
+.dlbtn.dlmove{background:#C9972A;color:#fff;border-color:#C9972A}
+.dlbtn.dldanger{color:#c0392b;border-color:#f0c0bb}
+.dlf label{display:block;font-size:13px;font-weight:700;color:#0D1B2A;margin:9px 0 0}
+.dlf input,.dlf select,.dlf textarea{width:100%;margin-top:4px;padding:9px;border:1px solid var(--line);border-radius:10px;font-family:inherit;font-size:14px;box-sizing:border-box}
 .maprow{margin:2px 0 12px}
 .mapbtn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(180deg,#2f6fd6,#1f5fbe);color:#fff;font-size:13.5px;font-weight:800;padding:9px 16px;border-radius:12px;cursor:pointer;box-shadow:0 4px 13px rgba(31,95,190,.3);white-space:nowrap;transition:transform .08s}
 .mapbtn:active{transform:scale(.96)}
@@ -6296,7 +6391,7 @@ html,body{background:#f6f5f2!important;background-color:#f6f5f2!important}
 @keyframes sppop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
 </style></head><body>
 <div class="wrap">
-<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();openHelp()">💬 עזרה / דיווח תקלה</div><div class="mi" id="mi-addhome" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();window.open('https://www.instagram.com/remax.family?igsh=bXdmdzJjMWVkc3li&utm_source=qr','_blank')"><svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:none;stroke:#E1306C;stroke-width:1.9;flex:0 0 auto"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.6" cy="6.4" r="1.2" fill="#E1306C" stroke="none"/></svg> אינסטגרם של המשרד</div><div class="mi" onclick="closeMenu();window.open('https://www.madlan.co.il/madad/2026/%D7%A7%D7%A8%D7%99%D7%95%D7%AA','_blank')">🏅 מדד המתווכים — מדלן 2026</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname"></span></div>
+<div class="brand"><div class="menuwrap"><button class="sec sharebtn" id="menubtn" onclick="toggleMenu(event)" title="תפריט"><svg viewBox="0 0 18 18" class="hicon"><path d="M3 5h12M3 9h12M3 13h12"/></svg></button><div id="appmenu" class="appmenu hidden"><div class="mi hidden" id="mi-dev" onclick="closeMenu();openDevConsole()">⚙️ ניהול (מפתח)</div><div class="mi hidden" id="mi-activity" onclick="menuGo('activity')">📣 עדכונים</div><div class="mi" id="mi-report" onclick="menuGo('report')">📊 דוחות</div><div class="mi" id="mi-deals" onclick="menuGo('deals')">📋 תהליכים ועסקאות</div><div class="mi-sub hidden" id="mi-imp"><div class="mi-lbl">👁 צפה כסוכן</div><select id="impsel" onchange="setImp(this.value)"><option value="">— כל הסוכנים —</option></select></div><div class="mi-sub hidden" id="mi-testlogin"><div class="mi-lbl">🧪 כניסה כסוכן (בדיקה)</div><select id="testsel" onchange="loginAsAgent(this.value)"><option value="">— בחר סוכן —</option></select></div><hr><div class="mi" onclick="closeMenu();openHelp()">💬 עזרה / דיווח תקלה</div><div class="mi" id="mi-addhome" onclick="closeMenu();addToHome()">➕ הוסף למסך הבית</div><div class="mi" onclick="closeMenu();window.open('https://www.instagram.com/remax.family?igsh=bXdmdzJjMWVkc3li&utm_source=qr','_blank')"><svg viewBox="0 0 24 24" style="width:19px;height:19px;fill:none;stroke:#E1306C;stroke-width:1.9;flex:0 0 auto"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.6" cy="6.4" r="1.2" fill="#E1306C" stroke="none"/></svg> אינסטגרם של המשרד</div><div class="mi" onclick="closeMenu();window.open('https://www.madlan.co.il/madad/2026/%D7%A7%D7%A8%D7%99%D7%95%D7%AA','_blank')">🏅 מדד המתווכים — מדלן 2026</div><div class="mi" onclick="closeMenu();shareApp()">📲 שתף אפליקציה</div><div class="mi mi-danger" onclick="logout()">🚪 יציאה</div></div></div><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none';var t=document.getElementById('brandtxt');if(t)t.style.display='block';"><div id="brandtxt" class="brandtxt" style="display:none">🏠 Family Bot</div><span id="brandname" class="brandname" onclick="nbMeetings()" title="פגישות ופולואו אפ" style="cursor:pointer"></span></div>
 
 <div id="login">
   <div class="loginlogo"><img src="/assets/logo?v=3" alt="RE/MAX Family" onerror="this.style.display='none'"></div>
@@ -6507,7 +6602,78 @@ function snapBars(){try{var _b=document.body;_b.style.position="";_b.style.top="
 document.addEventListener("visibilitychange",function(){if(!document.hidden){setTimeout(snapBars,20);setTimeout(snapBars,250);}});
 window.addEventListener("pageshow",function(){setTimeout(snapBars,20);});
 window.addEventListener("focus",function(){setTimeout(snapBars,20);});
-function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else viewSearch(TABNOW);}
+function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else if(TABNOW=="deals")viewDeals();else viewSearch(TABNOW);}
+/* ===== 📋 תהליכים ועסקאות ===== */
+var DEALS=null;
+function loadDeals(){api("/api/deals").then(function(r){if(!r||!r.ok){if(r&&r.auth===false)relogin();return;}DEALS=r;renderDeals();}).catch(function(){});}
+function viewDeals(){
+  $("view").innerHTML='<div class=card><h2>📋 תהליכים ועסקאות</h2>'+
+    '<input id=dlq placeholder="חיפוש: סוכן / הערות / מחיר" oninput="renderDeals()">'+
+    '<div class=dlbtns><button class=searchbtn onclick="dealForm(\'\',false)">➕ הוסף תהליך</button>'+
+    '<button class=sec onclick="dealForm(\'\',true)">➕ הוסף עסקה</button></div>'+
+    '<div id=dlist><div class=muted>טוען…</div></div></div>';
+  if(DEALS)renderDeals(); else loadDeals();
+}
+function _ils(n){n=(""+(n||"")).replace(/[^\d]/g,"");return n?("₪"+n.replace(/\B(?=(\d{3})+(?!\d))/g,",")):"";}
+function renderDeals(){
+  if(TABNOW!="deals"||!DEALS||!$("dlist"))return;
+  var q=($("dlq")?$("dlq").value.trim():"");
+  var items=(DEALS.items||[]).filter(function(it){if(!q)return true;var hay=((it.agents||[]).join(" ")+" "+(it.notes||"")+" "+(it.price||"")+" "+(it.sale_price||""));return hay.indexOf(q)>-1;});
+  var procs=items.filter(function(it){return !it.deal;}),deals=items.filter(function(it){return it.deal;});
+  var h="<div class=bresh>🔄 תהליכים ("+procs.length+")</div>";
+  h+=procs.length?procs.map(dealCard).join(""):"<div class=muted style=margin:4px_0_12px>אין תהליכים פעילים</div>";
+  h+="<div class=bresh style=margin-top:14px>✅ עסקאות שנסגרו ("+deals.length+")</div>";
+  h+=deals.length?deals.map(dealCard).join(""):"<div class=muted style=margin:4px_0>אין עסקאות</div>";
+  $("dlist").innerHTML=h;
+}
+function dealCard(it){
+  var ag=(it.agents||[]).filter(Boolean).join(" + ")||"—";
+  var h="<div class=dlmeta>👤 "+esc(ag)+(it.created?(" · "+esc(it.created)):"")+"</div>";
+  if(it.deal){
+    if(it.sale_price)h+="<div class=dlprice>"+_ils(it.sale_price)+" <span class=muted style=font-weight:600>· מחיר מכירה</span></div>";
+    if(it.close_date)h+="<div class=dlmeta>📅 נסגר: "+esc(it.close_date)+"</div>";
+  }else if(it.price){h+="<div class=dlprice>"+_ils(it.price)+"</div>";}
+  if(it.notes)h+="<div class=dlnotes>"+esc(it.notes)+"</div>";
+  var a="<button class=dlbtn onclick=\"dealForm('"+it.id+"',"+(it.deal?"true":"false")+")\">✏️ עריכה</button>";
+  if(!it.deal)a+="<button class=\"dlbtn dlmove\" onclick=\"dealForm('"+it.id+"',true)\">💰 נמכר → עסקה</button>";
+  a+="<button class=\"dlbtn dldanger\" onclick=\"dealDel('"+it.id+"')\">🗑 מחק</button>";
+  return "<div class=\"dlcard"+(it.deal?" dlcard-deal":"")+"\">"+h+"<div class=dlacts>"+a+"</div></div>";
+}
+function dealForm(id,isDeal){
+  var D=DEALS||{items:[],agents:[],role:"agent",name:(typeof NAME!="undefined"?NAME:"")};
+  var it=id?(D.items||[]).filter(function(x){return x.id==id;})[0]:null;
+  if(it&&it.deal)isDeal=true;
+  var ags=D.agents||[],mgr=(D.role=="admin"||D.role=="coordinator");
+  var a1=(it&&it.agents&&it.agents[0])||(mgr?"":(D.name||""));
+  var a2=(it&&it.agents&&it.agents[1])||"";
+  function opt(sel){return '<option value=""></option>'+ags.map(function(x){return '<option'+(x==sel?" selected":"")+'>'+esc(x)+'</option>';}).join("");}
+  var af=mgr
+    ?('<label>סוכן<select id=dfa1>'+opt(a1)+'</select></label><label>סוכן נוסף<select id=dfa2>'+opt(a2)+'</select></label>')
+    :('<input type=hidden id=dfa1 value="'+esc(a1)+'"><label>סוכן נוסף (לא חובה)<select id=dfa2>'+opt(a2)+'</select></label>');
+  var df=isDeal?('<label>מחיר מכירה<input id=dfsp inputmode=numeric value="'+esc((it&&it.sale_price)||(it&&it.price)||"")+'"></label><label>תאריך סגירה<input id=dfcd type=date value="'+esc((it&&it.close_date)||"")+'"></label>'):'';
+  var ov=document.createElement("div");ov.id="dfovl";ov.className="ovl";
+  ov.innerHTML='<div class="ovlbox dlf"><h3 style="margin:0 0 6px">'+(isDeal?"💰 עסקה":"🔄 תהליך")+(id?" — עריכה":" חדש")+'</h3>'+af+
+    '<label>מחיר '+(isDeal?"מבוקש (לא חובה)":"")+'<input id=dfp inputmode=numeric value="'+esc((it&&it.price)||"")+'"></label>'+df+
+    '<label>הערות<textarea id=dfn rows=3>'+esc((it&&it.notes)||"")+'</textarea></label>'+
+    '<input type=hidden id=dfid value="'+(id||"")+'"><input type=hidden id=dfdeal value="'+(isDeal?"1":"")+'">'+
+    '<div class=dlbtns style="margin-top:12px"><button class=searchbtn onclick="dealSave()">שמירה</button><button class=sec onclick="dfClose()">ביטול</button></div></div>';
+  ov.onclick=function(e){if(e.target===ov)dfClose();};
+  document.body.appendChild(ov);
+}
+function dfClose(){var o=$("dfovl");if(o)o.remove();}
+function dealSave(){
+  var a1=($("dfa1")?$("dfa1").value:"").trim(),a2=($("dfa2")?$("dfa2").value:"").trim(),agents=[];
+  if(a1)agents.push(a1); if(a2&&a2!=a1)agents.push(a2);
+  var body={id:$("dfid").value,deal:!!$("dfdeal").value,agents:agents,price:$("dfp").value.trim(),notes:$("dfn").value.trim()};
+  if($("dfsp"))body.sale_price=$("dfsp").value.trim();
+  if($("dfcd"))body.close_date=$("dfcd").value.trim();
+  api("/api/deals/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){
+    if(!r||!r.ok){alert("שמירה נכשלה"+(r&&r.reason?" ("+r.reason+")":""));return;}
+    dfClose();loadDeals();
+  }).catch(function(){alert("שגיאת רשת");});
+}
+function dealDel(id){if(!confirm("למחוק לצמיתות?"))return;
+  api("/api/deals/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){if(r&&r.ok)loadDeals();else alert("מחיקה נכשלה");}).catch(function(){});}
 var REPTEXT="";
 function kpi(n,l){return "<div class=stat><div class=n>"+n+"</div><div class=l>"+l+"</div></div>";}
 function viewReport(){
