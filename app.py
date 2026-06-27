@@ -1388,10 +1388,7 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         try:
             r_floor = int(float(r_floor_raw)) if r_floor_raw else None
             if r_floor is not None and r_floor > floor_max:
-                if flex_level == 0:
-                    return 0
-                elif flex_level == 1 and r_floor > floor_max + 1:
-                    return 0
+                return 0   # "עד קומה X" — סינון קשיח, מעל הקומה לא תואם
         except ValueError:
             pass
     r_city = normalize_city(row.get("עיר / ישוב", "") or "")
@@ -1503,25 +1500,27 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
     r_ptype = (row.get("סוג נכס", "") or "").strip()
     PENTHOUSE_TYPES = {"פנטהאוז", "גג", "מיני פנטהאוז"}
     if q_ptype == "דירת גן":
-        # "כוונת גן" — לא מסנן: מציג את כל הנכסים בשכונה, ומדרג גן/קרקע/קומה 0/קוטג'/מיני קוטג' למעלה
+        # סינון קשיח: רק דירת גן/קרקע/קוטג'/מיני קוטג'/דו משפחתי או קומה 0
         r_floor_g = (row.get("קומה", "") or "").strip()
         ground0 = False
         try: ground0 = (r_floor_g != "" and int(float(r_floor_g)) == 0)
         except ValueError: pass
         if any(t in r_ptype for t in ("גן", "גינה", "קרקע", "קוטג", "דו משפח")) or ground0:
             score += 30
-    elif q_ptype and r_ptype:
-        if q_ptype == r_ptype:
-            score += 15
-        elif q_ptype in r_ptype or r_ptype in q_ptype:
-            score += 7
         else:
-            if q_ptype == "דירה" and r_ptype in PENTHOUSE_TYPES:
-                return 0
-            if flex_level == 0:
-                return 0
-            elif flex_level == 1:
-                score -= 15
+            return 0
+    elif q_ptype == "דירה":
+        # דירה רגילה (ברירת מחדל) — לא מסננים בקשיחות; רק פנטהאוז לא מתאים
+        if r_ptype in PENTHOUSE_TYPES:
+            return 0
+        if q_ptype == r_ptype: score += 15
+        elif r_ptype and (q_ptype in r_ptype or r_ptype in q_ptype): score += 7
+    elif q_ptype:
+        # סוג ספציפי (פנטהאוז/קוטג'/דופלקס/וילה) — סינון קשיח: רק הסוג המבוקש
+        if r_ptype and (q_ptype == r_ptype or q_ptype in r_ptype or r_ptype in q_ptype):
+            score += 15
+        else:
+            return 0
     must_have = query.get("must_have") or []
     if isinstance(must_have, list) and must_have:
         col_map = {
@@ -1564,10 +1563,8 @@ def search_listings_in_sheet(query: dict) -> list:
     rows = fetch_sheet_rows()
     if not rows:
         return []
-    q_ptype = (query.get("property_type") or "").strip()
-    is_garden = q_ptype == "דירת גן"
     _has_nb = bool((query.get("neighborhoods")) or (query.get("neighborhood") or "").strip())
-    cap = 40 if _has_nb else 12   # שכונה צוינה → הצג את כל נכסי השכונה (מדורגים); אחרת 12
+    cap = 40 if _has_nb else 25   # תקרת תוצאות
     for flex in [0, 1, 2]:
         scored = []
         for row in rows:
@@ -1576,21 +1573,7 @@ def search_listings_in_sheet(query: dict) -> list:
                 scored.append((s, row, flex))
         scored.sort(key=lambda x: -x[0])
         if len(scored) >= 3 or flex == 2:
-            results = [(s, r, f) for (s, r, f) in scored[:cap]]
-            if is_garden and len(results) < 3:
-                fallback_query = dict(query)
-                fallback_query["property_type"] = "קוטג'"
-                for flex2 in [0, 1, 2]:
-                    fallback_scored = []
-                    for row in rows:
-                        s = score_match(row, fallback_query, flex_level=flex2)
-                        if s > 0:
-                            fallback_scored.append((s, row, flex2))
-                    fallback_scored.sort(key=lambda x: -x[0])
-                    if fallback_scored:
-                        results += [(s, r, f) for (s, r, f) in fallback_scored[:3]]
-                        break
-            return results
+            return [(s, r, f) for (s, r, f) in scored[:cap]]
     return []
 def format_match_reply(query: dict, matches: list) -> str:
     if not matches:
@@ -2042,6 +2025,21 @@ def score_exclusivity_match(row: dict, query: dict) -> int:
         else:
             return 0
 
+    # סוג נכס — סינון קשיח (זיהוי מתוך הטקסט, לשת"פ אין שדה סוג מסודר)
+    q_pt = (query.get("property_type") or "").strip()
+    if q_pt == "דירת גן":
+        if not re.search(r"גן|גינה|קרקע|קוטג|דו\s*משפח|קומה\s*0|קומת\s*קרקע", combined):
+            return 0
+        score += 20
+    elif q_pt in ("פנטהאוז", "גג", "מיני פנטהאוז"):
+        if not re.search(r"פנטהאוז|פנטהאוס|גג", combined):
+            return 0
+        score += 20
+    elif q_pt == "קוטג'":
+        if "קוטג" not in combined:
+            return 0
+        score += 20
+
     # חדרים
     q_rooms = query.get("rooms")
     if q_rooms is not None:
@@ -2115,7 +2113,7 @@ def handle_exclusivity_search_request(sender_phone: str, message_text: str):
             return
 
         # אם אין קריטריונים — החזר את 5 האחרונות
-        if not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
+        if not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords") or parsed.get("property_type")):
             all_rows.sort(key=lambda r: _excl_epoch(r.get("received_at","")), reverse=True)
             matches = all_rows[:5]
         else:
@@ -5512,7 +5510,7 @@ def api_search_exclusives():
         parsed["budget_max"] = _web_num(parsed.get("budget_max"))   # מנע TypeError בכפל
         parsed["rooms"]      = _web_num(parsed.get("rooms"))
         rows = _dedupe_exclusives(fetch_external_exclusives())
-        if not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords")):
+        if not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords") or parsed.get("property_type")):
             rows = sorted(rows, key=lambda r: _excl_epoch(r.get("received_at", "")), reverse=True)
             matches = [(1, r) for r in rows[:30]]
         else:
@@ -7225,18 +7223,9 @@ function recentClick(q,kind){
   doSearch(kind=="props"?"/api/search/properties":"/api/search/exclusives", kind);
 }
 function _mapBtnHTML(kind){return '<span class="mapbtn" onclick="openMap(window._lastSearchQ,\''+(kind=="props"?"office":"coop")+'\',1)"><svg viewBox="0 0 24 24"><path d="M12 21s7-7.2 7-12a7 7 0 1 0-14 0c0 4.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>הצג במפה</span>';}
-function _buildMapResults(r,kind){   /* המפה מציירת את תוצאות החיפוש עצמן (עם קואורדינטות) — בחיפוש "דירת גן" רק גן/קרקע/קומה 0/קוטג' */
-  var all=(r&&r.results)||[],list=all;
-  if(r&&r.ptype==="דירת גן"){
-    var g=all.filter(function(y){
-      var fl=(""+(y.floor||"")).trim();
-      var txt=((y.type||"")+" "+(y.dest||"")+" "+(y.desc||"")+" "+(y.street||""));  // משרד: type; שת"פ: טקסט חופשי
-      return /גן|גינה|קרקע|קוטג|דו משפח/.test(txt)||fl==="0"||/קומה\s*0|קומת קרקע/.test(txt);
-    });
-    if(g.length)list=g;   // אם אין גן בכלל — לא משאירים מפה ריקה
-  }
+function _buildMapResults(r,kind){   /* המפה = תוצאות החיפוש (זהה לרשימה). הסינון לפי סוג/שכונה נעשה כבר בשרת */
   var t=(kind=="props"?"office":"coop");
-  return list.filter(function(y){return y.lat!=null&&y.lng!=null;}).map(function(y){y._t=t;return y;});
+  return ((r&&r.results)||[]).filter(function(y){return y.lat!=null&&y.lng!=null;}).map(function(y){y._t=t;return y;});
 }
 function _mapPopupHTML(p,t){
   var col=t=="office"?"#003DA5":"#C9972A", badge=t=="office"?"נכס משרד":'שת"פ';
