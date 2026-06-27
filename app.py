@@ -4472,6 +4472,18 @@ def api_deals_import():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     if s["role"] not in ("admin", "coordinator"):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
+    # מיפוי שם מקוצר (מהתזכורות) → שם מלא של סוכן במערכת, כדי שכל סוכן יראה את שלו
+    _names = [n for n in web_phone_name_map().values() if n and n.strip()]
+    def _map_agent(short):
+        short = (short or "").strip()
+        if not short:
+            return short
+        for full in _names:
+            f = full.strip()
+            parts = f.split()
+            if f == short or (parts and (parts[0] == short or short in parts)):
+                return full
+        return short
     with _deals_lock:
         items = _deals_load()
         if any(it.get("src") == "reminders" for it in items):
@@ -4480,7 +4492,7 @@ def api_deals_import():
         for i, r in enumerate(_DEALS_SEED):
             items.append({
                 "id": str(int(now * 1000)) + str(1000 + i),
-                "agents": r["agents"], "side1": r.get("side1", ""), "side2": r.get("side2", ""),
+                "agents": [_map_agent(a) for a in r["agents"]], "side1": r.get("side1", ""), "side2": r.get("side2", ""),
                 "notes": r.get("notes", ""), "price": r.get("price", ""), "lawyers": "",
                 "deal": False, "sale_price": "", "close_date": "",
                 "src": "reminders", "by": s["name"], "created": time.strftime("%d/%m/%Y"),
