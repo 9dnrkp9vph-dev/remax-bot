@@ -6725,12 +6725,12 @@ function dealCard(it){
   var A=it.agents||[],parts=[];
   if(A[0])parts.push(esc(A[0])+((it.side1||it.side)?(" — "+esc(it.side1||it.side)):""));
   if(A[1])parts.push(esc(A[1])+(it.side2?(" — "+esc(it.side2)):""));
-  var h="<div class=dlmeta>👤 "+(parts.join(" · ")||"—")+(it.created?(" · "+esc(it.created)):"")+"</div>";
+  var dt=it.deal?(it.close_date||it.created||""):(it.created||"");
+  var h="<div class=dlmeta>👤 "+(parts.join(" · ")||"—")+(dt?(" · "+esc(dt)):"")+"</div>";
   if(it.notes)h+="<div class=dlmeta>📍 "+esc(it.notes)+"</div>";
   if(it.lawyers)h+="<div class=dlmeta>⚖️ עו״ד: "+esc(it.lawyers)+"</div>";
   if(it.deal){
     if(it.sale_price)h+="<div class=dlprice>"+_ils(it.sale_price)+" <span class=muted style=font-weight:600>· מחיר מכירה</span></div>";
-    if(it.close_date)h+="<div class=dlmeta>📅 נסגר: "+esc(it.close_date)+"</div>";
   }else if(it.price){h+="<div class=dlprice>"+_ils(it.price)+"</div>";}
   var a="<button class=dlbtn onclick=\"dealForm('"+it.id+"',"+(it.deal?"true":"false")+")\">✏️ עריכה</button>";
   if(!it.deal)a+="<button class=\"dlbtn dlmove\" onclick=\"dealForm('"+it.id+"',true)\">💰 נמכר → עסקה</button>";
