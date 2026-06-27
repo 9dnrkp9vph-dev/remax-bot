@@ -4398,12 +4398,14 @@ def _deals_can_see(item, s):
 def api_deals():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
-    items = [it for it in _deals_load() if _deals_can_see(it, s)]
+    all_items = _deals_load()
+    items = [it for it in all_items if _deals_can_see(it, s)]
     items.sort(key=lambda it: it.get("ts", 0), reverse=True)
     agents = sorted(set(n for n in web_phone_name_map().values() if n and n.strip()))
     if s["name"] and s["name"] not in agents:
         agents = [s["name"]] + agents
-    return jsonify({"ok": True, "role": s["role"], "name": s["name"], "items": items, "agents": agents})
+    imported = any(it.get("src") == "reminders" for it in all_items)
+    return jsonify({"ok": True, "role": s["role"], "name": s["name"], "items": items, "agents": agents, "imported": imported})
 
 @app.route("/api/deals/save", methods=["POST"])
 def api_deals_save():
@@ -4445,6 +4447,47 @@ def api_deals_save():
             items.append(rec)
         _deals_save_all(items)
     return jsonify({"ok": True, "id": rec["id"]})
+
+_DEALS_SEED = [
+    {"agents": ["ליקה", "חי"], "side1": "מוכר", "side2": "קונה", "price": "2215000", "notes": "נעמי שמר 10"},
+    {"agents": ["אלי", "יהודית"], "side1": "מוכר", "side2": "קונה", "price": "1240000", "notes": "לויק"},
+    {"agents": ["רויטל"], "side1": "קונה", "side2": "", "price": "", "notes": "דליה 9"},
+    {"agents": ["רויטל"], "side1": "מוכר", "side2": "", "price": "960000", "notes": "דב פרומר"},
+    {"agents": ["חי", "קובי"], "side1": "מוכר", "side2": "קונה", "price": "2550000", "notes": "אהובה עוזרי"},
+    {"agents": ["ליקה", "רפי"], "side1": "מוכר", "side2": "קונה", "price": "1600000", "notes": "ההגנה 50"},
+    {"agents": ["סיון"], "side1": "מוכר", "side2": "", "price": "", "notes": "ששת הימים"},
+    {"agents": ["ליקה", "אלעד"], "side1": "מוכר", "side2": "קונה", "price": "", "notes": "השקדים 10"},
+    {"agents": ["יאיר"], "side1": "מוכר", "side2": "", "price": "1890000", "notes": "אילנות"},
+    {"agents": ["יאיר"], "side1": "מוכר וקונה", "side2": "", "price": "1000000", "notes": "מרדכי נמיר"},
+    {"agents": ["קובי"], "side1": "קונה", "side2": "", "price": "4200000", "notes": "פנטהאוז קדם"},
+    {"agents": ["ליקה"], "side1": "", "side2": "", "price": "1950000", "notes": "עפרה חזה 11"},
+    {"agents": ["ליקה", "אלעד"], "side1": "מוכר", "side2": "קונה", "price": "", "notes": "נעמי שמר 38"},
+    {"agents": ["חי"], "side1": "מוכר", "side2": "", "price": "1450000", "notes": "ורד 29"},
+    {"agents": ["חי"], "side1": "קונה", "side2": "", "price": "1688000", "notes": "אהוד מנור 15"},
+    {"agents": ["רויטל", "צדוק"], "side1": "קונה", "side2": "מוכר", "price": "1250000", "notes": "ציזלינג 36"},
+]
+@app.route("/api/deals/import", methods=["POST"])
+def api_deals_import():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    if s["role"] not in ("admin", "coordinator"):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    with _deals_lock:
+        items = _deals_load()
+        if any(it.get("src") == "reminders" for it in items):
+            return jsonify({"ok": True, "already": True, "count": 0})
+        now = time.time()
+        for i, r in enumerate(_DEALS_SEED):
+            items.append({
+                "id": str(int(now * 1000)) + str(1000 + i),
+                "agents": r["agents"], "side1": r.get("side1", ""), "side2": r.get("side2", ""),
+                "notes": r.get("notes", ""), "price": r.get("price", ""), "lawyers": "",
+                "deal": False, "sale_price": "", "close_date": "",
+                "src": "reminders", "by": s["name"], "created": time.strftime("%d/%m/%Y"),
+                "ts": now - i,
+            })
+        _deals_save_all(items)
+    return jsonify({"ok": True, "count": len(_DEALS_SEED)})
 
 @app.route("/api/deals/delete", methods=["POST"])
 def api_deals_delete():
@@ -6617,12 +6660,21 @@ function viewDeals(){
     '<input id=dlq placeholder="חיפוש: סוכן / הערות / מחיר" oninput="renderDeals()">'+
     '<div class=dlbtns><button class=searchbtn onclick="dealForm(\'\',false)">➕ הוסף תהליך</button>'+
     '<button class=sec onclick="dealForm(\'\',true)">➕ הוסף עסקה</button></div>'+
+    '<div id=dlimport></div>'+
     '<div id=dlist><div class=muted>טוען…</div></div></div>';
   if(DEALS)renderDeals(); else loadDeals();
+}
+function dealsImport(){
+  if(!confirm("לייבא את 16 התהליכים מהתזכורות? (פעם אחת)"))return;
+  api("/api/deals/import",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(function(r){
+    if(r&&r.ok){alert(r.already?"כבר יובאו בעבר":("יובאו "+r.count+" תהליכים ✅"));loadDeals();}
+    else alert("ייבוא נכשל"+(r&&r.reason?" ("+r.reason+")":""));
+  }).catch(function(){alert("שגיאת רשת");});
 }
 function _ils(n){n=(""+(n||"")).replace(/[^\d]/g,"");return n?("₪"+n.replace(/\B(?=(\d{3})+(?!\d))/g,",")):"";}
 function renderDeals(){
   if(TABNOW!="deals"||!DEALS||!$("dlist"))return;
+  var imp=$("dlimport");if(imp)imp.innerHTML=((DEALS.role=="admin"||DEALS.role=="coordinator")&&!DEALS.imported)?'<button class="dlbtn dlmove" style="margin-bottom:8px" onclick="dealsImport()">⤓ ייבא 16 תהליכים מהתזכורות (פעם אחת)</button>':"";
   var q=($("dlq")?$("dlq").value.trim():"");
   var items=(DEALS.items||[]).filter(function(it){if(!q)return true;var hay=((it.agents||[]).join(" ")+" "+(it.notes||"")+" "+(it.price||"")+" "+(it.sale_price||""));return hay.indexOf(q)>-1;});
   var procs=items.filter(function(it){return !it.deal;}),deals=items.filter(function(it){return it.deal;});
@@ -6656,7 +6708,7 @@ function dealForm(id,isDeal){
   var a1=(it&&it.agents&&it.agents[0])||(D.name||"");
   var a2=(it&&it.agents&&it.agents[1])||"";
   var dl='<datalist id=dfaglist>'+ags.map(function(x){return '<option value="'+esc(x)+'">';}).join("")+'</datalist>';
-  function sideOpt(v){return '<option value="">—</option><option value="קונה"'+(v=="קונה"?" selected":"")+'>מייצגים קונה</option><option value="מוכר"'+(v=="מוכר"?" selected":"")+'>מייצגים מוכר</option>';}
+  function sideOpt(v){return '<option value="">—</option><option value="קונה"'+(v=="קונה"?" selected":"")+'>מייצגים קונה</option><option value="מוכר"'+(v=="מוכר"?" selected":"")+'>מייצגים מוכר</option><option value="מוכר וקונה"'+(v=="מוכר וקונה"?" selected":"")+'>מוכר וקונה</option>';}
   var df=isDeal?('<label>מחיר מכירה<input id=dfsp inputmode=numeric value="'+esc((it&&it.sale_price)||(it&&it.price)||"")+'"></label><label>תאריך סגירה<input id=dfcd type=date value="'+esc((it&&it.close_date)||"")+'"></label>'):'';
   var ov=document.createElement("div");ov.id="dfovl";ov.className="ovl";
   ov.innerHTML='<div class="ovlbox dlf"><h3 style="margin:0 0 6px">'+(isDeal?"💰 עסקה":"🔄 תהליך")+(id?" — עריכה":(isDeal?" חדשה":" חדש"))+'</h3>'+dl+
