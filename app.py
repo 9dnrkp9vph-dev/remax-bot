@@ -4371,6 +4371,7 @@ def api_signatures():
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"], "signatures": sig_out})
 
 # ── תהליכים ועסקאות (אחסון מקומי בדיסק — ללא Google) ───────────────────────────
+import os as _os2, threading as _th, json as _j2  # כינויים (מוגדרים כאן כי בלוק זה רץ לפני בלוק המפה)
 _DEALS_PATH = _os2.path.join(_os2.environ.get("MAP_CACHE_DIR", "") or _os2.path.dirname(__file__), "deals.json")
 _deals_lock = _th.Lock()
 def _deals_load():
