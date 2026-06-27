@@ -6711,7 +6711,9 @@ function renderDeals(){
   var imp=$("dlimport");if(imp)imp.innerHTML=(DEALS.role=="admin"||DEALS.role=="coordinator")?('<button class="dlbtn dlmove" style="margin-bottom:8px" onclick="dealsImport()">⤓ '+(DEALS.imported?"רענן ייבוא עסקאות 2026":"ייבא תהליכים + עסקאות 2026")+'</button>'):"";
   var q=($("dlq")?$("dlq").value.trim():"");
   var items=(DEALS.items||[]).filter(function(it){if(!q)return true;var hay=((it.agents||[]).join(" ")+" "+(it.notes||"")+" "+(it.price||"")+" "+(it.sale_price||""));return hay.indexOf(q)>-1;});
-  var procs=items.filter(function(it){return !it.deal;}),deals=items.filter(function(it){return it.deal;});
+  function _dp(s){var m=/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(""+(s||""));if(!m)return 0;var y=+m[3];if(y<100)y+=2000;return y*10000+(+m[2])*100+(+m[1]);}
+  var procs=items.filter(function(it){return !it.deal;}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+  var deals=items.filter(function(it){return it.deal;}).sort(function(a,b){return _dp(b.close_date||b.created)-_dp(a.close_date||a.created);});
   function _sides(arr){var n=0;arr.forEach(function(it){var two=(it.side1&&it.side2)||it.side1=="מוכר וקונה"||it.side2=="מוכר וקונה";n+=two?2:1;});return n;}
   var h="<div class=bresh>🔄 תהליכים ("+_sides(procs)+")</div>";
   h+=procs.length?procs.map(dealCard).join(""):"<div class=muted style=margin:4px_0_12px>אין תהליכים פעילים</div>";
