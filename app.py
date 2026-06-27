@@ -5162,14 +5162,15 @@ def api_map_properties():
         ll=_mlookup(f"{street} {house}, {city}".strip())
         if ll and _MBB[0]<=ll[0]<=_MBB[1] and _MBB[2]<=ll[1]<=_MBB[3]:
             out.append({"t":"office","a":f"{street} {house}".strip(),"c":city,"p":_mnb(r.get("מחיר","")),
-                "r":_mnb(r.get("חדרים","")),"g":_mnb(r.get("סוכן 1","")),"l":"","lat":round(ll[0],5),"lng":round(ll[1],5)})
+                "r":_mnb(r.get("חדרים","")),"z":_mnb(r.get('מ"ר',"") or r.get("מ״ר","")),"fl":_mnb(r.get("קומה","")),
+                "g":_mnb(r.get("סוכן 1","")),"l":"","d":(r.get("_desc_ae","") or "").strip(),"lat":round(ll[0],5),"lng":round(ll[1],5)})
     for r in fetch_external_exclusives():  # שת"פ — כל הנכסים (ללא סינון תאריך)
         raw=_mnb(r.get("street",""))
         if not raw: continue
         sp,city=_mcoop(raw); ll=_mlookup(f"{sp}, {city}" if city else sp)
         if ll and _MBB[0]<=ll[0]<=_MBB[1] and _MBB[2]<=ll[1]<=_MBB[3]:
             out.append({"t":"coop","a":sp,"c":city,"p":_mnb(r.get("price","")),"r":"",
-                "g":_mnb(r.get("office","")),"l":_mnb(r.get("link","")),"lat":round(ll[0],5),"lng":round(ll[1],5)})
+                "g":_mnb(r.get("office","")),"l":_mnb(r.get("link","")),"d":(r.get("desti","") or r.get("dest","") or "").strip(),"lat":round(ll[0],5),"lng":round(ll[1],5)})
     _cache_put("map_props",out)
     return jsonify({"ok":True,"items":out})
 
@@ -7076,12 +7077,8 @@ function mapRender(){
     var selEl=document.getElementById("mapcity"),city=selEl?selEl.value:"";
     MAP_PTS.forEach(function(p){
       if(MAP_FILT!="all"&&p.t!=MAP_FILT)return; if(city&&p.c!=city)return;
-      var col=p.t=="office"?"#003DA5":"#C9972A";
       var m=L.marker([p.lat,p.lng],{icon:mapIcon(p.t)});
-      var pn=(""+(p.p||"")).replace(/[^\d]/g,"");
-      var pr=pn?('<div class="mpr"><span>₪</span>'+pn.replace(/\B(?=(\d{3})+(?!\d))/g,",")+'</div>'):"";
-      var link=p.l?'<a href="'+p.l+'" target="_blank">צפייה במודעה ↗</a>':"";
-      m.bindPopup('<div class="mpp"><span class="mbadge" style="background:'+col+'">'+(p.t=="office"?"נכס משרד":"שת\"פ")+'</span><br><b>'+p.a+'</b><div class="mmeta">'+(p.c||"")+(p.r?" · "+p.r+" חד'":"")+'</div>'+pr+(p.g?'<div class="mmeta">'+p.g+'</div>':"")+link+'</div>');
+      m.bindPopup(_mapPopupHTML(p,p.t));
       _mapCluster.addLayer(m);b.push([p.lat,p.lng]);n++;
     });
   }
@@ -7244,17 +7241,18 @@ function _buildMapResults(r,kind){   /* המפה = תוצאות החיפוש (ז
 }
 function _mapPopupHTML(p,t){
   var col=t=="office"?"#003DA5":"#C9972A", badge=t=="office"?"נכס משרד":'שת"פ';
-  var addr=p.address||p.street||"";
-  var meta=[(p.rooms?p.rooms+" חד'":""),(p.size?p.size+' מ"ר':""),((""+(p.floor||"")).trim()!==""?"קומה "+p.floor:"")].filter(Boolean).join(" · ");
-  var pn=(""+(p.price||"")).replace(/[^\d]/g,"");
+  var addr=p.address||p.street||p.a||"";   // תומך גם בפריטי המפה (מפתחות קצרים) וגם בתוצאות חיפוש
+  var city=p.city||p.c||"", rooms=p.rooms||p.r||"", size=p.size||p.z||"", floor=(""+(p.floor||p.fl||"")).trim();
+  var meta=[(rooms?rooms+" חד'":""),(size?size+' מ"ר':""),(floor!==""?"קומה "+floor:"")].filter(Boolean).join(" · ");
+  var pn=(""+(p.price||p.p||"")).replace(/[^\d]/g,"");
   var pr=pn?('<div class="mpr"><span>₪</span>'+pn.replace(/\B(?=(\d{3})+(?!\d))/g,",")+'</div>'):"";
-  var ag=(p.agent||p.office||""), desc=((p.desc||"")+"").trim(), dhtml="";
+  var ag=(p.agent||p.office||p.g||""), desc=((p.desc||p.d||"")+"").trim(), dhtml="";
   if(desc){
     dhtml=(desc.length>90)
       ?('<details class="mdesc"><summary>'+esc(desc.slice(0,90))+' … <span class="mmore">עוד ▾</span></summary>'+esc(desc.slice(90))+'</details>')
       :('<div class="mdesc">'+esc(desc)+'</div>');}
-  var link=p.link?('<a href="'+p.link+'" target="_blank">צפייה במודעה ↗</a>'):'';
-  return '<div class="mpp"><span class="mbadge" style="background:'+col+'">'+badge+'</span><br><b>'+esc(addr)+'</b><div class="mmeta">'+esc(p.city||"")+(meta?(" · "+meta):"")+'</div>'+pr+(ag?'<div class="mmeta">'+esc(ag)+'</div>':'')+dhtml+link+'</div>';
+  var lk=p.link||p.l||"", link=lk?('<a href="'+lk+'" target="_blank">צפייה במודעה ↗</a>'):'';
+  return '<div class="mpp"><span class="mbadge" style="background:'+col+'">'+badge+'</span><br><b>'+esc(addr)+'</b><div class="mmeta">'+esc(city)+(meta?(" · "+meta):"")+'</div>'+pr+(ag?'<div class="mmeta">'+esc(ag)+'</div>':'')+dhtml+link+'</div>';
 }
 function _mapMore(el){var f=decodeURIComponent(el.getAttribute("data-full")||"");el.parentNode.textContent=f;}
 function doSearch(ep,kind){
