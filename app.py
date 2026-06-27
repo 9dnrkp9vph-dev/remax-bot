@@ -6708,7 +6708,7 @@ function dealsImport(){
 function _ils(n){n=(""+(n||"")).replace(/[^\d]/g,"");return n?("₪"+n.replace(/\B(?=(\d{3})+(?!\d))/g,",")):"";}
 function renderDeals(){
   if(TABNOW!="deals"||!DEALS||!$("dlist"))return;
-  var imp=$("dlimport");if(imp)imp.innerHTML=(DEALS.role=="admin"||DEALS.role=="coordinator")?('<button class="dlbtn dlmove" style="margin-bottom:8px" onclick="dealsImport()">⤓ '+(DEALS.imported?"רענן ייבוא עסקאות 2026":"ייבא תהליכים + עסקאות 2026")+'</button>'):"";
+  var imp=$("dlimport");if(imp)imp.innerHTML=((DEALS.role=="admin"||DEALS.role=="coordinator")&&!DEALS.imported)?'<button class="dlbtn dlmove" style="margin-bottom:8px" onclick="dealsImport()">⤓ ייבא תהליכים + עסקאות 2026</button>':"";
   var q=($("dlq")?$("dlq").value.trim():"");
   var items=(DEALS.items||[]).filter(function(it){if(!q)return true;var hay=((it.agents||[]).join(" ")+" "+(it.notes||"")+" "+(it.price||"")+" "+(it.sale_price||""));return hay.indexOf(q)>-1;});
   function _dp(s){var m=/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(""+(s||""));if(!m)return 0;var y=+m[3];if(y<100)y+=2000;return y*10000+(+m[2])*100+(+m[1]);}
