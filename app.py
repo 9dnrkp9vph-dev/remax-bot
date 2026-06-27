@@ -4315,6 +4315,50 @@ def api_history():
                     "drole": s.get("drole", ""), "tabs": _tabs_for_role(s.get("drole", "")),
                     "vphone": vphone, "calls": call_out, "signatures": sig_out})
 
+@app.route("/api/signatures", methods=["GET"])
+def api_signatures():
+    """חתימות בלבד — קליל ומהיר (לא מושך/מעבד את כל השיחות כמו /api/history)."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    eff = s
+    if s["role"] == "admin":
+        as_name = request.args.get("as", "").strip()
+        if as_name:
+            phones = _phones_for_name(as_name)
+            if phones:
+                eff = {"role": "agent", "name": as_name, "phones": phones}
+    sigs = get_signings()
+    if eff["role"] == "coordinator":
+        names = set(_canon_key(n) for n in (eff.get("agent_names") or []))
+        for a in (eff.get("agents") or []):
+            nm = _canon_key(web_phone_name_map().get(a, ""))
+            if nm: names.add(nm)
+        names.discard("")
+        sigs = [g for g in sigs if _canon_key(g.get("agent", "")) in names]
+    elif eff["role"] != "admin":
+        _team = _team_for(eff["name"])
+        if _team:
+            _tphones, tkeys = _team
+            sigs = [g for g in sigs if _canon_key(g.get("agent", "")) in tkeys]
+        else:
+            nm = _canon_key(eff["name"])
+            sigs = [g for g in sigs if _canon_key(g.get("agent", "")) == nm]
+    sigs.sort(key=lambda g: _excl_epoch(g.get("received_at", "")), reverse=True)
+    sig_out = [{
+        "time": (_fmt_il_dt(g.get("received_at", "")) or str(g.get("received_at", "") or "").strip()),
+        "type": _deal_label(g.get("deal_type", "")),
+        "client": (g.get("client_name", "") or "").strip(),
+        "address": ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x]),
+        "pct": _web_valid_pct(g.get("commission_pct")),
+        "link": (str(g.get("commission_pct")).strip()
+                 if isinstance(g.get("commission_pct"), str) and re.search(r"https?://", str(g.get("commission_pct"))) else ""),
+        "agent": (g.get("agent", "") or "").strip(),
+        "ts": _excl_epoch(g.get("received_at", "")),
+        "eid": str(g.get("event_id", "") or "").strip(),
+        "raw": str(g.get("received_at", "") or "").strip(),
+    } for g in sigs[:500]]
+    return jsonify({"ok": True, "role": eff["role"], "name": eff["name"], "signatures": sig_out})
+
 # ── Activity log (admin only) ──────────────────────────────────────────────────
 @app.route("/api/recent", methods=["GET", "POST"])
 def api_recent():
@@ -6784,7 +6828,7 @@ function sigDelete(eid,raw,client){
   }).catch(function(){alert("שגיאת רשת");});}
 function sigTag(t){t=String(t||"");if(/בלעד/.test(t))return {cls:"t-excl",excl:true};if(/מוכר|מכיר|בעל/.test(t))return {cls:"t-seller",excl:false};if(/שכיר/.test(t))return {cls:"t-rent",excl:false};return {cls:"t-buyer",excl:false};}
 function loadSigs(){if(SIGDATA)renderSigs();
-  api("/api/history"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
+  api("/api/signatures"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
     if(!r.ok){relogin();return;}
     SIGDATA=r;renderSigs();
   }).catch(function(){});}
