@@ -4413,6 +4413,8 @@ def api_deals_save():
     agents = [str(a).strip() for a in (b.get("agents") or []) if str(a).strip()][:2]
     if not agents and s["role"] not in ("admin", "coordinator"):
         agents = [s["name"]]
+    if not agents or not str(b.get("notes", "") or "").strip():
+        return jsonify({"ok": False, "reason": "חובה סוכן וכתובת"}), 400
     with _deals_lock:
         items = _deals_load()
         iid = str(b.get("id", "") or "").strip()
@@ -6679,7 +6681,9 @@ function dfClose(){var o=$("dfovl");if(o)o.remove();
 function dealSave(){
   var a1=($("dfa1")?$("dfa1").value:"").trim(),a2=($("dfa2")?$("dfa2").value:"").trim(),agents=[];
   if(a1)agents.push(a1); if(a2&&a2!=a1)agents.push(a2);
-  var body={id:$("dfid").value,deal:!!$("dfdeal").value,agents:agents,price:$("dfp").value.trim(),notes:$("dfn").value.trim(),side1:($("dfs1")?$("dfs1").value:""),side2:($("dfs2")?$("dfs2").value:""),lawyers:($("dflaw")?$("dflaw").value.trim():"")};
+  var addr=$("dfn").value.trim();
+  if(!agents.length||!addr){alert("חובה להזין לפחות שם סוכן וכתובת");return;}
+  var body={id:$("dfid").value,deal:!!$("dfdeal").value,agents:agents,price:$("dfp").value.trim(),notes:addr,side1:($("dfs1")?$("dfs1").value:""),side2:($("dfs2")?$("dfs2").value:""),lawyers:($("dflaw")?$("dflaw").value.trim():"")};
   if($("dfsp"))body.sale_price=$("dfsp").value.trim();
   if($("dfcd"))body.close_date=$("dfcd").value.trim();
   api("/api/deals/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){
