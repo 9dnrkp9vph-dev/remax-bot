@@ -4393,6 +4393,20 @@ def _deals_can_see(item, s):
     nm = _canon_key(s.get("name", ""))
     ags = [_canon_key(a) for a in (item.get("agents") or [])]
     return (nm in ags) or (_canon_key(item.get("by", "")) == nm)
+def _deals_notify(rec, is_new=False, became_deal=False):
+    """פוש: עסקה חדשה (חדשה או תהליך שהפך לעסקה) → לכל הסוכנים; תהליך חדש → למנהלים בלבד."""
+    try:
+        addr = (rec.get("notes", "") or "נכס").strip()
+        if rec.get("deal") and (is_new or became_deal):
+            price = (rec.get("sale_price", "") or rec.get("price", "") or "").strip()
+            body = addr + (" · ₪" + price if price else "")
+            _th.Thread(target=lambda: send_push("עסקה חדשה 🎉", body, list(_all_agent_push_ids())), daemon=True).start()
+        elif (not rec.get("deal")) and is_new:
+            ag = " + ".join([a for a in (rec.get("agents") or []) if a])
+            body = (ag + " · " if ag else "") + addr
+            _th.Thread(target=lambda: send_push("תהליך חדש 📋", body, list(_manager_push_ids())), daemon=True).start()
+    except Exception:
+        pass
 
 @app.route("/api/deals", methods=["GET"])
 def api_deals():
@@ -4428,6 +4442,7 @@ def api_deals_save():
         existing = next((it for it in items if it.get("id") == iid), None) if iid else None
         if existing and not _deals_can_see(existing, s):
             return jsonify({"ok": False, "reason": "forbidden"}), 403
+        _was_deal = bool(existing.get("deal")) if existing else False
         rec = {
             "id": iid or (str(int(time.time() * 1000)) + str(_secrets.randbelow(1000))),
             "agents": agents,
@@ -4451,6 +4466,7 @@ def api_deals_save():
             rec["by"] = s["name"]
             items.append(rec)
         _deals_save_all(items)
+    _deals_notify(rec, is_new=(not existing), became_deal=(bool(existing) and (not _was_deal) and bool(rec.get("deal"))))
     return jsonify({"ok": True, "id": rec["id"]})
 
 _DEALS_SEED = [
@@ -7143,7 +7159,7 @@ function viewSearch(kind){
   var cfg={props:{t:"🏢 נכסים במשרד",ph:"דירת 4 חדרים בקרית ביאליק עד 2 מיליון",ep:"/api/search/properties"},
            excl:{t:"🏘️ נכסים בשת״פ",ph:"דירת 5 חדרים באפקה",ep:"/api/search/exclusives"},
            buyers:{t:"👤 הקונים שלי",ph:"4 חדרים תקציב 2 מיליון",ep:"/api/search/buyers"}}[kind];
-  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button class=searchbtn onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button>'+(kind=="buyers"?' <button class=sec onclick=openBuyerForm({})>➕ הוסף קונה</button>':'')+'<div id=recent></div><div id=sres></div>'+(kind=="props"?'<div id=myprops></div>':'')+(kind=="buyers"?'<div id=mybuyers></div>':'')+'</div>';
+  $("view").innerHTML='<div class=card><h2>'+cfg.t+'</h2><input id=sq placeholder="'+cfg.ph+'"><button class=searchbtn onclick=doSearch("'+cfg.ep+'","'+kind+'")>חיפוש</button>'+((kind=="props"||kind=="excl")?('<div class=maprow><span class="mapbtn" onclick="openMap(\'\',\''+(kind=="props"?"office":"coop")+'\')"><svg viewBox="0 0 24 24"><path d="M12 21s7-7.2 7-12a7 7 0 1 0-14 0c0 4.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>הצג את כל הנכסים במפה</span></div>'):'')+(kind=="buyers"?' <button class=sec onclick=openBuyerForm({})>➕ הוסף קונה</button>':'')+'<div id=recent></div><div id=sres></div>'+(kind=="props"?'<div id=myprops></div>':'')+(kind=="buyers"?'<div id=mybuyers></div>':'')+'</div>';
   CUR_EP=cfg.ep;CUR_KIND=kind;
   if(kind=="props"||kind=="excl")loadRecent(kind);
   if(kind=="props")loadMyProps();
@@ -7537,7 +7553,7 @@ function doSearch(ep,kind){
     window._lastSearchQ=(r.summary||q||"");
     window._mapResults=_buildMapResults(r,kind);
     var h=r.summary?("<div class=muted style=margin:6px_0>"+esc(r.summary)+"</div>"):"";
-    if(kind=="props"||kind=="excl")h+='<div class="maprow">'+_mapBtnHTML(kind)+'</div>';
+    if((kind=="props"||kind=="excl")&&q)h+='<div class="maprow">'+_mapBtnHTML(kind)+'</div>';
     h+=r.results.map(function(x){return card(kind,x);}).join("");
     $("sres").innerHTML=h;shareUpd();
     if(kind=="props"||kind=="excl")loadRecent(kind);
