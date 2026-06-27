@@ -4423,7 +4423,9 @@ def api_deals_save():
             "id": iid or (str(int(time.time() * 1000)) + str(_secrets.randbelow(1000))),
             "agents": agents,
             "notes": str(b.get("notes", "") or "").strip(),
-            "side": str(b.get("side", "") or "").strip(),
+            "side1": str(b.get("side1", "") or "").strip(),
+            "side2": str(b.get("side2", "") or "").strip(),
+            "lawyers": str(b.get("lawyers", "") or "").strip(),
             "price": str(b.get("price", "") or "").strip(),
             "deal": bool(b.get("deal")),
             "sale_price": str(b.get("sale_price", "") or "").strip(),
@@ -6629,10 +6631,12 @@ function renderDeals(){
   $("dlist").innerHTML=h;
 }
 function dealCard(it){
-  var ag=(it.agents||[]).filter(Boolean).join(" + ")||"—";
-  var h="<div class=dlmeta>👤 "+esc(ag)+(it.created?(" · "+esc(it.created)):"")+"</div>";
-  if(it.side)h+="<div class=dlmeta>🤝 מייצגים "+esc(it.side)+"</div>";
+  var A=it.agents||[],parts=[];
+  if(A[0])parts.push(esc(A[0])+((it.side1||it.side)?(" — "+esc(it.side1||it.side)):""));
+  if(A[1])parts.push(esc(A[1])+(it.side2?(" — "+esc(it.side2)):""));
+  var h="<div class=dlmeta>👤 "+(parts.join(" · ")||"—")+(it.created?(" · "+esc(it.created)):"")+"</div>";
   if(it.notes)h+="<div class=dlmeta>📍 "+esc(it.notes)+"</div>";
+  if(it.lawyers)h+="<div class=dlmeta>⚖️ עו״ד: "+esc(it.lawyers)+"</div>";
   if(it.deal){
     if(it.sale_price)h+="<div class=dlprice>"+_ils(it.sale_price)+" <span class=muted style=font-weight:600>· מחיר מכירה</span></div>";
     if(it.close_date)h+="<div class=dlmeta>📅 נסגר: "+esc(it.close_date)+"</div>";
@@ -6655,10 +6659,12 @@ function dealForm(id,isDeal){
   var ov=document.createElement("div");ov.id="dfovl";ov.className="ovl";
   ov.innerHTML='<div class="ovlbox dlf"><h3 style="margin:0 0 6px">'+(isDeal?"💰 עסקה":"🔄 תהליך")+(id?" — עריכה":" חדש")+'</h3>'+dl+
     '<label>סוכן<input id=dfa1 list=dfaglist autocomplete=off placeholder="הקלד או בחר סוכן" value="'+esc(a1)+'"></label>'+
-    '<label>סוכן 2 (לא חובה)<input id=dfa2 list=dfaglist autocomplete=off placeholder="הקלד או בחר סוכן" value="'+esc(a2)+'"></label>'+
-    '<label>מייצגים<select id=dfside>'+sideOpt((it&&it.side)||"")+'</select></label>'+
+    '<label>מייצג<select id=dfs1>'+sideOpt((it&&it.side1)||(it&&it.side)||"")+'</select></label>'+
+    '<label>סוכן 2<input id=dfa2 list=dfaglist autocomplete=off placeholder="הקלד או בחר סוכן" value="'+esc(a2)+'"></label>'+
+    '<label>מייצג<select id=dfs2>'+sideOpt((it&&it.side2)||"")+'</select></label>'+
     '<label>מחיר '+(isDeal?"מבוקש (לא חובה)":"")+'<input id=dfp inputmode=numeric value="'+esc((it&&it.price)||"")+'"></label>'+df+
     '<label>כתובת<input id=dfn placeholder="כתובת הנכס" value="'+esc((it&&it.notes)||"")+'"></label>'+
+    '<label>עורכי דין<input id=dflaw placeholder="שם עו״ד / משרד" value="'+esc((it&&it.lawyers)||"")+'"></label>'+
     '<input type=hidden id=dfid value="'+(id||"")+'"><input type=hidden id=dfdeal value="'+(isDeal?"1":"")+'">'+
     '<div class=dlbtns style="margin-top:12px"><button class=searchbtn onclick="dealSave()">שמירה</button><button class=sec onclick="dfClose()">ביטול</button></div></div>';
   ov.onclick=function(e){if(e.target===ov)dfClose();};
@@ -6669,7 +6675,7 @@ function dfClose(){var o=$("dfovl");if(o)o.remove();document.body.style.overflow
 function dealSave(){
   var a1=($("dfa1")?$("dfa1").value:"").trim(),a2=($("dfa2")?$("dfa2").value:"").trim(),agents=[];
   if(a1)agents.push(a1); if(a2&&a2!=a1)agents.push(a2);
-  var body={id:$("dfid").value,deal:!!$("dfdeal").value,agents:agents,price:$("dfp").value.trim(),notes:$("dfn").value.trim(),side:($("dfside")?$("dfside").value:"")};
+  var body={id:$("dfid").value,deal:!!$("dfdeal").value,agents:agents,price:$("dfp").value.trim(),notes:$("dfn").value.trim(),side1:($("dfs1")?$("dfs1").value:""),side2:($("dfs2")?$("dfs2").value:""),lawyers:($("dflaw")?$("dflaw").value.trim():"")};
   if($("dfsp"))body.sale_price=$("dfsp").value.trim();
   if($("dfcd"))body.close_date=$("dfcd").value.trim();
   api("/api/deals/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){
