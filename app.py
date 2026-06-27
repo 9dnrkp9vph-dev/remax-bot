@@ -4409,7 +4409,7 @@ def api_deals():
     agents = sorted(set(n for n in web_phone_name_map().values() if n and n.strip()))
     if s["name"] and s["name"] not in agents:
         agents = [s["name"]] + agents
-    imported = any(it.get("src") == "reminders" for it in all_items)
+    imported = any(it.get("src") == "reminders" for it in all_items) and any(it.get("src") == "sales2026" for it in all_items)
     return jsonify({"ok": True, "role": s["role"], "name": eff["name"], "items": items, "agents": agents, "imported": imported})
 
 @app.route("/api/deals/save", methods=["POST"])
@@ -4471,6 +4471,10 @@ _DEALS_SEED = [
     {"agents": ["חי"], "side1": "קונה", "side2": "", "price": "1688000", "notes": "אהוד מנור 15"},
     {"agents": ["רויטל", "צדוק"], "side1": "קונה", "side2": "מוכר", "price": "1250000", "notes": "ציזלינג 36"},
 ]
+try:
+    _SALES_SEED = _j2.load(open(_os2.path.join(_os2.path.dirname(__file__), "sales_seed_2026.json"), encoding="utf-8"))  # עסקאות 2026 מקובץ המעקב
+except Exception:
+    _SALES_SEED = []
 @app.route("/api/deals/import", methods=["POST"])
 def api_deals_import():
     s = _web_auth()
@@ -4489,22 +4493,33 @@ def api_deals_import():
             if f == short or (parts and (parts[0] == short or short in parts)):
                 return full
         return short
+    added = 0
     with _deals_lock:
         items = _deals_load()
-        if any(it.get("src") == "reminders" for it in items):
-            return jsonify({"ok": True, "already": True, "count": 0})
         now = time.time()
-        for i, r in enumerate(_DEALS_SEED):
-            items.append({
-                "id": str(int(now * 1000)) + str(1000 + i),
-                "agents": [_map_agent(a) for a in r["agents"]], "side1": r.get("side1", ""), "side2": r.get("side2", ""),
-                "notes": r.get("notes", ""), "price": r.get("price", ""), "lawyers": "",
-                "deal": False, "sale_price": "", "close_date": "",
-                "src": "reminders", "by": s["name"], "created": time.strftime("%d/%m/%Y"),
-                "ts": now - i,
-            })
-        _deals_save_all(items)
-    return jsonify({"ok": True, "count": len(_DEALS_SEED)})
+        if not any(it.get("src") == "reminders" for it in items):   # תהליכים מהתזכורות
+            for i, r in enumerate(_DEALS_SEED):
+                items.append({
+                    "id": str(int(now * 1000)) + str(1000 + i),
+                    "agents": [_map_agent(a) for a in r["agents"]], "side1": r.get("side1", ""), "side2": r.get("side2", ""),
+                    "notes": r.get("notes", ""), "price": r.get("price", ""), "lawyers": "",
+                    "deal": False, "sale_price": "", "close_date": "",
+                    "src": "reminders", "by": s["name"], "created": time.strftime("%d/%m/%Y"), "ts": now - i,
+                })
+                added += 1
+        if not any(it.get("src") == "sales2026" for it in items):   # עסקאות 2026 מקובץ המעקב
+            for i, r in enumerate(_SALES_SEED):
+                items.append({
+                    "id": str(int(now * 1000)) + str(5000 + i),
+                    "agents": [_map_agent(a) for a in (r.get("agents") or [])], "side1": r.get("side1", ""), "side2": r.get("side2", ""),
+                    "notes": r.get("notes", ""), "price": "", "lawyers": "",
+                    "deal": True, "sale_price": r.get("sale_price", ""), "close_date": r.get("close_date", ""),
+                    "src": "sales2026", "by": s["name"], "created": r.get("close_date", "") or time.strftime("%d/%m/%Y"), "ts": now - 1000 - i,
+                })
+                added += 1
+        if added:
+            _deals_save_all(items)
+    return jsonify({"ok": True, "count": added, "already": (added == 0)})
 
 @app.route("/api/deals/delete", methods=["POST"])
 def api_deals_delete():
@@ -6682,16 +6697,16 @@ function viewDeals(){
   if(DEALS)renderDeals(); else loadDeals();
 }
 function dealsImport(){
-  if(!confirm("לייבא את 16 התהליכים מהתזכורות? (פעם אחת)"))return;
+  if(!confirm("לייבא תהליכים ועסקאות 2026? (פעם אחת)"))return;
   api("/api/deals/import",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}).then(function(r){
-    if(r&&r.ok){alert(r.already?"כבר יובאו בעבר":("יובאו "+r.count+" תהליכים ✅"));loadDeals();}
+    if(r&&r.ok){alert(r.already?"הכל כבר יובא בעבר":("יובאו "+r.count+" רשומות ✅"));loadDeals();}
     else alert("ייבוא נכשל"+(r&&r.reason?" ("+r.reason+")":""));
   }).catch(function(){alert("שגיאת רשת");});
 }
 function _ils(n){n=(""+(n||"")).replace(/[^\d]/g,"");return n?("₪"+n.replace(/\B(?=(\d{3})+(?!\d))/g,",")):"";}
 function renderDeals(){
   if(TABNOW!="deals"||!DEALS||!$("dlist"))return;
-  var imp=$("dlimport");if(imp)imp.innerHTML=((DEALS.role=="admin"||DEALS.role=="coordinator")&&!DEALS.imported)?'<button class="dlbtn dlmove" style="margin-bottom:8px" onclick="dealsImport()">⤓ ייבא 16 תהליכים מהתזכורות (פעם אחת)</button>':"";
+  var imp=$("dlimport");if(imp)imp.innerHTML=((DEALS.role=="admin"||DEALS.role=="coordinator")&&!DEALS.imported)?'<button class="dlbtn dlmove" style="margin-bottom:8px" onclick="dealsImport()">⤓ ייבא תהליכים + עסקאות 2026 (פעם אחת)</button>':"";
   var q=($("dlq")?$("dlq").value.trim():"");
   var items=(DEALS.items||[]).filter(function(it){if(!q)return true;var hay=((it.agents||[]).join(" ")+" "+(it.notes||"")+" "+(it.price||"")+" "+(it.sale_price||""));return hay.indexOf(q)>-1;});
   var procs=items.filter(function(it){return !it.deal;}),deals=items.filter(function(it){return it.deal;});
