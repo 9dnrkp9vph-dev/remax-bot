@@ -2040,7 +2040,8 @@ def score_exclusivity_match(row: dict, query: dict) -> int:
     # סוג נכס — סינון קשיח (זיהוי מתוך הטקסט, לשת"פ אין שדה סוג מסודר)
     q_pt = (query.get("property_type") or "").strip()
     if q_pt == "דירת גן":
-        if not re.search(r"גן|גינה|קרקע|קוטג|דו\s*משפח|קומה\s*0|קומת\s*קרקע", combined):
+        # רק ביטויים מפורשים של גן — לא "קרקע" בתוך "תת קרקעית" ולא "גן" בתוך "גני ילדים"
+        if not re.search(r"דיר[הת]\s*גן|דירות\s*גן|קומת\s*קרקע|בקרקע|קומה\s*0|קוטג|דו\s*משפח", combined):
             return 0
         score += 20
     elif q_pt in ("פנטהאוז", "גג", "מיני פנטהאוז"):
@@ -7049,7 +7050,7 @@ function mapBoot(){
   _mapCluster=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:48,spiderfyOnMaxZoom:true,
     iconCreateFunction:function(c){return L.divIcon({html:'<div class="mcl">'+c.getChildCount()+'</div>',className:'',iconSize:[38,38]});}});
   _mapObj.addLayer(_mapCluster);
-  _mapObj.on("popupopen",function(e){var el=(e.popup.getElement&&e.popup.getElement());if(!el)return;var mm=el.querySelector(".mmore");if(mm)mm.onclick=function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();var f=decodeURIComponent(mm.getAttribute("data-full")||"");mm.parentNode.textContent=f;try{e.popup.update();}catch(x){}};});
+  _mapObj.on("popupopen",function(e){var el=(e.popup.getElement&&e.popup.getElement());if(!el)return;var dt=el.querySelector("details.mdesc");if(dt&&!dt._wired){dt._wired=1;dt.addEventListener("toggle",function(){try{e.popup.update();}catch(x){}});}});
   setTimeout(function(){try{_mapObj.invalidateSize();}catch(e){}},180);
   api("/api/map/properties").then(function(r){
     MAP_PTS=(r&&r.items)?r.items:[];
@@ -7216,7 +7217,9 @@ var MAP_CSS='.mapovl{position:fixed;left:0;right:0;z-index:2000;background:trans
  '.mpp b{font-size:15px;color:#0D1B2A}.mmeta{color:#6b7280;font-weight:600;margin-top:2px}'+
  '.mpr{color:#0D1B2A;font-weight:900;font-size:16px;margin:5px 0}.mpr span{color:#C9972A}'+
  '.mpp a{display:inline-block;margin-top:7px;color:#003DA5;font-weight:800;text-decoration:none}'+
- '.mdesc{color:#374151;font-size:12.5px;margin-top:7px;line-height:1.45;max-width:240px}.mmore{color:#003DA5;font-weight:800;cursor:pointer;white-space:nowrap}';
+ '.mdesc{color:#374151;font-size:12.5px;margin-top:7px;line-height:1.45;max-width:240px}'+
+ '.mdesc summary{cursor:pointer;list-style:none}.mdesc summary::-webkit-details-marker{display:none}'+
+ '.mmore{color:#003DA5;font-weight:800;white-space:nowrap}';
 function loadRecent(kind){api("/api/recent?kind="+kind).then(function(r){
   var box=$("recent");if(!box)return;
   if(!r||!r.ok||!r.items.length){box.innerHTML="";return;}
@@ -7246,8 +7249,10 @@ function _mapPopupHTML(p,t){
   var pn=(""+(p.price||"")).replace(/[^\d]/g,"");
   var pr=pn?('<div class="mpr"><span>₪</span>'+pn.replace(/\B(?=(\d{3})+(?!\d))/g,",")+'</div>'):"";
   var ag=(p.agent||p.office||""), desc=((p.desc||"")+"").trim(), dhtml="";
-  if(desc){var s=desc.length>90?desc.slice(0,90):desc;
-    dhtml='<div class="mdesc">'+esc(s)+(desc.length>90?('<span class="mmore" data-full="'+encodeURIComponent(desc)+'"> … עוד ▾</span>'):'')+'</div>';}
+  if(desc){
+    dhtml=(desc.length>90)
+      ?('<details class="mdesc"><summary>'+esc(desc.slice(0,90))+' … <span class="mmore">עוד ▾</span></summary>'+esc(desc.slice(90))+'</details>')
+      :('<div class="mdesc">'+esc(desc)+'</div>');}
   var link=p.link?('<a href="'+p.link+'" target="_blank">צפייה במודעה ↗</a>'):'';
   return '<div class="mpp"><span class="mbadge" style="background:'+col+'">'+badge+'</span><br><b>'+esc(addr)+'</b><div class="mmeta">'+esc(p.city||"")+(meta?(" · "+meta):"")+'</div>'+pr+(ag?'<div class="mmeta">'+esc(ag)+'</div>':'')+dhtml+link+'</div>';
 }
