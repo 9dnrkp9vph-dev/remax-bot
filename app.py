@@ -1980,6 +1980,7 @@ def parse_exclusivity_search_query(text: str) -> dict:
 - neighborhoods: רשימת שכונות (אם ציינו יותר משכונה אחת) — אחרת null
 - rooms: מספר חדרים (מספר עשרוני) או null
 - budget_max: תקציב מקסימלי בש"ח כמספר (לדוגמה "עד 2 מיליון" → 2000000), או null
+- property_type: סוג נכס מנורמל, או null. קבוצת "גן" — "דירת גן"/"קרקע"/"קומת קרקע"/"קומה 0"/"קוטג'"/"מיני קוטג'" → "דירת גן". אחרת: "פנטהאוז"/"דירה" וכו'
 - summary_he: סיכום קצר בעברית של מה הסוכן מחפש"""
     try:
         r = requests.post("https://api.anthropic.com/v1/messages",
@@ -5492,7 +5493,7 @@ def api_search_exclusives():
                 "lat": round(_ll[0], 6) if _ll else None,
                 "lng": round(_ll[1], 6) if _ll else None,
             })
-        return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "results": out})
+        return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "ptype": parsed.get("property_type", ""), "results": out})
     except Exception as e:
         log.error(f"exclusives search error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -6994,6 +6995,7 @@ function mapBoot(){
   _mapCluster=L.markerClusterGroup({showCoverageOnHover:false,maxClusterRadius:48,spiderfyOnMaxZoom:true,
     iconCreateFunction:function(c){return L.divIcon({html:'<div class="mcl">'+c.getChildCount()+'</div>',className:'',iconSize:[38,38]});}});
   _mapObj.addLayer(_mapCluster);
+  _mapObj.on("popupopen",function(e){var el=(e.popup.getElement&&e.popup.getElement());if(!el)return;var mm=el.querySelector(".mmore");if(mm)mm.onclick=function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();var f=decodeURIComponent(mm.getAttribute("data-full")||"");mm.parentNode.textContent=f;try{e.popup.update();}catch(x){}};});
   setTimeout(function(){try{_mapObj.invalidateSize();}catch(e){}},180);
   api("/api/map/properties").then(function(r){
     MAP_PTS=(r&&r.items)?r.items:[];
@@ -7182,7 +7184,11 @@ function _mapBtnHTML(kind){return '<span class="mapbtn" onclick="openMap(window.
 function _buildMapResults(r,kind){   /* המפה מציירת את תוצאות החיפוש עצמן (עם קואורדינטות) — בחיפוש "דירת גן" רק גן/קרקע/קומה 0/קוטג' */
   var all=(r&&r.results)||[],list=all;
   if(r&&r.ptype==="דירת גן"){
-    var g=all.filter(function(y){var t=(y.type||""),fl=(""+(y.floor||"")).trim();return /גן|גינה|קרקע|קוטג|דו משפח/.test(t)||fl==="0";});
+    var g=all.filter(function(y){
+      var fl=(""+(y.floor||"")).trim();
+      var txt=((y.type||"")+" "+(y.dest||"")+" "+(y.desc||"")+" "+(y.street||""));  // משרד: type; שת"פ: טקסט חופשי
+      return /גן|גינה|קרקע|קוטג|דו משפח/.test(txt)||fl==="0"||/קומה\s*0|קומת קרקע/.test(txt);
+    });
     if(g.length)list=g;   // אם אין גן בכלל — לא משאירים מפה ריקה
   }
   var t=(kind=="props"?"office":"coop");
@@ -7196,7 +7202,7 @@ function _mapPopupHTML(p,t){
   var pr=pn?('<div class="mpr"><span>₪</span>'+pn.replace(/\B(?=(\d{3})+(?!\d))/g,",")+'</div>'):"";
   var ag=(p.agent||p.office||""), desc=((p.desc||"")+"").trim(), dhtml="";
   if(desc){var s=desc.length>90?desc.slice(0,90):desc;
-    dhtml='<div class="mdesc">'+esc(s)+(desc.length>90?('<span class="mmore" onclick="_mapMore(this)" data-full="'+encodeURIComponent(desc)+'"> … עוד ▾</span>'):'')+'</div>';}
+    dhtml='<div class="mdesc">'+esc(s)+(desc.length>90?('<span class="mmore" data-full="'+encodeURIComponent(desc)+'"> … עוד ▾</span>'):'')+'</div>';}
   var link=p.link?('<a href="'+p.link+'" target="_blank">צפייה במודעה ↗</a>'):'';
   return '<div class="mpp"><span class="mbadge" style="background:'+col+'">'+badge+'</span><br><b>'+esc(addr)+'</b><div class="mmeta">'+esc(p.city||"")+(meta?(" · "+meta):"")+'</div>'+pr+(ag?'<div class="mmeta">'+esc(ag)+'</div>':'')+dhtml+link+'</div>';
 }
