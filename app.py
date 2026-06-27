@@ -4398,14 +4398,19 @@ def _deals_can_see(item, s):
 def api_deals():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
+    eff = s
+    if s["role"] in ("admin", "coordinator"):
+        as_name = request.args.get("as", "").strip()
+        if as_name:
+            eff = {"role": "agent", "name": as_name}   # "צפה כסוכן" — רואים רק את התהליכים של אותו סוכן
     all_items = _deals_load()
-    items = [it for it in all_items if _deals_can_see(it, s)]
+    items = [it for it in all_items if _deals_can_see(it, eff)]
     items.sort(key=lambda it: it.get("ts", 0), reverse=True)
     agents = sorted(set(n for n in web_phone_name_map().values() if n and n.strip()))
     if s["name"] and s["name"] not in agents:
         agents = [s["name"]] + agents
     imported = any(it.get("src") == "reminders" for it in all_items)
-    return jsonify({"ok": True, "role": s["role"], "name": s["name"], "items": items, "agents": agents, "imported": imported})
+    return jsonify({"ok": True, "role": s["role"], "name": eff["name"], "items": items, "agents": agents, "imported": imported})
 
 @app.route("/api/deals/save", methods=["POST"])
 def api_deals_save():
@@ -6666,7 +6671,7 @@ window.addEventListener("focus",function(){setTimeout(snapBars,20);});
 function render(){if(TABNOW=="calls")viewCalls();else if(TABNOW=="sigs")viewSigs();else if(TABNOW=="activity")viewActivity();else if(TABNOW=="report")viewReport();else if(TABNOW=="newborn")viewNewborn();else if(TABNOW=="deals")viewDeals();else viewSearch(TABNOW);}
 /* ===== 📋 תהליכים ועסקאות ===== */
 var DEALS=null;
-function loadDeals(){api("/api/deals").then(function(r){if(!r||!r.ok){if(r&&r.auth===false)relogin();return;}DEALS=r;renderDeals();}).catch(function(){});}
+function loadDeals(){api("/api/deals"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){if(!r||!r.ok){if(r&&r.auth===false)relogin();return;}DEALS=r;renderDeals();}).catch(function(){});}
 function viewDeals(){
   $("view").innerHTML='<div class=card><h2>📋 תהליכים ועסקאות</h2>'+
     '<input id=dlq placeholder="חיפוש: סוכן / הערות / מחיר" oninput="renderDeals()">'+
@@ -6832,7 +6837,7 @@ function isMulti(){return (ROLE=="admin"||ROLE=="coordinator")&&!IMP;}
 function selfName(){return (typeof IMP!="undefined"&&IMP)?(IMPNAME||IMP):NAME;}
 function notSelf(n){var a=String(n||"").trim(),b=String(selfName()||"").trim();return !!a&&a!=b;}
 function scopeLabel(){if(IMP)return ' <span class=badge>👁 צופה כ: '+esc(IMPNAME)+'</span>';return ROLE=="admin"?' <span class=badge>כל הסוכנים</span>':(ROLE=="coordinator"?' <span class=badge>הסוכנים שלי</span>':' — '+esc(NAME));}
-function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}CALLDATA=null;SIGDATA=null;loadNbBanner();render();setTimeout(prewarm,200);}
+function setImp(v){IMP=v||null;IMPNAME=null;if(IMP){var sel=$("impsel");for(var i=0;i<sel.options.length;i++){if(sel.options[i].value==IMP){IMPNAME=sel.options[i].textContent;break;}}}CALLDATA=null;SIGDATA=null;DEALS=null;loadNbBanner();render();setTimeout(prewarm,200);}
 function loadAgents(){api("/api/agents").then(function(r){if(!r||!r.ok)return;var sel=$("impsel"),ts=$("testsel");r.agents.forEach(function(a){if(sel){var o=document.createElement("option");o.value=a.name;o.textContent=a.name;sel.appendChild(o);}if(ts){var o2=document.createElement("option");o2.value=a.name;o2.textContent=a.name;ts.appendChild(o2);}});}).catch(function(){});}
 function loginAsAgent(name){if(!name)return;if(!confirm("להיכנס למערכת כסוכן '"+name+"' (בדיקה אמיתית)?\nכדי לחזור למנהל — צא והתחבר מחדש עם המספר שלך.")){var t=$("testsel");if(t)t.value="";return;}
   api("/api/admin/loginas",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name})}).then(function(r){
