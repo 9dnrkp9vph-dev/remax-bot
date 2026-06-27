@@ -4423,6 +4423,7 @@ def api_deals_save():
             "id": iid or (str(int(time.time() * 1000)) + str(_secrets.randbelow(1000))),
             "agents": agents,
             "notes": str(b.get("notes", "") or "").strip(),
+            "side": str(b.get("side", "") or "").strip(),
             "price": str(b.get("price", "") or "").strip(),
             "deal": bool(b.get("deal")),
             "sale_price": str(b.get("sale_price", "") or "").strip(),
@@ -6630,11 +6631,12 @@ function renderDeals(){
 function dealCard(it){
   var ag=(it.agents||[]).filter(Boolean).join(" + ")||"—";
   var h="<div class=dlmeta>👤 "+esc(ag)+(it.created?(" · "+esc(it.created)):"")+"</div>";
+  if(it.side)h+="<div class=dlmeta>🤝 מייצגים "+esc(it.side)+"</div>";
+  if(it.notes)h+="<div class=dlmeta>📍 "+esc(it.notes)+"</div>";
   if(it.deal){
     if(it.sale_price)h+="<div class=dlprice>"+_ils(it.sale_price)+" <span class=muted style=font-weight:600>· מחיר מכירה</span></div>";
     if(it.close_date)h+="<div class=dlmeta>📅 נסגר: "+esc(it.close_date)+"</div>";
   }else if(it.price){h+="<div class=dlprice>"+_ils(it.price)+"</div>";}
-  if(it.notes)h+="<div class=dlnotes>"+esc(it.notes)+"</div>";
   var a="<button class=dlbtn onclick=\"dealForm('"+it.id+"',"+(it.deal?"true":"false")+")\">✏️ עריכה</button>";
   if(!it.deal)a+="<button class=\"dlbtn dlmove\" onclick=\"dealForm('"+it.id+"',true)\">💰 נמכר → עסקה</button>";
   a+="<button class=\"dlbtn dldanger\" onclick=\"dealDel('"+it.id+"')\">🗑 מחק</button>";
@@ -6644,28 +6646,30 @@ function dealForm(id,isDeal){
   var D=DEALS||{items:[],agents:[],role:"agent",name:(typeof NAME!="undefined"?NAME:"")};
   var it=id?(D.items||[]).filter(function(x){return x.id==id;})[0]:null;
   if(it&&it.deal)isDeal=true;
-  var ags=D.agents||[],mgr=(D.role=="admin"||D.role=="coordinator");
-  var a1=(it&&it.agents&&it.agents[0])||(mgr?"":(D.name||""));
+  var ags=D.agents||[];
+  var a1=(it&&it.agents&&it.agents[0])||(D.name||"");
   var a2=(it&&it.agents&&it.agents[1])||"";
-  function opt(sel){return '<option value=""></option>'+ags.map(function(x){return '<option'+(x==sel?" selected":"")+'>'+esc(x)+'</option>';}).join("");}
-  var af=mgr
-    ?('<label>סוכן<select id=dfa1>'+opt(a1)+'</select></label><label>סוכן נוסף<select id=dfa2>'+opt(a2)+'</select></label>')
-    :('<input type=hidden id=dfa1 value="'+esc(a1)+'"><label>סוכן נוסף (לא חובה)<select id=dfa2>'+opt(a2)+'</select></label>');
+  var dl='<datalist id=dfaglist>'+ags.map(function(x){return '<option value="'+esc(x)+'">';}).join("")+'</datalist>';
+  function sideOpt(v){return '<option value="">—</option><option value="קונה"'+(v=="קונה"?" selected":"")+'>מייצגים קונה</option><option value="מוכר"'+(v=="מוכר"?" selected":"")+'>מייצגים מוכר</option>';}
   var df=isDeal?('<label>מחיר מכירה<input id=dfsp inputmode=numeric value="'+esc((it&&it.sale_price)||(it&&it.price)||"")+'"></label><label>תאריך סגירה<input id=dfcd type=date value="'+esc((it&&it.close_date)||"")+'"></label>'):'';
   var ov=document.createElement("div");ov.id="dfovl";ov.className="ovl";
-  ov.innerHTML='<div class="ovlbox dlf"><h3 style="margin:0 0 6px">'+(isDeal?"💰 עסקה":"🔄 תהליך")+(id?" — עריכה":" חדש")+'</h3>'+af+
+  ov.innerHTML='<div class="ovlbox dlf"><h3 style="margin:0 0 6px">'+(isDeal?"💰 עסקה":"🔄 תהליך")+(id?" — עריכה":" חדש")+'</h3>'+dl+
+    '<label>סוכן<input id=dfa1 list=dfaglist autocomplete=off placeholder="הקלד או בחר סוכן" value="'+esc(a1)+'"></label>'+
+    '<label>סוכן 2 (לא חובה)<input id=dfa2 list=dfaglist autocomplete=off placeholder="הקלד או בחר סוכן" value="'+esc(a2)+'"></label>'+
+    '<label>מייצגים<select id=dfside>'+sideOpt((it&&it.side)||"")+'</select></label>'+
     '<label>מחיר '+(isDeal?"מבוקש (לא חובה)":"")+'<input id=dfp inputmode=numeric value="'+esc((it&&it.price)||"")+'"></label>'+df+
-    '<label>הערות<textarea id=dfn rows=3>'+esc((it&&it.notes)||"")+'</textarea></label>'+
+    '<label>כתובת<input id=dfn placeholder="כתובת הנכס" value="'+esc((it&&it.notes)||"")+'"></label>'+
     '<input type=hidden id=dfid value="'+(id||"")+'"><input type=hidden id=dfdeal value="'+(isDeal?"1":"")+'">'+
     '<div class=dlbtns style="margin-top:12px"><button class=searchbtn onclick="dealSave()">שמירה</button><button class=sec onclick="dfClose()">ביטול</button></div></div>';
   ov.onclick=function(e){if(e.target===ov)dfClose();};
   document.body.appendChild(ov);
+  document.body.style.overflow="hidden";   // נעילת גלילת הרקע
 }
-function dfClose(){var o=$("dfovl");if(o)o.remove();}
+function dfClose(){var o=$("dfovl");if(o)o.remove();document.body.style.overflow="";}
 function dealSave(){
   var a1=($("dfa1")?$("dfa1").value:"").trim(),a2=($("dfa2")?$("dfa2").value:"").trim(),agents=[];
   if(a1)agents.push(a1); if(a2&&a2!=a1)agents.push(a2);
-  var body={id:$("dfid").value,deal:!!$("dfdeal").value,agents:agents,price:$("dfp").value.trim(),notes:$("dfn").value.trim()};
+  var body={id:$("dfid").value,deal:!!$("dfdeal").value,agents:agents,price:$("dfp").value.trim(),notes:$("dfn").value.trim(),side:($("dfside")?$("dfside").value:"")};
   if($("dfsp"))body.sale_price=$("dfsp").value.trim();
   if($("dfcd"))body.close_date=$("dfcd").value.trim();
   api("/api/deals/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){
