@@ -2377,6 +2377,15 @@ def _save_config(cfg):
     except Exception:
         return False
 
+def _suspended_set():
+    """קבוצת טלפונים (9 ספרות) של סוכנים מושהים — חוסם SMS וכניסה (חיסכון בטווילו)."""
+    try:
+        return set(_last9(p) for p in (_load_config().get("suspended") or []) if p)
+    except Exception:
+        return set()
+def _is_suspended(last9):
+    return _last9(last9) in _suspended_set()
+
 def _alias_key_map():
     """name_key(שם או כינוי) -> name_key קנוני של הסוכן. מאפשר זיהוי גם באיות חלופי."""
     c = _cache_get("alias_key_map", 60)
@@ -2726,10 +2735,14 @@ def _web_auth():
     if s:
         if s["exp"] < time.time():
             _web_sessions.pop(tok, None); return None
+        if _is_suspended(s.get("phone", "")) and not _is_dev(s.get("phone", "")):
+            return None   # סוכן מושהה — חסום (לא נועל את המפתח)
         return s
     # נפילה לטוקן חתום (stateless) — שורד רסטארט של השרת, בלי לזרוק את המשתמש החוצה
     phone = _verify_token(tok)
     if phone:
+        if _is_suspended(phone) and not _is_dev(phone):
+            return None
         sess = _session_from_phone(phone)
         _web_sessions[tok] = sess
         return sess
@@ -2777,6 +2790,8 @@ def api_auth_request():
         return jsonify({"ok": False, "reason": "unknown"})
     if phone in _BYPASS_LOGINS:
         return jsonify({"ok": True})   # קוד קבוע — אין צורך ב-SMS, הקש את הקוד שלך
+    if _is_suspended(phone):
+        return jsonify({"ok": False, "reason": "suspended"})   # מושהה — לא שולחים SMS (חיסכון בטווילו)
     code = f"{_secrets.randbelow(900000) + 100000}"
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
     _host = (request.host or "remax-bot.onrender.com").split(":")[0]
@@ -3010,6 +3025,8 @@ def auth_google_callback():
         return _g_msg("לא הצלחנו לקרוא את כתובת האימייל", "נסה שוב")
     rec = _gauth_all().get(email)
     if rec and rec.get("phone"):
+        if _is_suspended(rec["phone"]):
+            return _g_msg("המשתמש מושהה", "פנה למנהל המערכת"), 200   # חסום כניסה עם מייל
         if rt:
             _gauth_link(email, rec["phone"], rt, name)   # רענון הטוקן אם הגיע חדש
         token, payload = _g_mint(rec["phone"])
@@ -3044,6 +3061,8 @@ def api_glink_request():
         return jsonify({"ok": False, "reason": "unknown"})
     if phone in _BYPASS_LOGINS:
         return jsonify({"ok": True})   # קוד קבוע — אין SMS
+    if _is_suspended(phone):
+        return jsonify({"ok": False, "reason": "suspended"})
     code = f"{_secrets.randbelow(900000) + 100000}"
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
     _host = (request.host or "remax-bot.onrender.com").split(":")[0]
@@ -3254,6 +3273,7 @@ def api_dev_people():
     for r in fetch_sheet_rows():
         list_names.append(r.get("סוכן 1", "")); list_names.append(r.get("סוכן 2", ""))
     removed = _removed_agent_keys()
+    _susp = _suspended_set()
     agents = []
     for v in sorted(known.values(), key=lambda x: x["name"]):
         if _name_key(v["name"]) in removed: continue   # סוכן שנמחק — מוסתר מהספרייה
@@ -3272,10 +3292,32 @@ def api_dev_people():
                        "phones": sorted(p for p in v["phones"] if p),
                        "aliases": v["aliases"], "role": role,
                        "phone": (_ce.get("phone", "") or (sorted(v["phones"])[0] if v["phones"] else "")),
-                       "nbDelay": nb_val, "nbHidden": nb_hidden})
+                       "nbDelay": nb_val, "nbHidden": nb_hidden,
+                       "suspended": bool(set(v["phones"]) & _susp)})
     return jsonify({"ok": True, "agents": agents, "nbDefault": _nb_def,
                     "unmatchedSignings": _scan(sig_names),
                     "unmatchedListings": _scan(list_names)})
+
+@app.route("/api/dev/suspend", methods=["POST"])
+def api_dev_suspend():
+    """השהיית/שחרור סוכן — מפתח בלבד. מושהה לא יכול לקבל SMS או להיכנס (חיסכון בטווילו)."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    b = request.get_json(silent=True) or {}
+    ph = _last9(b.get("phone", ""))
+    if not ph:
+        return jsonify({"ok": False, "reason": "bad_phone"})
+    cfg = _load_config()
+    susp = set(_last9(p) for p in (cfg.get("suspended") or []) if p)
+    if b.get("suspend"):
+        susp.add(ph)
+    else:
+        susp.discard(ph)
+    cfg["suspended"] = sorted(susp)
+    if not _save_config(cfg):
+        return jsonify({"ok": False, "reason": "save_failed"})
+    return jsonify({"ok": True, "suspended": ph in susp})
 
 @app.route("/api/dev/alias", methods=["POST"])
 def api_dev_alias():
@@ -6582,7 +6624,7 @@ function showSms(){var w=$("smswrap");if(w)w.style.display="block";var t=$("smst
 function sendCode(){var p=$("phone").value.trim();if(!p){alert("הזן מספר");return;}try{localStorage.setItem("fbPhone",p);}catch(e){}$("m1").textContent="שולח…";
   api("/api/auth/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:p})}).then(function(r){
     if(r.ok){show("s2");$("m2").textContent="";startOtp();}
-    else{$("m1").innerHTML="<span class=err>"+(r.reason=="unknown"?"המספר לא מזוהה":(r.reason=="sms_failed"?"שליחת SMS נכשלה (בדוק Twilio)":"שגיאה"))+"</span>";}
+    else{$("m1").innerHTML="<span class=err>"+(r.reason=="unknown"?"המספר לא מזוהה":(r.reason=="suspended"?"החשבון מושהה — פנה למנהל המערכת":(r.reason=="sms_failed"?"שליחת SMS נכשלה (בדוק Twilio)":"שגיאה")))+"</span>";}
   }).catch(function(){$("m1").innerHTML="<span class=err>שגיאה</span>";});}
 function startOtp(){if(!("OTPCredential" in window))return;try{navigator.credentials.get({otp:{transport:["sms"]}}).then(function(o){if(o&&o.code){$("code").value=o.code;verify();}}).catch(function(){});}catch(e){}}
 function verify(){var p=$("phone").value.trim(),c=$("code").value.trim();if(!c){alert("הזן קוד");return;}$("m2").textContent="בודק…";
@@ -6642,7 +6684,7 @@ function renderDevPeople(r){DEVDATA=r;DEVAGENTS=r.agents||[];
   var NSHOW=5;var flt=(DEVFILTER||"").trim();
   function devCard(a,i){var lbl="font-size:11px;color:var(--muted);margin:0 2px 3px;font-weight:600";
     return '<div style="border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:12px;background:#fff">'+
-      '<div style="font-weight:800;font-size:15px;color:#0D1B2A;margin-bottom:10px">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400;font-size:12px">('+a.aliases.map(esc).join(", ")+')</span>':'')+'</div>'+
+      '<div style="font-weight:800;font-size:15px;color:#0D1B2A;margin-bottom:10px">'+esc(a.name)+((a.aliases&&a.aliases.length)?' <span class=muted style="font-weight:400;font-size:12px">('+a.aliases.map(esc).join(", ")+')</span>':'')+(a.suspended?' <span style="background:#c0392b;color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:7px">⏸ מושהה</span>':'')+'</div>'+
       '<div style="display:flex;gap:8px">'+
         '<div style="flex:1;min-width:0"><div style="'+lbl+'">📱 נייד אישי</div><input id="pp'+i+'" class="chip" style="width:100%;box-sizing:border-box" value="'+esc(a.phone||"")+'"></div>'+
         '<div style="flex:1;min-width:0"><div style="'+lbl+'">📞 וירטואלי</div><input id="vp'+i+'" class="chip" style="width:100%;box-sizing:border-box" value="'+esc(a.vphone||"")+'"></div>'+
@@ -6652,7 +6694,7 @@ function renderDevPeople(r){DEVDATA=r;DEVAGENTS=r.agents||[];
         '<div style="flex:1;min-width:0"><div style="'+lbl+'">תפקיד</div><select id="rl'+i+'" class="chip" style="width:100%;box-sizing:border-box" onchange="devSetRole('+i+')">'+roleOpts(a.role)+'</select></div>'+
       '</div>'+
       '<label class=muted style="display:flex;gap:6px;align-items:center;margin-top:10px;font-size:13px"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר מ״נכס נולד״ (לא רואה כלום)</label>'+
-      '<div style="display:flex;gap:8px;margin-top:12px;align-items:center"><button class="btn-gold" style="flex:1;min-width:0" onclick="devSaveAgent('+i+')">💾 שמור</button><button class="btn-ghost" style="flex:0 0 auto;width:auto;color:#c0392b;border-color:#e7b4ad" onclick="devDelAgent('+i+')">🗑 מחק</button></div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;align-items:center"><button class="btn-gold" style="flex:1;min-width:0" onclick="devSaveAgent('+i+')">💾 שמור</button><button class="btn-ghost" style="flex:0 0 auto;width:auto;'+(a.suspended?"color:#fff;background:#c0392b;border-color:#c0392b":"color:#b9770a;border-color:#e8c98a")+'" onclick="devSuspend('+i+')">'+(a.suspended?"▶ שחרר":"⏸ השהה")+'</button><button class="btn-ghost" style="flex:0 0 auto;width:auto;color:#c0392b;border-color:#e7b4ad" onclick="devDelAgent('+i+')">🗑 מחק</button></div>'+
     '</div>';}
   var cards="";DEVAGENTS.forEach(function(a,i){var show=flt?(String(a.name).indexOf(flt)>=0):(DEVALL||i<NSHOW);if(show)cards+=devCard(a,i);});
   if(flt&&!cards)cards='<div class=muted style="padding:8px 0">לא נמצא סוכן בשם זה.</div>';
@@ -6666,6 +6708,9 @@ function devNewAgent(nameEnc){var name=decodeURIComponent(nameEnc);if(!confirm("
 function devAddAgent(){var el=$("newag");var name=el?el.value.trim():"";if(!name){alert("הקלד שם סוכן");return;}devPost("/api/dev/agent_add",{name:name});}
 function devSaveAgent(i){var a=DEVAGENTS[i];if(!a)return;var hid=$("hd"+i).checked;var nb=$("nb"+i).value.trim();devPost("/api/dev/agent_update",{name:a.name,phone:$("pp"+i).value.trim(),vphone:$("vp"+i).value.trim(),newbornDelay:(hid?"hidden":nb)});}
 function devDelAgent(i){var a=DEVAGENTS[i];if(!a)return;if(!confirm("למחוק את הסוכן '"+a.name+"'?\\nהוא יוסר מהספרייה, מהתפקידים ומשיוכי צוות/מתאמת, ולא יוכל להתחבר.\\nאפשר להחזיר אותו ע״י הוספה מחדש באותו שם."))return;devPost("/api/dev/agent_delete",{name:a.name});}
+function devSuspend(i){var a=DEVAGENTS[i];if(!a)return;var ph=(a.phone||(a.phones&&a.phones[0])||"").trim();if(!ph){alert("אין מספר טלפון לסוכן — לא ניתן להשהות");return;}var sus=!a.suspended;
+  if(!confirm(sus?("להשהות את "+a.name+"?\\nהוא לא יוכל להיכנס (SMS/מייל) — מונע תשלום בטווילו."):("לשחרר את "+a.name+" מהשהיה?")))return;
+  api("/api/dev/suspend",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:ph,suspend:sus})}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("נכשל"+(r&&r.reason?" ("+r.reason+")":""));}}).catch(function(){alert("שגיאה");});}
 function devSetDefault(){devPost("/api/dev/newborn_default",{days:$("nbdef").value.trim()});}
 function roleOpts(cur){var rs=[["","— תפקיד (ברירת מחדל) —"],["manager","מנהל"],["accountant","מנהלת חשבונות"],["secretary","מזכירה"],["coordinator","מתאמת"],["agent","סוכן"]];return rs.map(function(x){return '<option value="'+x[0]+'"'+(cur==x[0]?" selected":"")+'>'+x[1]+'</option>';}).join("");}
 function devSetRole(i){var a=DEVAGENTS[i];if(!a)return;var ph=a.phone||(a.phones&&a.phones[0]);if(!ph){alert("לסוכן אין מספר טלפון — אי אפשר לשייך תפקיד");loadDevPeople();return;}devPost("/api/dev/role",{phone:ph,role:$("rl"+i).value});}
