@@ -4913,9 +4913,32 @@ def api_report():
             meetings.sort(key=lambda x: str(x.get("date", "")))
         except Exception:
             meetings = []
+        # 5 המובילים בעסקאות (מהמאגר המקומי) — לפי מספר צדדים, עסקאות שנסגרו בתקופה
+        top_deals = []
+        try:
+            from collections import Counter as _Counter
+            _dc = _Counter()
+            for _it in _deals_load():
+                if not _it.get("deal"): continue
+                try:
+                    _dd = datetime.strptime(str(_it.get("close_date", "") or "")[:10], "%d/%m/%Y").date()
+                except Exception:
+                    continue
+                if not (start.date() <= _dd <= end.date()): continue
+                _ags = [a for a in (_it.get("agents") or []) if a]
+                if not _ags: continue
+                if _it.get("side1") == "מוכר וקונה":
+                    _dc[_ags[0]] += 2
+                else:
+                    for _a in _ags:
+                        _dc[_a] += 1
+            top_deals = [{"name": n, "n": c} for n, c in _dc.most_common(5)]
+        except Exception:
+            top_deals = []
         return jsonify({"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
                         "insights": insights, "summary": sm, "listings": listings_total,
                         "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices,
+                        "top_deals": top_deals,
                         "nbCities": nb_cities, "nbTotal": nb_total, "meetings": meetings, "wa_text": wa})
     except Exception as e:
         log.error(f"report error: {e}", exc_info=True)
@@ -6844,6 +6867,7 @@ function renderReport(r){
   if(sm.topGius&&sm.topGius.length){var tg="<table><tr><th style=text-align:start>מתווך</th><th>נכסים</th></tr>";sm.topGius.forEach(function(a,i){tg+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tg+="</table>";h+="<div class=card><h2>מובילים בגיוס נכסים</h2>"+tg+"</div>";}
   if(sm.topKonim&&sm.topKonim.length){var tk="<table><tr><th style=text-align:start>מתווך</th><th>קונים</th></tr>";sm.topKonim.forEach(function(a,i){tk+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});tk+="</table>";h+="<div class=card><h2>מובילים בהחתמת קונים</h2>"+tk+"</div>";}}
   if(r.shtaf&&r.shtaf.length){var tot=(r.shtaf_total!=null?r.shtaf_total:r.shtaf.reduce(function(a,o){return a+o.count;},0));var noff=(r.shtaf_offices!=null?r.shtaf_offices:r.shtaf.length);var st="<table><tr><th style=text-align:start>שם המשרד</th><th>נכסים</th></tr>";r.shtaf.forEach(function(o){st+="<tr><td>"+(isOurOffice(o.office)?"<span class=ouroffice>🏠 "+esc(o.office)+"</span>":esc(o.office))+"</td><td style=text-align:center><b>"+o.count+"</b></td></tr>";});st+="</table>";h+="<div class=card><h2>גיוס נכסים בשת״פ</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · "+noff+" משרדים · סה״כ "+tot+" נכסים"+(noff>10?" · מציג 10 מובילים":"")+"</div>"+st+"</div>";}
+  if(r.top_deals&&r.top_deals.length){var td="<table><tr><th style=text-align:start>מתווך</th><th>עסקאות</th></tr>";r.top_deals.forEach(function(a,i){td+="<tr><td>"+(i+1)+". "+esc(a.name)+"</td><td style=text-align:center><b>"+a.n+"</b></td></tr>";});td+="</table>";h+="<div class=card><h2>🏆 5 המובילים בעסקאות</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+"</div>"+td+"</div>";}
   if(r.scope=="כל המשרד"&&r.nbCities&&r.nbCities.length){var nc="<table><tr><th style=text-align:start>עיר</th><th>נכסים</th></tr>";r.nbCities.forEach(function(c){nc+="<tr><td>"+esc(c.city)+"</td><td style=text-align:center><b>"+c.n+"</b></td></tr>";});nc+="</table>";h+="<div class=card><h2>נכס נולד לפי ערים</h2><div class=muted style=margin-bottom:8px>"+esc(r.label)+" · סה״כ "+(r.nbTotal||0)+" נכסים</div>"+nc+"</div>";}
   h+="<div class=card><button class=gold onclick=exportWa()>📲 ייצוא לוואטסאפ</button><button class=sec onclick=copyRep()>📋 העתק טקסט</button></div>";
   $("rep").innerHTML=h;
