@@ -4266,6 +4266,15 @@ def api_dev_diag():
                     "raw": str(raw_get)[:200]})
 
 # ── History (calls + signatures) ───────────────────────────────────────────────
+def _call_uid(c):
+    """מזהה יציב לשיחה. אם אין event_id (קורה בחלק מהשיחות) — בונים hash דטרמיניסטי
+    מהטלפון+הזמן+הסוכן, כדי שאפשר יהיה להסתיר/לשחזר גם שיחות ללא מזהה."""
+    eid = str(c.get("event_id", "") or "").strip()
+    if eid: return eid
+    base = (str(c.get("caller_phone", "")) + "|" + str(c.get("received_at", "")) +
+            "|" + str(c.get("agent_phone", "")) + "|" + str(c.get("status", "")))
+    return "h" + _hashlib.md5(base.encode("utf-8")).hexdigest()[:16]
+
 @app.route("/api/history", methods=["GET"])
 def api_history():
     s = _web_auth()
@@ -4306,9 +4315,9 @@ def api_history():
             sigs  = [g for g in sigs if _canon_key(g.get("agent", "")) == nm]
     _hidden = _fetch_hidden_calls()
     if request.args.get("hidden") == "1":
-        calls = [c for c in calls if str(c.get("event_id", "")) in _hidden]
+        calls = [c for c in calls if _call_uid(c) in _hidden]
     else:
-        calls = [c for c in calls if str(c.get("event_id", "")) not in _hidden]
+        calls = [c for c in calls if _call_uid(c) not in _hidden]
     # מנהל מושהה (כמו אווה אזולאי) — רואה שיחות רק אחרי X ימים. המפתח רואה הכל מיד.
     _dly = _delayed_admin_days(eff.get("name", ""), eff.get("phone", ""))
     if _dly and not _is_dev(s.get("phone", "")):
@@ -4346,7 +4355,7 @@ def api_history():
             "summary": text,
             "clientDetails": client_details,
             "callback": callback,
-            "id": str(c.get("event_id", "") or ""),
+            "id": _call_uid(c),
             "ts": _epoch_from_iso(c.get("received_at", "")),
         })
     sig_out = [{
@@ -5243,15 +5252,31 @@ def _fetch_newborn_contacts():
     _cache_put("newborn_contacts", d)
     return d
 
-# ── סטטוס טיפול לכל נכס נולד (פגישה/פולואפ/לא מעוניין/לא ניתן לגיוס) — נשמר בקונפיג ──
+# ── סטטוס טיפול לכל נכס נולד (פגישה/פולואפ/לא מעוניין) — נשמר בקונפיג ──
 _NB_STATUS_LABELS = {
     "meeting": "נקבעה פגישה", "followup": "פולו-אפ",
-    "not_interested": "לא מעוניין", "cannot": "לא ניתן לגיוס",
+    "not_interested": "לא מעוניין",
 }
 def _nb_statuses():
     """{key: {status,date,agent,ts}} מהקונפיג."""
     m = _load_config().get("nbStatus")
     return m if isinstance(m, dict) else {}
+
+def _nb_notes():
+    """הערות משותפות לכל נכס נולד — {key: [{name,text,by,ts}]}. כל המשתמשים רואים את ההערות של כולם."""
+    m = _load_config().get("nbNotes")
+    return m if isinstance(m, dict) else {}
+
+def _nb_notes_for(key, me9="", is_mgr=False):
+    """רשימת הערות משותפות לנכס לפי key (ממוין מהישן לחדש).
+    me9/is_mgr קובעים את הדגל mine (האם המשתמש רשאי למחוק את ההערה)."""
+    lst = _nb_notes().get(key)
+    if not isinstance(lst, list): return []
+    out = [{"name": x.get("name", ""), "text": x.get("text", ""), "ts": x.get("ts", 0),
+            "mine": bool(is_mgr or (me9 and x.get("by") == me9))}
+           for x in lst if isinstance(x, dict) and (x.get("text") or "").strip()]
+    out.sort(key=lambda x: x.get("ts", 0))
+    return out
 
 def _nb_cal_create(rec, date, organizer_email):
     """יוצר אירועי יומן לפגישה/פולואפ לפי הרשומה והתאריך — ביומן הקובע + הסוכן. מחזיר [{email,id}]."""
@@ -5510,8 +5535,6 @@ def api_newborn():
             else:
                 if not released:
                     continue   # מציגים רק נכסים שכבר נחשפו לסוכן
-                if _vstat and _vstat.get("status") == "cannot" and not admin_all:
-                    continue   # הסוכן סימן "לא ניתן לגיוס" — מסתירים אצלו
             ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
             out.append({
                 "released": True,
@@ -5530,6 +5553,7 @@ def api_newborn():
                 "link": _nb(r.get("קישור", "")),
                 "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
                 "stat": _vstat or None,
+                "unotes": _nb_notes_for(_k, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", "")))),
                 "famexcl": _is_famexcl(_addr, city, fam_list),
             })
             if len(out) >= 300:   # תקרת בטיחות; הפרונט מציג 20 בכל פעם עם "טען עוד"
@@ -5612,6 +5636,55 @@ def api_newborn_status():
     _log_activity(nm, s["role"], s.get("phone", ""), "סטטוס נכס נולד",
                   (_NB_STATUS_LABELS.get(status, status) + " · " + (addr or key))[:80])
     return jsonify({"ok": True, "calendar": cal_ok, "status": status, "date": date})
+
+@app.route("/api/newborn/note", methods=["POST"])
+def api_newborn_note():
+    """הוספת הערה משותפת לנכס נולד — כל המשתמשים רואים את ההערות של כולם."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    d = request.get_json(silent=True) or {}
+    key = (d.get("key", "") or "").strip()
+    addr = (d.get("addr", "") or "").strip()
+    text = (d.get("text", "") or "").strip()[:500]
+    if not key or not text:
+        return jsonify({"ok": False, "reason": "bad_input"}), 400
+    cfg = _load_config()
+    m = cfg.get("nbNotes")
+    if not isinstance(m, dict): m = {}
+    lst = m.get(key)
+    if not isinstance(lst, list): lst = []
+    lst.append({"name": s.get("name", ""), "by": _last9(s.get("phone", "")),
+                "text": text, "ts": int(time.time())})
+    m[key] = lst
+    cfg["nbNotes"] = m
+    _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
+                  "הערה נכס נולד", (addr or key) + " · " + text[:60])
+    return jsonify({"ok": True, "notes": _nb_notes_for(key, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", ""))))})
+
+@app.route("/api/newborn/note/delete", methods=["POST"])
+def api_newborn_note_delete():
+    """מחיקת הערה — רק הכותב או מנהל/מפתח."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    d = request.get_json(silent=True) or {}
+    key = (d.get("key", "") or "").strip()
+    ts = int(d.get("ts", 0) or 0)
+    if not key or not ts:
+        return jsonify({"ok": False, "reason": "bad_input"}), 400
+    cfg = _load_config()
+    m = cfg.get("nbNotes")
+    if not isinstance(m, dict): m = {}
+    lst = m.get(key)
+    if not isinstance(lst, list):
+        return jsonify({"ok": True, "notes": []})
+    my9 = _last9(s.get("phone", ""))
+    is_mgr = (s["role"] == "admin") or _is_dev(s.get("phone", ""))
+    lst = [x for x in lst if not (int(x.get("ts", 0) or 0) == ts and (is_mgr or x.get("by") == my9))]
+    m[key] = lst
+    cfg["nbNotes"] = m
+    _save_config(cfg)
+    return jsonify({"ok": True, "notes": _nb_notes_for(key, my9, is_mgr)})
 
 @app.route("/api/newborn/meetings", methods=["GET"])
 def api_newborn_meetings():
@@ -7821,7 +7894,7 @@ function loadNewbornPage(){
     renderNewborn();
   }).catch(function(){if($("nblist"))$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";});
 }
-var NBSTL={meeting:"📅 נקבעה פגישה",followup:"🔁 פולו-אפ",not_interested:"✖ לא מעוניין",cannot:"🚫 לא ניתן לגיוס"};
+var NBSTL={meeting:"📅 נקבעה פגישה",followup:"🔁 פולו-אפ",not_interested:"✖ לא מעוניין"};
 function nbFmtDate(s){s=String(s||"");var t="";if(s.indexOf("T")>-1){t=" "+s.slice(11,16);s=s.slice(0,10);}var p=s.split("-");if(p.length==3)return p[2]+"/"+p[1]+"/"+p[0]+t;return s+t;}
 function nbEnc(s){return encodeURIComponent(String(s||"")).replace(/'/g,"%27").replace(/\(/g,"%28").replace(/\)/g,"%29");}
 function nbCard(x){
@@ -7833,8 +7906,13 @@ function nbCard(x){
     "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','meeting','"+pr+"','"+pn+"','"+ow+"')\">📅 נקבעה פגישה</button>"+
     "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','followup','"+pr+"','"+pn+"','"+ow+"')\">🔁 פולו-אפ</button>"+
     "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','not_interested','"+pr+"','"+pn+"','"+ow+"')\">✖ לא מעוניין</button>"+
-    "<button style=\""+sbtn+"\" onclick=\"nbStat('"+k+"','"+a+"','cannot','"+pr+"','"+pn+"','"+ow+"')\">🚫 לא ניתן לגיוס</button>"+
+    "<button style=\""+sbtn+"\" onclick=\"nbNoteDialog('"+k+"','"+a+"')\">📝 הערה</button>"+
   "</div>";
+  var unotes="";
+  if(x.unotes&&x.unotes.length){unotes="<div style='margin-top:8px;background:#f7f9fc;border:1px solid var(--line);border-radius:9px;padding:8px 10px'>"+
+    "<div style='font-size:12px;font-weight:800;color:#42659C;margin-bottom:4px'>📝 הערות ("+x.unotes.length+")</div>"+
+    x.unotes.map(function(n){return "<div style='font-size:13px;color:#0D1B2A;padding:3px 0;border-top:1px solid #eef1f6'>"+esc(n.text)+"<span class=muted style='font-size:11px'> — "+esc(n.name||"")+(n.ts?(" · "+nbNoteTime(n.ts)):"")+"</span>"+(n.mine?(" <span onclick=\"nbNoteDel('"+nbEnc(x.key||'')+"',"+n.ts+")\" style='color:#c0392b;cursor:pointer;font-weight:800'>✕</span>"):"")+"</div>";}).join("")+
+  "</div>";}
   return "<div class=nbcardx>"+
     "<div class=nbtop><b class=nbaddr>🏠 "+esc(x.address||x.city||"נכס")+"</b>"+(x.date?"<span class=nbdate>📅 "+esc(x.date)+"</span>":"")+"</div>"+
     ((x.city&&x.address)?"<div class=muted>"+esc(x.city)+"</div>":"")+
@@ -7848,16 +7926,25 @@ function nbCard(x){
       (x.wa?"<a class='nbbtn wa' href='whatsapp://send?phone="+x.wa+"&text="+nbWaMsg(x)+"' onclick=\"nbMark('"+k+"','"+a+"')\">💬 וואטסאפ</a>":"")+
       (x.link?"<a class='nbbtn link' href='"+esc(x.link)+"' target=_blank rel=noopener>🔗 צפייה במודעה</a>":"")+
     "</div>"+
-    stat+sbtns+
+    stat+sbtns+unotes+
     ((ROLE=="admin"&&x.contacted&&x.contacted.length)?"<div class=nbcontact>📲 כבר פנו: "+x.contacted.map(esc).join(", ")+"</div>":"")+
   "</div>";
 }
 function nbStat(k,a,type,pr,pn,ow){k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");pr=decodeURIComponent(pr||"");pn=decodeURIComponent(pn||"");ow=decodeURIComponent(ow||"");
-  if(type=="not_interested"||type=="cannot"){var lbl=type=="not_interested"?"לא מעוניין":"לא ניתן לגיוס";if(!confirm("לסמן את הנכס כ״"+lbl+"״?"))return;nbStatSend(k,a,type,"","",pr,pn,ow);return;}
+  if(type=="not_interested"){if(!confirm("לסמן את הנכס כ״לא מעוניין״?"))return;nbStatSend(k,a,type,"","",pr,pn,ow);return;}
   nbDateDialog(type,function(date,agent){nbStatSend(k,a,type,date,agent,pr,pn,ow);});}
 function nbStatSend(k,a,type,date,agent,price,phone,owner){api("/api/newborn/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,status:type,date:date,agent:agent||"",price:price||"",phone:phone||"",owner:owner||"",as:IMP||""})}).then(function(r){
   if(r&&r.ok){var msg=(type=="meeting"||type=="followup")?(r.calendar?"נשמר ונוסף ליומן Google ✅":"נשמר ✅ (לא נוסף ליומן — צריך להתחבר עם Google כדי לסנכרן יומן)"):"נשמר ✅";alert(msg);loadNewbornPage();}
   else alert("השמירה נכשלה"+((r&&r.reason=="no_date")?" — חסר תאריך":""));}).catch(function(){alert("שגיאת רשת");});}
+function nbNoteTime(ts){try{var d=new Date(ts*1000);var p=function(n){return ("0"+n).slice(-2);};return p(d.getDate())+"/"+p(d.getMonth()+1)+" "+p(d.getHours())+":"+p(d.getMinutes());}catch(e){return "";}}
+function nbNoteDialog(k,a){k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");
+  var h='<div class=ovl id=nbnovl><div class=ovlbox><div style="display:flex;justify-content:space-between;align-items:center"><b>📝 הוספת הערה</b><button class="btn-ghost" style="width:auto;padding:4px 11px;margin:0" onclick="nbnClose()">✕</button></div><div class=muted style="margin-top:6px;font-size:12px">ההערה תוצג לכל המשתמשים</div><textarea id=nbntxt class=chip style="width:100%;box-sizing:border-box;margin-top:8px;min-height:90px;resize:vertical" placeholder="כתוב הערה…"></textarea><button class="btn-gold" style="width:100%;margin-top:10px" onclick="nbNoteSend()">שמור הערה</button></div></div>';
+  var d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d.firstElementChild);var o=$("nbnovl");if(o)o.onclick=function(e){if(e.target.id=="nbnovl")nbnClose();};window._nbnK=k;window._nbnA=a;setTimeout(function(){var t=$("nbntxt");if(t)t.focus();},60);}
+function nbnClose(){var o=$("nbnovl");if(o&&o.parentNode)o.parentNode.removeChild(o);window._nbnK=null;window._nbnA=null;}
+function nbNoteSend(){var t=$("nbntxt");var txt=(t&&t.value||"").trim();if(!txt){alert("נא לכתוב הערה");return;}var k=window._nbnK||"",a=window._nbnA||"";
+  api("/api/newborn/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,text:txt})}).then(function(r){if(r&&r.ok){nbnClose();loadNewbornPage();}else alert("השמירה נכשלה");}).catch(function(){alert("שגיאת רשת");});}
+function nbNoteDel(k,ts){k=decodeURIComponent(k||"");if(!confirm("למחוק את ההערה?"))return;
+  api("/api/newborn/note/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,ts:ts})}).then(function(r){if(r&&r.ok)loadNewbornPage();else alert("המחיקה נכשלה");}).catch(function(){alert("שגיאת רשת");});}
 function nbDateDialog(type,cb,noAgent){var dt=(type=="meeting");var title=dt?"בחר תאריך ושעה לפגישה":"בחר תאריך לפולו-אפ";
   var inp;
   if(dt){var topts="";for(var H=7;H<=21;H++){for(var M=0;M<60;M+=15){var hh=("0"+H).slice(-2),mm=("0"+M).slice(-2);topts+='<option value="'+hh+':'+mm+'"'+((hh=="10"&&mm=="00")?" selected":"")+'>'+hh+':'+mm+'</option>';}}
