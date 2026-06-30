@@ -8184,8 +8184,32 @@ def _all_agent_push_ids():
 
 _seen_newborns = set()
 _seen_newborns_seeded = False
+_NB_SEEN_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(__file__), "newborn_seen.json")
+_NB_PUSH_MAX_BURST = 15   # שסתום בטיחות: יותר מזה "חדשים" בבת אחת = אנומליה (איפוס מצב), לא מפציצים
+
+def _nb_seen_load():
+    """טעינת הסט מהדיסק (שורד restart/deploy — מונע הצפת פוש אחרי כל פריסה)."""
+    global _seen_newborns, _seen_newborns_seeded
+    try:
+        with open(_NB_SEEN_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list) and data:
+            _seen_newborns = set(str(x) for x in data)
+            _seen_newborns_seeded = True
+    except Exception:
+        pass
+
+def _nb_seen_save():
+    try:
+        with open(_NB_SEEN_PATH, "w", encoding="utf-8") as f:
+            json.dump(sorted(_seen_newborns), f, ensure_ascii=False)
+    except Exception:
+        pass
+
 def check_new_newborns():
-    """מזהה נכס נולד חדש (diff מול הסט הקיים) ושולח פוש. seed בריצה הראשונה כדי לא להפציץ היסטוריה."""
+    """מזהה נכס נולד חדש (diff מול הסט הקיים) ושולח פוש.
+    הגנות מפני הצפה: (א) קריאה ריקה/כושלת לא זורעת ולא דוחפת; (ב) אם פתאום הרבה
+    'חדשים' בבת אחת (איפוס מצב) — סופגים בשקט בלי פוש; (ג) הסט נשמר לדיסק לשרוד פריסות."""
     global _seen_newborns, _seen_newborns_seeded
     try:
         rows = fetch_newborn() or []
@@ -8197,13 +8221,21 @@ def check_new_newborns():
             continue
         try: keymap[_nb_key(r)] = r
         except Exception: pass
+    if not keymap:
+        return   # קריאה ריקה/כושלת — לא לזרוע סט ריק (זה מה שגרם להצפת 300 פוש)
     if not _seen_newborns_seeded:
         _seen_newborns = set(keymap.keys())
         _seen_newborns_seeded = True
+        _nb_seen_save()
         return
-    for k in list(keymap.keys()):
-        if k in _seen_newborns:
-            continue
+    new_keys = [k for k in keymap.keys() if k not in _seen_newborns]
+    if len(new_keys) > _NB_PUSH_MAX_BURST:
+        # אנומליה (מצב אופס/שינוי מפתחות) — מסמנים כמוכרים בלי לדחוף, כדי לא להפציץ
+        _seen_newborns |= set(keymap.keys())
+        _nb_seen_save()
+        log.error(f"newborn push burst guard: {len(new_keys)} new at once — suppressed")
+        return
+    for k in new_keys:
         r = keymap[k]
         _addr = str(r.get("רחוב1", "") or r.get("רחוב", "") or "").strip()
         _city = str(r.get("עיר", "") or r.get("עיר / ישוב", "") or "").strip()
@@ -8215,9 +8247,12 @@ def check_new_newborns():
         except Exception:
             pass
         _seen_newborns.add(k)
+    if new_keys:
+        _nb_seen_save()
 
 def _newborn_push_loop():
     import time as _t
+    _nb_seen_load()                    # טעינת הסט מהדיסק — אם קיים, לא זורעים מחדש (מונע הצפה אחרי deploy)
     _t.sleep(180)                      # השהיה ראשונית — לא להתחרות בטעינה הראשונה אחרי boot
     while True:
         try: check_new_newborns()
