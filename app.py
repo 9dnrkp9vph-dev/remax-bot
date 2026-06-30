@@ -5592,6 +5592,8 @@ def _is_famexcl(addr, city, fam_list):
             return True
     return False
 
+_NB_RESULT_VER = [0]   # מעלים בכל שינוי (סטטוס/הערה/פנייה) כדי לבטל את מטמון התוצאה לכל הסקופים
+
 @app.route("/api/newborn", methods=["GET", "POST"])
 def api_newborn():
     s = _web_auth()
@@ -5605,6 +5607,11 @@ def api_newborn():
         eff_norm = _norm_name(eff_name)
         # חיפוש: מחזיר התאמות מכל הפול (300 האחרונים) — גם נכסים שעוד לא נחשפו לסוכן
         q = (request.args.get("q", "") or ((request.get_json(silent=True) or {}).get("q", "")) or "").strip().lower()
+        # מטמון תוצאה לפי סקופ — פתיחה חוזרת של הטאב מיידית (מתבטל בכל שינוי דרך _NB_RESULT_VER)
+        _nbkey = "nbres:%d:%s:%s:%s" % (_NB_RESULT_VER[0], _last9(s.get("phone", "")), as_name, q)
+        _nbc = _cache_get(_nbkey, 90)
+        if _nbc is not None:
+            return jsonify(_nbc)
         # מנהל מושהה (כמו אווה אזולאי) אינו רואה "נכס נולד" מיד — נכנס למסלול ההשהיה הרגיל
         _dphone = "" if as_name else s.get("phone", "")
         admin_all = (s["role"] == "admin" and not as_name and not _delayed_admin_days(eff_name, _dphone))
@@ -5669,8 +5676,10 @@ def api_newborn():
             })
             if len(out) >= 300:   # תקרת בטיחות; הפרונט מציג 20 בכל פעם עם "טען עוד"
                 break
-        return jsonify({"ok": True, "count": len(out),
-                        "released": sum(1 for x in out if x["released"]), "delay": delay, "results": out})
+        _res = {"ok": True, "count": len(out),
+                "released": sum(1 for x in out if x["released"]), "delay": delay, "results": out}
+        _cache_put(_nbkey, _res)
+        return jsonify(_res)
     except Exception as e:
         log.error(f"newborn error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -5694,6 +5703,7 @@ def api_newborn_contact():
         except Exception:
             pass
         _cache_clear("newborn_contacts")
+    _NB_RESULT_VER[0] += 1
     return jsonify({"ok": True})
 
 @app.route("/api/newborn/status", methods=["POST"])
@@ -5744,6 +5754,7 @@ def api_newborn_status():
     m[skey] = rec
     cfg["nbStatus"] = m
     _save_config(cfg)
+    _NB_RESULT_VER[0] += 1
     _log_activity(nm, s["role"], s.get("phone", ""), "סטטוס נכס נולד",
                   (_NB_STATUS_LABELS.get(status, status) + " · " + (addr or key))[:80])
     return jsonify({"ok": True, "calendar": cal_ok, "status": status, "date": date})
@@ -5769,6 +5780,7 @@ def api_newborn_note():
     m[key] = lst
     cfg["nbNotes"] = m
     _save_config(cfg)
+    _NB_RESULT_VER[0] += 1
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                   "הערה נכס נולד", (addr or key) + " · " + text[:60])
     return jsonify({"ok": True, "notes": _nb_notes_for(key, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", ""))))})
@@ -5795,6 +5807,7 @@ def api_newborn_note_delete():
     m[key] = lst
     cfg["nbNotes"] = m
     _save_config(cfg)
+    _NB_RESULT_VER[0] += 1
     return jsonify({"ok": True, "notes": _nb_notes_for(key, my9, is_mgr)})
 
 @app.route("/api/newborn/meetings", methods=["GET"])
@@ -5868,6 +5881,7 @@ def api_newborn_status_delete():
     m.pop(skey, None)
     cfg["nbStatus"] = m
     _save_config(cfg)
+    _NB_RESULT_VER[0] += 1
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
     return jsonify({"ok": True})
 
@@ -5921,6 +5935,7 @@ def api_newborn_status_edit():
     m[skey] = rec
     cfg["nbStatus"] = m
     _save_config(cfg)
+    _NB_RESULT_VER[0] += 1
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עריכת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
     return jsonify({"ok": True, "calendar": bool(rec.get("cal"))})
 
@@ -7899,11 +7914,11 @@ function openNewborn(){
 var _nbScrollY=0;
 function nbLock(on){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";}
 var NBITEMS=[],NBSHOWN=20,NBAGE=-1;
-var NB_AGE_BUCKETS=[{l:"30",min:0,max:30},{l:"60",min:30,max:60},{l:"90",min:60,max:90},{l:"120",min:90,max:120},{l:"150",min:120,max:150},{l:"180+",min:150,max:1e9}];
+var NB_AGE_BUCKETS=[{l:"עד שבוע",min:0,max:7},{l:"1–2 שב׳",min:7,max:14},{l:"2–4 שב׳",min:14,max:30},{l:"1–2 ח׳",min:30,max:60},{l:"חודשיים+",min:60,max:1e9}];
 function nbAgeChips(){var el=$("nbagechips");if(!el)return;
   var counts=NB_AGE_BUCKETS.map(function(b){return NBITEMS.filter(function(x){var a=x.ageDays||0;return a>=b.min&&a<b.max;}).length;});
   var h='<span class="agechip'+(NBAGE<0?" on":"")+'" onclick="nbAgeSet(-1)">הכל<small>'+NBITEMS.length+'</small></span>';
-  h+=NB_AGE_BUCKETS.map(function(b,i){return '<span class="agechip'+(NBAGE==i?" on":"")+'" onclick="nbAgeSet('+i+')">'+b.l+' י׳<small>'+counts[i]+'</small></span>';}).join("");
+  h+=NB_AGE_BUCKETS.map(function(b,i){return '<span class="agechip'+(NBAGE==i?" on":"")+'" onclick="nbAgeSet('+i+')">'+b.l+'<small>'+counts[i]+'</small></span>';}).join("");
   el.innerHTML=h;}
 function nbAgeSet(i){NBAGE=(NBAGE==i?-1:i);NBSHOWN=20;nbAgeChips();renderNewborn();}
 function viewNewborn(){
