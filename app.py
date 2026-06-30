@@ -2246,9 +2246,9 @@ TWILIO_SID   = os.environ.get("TWILIO_SID", "")
 TWILIO_AUTH  = os.environ.get("TWILIO_AUTH", "")
 TWILIO_FROM  = os.environ.get("TWILIO_FROM", "")           # +972... או MG... (Messaging Service)
 # ── ספק SMS חלופי: Maskyoo / sms.deals (חיסכון בעלויות Twilio) ──
-SMS_DEALS_TOKEN  = os.environ.get("SMS_DEALS_TOKEN", "")
-SMS_DEALS_SENDER = os.environ.get("SMS_DEALS_SENDER", "")
-SMS_DEALS_URL    = os.environ.get("SMS_DEALS_URL", "https://sms.deals/api/ws.php")
+SMS_DEALS_TOKEN  = os.environ.get("SMS_DEALS_TOKEN", "").strip()
+SMS_DEALS_SENDER = os.environ.get("SMS_DEALS_SENDER", "").strip()
+SMS_DEALS_URL    = (os.environ.get("SMS_DEALS_URL", "") or "https://sms.deals/api/ws.php").strip()
 # מנהלים קבועים (מוגדרים לפי מספר טלפון) — בנוסף למשתנה הסביבה ADMIN_PHONES אם קיים
 _DEFAULT_ADMIN_PHONES = [
     "0546000808",  # אודי שמול
@@ -3396,7 +3396,9 @@ def api_dev_smstest():
     to = (b.get("phone") or s.get("phone", "")).strip()
     dest = _sms_local_il(to)
     out = {"ok": True, "provider": "sms.deals", "dest": dest, "sender": SMS_DEALS_SENDER,
-           "token_set": bool(SMS_DEALS_TOKEN), "sender_set": bool(SMS_DEALS_SENDER), "url": SMS_DEALS_URL}
+           "token_set": bool(SMS_DEALS_TOKEN), "sender_set": bool(SMS_DEALS_SENDER), "url": SMS_DEALS_URL,
+           "token_len": len(SMS_DEALS_TOKEN),
+           "token_preview": ((SMS_DEALS_TOKEN[:4] + "…" + SMS_DEALS_TOKEN[-4:]) if len(SMS_DEALS_TOKEN) >= 8 else "?")}
     # ה-IP היוצא בפועל של השירות — להשוואה מול ה-IP שרשום אצל Maskyoo
     for _ipurl in ("https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"):
         try:
