@@ -2345,31 +2345,55 @@ DEV_PHONES = set(_last9(p) for p in _DEV_PHONES_RAW
 def _is_dev(phone):
     return _last9(phone) in DEV_PHONES
 
+_LAST_GOOD_CONFIG = None   # קונפיג תקין אחרון — מגן מפני דריסה כש-getconfig נכשל זמנית
+
 def _load_config():
-    """קונפיג מערכת (dict) מטאב 'config' ב-Apps Script. מטמון 60ש'. ריק=ברירת מחדל."""
+    """קונפיג מערכת (dict) מטאב 'config' ב-Apps Script. מטמון 60ש'.
+    קריטי: אם getconfig נכשל/לא-ok — לא שומרים {} במטמון (זה גרם בעבר לדריסת הקונפיג
+    ומחיקת סוכנים), אלא מחזירים את הקונפיג התקין האחרון כך שכתיבה הבאה לא תמחק נתונים."""
+    global _LAST_GOOD_CONFIG
     c = _cache_get("app_config", 60)
     if c is not None: return c
     with _sf_lock("app_config"):
         c = _cache_get("app_config", 60)
         if c is not None: return c
-        cfg = {}
+        j = None
         try:
             j = _buyers_apps_post("getconfig", {})
-            if j and j.get("ok"):
-                raw = (j.get("config") or "").strip()
-                if raw: cfg = _json.loads(raw)
         except Exception:
-            cfg = {}
-        if not isinstance(cfg, dict): cfg = {}
-        _cache_put("app_config", cfg)
-        return cfg
+            j = None
+        if j and j.get("ok"):
+            raw = (j.get("config") or "").strip()
+            cfg = None
+            if raw:
+                try: cfg = _json.loads(raw)
+                except Exception: cfg = None
+            else:
+                cfg = {}
+            if isinstance(cfg, dict):
+                _LAST_GOOD_CONFIG = cfg
+                _cache_put("app_config", cfg)
+                return cfg
+        # נכשל/לא תקין — לא מאחסנים {} (כדי לנסות שוב בפעם הבאה), נופלים לקונפיג התקין האחרון
+        if isinstance(_LAST_GOOD_CONFIG, dict):
+            return _LAST_GOOD_CONFIG
+        return {}
 
 def _save_config(cfg):
-    """כתיבת הקונפיג חזרה ל-Apps Script. מעדכן מטמון בהצלחה."""
+    """כתיבת הקונפיג חזרה ל-Apps Script. מעדכן מטמון בהצלחה.
+    הגנה: לא כותבים קונפיג שמרוקן את הסוכנים+תפקידים אם קודם היו כאלה (מונע מחיקה בטעות)."""
+    global _LAST_GOOD_CONFIG
+    if not isinstance(cfg, dict):
+        return False
+    if isinstance(_LAST_GOOD_CONFIG, dict) and (_LAST_GOOD_CONFIG.get("agents") or _LAST_GOOD_CONFIG.get("roles")):
+        if not (cfg.get("agents") or cfg.get("roles")):
+            log.error("save_config refused: would wipe agents/roles (likely stale/empty config)")
+            return False
     try:
         j = _buyers_apps_post("setconfig", {"config": _json.dumps(cfg, ensure_ascii=False)})
         ok = bool(j and j.get("ok"))
         if ok:
+            _LAST_GOOD_CONFIG = cfg
             _cache_put("app_config", cfg)
             _cache_clear("alias_key_map")
             _cache_clear("newborn_delays")
