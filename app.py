@@ -7268,7 +7268,7 @@ function renderCalls(){var r=CALLDATA;if(!r||TABNOW!="calls"||!$("calls"))return
   var maxC=calls.length?calls[0].ts:0;
   $("calls").innerHTML=(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
-    var callerLink=c.caller?("<a href='tel:"+(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
+    var callerLink=c.caller?("<a href='tel:"+telLocal(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
     var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener onclick=\"return cbGuard(this,'"+esc(c.tel||c.caller||"")+"')\">🔁 חייג חזרה</a>"):"";
     var bsum=(c.summary||"")+(c.clientDetails?("\n"+c.clientDetails):"");
     var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\"><svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>הוסף קונה</button>";
@@ -7944,7 +7944,7 @@ function nbCard(x){
     (x.desc?"<div class=nbdesc>"+esc(x.desc)+"</div>":"")+
     (x.price?"<div class=nbprice>💰 "+esc(x.price)+"</div>":"")+
     (x.notes?"<div class=muted style=margin-top:4px>"+esc(x.notes)+"</div>":"")+
-    "<div class=nbowner>👤 "+esc(x.owner||"בעל הנכס")+(ph?" · <a href='tel:"+esc(ph)+"' style='color:inherit;text-decoration:none'>"+esc(ph)+"</a>":"")+"</div>"+
+    "<div class=nbowner>👤 "+esc(x.owner||"בעל הנכס")+(ph?" · <a href='tel:"+telLocal(ph)+"' style='color:inherit;text-decoration:none'>"+esc(ph)+"</a>":"")+"</div>"+
     "<div class=nbacts>"+
       (ph?"<a class='nbbtn call' href='tel:"+esc(ph)+"' onclick=\"nbMark('"+k+"','"+a+"')\">📞 חייג</a>":"")+
       (x.wa?"<a class='nbbtn wa' href='whatsapp://send?phone="+x.wa+"&text="+nbWaMsg(x)+"' onclick=\"nbMark('"+k+"','"+a+"')\">💬 וואטסאפ</a>":"")+
@@ -8001,6 +8001,7 @@ function copyVphone(){if(!VPHONE)return;var b=$("vpcopybtn");var ok=function(){i
 function vpFallbackCopy(t){try{var ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}catch(e){}}
 function nbWa(k,a){try{k=decodeURIComponent(k||"");a=decodeURIComponent(a||"");api("/api/newborn/contact",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k,addr:a,as:IMP||""})}).catch(function(){});}catch(e){}return true;}
 function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function telLocal(n){n=String(n||"").replace(/[^\d]/g,"");if(n.indexOf("972")==0)n=n.slice(3);n=n.replace(/^0+/,"");return n?("0"+n):"";}
 function isOurOffice(o){var t=String(o||"").toLowerCase().replace(/[\s\/\\.\-_'"׳״]/g,"");var rmx=t.indexOf("remax")>-1||t.indexOf("רימקס")>-1||t.indexOf("רמקס")>-1;var fam=t.indexOf("family")>-1||t.indexOf("פמילי")>-1||t.indexOf("פמלי")>-1;return rmx&&fam;}
 function daysSince(s){if(!s)return null;s=String(s).trim();var d;var m=s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/);if(m){d=new Date(+m[3],+m[2]-1,+m[1]);}else{d=new Date(s.slice(0,10));}if(isNaN(d))return null;var n=Math.floor((Date.now()-d.getTime())/86400000);return n<0?0:n;}
 function daysLabel(dd){return dd==0?"נכנס לבלעדיות היום":(dd==1?"יום אחד בבלעדיות":dd+" ימים בבלעדיות");}
