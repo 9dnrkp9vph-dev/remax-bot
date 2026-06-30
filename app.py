@@ -2608,13 +2608,15 @@ def _send_sms_dealsmaskyoo(last9, body):
     try:
         r = requests.get(SMS_DEALS_URL, params=params, headers=headers, timeout=15)
         if r.status_code >= 300:
-            log.error(f"sms.deals HTTP {r.status_code}: {r.text[:200]}")
+            log.error(f"sms.deals HTTP {r.status_code}: {r.text[:300]}")
             return False
         low = (r.text or "").lower()
-        if any(k in low for k in ("error", "forbidden", "blacklist", "invalid destination", "missing message")):
-            log.error(f"sms.deals failed: {r.text[:200]}")
-            return False
-        return True
+        # הצלחה לפי סמן מובהק (Message_id / Message in Action) — לא לפי היעדר 'error'
+        # (תשובת הצלחה עלולה להכיל שדה כמו Error:0 וגרמה לסימון כשל שגוי).
+        if ("message_id" in low) or ("message in action" in low) or ("messageid" in low):
+            return True
+        log.error(f"sms.deals failed (HTTP {r.status_code}): {r.text[:300]}")
+        return False
     except Exception as e:
         log.error(f"sms.deals error: {e}")
         return False
@@ -3381,6 +3383,36 @@ def api_dev_suspend():
     if not _save_config(cfg):
         return jsonify({"ok": False, "reason": "save_failed"})
     return jsonify({"ok": True, "suspended": ph in susp})
+
+@app.route("/api/dev/smstest", methods=["POST"])
+def api_dev_smstest():
+    """אבחון ספק SMS (Maskyoo/sms.deals) — מפתח בלבד. שולח הודעת בדיקה ומחזיר את
+    התשובה הגולמית של הספק, כדי לאתר בעיית IP/שולח/טוקן. שולח למספר של המפתח כברירת מחדל."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    b = request.get_json(silent=True) or {}
+    to = (b.get("phone") or s.get("phone", "")).strip()
+    dest = _sms_local_il(to)
+    out = {"ok": True, "provider": "sms.deals", "dest": dest, "sender": SMS_DEALS_SENDER,
+           "token_set": bool(SMS_DEALS_TOKEN), "sender_set": bool(SMS_DEALS_SENDER), "url": SMS_DEALS_URL}
+    if not (SMS_DEALS_TOKEN and SMS_DEALS_SENDER):
+        out["ok"] = False; out["reason"] = "not_configured"
+        return jsonify(out)
+    if not dest:
+        out["ok"] = False; out["reason"] = "bad_dest"
+        return jsonify(out)
+    params  = {"service": "send_sms", "dest": dest, "sender": SMS_DEALS_SENDER, "message": "בדיקת Family Bot"}
+    headers = {"Authorization": "Bearer " + SMS_DEALS_TOKEN}
+    try:
+        r = requests.get(SMS_DEALS_URL, params=params, headers=headers, timeout=15)
+        low = (r.text or "").lower()
+        out["status"] = r.status_code
+        out["response"] = (r.text or "")[:600]
+        out["sent_ok"] = (r.status_code < 300) and (("message_id" in low) or ("message in action" in low) or ("messageid" in low))
+    except Exception as e:
+        out["ok"] = False; out["reason"] = str(e)[:240]
+    return jsonify(out)
 
 @app.route("/api/dev/alias", methods=["POST"])
 def api_dev_alias():
@@ -6804,9 +6836,10 @@ function applyTabPerms(){
 }
 
 // ── קונסולת מפתח ──────────────────────────────────────────────
-function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span> <button class="btn-ghost" onclick="devPush()">🔔 בדיקת פוש</button><div id=devpush class=muted style="white-space:pre-wrap;word-break:break-word;font-size:11px;direction:ltr;text-align:left;margin-top:6px"></div></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcoords></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadCoords();loadContracts();}
+function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span> <button class="btn-ghost" onclick="devPush()">🔔 בדיקת פוש</button> <button class="btn-ghost" onclick="devSms()">📩 בדיקת SMS</button><div id=devpush class=muted style="white-space:pre-wrap;word-break:break-word;font-size:11px;direction:ltr;text-align:left;margin-top:6px"></div><div id=devsms class=muted style="white-space:pre-wrap;word-break:break-word;font-size:11px;direction:ltr;text-align:left;margin-top:6px"></div></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcoords></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadCoords();loadContracts();}
 function devDiag(){$("devdiag").textContent=" בודק…";api("/api/dev/diag").then(function(r){$("devdiag").textContent=" "+((r&&r.msg)||"שגיאה");}).catch(function(){$("devdiag").textContent=" שגיאת רשת";});}
 function devPush(){var d=$("devpush");if(d)d.textContent="שולח פוש בדיקה…";api("/api/push/test").then(function(r){if(d)d.textContent=JSON.stringify(r,null,2);}).catch(function(){if(d)d.textContent="שגיאת רשת";});}
+function devSms(){var d=$("devsms");var to=prompt("מספר לבדיקת SMS (ריק = המספר שלך):","");if(to===null)return;if(d)d.textContent="שולח SMS בדיקה דרך sms.deals…";api("/api/dev/smstest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:(to||"").trim()})}).then(function(r){if(d)d.textContent=JSON.stringify(r,null,2);}).catch(function(){if(d)d.textContent="שגיאת רשת";});}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
 var DEVAGENTS=[],DEVDATA=null,DEVALL=false,DEVFILTER="";
 function devToggleAll(){DEVALL=!DEVALL;if(DEVDATA)renderDevPeople(DEVDATA);}
