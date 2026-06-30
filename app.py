@@ -5667,7 +5667,7 @@ def api_newborn():
                     break
             if min_days is not None and max_days is not None and not (min_days <= ad < max_days):
                 continue   # לא בדלי הוותק שנבחר
-            if len(out) >= 1000:   # תקרת בטיחות; כל הנכסים חוזרים בטעינה אחת לסינון חודשים בצד הלקוח
+            if len(out) >= 5000:   # תקרת בטיחות גבוהה; כל הנכסים חוזרים בטעינה אחת לסינון חודשים בצד הלקוח
                 continue
             _k = _nb_key(r)
             _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
