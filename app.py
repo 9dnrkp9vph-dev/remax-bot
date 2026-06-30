@@ -2603,7 +2603,8 @@ def _send_sms_dealsmaskyoo(last9, body):
     if not dest:
         log.error("sms.deals: invalid destination")
         return False
-    params  = {"service": "send_sms", "dest": dest, "sender": SMS_DEALS_SENDER, "message": body}
+    # הטוקן נשלח גם כפרמטר בכתובת וגם ב-Bearer header — בדיוק כמו בדוגמת ה-PHP הרשמית של Maskyoo
+    params  = {"service": "send_sms", "dest": dest, "sender": SMS_DEALS_SENDER, "message": body, "token": SMS_DEALS_TOKEN}
     headers = {"Authorization": "Bearer " + SMS_DEALS_TOKEN}
     try:
         r = requests.get(SMS_DEALS_URL, params=params, headers=headers, timeout=15)
@@ -3411,7 +3412,7 @@ def api_dev_smstest():
     if not dest:
         out["ok"] = False; out["reason"] = "bad_dest"
         return jsonify(out)
-    params  = {"service": "send_sms", "dest": dest, "sender": SMS_DEALS_SENDER, "message": "בדיקת Family Bot"}
+    params  = {"service": "send_sms", "dest": dest, "sender": SMS_DEALS_SENDER, "message": "בדיקת Family Bot", "token": SMS_DEALS_TOKEN}
     headers = {"Authorization": "Bearer " + SMS_DEALS_TOKEN}
     try:
         r = requests.get(SMS_DEALS_URL, params=params, headers=headers, timeout=15)
