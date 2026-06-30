@@ -5667,7 +5667,7 @@ def api_newborn():
                     break
             if min_days is not None and max_days is not None and not (min_days <= ad < max_days):
                 continue   # לא בדלי הוותק שנבחר
-            if len(out) >= 300:   # תקרת בטיחות לעיבוד הכבד; הספירה ממשיכה לכל הדליים
+            if len(out) >= 1000:   # תקרת בטיחות; כל הנכסים חוזרים בטעינה אחת לסינון חודשים בצד הלקוח
                 continue
             _k = _nb_key(r)
             _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
@@ -6985,7 +6985,7 @@ function renderContracts(){if(!$("devcontracts"))return;
   $("devcontracts").innerHTML=html;}
 function ctypeChange(v){var ta=$("cbody");if(ta)CONTRACTS[CTYPE]=ta.value;CTYPE=v;renderContracts();}
 function saveContract(){var ta=$("cbody");if(!ta)return;CONTRACTS[CTYPE]=ta.value;api("/api/dev/contract",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:CTYPE,body:ta.value})}).then(function(r){if(r&&r.ok)alert("נשמר ✓");else alert("שמירה נכשלה");}).catch(function(){alert("שגיאה");});}
-function tab(t){var _mo=document.getElementById("mapovl");if(_mo){_mo.remove();document.body.style.overflow="";}window._lastRecentSearched=null;var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();setTimeout(shareUpd,50);}
+function tab(t){if(typeof TABNOW!="undefined"&&TABNOW=="newborn"){try{NBSCROLL=window.scrollY||window.pageYOffset||0;}catch(e){}}var _mo=document.getElementById("mapovl");if(_mo){_mo.remove();document.body.style.overflow="";}window._lastRecentSearched=null;var _b=document.body;_b.style.position="";_b.style.top="";_b.style.left="";_b.style.right="";_b.style.width="";TABNOW=t;document.querySelectorAll(".tab").forEach(function(x){x.classList.toggle("on",x.dataset.t==t);});if(timer){clearInterval(timer);timer=null;}render();setTimeout(shareUpd,50);}
 /* iOS: אחרי חזרה מאפליקציה אחרת (וואטסאפ/טלפון) הסרגל הקבוע "קופץ" כי ה-viewport עוד לא התעדכן — נדנוד גלילה קטן מאלץ את iOS למקם אותו מחדש */
 function snapBars(){try{var _b=document.body;_b.style.position="";_b.style.top="";_b.style.width="";var y=window.pageYOffset||document.documentElement.scrollTop||0;window.scrollTo(0,y+1);window.scrollTo(0,y);var t=document.querySelector(".tabs");if(t){void t.offsetHeight;}}catch(e){}}
 document.addEventListener("visibilitychange",function(){if(!document.hidden){setTimeout(snapBars,20);setTimeout(snapBars,250);}});
@@ -7930,15 +7930,18 @@ function openNewborn(){
   }).catch(function(){});}
 var _nbScrollY=0;
 function nbLock(on){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";}
-var NBITEMS=[],NBSHOWN=20,NBAGE=0,NBBUCKETS=[],NBTOTAL=0;
+var NBITEMS=[],NBSEARCH=null,NBSHOWN=20,NBAGE=0,NBBUCKETS=[],NBTOTAL=0,NBSCROLL=0;
 var NB_AGE_BUCKETS=[{l:"חודש 1",min:0,max:30},{l:"חודש 2",min:30,max:60},{l:"חודש 3",min:60,max:90},{l:"חודש 4",min:90,max:120},{l:"חודש 5",min:120,max:150},{l:"חודש 6",min:150,max:180},{l:"חודש 7+",min:180,max:999999}];
 function nbAgeChips(){var el=$("nbagechips");if(!el)return;
   el.innerHTML=NB_AGE_BUCKETS.map(function(b,i){return '<span class="agechip'+(NBAGE==i?" on":"")+'" onclick="nbAgeSet('+i+')">'+b.l+'<small>'+((NBBUCKETS&&NBBUCKETS[i])||0)+'</small></span>';}).join("");}
-function nbAgeSet(i){NBAGE=i;NBSHOWN=20;NBFILTER="";var sb=$("nbsearch");if(sb)sb.value="";loadNewbornPage();}
+function nbAgeSet(i){NBAGE=i;NBSHOWN=20;NBFILTER="";NBSEARCH=null;var sb=$("nbsearch");if(sb)sb.value="";
+  if(NBITEMS&&NBITEMS.length){nbLiveLabel();renderNewborn();window.scrollTo(0,0);}else loadNewbornPage();}
+function nbLiveLabel(){var lv=$("nblive");if(!lv)return;lv.innerHTML=(NBFILTER?("🔍 "+((NBSEARCH&&NBSEARCH.length)||0)+" תוצאות (מכל המערכת)"):("🟢 "+NBTOTAL+" נכסים לגיוס"));}
 function viewNewborn(){
-  NBSHOWN=20;NBFILTER="";NBAGE=0;
   $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted style="margin-top:10px;font-size:12px;font-weight:700">⏳ ותק בפרסום (חודשים)</div><div id=nbagechips class=nbagechips></div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי רחוב, שכונה או בעל הנכס" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
-  loadNewbornPage();
+  if(NBFILTER){var sb=$("nbsearch");if(sb)sb.value=NBFILTER;}
+  if(NBITEMS&&NBITEMS.length){nbLiveLabel();renderNewborn();var _y=NBSCROLL;[0,90,260].forEach(function(d){setTimeout(function(){if(TABNOW=="newborn")window.scrollTo(0,_y);},d);});}
+  else{NBSHOWN=20;loadNewbornPage();}
 }
 function nbMtWaMsg(m){var nm=String((m&&m.owner)||"").trim();var hi=nm?("היי "+nm):"היי";
   var who=NAME?(" כאן "+NAME+" מ-RE/MAX Family"):" מ-RE/MAX Family";
@@ -8020,9 +8023,13 @@ function ovlLock(){_ovlScrollY=window.scrollY||window.pageYOffset||0;var b=docum
 function ovlUnlock(){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";window.scrollTo(0,_ovlScrollY);}
 var NBFILTER="",_nbSearchT=null;
 function nbSearch(v){v=(v||"").trim();if(_nbSearchT)clearTimeout(_nbSearchT);
-  if(v.length<2){NBFILTER="";NBAGE=0;_nbSearchT=setTimeout(function(){nbLoad("");},150);return;}
+  if(v.length<2){NBFILTER="";NBSEARCH=null;NBAGE=0;_nbSearchT=setTimeout(function(){if(NBITEMS&&NBITEMS.length){NBSHOWN=20;nbLiveLabel();renderNewborn();}else loadNewbornPage();},150);return;}
   NBFILTER=v;NBAGE=-1;_nbSearchT=setTimeout(function(){nbLoad(v);},300);}
-function nbFiltered(){return NBITEMS;}   // הסינון (ותק/חיפוש) נעשה בשרת — הפרונט רק מציג
+function nbFiltered(){   // ותק=סינון בצד הלקוח (מיידי); חיפוש=תוצאות מהשרת
+  if(NBFILTER&&NBSEARCH)return NBSEARCH;
+  if(NBAGE<0)return NBITEMS;
+  var b=NB_AGE_BUCKETS[NBAGE];
+  return NBITEMS.filter(function(x){var a=x.ageDays||0;return a>=b.min&&a<b.max;});}
 function renderNewborn(){
   if(!$("nblist"))return;
   nbAgeChips();
@@ -8035,16 +8042,15 @@ function nbLoadMore(){NBSHOWN+=20;renderNewborn();}
 function nbLoad(q){
   var p=[];
   if(typeof IMP!="undefined"&&IMP)p.push("as="+encodeURIComponent(IMP));
-  if(q)p.push("q="+encodeURIComponent(q));
-  else if(NBAGE>=0){var b=NB_AGE_BUCKETS[NBAGE];p.push("minDays="+b.min);p.push("maxDays="+b.max);}
+  if(q)p.push("q="+encodeURIComponent(q));   // ותק לא נשלח — כל הנכסים חוזרים פעם אחת לסינון בצד הלקוח
   api("/api/newborn"+(p.length?("?"+p.join("&")):"")).then(function(r){
     if(!$("nblist"))return;
     if(!r||!r.ok){$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";return;}
     NBDATA=r;NBSHOWN=20;
-    NBITEMS=(r.results||[]).filter(function(x){return x.released;});
-    NBBUCKETS=r.bucketCounts||[];NBTOTAL=(r.total!=null?r.total:NBITEMS.length);
-    var lv=$("nblive");if(lv)lv.innerHTML=(q?("🔍 "+NBITEMS.length+" תוצאות (מכל המערכת)"):("🟢 "+NBTOTAL+" נכסים לגיוס"));
-    renderNewborn();
+    var items=(r.results||[]).filter(function(x){return x.released;});
+    if(q){NBSEARCH=items;}else{NBITEMS=items;NBSEARCH=null;}
+    NBBUCKETS=r.bucketCounts||[];NBTOTAL=(r.total!=null?r.total:items.length);
+    nbLiveLabel();renderNewborn();
   }).catch(function(){if($("nblist"))$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";});
 }
 function loadNewbornPage(){nbLoad("");
