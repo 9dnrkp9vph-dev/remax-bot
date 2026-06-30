@@ -5652,8 +5652,10 @@ def api_newborn():
             _addr = _nb(r.get("רחוב1", "") or r.get("רחוב", ""))
             _owner = _nb(r.get("שם בעל הנכס", ""))
             if q:
-                # מצב חיפוש — מכל הפול, ללא השהיה/הסתרה; סינון לפי טקסט (כתובת/בעל נכס/עיר)
-                if q not in (_addr + " " + _owner + " " + city).lower():
+                # מצב חיפוש — מכל הפול, ללא השהיה/הסתרה; חיפוש לפי רחוב, שכונה (שדה ייעודי או מהתיאור), עיר ובעל הנכס
+                _hood = _nb(r.get("שכונה", "") or r.get("שכונה ", "") or r.get("שכונה/אזור", ""))
+                _dsc = str(r.get("תיאור נכס", "") or "")
+                if q not in (_addr + " " + _owner + " " + city + " " + _hood + " " + _dsc).lower():
                     continue
             else:
                 if not released:
@@ -7935,7 +7937,7 @@ function nbAgeChips(){var el=$("nbagechips");if(!el)return;
 function nbAgeSet(i){NBAGE=i;NBSHOWN=20;NBFILTER="";var sb=$("nbsearch");if(sb)sb.value="";loadNewbornPage();}
 function viewNewborn(){
   NBSHOWN=20;NBFILTER="";NBAGE=0;
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted style="margin-top:10px;font-size:12px;font-weight:700">⏳ ותק בפרסום (חודשים)</div><div id=nbagechips class=nbagechips></div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי שם בעל הנכס או כתובת" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted style="margin-top:10px;font-size:12px;font-weight:700">⏳ ותק בפרסום (חודשים)</div><div id=nbagechips class=nbagechips></div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי רחוב, שכונה או בעל הנכס" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
   loadNewbornPage();
 }
 function nbMtWaMsg(m){var nm=String((m&&m.owner)||"").trim();var hi=nm?("היי "+nm):"היי";
