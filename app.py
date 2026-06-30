@@ -5284,7 +5284,7 @@ def api_listing_done():
 NEWBORN_SHEET_TAB   = os.environ.get("NEWBORN_SHEET_TAB", "נכס נולד")
 NEWBORN_DELAYS_TAB  = os.environ.get("NEWBORN_DELAYS_TAB", "נכסנולד_הגדרות")
 NEWBORN_DEFAULT_DELAY = int(os.environ.get("NEWBORN_DEFAULT_DELAY", "0") or 0)
-NEWBORN_WINDOW_DAYS   = int(os.environ.get("NEWBORN_WINDOW_DAYS", "190") or 190)
+NEWBORN_WINDOW_DAYS   = int(os.environ.get("NEWBORN_WINDOW_DAYS", "400") or 400)
 NEWBORN_HIDDEN        = 10 ** 9   # ערך "מוסתר" — הסוכן לא רואה שום נכס
 _NB_HIDDEN_TOKENS = {"מוסתר", "מוסתרת", "הסתר", "לעולם", "אין", "לא", "-", "–", "—", "x", "X", "✗"}
 
@@ -5593,7 +5593,7 @@ def _is_famexcl(addr, city, fam_list):
     return False
 
 _NB_RESULT_VER = [0]   # מעלים בכל שינוי (סטטוס/הערה/פנייה) כדי לבטל את מטמון התוצאה לכל הסקופים
-_NB_BUCKETS = [(0, 7), (7, 14), (14, 30), (30, 60), (60, 10**9)]   # דליי ותק (ימים) — חייב להתאים ל-NB_AGE_BUCKETS בפרונט
+_NB_BUCKETS = [(0, 30), (30, 60), (60, 90), (90, 120), (120, 150), (150, 180), (180, 10**9)]   # דליי ותק לפי חודשים — חייב להתאים ל-NB_AGE_BUCKETS בפרונט
 
 @app.route("/api/newborn", methods=["GET", "POST"])
 def api_newborn():
@@ -7928,16 +7928,14 @@ function openNewborn(){
   }).catch(function(){});}
 var _nbScrollY=0;
 function nbLock(on){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";}
-var NBITEMS=[],NBSHOWN=20,NBAGE=-1,NBBUCKETS=[],NBTOTAL=0;
-var NB_AGE_BUCKETS=[{l:"עד שבוע",min:0,max:7},{l:"1–2 שב׳",min:7,max:14},{l:"2–4 שב׳",min:14,max:30},{l:"1–2 ח׳",min:30,max:60},{l:"חודשיים+",min:60,max:999999}];
+var NBITEMS=[],NBSHOWN=20,NBAGE=0,NBBUCKETS=[],NBTOTAL=0;
+var NB_AGE_BUCKETS=[{l:"חודש 1",min:0,max:30},{l:"חודש 2",min:30,max:60},{l:"חודש 3",min:60,max:90},{l:"חודש 4",min:90,max:120},{l:"חודש 5",min:120,max:150},{l:"חודש 6",min:150,max:180},{l:"חודש 7+",min:180,max:999999}];
 function nbAgeChips(){var el=$("nbagechips");if(!el)return;
-  var h='<span class="agechip'+(NBAGE<0?" on":"")+'" onclick="nbAgeSet(-1)">הכל<small>'+(NBTOTAL||0)+'</small></span>';
-  h+=NB_AGE_BUCKETS.map(function(b,i){return '<span class="agechip'+(NBAGE==i?" on":"")+'" onclick="nbAgeSet('+i+')">'+b.l+'<small>'+((NBBUCKETS&&NBBUCKETS[i])||0)+'</small></span>';}).join("");
-  el.innerHTML=h;}
-function nbAgeSet(i){NBAGE=(NBAGE==i?-1:i);NBSHOWN=20;NBFILTER="";var sb=$("nbsearch");if(sb)sb.value="";loadNewbornPage();}
+  el.innerHTML=NB_AGE_BUCKETS.map(function(b,i){return '<span class="agechip'+(NBAGE==i?" on":"")+'" onclick="nbAgeSet('+i+')">'+b.l+'<small>'+((NBBUCKETS&&NBBUCKETS[i])||0)+'</small></span>';}).join("");}
+function nbAgeSet(i){NBAGE=i;NBSHOWN=20;NBFILTER="";var sb=$("nbsearch");if(sb)sb.value="";loadNewbornPage();}
 function viewNewborn(){
-  NBSHOWN=20;NBFILTER="";NBAGE=-1;
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted style="margin-top:10px;font-size:12px;font-weight:700">⏳ לפי ותק בפרסום</div><div id=nbagechips class=nbagechips></div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי שם בעל הנכס או כתובת" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
+  NBSHOWN=20;NBFILTER="";NBAGE=0;
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted style="margin-top:10px;font-size:12px;font-weight:700">⏳ ותק בפרסום (חודשים)</div><div id=nbagechips class=nbagechips></div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי שם בעל הנכס או כתובת" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
   loadNewbornPage();
 }
 function nbMtWaMsg(m){var nm=String((m&&m.owner)||"").trim();var hi=nm?("היי "+nm):"היי";
@@ -8020,7 +8018,7 @@ function ovlLock(){_ovlScrollY=window.scrollY||window.pageYOffset||0;var b=docum
 function ovlUnlock(){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";window.scrollTo(0,_ovlScrollY);}
 var NBFILTER="",_nbSearchT=null;
 function nbSearch(v){v=(v||"").trim();if(_nbSearchT)clearTimeout(_nbSearchT);
-  if(v.length<2){NBFILTER="";_nbSearchT=setTimeout(function(){nbLoad("");},150);return;}
+  if(v.length<2){NBFILTER="";NBAGE=0;_nbSearchT=setTimeout(function(){nbLoad("");},150);return;}
   NBFILTER=v;NBAGE=-1;_nbSearchT=setTimeout(function(){nbLoad(v);},300);}
 function nbFiltered(){return NBITEMS;}   // הסינון (ותק/חיפוש) נעשה בשרת — הפרונט רק מציג
 function renderNewborn(){
