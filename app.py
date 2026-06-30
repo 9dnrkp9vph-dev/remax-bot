@@ -2245,6 +2245,10 @@ from flask import send_file, Response, redirect
 TWILIO_SID   = os.environ.get("TWILIO_SID", "")
 TWILIO_AUTH  = os.environ.get("TWILIO_AUTH", "")
 TWILIO_FROM  = os.environ.get("TWILIO_FROM", "")           # +972... או MG... (Messaging Service)
+# ── ספק SMS חלופי: Maskyoo / sms.deals (חיסכון בעלויות Twilio) ──
+SMS_DEALS_TOKEN  = os.environ.get("SMS_DEALS_TOKEN", "")
+SMS_DEALS_SENDER = os.environ.get("SMS_DEALS_SENDER", "")
+SMS_DEALS_URL    = os.environ.get("SMS_DEALS_URL", "https://sms.deals/api/ws.php")
 # מנהלים קבועים (מוגדרים לפי מספר טלפון) — בנוסף למשתנה הסביבה ADMIN_PHONES אם קיים
 _DEFAULT_ADMIN_PHONES = [
     "0546000808",  # אודי שמול
@@ -2583,7 +2587,42 @@ def _web_valid_pct(v):
     try: return float(v)
     except: return None
 
+def _sms_local_il(last9):
+    """ממיר מזהה טלפון לפורמט מקומי ישראלי 05xxxxxxxx (Maskyoo דורש מקומי, לא +972)."""
+    d = re.sub(r"\D", "", str(last9 or ""))
+    if d.startswith("972"): d = d[3:]
+    d = d.lstrip("0")[-9:]
+    return ("0" + d) if d else ""
+
+def _send_sms_dealsmaskyoo(last9, body):
+    """שליחה דרך sms.deals (Maskyoo). מחזיר True/False אם נשלח,
+    או None אם הספק לא מוגדר — אז web_send_sms נופלת חזרה ל-Twilio."""
+    if not (SMS_DEALS_TOKEN and SMS_DEALS_SENDER):
+        return None
+    dest = _sms_local_il(last9)
+    if not dest:
+        log.error("sms.deals: invalid destination")
+        return False
+    params  = {"service": "send_sms", "dest": dest, "sender": SMS_DEALS_SENDER, "message": body}
+    headers = {"Authorization": "Bearer " + SMS_DEALS_TOKEN}
+    try:
+        r = requests.get(SMS_DEALS_URL, params=params, headers=headers, timeout=15)
+        if r.status_code >= 300:
+            log.error(f"sms.deals HTTP {r.status_code}: {r.text[:200]}")
+            return False
+        low = (r.text or "").lower()
+        if any(k in low for k in ("error", "forbidden", "blacklist", "invalid destination", "missing message")):
+            log.error(f"sms.deals failed: {r.text[:200]}")
+            return False
+        return True
+    except Exception as e:
+        log.error(f"sms.deals error: {e}")
+        return False
+
 def web_send_sms(last9, body):
+    res = _send_sms_dealsmaskyoo(last9, body)
+    if res is not None:
+        return res
     if not (TWILIO_SID and TWILIO_AUTH and TWILIO_FROM):
         log.error("Twilio not configured")
         return False
