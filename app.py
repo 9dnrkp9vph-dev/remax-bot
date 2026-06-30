@@ -5593,6 +5593,7 @@ def _is_famexcl(addr, city, fam_list):
     return False
 
 _NB_RESULT_VER = [0]   # מעלים בכל שינוי (סטטוס/הערה/פנייה) כדי לבטל את מטמון התוצאה לכל הסקופים
+_NB_BUCKETS = [(0, 7), (7, 14), (14, 30), (30, 60), (60, 10**9)]   # דליי ותק (ימים) — חייב להתאים ל-NB_AGE_BUCKETS בפרונט
 
 @app.route("/api/newborn", methods=["GET", "POST"])
 def api_newborn():
@@ -5607,8 +5608,13 @@ def api_newborn():
         eff_norm = _norm_name(eff_name)
         # חיפוש: מחזיר התאמות מכל הפול (300 האחרונים) — גם נכסים שעוד לא נחשפו לסוכן
         q = (request.args.get("q", "") or ((request.get_json(silent=True) or {}).get("q", "")) or "").strip().lower()
+        # סינון לפי ותק בפרסום (דלי נבחר) — נשלח מהפרונט
+        def _intp(nm):
+            try: return int(str(request.args.get(nm) or ((request.get_json(silent=True) or {}).get(nm)) or "").strip())
+            except Exception: return None
+        min_days = _intp("minDays"); max_days = _intp("maxDays")
         # מטמון תוצאה לפי סקופ — פתיחה חוזרת של הטאב מיידית (מתבטל בכל שינוי דרך _NB_RESULT_VER)
-        _nbkey = "nbres:%d:%s:%s:%s" % (_NB_RESULT_VER[0], _last9(s.get("phone", "")), as_name, q)
+        _nbkey = "nbres:%d:%s:%s:%s:%s:%s" % (_NB_RESULT_VER[0], _last9(s.get("phone", "")), as_name, q, min_days, max_days)
         _nbc = _cache_get(_nbkey, 90)
         if _nbc is not None:
             return jsonify(_nbc)
@@ -5629,9 +5635,11 @@ def api_newborn():
         rows = [r for r in fetch_newborn() if _newborn_created_epoch(r)]
         rows.sort(key=_newborn_created_epoch, reverse=True)
         out = []
+        bucket_counts = [0] * len(_NB_BUCKETS)
         for r in rows:
             created = _newborn_created_epoch(r)
-            if (now - created) / 86400 > NEWBORN_WINDOW_DAYS:   # ישנים מדי לא מציגים
+            age_f = (now - created) / 86400
+            if age_f > NEWBORN_WINDOW_DAYS:   # ישנים מדי לא מציגים
                 continue
             def _nb(v):
                 v = str(v or "").strip()
@@ -5643,8 +5651,6 @@ def api_newborn():
             city = _nb(r.get("עיר", "") or r.get("עיר / ישוב", ""))
             _addr = _nb(r.get("רחוב1", "") or r.get("רחוב", ""))
             _owner = _nb(r.get("שם בעל הנכס", ""))
-            _k = _nb_key(r)
-            _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
             if q:
                 # מצב חיפוש — מכל הפול, ללא השהיה/הסתרה; סינון לפי טקסט (כתובת/בעל נכס/עיר)
                 if q not in (_addr + " " + _owner + " " + city).lower():
@@ -5652,6 +5658,17 @@ def api_newborn():
             else:
                 if not released:
                     continue   # מציגים רק נכסים שכבר נחשפו לסוכן
+            ad = int(age_f)
+            for _bi, (_lo, _hi) in enumerate(_NB_BUCKETS):   # ספירת דליים על *כל* הנכסים הנראים (לא רק 300)
+                if _lo <= ad < _hi:
+                    bucket_counts[_bi] += 1
+                    break
+            if min_days is not None and max_days is not None and not (min_days <= ad < max_days):
+                continue   # לא בדלי הוותק שנבחר
+            if len(out) >= 300:   # תקרת בטיחות לעיבוד הכבד; הספירה ממשיכה לכל הדליים
+                continue
+            _k = _nb_key(r)
+            _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
             ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
             out.append({
                 "released": True,
@@ -5663,7 +5680,7 @@ def api_newborn():
                 "desc": _nb(r.get("תיאור נכס", "")),
                 "price": _newborn_price(r.get("מחיר", "")),
                 "notes": _nb(r.get("הערות חדש", ""))[:160],
-                "owner": _nb(r.get("שם בעל הנכס", "")),
+                "owner": _owner,
                 "phone": _fmt_vphone(ophone),
                 "wa": _wa_phone(ophone),
                 "agent": lister,
@@ -5671,13 +5688,11 @@ def api_newborn():
                 "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
                 "stat": _vstat or None,
                 "unotes": _nb_notes_for(_k, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", "")))),
-                "ageDays": int((now - created) // 86400) if created else 0,
+                "ageDays": ad,
                 "famexcl": _is_famexcl(_addr, city, fam_list),
             })
-            if len(out) >= 300:   # תקרת בטיחות; הפרונט מציג 20 בכל פעם עם "טען עוד"
-                break
-        _res = {"ok": True, "count": len(out),
-                "released": sum(1 for x in out if x["released"]), "delay": delay, "results": out}
+        _res = {"ok": True, "count": len(out), "released": len(out), "delay": delay,
+                "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts)}
         _cache_put(_nbkey, _res)
         return jsonify(_res)
     except Exception as e:
@@ -7913,14 +7928,13 @@ function openNewborn(){
   }).catch(function(){});}
 var _nbScrollY=0;
 function nbLock(on){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";}
-var NBITEMS=[],NBSHOWN=20,NBAGE=-1;
-var NB_AGE_BUCKETS=[{l:"עד שבוע",min:0,max:7},{l:"1–2 שב׳",min:7,max:14},{l:"2–4 שב׳",min:14,max:30},{l:"1–2 ח׳",min:30,max:60},{l:"חודשיים+",min:60,max:1e9}];
+var NBITEMS=[],NBSHOWN=20,NBAGE=-1,NBBUCKETS=[],NBTOTAL=0;
+var NB_AGE_BUCKETS=[{l:"עד שבוע",min:0,max:7},{l:"1–2 שב׳",min:7,max:14},{l:"2–4 שב׳",min:14,max:30},{l:"1–2 ח׳",min:30,max:60},{l:"חודשיים+",min:60,max:999999}];
 function nbAgeChips(){var el=$("nbagechips");if(!el)return;
-  var counts=NB_AGE_BUCKETS.map(function(b){return NBITEMS.filter(function(x){var a=x.ageDays||0;return a>=b.min&&a<b.max;}).length;});
-  var h='<span class="agechip'+(NBAGE<0?" on":"")+'" onclick="nbAgeSet(-1)">הכל<small>'+NBITEMS.length+'</small></span>';
-  h+=NB_AGE_BUCKETS.map(function(b,i){return '<span class="agechip'+(NBAGE==i?" on":"")+'" onclick="nbAgeSet('+i+')">'+b.l+'<small>'+counts[i]+'</small></span>';}).join("");
+  var h='<span class="agechip'+(NBAGE<0?" on":"")+'" onclick="nbAgeSet(-1)">הכל<small>'+(NBTOTAL||0)+'</small></span>';
+  h+=NB_AGE_BUCKETS.map(function(b,i){return '<span class="agechip'+(NBAGE==i?" on":"")+'" onclick="nbAgeSet('+i+')">'+b.l+'<small>'+((NBBUCKETS&&NBBUCKETS[i])||0)+'</small></span>';}).join("");
   el.innerHTML=h;}
-function nbAgeSet(i){NBAGE=(NBAGE==i?-1:i);NBSHOWN=20;nbAgeChips();renderNewborn();}
+function nbAgeSet(i){NBAGE=(NBAGE==i?-1:i);NBSHOWN=20;NBFILTER="";var sb=$("nbsearch");if(sb)sb.value="";loadNewbornPage();}
 function viewNewborn(){
   NBSHOWN=20;NBFILTER="";NBAGE=-1;
   $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted style="margin-top:10px;font-size:12px;font-weight:700">⏳ לפי ותק בפרסום</div><div id=nbagechips class=nbagechips></div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי שם בעל הנכס או כתובת" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
@@ -8006,18 +8020,9 @@ function ovlLock(){_ovlScrollY=window.scrollY||window.pageYOffset||0;var b=docum
 function ovlUnlock(){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";window.scrollTo(0,_ovlScrollY);}
 var NBFILTER="",_nbSearchT=null;
 function nbSearch(v){v=(v||"").trim();if(_nbSearchT)clearTimeout(_nbSearchT);
-  if(v.length<2){NBFILTER="";_nbSearchT=setTimeout(function(){loadNewbornPage();},150);return;}
-  _nbSearchT=setTimeout(function(){
-    api("/api/newborn?q="+encodeURIComponent(v)+((typeof IMP!="undefined"&&IMP)?("&as="+encodeURIComponent(IMP)):"")).then(function(r){
-      if(!$("nblist"))return;if(!r||!r.ok)return;NBITEMS=(r.results||[]);NBFILTER="";NBSHOWN=20;renderNewborn();
-      var lv=$("nblive");if(lv)lv.innerHTML="🔍 "+NBITEMS.length+" תוצאות (מכל המערכת)";
-    }).catch(function(){});
-  },300);}
-function nbFiltered(){var f=(NBFILTER||"").trim().toLowerCase();
-  return NBITEMS.filter(function(x){
-    if(NBAGE>=0){var b=NB_AGE_BUCKETS[NBAGE];var a=x.ageDays||0;if(!(a>=b.min&&a<b.max))return false;}
-    if(f&&(((x.address||"")+" "+(x.owner||"")+" "+(x.city||"")).toLowerCase().indexOf(f)<0))return false;
-    return true;});}
+  if(v.length<2){NBFILTER="";_nbSearchT=setTimeout(function(){nbLoad("");},150);return;}
+  NBFILTER=v;NBAGE=-1;_nbSearchT=setTimeout(function(){nbLoad(v);},300);}
+function nbFiltered(){return NBITEMS;}   // הסינון (ותק/חיפוש) נעשה בשרת — הפרונט רק מציג
 function renderNewborn(){
   if(!$("nblist"))return;
   nbAgeChips();
@@ -8027,15 +8032,22 @@ function renderNewborn(){
   var m=$("nbmore");if(m){m.innerHTML=(items.length>NBSHOWN)?"<button class=sec onclick=nbLoadMore() style=width:auto;display:inline-block;padding:11px 24px>טען עוד ("+(items.length-NBSHOWN)+")</button>":"";}
 }
 function nbLoadMore(){NBSHOWN+=20;renderNewborn();}
-function loadNewbornPage(){
-  api("/api/newborn"+nbAs()).then(function(r){
+function nbLoad(q){
+  var p=[];
+  if(typeof IMP!="undefined"&&IMP)p.push("as="+encodeURIComponent(IMP));
+  if(q)p.push("q="+encodeURIComponent(q));
+  else if(NBAGE>=0){var b=NB_AGE_BUCKETS[NBAGE];p.push("minDays="+b.min);p.push("maxDays="+b.max);}
+  api("/api/newborn"+(p.length?("?"+p.join("&")):"")).then(function(r){
     if(!$("nblist"))return;
     if(!r||!r.ok){$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";return;}
-    NBDATA=r;
+    NBDATA=r;NBSHOWN=20;
     NBITEMS=(r.results||[]).filter(function(x){return x.released;});
-    var lv=$("nblive");if(lv)lv.innerHTML="🟢 "+NBITEMS.length+" נכסים לגיוס";
+    NBBUCKETS=r.bucketCounts||[];NBTOTAL=(r.total!=null?r.total:NBITEMS.length);
+    var lv=$("nblive");if(lv)lv.innerHTML=(q?("🔍 "+NBITEMS.length+" תוצאות (מכל המערכת)"):("🟢 "+NBTOTAL+" נכסים לגיוס"));
     renderNewborn();
   }).catch(function(){if($("nblist"))$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";});
+}
+function loadNewbornPage(){nbLoad("");
 }
 var NBSTL={meeting:"📅 נקבעה פגישה",followup:"🔁 פולו-אפ",not_interested:"✖ לא מעוניין"};
 function nbFmtDate(s){s=String(s||"");var t="";if(s.indexOf("T")>-1){t=" "+s.slice(11,16);s=s.slice(0,10);}var p=s.split("-");if(p.length==3)return p[2]+"/"+p[1]+"/"+p[0]+t;return s+t;}
