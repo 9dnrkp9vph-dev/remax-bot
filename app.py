@@ -3396,6 +3396,15 @@ def api_dev_smstest():
     dest = _sms_local_il(to)
     out = {"ok": True, "provider": "sms.deals", "dest": dest, "sender": SMS_DEALS_SENDER,
            "token_set": bool(SMS_DEALS_TOKEN), "sender_set": bool(SMS_DEALS_SENDER), "url": SMS_DEALS_URL}
+    # ה-IP היוצא בפועל של השירות — להשוואה מול ה-IP שרשום אצל Maskyoo
+    for _ipurl in ("https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"):
+        try:
+            _ipr = requests.get(_ipurl, timeout=8)
+            if _ipr.status_code < 300 and (_ipr.text or "").strip():
+                out["outbound_ip"] = (_ipr.text or "").strip()[:60]; break
+        except Exception:
+            continue
+    out.setdefault("outbound_ip", "?")
     if not (SMS_DEALS_TOKEN and SMS_DEALS_SENDER):
         out["ok"] = False; out["reason"] = "not_configured"
         return jsonify(out)
