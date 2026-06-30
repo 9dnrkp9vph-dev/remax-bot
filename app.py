@@ -3399,15 +3399,18 @@ def api_dev_smstest():
            "token_set": bool(SMS_DEALS_TOKEN), "sender_set": bool(SMS_DEALS_SENDER), "url": SMS_DEALS_URL,
            "token_len": len(SMS_DEALS_TOKEN),
            "token_preview": ((SMS_DEALS_TOKEN[:4] + "…" + SMS_DEALS_TOKEN[-4:]) if len(SMS_DEALS_TOKEN) >= 8 else "?")}
-    # ה-IP היוצא בפועל של השירות — להשוואה מול ה-IP שרשום אצל Maskyoo
-    for _ipurl in ("https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"):
+    # ה-IP היוצא בפועל — נבדק כמה פעמים כדי לחשוף אם Render משתמש במאגר כתובות מתחלף
+    _ips = []
+    for _i in range(6):
         try:
-            _ipr = requests.get(_ipurl, timeout=8)
+            _ipr = requests.get("https://api.ipify.org", timeout=6)
             if _ipr.status_code < 300 and (_ipr.text or "").strip():
-                out["outbound_ip"] = (_ipr.text or "").strip()[:60]; break
+                _ip = (_ipr.text or "").strip()[:60]
+                if _ip not in _ips: _ips.append(_ip)
         except Exception:
             continue
-    out.setdefault("outbound_ip", "?")
+    out["outbound_ips"] = _ips
+    out["outbound_ip"] = (_ips[0] if _ips else "?")
     if not (SMS_DEALS_TOKEN and SMS_DEALS_SENDER):
         out["ok"] = False; out["reason"] = "not_configured"
         return jsonify(out)
