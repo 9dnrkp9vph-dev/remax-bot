@@ -6414,9 +6414,6 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .callrow .ctime{font-size:12px;color:#8a929d;font-weight:700;white-space:nowrap}
 .callrow .cphone{font-size:18px;font-weight:900;color:var(--ink);letter-spacing:.3px}
 .callrow .cphone a{color:var(--ink);text-decoration:none}
-.callrow .cphone .cnum{color:var(--ink);-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
-.callrow .cbtns .callb{display:inline-flex;align-items:center;gap:5px;background:#eef4ff;color:#1d4ed8;border:1px solid #cfe0fb;font-weight:800;font-size:12px;padding:6px 12px;border-radius:10px;text-decoration:none;-webkit-touch-callout:none}
-.callrow .cbtns .callb .eico{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.7}
 .callrow .cmeta{color:var(--muted);font-size:12.5px;margin:3px 0 0}
 .callrow .csumwrap{margin-top:7px}
 .callrow .csum{font-size:14px;line-height:1.6;color:#33405a;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(122,90,18,.25)}
@@ -7271,8 +7268,7 @@ function renderCalls(){var r=CALLDATA;if(!r||TABNOW!="calls"||!$("calls"))return
   var maxC=calls.length?calls[0].ts:0;
   $("calls").innerHTML=(calls.length?calls.map(function(c){
     var isNew=seenCall&&c.ts>seenCall;var st=c.status=="ANSWER"?"<span class=ans>נענתה</span>":"<span class=noans>"+c.status+"</span>";
-    var callerLink=c.caller?("<span class=cnum>"+esc(c.caller)+"</span>"):"-";
-    var callb=(c.tel||c.caller)?("<a class=callb href='tel:"+esc(c.tel||c.caller)+"'><svg class=eico viewBox='0 0 18 18'><path d='M16 13.4v2.1a1.4 1.4 0 0 1-1.5 1.4 13.9 13.9 0 0 1-6.1-2.2 13.7 13.7 0 0 1-4.2-4.2A13.9 13.9 0 0 1 2 4.4 1.4 1.4 0 0 1 3.4 3h2.1a1.4 1.4 0 0 1 1.4 1.2c.1.7.3 1.4.5 2a1.4 1.4 0 0 1-.3 1.5l-.9.9a11.2 11.2 0 0 0 4.2 4.2l.9-.9a1.4 1.4 0 0 1 1.5-.3c.6.2 1.3.4 2 .5A1.4 1.4 0 0 1 16 13.4z'/></svg>חייג</a>"):"";
+    var callerLink=c.caller?("<a href='tel:"+(c.tel||c.caller)+"'>"+c.caller+"</a>"):"-";
     var cb=c.callback?(" <a class=cbtn href='"+c.callback+"' target=_blank rel=noopener onclick=\"return cbGuard(this,'"+esc(c.tel||c.caller||"")+"')\">🔁 חייג חזרה</a>"):"";
     var bsum=(c.summary||"")+(c.clientDetails?("\n"+c.clientDetails):"");
     var addb=" <button class=addbuyer data-ph=\""+esc(c.tel||c.caller||"")+"\" data-sum=\""+encodeURIComponent(bsum)+"\"><svg class=eico viewBox='0 0 18 18'><circle cx='9' cy='6' r='2.6'/><path d='M4 15a5 5 0 0 1 10 0'/></svg>הוסף קונה</button>";
@@ -7286,7 +7282,7 @@ function renderCalls(){var r=CALLDATA;if(!r||TABNOW!="calls"||!$("calls"))return
       "<div class=crow1><div class='cstat "+(_ok?"ok":"no")+"'>"+_phsvg+"</div>"+
         "<div class=cmain><div class=cphone>"+callerLink+"</div><div class=csub>"+_sub+"</div></div></div>"+
       callDetails(c)+
-      "<div class=cbtns>"+callb+wab+cb+addb+hideb+"</div>"+
+      "<div class=cbtns>"+wab+cb+addb+hideb+"</div>"+
     "</div>";
   }).join(""):"<div class=card><div class=muted>אין שיחות בטווח.</div></div>");
   document.querySelectorAll("#calls .addbuyer").forEach(function(b){b.onclick=function(){var sum=decodeURIComponent(b.getAttribute("data-sum")||"");openBuyerForm({phone:b.getAttribute("data-ph")||"",summary:sum,name:parseBuyerName(sum),budget:parseBuyerBudget(sum)});};});
@@ -7948,7 +7944,7 @@ function nbCard(x){
     (x.desc?"<div class=nbdesc>"+esc(x.desc)+"</div>":"")+
     (x.price?"<div class=nbprice>💰 "+esc(x.price)+"</div>":"")+
     (x.notes?"<div class=muted style=margin-top:4px>"+esc(x.notes)+"</div>":"")+
-    "<div class=nbowner>👤 "+esc(x.owner||"בעל הנכס")+(ph?" · "+esc(ph):"")+"</div>"+
+    "<div class=nbowner>👤 "+esc(x.owner||"בעל הנכס")+(ph?" · <a href='tel:"+esc(ph)+"' style='color:inherit;text-decoration:none'>"+esc(ph)+"</a>":"")+"</div>"+
     "<div class=nbacts>"+
       (ph?"<a class='nbbtn call' href='tel:"+esc(ph)+"' onclick=\"nbMark('"+k+"','"+a+"')\">📞 חייג</a>":"")+
       (x.wa?"<a class='nbbtn wa' href='whatsapp://send?phone="+x.wa+"&text="+nbWaMsg(x)+"' onclick=\"nbMark('"+k+"','"+a+"')\">💬 וואטסאפ</a>":"")+
