@@ -5664,6 +5664,7 @@ def api_newborn():
                 "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
                 "stat": _vstat or None,
                 "unotes": _nb_notes_for(_k, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", "")))),
+                "ageDays": int((now - created) // 86400) if created else 0,
                 "famexcl": _is_famexcl(_addr, city, fam_list),
             })
             if len(out) >= 300:   # תקרת בטיחות; הפרונט מציג 20 בכל פעם עם "טען עוד"
@@ -6525,6 +6526,11 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--muted);f
 .nbcardx .nbbtn.wa{background:#e7f6ec;color:#0f7a37;border-color:#b6e3c4}
 .nbcardx .nbbtn.link{background:#0D1B2A;color:#fff;border-color:#0D1B2A}
 .nbcardx .nbcontact{margin-top:9px}
+.nbagechips{display:flex;gap:7px;flex-wrap:wrap;margin-top:7px}
+.nbagechips .agechip{display:inline-flex;flex-direction:column;align-items:center;gap:1px;border:1px solid #e6dcc2;background:#fff;color:#0D1B2A;border-radius:11px;padding:7px 13px;font-size:13px;font-weight:800;cursor:pointer;line-height:1.1;transition:.12s}
+.nbagechips .agechip small{font-size:10.5px;font-weight:700;color:#9aa1ab}
+.nbagechips .agechip.on{background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;border-color:#c0901f;box-shadow:0 2px 7px rgba(201,151,42,.4)}
+.nbagechips .agechip.on small{color:#5a4410}
 .tab{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:0;position:relative}
 .tabbadge{position:absolute;top:3px;inset-inline-start:50%;transform:translateX(58%);background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;font-size:10px;font-weight:900;min-width:17px;height:17px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 1px 4px rgba(201,151,42,.45)}
 .menuwrap{position:relative}
@@ -7892,10 +7898,17 @@ function openNewborn(){
   }).catch(function(){});}
 var _nbScrollY=0;
 function nbLock(on){var b=document.body;b.style.position="";b.style.top="";b.style.left="";b.style.right="";b.style.width="";}
-var NBITEMS=[],NBSHOWN=20;
+var NBITEMS=[],NBSHOWN=20,NBAGE=-1;
+var NB_AGE_BUCKETS=[{l:"30",min:0,max:30},{l:"60",min:30,max:60},{l:"90",min:60,max:90},{l:"120",min:90,max:120},{l:"150",min:120,max:150},{l:"180+",min:150,max:1e9}];
+function nbAgeChips(){var el=$("nbagechips");if(!el)return;
+  var counts=NB_AGE_BUCKETS.map(function(b){return NBITEMS.filter(function(x){var a=x.ageDays||0;return a>=b.min&&a<b.max;}).length;});
+  var h='<span class="agechip'+(NBAGE<0?" on":"")+'" onclick="nbAgeSet(-1)">הכל<small>'+NBITEMS.length+'</small></span>';
+  h+=NB_AGE_BUCKETS.map(function(b,i){return '<span class="agechip'+(NBAGE==i?" on":"")+'" onclick="nbAgeSet('+i+')">'+b.l+' י׳<small>'+counts[i]+'</small></span>';}).join("");
+  el.innerHTML=h;}
+function nbAgeSet(i){NBAGE=(NBAGE==i?-1:i);NBSHOWN=20;nbAgeChips();renderNewborn();}
 function viewNewborn(){
-  NBSHOWN=20;NBFILTER="";
-  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי שם בעל הנכס או כתובת" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
+  NBSHOWN=20;NBFILTER="";NBAGE=-1;
+  $("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">🐥 נכס נולד'+scopeLabel()+'</h2><button class="btn-gold" style="width:auto;margin:0;padding:9px 15px;font-size:13px" onclick="nbMeetings()">📅 פגישות ופולו-אפ</button></div><div class=muted style="margin-top:8px">צרו קשר עם בעלי הנכסים — המטרה: גיוס בבלעדיות 🏠</div><div class=muted style="margin-top:10px;font-size:12px;font-weight:700">⏳ לפי ותק בפרסום</div><div id=nbagechips class=nbagechips></div><input id=nbsearch class=chip style="width:100%;box-sizing:border-box;margin-top:10px" placeholder="🔍 חיפוש לפי שם בעל הנכס או כתובת" oninput="nbSearch(this.value)"><div class=muted id=nblive style=margin-top:6px>טוען…</div></div><div id=nblist></div><div id=nbmore style="text-align:center;margin:2px 0 16px"></div>';
   loadNewbornPage();
 }
 function nbMtWaMsg(m){var nm=String((m&&m.owner)||"").trim();var hi=nm?("היי "+nm):"היי";
@@ -7985,12 +7998,16 @@ function nbSearch(v){v=(v||"").trim();if(_nbSearchT)clearTimeout(_nbSearchT);
       var lv=$("nblive");if(lv)lv.innerHTML="🔍 "+NBITEMS.length+" תוצאות (מכל המערכת)";
     }).catch(function(){});
   },300);}
-function nbFiltered(){var f=(NBFILTER||"").trim().toLowerCase();if(!f)return NBITEMS;
-  return NBITEMS.filter(function(x){return (((x.address||"")+" "+(x.owner||"")+" "+(x.city||"")).toLowerCase().indexOf(f)>=0);});}
+function nbFiltered(){var f=(NBFILTER||"").trim().toLowerCase();
+  return NBITEMS.filter(function(x){
+    if(NBAGE>=0){var b=NB_AGE_BUCKETS[NBAGE];var a=x.ageDays||0;if(!(a>=b.min&&a<b.max))return false;}
+    if(f&&(((x.address||"")+" "+(x.owner||"")+" "+(x.city||"")).toLowerCase().indexOf(f)<0))return false;
+    return true;});}
 function renderNewborn(){
   if(!$("nblist"))return;
+  nbAgeChips();
   var items=nbFiltered();
-  if(!items.length){$("nblist").innerHTML="<div class=card><div class=muted>"+(NBFILTER?"לא נמצאו מודעות לחיפוש זה.":"אין נכסים זמינים עבורך כרגע.")+"</div></div>";if($("nbmore"))$("nbmore").innerHTML="";return;}
+  if(!items.length){$("nblist").innerHTML="<div class=card><div class=muted>"+((NBFILTER||NBAGE>=0)?"לא נמצאו נכסים בסינון זה.":"אין נכסים זמינים עבורך כרגע.")+"</div></div>";if($("nbmore"))$("nbmore").innerHTML="";return;}
   $("nblist").innerHTML=items.slice(0,NBSHOWN).map(nbCard).join("");
   var m=$("nbmore");if(m){m.innerHTML=(items.length>NBSHOWN)?"<button class=sec onclick=nbLoadMore() style=width:auto;display:inline-block;padding:11px 24px>טען עוד ("+(items.length-NBSHOWN)+")</button>":"";}
 }
