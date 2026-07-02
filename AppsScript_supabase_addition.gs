@@ -263,17 +263,207 @@ function _sbCallRecord_(conf, headers, vals, idx) {
   };
 }
 
-/** נקרא מתוך upsertEvent_ — כתיבה כפולה של שיחה (רק לשונית 'שיחות').
+// בונה רשומת signature מ-headers+values — אותו עיקרון כמו _sbCallRecord_
+function _sbSigRecord_(conf, headers, vals, idx) {
+  var raw = {}, rxVal = null;
+  for (var i = 0; i < headers.length; i++) {
+    var h = String(headers[i] == null ? '' : headers[i]).trim();
+    if (h === 'received_at') rxVal = vals[i];
+    raw[h] = (vals[i] instanceof Date) ? vals[i].toISOString() : vals[i];
+  }
+  var eid = String(raw['event_id'] == null ? '' : raw['event_id']).trim();
+  if (!eid) eid = String(vals[0] == null ? '' : vals[0]).trim();
+  return {
+    office_id: conf.office,
+    source_key: _sbCallKey_(eid, vals, idx),
+    event_id: eid,
+    deal_type: String(raw['deal_type'] == null ? '' : raw['deal_type']),
+    agent: String(raw['agent'] == null ? '' : raw['agent']),
+    client_name: String(raw['client_name'] == null ? '' : raw['client_name']),
+    address: String(raw['address'] == null ? '' : raw['address']),
+    city: String(raw['city'] == null ? '' : raw['city']),
+    commission_pct: String(raw['commission_pct'] == null ? '' : raw['commission_pct']),
+    notes: String(raw['notes'] == null ? '' : raw['notes']),
+    received_at: _sbDateOnly_(rxVal),
+    raw: raw,
+    updated_at: new Date().toISOString()
+  };
+}
+
+/** נקרא מתוך upsertEvent_ — כתיבה כפולה ללשוניות 'שיחות' ו'חתימות'.
  *  קורא את שורת הכותרות האמיתית מהגיליון כדי ש-raw יהיה זהה 1:1 ל-getRaw_. */
 function sbCallRow_(sheetName, fields, rowVals) {
-  if (sheetName !== 'שיחות') return;
+  if (sheetName !== 'שיחות' && sheetName !== 'חתימות') return;
   var conf = _sbConf_();
   if (!conf) return;
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   var headers = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), rowVals.length)).getValues()[0];
-  _sbFetch_(conf, '/rest/v1/calls?on_conflict=office_id,source_key',
-            _sbCallRecord_(conf, headers, rowVals, 'live'),
+  if (sheetName === 'שיחות') {
+    _sbFetch_(conf, '/rest/v1/calls?on_conflict=office_id,source_key',
+              _sbCallRecord_(conf, headers, rowVals, 'live'),
+              'resolution=merge-duplicates');
+  } else {
+    _sbFetch_(conf, '/rest/v1/signatures?on_conflict=office_id,source_key',
+              _sbSigRecord_(conf, headers, rowVals, 'live'),
+              'resolution=merge-duplicates');
+  }
+}
+
+/** נקרא מתוך addsigning — חתימה דיגיטלית מהאפליקציה (append לגיליון). */
+function sbSigningAdd_(sghd, rec) {
+  var conf = _sbConf_();
+  if (!conf) return;
+  var vals = sghd.map(function (h) { return (rec[h] !== undefined) ? rec[h] : ''; });
+  _sbFetch_(conf, '/rest/v1/signatures?on_conflict=office_id,source_key',
+            _sbSigRecord_(conf, sghd, vals, 'app'),
             'resolution=merge-duplicates');
+}
+
+/** נקרא מתוך updatesigning — אחרי שהלקוח חתם מרחוק: החלפת טוקן ב-event_id וקישור. */
+function sbSigningUpdate_(oldTok, newEv, newLink) {
+  var conf = _sbConf_();
+  if (!conf || !oldTok) return;
+  var base = conf.url + '/rest/v1/signatures?office_id=eq.' + conf.office +
+             '&event_id=eq.' + encodeURIComponent(String(oldTok));
+  var g = UrlFetchApp.fetch(base + '&select=id,raw', {
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+    muteHttpExceptions: true
+  });
+  if (g.getResponseCode() !== 200) return;
+  var found = JSON.parse(g.getContentText()) || [];
+  for (var i = 0; i < found.length; i++) {
+    var raw = found[i].raw || {};
+    if (newLink) raw['commission_pct'] = newLink;
+    if (newEv) raw['event_id'] = newEv;
+    var patch = { raw: raw, updated_at: new Date().toISOString() };
+    if (newLink) patch.commission_pct = newLink;
+    if (newEv) { patch.event_id = newEv; patch.source_key = newEv; }
+    UrlFetchApp.fetch(conf.url + '/rest/v1/signatures?id=eq.' + found[i].id, {
+      method: 'patch',
+      contentType: 'application/json',
+      headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+      payload: JSON.stringify(patch),
+      muteHttpExceptions: true
+    });
+  }
+}
+
+/** נקרא מתוך deletesigning — מחיקת הסכם (לפי event_id או לקוח+תאריך). */
+function sbSigningDelete_(wEv, wCl, wRa) {
+  var conf = _sbConf_();
+  if (!conf) return;
+  if (String(wEv || '').trim()) {
+    UrlFetchApp.fetch(conf.url + '/rest/v1/signatures?office_id=eq.' + conf.office +
+                      '&event_id=eq.' + encodeURIComponent(String(wEv).trim()), {
+      method: 'delete',
+      headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+      muteHttpExceptions: true
+    });
+    return;
+  }
+  wCl = String(wCl || '').trim(); wRa = String(wRa || '').trim();
+  if (!wCl || !wRa) return;
+  var g = UrlFetchApp.fetch(conf.url + '/rest/v1/signatures?office_id=eq.' + conf.office +
+                            '&client_name=eq.' + encodeURIComponent(wCl) + '&select=id,raw', {
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+    muteHttpExceptions: true
+  });
+  if (g.getResponseCode() !== 200) return;
+  var found = JSON.parse(g.getContentText()) || [];
+  for (var i = 0; i < found.length; i++) {
+    var ra = String((found[i].raw || {})['received_at'] || '');
+    if (ra.indexOf(wRa) === 0) {
+      UrlFetchApp.fetch(conf.url + '/rest/v1/signatures?id=eq.' + found[i].id, {
+        method: 'delete',
+        headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+        muteHttpExceptions: true
+      });
+    }
+  }
+}
+
+/** Backfill חד-פעמי לחתימות — הרץ מהעורך. בטוח להרצה חוזרת (upsert). */
+function sbBackfillSignatures() {
+  var conf = _sbConf_();
+  if (!conf) return '❌ missing properties';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('חתימות');
+  if (!sh || sh.getLastRow() < 2) return 'אין נתונים';
+  var v = sh.getDataRange().getValues();
+  var hd = v[0];
+  // מזהי Fireberry ממוחזרים לעסקאות שונות של אותו לקוח — שומרים כל שורה:
+  // ההופעה הראשונה מקבלת את המפתח הנקי (עדכוני webhook פוגעים בה, כמו בגיליון),
+  // וההופעות הבאות מקבלות סיומת #2, #3...
+  var seen = {}, byKey = {}, total = 0, noId = 0;
+  for (var i = 1; i < v.length; i++) {
+    var any = v[i].some(function (x) { return String(x == null ? '' : x).trim(); });
+    if (!any) continue;
+    total++;
+    var rec = _sbSigRecord_(conf, hd, v[i], i);
+    if (!rec.event_id) noId++;
+    var k = rec.source_key;
+    if (seen[k]) { seen[k]++; rec.source_key = k + '#' + seen[k]; }
+    else seen[k] = 1;
+    byKey[rec.source_key] = rec;
+  }
+  var unique = Object.keys(byKey).map(function (k) { return byKey[k]; });
+  var BATCH = 400, sent = 0, errs = 0;
+  for (var b = 0; b < unique.length; b += BATCH) {
+    var chunk = unique.slice(b, b + BATCH);
+    var r = _sbFetch_(conf, '/rest/v1/signatures?on_conflict=office_id,source_key',
+                      chunk, 'resolution=merge-duplicates');
+    var code = r.getResponseCode();
+    if (code >= 200 && code < 300) sent += chunk.length;
+    else { errs++; Logger.log('שגיאה בקבוצה ' + b + ': ' + code + ' ' + r.getContentText().substring(0, 200)); }
+  }
+  var msg = 'הועברו ' + sent + '/' + unique.length + ' חתימות ייחודיות (' + total + ' שורות, ' +
+            noId + ' בלי event_id → מפתח סינתטי)' +
+            (errs ? (' · ' + errs + ' קבוצות נכשלו') : ' · הכל תקין ✅');
+  Logger.log(msg);
+  return msg;
+}
+
+/** Parity לחתימות — משווה מפתחות גיליון ↔ Supabase. */
+function sbParitySignatures() {
+  var conf = _sbConf_();
+  if (!conf) { Logger.log('❌ חסרות הגדרות'); return '❌'; }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('חתימות');
+  var v = sh.getDataRange().getValues();
+  var hd = v[0];
+  var sheetKeys = {}, seen = {}, total = 0;
+  for (var i = 1; i < v.length; i++) {
+    var any = v[i].some(function (x) { return String(x == null ? '' : x).trim(); });
+    if (!any) continue;
+    total++;
+    var k = _sbSigRecord_(conf, hd, v[i], i).source_key;
+    if (seen[k]) { seen[k]++; k = k + '#' + seen[k]; }
+    else seen[k] = 1;
+    sheetKeys[k] = true;
+  }
+  var sbKeys = {}, offset = 0, PAGE = 1000;
+  while (true) {
+    var r = UrlFetchApp.fetch(conf.url + '/rest/v1/signatures?select=source_key' +
+                              '&office_id=eq.' + conf.office + '&limit=' + PAGE + '&offset=' + offset, {
+      headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+      muteHttpExceptions: true
+    });
+    if (r.getResponseCode() !== 200) { Logger.log('❌ שגיאת קריאה: ' + r.getResponseCode()); return '❌'; }
+    var arr = JSON.parse(r.getContentText());
+    arr.forEach(function (x) { sbKeys[x.source_key] = true; });
+    if (arr.length < PAGE) break;
+    offset += PAGE;
+  }
+  var sheetList = Object.keys(sheetKeys), sbList = Object.keys(sbKeys);
+  var missing = sheetList.filter(function (k) { return !sbKeys[k]; });
+  var extra = sbList.filter(function (k) { return !sheetKeys[k]; });
+  Logger.log('✍️ חתימות — גיליון: ' + total + ' שורות (' + sheetList.length + ' ייחודיות) · Supabase: ' + sbList.length);
+  Logger.log(missing.length ? ('❌ חסרות ב-Supabase: ' + missing.length + ' — ' + missing.slice(0, 3).join(' | '))
+                            : '✅ אף חתימה לא חסרה');
+  Logger.log(extra.length ? ('⚠️ עודפות ב-Supabase: ' + extra.length) : '✅ אין עודפות');
+  var ok = !missing.length;
+  Logger.log(ok ? '🟢 PARITY חתימות מלא' : '🔴 יש פערים');
+  return ok ? 'OK' : 'GAPS';
 }
 
 /** הסתרת שיחה — כתיבה כפולה. */
