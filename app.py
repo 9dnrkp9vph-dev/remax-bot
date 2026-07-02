@@ -5324,6 +5324,7 @@ def api_listing_done():
 NEWBORN_SOURCE    = (os.environ.get("NEWBORN_SOURCE", "sheets") or "sheets").strip().lower()
 CALLS_SOURCE      = (os.environ.get("CALLS_SOURCE", "sheets") or "sheets").strip().lower()
 SIGNATURES_SOURCE = (os.environ.get("SIGNATURES_SOURCE", "sheets") or "sheets").strip().lower()
+BUYERS_SOURCE     = (os.environ.get("BUYERS_SOURCE", "sheets") or "sheets").strip().lower()
 try:
     import supabase_db as _sbdb
 except Exception:
@@ -5352,7 +5353,8 @@ def fetch_newborn():
         if rows is None:
             j = _buyers_apps_post("listnewborn", {})
             rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
-        _cache_put("newborn_rows", rows)
+        if rows:   # תשובה ריקה = כמעט תמיד תקלה זמנית — לא לקבע אותה במטמון ל-5 דקות
+            _cache_put("newborn_rows", rows)
         return rows
 
 def _fetch_newborn_delays():
@@ -5409,7 +5411,8 @@ def _fetch_newborn_contacts():
     if NEWBORN_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
         try:
             d = _sbdb.fetch_newborn_contacts()
-            _cache_put("newborn_contacts", d)
+            if d:
+                _cache_put("newborn_contacts", d)
             return d
         except Exception as _sbe:
             log.error(f"supabase newborn contacts read failed — falling back to sheets: {_sbe}")
@@ -5422,7 +5425,8 @@ def _fetch_newborn_contacts():
         if not k: continue
         d.setdefault(k, [])
         if ag and ag not in d[k]: d[k].append(ag)
-    _cache_put("newborn_contacts", d)
+    if d:   # תשובה ריקה = כנראה תקלה זמנית — לא לקבע במטמון
+        _cache_put("newborn_contacts", d)
     return d
 
 # ── סטטוס טיפול לכל נכס נולד (פגישה/פולואפ/לא מעוניין) — נשמר בקונפיג ──
@@ -5758,7 +5762,8 @@ def api_newborn():
             })
         _res = {"ok": True, "count": len(out), "released": len(out), "delay": delay,
                 "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts)}
-        _cache_put(_nbkey, _res)
+        if rows:   # אין לקבע במטמון תוצאה שנבנתה מקריאה ריקה/כושלת
+            _cache_put(_nbkey, _res)
         return jsonify(_res)
     except Exception as e:
         log.error(f"newborn error: {e}", exc_info=True)
@@ -6161,6 +6166,14 @@ def _fetch_manual_buyers():
     c = _cache_get("buyers", 60)
     if c is not None:
         return c
+    if BUYERS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            rows = _sbdb.fetch_buyers_rows()
+            if rows:
+                _cache_put("buyers", rows)
+            return rows
+        except Exception as _sbe:
+            log.error(f"supabase buyers read failed — falling back to sheets: {_sbe}")
     j = _buyers_apps_post("listbuyers", {})
     if not j or not j.get("ok"):
         return []
