@@ -121,6 +121,64 @@ def fetch_newborn_contacts():
     return d
 
 
+def _parse_ddmmyyyy(s):
+    """פענוח 'dd/mm/yyyy' (וגם dd-mm-yyyy / yyyy-mm-dd) לתאריך; None אם נכשל.
+    מקביל ל-parseDate_ ב-Apps Script עבור גבולות from/to של getRaw_."""
+    s = str(s or "").strip()
+    if not s:
+        return None
+    m = re.match(r"^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})", s)
+    if m:
+        try:
+            return _dt.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except Exception:
+            return None
+    m = re.match(r"^(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})", s)
+    if m:
+        try:
+            return _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except Exception:
+            return None
+    return None
+
+
+def fetch_calls_rows(frm="01/01/2020", to="31/12/2099"):
+    """שורות 'שיחות' — אותו פורמט בדיוק כמו getRaw_('שיחות', from, to) מה-Apps Script:
+    list של dicts עם המפתחות האנגליים המקוריים + _date_key (dd/mm/yyyy).
+    הסינון לפי עמודת received_at (תאריך-בלבד) שחושבה ע"י parseDate_ בזמן הכתיבה —
+    כלומר בדיוק אותה סמנטיקה: שורות בלי תאריך תקין לא מוחזרות."""
+    d_from = _parse_ddmmyyyy(frm)
+    d_to = _parse_ddmmyyyy(to)
+    conds = ["received_at.not.is.null"]
+    if d_from:
+        conds.append("received_at.gte." + d_from.isoformat())
+    if d_to:
+        conds.append("received_at.lte." + d_to.isoformat())
+    # PostgREST: כמה תנאים על אותה עמודה — דרך פרמטר and=(...)
+    recs = _get_all("calls", "received_at,raw", {"and": "(" + ",".join(conds) + ")"})
+    rows = []
+    for rec in recs:
+        raw = rec.get("raw")
+        if not isinstance(raw, dict) or not raw:
+            continue
+        d = rec.get("received_at")
+        try:
+            dd = _dt.date.fromisoformat(str(d))
+        except Exception:
+            continue
+        obj = dict(raw)
+        obj["_date_key"] = f"{dd.day:02d}/{dd.month:02d}/{dd.year}"
+        rows.append(obj)
+    return rows
+
+
+def fetch_hidden_call_ids():
+    """מזהי שיחות מוסתרות — set של מחרוזות, כמו _fetch_hidden_calls ב-app.py."""
+    recs = _get_all("hidden_calls", "event_id")
+    return set(str(rec.get("event_id") or "").strip()
+               for rec in recs if str(rec.get("event_id") or "").strip())
+
+
 if __name__ == "__main__":
     # בדיקה עצמית מקומית — קריאה בלבד, מדפיס ספירות
     if not enabled():
