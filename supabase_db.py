@@ -142,11 +142,10 @@ def _parse_ddmmyyyy(s):
     return None
 
 
-def fetch_calls_rows(frm="01/01/2020", to="31/12/2099"):
-    """שורות 'שיחות' — אותו פורמט בדיוק כמו getRaw_('שיחות', from, to) מה-Apps Script:
-    list של dicts עם המפתחות האנגליים המקוריים + _date_key (dd/mm/yyyy).
-    הסינון לפי עמודת received_at (תאריך-בלבד) שחושבה ע"י parseDate_ בזמן הכתיבה —
-    כלומר בדיוק אותה סמנטיקה: שורות בלי תאריך תקין לא מוחזרות."""
+def _fetch_raw_tab(table, frm, to):
+    """שורות טאב במבנה של getRaw_ מה-Apps Script: dicts עם המפתחות המקוריים
+    + _date_key (dd/mm/yyyy). הסינון לפי עמודת received_at (תאריך-בלבד) שחושבה
+    ע"י parseDate_ בזמן הכתיבה — אותה סמנטיקה: שורות בלי תאריך תקין לא מוחזרות."""
     d_from = _parse_ddmmyyyy(frm)
     d_to = _parse_ddmmyyyy(to)
     conds = ["received_at.not.is.null"]
@@ -155,7 +154,7 @@ def fetch_calls_rows(frm="01/01/2020", to="31/12/2099"):
     if d_to:
         conds.append("received_at.lte." + d_to.isoformat())
     # PostgREST: כמה תנאים על אותה עמודה — דרך פרמטר and=(...)
-    recs = _get_all("calls", "received_at,raw", {"and": "(" + ",".join(conds) + ")"})
+    recs = _get_all(table, "received_at,raw", {"and": "(" + ",".join(conds) + ")"})
     rows = []
     for rec in recs:
         raw = rec.get("raw")
@@ -170,6 +169,16 @@ def fetch_calls_rows(frm="01/01/2020", to="31/12/2099"):
         obj["_date_key"] = f"{dd.day:02d}/{dd.month:02d}/{dd.year}"
         rows.append(obj)
     return rows
+
+
+def fetch_calls_rows(frm="01/01/2020", to="31/12/2099"):
+    """'שיחות' — זהה 1:1 ל-getRaw_('שיחות', from, to)."""
+    return _fetch_raw_tab("calls", frm, to)
+
+
+def fetch_signatures_rows(frm="01/01/2020", to="31/12/2099"):
+    """'חתימות' — זהה 1:1 ל-getRaw_('חתימות', from, to)."""
+    return _fetch_raw_tab("signatures", frm, to)
 
 
 def fetch_hidden_call_ids():
