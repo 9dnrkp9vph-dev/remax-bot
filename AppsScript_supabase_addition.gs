@@ -201,6 +201,215 @@ function sbBackfillNewborn() {
 }
 
 /***********************************************************************
+ * ══ שלב 2: "שיחות" ═════════════════════════════════════════════════
+ * חיבור (2 שורות בתוך upsertEvent_ ב-קוד.gs, לפני כל אחד מה-return):
+ *   אחרי sh.getRange(rowIdx, ...).setValues([row]); הוסף:
+ *       try { sbCallRow_(sheetName, fields, row); } catch (_sbErr) {}
+ *   אחרי sh.appendRow(baseRow.concat([now, now])); הוסף:
+ *       try { sbCallRow_(sheetName, fields, baseRow.concat([now, now])); } catch (_sbErr) {}
+ * ובבלוק hidecall/unhidecall:
+ *   אחרי if (foundRow < 0) hsh.appendRow([eid]); הוסף:
+ *       try { sbHiddenAdd_(eid); } catch (_sbErr) {}
+ *   אחרי if (foundRow >= 1) hsh.deleteRow(foundRow); הוסף:
+ *       try { sbHiddenRemove_(eid); } catch (_sbErr) {}
+ ***********************************************************************/
+
+// המרת ערך תא לתאריך-בלבד ISO (כמו parseDate_ ב-קוד.gs) או null
+function _sbDateOnly_(v) {
+  var ep = (typeof parseDate_ === 'function') ? parseDate_(v) : null;
+  if (!ep) return null;
+  var d = new Date(ep);
+  return d.getFullYear() + '-' +
+         ('0' + (d.getMonth() + 1)).slice(-2) + '-' +
+         ('0' + d.getDate()).slice(-2);
+}
+
+// מפתח יציב לשיחה: event_id אם קיים, אחרת hash דטרמיניסטי מהערכים+אינדקס
+function _sbCallKey_(eventId, rowVals, idx) {
+  var eid = String(eventId || '').trim();
+  if (eid) return eid;
+  var basis = rowVals.map(function (x) { return String(x == null ? '' : x); }).join('|') + '|' + idx;
+  var dig = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_1, basis)
+    .map(function (b) { return ('00' + (b & 0xFF).toString(16)).slice(-2); }).join('');
+  return 'x:' + dig.slice(0, 16);
+}
+
+// בונה רשומת call מ-headers+values (Date → ISO אוטומטית ב-JSON)
+function _sbCallRecord_(conf, headers, vals, idx) {
+  var raw = {};
+  for (var i = 0; i < headers.length; i++) {
+    if (!headers[i]) continue;
+    raw[headers[i]] = (vals[i] instanceof Date) ? vals[i].toISOString() : vals[i];
+  }
+  var eid = String(raw['event_id'] || '').trim();
+  return {
+    office_id: conf.office,
+    source_key: _sbCallKey_(eid, vals, idx),
+    event_id: eid,
+    status: String(raw['status'] == null ? '' : raw['status']),
+    agent: String(raw['agent'] == null ? '' : raw['agent']),
+    agent_phone: String(raw['agent_phone'] == null ? '' : raw['agent_phone']),
+    caller_phone: String(raw['caller_phone'] == null ? '' : raw['caller_phone']),
+    duration_sec: String(raw['duration_sec'] == null ? '' : raw['duration_sec']),
+    transcript_summary: String(raw['transcript_summary'] == null ? '' : raw['transcript_summary']),
+    received_at: _sbDateOnly_(raw['received_at']),
+    raw: raw,
+    updated_at: new Date().toISOString()
+  };
+}
+
+/** נקרא מתוך upsertEvent_ — כתיבה כפולה של שיחה (רק לשונית 'שיחות'). */
+function sbCallRow_(sheetName, fields, rowVals) {
+  if (sheetName !== 'שיחות') return;
+  var conf = _sbConf_();
+  if (!conf) return;
+  var headers = fields.concat(['received_at', 'updated_at']);
+  _sbFetch_(conf, '/rest/v1/calls?on_conflict=office_id,source_key',
+            _sbCallRecord_(conf, headers, rowVals, 'live'),
+            'resolution=merge-duplicates');
+}
+
+/** הסתרת שיחה — כתיבה כפולה. */
+function sbHiddenAdd_(eid) {
+  var conf = _sbConf_();
+  if (!conf || !eid) return;
+  _sbFetch_(conf, '/rest/v1/hidden_calls?on_conflict=office_id,event_id',
+            { office_id: conf.office, event_id: String(eid) },
+            'resolution=ignore-duplicates');
+}
+
+/** שחזור שיחה מוסתרת — מחיקה מ-Supabase. */
+function sbHiddenRemove_(eid) {
+  var conf = _sbConf_();
+  if (!conf || !eid) return;
+  UrlFetchApp.fetch(conf.url + '/rest/v1/hidden_calls?office_id=eq.' + conf.office +
+                    '&event_id=eq.' + encodeURIComponent(String(eid)), {
+    method: 'delete',
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+    muteHttpExceptions: true
+  });
+}
+
+/** Backfill חד-פעמי לשיחות — הרץ מהעורך. בטוח להרצה חוזרת (upsert). */
+function sbBackfillCalls() {
+  var conf = _sbConf_();
+  if (!conf) return '❌ missing properties';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('שיחות');
+  if (!sh || sh.getLastRow() < 2) return 'אין נתונים';
+  var v = sh.getDataRange().getValues();
+  var hd = v[0].map(function (h) { return String(h).trim(); });
+  var byKey = {}, total = 0, noId = 0;
+  for (var i = 1; i < v.length; i++) {
+    var any = v[i].some(function (x) { return String(x == null ? '' : x).trim(); });
+    if (!any) continue;
+    total++;
+    var rec = _sbCallRecord_(conf, hd, v[i], i);
+    if (!rec.event_id) noId++;
+    byKey[rec.source_key] = rec;
+  }
+  var unique = Object.keys(byKey).map(function (k) { return byKey[k]; });
+  var BATCH = 400, sent = 0, errs = 0;
+  for (var b = 0; b < unique.length; b += BATCH) {
+    var chunk = unique.slice(b, b + BATCH);
+    var r = _sbFetch_(conf, '/rest/v1/calls?on_conflict=office_id,source_key',
+                      chunk, 'resolution=merge-duplicates');
+    var code = r.getResponseCode();
+    if (code >= 200 && code < 300) sent += chunk.length;
+    else { errs++; Logger.log('שגיאה בקבוצה ' + b + ': ' + code + ' ' + r.getContentText().substring(0, 200)); }
+  }
+  var msg = 'הועברו ' + sent + '/' + unique.length + ' שיחות ייחודיות (' + total + ' שורות, ' +
+            noId + ' בלי event_id → מפתח סינתטי)' +
+            (errs ? (' · ' + errs + ' קבוצות נכשלו') : ' · הכל תקין ✅');
+  Logger.log(msg);
+  return msg;
+}
+
+/** Backfill חד-פעמי לשיחות מוסתרות. */
+function sbBackfillHidden() {
+  var conf = _sbConf_();
+  if (!conf) return '❌ missing properties';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('מוסתרות');
+  if (!sh || sh.getLastRow() < 1) return 'אין נתונים';
+  var v = sh.getDataRange().getValues();
+  var recs = [], seen = {};
+  for (var i = 0; i < v.length; i++) {
+    var eid = String(v[i][0] == null ? '' : v[i][0]).trim();
+    if (!eid || seen[eid]) continue;
+    seen[eid] = true;
+    recs.push({ office_id: conf.office, event_id: eid });
+  }
+  var r = _sbFetch_(conf, '/rest/v1/hidden_calls?on_conflict=office_id,event_id',
+                    recs, 'resolution=ignore-duplicates');
+  var ok = r.getResponseCode() >= 200 && r.getResponseCode() < 300;
+  var msg = (ok ? 'הועברו ' : '❌ שגיאה ') + recs.length + ' מוסתרות' + (ok ? ' · הכל תקין ✅' : '');
+  Logger.log(msg);
+  return msg;
+}
+
+/** Parity לשיחות — משווה מפתחות גיליון ↔ Supabase + מוסתרות. */
+function sbParityCalls() {
+  var conf = _sbConf_();
+  if (!conf) { Logger.log('❌ חסרות הגדרות'); return '❌'; }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('שיחות');
+  var v = sh.getDataRange().getValues();
+  var hd = v[0].map(function (h) { return String(h).trim(); });
+  var sheetKeys = {}, total = 0;
+  for (var i = 1; i < v.length; i++) {
+    var any = v[i].some(function (x) { return String(x == null ? '' : x).trim(); });
+    if (!any) continue;
+    total++;
+    var rec = _sbCallRecord_(conf, hd, v[i], i);
+    sheetKeys[rec.source_key] = true;
+  }
+  var sbKeys = {}, offset = 0, PAGE = 1000;
+  while (true) {
+    var r = UrlFetchApp.fetch(conf.url + '/rest/v1/calls?select=source_key' +
+                              '&office_id=eq.' + conf.office + '&limit=' + PAGE + '&offset=' + offset, {
+      headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+      muteHttpExceptions: true
+    });
+    if (r.getResponseCode() !== 200) { Logger.log('❌ שגיאת קריאה: ' + r.getResponseCode()); return '❌'; }
+    var arr = JSON.parse(r.getContentText());
+    arr.forEach(function (x) { sbKeys[x.source_key] = true; });
+    if (arr.length < PAGE) break;
+    offset += PAGE;
+  }
+  var sheetList = Object.keys(sheetKeys), sbList = Object.keys(sbKeys);
+  var missing = sheetList.filter(function (k) { return !sbKeys[k]; });
+  var extra = sbList.filter(function (k) { return !sheetKeys[k]; });
+  Logger.log('📞 שיחות — גיליון: ' + total + ' שורות (' + sheetList.length + ' ייחודיות) · Supabase: ' + sbList.length);
+  Logger.log(missing.length ? ('❌ חסרות ב-Supabase: ' + missing.length + ' — ' + missing.slice(0, 3).join(' | '))
+                            : '✅ אף שיחה לא חסרה');
+  Logger.log(extra.length ? ('⚠️ עודפות ב-Supabase: ' + extra.length) : '✅ אין עודפות');
+
+  // מוסתרות
+  var hsh = ss.getSheetByName('מוסתרות');
+  var hSheet = {};
+  if (hsh && hsh.getLastRow() > 0) {
+    hsh.getDataRange().getValues().forEach(function (row) {
+      var eid = String(row[0] == null ? '' : row[0]).trim();
+      if (eid) hSheet[eid] = true;
+    });
+  }
+  var hr = UrlFetchApp.fetch(conf.url + '/rest/v1/hidden_calls?select=event_id&office_id=eq.' + conf.office + '&limit=10000', {
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key }, muteHttpExceptions: true
+  });
+  var hSb = {};
+  (JSON.parse(hr.getContentText()) || []).forEach(function (x) { hSb[x.event_id] = true; });
+  var hMiss = Object.keys(hSheet).filter(function (k) { return !hSb[k]; });
+  var hExtra = Object.keys(hSb).filter(function (k) { return !hSheet[k]; });
+  Logger.log('🙈 מוסתרות — גיליון: ' + Object.keys(hSheet).length + ' · Supabase: ' + Object.keys(hSb).length +
+             ((hMiss.length || hExtra.length) ? (' · ❌ פערים: ' + hMiss.length + '/' + hExtra.length) : ' · ✅ תואם'));
+
+  var ok = !missing.length && !hMiss.length;
+  Logger.log(ok ? '🟢 PARITY שיחות מלא' : '🔴 יש פערים');
+  return ok ? 'OK' : 'GAPS';
+}
+
+/***********************************************************************
  * בדיקת Parity — משווה גיליון ↔ Supabase (קריאה בלבד משני הצדדים).
  * הרץ מהעורך (Run ▶) בכל רגע; מדפיס דוח מלא ליומן הביצוע.
  ***********************************************************************/
