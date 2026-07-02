@@ -50,6 +50,71 @@ def _dedupe_last(rows):
     return d
 
 
+def _apps_raw(type_he, frm="01/01/2020", to="31/12/2099"):
+    """שחזור web_fetch_raw של app.py — GET action=raw."""
+    from urllib.parse import quote
+    url = (f"{APPS_SCRIPT_URL}?action=raw&type={quote(type_he)}"
+           f"&from={frm}&to={to}&token={APPS_SCRIPT_TOKEN}")
+    r = requests.get(url, timeout=90, allow_redirects=True)
+    r.raise_for_status()
+    j = r.json()
+    if not j.get("ok"):
+        raise RuntimeError(f"raw {type_he}: {j}")
+    return j.get("rows", []) or []
+
+
+def check_calls():
+    """השוואת שיחות: getRaw_('שיחות') ↔ supabase_db.fetch_calls_rows — שדה-שדה."""
+    problems = 0
+    sheet_rows = _apps_raw("שיחות")
+    sb_rows = supabase_db.fetch_calls_rows()
+    print(f"📞 שיחות — גיליון (raw): {len(sheet_rows)} · Supabase: {len(sb_rows)}")
+
+    def _ckey(r):
+        eid = str(r.get("event_id", "") or "").strip()
+        if eid:
+            return eid
+        return "?" + "|".join(str(r.get(f, "") or "") for f in
+                              ("agent_phone", "caller_phone", "received_at"))
+    sheet_by = {}
+    for r in sheet_rows:
+        sheet_by[_ckey(r)] = r
+    sb_by = {}
+    for r in sb_rows:
+        sb_by[_ckey(r)] = r
+    missing = [k for k in sheet_by if k not in sb_by]
+    extra = [k for k in sb_by if k not in sheet_by]
+    if missing:
+        problems += 1
+        print(f"❌ שיחות חסרות במסלול Supabase: {len(missing)} — {missing[:3]}")
+    if extra:
+        problems += 1
+        print(f"⚠️ שיחות עודפות במסלול Supabase: {len(extra)} — {extra[:3]}")
+
+    diff_fields = 0
+    example = None
+    for k in sheet_by:
+        if k not in sb_by:
+            continue
+        a, b = sheet_by[k], sb_by[k]
+        for f in set(a.keys()) | set(b.keys()):
+            va = str(a.get(f, "") or "").strip()
+            vb = str(b.get(f, "") or "").strip()
+            if va != vb:
+                diff_fields += 1
+                if example is None:
+                    example = (k, f, va[:60], vb[:60])
+    if diff_fields:
+        problems += 1
+        print(f"❌ אי-התאמות שדה בשיחות: {diff_fields}")
+        print(f"   לדוגמה: שיחה {example[0]} · שדה '{example[1]}':")
+        print(f"   גיליון:  '{example[2]}'")
+        print(f"   Supabase: '{example[3]}'")
+    else:
+        print("✅ כל השדות זהים בכל השיחות המשותפות")
+    return problems
+
+
 def main():
     problems = 0
 
@@ -112,11 +177,14 @@ def main():
         only_sheet = [k for k in sheet_c if sorted(sheet_c[k]) != sorted(sb_c.get(k, []))]
         print(f"   נכסים עם הבדל: {len(only_sheet)} — {only_sheet[:3]}")
 
+    # ── שיחות ──
+    problems += check_calls()
+
     print()
     if problems == 0:
-        print("🟢 PARITY מלא — מסלול Supabase מחזיר לאפליקציה בדיוק את אותם נתונים. בטוח להדליק את הדגל.")
+        print("🟢 PARITY מלא — מסלול Supabase מחזיר לאפליקציה בדיוק את אותם נתונים. בטוח להדליק את הדגלים.")
         return 0
-    print(f"🔴 נמצאו {problems} סוגי פערים — לא להדליק את הדגל עדיין.")
+    print(f"🔴 נמצאו {problems} סוגי פערים — לא להדליק את הדגלים עדיין.")
     return 1
 
 
