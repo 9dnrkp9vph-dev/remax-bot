@@ -181,6 +181,23 @@ def fetch_signatures_rows(frm="01/01/2020", to="31/12/2099"):
     return _fetch_raw_tab("signatures", frm, to)
 
 
+def fetch_buyers_rows():
+    """'קונים' — אותו מבנה בדיוק כמו listbuyers מה-Apps Script:
+    [{row, date, name, phone, budget, summary, agent, agent_phone, search}, ...]
+    ממוין לפי מספר שורה בגיליון."""
+    recs = _get_all("buyers", "sheet_row,raw",
+                    {"order": "sheet_row.asc"})
+    rows = []
+    for rec in recs:
+        raw = rec.get("raw")
+        if not isinstance(raw, dict):
+            continue
+        obj = dict(raw)
+        obj["row"] = rec.get("sheet_row")
+        rows.append(obj)
+    return rows
+
+
 def fetch_hidden_call_ids():
     """מזהי שיחות מוסתרות — set של מחרוזות, כמו _fetch_hidden_calls ב-app.py."""
     recs = _get_all("hidden_calls", "event_id")
