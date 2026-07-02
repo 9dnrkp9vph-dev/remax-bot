@@ -234,15 +234,19 @@ function _sbCallKey_(eventId, rowVals, idx) {
   return 'x:' + dig.slice(0, 16);
 }
 
-// בונה רשומת call מ-headers+values (Date → ISO אוטומטית ב-JSON)
+// בונה רשומת call מ-headers+values.
+// חשוב: raw נבנה בדיוק כמו getRaw_ — לפי כותרות הגיליון כפי שהן, כולל כותרת
+// ריקה (עמודת ה-ID בגיליון "שיחות" היא ללא כותרת!), בלי לדלג על כלום.
 function _sbCallRecord_(conf, headers, vals, idx) {
   var raw = {}, rxVal = null;
   for (var i = 0; i < headers.length; i++) {
-    if (!headers[i]) continue;
-    if (headers[i] === 'received_at') rxVal = vals[i];   // הערך המקורי (Date/מחרוזת) —
-    raw[headers[i]] = (vals[i] instanceof Date) ? vals[i].toISOString() : vals[i];
+    var h = String(headers[i] == null ? '' : headers[i]).trim();
+    if (h === 'received_at') rxVal = vals[i];   // הערך המקורי (Date/מחרוזת)
+    raw[h] = (vals[i] instanceof Date) ? vals[i].toISOString() : vals[i];
   }
-  var eid = String(raw['event_id'] || '').trim();
+  // מזהה השיחה: עמודת event_id אם קיימת בכותרות, אחרת עמודה A (כמו הדדופ ב-upsertEvent_)
+  var eid = String(raw['event_id'] == null ? '' : raw['event_id']).trim();
+  if (!eid) eid = String(vals[0] == null ? '' : vals[0]).trim();
   return {
     office_id: conf.office,
     source_key: _sbCallKey_(eid, vals, idx),
@@ -259,12 +263,14 @@ function _sbCallRecord_(conf, headers, vals, idx) {
   };
 }
 
-/** נקרא מתוך upsertEvent_ — כתיבה כפולה של שיחה (רק לשונית 'שיחות'). */
+/** נקרא מתוך upsertEvent_ — כתיבה כפולה של שיחה (רק לשונית 'שיחות').
+ *  קורא את שורת הכותרות האמיתית מהגיליון כדי ש-raw יהיה זהה 1:1 ל-getRaw_. */
 function sbCallRow_(sheetName, fields, rowVals) {
   if (sheetName !== 'שיחות') return;
   var conf = _sbConf_();
   if (!conf) return;
-  var headers = fields.concat(['received_at', 'updated_at']);
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  var headers = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), rowVals.length)).getValues()[0];
   _sbFetch_(conf, '/rest/v1/calls?on_conflict=office_id,source_key',
             _sbCallRecord_(conf, headers, rowVals, 'live'),
             'resolution=merge-duplicates');
