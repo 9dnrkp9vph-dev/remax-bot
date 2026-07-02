@@ -236,9 +236,10 @@ function _sbCallKey_(eventId, rowVals, idx) {
 
 // בונה רשומת call מ-headers+values (Date → ISO אוטומטית ב-JSON)
 function _sbCallRecord_(conf, headers, vals, idx) {
-  var raw = {};
+  var raw = {}, rxVal = null;
   for (var i = 0; i < headers.length; i++) {
     if (!headers[i]) continue;
+    if (headers[i] === 'received_at') rxVal = vals[i];   // הערך המקורי (Date/מחרוזת) —
     raw[headers[i]] = (vals[i] instanceof Date) ? vals[i].toISOString() : vals[i];
   }
   var eid = String(raw['event_id'] || '').trim();
@@ -252,7 +253,7 @@ function _sbCallRecord_(conf, headers, vals, idx) {
     caller_phone: String(raw['caller_phone'] == null ? '' : raw['caller_phone']),
     duration_sec: String(raw['duration_sec'] == null ? '' : raw['duration_sec']),
     transcript_summary: String(raw['transcript_summary'] == null ? '' : raw['transcript_summary']),
-    received_at: _sbDateOnly_(raw['received_at']),
+    received_at: _sbDateOnly_(rxVal),   // מהערך המקורי — זהה ל-getRaw_ (חיתוך תאריך מקומי)
     raw: raw,
     updated_at: new Date().toISOString()
   };
