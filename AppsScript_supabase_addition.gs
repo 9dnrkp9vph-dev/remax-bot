@@ -607,6 +607,114 @@ function sbParityCalls() {
 }
 
 /***********************************************************************
+ * ══ שלב 4: "קונים" ═════════════════════════════════════════════════
+ * חיבור (3 שורות בבלוק הקונים ב-קוד.gs):
+ *   addbuyer   — אחרי sh.appendRow([...]):
+ *       try { sbBuyerRow_(sh, sh.getLastRow()); } catch (_sbErr) {}
+ *   updatebuyer — אחרי sh.getRange(rw, 8).setValue(...):
+ *       try { sbBuyerRow_(sh, rw); } catch (_sbErr) {}
+ *   deletebuyer — אחרי sh.deleteRow(dr):
+ *       try { sbBuyerDelete_(dr); } catch (_sbErr) {}
+ ***********************************************************************/
+
+var _SB_BUYER_KEYS = ['date', 'name', 'phone', 'budget', 'summary', 'agent', 'agent_phone', 'search'];
+
+function _sbBuyerRaw_(vals) {
+  var raw = {};
+  for (var i = 0; i < _SB_BUYER_KEYS.length; i++) {
+    var v = (vals[i] === undefined || vals[i] === null) ? '' : vals[i];
+    raw[_SB_BUYER_KEYS[i]] = (v instanceof Date) ? v.toISOString() : v;
+  }
+  return raw;
+}
+
+/** upsert שורת קונה לפי מספר שורה — משמש גם להוספה וגם לעדכון. */
+function sbBuyerRow_(sh, rowIdx) {
+  var conf = _sbConf_();
+  if (!conf || !rowIdx || rowIdx < 2) return;
+  var vals = sh.getRange(rowIdx, 1, 1, 8).getValues()[0];
+  _sbFetch_(conf, '/rest/v1/buyers?on_conflict=office_id,sheet_row',
+            { office_id: conf.office, sheet_row: rowIdx, raw: _sbBuyerRaw_(vals),
+              updated_at: new Date().toISOString() },
+            'resolution=merge-duplicates');
+}
+
+/** מחיקת קונה — מוחק ומזיז את השורות שאחריו (כמו deleteRow בגיליון). */
+function sbBuyerDelete_(rowIdx) {
+  var conf = _sbConf_();
+  if (!conf || !rowIdx) return;
+  UrlFetchApp.fetch(conf.url + '/rest/v1/rpc/buyers_delete_row', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+    payload: JSON.stringify({ p_office: conf.office, p_row: rowIdx }),
+    muteHttpExceptions: true
+  });
+}
+
+/** Backfill חד-פעמי לקונים — מוחק וממלא מחדש (הטבלה קטנה). */
+function sbBackfillBuyers() {
+  var conf = _sbConf_();
+  if (!conf) return '❌ missing properties';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('קונים');
+  if (!sh || sh.getLastRow() < 2) return 'אין נתונים';
+  UrlFetchApp.fetch(conf.url + '/rest/v1/buyers?office_id=eq.' + conf.office, {
+    method: 'delete',
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+    muteHttpExceptions: true
+  });
+  var v = sh.getDataRange().getValues();
+  var recs = [];
+  for (var i = 1; i < v.length; i++) {
+    recs.push({ office_id: conf.office, sheet_row: i + 1, raw: _sbBuyerRaw_(v[i]) });
+  }
+  var r = _sbFetch_(conf, '/rest/v1/buyers?on_conflict=office_id,sheet_row',
+                    recs, 'resolution=merge-duplicates');
+  var ok = r.getResponseCode() >= 200 && r.getResponseCode() < 300;
+  var msg = (ok ? 'הועברו ' : '❌ שגיאה ') + recs.length + ' קונים' + (ok ? ' · הכל תקין ✅' : ': ' + r.getContentText().substring(0, 150));
+  Logger.log(msg);
+  return msg;
+}
+
+/** Parity לקונים — משווה שורה-שורה. */
+function sbParityBuyers() {
+  var conf = _sbConf_();
+  if (!conf) { Logger.log('❌ חסרות הגדרות'); return '❌'; }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('קונים');
+  var v = sh.getDataRange().getValues();
+  var g = UrlFetchApp.fetch(conf.url + '/rest/v1/buyers?select=sheet_row,raw&office_id=eq.' + conf.office + '&order=sheet_row.asc&limit=10000', {
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+    muteHttpExceptions: true
+  });
+  if (g.getResponseCode() !== 200) { Logger.log('❌ שגיאת קריאה'); return '❌'; }
+  var sb = JSON.parse(g.getContentText()) || [];
+  var byRow = {};
+  sb.forEach(function (x) { byRow[x.sheet_row] = x.raw || {}; });
+  var sheetRows = v.length - 1;
+  var diffs = 0, example = '';
+  for (var i = 1; i < v.length; i++) {
+    var raw = _sbBuyerRaw_(v[i]);
+    var other = byRow[i + 1];
+    if (!other) { diffs++; if (!example) example = 'שורה ' + (i + 1) + ' חסרה'; continue; }
+    for (var k = 0; k < _SB_BUYER_KEYS.length; k++) {
+      var f = _SB_BUYER_KEYS[k];
+      if (String(raw[f] == null ? '' : raw[f]) !== String(other[f] == null ? '' : other[f])) {
+        diffs++;
+        if (!example) example = 'שורה ' + (i + 1) + ' שדה ' + f;
+        break;
+      }
+    }
+  }
+  Logger.log('👥 קונים — גיליון: ' + sheetRows + ' · Supabase: ' + sb.length +
+             (diffs ? (' · ❌ ' + diffs + ' הבדלים (' + example + ')') : ' · ✅ זהים שורה-שורה'));
+  var ok = !diffs && sheetRows === sb.length;
+  Logger.log(ok ? '🟢 PARITY קונים מלא' : '🔴 יש פערים');
+  return ok ? 'OK' : 'GAPS';
+}
+
+/***********************************************************************
  * בדיקת Parity — משווה גיליון ↔ Supabase (קריאה בלבד משני הצדדים).
  * הרץ מהעורך (Run ▶) בכל רגע; מדפיס דוח מלא ליומן הביצוע.
  ***********************************************************************/
