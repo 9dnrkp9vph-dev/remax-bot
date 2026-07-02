@@ -2679,6 +2679,11 @@ def _web_fetch_raw_uncached(type_he, frm="01/01/2020", to="31/12/2099"):
             return _sbdb.fetch_calls_rows(frm, to)
         except Exception as _sbe:
             log.error(f"supabase calls read failed — falling back to sheets: {_sbe}")
+    if type_he == "חתימות" and SIGNATURES_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            return _sbdb.fetch_signatures_rows(frm, to)
+        except Exception as _sbe:
+            log.error(f"supabase signatures read failed — falling back to sheets: {_sbe}")
     if not (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN):
         return []
     from urllib.parse import quote
@@ -5316,8 +5321,9 @@ def api_listing_done():
 
 # ── "נכס נולד" — נכסים חדשים עם חשיפה מושהית פר-סוכן ─────────────────────────────
 # מקור נתונים לקריאה פר-מודול: sheets (ברירת מחדל) / supabase — feature flags
-NEWBORN_SOURCE = (os.environ.get("NEWBORN_SOURCE", "sheets") or "sheets").strip().lower()
-CALLS_SOURCE   = (os.environ.get("CALLS_SOURCE", "sheets") or "sheets").strip().lower()
+NEWBORN_SOURCE    = (os.environ.get("NEWBORN_SOURCE", "sheets") or "sheets").strip().lower()
+CALLS_SOURCE      = (os.environ.get("CALLS_SOURCE", "sheets") or "sheets").strip().lower()
+SIGNATURES_SOURCE = (os.environ.get("SIGNATURES_SOURCE", "sheets") or "sheets").strip().lower()
 try:
     import supabase_db as _sbdb
 except Exception:
