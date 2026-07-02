@@ -182,6 +182,25 @@ def main():
     problems += check_raw_tab("שיחות", supabase_db.fetch_calls_rows, "📞")
     problems += check_raw_tab("חתימות", supabase_db.fetch_signatures_rows, "✍️")
 
+    # ── קונים (מבנה לפי מספר שורה) ──
+    sheet_b = _apps_post("listbuyers").get("rows", []) or []
+    sb_b = supabase_db.fetch_buyers_rows()
+    b_diffs = 0
+    sb_by_row = {r.get("row"): r for r in sb_b}
+    for r in sheet_b:
+        o = sb_by_row.get(r.get("row"))
+        if not o:
+            b_diffs += 1
+            continue
+        for f in ("date", "name", "phone", "budget", "summary", "agent", "agent_phone", "search"):
+            if str(r.get(f, "") or "").strip() != str(o.get(f, "") or "").strip():
+                b_diffs += 1
+                break
+    print(f"👥 קונים — גיליון: {len(sheet_b)} · Supabase: {len(sb_b)} · "
+          + ("✅ זהים שורה-שורה" if (not b_diffs and len(sheet_b) == len(sb_b)) else f"❌ {b_diffs} הבדלים"))
+    if b_diffs or len(sheet_b) != len(sb_b):
+        problems += 1
+
     print()
     if problems == 0:
         print("🟢 PARITY מלא — מסלול Supabase מחזיר לאפליקציה בדיוק את אותם נתונים. בטוח להדליק את הדגלים.")
