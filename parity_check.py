@@ -63,17 +63,18 @@ def _apps_raw(type_he, frm="01/01/2020", to="31/12/2099"):
     return j.get("rows", []) or []
 
 
-def check_calls():
-    """השוואת שיחות: getRaw_('שיחות') ↔ supabase_db.fetch_calls_rows — שדה-שדה."""
+def check_raw_tab(type_he, fetch_fn, emoji):
+    """השוואת טאב raw: getRaw_(type) ↔ supabase_db — שדה-שדה."""
     problems = 0
-    sheet_rows = _apps_raw("שיחות")
-    sb_rows = supabase_db.fetch_calls_rows()
-    print(f"📞 שיחות — גיליון (raw): {len(sheet_rows)} · Supabase: {len(sb_rows)}")
+    sheet_rows = _apps_raw(type_he)
+    sb_rows = fetch_fn()
+    print(f"{emoji} {type_he} — גיליון (raw): {len(sheet_rows)} · Supabase: {len(sb_rows)}")
 
     def _ckey(r):
+        # event_id יכול להיות ממוחזר (חתימות) — received_at מבדיל בין הרשומות
         eid = str(r.get("event_id", "") or "").strip()
         if eid:
-            return eid
+            return eid + "|" + str(r.get("received_at", "") or "")
         return "?" + "|".join(str(r.get(f, "") or "") for f in
                               ("agent_phone", "caller_phone", "received_at"))
     sheet_by = {}
@@ -86,10 +87,10 @@ def check_calls():
     extra = [k for k in sb_by if k not in sheet_by]
     if missing:
         problems += 1
-        print(f"❌ שיחות חסרות במסלול Supabase: {len(missing)} — {missing[:3]}")
+        print(f"❌ {type_he} חסרות במסלול Supabase: {len(missing)} — {missing[:3]}")
     if extra:
         problems += 1
-        print(f"⚠️ שיחות עודפות במסלול Supabase: {len(extra)} — {extra[:3]}")
+        print(f"⚠️ {type_he} עודפות במסלול Supabase: {len(extra)} — {extra[:3]}")
 
     diff_fields = 0
     example = None
@@ -106,12 +107,12 @@ def check_calls():
                     example = (k, f, va[:60], vb[:60])
     if diff_fields:
         problems += 1
-        print(f"❌ אי-התאמות שדה בשיחות: {diff_fields}")
-        print(f"   לדוגמה: שיחה {example[0]} · שדה '{example[1]}':")
+        print(f"❌ אי-התאמות שדה ב{type_he}: {diff_fields}")
+        print(f"   לדוגמה: {example[0]} · שדה '{example[1]}':")
         print(f"   גיליון:  '{example[2]}'")
         print(f"   Supabase: '{example[3]}'")
     else:
-        print("✅ כל השדות זהים בכל השיחות המשותפות")
+        print(f"✅ כל השדות זהים בכל ה{type_he} המשותפות")
     return problems
 
 
@@ -177,8 +178,9 @@ def main():
         only_sheet = [k for k in sheet_c if sorted(sheet_c[k]) != sorted(sb_c.get(k, []))]
         print(f"   נכסים עם הבדל: {len(only_sheet)} — {only_sheet[:3]}")
 
-    # ── שיחות ──
-    problems += check_calls()
+    # ── שיחות + חתימות ──
+    problems += check_raw_tab("שיחות", supabase_db.fetch_calls_rows, "📞")
+    problems += check_raw_tab("חתימות", supabase_db.fetch_signatures_rows, "✍️")
 
     print()
     if problems == 0:
