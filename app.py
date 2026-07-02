@@ -5310,6 +5310,13 @@ def api_listing_done():
     return jsonify({"ok": True})
 
 # ── "נכס נולד" — נכסים חדשים עם חשיפה מושהית פר-סוכן ─────────────────────────────
+# מקור נתונים לקריאה: sheets (ברירת מחדל) / supabase — feature flag (NEWBORN_SOURCE)
+NEWBORN_SOURCE = (os.environ.get("NEWBORN_SOURCE", "sheets") or "sheets").strip().lower()
+try:
+    import supabase_db as _sbdb
+except Exception:
+    _sbdb = None
+
 NEWBORN_SHEET_TAB   = os.environ.get("NEWBORN_SHEET_TAB", "נכס נולד")
 NEWBORN_DELAYS_TAB  = os.environ.get("NEWBORN_DELAYS_TAB", "נכסנולד_הגדרות")
 NEWBORN_DEFAULT_DELAY = int(os.environ.get("NEWBORN_DEFAULT_DELAY", "0") or 0)
@@ -5323,8 +5330,16 @@ def fetch_newborn():
     with _sf_lock("newborn_rows"):
         c = _cache_get("newborn_rows", 300)
         if c is not None: return c
-        j = _buyers_apps_post("listnewborn", {})
-        rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
+        rows = None
+        if NEWBORN_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+            try:
+                rows = _sbdb.fetch_newborn_rows()
+            except Exception as _sbe:
+                log.error(f"supabase newborn read failed — falling back to sheets: {_sbe}")
+                rows = None
+        if rows is None:
+            j = _buyers_apps_post("listnewborn", {})
+            rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
         _cache_put("newborn_rows", rows)
         return rows
 
@@ -5379,6 +5394,13 @@ def _nb_key(r):
 def _fetch_newborn_contacts():
     c = _cache_get("newborn_contacts", 150)
     if c is not None: return c
+    if NEWBORN_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            d = _sbdb.fetch_newborn_contacts()
+            _cache_put("newborn_contacts", d)
+            return d
+        except Exception as _sbe:
+            log.error(f"supabase newborn contacts read failed — falling back to sheets: {_sbe}")
     j = _buyers_apps_post("listnewborncontacts", {})
     rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
     d = {}
