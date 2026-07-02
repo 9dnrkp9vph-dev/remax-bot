@@ -32,6 +32,9 @@ APPS_SCRIPT_TOKEN = os.environ.get("APPS_SCRIPT_TOKEN", "")
 BUYER_SEARCH_TRIGGERS = ["מחפש קונה", "מחפשת קונה"]
 _buyer_calls_cache = {"data": None, "ts": 0}
 MAYTAPI_BASE = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT}/{MAYTAPI_PHONE_ID}"
+# מזהי קבוצות וואטסאפ למנהלים (chat id של הקבוצה, למשל 120363xxxxxxxxxx@g.us) — נשלח אליהן בנוסף לסוכן האישי
+WA_GROUP_CALLS      = os.environ.get("WA_GROUP_CALLS", "120363409255066492@g.us").strip()       # קבוצת "שיחות"
+WA_GROUP_SIGNATURES = os.environ.get("WA_GROUP_SIGNATURES", "120363430208269536@g.us").strip()  # קבוצת "חתימות"
 # ── Push notifications (OneSignal) — נחוץ לאפליקציה הנייד, לא להסיר ──────────────
 ONESIGNAL_APP_ID   = "f13c245a-17c2-415d-a81d-41a3df58e1a9"
 ONESIGNAL_REST_KEY = os.environ.get("ONESIGNAL_REST_KEY", "")   # נשמר ב-Render בלבד, לא בקוד
@@ -2152,6 +2155,9 @@ def is_exclusivity_search_query(text: str) -> bool:
 def webhook():
     if request.method == "GET":
         return jsonify({"status": "ok", "message": "RE/MAX Bot Webhook Active"}), 200
+    # הבוט הנכנס בוואטסאפ (חיפוש דירה/קונה/בלעדיות + מצגת PDF) הושבת לבקשת המשתמש —
+    # Maytapi משמש ליציאה בלבד (תמלול שיחה + חתימות). מתעלמים מכל הודעה נכנסת.
+    return jsonify({"ok": True, "message": "inbound disabled"})
     try:
         body = request.get_json(force=True)
         log.info(f"Webhook: {json.dumps(body)[:300]}")
@@ -4013,6 +4019,28 @@ def _notify_managers_signing(status_label, client, agent, address):
     except Exception:
         pass
 
+def _wa_signing(client, agent, address, link):
+    """וואטסאפ לסוכן + מנהלים על כל חתימה שנחתמה — לא חוסם את התשובה."""
+    try:
+        msg = "✍️ *חתימה חדשה*\n"
+        if client:  msg += "לקוח: " + client + "\n"
+        if agent:   msg += "סוכן: " + agent + "\n"
+        if address: msg += "נכס: " + address + "\n"
+        if link:    msg += "למסמך החתום:\n" + link
+        agent_phones = set(p for p in _phones_for_name(agent) if p)   # לסוכן האישי
+        def _send():
+            for last9 in agent_phones:
+                wa = _wa_phone(last9)
+                if wa:
+                    try: send_text(wa, msg)
+                    except Exception: pass
+            if WA_GROUP_SIGNATURES:                                    # לקבוצת "חתימות" של המנהלים
+                try: send_text(WA_GROUP_SIGNATURES, msg)
+                except Exception: pass
+        threading.Thread(target=_send, daemon=True).start()
+    except Exception:
+        pass
+
 @app.route("/api/sign/send_remote", methods=["POST"])
 def api_sign_send_remote():
     """שלב 2 — שליחת קישור חתימה ללקוח (SMS+WhatsApp). יוצר חתימה 'ממתינה' ללא קישור עד שהלקוח חותם."""
@@ -4141,6 +4169,7 @@ def api_sign_complete():
             elif _ln.startswith("נכס"):
                 _addr = re.split(r"\s*·\s*", _ln.split(":", 1)[-1].strip())[0].strip()
         _notify_managers_signing("נחתם", _cl, _ag, _addr)
+        _wa_signing(_cl, _ag, _addr, link)
     except Exception:
         pass
     return jsonify({"ok": upd_ok, "link": link})
@@ -6878,7 +6907,19 @@ function showSplash(){if($("splash"))return;
   requestAnimationFrame(function(){d.classList.add("play");});
   setTimeout(hideSplash,SPLASH_SECONDS*1000);}
 /* ✏️✏️ סוף חלון הפתיחה ✏️✏️ */
-function enter(){showSplash();if(typeof fbIsNative=="function"&&fbIsNative()){var _ah=$("mi-addhome");if(_ah)_ah.style.display="none";}$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);}
+function enter(){showSplash();if(typeof fbIsNative=="function"&&fbIsNative()){var _ah=$("mi-addhome");if(_ah)_ah.style.display="none";}$("login").classList.add("hidden");$("appui").classList.remove("hidden");var bn=$("brandname");if(bn){var _nm=(NAME||"").trim();var _ini=_nm?_nm.split(/\s+/).slice(0,2).map(function(w){return (w||"").charAt(0);}).join(""):"";bn.textContent=_ini;bn.title=_nm?("שלום, "+_nm):"";}if(DROLE=="manager"||DROLE=="developer"||DEV){loadAgents();var ma=$("mi-activity"),mim=$("mi-imp"),mtl=$("mi-testlogin");if(ma)ma.classList.remove("hidden");if(mim)mim.classList.remove("hidden");if(mtl)mtl.classList.remove("hidden");}if(DEV){var md=$("mi-dev");if(md)md.classList.remove("hidden");}applyTabPerms();tab(firstAllowedTab());setTimeout(loadNbBanner,1500);setTimeout(prewarm,500);setTimeout(checkAddBuyerHash,500);}
+function checkAddBuyerHash(){
+  try{
+    var m=(location.hash||"").match(/[#&]ab=([^&]+)/);
+    if(!m)return;
+    var b=m[1].replace(/-/g,"+").replace(/_/g,"/");
+    var json=decodeURIComponent(escape(atob(b)));
+    var d=JSON.parse(json);
+    try{history.replaceState(null,"",location.pathname+location.search);}catch(e){location.hash="";}
+    var sum=String(d.summary||"");
+    openBuyerForm({phone:String(d.phone||""),summary:sum,name:parseBuyerName(sum),budget:parseBuyerBudget(sum)});
+  }catch(e){}
+}
 function firstAllowedTab(){var order=["calls","buyers","sigs","props","excl","newborn"];if(!TABS||!TABS.length)return "calls";for(var i=0;i<order.length;i++){if(TABS.indexOf(order[i])>=0)return order[i];}return "calls";}
 function applyTabPerms(){
   var navKeys=["calls","buyers","sigs","props","excl","newborn"];
@@ -8310,6 +8351,113 @@ def _newborn_push_loop():
         _t.sleep(600)                  # כל 10 דק' במקום 120ש' — עומס זניח על Apps Script
 try:
     threading.Thread(target=_newborn_push_loop, daemon=True).start()
+except Exception:
+    pass
+
+# ── וואטסאפ לסוכן על כל שיחה חדשה: תמלול + קישור להוסיף קונה ל"קונים שלי" ──────────
+_seen_calls = set()
+_seen_calls_seeded = False
+_CALLS_SEEN_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(__file__), "calls_seen.json")
+_CALLS_WA_MAX_BURST = 20   # שסתום בטיחות מפני הצפה (כמו נכס נולד)
+
+def _calls_seen_load():
+    global _seen_calls, _seen_calls_seeded
+    try:
+        with open(_CALLS_SEEN_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list) and data:
+            _seen_calls = set(str(x) for x in data)
+            _seen_calls_seeded = True
+    except Exception:
+        pass
+
+def _calls_seen_save():
+    try:
+        with open(_CALLS_SEEN_PATH, "w", encoding="utf-8") as f:
+            json.dump(sorted(_seen_calls)[-4000:], f, ensure_ascii=False)
+    except Exception:
+        pass
+
+def _wa_call_message(c):
+    """בונה את הודעת הוואטסאפ לסוכן: תמלול/סיכום השיחה + קישור עמוק להוספת הקונה."""
+    disp, tel = _il_phone(c.get("caller_phone", ""))
+    raw = str(c.get("transcript_summary", "") or "")
+    text = re.sub(r"https?://\S+", "", raw)
+    text = re.sub(r"\*", "", text)
+    text = re.sub(r"AI מתמלל ומסכם שיחות", "", text)
+    text = re.sub(r"[ \t]+", " ", text).strip()
+    if not re.sub(r"[\s.\-–—:·•]", "", re.sub(r"^\s*סיכום השיחה:?\s*", "", text)):
+        text = ""
+    st = str(c.get("status", "")).upper()
+    st_he = "נענתה" if st == "ANSWER" else "לא נענתה"
+    when = _fmt_il_dt(c.get("received_at", "")) or ""
+    base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    import base64 as _b64c
+    payload = json.dumps({"phone": (disp or tel or ""), "summary": text[:600]}, ensure_ascii=False)
+    tok = _b64c.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
+    link = base + "/app#ab=" + tok
+    lines = ["📞 *שיחה חדשה* — " + (disp or "מספר לא ידוע")]
+    if when: lines.append("🕐 " + when + " · " + st_he)
+    lines.append("")
+    lines.append("📝 " + (text if text else "אין סיכום לשיחה זו"))
+    lines.append("")
+    lines.append('➕ להוספת הקונה ל"קונים שלי":')
+    lines.append(link)
+    return "\n".join(lines)
+
+def check_new_calls():
+    """מזהה שיחה חדשה בגיליון 'שיחות' ושולח לסוכן וואטסאפ עם תמלול + קישור הוספת קונה.
+    seed בריצה הראשונה + שמירה לדיסק + שסתום בטיחות — בדיוק כמו נכס נולד (מונע הצפה)."""
+    global _seen_calls, _seen_calls_seeded
+    try:
+        rows = web_fetch_raw("שיחות") or []
+    except Exception:
+        return
+    keymap = {}
+    for r in rows:
+        try:
+            u = _call_uid(r)
+        except Exception:
+            u = ""
+        if u: keymap[u] = r
+    if not keymap:
+        return
+    if not _seen_calls_seeded:
+        _seen_calls = set(keymap.keys())
+        _seen_calls_seeded = True
+        _calls_seen_save()
+        return
+    new_keys = [k for k in keymap.keys() if k not in _seen_calls]
+    if len(new_keys) > _CALLS_WA_MAX_BURST:
+        _seen_calls |= set(keymap.keys())
+        _calls_seen_save()
+        log.error(f"calls WA burst guard: {len(new_keys)} new at once — suppressed")
+        return
+    for k in new_keys:
+        r = keymap[k]
+        try:
+            _cmsg = _wa_call_message(r)
+            wa = _wa_phone(r.get("agent_phone", ""))
+            if wa:
+                send_text(wa, _cmsg)                       # לסוכן האישי
+            if WA_GROUP_CALLS:
+                send_text(WA_GROUP_CALLS, _cmsg)           # לקבוצת "שיחות" של המנהלים
+        except Exception:
+            pass
+        _seen_calls.add(k)
+    if new_keys:
+        _calls_seen_save()
+
+def _calls_wa_loop():
+    import time as _t
+    _calls_seen_load()
+    _t.sleep(200)
+    while True:
+        try: check_new_calls()
+        except Exception: pass
+        _t.sleep(180)
+try:
+    threading.Thread(target=_calls_wa_loop, daemon=True).start()
 except Exception:
     pass
 
