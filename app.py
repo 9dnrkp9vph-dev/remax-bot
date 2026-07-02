@@ -2674,6 +2674,11 @@ def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
             _cache_put(_ck, rows)
         return rows
 def _web_fetch_raw_uncached(type_he, frm="01/01/2020", to="31/12/2099"):
+    if type_he == "שיחות" and CALLS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            return _sbdb.fetch_calls_rows(frm, to)
+        except Exception as _sbe:
+            log.error(f"supabase calls read failed — falling back to sheets: {_sbe}")
     if not (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN):
         return []
     from urllib.parse import quote
@@ -5310,8 +5315,9 @@ def api_listing_done():
     return jsonify({"ok": True})
 
 # ── "נכס נולד" — נכסים חדשים עם חשיפה מושהית פר-סוכן ─────────────────────────────
-# מקור נתונים לקריאה: sheets (ברירת מחדל) / supabase — feature flag (NEWBORN_SOURCE)
+# מקור נתונים לקריאה פר-מודול: sheets (ברירת מחדל) / supabase — feature flags
 NEWBORN_SOURCE = (os.environ.get("NEWBORN_SOURCE", "sheets") or "sheets").strip().lower()
+CALLS_SOURCE   = (os.environ.get("CALLS_SOURCE", "sheets") or "sheets").strip().lower()
 try:
     import supabase_db as _sbdb
 except Exception:
@@ -6344,6 +6350,13 @@ def api_buyers_delete():
 def _fetch_hidden_calls():
     c = _cache_get("hidden_calls", 180)
     if c is not None: return c
+    if CALLS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            ids = _sbdb.fetch_hidden_call_ids()
+            _cache_put("hidden_calls", ids)
+            return ids
+        except Exception as _sbe:
+            log.error(f"supabase hidden calls read failed — falling back to sheets: {_sbe}")
     j = _buyers_apps_post("listhidden", {})
     ids = set(str(x) for x in (j.get("ids", []) if (j and j.get("ok")) else []))
     _cache_put("hidden_calls", ids)
