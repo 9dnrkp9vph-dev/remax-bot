@@ -8445,6 +8445,41 @@ def _calls_seen_save():
     except Exception:
         pass
 
+# קישורים מקוצרים להוספת קונה — וואטסאפ שובר URL ארוך, אז שומרים את המטען בצד
+# ומנפיקים /l/<token> קצר שמפנה לקישור העמוק המלא. נשמר לדיסק הקבוע.
+_AB_LINKS_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(__file__), "ab_links.json")
+_AB_LINKS = None
+
+def _ab_links():
+    global _AB_LINKS
+    if _AB_LINKS is None:
+        try:
+            with open(_AB_LINKS_PATH, "r", encoding="utf-8") as f:
+                _AB_LINKS = json.load(f)
+            if not isinstance(_AB_LINKS, dict): _AB_LINKS = {}
+        except Exception:
+            _AB_LINKS = {}
+    return _AB_LINKS
+
+def _ab_link_make(payload_b64):
+    m = _ab_links()
+    tok = _hashlib.md5(payload_b64.encode("utf-8")).hexdigest()[:8]
+    m[tok] = payload_b64
+    if len(m) > 3000:   # שמירה על גודל סביר — מוחקים את הישנים
+        for _k in list(m.keys())[:len(m) - 3000]:
+            m.pop(_k, None)
+    try:
+        with open(_AB_LINKS_PATH, "w", encoding="utf-8") as f:
+            json.dump(m, f, ensure_ascii=False)
+    except Exception:
+        pass
+    return tok
+
+@app.route("/l/<tok>")
+def ab_short_link(tok):
+    v = _ab_links().get(str(tok)[:16], "")
+    return redirect(("/app#ab=" + v) if v else "/app")
+
 def _wa_call_message(c):
     """בונה את הודעת הוואטסאפ לסוכן: תמלול/סיכום השיחה + קישור עמוק להוספת הקונה."""
     disp, tel = _il_phone(c.get("caller_phone", ""))
@@ -8462,7 +8497,7 @@ def _wa_call_message(c):
     import base64 as _b64c
     payload = json.dumps({"phone": (disp or tel or ""), "summary": text[:600]}, ensure_ascii=False)
     tok = _b64c.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
-    link = base + "/app#ab=" + tok
+    link = base + "/l/" + _ab_link_make(tok)   # קישור קצר — וואטסאפ שובר URL ארוך
     lines = ["📞 *שיחה חדשה* — " + (disp or "מספר לא ידוע")]
     if when: lines.append("🕐 " + when + " · " + st_he)
     lines.append("")
@@ -8504,9 +8539,19 @@ def check_new_calls():
         r = keymap[k]
         try:
             _cmsg = _wa_call_message(r)
-            wa = _wa_phone(r.get("agent_phone", ""))
-            if wa:
-                send_text(wa, _cmsg)                       # לסוכן האישי
+            # לסוכן האישי — לפי *שם* הסוכן (כמו בחתימות): agent_phone בגיליון הוא
+            # המספר הווירטואלי של המרכזיה, שאין לו וואטסאפ
+            _sent_agent = False
+            for _p9 in _phones_for_name(str(r.get("agent", "") or "").strip()):
+                _w = _wa_phone(_p9)
+                if _w:
+                    try:
+                        send_text(_w, _cmsg); _sent_agent = True
+                    except Exception:
+                        pass
+            if not _sent_agent:   # נפילה-לאחור: אולי agent_phone הוא בכל זאת נייד
+                _w = _wa_phone(r.get("agent_phone", ""))
+                if _w: send_text(_w, _cmsg)
             if WA_GROUP_CALLS:
                 send_text(WA_GROUP_CALLS, _cmsg)           # לקבוצת "שיחות" של המנהלים
         except Exception:
