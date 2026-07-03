@@ -5357,12 +5357,18 @@ def fetch_newborn():
             _cache_put("newborn_rows", rows)
         return rows
 
+_LAST_GOOD_NB_DELAYS = None
+
 def _fetch_newborn_delays():
+    """הגנה קריטית: אם קריאת גיליון ההשהיות נכשלת, ברירת המחדל 'מוסתר' שבגיליון
+    אובדת וכולם רואים הכול. לכן: כישלון → טוב-אחרון; אין טוב-אחרון → נועלים (מוסתר)."""
+    global _LAST_GOOD_NB_DELAYS
     c = _cache_get("newborn_delays", 600)
     if c is not None: return c
     d = {"_default": NEWBORN_DEFAULT_DELAY}
     j = _buyers_apps_post("listnewborndelays", {})
-    _delay_rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
+    _sheet_ok = bool(j and j.get("ok"))
+    _delay_rows = (j.get("rows", []) or []) if _sheet_ok else []
     for r in _delay_rows:
         nm = _norm_name(r.get("סוכן", "") or r.get("שם", "") or "")
         raw = (r.get("ימים", "") or r.get("ימי השהיה", "") or r.get("השהיה", "") or "").strip()
@@ -5393,6 +5399,13 @@ def _fetch_newborn_delays():
         for _nm in [ag.get("name", "")] + list(ag.get("aliases") or []):
             k = _norm_name(_nm)
             if k: d[k] = val
+    if not _sheet_ok:
+        # קריאת הגיליון נכשלה — לא מקבעים במטמון תמונה חסרה:
+        if isinstance(_LAST_GOOD_NB_DELAYS, dict):
+            return _LAST_GOOD_NB_DELAYS          # טוב-אחרון (בלי cache — ננסה שוב מיד)
+        d["_default"] = NEWBORN_HIDDEN           # אין טוב-אחרון — נכשלים לכיוון הבטוח (מוסתר)
+        return d
+    _LAST_GOOD_NB_DELAYS = d
     _cache_put("newborn_delays", d)
     return d
 
