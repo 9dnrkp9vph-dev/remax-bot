@@ -45,11 +45,31 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 GOOGLE_REDIRECT_URI  = os.environ.get("GOOGLE_REDIRECT_URI", "https://remax-bot.onrender.com/auth/google/callback").strip()
 _PUSH_LAST = {}   # אבחון אחרון של שליחת Push — לצפייה ב-/api/push/test
 OWNER_PUSH_ID = "505709865"   # טלפון אייל (9 ספרות) — אליאס הפוש של הבעלים (במקום "owner" שירד)
+_QUIET_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(__file__), "quiet_mode.json")
+
+def _quiet_mode():
+    """מצב שקט: QUIET_MODE ב-env גובר תמיד; אחרת — המתג מהקונסולה (נשמר לדיסק)."""
+    if (os.environ.get("QUIET_MODE") or "").strip():
+        return True
+    try:
+        with open(_QUIET_PATH, "r", encoding="utf-8") as f:
+            return bool(json.load(f).get("on"))
+    except Exception:
+        return False
+
+def _quiet_set(on):
+    try:
+        with open(_QUIET_PATH, "w", encoding="utf-8") as f:
+            json.dump({"on": bool(on)}, f)
+        return True
+    except Exception:
+        return False
+
 def send_push(title, body, external_id=OWNER_PUSH_ID):
     """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False.
     שומר אבחון מלא ב-_PUSH_LAST (סטטוס + תגובת OneSignal) לצורך /api/push/test."""
     global _PUSH_LAST
-    if (os.environ.get("QUIET_MODE") or "").strip():   # מתג השתקה כללי (שבת/חג/תחזוקה)
+    if _quiet_mode():   # מתג השתקה כללי (שבת/חג/תחזוקה) — env או כפתור בקונסולה
         _PUSH_LAST = {"ok": False, "reason": "QUIET_MODE"}
         log.info("QUIET_MODE — push suppressed")
         return False
@@ -102,7 +122,7 @@ _WA_LAST = {}   # אבחון אחרון של שליחת WhatsApp — לצפיי�
 def send_text(to: str, text: str):
     """שולח הודעת WhatsApp דרך Maytapi. מחזיר True/False לפי הצלחה אמיתית (success מ-Maytapi)."""
     global _WA_LAST
-    if (os.environ.get("QUIET_MODE") or "").strip():   # מתג השתקה כללי (שבת/חג/תחזוקה)
+    if _quiet_mode():   # מתג השתקה כללי (שבת/חג/תחזוקה) — env או כפתור בקונסולה
         _WA_LAST = {"ok": False, "reason": "QUIET_MODE"}
         log.info("QUIET_MODE — WhatsApp suppressed")
         return False
@@ -3411,6 +3431,20 @@ def api_dev_suspend():
     if not _save_config(cfg):
         return jsonify({"ok": False, "reason": "save_failed"})
     return jsonify({"ok": True, "suspended": ph in susp})
+
+@app.route("/api/dev/quiet", methods=["GET", "POST"])
+def api_dev_quiet():
+    """מתג השתקת התראות (וואטסאפ+פוש) מהקונסולה — מפתח בלבד. env גובר על הכפתור."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    env_forced = bool((os.environ.get("QUIET_MODE") or "").strip())
+    if request.method == "POST":
+        on = bool((request.get_json(silent=True) or {}).get("on"))
+        _quiet_set(on)
+        _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
+                      "השתקת התראות" if on else "הפעלת התראות", "מהקונסולה")
+    return jsonify({"ok": True, "on": _quiet_mode(), "env": env_forced})
 
 @app.route("/api/dev/smstest", methods=["POST"])
 def api_dev_smstest():
@@ -7014,9 +7048,11 @@ function applyTabPerms(){
 }
 
 // ── קונסולת מפתח ──────────────────────────────────────────────
-function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span> <button class="btn-ghost" onclick="devPush()">🔔 בדיקת פוש</button> <button class="btn-ghost" onclick="devSms()">📩 בדיקת SMS</button><div id=devpush class=muted style="white-space:pre-wrap;word-break:break-word;font-size:11px;direction:ltr;text-align:left;margin-top:6px"></div><div id=devsms class=muted style="white-space:pre-wrap;word-break:break-word;font-size:11px;direction:ltr;text-align:left;margin-top:6px"></div></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcoords></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadCoords();loadContracts();}
+function openDevConsole(){if(!DEV)return;var b=document.body;b.style.position="";b.style.top="";TABNOW="dev";document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("on");});if(timer){clearInterval(timer);timer=null;}$("view").innerHTML='<div class=card><div style="display:flex;justify-content:space-between;align-items:center"><b>קונסולת ניהול</b><button class="btn-ghost" onclick="tab(\'calls\')">✕ סגור</button></div><div class=muted style="margin-top:4px">זהות סוכנים, כינויי שם והתאמות · מפתח בלבד</div><div style="margin-top:6px"><button class="btn-ghost" onclick="devDiag()">🔧 בדיקת חיבור</button><span id=devdiag class=muted></span> <button class="btn-ghost" onclick="devPush()">🔔 בדיקת פוש</button> <button class="btn-ghost" onclick="devSms()">📩 בדיקת SMS</button> <button class="btn-ghost" id=devquiet onclick="devQuiet()">🔔 …</button><div id=devpush class=muted style="white-space:pre-wrap;word-break:break-word;font-size:11px;direction:ltr;text-align:left;margin-top:6px"></div><div id=devsms class=muted style="white-space:pre-wrap;word-break:break-word;font-size:11px;direction:ltr;text-align:left;margin-top:6px"></div></div></div><div id=devbody><div class=muted style="text-align:center;padding:20px">טוען…</div></div><div id=devperms></div><div id=devteams></div><div id=devcoords></div><div id=devcontracts></div>';loadDevPeople();loadRolePerms();loadTeams();loadCoords();loadContracts();devQuietState();}
 function devDiag(){$("devdiag").textContent=" בודק…";api("/api/dev/diag").then(function(r){$("devdiag").textContent=" "+((r&&r.msg)||"שגיאה");}).catch(function(){$("devdiag").textContent=" שגיאת רשת";});}
 function devPush(){var d=$("devpush");if(d)d.textContent="שולח פוש בדיקה…";api("/api/push/test").then(function(r){if(d)d.textContent=JSON.stringify(r,null,2);}).catch(function(){if(d)d.textContent="שגיאת רשת";});}
+function devQuietState(){api("/api/dev/quiet").then(function(r){var b=$("devquiet");if(!b||!r||!r.ok)return;b.textContent=r.on?"🔕 התראות מושתקות — הקש להפעלה":"🔔 התראות פעילות — הקש להשתקה";b.style.color=r.on?"#c0392b":"";if(r.on&&r.env)b.textContent="🔕 מושתק דרך Render (QUIET_MODE)";}).catch(function(){});}
+function devQuiet(){api("/api/dev/quiet").then(function(r){if(!r||!r.ok)return;if(r.env){alert("ההשתקה נכפית דרך משתנה QUIET_MODE ב-Render — מחק אותו שם כדי לשלוט מהכפתור.");return;}var to=!r.on;if(!confirm(to?"להשתיק את כל הוואטסאפ והפושים?":"להפעיל מחדש את כל ההתראות?"))return;api("/api/dev/quiet",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({on:to})}).then(function(){devQuietState();});}).catch(function(){});}
 function devSms(){var d=$("devsms");var to=prompt("מספר לבדיקת SMS (ריק = המספר שלך):","");if(to===null)return;if(d)d.textContent="שולח SMS בדיקה דרך sms.deals…";api("/api/dev/smstest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:(to||"").trim()})}).then(function(r){if(d)d.textContent=JSON.stringify(r,null,2);}).catch(function(){if(d)d.textContent="שגיאת רשת";});}
 function loadDevPeople(){api("/api/dev/people").then(function(r){if(!r||!r.ok){$("devbody").innerHTML='<div class=card>שגיאה בטעינה</div>';return;}renderDevPeople(r);}).catch(function(){$("devbody").innerHTML='<div class=card>שגיאה</div>';});}
 var DEVAGENTS=[],DEVDATA=null,DEVALL=false,DEVFILTER="";
