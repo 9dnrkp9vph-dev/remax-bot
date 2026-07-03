@@ -715,6 +715,23 @@ function sbParityBuyers() {
 }
 
 /***********************************************************************
+ * ריפוי עצמי — סנכרון-השלמה של כל המודולים. מיועד לטריגר מתוזמן:
+ * בעורך: אייקון השעון ⏰ (טריגרים) ▸ הוספת טריגר ▸ פונקציה: sbReconcileAll,
+ * מבוסס זמן ▸ כל 30 דקות. סוגר אוטומטית כל פער שנוצר מכשל כתיבה רגעי
+ * (כמו בזמן תקלת גוגל) — הגיליון הוא מקור האמת, וה-upsert משלים חוסרים.
+ ***********************************************************************/
+function sbReconcileAll() {
+  var conf = _sbConf_();
+  if (!conf) return;
+  try { sbBackfillNewborn(); } catch (e) { Logger.log('reconcile newborn: ' + e); }
+  try { sbBackfillNewbornContacts(); } catch (e) { Logger.log('reconcile contacts: ' + e); }
+  try { sbBackfillCalls(); } catch (e) { Logger.log('reconcile calls: ' + e); }
+  try { sbBackfillHidden(); } catch (e) { Logger.log('reconcile hidden: ' + e); }
+  try { sbBackfillSignatures(); } catch (e) { Logger.log('reconcile signatures: ' + e); }
+  try { sbBackfillBuyers(); } catch (e) { Logger.log('reconcile buyers: ' + e); }
+}
+
+/***********************************************************************
  * בדיקת Parity — משווה גיליון ↔ Supabase (קריאה בלבד משני הצדדים).
  * הרץ מהעורך (Run ▶) בכל רגע; מדפיס דוח מלא ליומן הביצוע.
  ***********************************************************************/
