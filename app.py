@@ -49,6 +49,10 @@ def send_push(title, body, external_id=OWNER_PUSH_ID):
     """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False.
     שומר אבחון מלא ב-_PUSH_LAST (סטטוס + תגובת OneSignal) לצורך /api/push/test."""
     global _PUSH_LAST
+    if (os.environ.get("QUIET_MODE") or "").strip():   # מתג השתקה כללי (שבת/חג/תחזוקה)
+        _PUSH_LAST = {"ok": False, "reason": "QUIET_MODE"}
+        log.info("QUIET_MODE — push suppressed")
+        return False
     if not ONESIGNAL_REST_KEY:
         _PUSH_LAST = {"ok": False, "reason": "no_rest_key (משתנה הסביבה ONESIGNAL_REST_KEY לא מוגדר ב-Render)"}
         return False
@@ -98,6 +102,10 @@ _WA_LAST = {}   # אבחון אחרון של שליחת WhatsApp — לצפיי�
 def send_text(to: str, text: str):
     """שולח הודעת WhatsApp דרך Maytapi. מחזיר True/False לפי הצלחה אמיתית (success מ-Maytapi)."""
     global _WA_LAST
+    if (os.environ.get("QUIET_MODE") or "").strip():   # מתג השתקה כללי (שבת/חג/תחזוקה)
+        _WA_LAST = {"ok": False, "reason": "QUIET_MODE"}
+        log.info("QUIET_MODE — WhatsApp suppressed")
+        return False
     try:
         r = requests.post(f"{MAYTAPI_BASE}/sendMessage",
             headers=maytapi_headers(),
@@ -2662,11 +2670,14 @@ def _sf_lock(key):
 
 def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
     _ck = "raw:" + str(type_he) + ":" + str(frm) + ":" + str(to)
-    c = _cache_get(_ck, 60)
+    _ttl = 60
+    if type_he == "שיחות":     _ttl = _src_ttl(CALLS_SOURCE, 60, 10)
+    elif type_he == "חתימות":  _ttl = _src_ttl(SIGNATURES_SOURCE, 60, 10)
+    c = _cache_get(_ck, _ttl)
     if c is not None:
         return c
     with _sf_lock(_ck):
-        c = _cache_get(_ck, 60)   # בדיקה כפולה — אולי חוט אחר כבר מילא בזמן ההמתנה
+        c = _cache_get(_ck, _ttl)   # בדיקה כפולה — אולי חוט אחר כבר מילא בזמן ההמתנה
         if c is not None:
             return c
         rows = _web_fetch_raw_uncached(type_he, frm, to)
@@ -5337,11 +5348,17 @@ NEWBORN_WINDOW_DAYS   = int(os.environ.get("NEWBORN_WINDOW_DAYS", "400") or 400)
 NEWBORN_HIDDEN        = 10 ** 9   # ערך "מוסתר" — הסוכן לא רואה שום נכס
 _NB_HIDDEN_TOKENS = {"מוסתר", "מוסתרת", "הסתר", "לעולם", "אין", "לא", "-", "–", "—", "x", "X", "✗"}
 
+
+def _src_ttl(flag, sheets_ttl, sb_ttl):
+    """TTL דינמי למטמון: קצר כשהמקור הוא Supabase (קריאה זולה ומהירה — מידע טרי),
+    ארוך כשהמקור הוא Sheets (קריאה יקרה — שומרים על העומס הנמוך הקיים)."""
+    return sb_ttl if (flag == "supabase" and _sbdb and _sbdb.enabled()) else sheets_ttl
+
 def fetch_newborn():
-    c = _cache_get("newborn_rows", 300)
+    c = _cache_get("newborn_rows", _src_ttl(NEWBORN_SOURCE, 300, 15))
     if c is not None: return c
     with _sf_lock("newborn_rows"):
-        c = _cache_get("newborn_rows", 300)
+        c = _cache_get("newborn_rows", _src_ttl(NEWBORN_SOURCE, 300, 15))
         if c is not None: return c
         rows = None
         if NEWBORN_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
@@ -5419,7 +5436,7 @@ def _nb_key(r):
     return "ad:" + addr + "|" + (r.get("נוצר בתאריך", "") or "").strip()
 
 def _fetch_newborn_contacts():
-    c = _cache_get("newborn_contacts", 150)
+    c = _cache_get("newborn_contacts", _src_ttl(NEWBORN_SOURCE, 150, 15))
     if c is not None: return c
     if NEWBORN_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
         try:
@@ -5695,7 +5712,7 @@ def api_newborn():
         min_days = _intp("minDays"); max_days = _intp("maxDays")
         # מטמון תוצאה לפי סקופ — פתיחה חוזרת של הטאב מיידית (מתבטל בכל שינוי דרך _NB_RESULT_VER)
         _nbkey = "nbres:%d:%s:%s:%s:%s:%s" % (_NB_RESULT_VER[0], _last9(s.get("phone", "")), as_name, q, min_days, max_days)
-        _nbc = _cache_get(_nbkey, 90)
+        _nbc = _cache_get(_nbkey, _src_ttl(NEWBORN_SOURCE, 90, 12))
         if _nbc is not None:
             return jsonify(_nbc)
         # מנהל מושהה (כמו אווה אזולאי) אינו רואה "נכס נולד" מיד — נכנס למסלול ההשהיה הרגיל
@@ -6176,7 +6193,7 @@ def _buyers_apps_post(action, payload):
         return None
 
 def _fetch_manual_buyers():
-    c = _cache_get("buyers", 60)
+    c = _cache_get("buyers", _src_ttl(BUYERS_SOURCE, 60, 10))
     if c is not None:
         return c
     if BUYERS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
@@ -6380,7 +6397,7 @@ def api_buyers_delete():
     return jsonify({"ok": True})
 
 def _fetch_hidden_calls():
-    c = _cache_get("hidden_calls", 180)
+    c = _cache_get("hidden_calls", _src_ttl(CALLS_SOURCE, 180, 15))
     if c is not None: return c
     if CALLS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
         try:
@@ -7473,12 +7490,17 @@ function loadNewBuyers(){_nbCount();
     if(!r||!r.ok)return;_nbList=r.results||[];_nbCount();
   }).catch(function(){});}
 function statusHe(s){var k=String(s||"").toUpperCase().replace(/[_-]/g," ").replace(/\s+/g," ").trim();var m={"ANSWER":"נענתה","ANSWERED":"נענתה","NO ANSWER":"ללא מענה","NOANSWER":"ללא מענה","BUSY":"תפוס","CALLER CANCEL":"המתקשר ניתק","CALLER CANCELLED":"המתקשר ניתק","CANCEL":"בוטלה","CANCELLED":"בוטלה","CANCELED":"בוטלה","FAILED":"נכשלה","REJECTED":"נדחתה","MISSED":"שיחה שלא נענתה","VOICEMAIL":"תא קולי","CONGESTION":"עומס ברשת","UNKNOWN":"לא ידוע"};return m[k]||s;}
+/* Local-first: זיכרון מכשיר — הטאב נפתח מיד מהעותק האחרון שנשמר, הרענון רץ ברקע.
+   מפתח פר-משתמש (שם) · לא נשמר במצב התחזות/מוסתרות כדי לא לזהם את המטמון האישי */
+function lfKey(k){var u="";try{u=localStorage.getItem("fbName")||"";}catch(e){}return "fbLF:"+u+":"+k;}
+function lfSave(k,v){try{localStorage.setItem(lfKey(k),JSON.stringify(v));}catch(e){}}
+function lfLoad(k){try{return JSON.parse(localStorage.getItem(lfKey(k))||"null");}catch(e){return null;}}
 var CALLDATA=null,SIGDATA=null;
-function loadCalls(){if(CALLDATA)renderCalls();   /* הצגה מיידית מהמטמון, מתרענן ברקע */
+function loadCalls(){if(!CALLDATA&&!IMP&&!HIDDENMODE)CALLDATA=lfLoad("calls");if(CALLDATA)renderCalls();   /* הצגה מיידית מהמטמון, מתרענן ברקע */
   api("/api/history?"+(IMP?("as="+encodeURIComponent(IMP)+"&"):"")+(HIDDENMODE?"hidden=1":"")).then(function(r){
     if(!r.ok){relogin();return;}
     if(r.tabs&&!IMP){TABS=r.tabs;try{localStorage.setItem("fbTabs",JSON.stringify(TABS));}catch(e){}applyTabPerms();}
-    CALLDATA=r;renderCalls();
+    CALLDATA=r;if(!IMP&&!HIDDENMODE)lfSave("calls",r);renderCalls();
   }).catch(function(){});}
 /* "חייג חזרה" — חסם של 20 דקות לכל לקוח, מרגע הלחיצה, כדי לא להטריד בחיוגים חוזרים */
 function cbGuard(el,ph){ph=String(ph||"").replace(/\D/g,"");if(!ph)return true;
@@ -7529,10 +7551,10 @@ function sigDelete(eid,raw,client){
     else{alert(r&&r.reason=="forbidden"?"רק למשתמש מורשה":"המחיקה נכשלה — ודא שה-Apps Script פרוס עם deletesigning.");}
   }).catch(function(){alert("שגיאת רשת");});}
 function sigTag(t){t=String(t||"");if(/בלעד/.test(t))return {cls:"t-excl",excl:true};if(/מוכר|מכיר|בעל/.test(t))return {cls:"t-seller",excl:false};if(/שכיר/.test(t))return {cls:"t-rent",excl:false};return {cls:"t-buyer",excl:false};}
-function loadSigs(){if(SIGDATA)renderSigs();
+function loadSigs(){if(!SIGDATA&&!IMP)SIGDATA=lfLoad("sigs");if(SIGDATA)renderSigs();
   api("/api/signatures"+(IMP?("?as="+encodeURIComponent(IMP)):"")).then(function(r){
     if(!r.ok){relogin();return;}
-    SIGDATA=r;renderSigs();
+    SIGDATA=r;if(!IMP)lfSave("sigs",r);renderSigs();
   }).catch(function(){});}
 function renderSigs(){var r=SIGDATA;if(!r||TABNOW!="sigs"||!$("sigs"))return;
   var sigs=r.signatures.filter(function(g){return inRange(g.ts);});
@@ -8155,13 +8177,17 @@ function nbLoad(q){
     if(!$("nblist"))return;
     if(!r||!r.ok){$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";return;}
     NBDATA=r;NBSHOWN=20;
+    if(!q&&!(typeof IMP!="undefined"&&IMP))lfSave("newborn",r);
     var items=(r.results||[]).filter(function(x){return x.released;});
     if(q){NBSEARCH=items;}else{NBITEMS=items;NBSEARCH=null;}
     NBBUCKETS=r.bucketCounts||[];NBTOTAL=(r.total!=null?r.total:items.length);
     nbLiveLabel();renderNewborn();
   }).catch(function(){if($("nblist"))$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";});
 }
-function loadNewbornPage(){nbLoad("");
+function loadNewbornPage(){
+  if(!NBDATA&&!(typeof IMP!="undefined"&&IMP)){var c=lfLoad("newborn");
+    if(c&&c.ok){NBDATA=c;NBSHOWN=20;NBITEMS=(c.results||[]).filter(function(x){return x.released;});NBSEARCH=null;NBBUCKETS=c.bucketCounts||[];NBTOTAL=(c.total!=null?c.total:NBITEMS.length);nbLiveLabel();renderNewborn();}}
+  nbLoad("");
 }
 var NBSTL={meeting:"📅 נקבעה פגישה",followup:"🔁 פולו-אפ",not_interested:"✖ לא מעוניין"};
 function nbFmtDate(s){s=String(s||"");var t="";if(s.indexOf("T")>-1){t=" "+s.slice(11,16);s=s.slice(0,10);}var p=s.split("-");if(p.length==3)return p[2]+"/"+p[1]+"/"+p[0]+t;return s+t;}
