@@ -109,7 +109,7 @@ def send_text(to: str, text: str):
         except Exception:
             pass
         _WA_LAST = {"ok": ok, "status": r.status_code, "to": to, "resp": (r.text or "")[:400]}
-        log.info(f"send_text → {r.status_code} ok={ok}")
+        log.info(f"send_text → {to} · {r.status_code} ok={ok} · {(r.text or '')[:150]}")
         return ok
     except Exception as e:
         _WA_LAST = {"ok": False, "to": to, "reason": str(e)[:200]}
@@ -6924,7 +6924,7 @@ try{var sp=localStorage.getItem("fbPhone");if(sp)$("phone").value=sp;}catch(e){}
 try{var st=localStorage.getItem("fbTok");if(st){TOKEN=st;ROLE=localStorage.getItem("fbRole");DROLE=localStorage.getItem("fbDrole")||"";NAME=localStorage.getItem("fbName");DEV=localStorage.getItem("fbDev")=="1";try{TABS=JSON.parse(localStorage.getItem("fbTabs")||"null");}catch(e2){TABS=null;}if(!ROLE){fbHydrate(fbAutoLogin);}else{fbAutoLogin();}}}catch(e){}
 /* Deep-link מ-Google login שחזר מ-Safari: remaxfamily://login?token=... (אפליקציה בלבד; בדפדפן no-op) */
 (function(){try{var A=(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App)?Capacitor.Plugins.App:null;if(!A)return;
-  A.addListener("appUrlOpen",function(data){try{var url=(data&&data.url)||"";var m=url.match(/[?&#]token=([^&]+)/);if(!m)return;var token=decodeURIComponent(m[1]);localStorage.setItem("fbTok",token);try{localStorage.removeItem("fbRole");localStorage.removeItem("fbName");localStorage.removeItem("fbTabs");}catch(e){}try{if(Capacitor.Plugins.Browser)Capacitor.Plugins.Browser.close();}catch(e){}try{sessionStorage.setItem('fbSkipLock','1');}catch(e){}location.replace("/app");}catch(e){}});
+  A.addListener("appUrlOpen",function(data){try{var url=(data&&data.url)||"";var ab=url.match(/^[a-z]+:\/\/ab\?t=([A-Za-z0-9]{4,16})/);if(ab){location.replace("/l/"+ab[1]+"?in=1");return;}var m=url.match(/[?&#]token=([^&]+)/);if(!m)return;var token=decodeURIComponent(m[1]);localStorage.setItem("fbTok",token);try{localStorage.removeItem("fbRole");localStorage.removeItem("fbName");localStorage.removeItem("fbTabs");}catch(e){}try{if(Capacitor.Plugins.Browser)Capacitor.Plugins.Browser.close();}catch(e){}try{sessionStorage.setItem('fbSkipLock','1');}catch(e){}location.replace("/app");}catch(e){}});
 }catch(e){}})();
 /* Hydration: כשיש fbTok בלי תפקיד (חזרה מ-deep-link) — מושכים תפקיד/שם/טאבים מהשרת לפי הטוקן */
 function fbHydrate(cb){cb=cb||enter;api("/api/auth/whoami").then(function(r){if(r&&r.ok){ROLE=r.role;DROLE=r.drole||"";NAME=r.name;DEV=!!r.dev;TABS=r.tabs||null;try{localStorage.setItem("fbRole",ROLE||"");localStorage.setItem("fbDrole",DROLE||"");localStorage.setItem("fbName",NAME||"");localStorage.setItem("fbDev",DEV?"1":"0");if(r.phone)localStorage.setItem("fbPhone",r.phone);localStorage.setItem("fbTabs",JSON.stringify(TABS||null));}catch(e){}cb();}else{try{localStorage.removeItem("fbTok");}catch(e){}location.reload();}}).catch(function(){cb();});}
@@ -8477,8 +8477,27 @@ def _ab_link_make(payload_b64):
 
 @app.route("/l/<tok>")
 def ab_short_link(tok):
+    """קישור מקוצר להוספת קונה: מנסה לפתוח את האפליקציה הנייטיבית (remaxfamily://),
+    ואם אין — נופל לדפדפן. ?in=1 = ניווט מתוך האפליקציה עצמה (בלי ניסיון נייטיב)."""
     v = _ab_links().get(str(tok)[:16], "")
-    return redirect(("/app#ab=" + v) if v else "/app")
+    if not v:
+        return redirect("/app")
+    target = "/app#ab=" + v
+    if request.args.get("in"):
+        return redirect(target)
+    native = NATIVE_URL_SCHEME + "://ab?t=" + str(tok)[:16]
+    return ("<!doctype html><html dir=rtl lang=he><head><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<title>Family Bot</title></head>"
+            "<body style='font-family:-apple-system,Arial,sans-serif;text-align:center;"
+            "padding:56px 16px;background:#0D1B2A;color:#fff'>"
+            "<div style='font-size:44px'>🏠</div>"
+            "<div style='margin:12px 0 24px;font-weight:600'>פותח את Family Bot…</div>"
+            "<a href='" + target + "' style='color:#E4B34A'>לחץ כאן אם לא נפתח אוטומטית</a>"
+            "<script>var T='" + target + "';function go(){location.replace(T);}"
+            "if(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)){"
+            "try{location.href='" + native + "';}catch(e){}setTimeout(go,1400);"
+            "}else{go();}</script></body></html>")
 
 def _wa_call_message(c):
     """בונה את הודעת הוואטסאפ לסוכן: תמלול/סיכום השיחה + קישור עמוק להוספת הקונה."""
