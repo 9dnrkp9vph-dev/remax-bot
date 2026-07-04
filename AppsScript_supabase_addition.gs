@@ -864,7 +864,8 @@ function sbBackfillProperties() {
   try { sh = SpreadsheetApp.openById(pid).getSheetByName('נכסים'); }
   catch (e) { Logger.log('❌ אין גישה לגיליון הנכסים: ' + e); return '❌ no access'; }
   if (!sh || sh.getLastRow() < 2) return 'אין נתונים';
-  var v = sh.getDataRange().getValues();
+  // ערכי תצוגה — בדיוק מה ש-Sheets API (FORMATTED_VALUE) מחזיר לאפליקציה
+  var v = sh.getDataRange().getDisplayValues();
   var hd = v[0];
   // מחיקה ומילוי מחדש — תמונת-מצב (הגיליון ידני, שורות זזות)
   UrlFetchApp.fetch(conf.url + '/rest/v1/properties?office_id=eq.' + conf.office, {
@@ -876,10 +877,9 @@ function sbBackfillProperties() {
   for (var i = 1; i < v.length; i++) {
     var raw = {}, any = false;
     for (var c = 0; c < hd.length; c++) {
-      var h = String(hd[c] == null ? '' : hd[c]).trim();
-      var val = (v[i][c] instanceof Date) ? v[i][c].toISOString() : v[i][c];
-      if (h) raw[h] = (val == null ? '' : val);
-      if (String(val == null ? '' : val).trim()) any = true;
+      var h = String(hd[c] == null ? '' : hd[c]);   // בלי trim ובלי דילוג — כמו dict(zip(headers,row)) באפליקציה
+      raw[h] = String(v[i][c] == null ? '' : v[i][c]);
+      if (String(v[i][c] == null ? '' : v[i][c]).trim()) any = true;
     }
     if (!any) continue;
     // תיאור מעמודה AE (אינדקס 30) — כמו _fetch_sheet_rows_raw באפליקציה
