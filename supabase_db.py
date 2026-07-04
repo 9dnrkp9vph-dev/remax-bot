@@ -198,6 +198,18 @@ def fetch_buyers_rows():
     return rows
 
 
+def fetch_excl_rows():
+    """'בלעדויות חיצוניות' — זהה 1:1 ל-getRaw_ (כולל _date_key)."""
+    return _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")
+
+
+def fetch_properties_rows():
+    """'נכסים במשרד' — זהה 1:1 ל-fetch_sheet_rows (dict לפי כותרות + _desc_ae),
+    לפי סדר השורות בגיליון."""
+    recs = _get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"})
+    return [rec["raw"] for rec in recs if isinstance(rec.get("raw"), dict)]
+
+
 def fetch_config():
     """הקונפיג המלא — dict מורכב משורות office_config (שורה לכל מפתח).
     זהה 1:1 לבלוב של getconfig; כתיבת מפתח אחד אינה נוגעת באחרים."""
