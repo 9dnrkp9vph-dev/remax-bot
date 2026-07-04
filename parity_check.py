@@ -201,6 +201,9 @@ def main():
     if b_diffs or len(sheet_b) != len(sb_b):
         problems += 1
 
+    # ── שת"פ (בלעדויות חיצוניות) ──
+    problems += check_raw_tab("בלעדויות חיצוניות", supabase_db.fetch_excl_rows, "🤝")
+
     # ── קונפיג (הבלוב מול השורות) ──
     import json as _j
     blob_raw = (_apps_post("getconfig").get("config") or "").strip()
