@@ -715,6 +715,91 @@ function sbParityBuyers() {
 }
 
 /***********************************************************************
+ * ══ שלב 5: "קונפיג" ═══════════════════════════════════════════════
+ * חיבור (שורה אחת בבלוק setconfig ב-קוד.gs, אחרי ssh.getRange(1,1).setValue):
+ *     try { sbConfigSplit_(String(p.config || '')); } catch (_sbErr) {}
+ * מפרק את בלוב ה-JSON לשורה-לכל-מפתח ב-office_config — בכל שמירה.
+ ***********************************************************************/
+function sbConfigSplit_(blob) {
+  var conf = _sbConf_();
+  if (!conf) return;
+  var cfg;
+  try { cfg = JSON.parse(String(blob || '') || '{}'); } catch (e) { return; }
+  if (!cfg || typeof cfg !== 'object') return;
+  var keys = Object.keys(cfg);
+  var recs = keys.map(function (k) {
+    return { office_id: conf.office, key: k, value: cfg[k],
+             updated_at: new Date().toISOString() };
+  });
+  if (recs.length) {
+    _sbFetch_(conf, '/rest/v1/office_config?on_conflict=office_id,key',
+              recs, 'resolution=merge-duplicates');
+  }
+  // מחיקת מפתחות שהוסרו מהבלוב (רשימת המפתחות היא ASCII בלבד)
+  var keep = keys.filter(function (k) { return /^[A-Za-z0-9_]+$/.test(k); });
+  if (keep.length) {
+    UrlFetchApp.fetch(conf.url + '/rest/v1/office_config?office_id=eq.' + conf.office +
+                      '&key=not.in.(' + keep.join(',') + ')', {
+      method: 'delete',
+      headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+      muteHttpExceptions: true
+    });
+  }
+}
+
+/** Backfill חד-פעמי לקונפיג — קורא את הבלוב מהתא ומפצל לשורות. */
+function sbBackfillConfig() {
+  var conf = _sbConf_();
+  if (!conf) return '❌ missing properties';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var gsh = ss.getSheetByName('config');
+  if (!gsh) return 'אין גיליון config';
+  var blob = String(gsh.getRange(1, 1).getValue() || '');
+  if (!blob) return 'הבלוב ריק';
+  sbConfigSplit_(blob);
+  var keys = Object.keys(JSON.parse(blob));
+  var msg = 'פוצל הקונפיג ל-' + keys.length + ' מפתחות: ' + keys.join(', ');
+  Logger.log(msg);
+  return msg;
+}
+
+/** Parity לקונפיג — משווה את הבלוב מול השורות, מפתח-מפתח (השוואה עמוקה). */
+function sbParityConfig() {
+  var conf = _sbConf_();
+  if (!conf) { Logger.log('❌ חסרות הגדרות'); return '❌'; }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var blob = String(ss.getSheetByName('config').getRange(1, 1).getValue() || '');
+  var cfg = JSON.parse(blob || '{}');
+  var r = UrlFetchApp.fetch(conf.url + '/rest/v1/office_config?select=key,value&office_id=eq.' + conf.office + '&limit=1000', {
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+    muteHttpExceptions: true
+  });
+  if (r.getResponseCode() !== 200) { Logger.log('❌ שגיאת קריאה: ' + r.getResponseCode()); return '❌'; }
+  var rows = JSON.parse(r.getContentText()) || [];
+  var sb = {};
+  rows.forEach(function (x) { sb[x.key] = x.value; });
+  // השוואה קנונית — jsonb ממיין מפתחות באובייקטים, אז ממיינים גם כאן לפני ההשוואה
+  function canon(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    return '{' + Object.keys(v).sort().map(function (k) {
+      return JSON.stringify(k) + ':' + canon(v[k]);
+    }).join(',') + '}';
+  }
+  var bad = [];
+  Object.keys(cfg).forEach(function (k) {
+    if (canon(cfg[k]) !== canon(sb[k])) bad.push(k);
+  });
+  var extra = Object.keys(sb).filter(function (k) { return !(k in cfg); });
+  Logger.log('⚙️ קונפיג — מפתחות בבלוב: ' + Object.keys(cfg).length + ' · ב-Supabase: ' + rows.length);
+  Logger.log(bad.length ? ('❌ מפתחות שונים: ' + bad.join(', ')) : '✅ כל המפתחות זהים ערך-בערך');
+  if (extra.length) Logger.log('⚠️ עודפים ב-Supabase: ' + extra.join(', '));
+  var ok = !bad.length && !extra.length;
+  Logger.log(ok ? '🟢 PARITY קונפיג מלא' : '🔴 יש פערים');
+  return ok ? 'OK' : 'GAPS';
+}
+
+/***********************************************************************
  * ריפוי עצמי — סנכרון-השלמה של כל המודולים. מיועד לטריגר מתוזמן:
  * בעורך: אייקון השעון ⏰ (טריגרים) ▸ הוספת טריגר ▸ פונקציה: sbReconcileAll,
  * מבוסס זמן ▸ כל 30 דקות. סוגר אוטומטית כל פער שנוצר מכשל כתיבה רגעי
@@ -729,6 +814,7 @@ function sbReconcileAll() {
   try { sbBackfillHidden(); } catch (e) { Logger.log('reconcile hidden: ' + e); }
   try { sbBackfillSignatures(); } catch (e) { Logger.log('reconcile signatures: ' + e); }
   try { sbBackfillBuyers(); } catch (e) { Logger.log('reconcile buyers: ' + e); }
+  try { sbBackfillConfig(); } catch (e) { Logger.log('reconcile config: ' + e); }
 }
 
 /***********************************************************************
