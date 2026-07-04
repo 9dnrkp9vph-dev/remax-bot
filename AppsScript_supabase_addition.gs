@@ -830,6 +830,9 @@ function sbBackfillExclusives() {
       raw[h] = (v[i][c] instanceof Date) ? v[i][c].toISOString() : v[i][c];
     }
     if (!eid) { eid = _sbCallKey_('', v[i], i); noId++; }
+    var epRx = (typeof _nbParseDate === 'function') ? _nbParseDate(rxVal) : 0;
+    var prev = byKey[eid];
+    if (prev && (prev._ep || 0) >= epRx) continue;   // כבר יש חדש/שווה — כמו dedup "החדש ביותר"
     byKey[eid] = {
       office_id: conf.office, source_key: eid, event_id: eid,
       street: String(raw['street'] == null ? '' : raw['street']),
@@ -837,10 +840,10 @@ function sbBackfillExclusives() {
       link: String(raw['link'] == null ? '' : raw['link']),
       price: String(raw['price'] == null ? '' : raw['price']),
       received_at: _sbDateOnly_(rxVal),
-      raw: raw, updated_at: new Date().toISOString()
+      raw: raw, updated_at: new Date().toISOString(), _ep: epRx
     };
   }
-  var unique = Object.keys(byKey).map(function (k) { return byKey[k]; });
+  var unique = Object.keys(byKey).map(function (k) { var rec = byKey[k]; delete rec._ep; return rec; });
   var BATCH = 400, sent = 0, errs = 0;
   for (var b = 0; b < unique.length; b += BATCH) {
     var r = _sbFetch_(conf, '/rest/v1/external_exclusives?on_conflict=office_id,source_key',
@@ -907,10 +910,14 @@ function sbParityProps() {
   // שת"פ
   var sh = ss.getSheetByName('בלעדויות חיצוניות');
   var v = sh.getDataRange().getValues();
-  var sheetN = 0;
+  var eidCol = v[0].map(function (h) { return String(h == null ? '' : h).trim(); }).indexOf('event_id');
+  var uniq = {};
   for (var i = 1; i < v.length; i++) {
-    if (v[i].some(function (x) { return String(x == null ? '' : x).trim(); })) sheetN++;
+    if (!v[i].some(function (x) { return String(x == null ? '' : x).trim(); })) continue;
+    var e = (eidCol >= 0) ? String(v[i][eidCol] == null ? '' : v[i][eidCol]).trim() : '';
+    uniq[e || ('row' + i)] = true;
   }
+  var sheetN = Object.keys(uniq).length;
   var r = UrlFetchApp.fetch(conf.url + '/rest/v1/external_exclusives?select=source_key&office_id=eq.' + conf.office + '&limit=10000', {
     headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key }, muteHttpExceptions: true
   });
