@@ -201,8 +201,24 @@ def main():
     if b_diffs or len(sheet_b) != len(sb_b):
         problems += 1
 
-    # ── שת"פ (בלעדויות חיצוניות) ──
-    problems += check_raw_tab("בלעדויות חיצוניות", supabase_db.fetch_excl_rows, "🤝")
+    # ── שת"פ (בלעדויות חיצוניות) — מאחדים לפי event_id (החדש ביותר) בשני הצדדים ──
+    def _excl_key(r):
+        return str(r.get("event_id", "") or "").strip() or ("row:" + str(r.get("received_at", "")))
+    def _dedup_excl(rows):
+        best = {}
+        for r in rows:
+            k = _excl_key(r)
+            cur = best.get(k)
+            if cur is None or str(r.get("received_at", "")) >= str(cur.get("received_at", "")):
+                best[k] = r
+        return best
+    ex_sheet = _dedup_excl(_apps_raw("בלעדויות חיצוניות"))
+    ex_sb = _dedup_excl(supabase_db.fetch_excl_rows())
+    ex_missing = [k for k in ex_sheet if k not in ex_sb]
+    print(f"🤝 שת\"פ — גיליון (ייחודי): {len(ex_sheet)} · Supabase: {len(ex_sb)} · "
+          + ("✅ תואם" if not ex_missing else f"❌ חסרות {len(ex_missing)}"))
+    if ex_missing:
+        problems += 1
 
     # ── קונפיג (הבלוב מול השורות) ──
     import json as _j
