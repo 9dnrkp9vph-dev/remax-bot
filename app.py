@@ -5121,11 +5121,22 @@ def api_report():
         eff_phones = (eff_phones or set()) | tphones
         eff_keys = tkeys
         scope = scope + " (צוות)"
+    _rk = "report:%s:%s:%s" % (period, sel_month, scope)
+    _rc = _cache_get(_rk, 120)
+    if _rc is not None:
+        return jsonify(_rc)
     insights = []
     try:
-        sm = _web_org_summary(frm, to, eff_name, eff_phones, eff_keys)
+        # שליפות מקבילות: הסיכום המרכזי והמקורות האיטיים (נכסים/בלעדויות/נכס נולד)
+        # רצים יחד — הזמן הכולל הוא האיטי שבהם, לא הסכום של כולם
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        with _TPE(max_workers=3) as _rex:
+            _f_sheet = _rex.submit(fetch_sheet_rows)
+            _f_excl = _rex.submit(fetch_external_exclusives) if s["role"] in ("admin", "coordinator") else None
+            _f_nb = _rex.submit(fetch_newborn) if s["role"] in ("admin", "coordinator") else None
+            sm = _web_org_summary(frm, to, eff_name, eff_phones, eff_keys)
         try:   # ספירת "מודעות" — אותו מקור של "נכסים במשרד" (יד2): סוכן=שלו, מנהל=סה"כ
-            _lr = fetch_sheet_rows()
+            _lr = _f_sheet.result()
             if eff_keys:
                 listings_total = sum(1 for r in _lr if _row_owned(r, eff_keys, eff_phones or set()))
             elif eff_name:
@@ -5139,7 +5150,7 @@ def api_report():
             try:
                 _se = start.timestamp(); _ee = end.timestamp() + 86400
                 _by = {}
-                for _r in _dedupe_exclusives(fetch_external_exclusives()):
+                for _r in _dedupe_exclusives(_f_excl.result() if _f_excl else []):
                     _ep = _excl_epoch(_r.get("received_at", ""))
                     if _ep and _se <= _ep < _ee:
                         _raw = (str(_r.get("office", "") or "").strip() or "ללא שם משרד")
@@ -5156,7 +5167,7 @@ def api_report():
             try:
                 _nse = start.timestamp(); _nee = end.timestamp() + 86400
                 _bc = {}
-                for _r in fetch_newborn():
+                for _r in (_f_nb.result() if _f_nb else []):
                     _ep = _newborn_created_epoch(_r)
                     if _ep and _nse <= _ep < _nee:
                         nb_total += 1
@@ -5223,11 +5234,13 @@ def api_report():
             top_deals = [{"name": n, "n": c} for n, c in _dc.most_common(5)]
         except Exception:
             top_deals = []
-        return jsonify({"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
-                        "insights": insights, "summary": sm, "listings": listings_total,
-                        "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices,
-                        "top_deals": top_deals,
-                        "nbCities": nb_cities, "nbTotal": nb_total, "meetings": meetings, "wa_text": wa})
+        _resp = {"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
+                 "insights": insights, "summary": sm, "listings": listings_total,
+                 "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices,
+                 "top_deals": top_deals,
+                 "nbCities": nb_cities, "nbTotal": nb_total, "meetings": meetings, "wa_text": wa}
+        _cache_put(_rk, _resp)
+        return jsonify(_resp)
     except Exception as e:
         log.error(f"report error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
