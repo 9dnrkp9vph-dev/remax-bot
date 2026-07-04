@@ -198,6 +198,24 @@ def fetch_buyers_rows():
     return rows
 
 
+def fetch_config():
+    """הקונפיג המלא — dict מורכב משורות office_config (שורה לכל מפתח).
+    זהה 1:1 לבלוב של getconfig; כתיבת מפתח אחד אינה נוגעת באחרים."""
+    recs = _get_all("office_config", "key,value")
+    return {rec["key"]: rec["value"] for rec in recs if rec.get("key")}
+
+
+def save_config_key(key, value):
+    """שמירת מפתח קונפיג בודד — בלי לגעת בשאר המפתחות."""
+    r = requests.post(SUPABASE_URL + "/rest/v1/office_config?on_conflict=office_id,key",
+                      headers={**_headers(), "Content-Type": "application/json",
+                               "Prefer": "resolution=merge-duplicates"},
+                      json={"office_id": SB_OFFICE_ID, "key": key, "value": value},
+                      timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
 def fetch_hidden_call_ids():
     """מזהי שיחות מוסתרות — set של מחרוזות, כמו _fetch_hidden_calls ב-app.py."""
     recs = _get_all("hidden_calls", "event_id")
