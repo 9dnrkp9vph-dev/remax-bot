@@ -8110,6 +8110,7 @@ function nbAs(){return IMP?("?as="+encodeURIComponent(IMP)):"";}
 function loadNbBanner(){var b=$("nbtabbadge");if(!b)return;
   api("/api/newborn"+nbAs()).then(function(r){
     if(!r||!r.ok)return;NBDATA=r;
+    if(!(typeof IMP!="undefined"&&IMP))lfSave("newborn",r);   /* טעינה מוקדמת ברקע — הטאב ייפתח מיידית */
     if(r.count>0){b.textContent=r.count;b.classList.remove("hidden");}else{b.classList.add("hidden");}
   }).catch(function(){});}
 function openNewborn(){
@@ -8251,8 +8252,9 @@ function nbLoad(q){
   }).catch(function(){if($("nblist"))$("nblist").innerHTML="<div class=card><div class=err>שגיאה</div></div>";});
 }
 function loadNewbornPage(){
-  if(!NBDATA&&!(typeof IMP!="undefined"&&IMP)){var c=lfLoad("newborn");
-    if(c&&c.ok){NBDATA=c;NBSHOWN=20;NBITEMS=(c.results||[]).filter(function(x){return x.released;});NBSEARCH=null;NBBUCKETS=c.bucketCounts||[];NBTOTAL=(c.total!=null?c.total:NBITEMS.length);nbLiveLabel();renderNewborn();}}
+  if(typeof IMP!="undefined"&&IMP){nbLoad("");return;}   /* התחזות — תמיד טרי מהרשת */
+  var pre=(NBDATA&&NBDATA.ok)?NBDATA:lfLoad("newborn");   /* טעינה מוקדמת מהכניסה, או זיכרון המכשיר */
+  if(pre&&pre.ok){NBDATA=pre;NBSHOWN=20;NBITEMS=(pre.results||[]).filter(function(x){return x.released;});NBSEARCH=null;NBBUCKETS=pre.bucketCounts||[];NBTOTAL=(pre.total!=null?pre.total:NBITEMS.length);nbLiveLabel();renderNewborn();}
   nbLoad("");
 }
 var NBSTL={meeting:"📅 נקבעה פגישה",followup:"🔁 פולו-אפ",not_interested:"✖ לא מעוניין"};
