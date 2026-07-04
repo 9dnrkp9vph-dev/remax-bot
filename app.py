@@ -4093,7 +4093,11 @@ def _manager_push_ids():
 def _notify_managers_signing(status_label, client, agent, address):
     """פוש לכל המנהלים על חתימה שנכנסה לטאב 'חתימות' — לא חוסם את התשובה."""
     try:
-        ids = _manager_push_ids()
+        ids = set(_manager_push_ids())
+        for _ph in _phones_for_name(agent or ""):   # + הסוכן שביצע את החתימה
+            _l = _last9(_ph)
+            if _l: ids.add(_l)
+        ids = list(ids)
         if not ids:
             return
         body = status_label + ": " + (client or "לקוח")
@@ -4668,17 +4672,27 @@ def _deals_can_see(item, s):
     ags = [_canon_key(a) for a in (item.get("agents") or [])]
     return (nm in ags) or (_canon_key(item.get("by", "")) == nm)
 def _deals_notify(rec, is_new=False, became_deal=False):
-    """פוש: עסקה חדשה (חדשה או תהליך שהפך לעסקה) → לכל הסוכנים; תהליך חדש → למנהלים בלבד."""
+    """פוש: עסקה חדשה / תהליך חדש → למנהלים + לסוכן/ים שביצעו (לא לכל המשרד)."""
     try:
         addr = (rec.get("notes", "") or "נכס").strip()
+        # קהל: מנהלים + הסוכנים המעורבים בעסקה/בתהליך
+        targets = set(_manager_push_ids())
+        for _a in (rec.get("agents") or []):
+            for _ph in _phones_for_name(_a):
+                _l = _last9(_ph)
+                if _l: targets.add(_l)
+        for _ph in _phones_for_name(rec.get("by", "") or ""):   # + מי שיצר את הרשומה
+            _l = _last9(_ph)
+            if _l: targets.add(_l)
+        targets = list(targets)
         if rec.get("deal") and (is_new or became_deal):
             price = (rec.get("sale_price", "") or rec.get("price", "") or "").strip()
             body = addr + (" · ₪" + price if price else "")
-            _th.Thread(target=lambda: send_push("עסקה חדשה 🎉", body, list(_all_agent_push_ids())), daemon=True).start()
+            _th.Thread(target=lambda: send_push("עסקה חדשה 🎉", body, targets), daemon=True).start()
         elif (not rec.get("deal")) and is_new:
             ag = " + ".join([a for a in (rec.get("agents") or []) if a])
             body = (ag + " · " if ag else "") + addr
-            _th.Thread(target=lambda: send_push("תהליך חדש 📋", body, list(_manager_push_ids())), daemon=True).start()
+            _th.Thread(target=lambda: send_push("תהליך חדש 📋", body, targets), daemon=True).start()
     except Exception:
         pass
 
