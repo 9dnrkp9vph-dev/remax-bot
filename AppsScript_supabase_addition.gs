@@ -800,6 +800,143 @@ function sbParityConfig() {
 }
 
 /***********************************************************************
+ * ══ שלב 6: "נכסים בשת"פ" + "נכסים במשרד" ═══════════════════════════
+ * שני המקורות נשארים בגיליונות (אוטומציה חיצונית / הזנה ידנית) —
+ * הסנכרון המתוזמן (sbReconcileAll) משקף אותם ל-Supabase. אין hooks.
+ * לגיליון הנכסים הנפרד: הוסף Script Property בשם PROPS_SHEET_ID עם ה-ID
+ * של הקובץ (אם לא הוגדר — נעשה שימוש בברירת המחדל שבקוד).
+ ***********************************************************************/
+var _SB_PROPS_SHEET_DEFAULT = '1PnQm-ifyLrh6sBbNNQbNlAHmJWeBnbzXJJERmTuaAVM';
+
+/** סנכרון "בלעדויות חיצוניות" — כמו שיחות: raw + received_at, מפתח event_id. */
+function sbBackfillExclusives() {
+  var conf = _sbConf_();
+  if (!conf) return '❌ missing properties';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('בלעדויות חיצוניות');
+  if (!sh || sh.getLastRow() < 2) return 'אין נתונים';
+  var v = sh.getDataRange().getValues();
+  var hd = v[0];
+  var byKey = {}, total = 0, noId = 0;
+  for (var i = 1; i < v.length; i++) {
+    var any = v[i].some(function (x) { return String(x == null ? '' : x).trim(); });
+    if (!any) continue;
+    total++;
+    var raw = {}, rxVal = null, eid = '';
+    for (var c = 0; c < hd.length; c++) {
+      var h = String(hd[c] == null ? '' : hd[c]).trim();
+      if (h === 'received_at') rxVal = v[i][c];
+      if (h === 'event_id') eid = String(v[i][c] == null ? '' : v[i][c]).trim();
+      raw[h] = (v[i][c] instanceof Date) ? v[i][c].toISOString() : v[i][c];
+    }
+    if (!eid) { eid = _sbCallKey_('', v[i], i); noId++; }
+    byKey[eid] = {
+      office_id: conf.office, source_key: eid, event_id: eid,
+      street: String(raw['street'] == null ? '' : raw['street']),
+      dest: String(raw['dest'] == null ? '' : raw['dest']),
+      link: String(raw['link'] == null ? '' : raw['link']),
+      price: String(raw['price'] == null ? '' : raw['price']),
+      received_at: _sbDateOnly_(rxVal),
+      raw: raw, updated_at: new Date().toISOString()
+    };
+  }
+  var unique = Object.keys(byKey).map(function (k) { return byKey[k]; });
+  var BATCH = 400, sent = 0, errs = 0;
+  for (var b = 0; b < unique.length; b += BATCH) {
+    var r = _sbFetch_(conf, '/rest/v1/external_exclusives?on_conflict=office_id,source_key',
+                      unique.slice(b, b + BATCH), 'resolution=merge-duplicates');
+    var code = r.getResponseCode();
+    if (code >= 200 && code < 300) sent += Math.min(BATCH, unique.length - b);
+    else { errs++; Logger.log('שגיאה בקבוצה ' + b + ': ' + code + ' ' + r.getContentText().substring(0, 150)); }
+  }
+  var msg = 'הועברו ' + sent + '/' + unique.length + ' בלעדויות (' + total + ' שורות, ' + noId + ' בלי מזהה)' +
+            (errs ? (' · ' + errs + ' קבוצות נכשלו') : ' · הכל תקין ✅');
+  Logger.log(msg);
+  return msg;
+}
+
+/** סנכרון "נכסים במשרד" — גיליון נפרד, תמונת-מצב לפי שורה (כמו קונים). */
+function sbBackfillProperties() {
+  var conf = _sbConf_();
+  if (!conf) return '❌ missing properties';
+  var pid = String(PropertiesService.getScriptProperties().getProperty('PROPS_SHEET_ID') || '').trim() || _SB_PROPS_SHEET_DEFAULT;
+  var sh;
+  try { sh = SpreadsheetApp.openById(pid).getSheetByName('נכסים'); }
+  catch (e) { Logger.log('❌ אין גישה לגיליון הנכסים: ' + e); return '❌ no access'; }
+  if (!sh || sh.getLastRow() < 2) return 'אין נתונים';
+  var v = sh.getDataRange().getValues();
+  var hd = v[0];
+  // מחיקה ומילוי מחדש — תמונת-מצב (הגיליון ידני, שורות זזות)
+  UrlFetchApp.fetch(conf.url + '/rest/v1/properties?office_id=eq.' + conf.office, {
+    method: 'delete',
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key },
+    muteHttpExceptions: true
+  });
+  var recs = [];
+  for (var i = 1; i < v.length; i++) {
+    var raw = {}, any = false;
+    for (var c = 0; c < hd.length; c++) {
+      var h = String(hd[c] == null ? '' : hd[c]).trim();
+      var val = (v[i][c] instanceof Date) ? v[i][c].toISOString() : v[i][c];
+      if (h) raw[h] = (val == null ? '' : val);
+      if (String(val == null ? '' : val).trim()) any = true;
+    }
+    if (!any) continue;
+    // תיאור מעמודה AE (אינדקס 30) — כמו _fetch_sheet_rows_raw באפליקציה
+    raw['_desc_ae'] = String((v[i].length > 30 ? v[i][30] : '') || '').trim();
+    recs.push({ office_id: conf.office, sheet_row: i + 1, raw: raw });
+  }
+  var BATCH = 300, sent = 0, errs = 0;
+  for (var b = 0; b < recs.length; b += BATCH) {
+    var r = _sbFetch_(conf, '/rest/v1/properties?on_conflict=office_id,sheet_row',
+                      recs.slice(b, b + BATCH), 'resolution=merge-duplicates');
+    var code = r.getResponseCode();
+    if (code >= 200 && code < 300) sent += Math.min(BATCH, recs.length - b);
+    else { errs++; Logger.log('שגיאה בקבוצה ' + b + ': ' + code + ' ' + r.getContentText().substring(0, 150)); }
+  }
+  var msg = 'הועברו ' + sent + '/' + recs.length + ' נכסים' + (errs ? (' · ' + errs + ' קבוצות נכשלו') : ' · הכל תקין ✅');
+  Logger.log(msg);
+  return msg;
+}
+
+/** Parity לשת"פ + נכסים — ספירות והשוואת מפתחות. */
+function sbParityProps() {
+  var conf = _sbConf_();
+  if (!conf) { Logger.log('❌ חסרות הגדרות'); return '❌'; }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  // שת"פ
+  var sh = ss.getSheetByName('בלעדויות חיצוניות');
+  var v = sh.getDataRange().getValues();
+  var sheetN = 0;
+  for (var i = 1; i < v.length; i++) {
+    if (v[i].some(function (x) { return String(x == null ? '' : x).trim(); })) sheetN++;
+  }
+  var r = UrlFetchApp.fetch(conf.url + '/rest/v1/external_exclusives?select=source_key&office_id=eq.' + conf.office + '&limit=10000', {
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key }, muteHttpExceptions: true
+  });
+  var sbN = (JSON.parse(r.getContentText()) || []).length;
+  Logger.log('🤝 שת"פ — גיליון: ' + sheetN + ' · Supabase: ' + sbN + (sheetN <= sbN ? ' · ✅' : ' · ❌ חסרות'));
+  // נכסים
+  var pid = String(PropertiesService.getScriptProperties().getProperty('PROPS_SHEET_ID') || '').trim() || _SB_PROPS_SHEET_DEFAULT;
+  var pn = 0;
+  try {
+    var psh = SpreadsheetApp.openById(pid).getSheetByName('נכסים');
+    var pv = psh.getDataRange().getValues();
+    for (var j = 1; j < pv.length; j++) {
+      if (pv[j].some(function (x) { return String(x == null ? '' : x).trim(); })) pn++;
+    }
+  } catch (e) { Logger.log('❌ גיליון נכסים: ' + e); }
+  var r2 = UrlFetchApp.fetch(conf.url + '/rest/v1/properties?select=sheet_row&office_id=eq.' + conf.office + '&limit=10000', {
+    headers: { 'apikey': conf.key, 'Authorization': 'Bearer ' + conf.key }, muteHttpExceptions: true
+  });
+  var pbN = (JSON.parse(r2.getContentText()) || []).length;
+  Logger.log('🏠 נכסים — גיליון: ' + pn + ' · Supabase: ' + pbN + (pn === pbN ? ' · ✅' : ' · ❌'));
+  var ok = (sheetN <= sbN) && (pn === pbN);
+  Logger.log(ok ? '🟢 PARITY שת"פ+נכסים מלא' : '🔴 יש פערים');
+  return ok ? 'OK' : 'GAPS';
+}
+
+/***********************************************************************
  * ריפוי עצמי — סנכרון-השלמה של כל המודולים. מיועד לטריגר מתוזמן:
  * בעורך: אייקון השעון ⏰ (טריגרים) ▸ הוספת טריגר ▸ פונקציה: sbReconcileAll,
  * מבוסס זמן ▸ כל 30 דקות. סוגר אוטומטית כל פער שנוצר מכשל כתיבה רגעי
@@ -815,6 +952,8 @@ function sbReconcileAll() {
   try { sbBackfillSignatures(); } catch (e) { Logger.log('reconcile signatures: ' + e); }
   try { sbBackfillBuyers(); } catch (e) { Logger.log('reconcile buyers: ' + e); }
   try { sbBackfillConfig(); } catch (e) { Logger.log('reconcile config: ' + e); }
+  try { sbBackfillExclusives(); } catch (e) { Logger.log('reconcile excl: ' + e); }
+  try { sbBackfillProperties(); } catch (e) { Logger.log('reconcile props: ' + e); }
 }
 
 /***********************************************************************
