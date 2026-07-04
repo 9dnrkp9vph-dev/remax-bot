@@ -201,6 +201,20 @@ def main():
     if b_diffs or len(sheet_b) != len(sb_b):
         problems += 1
 
+    # ── קונפיג (הבלוב מול השורות) ──
+    import json as _j
+    blob_raw = (_apps_post("getconfig").get("config") or "").strip()
+    blob = _j.loads(blob_raw) if blob_raw else {}
+    sb_cfg = supabase_db.fetch_config()
+    bad_keys = [k for k in blob if _j.dumps(blob[k], sort_keys=True, ensure_ascii=False)
+                != _j.dumps(sb_cfg.get(k), sort_keys=True, ensure_ascii=False)]
+    extra_keys = [k for k in sb_cfg if k not in blob]
+    print(f"⚙️ קונפיג — מפתחות בבלוב: {len(blob)} · ב-Supabase: {len(sb_cfg)} · "
+          + ("✅ זהים ערך-בערך" if not (bad_keys or extra_keys)
+             else f"❌ שונים: {bad_keys} · עודפים: {extra_keys}"))
+    if bad_keys or extra_keys:
+        problems += 1
+
     print()
     if problems == 0:
         print("🟢 PARITY מלא — מסלול Supabase מחזיר לאפליקציה בדיוק את אותם נתונים. בטוח להדליק את הדגלים.")
