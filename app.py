@@ -2395,6 +2395,16 @@ def _load_config():
     with _sf_lock("app_config"):
         c = _cache_get("app_config", 60)
         if c is not None: return c
+        # מסלול Supabase — קונפיג משורות office_config (מהיר, בלי גוגל)
+        if CONFIG_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+            try:
+                cfg = _sbdb.fetch_config()
+                if isinstance(cfg, dict) and cfg:
+                    _LAST_GOOD_CONFIG = cfg
+                    _cache_put("app_config", cfg)
+                    return cfg
+            except Exception as _sbe:
+                log.error(f"supabase config read failed — falling back to sheets: {_sbe}")
         j = None
         try:
             j = _buyers_apps_post("getconfig", {})
@@ -2427,6 +2437,25 @@ def _save_config(cfg):
         if not (cfg.get("agents") or cfg.get("roles")):
             log.error("save_config refused: would wipe agents/roles (likely stale/empty config)")
             return False
+    # מסלול Supabase — כותבים רק את המפתחות שהשתנו (שמירה אטומית פר-מפתח,
+    # במקום דריסת הבלוב כולו). הגיליון מתעדכן במקביל דרך ה-hook ב-Apps Script.
+    if CONFIG_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            prev = _LAST_GOOD_CONFIG if isinstance(_LAST_GOOD_CONFIG, dict) else {}
+            changed = [k for k in cfg if _json.dumps(cfg.get(k), sort_keys=True, ensure_ascii=False)
+                       != _json.dumps(prev.get(k), sort_keys=True, ensure_ascii=False)]
+            for k in changed:
+                _sbdb.save_config_key(k, cfg[k])
+            _LAST_GOOD_CONFIG = cfg
+            _cache_put("app_config", cfg)
+            _cache_clear("alias_key_map")
+            _cache_clear("newborn_delays")
+            # שכפול לגיליון (best-effort) — גיבוי, לא חוסם את ההצלחה
+            try: _buyers_apps_post("setconfig", {"config": _json.dumps(cfg, ensure_ascii=False)})
+            except Exception: pass
+            return True
+        except Exception as _sbe:
+            log.error(f"supabase config save failed — falling back to sheets: {_sbe}")
     try:
         j = _buyers_apps_post("setconfig", {"config": _json.dumps(cfg, ensure_ascii=False)})
         ok = bool(j and j.get("ok"))
@@ -5370,6 +5399,7 @@ NEWBORN_SOURCE    = (os.environ.get("NEWBORN_SOURCE", "sheets") or "sheets").str
 CALLS_SOURCE      = (os.environ.get("CALLS_SOURCE", "sheets") or "sheets").strip().lower()
 SIGNATURES_SOURCE = (os.environ.get("SIGNATURES_SOURCE", "sheets") or "sheets").strip().lower()
 BUYERS_SOURCE     = (os.environ.get("BUYERS_SOURCE", "sheets") or "sheets").strip().lower()
+CONFIG_SOURCE     = (os.environ.get("CONFIG_SOURCE", "sheets") or "sheets").strip().lower()
 try:
     import supabase_db as _sbdb
 except Exception:
