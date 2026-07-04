@@ -1287,9 +1287,17 @@ def _cache_clear(key):
         _TTL_CACHE.pop(key, None)
 
 def fetch_sheet_rows() -> list:
-    c = _cache_get('sheet_rows', 60)
+    c = _cache_get('sheet_rows', _src_ttl(PROPS_SOURCE, 60, 15))
     if c is not None:
         return c
+    if PROPS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            rows = _sbdb.fetch_properties_rows()
+            if rows:
+                _cache_put('sheet_rows', rows)
+            return rows
+        except Exception as _sbe:
+            log.error(f"supabase properties read failed — falling back to sheets: {_sbe}")
     rows = _fetch_sheet_rows_raw()
     if rows:
         _cache_put('sheet_rows', rows)
@@ -1971,8 +1979,17 @@ def fetch_external_exclusives() -> list:
     if not APPS_SCRIPT_URL or not APPS_SCRIPT_TOKEN:
         log.error("APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN missing in env")
         return []
-    if _external_excl_cache["data"] is not None and (time.time() - _external_excl_cache["ts"]) < 300:
+    if _external_excl_cache["data"] is not None and (time.time() - _external_excl_cache["ts"]) < _src_ttl(EXCL_SOURCE, 300, 60):
         return _external_excl_cache["data"]
+    if EXCL_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            rows = _sbdb.fetch_excl_rows()
+            if rows:
+                _external_excl_cache["data"] = rows
+                _external_excl_cache["ts"] = time.time()
+            return rows
+        except Exception as _sbe:
+            log.error(f"supabase excl read failed — falling back to sheets: {_sbe}")
     try:
         from urllib.parse import quote
         url = (f"{APPS_SCRIPT_URL}?action=raw&type={quote('בלעדויות חיצוניות')}"
@@ -5426,6 +5443,8 @@ NEWBORN_SOURCE    = (os.environ.get("NEWBORN_SOURCE", "sheets") or "sheets").str
 CALLS_SOURCE      = (os.environ.get("CALLS_SOURCE", "sheets") or "sheets").strip().lower()
 SIGNATURES_SOURCE = (os.environ.get("SIGNATURES_SOURCE", "sheets") or "sheets").strip().lower()
 BUYERS_SOURCE     = (os.environ.get("BUYERS_SOURCE", "sheets") or "sheets").strip().lower()
+EXCL_SOURCE       = (os.environ.get("EXCL_SOURCE", "sheets") or "sheets").strip().lower()
+PROPS_SOURCE      = (os.environ.get("PROPS_SOURCE", "sheets") or "sheets").strip().lower()
 CONFIG_SOURCE     = (os.environ.get("CONFIG_SOURCE", "sheets") or "sheets").strip().lower()
 try:
     import supabase_db as _sbdb
