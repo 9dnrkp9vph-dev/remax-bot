@@ -2922,6 +2922,30 @@ def web_role_for(last9):
         return "agent"
     return None
 
+def _refresh_coordinator_scope(s):
+    """סקופ מתאמת חי — נמשך מהקונפיג בכל בקשה, לא רק בכניסה. מתקן את הבאג שמתאמת
+    לא ראתה את הסוכנים שלה: שיוך שנעשה בניהול אחרי שהיא כבר מחוברת (או תפקיד
+    מתאמת שניתן לסשן קיים) תופס מיד, בלי כניסה מחדש."""
+    try:
+        ph = _last9(s.get("phone", ""))
+        if not ph or s.get("role") == "admin":
+            return s
+        cc = _coordinators_all()
+        if ph in cc:
+            s["role"] = "coordinator"
+            if s.get("drole") in ("", "agent", None):
+                s["drole"] = "coordinator"
+            s["agents"] = list(cc[ph]["agents"])
+            s["agent_names"] = list(cc[ph]["names"])
+        elif s.get("role") == "coordinator":
+            s["role"] = "agent"          # הוסרה מהשיוך — חוזרת לסקופ אישי
+            if s.get("drole") == "coordinator":
+                s["drole"] = "agent"
+            s.pop("agents", None); s.pop("agent_names", None)
+    except Exception:
+        pass
+    return s
+
 def _web_auth():
     tok = (request.headers.get("X-Auth-Token") or request.args.get("token")
            or ((request.get_json(silent=True) or {}).get("token") if request.method == "POST" else None))
@@ -2932,7 +2956,7 @@ def _web_auth():
             _web_sessions.pop(tok, None); return None
         if _is_suspended(s.get("phone", "")) and not _is_dev(s.get("phone", "")):
             return None   # סוכן מושהה — חסום (לא נועל את המפתח)
-        return s
+        return _refresh_coordinator_scope(s)
     # נפילה לטוקן חתום (stateless) — שורד רסטארט של השרת, בלי לזרוק את המשתמש החוצה
     phone = _verify_token(tok)
     if phone:
@@ -2940,7 +2964,7 @@ def _web_auth():
             return None
         sess = _session_from_phone(phone)
         _web_sessions[tok] = sess
-        return sess
+        return _refresh_coordinator_scope(sess)
     return None
 
 # --- activity log (in-memory, newest last) ---
