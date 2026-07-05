@@ -3132,7 +3132,7 @@ def _g_msg(title, sub="", href="/app", btn="חזרה לכניסה"):
         + "<a href='" + href + "' style='display:inline-block;padding:13px 22px;background:#0D1B2A;color:#fff;"
           "border-radius:13px;font-weight:800;text-decoration:none'>" + btn + "</a>")
 
-def _g_done_page(payload):
+def _g_done_page(payload, dest="/app"):
     js = _json.dumps(payload, ensure_ascii=False)
     return _g_page(
         "<div style='font-size:18px;font-weight:800;color:#0D1B2A'>מתחבר…</div>"
@@ -3141,9 +3141,9 @@ def _g_done_page(payload):
         "localStorage.setItem('fbName',p.name||'');localStorage.setItem('fbDev',p.dev?'1':'0');"
         "if(p.phone)localStorage.setItem('fbPhone',p.phone);"
         "localStorage.setItem('fbTabs',JSON.stringify(p.tabs||null));}catch(e){}"
-        "location.replace('/app');</script>")
+        "location.replace(" + _json.dumps(dest) + ");</script>")
 
-def _g_link_page(glink, email):
+def _g_link_page(glink, email, dest="/app"):
     return _g_page(
         "<div style='font-size:19px;font-weight:800;color:#0D1B2A;margin-bottom:6px'>חיבור ראשון</div>"
         "<div style='font-size:14px;color:#6b7280;margin-bottom:18px'>" + email +
@@ -3170,7 +3170,7 @@ def _g_link_page(glink, email):
         "if(p.phone)localStorage.setItem('fbPhone',p.phone);"
         "localStorage.setItem('fbDrole',p.drole||'');localStorage.setItem('fbName',p.name||'');"
         "localStorage.setItem('fbDev',p.dev?'1':'0');localStorage.setItem('fbTabs',JSON.stringify(p.tabs||null));}catch(x){}"
-        "location.replace('/app');});}}"
+        "location.replace(" + _json.dumps(dest) + ");});}}"
         "</script>")
 
 @app.route("/auth/google/login")
@@ -3179,7 +3179,8 @@ def auth_google_login():
         return _g_msg("התחברות Google אינה פעילה עדיין", "פנה למנהל המערכת"), 200
     state = _secrets.token_urlsafe(16)
     native = request.args.get("native") == "1"
-    _goauth_state[state] = {"exp": time.time() + 600, "native": native}
+    _goauth_state[state] = {"exp": time.time() + 600, "native": native,
+                            "next": ("v2" if request.args.get("next") == "v2" else "")}
     params = {"client_id": GOOGLE_CLIENT_ID, "redirect_uri": GOOGLE_REDIRECT_URI,
               "response_type": "code",
               "scope": "openid email profile https://www.googleapis.com/auth/calendar.events",
@@ -3199,6 +3200,7 @@ def auth_google_callback():
         return _g_msg("פג תוקף ההתחברות", "נסה להתחבר שוב")
     _goauth_state.pop(state, None)
     native = bool(st.get("native"))
+    _dest = "/v2/home" if st.get("next") == "v2" else "/app"   # אפי (/v2) חוזרת אליה, לא לאפליקציה הקיימת
     tok = _g_token_exchange(request.args.get("code", ""))
     if not tok or not tok.get("access_token"):
         return _g_msg("שגיאת התחברות מול Google", "נסה שוב")
@@ -3226,12 +3228,12 @@ def auth_google_callback():
                     '<a href="' + _scheme + '" style="display:inline-block;margin-top:22px;background:#e0b85a;color:#231700;font-weight:800;font-size:18px;padding:15px 30px;border-radius:14px;text-decoration:none">חזור לאפליקציה</a>'
                     '<script>setTimeout(function(){location.href=' + _json.dumps(_scheme) + ';},250);</script>'
                     '</body></html>'), 200
-        return _g_done_page(payload)
+        return _g_done_page(payload, _dest)
     # אימייל שעוד לא מקושר → דף קישור חד-פעמי עם אימות טלפון
     glink = _secrets.token_urlsafe(18)
     _goauth_pending[glink] = {"email": email, "name": name, "refresh_token": rt,
                               "native": native, "exp": time.time() + 900}
-    return _g_link_page(glink, email)
+    return _g_link_page(glink, email, _dest)
 
 @app.route("/api/auth/glink_request", methods=["POST"])
 def api_glink_request():
@@ -8784,6 +8786,13 @@ try:
     threading.Thread(target=_calls_wa_loop, daemon=True).start()
 except Exception:
     pass
+
+# ── אֶפִי (/v2) — מודול נפרד; כשל כאן לא מפיל את האפליקציה הרצה ─────────────────
+try:
+    import effie_v2 as _effie_v2
+    _effie_v2.register(app, globals())
+except Exception as _effie_err:
+    log.error(f"effie v2 init failed (old app unaffected): {_effie_err}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STARTUP
