@@ -729,6 +729,11 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .swRow{display:flex;align-items:center;justify-content:space-between;min-height:44px}
   .swRow .lb{font-size:13.5px;font-weight:700}
   .swRow .sb{font-size:11.5px;color:#8B8F99}
+  .phChip{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;padding:7px 11px;
+      font-size:12px;font-weight:700;color:#1E3A5F;white-space:nowrap}
+  .phChip.gold{background:#F6EEDB;border-color:#E4C56B;color:#B8902F}
+  .trashBtn{width:42px;height:42px;border-radius:11px;background:#FBEDED;border:0;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
        font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
        pointer-events:none;z-index:40;white-space:nowrap}
@@ -784,12 +789,23 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       </div>
     </div>
 
+    <!-- צוותי שיתוף — חברי צוות רואים הכל אחד של השני -->
+    <div class="card">
+      <div class="rowHead">
+        <div class="cardTitle">צוותי שיתוף</div>
+        <button class="btn-invite" onclick="editTeam(-1)">
+          <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+          צוות חדש
+        </button>
+      </div>
+      <div style="font-size:11.5px;color:#8B8F99;line-height:1.5">חברי צוות רואים הכל אחד של השני —
+        שיחות, קונים, חתימות, נכסים, תהליכים ועסקאות.</div>
+      <div id="teamsList"></div>
+    </div>
+
     <!-- מדיניות (מפרט 9ג) -->
     <div class="card">
       <div class="cardTitle">מדיניות המשרד</div>
-      <div class="swRow"><div><div class="lb">שיתוף קונים בין סוכנים</div><div class="sb">כל סוכן רואה את קוני המשרד</div></div>
-        <div class="tg" id="tgShareBuyers" onclick="togglePolicy('share_buyers', this)"></div></div>
-      <div class="sep"></div>
       <div class="swRow"><div><div class="lb">חיוב פולו-אפ לפני סגירה</div><div class="sb">אי אפשר לסגור נכס נולד בלי פולו-אפ</div></div>
         <div class="tg" id="tgFollowup" onclick="togglePolicy('require_followup', this)"></div></div>
       <div class="sep"></div>
@@ -842,7 +858,7 @@ function toast(msg){
   clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
 }
 
-var OV = null, PEOPLE = [], COORDS = [];
+var OV = null, PEOPLE = [], COORDS = [], TEAMS = [], NB_DEFAULT = 0;
 var ROLE_LABEL = {agent:'סוכן', coordinator:'מתאמת', manager:'מנהל', developer:'בעל המשרד',
                   accountant:'הנה"ח', secretary:'מזכירות'};
 var AV_COLORS = ['#1E3A5F', '#C29435', '#2E6BD6', '#1FAF5E', '#5B6472'];
@@ -851,9 +867,12 @@ function boot(){
   GET('/api/auth/whoami').then(function(w){
     if (!w.ok){ location.replace('/v2'); return; }
     if (!w.dev){ el('blocked').style.display = 'flex'; return; }
-    Promise.all([GET('/v2/api/admin/overview'), GET('/api/dev/people'), GET('/api/dev/coordinators')])
+    Promise.all([GET('/v2/api/admin/overview'), GET('/api/dev/people'), GET('/api/dev/coordinators'),
+                 GET('/api/dev/teams')])
       .then(function(rs){
         OV = rs[0]; PEOPLE = (rs[1] && rs[1].agents) || []; COORDS = (rs[2] && rs[2].coordinators) || [];
+        NB_DEFAULT = (rs[1] && rs[1].nbDefault) || 0;
+        TEAMS = (rs[3] && rs[3].teams) || [];
         render();
       });
   }).catch(function(){ location.replace('/v2'); });
@@ -881,11 +900,12 @@ function render(){
   el('vphoneRow').textContent = (OV.office.vphone || 'לא הוגדר') +
       (OV.policies.transcribe ? ' · תמלול פעיל' : ' · תמלול כבוי');
   el('sheetRow').textContent = OV.office.sheet_connected ? 'מסונכרן דרך Apps Script' : 'לא מחובר';
-  ['transcribe','shtaf_sharing','share_buyers','require_followup','who_contacted_admins_only']
+  ['transcribe','shtaf_sharing','require_followup','who_contacted_admins_only']
     .forEach(function(k){ setTg(k, OV.policies[k]); });
   renderTeam();
+  renderTeams();
 }
-var TG_IDS = {transcribe:'tgTranscribe', shtaf_sharing:'tgShtaf', share_buyers:'tgShareBuyers',
+var TG_IDS = {transcribe:'tgTranscribe', shtaf_sharing:'tgShtaf',
               require_followup:'tgFollowup', who_contacted_admins_only:'tgWho'};
 function setTg(key, on){ el(TG_IDS[key]).classList.toggle('on', !!on); }
 
