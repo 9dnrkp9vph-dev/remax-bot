@@ -841,6 +841,11 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
           הזמן סוכן
         </button>
       </div>
+      <div style="display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:14px;padding:0 14px">
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input id="teamQ" placeholder="חיפוש סוכן לפי שם או טלפון" oninput="renderTeam()"
+          style="flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;color:#1E3A5F;padding:11px 0">
+      </div>
       <div id="teamList"></div>
     </div>
 
@@ -992,12 +997,16 @@ var TG_IDS = {transcribe:'tgTranscribe', shtaf_sharing:'tgShtaf',
 function setTg(key, on){ el(TG_IDS[key]).classList.toggle('on', !!on); }
 
 function renderTeam(){
-  var list = PEOPLE.slice().sort(function(a, b){
+  var tq = (el('teamQ') ? el('teamQ').value : '').trim().toLowerCase();
+  var list = PEOPLE.filter(function(p){
+    if (!tq) return true;
+    return ((p.name || '') + ' ' + (p.phone || '') + ' ' + (p.vphone || '')).toLowerCase().indexOf(tq) >= 0;
+  }).sort(function(a, b){
     var r = {developer:0, manager:1, accountant:1, secretary:1, coordinator:2, agent:3};
     var ra = (a.role in r) ? r[a.role] : 3, rb = (b.role in r) ? r[b.role] : 3;
     return (ra - rb) || a.name.localeCompare(b.name, 'he');
   });
-  el('teamTitle').textContent = 'הצוות · ' + list.length;
+  el('teamTitle').textContent = 'הצוות · ' + (tq ? list.length + ' מתוך ' + PEOPLE.length : list.length);
   var html = '';
   list.forEach(function(p, i){
     var pending = isPending(p);
