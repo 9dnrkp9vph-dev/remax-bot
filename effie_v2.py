@@ -362,6 +362,18 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
       ניהול (מפתח)</a>
+    <a href="/v2/reports" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
+       color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><path d="M3.5 18.5v-5M8.5 18.5v-9M13.5 18.5V5.5M18.5 18.5v-7" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round"/></svg>
+      דוחות</a>
+    <a href="/v2/deals" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
+       color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#1E3A5F" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#1E3A5F" stroke-width="1.5" stroke-linecap="round"/></svg>
+      תהליכים ועסקאות</a>
+    <a href="/v2/map" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
+       color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 16 16"><path d="M8 14s-5-4.2-5-8a5 5 0 0 1 10 0c0 3.8-5 8-5 8z" fill="none" stroke="#1E3A5F" stroke-width="1.5"/><circle cx="8" cy="6" r="1.8" fill="none" stroke="#1E3A5F" stroke-width="1.5"/></svg>
+      נכסים במפה</a>
     <a href="/app" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
        color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
@@ -3849,6 +3861,309 @@ render = function(){
 </script></body></html>'''
 
 
+# ── דוחות (עיצוב 30a) — KPI, מובילים, שת"פ, נכס נולד לפי ערים, ייצוא ─────────
+V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>דוחות</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 12px;display:flex;align-items:center;justify-content:space-between}
+  .avatar{position:relative;width:44px;height:44px}
+  .avatar .c{width:44px;height:44px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:17px;font-weight:700}
+  .avatar .dot{position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;background:#1FAF5E;border:2px solid #F2EFE7}
+  .brand img{height:36px;max-width:150px;object-fit:contain}
+  .menuBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  main{flex:1;padding:4px 16px 124px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .card{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
+      display:flex;flex-direction:column;gap:12px}
+  .hd{display:flex;align-items:center;justify-content:space-between}
+  .hd .tt{display:flex;align-items:center;gap:10px}
+  .hd .ic{width:36px;height:36px;border-radius:11px;background:#EAF0FA;display:flex;align-items:center;justify-content:center}
+  .hd h1{font-size:21px;font-weight:800}
+  .scope{font-size:12px;color:#8B8F99}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
+  .segs .sg{flex:1;text-align:center;padding:7px 0;font-size:12px;font-weight:700;color:#5B6472;
+      border-radius:10px;cursor:pointer;white-space:nowrap}
+  .segs .sg.on{color:#fff;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+  .kpi{background:#F7F5EE;border-radius:14px;padding:11px 6px;display:flex;flex-direction:column;align-items:center;gap:1px}
+  .kpi .n{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+  .kpi .l{font-size:10px;font-weight:600;color:#8B8F99;text-align:center}
+  .kpi .s{font-size:9.5px;color:#B8902F;font-weight:700}
+  .secT{font-size:15.5px;font-weight:800}
+  .chips{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .chips::-webkit-scrollbar{display:none}
+  .lchip{flex-shrink:0;background:#F5F3EC;border:1.5px solid #E9E4D8;border-radius:999px;padding:7px 14px;
+      font-size:12px;font-weight:700;color:#5B6472;cursor:pointer;font-family:inherit}
+  .lchip.on{background:#C29435;border-color:#C29435;color:#fff;box-shadow:0 3px 10px rgba(194,148,53,.25)}
+  .leadRow{display:flex;align-items:center;gap:11px;min-height:40px}
+  .leadRow .rank{width:26px;height:26px;border-radius:50%;background:#F0EDE3;color:#5B6472;display:flex;
+      align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+  .leadRow.first .rank{background:#C29435;color:#fff}
+  .leadRow .nm{flex:1;font-size:13.5px;font-weight:700;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .leadRow .val{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+  .bar{height:6px;border-radius:999px;background:#F0EDE3;overflow:hidden;margin:2px 37px 6px 0}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,#E4C56B,#C29435);border-radius:999px}
+  .sideSplit{display:flex;gap:7px;flex-wrap:wrap}
+  .sideSplit .sp{font-size:11.5px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:4px 11px;border-radius:999px}
+  .expand{font-size:12.5px;font-weight:700;color:#2E6BD6;cursor:pointer;text-align:center;padding:4px 0}
+  .tRow{display:flex;align-items:center;justify-content:space-between;padding:7px 2px;font-size:13px}
+  .tRow .n{font-weight:700}
+  .tRow .v{font-weight:800;font-variant-numeric:tabular-nums}
+  .tRow.our .n{color:#B8902F}
+  .sep{height:1px;background:#F0EDE3}
+  .exports{display:flex;gap:9px}
+  .exports .e{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:12px;
+      padding:11px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
+  .exports .wa{background:#1FAF5E;color:#fff;box-shadow:0 4px 12px rgba(31,175,94,.25)}
+  .exports .pdf{background:#1E3A5F;color:#fff;box-shadow:0 4px 12px rgba(30,58,95,.25)}
+  .exports .cp{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;
+      padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;justify-content:space-around;align-items:flex-end}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+      font-weight:600;color:#9AA0AB;cursor:pointer}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:80;white-space:nowrap}
+  @media (min-width:700px){
+    header,main,nav{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+  }
+  @media print{
+    header,nav,.segs,.exports,#toast{display:none !important}
+    body{background:#fff}
+    main{padding:0}
+    .card{box-shadow:none;border:1px solid #E9E4D8;page-break-inside:avoid}
+  }
+</style></head><body>
+
+  <header>
+    <div class="avatar"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
+    <div class="brand"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
+    <button class="menuBtn" onclick="location.href='/v2/home'" aria-label="לבית">
+      <svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="hd">
+        <div class="tt">
+          <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 13.5v-4M6.5 13.5v-7M10.5 13.5V4M14 13.5V7.5" stroke="#2E6BD6" stroke-width="2" stroke-linecap="round"/></svg></div>
+          <h1 id="pgT">דוחות</h1>
+        </div>
+        <div class="scope" id="scope"></div>
+      </div>
+      <div class="segs" id="periods">
+        <div class="sg" data-p="lastweek" onclick="setPeriod(this)">שבוע שעבר</div>
+        <div class="sg on" data-p="week" onclick="setPeriod(this)">השבוע</div>
+        <div class="sg" data-p="month" onclick="setPeriod(this)">החודש</div>
+        <div class="sg" data-p="year" onclick="setPeriod(this)">השנה</div>
+      </div>
+      <div class="kpis" id="kpis"></div>
+      <div class="exports">
+        <button class="e wa" onclick="sendWa()">
+          <svg width="14" height="14" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5"/></svg>
+          שלח בוואטסאפ</button>
+        <button class="e pdf" onclick="window.print()">דוח PDF</button>
+        <button class="e cp" onclick="copyTxt()">העתק</button>
+      </div>
+    </div>
+
+    <div class="card" id="leadersCard" style="display:none">
+      <div class="secT">המובילים במשרד</div>
+      <div class="chips" id="leadChips"></div>
+      <div id="leadList"></div>
+      <div class="sideSplit" id="sideSplit" style="display:none"></div>
+      <div class="expand" id="leadMore" style="display:none" onclick="LEAD_ALL=!LEAD_ALL;renderLeaders()">כל 10 המובילים</div>
+    </div>
+
+    <div class="card" id="shtafCard" style="display:none">
+      <div class="secT" id="shtafT">גיוס נכסים בשת"פ</div>
+      <div id="shtafList"></div>
+    </div>
+
+    <div class="card" id="nbCard" style="display:none">
+      <div class="secT" id="nbT">נכס נולד לפי ערים</div>
+      <div id="nbList"></div>
+    </div>
+  </main>
+
+  <nav>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+  </nav>
+  <div id="toast"></div>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(msg){
+  var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+
+var PERIOD = 'week', R = null, DEALS = [], LEAD_TAB = 'gius', LEAD_ALL = false, IS_MGR = false;
+
+function setPeriod(node){
+  PERIOD = node.getAttribute('data-p');
+  var sgs = node.parentNode.children;
+  for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
+  load();
+}
+function parseDMY(s){
+  var m = /(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})/.exec(String(s || ''));
+  if (!m) return null;
+  var y = +m[3]; if (y < 100) y += 2000;
+  return new Date(y, +m[2] - 1, +m[1]);
+}
+function dealsInRange(){
+  if (!R) return [];
+  var f = parseDMY(R.from), t = parseDMY(R.to);
+  if (t) t.setHours(23, 59, 59);
+  return DEALS.filter(function(d){
+    if (!d.deal) return false;
+    var cd = parseDMY(d.close_date);
+    return cd && (!f || cd >= f) && (!t || cd <= t);
+  });
+}
+function load(){
+  el('kpis').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#8B8F99;font-size:12.5px;padding:14px 0">טוען את הדוח…</div>';
+  return Promise.all([
+    GET('/api/report?period=' + PERIOD).catch(function(){ return {}; }),
+    GET('/api/deals').catch(function(){ return {}; })
+  ]).then(function(rs){
+    R = rs[0] || {};
+    DEALS = (rs[1] && rs[1].items) || [];
+    render();
+  });
+}
+function kpi(n, l, sub, color){
+  return '<div class="kpi"><div class="n" style="color:' + (color || '#1E3A5F') + '">' + n + '</div>' +
+    '<div class="l">' + l + '</div>' + (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
+}
+function render(){
+  if (!R || !R.ok){ el('kpis').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#8B8F99;font-size:12.5px;padding:14px 0">שגיאה בטעינת הדוח</div>'; return; }
+  var sm = R.summary || {}, c = sm.calls || {}, g = sm.sigs || {};
+  el('scope').textContent = (R.label || '') + ' · ' + (R.scope || '');
+  var dr = dealsInRange();
+  el('kpis').innerHTML =
+    kpi(c.total || 0, 'שיחות') +
+    kpi(c.answered || 0, 'נענו', (c.rate || 0) + '%', '#1FAF5E') +
+    kpi(g.total || 0, 'חתימות') +
+    kpi(g.bladiut || 0, 'בלעדיות', '', '#B8902F') +
+    kpi(R.listings || 0, 'מודעות פעילות') +
+    kpi(dr.length, 'עסקאות נסגרו', '', '#1FAF5E') +
+    kpi((R.meetings || []).length, 'פגישות ופולו-אפ') +
+    kpi(R.nbTotal || 0, 'נכס נולד בתקופה', '', '#B8902F');
+  renderLeaders();
+  renderShtaf();
+  renderNb();
+}
+var LEADS = {gius: 'גיוס נכסים', konim: 'החתמת קונים', deals: 'עסקאות', calls: 'שיחות'};
+function leadData(){
+  var sm = R.summary || {};
+  if (LEAD_TAB === 'gius') return (sm.topGius || []).map(function(x){ return {n: x.name, v: x.n}; });
+  if (LEAD_TAB === 'konim') return (sm.topKonim || []).map(function(x){ return {n: x.name, v: x.n}; });
+  if (LEAD_TAB === 'deals') return (R.top_deals || []).map(function(x){ return {n: x.name, v: x.n}; });
+  return (sm.agents || []).map(function(x){ return {n: x.name, v: x.total}; });
+}
+function renderLeaders(){
+  var sm = R.summary || {};
+  var any = (sm.topGius || []).length || (sm.topKonim || []).length || (R.top_deals || []).length || (sm.agents || []).length;
+  el('leadersCard').style.display = any ? 'flex' : 'none';
+  if (!any) return;
+  el('leadChips').innerHTML = Object.keys(LEADS).map(function(k){
+    return '<button class="lchip' + (k === LEAD_TAB ? ' on' : '') + '" onclick="LEAD_TAB=\'' + k + '\';LEAD_ALL=false;renderLeaders()">' + LEADS[k] + '</button>';
+  }).join('');
+  var data = leadData();
+  var max = data.length ? data[0].v : 0;
+  var shown = LEAD_ALL ? data.slice(0, 10) : data.slice(0, 3);
+  el('leadList').innerHTML = shown.map(function(d, i){
+    return '<div class="leadRow' + (i === 0 ? ' first' : '') + '">' +
+      '<div class="rank">' + (i + 1) + '</div><div class="nm">' + esc(d.n) + '</div>' +
+      '<div class="val">' + d.v + '</div></div>' +
+      (i === 0 && max ? '<div class="bar"><i style="width:' + Math.round(d.v / max * 100) + '%"></i></div>' : '');
+  }).join('') || '<div style="font-size:12px;color:#8B8F99;padding:6px 0">אין נתונים בתקופה</div>';
+  el('leadMore').style.display = data.length > 3 ? 'block' : 'none';
+  el('leadMore').textContent = LEAD_ALL ? 'הצג פחות' : 'כל 10 המובילים';
+  // פילוח עסקאות לפי צד — מתחת לצ'יפ עסקאות
+  if (LEAD_TAB === 'deals'){
+    var split = {'מוכר': 0, 'קונה': 0, 'משכיר': 0, 'שוכר': 0};
+    dealsInRange().forEach(function(d){
+      [d.side1, d.side2].forEach(function(s){
+        if (s === 'מוכר וקונה'){ split['מוכר']++; split['קונה']++; }
+        else if (split[s] !== undefined) split[s]++;
+      });
+    });
+    el('sideSplit').innerHTML = Object.keys(split).map(function(k){
+      return '<span class="sp">' + k + ' · ' + split[k] + '</span>';
+    }).join('');
+    el('sideSplit').style.display = 'flex';
+  } else el('sideSplit').style.display = 'none';
+}
+function renderShtaf(){
+  var list = R.shtaf || [];
+  el('shtafCard').style.display = list.length ? 'flex' : 'none';
+  if (!list.length) return;
+  el('shtafT').textContent = 'גיוס נכסים בשת"פ · ' + (R.shtaf_total || 0) + ' נכסים · ' + (R.shtaf_offices || 0) + ' משרדים';
+  el('shtafList').innerHTML = list.map(function(o, i){
+    var our = /פמילי|family/i.test(o.office || '');
+    return (i ? '<div class="sep"></div>' : '') +
+      '<div class="tRow' + (our ? ' our' : '') + '"><span class="n">' + esc(o.office) + '</span>' +
+      '<span class="v">' + o.count + '</span></div>';
+  }).join('');
+}
+function renderNb(){
+  var list = R.nbCities || [];
+  el('nbCard').style.display = list.length ? 'flex' : 'none';
+  if (!list.length) return;
+  el('nbT').textContent = 'נכס נולד לפי ערים · ' + (R.nbTotal || 0);
+  el('nbList').innerHTML = list.slice(0, 12).map(function(cx, i){
+    return (i ? '<div class="sep"></div>' : '') +
+      '<div class="tRow"><span class="n">' + esc(cx.city) + '</span><span class="v">' + cx.n + '</span></div>';
+  }).join('');
+}
+function sendWa(){
+  if (!R || !R.wa_text){ toast('הדוח עוד נטען'); return; }
+  window.open('https://wa.me/?text=' + encodeURIComponent(R.wa_text), '_blank');
+}
+function copyTxt(){
+  if (!R || !R.wa_text){ toast('הדוח עוד נטען'); return; }
+  try{ navigator.clipboard.writeText(R.wa_text).then(function(){ toast('הדוח הועתק'); }); }
+  catch(e){ toast('לא ניתן להעתיק'); }
+}
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    IS_MGR = (j.role === 'admin' || j.role === 'coordinator');
+    el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
+    el('pgT').textContent = IS_MGR ? 'דוחות מנהל' : 'הדוחות שלי';
+  }).catch(function(){ location.replace('/v2'); });
+  fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
+    document.title = 'דוחות · ' + (o.name || '');
+  }).catch(function(){});
+  load();
+})();
+</script></body></html>'''
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -3965,6 +4280,10 @@ def register(app, G):
     @app.route("/v2/deals", methods=["GET"])
     def v2_deals():
         return _page(V2_DEALS_HTML)
+
+    @app.route("/v2/reports", methods=["GET"])
+    def v2_reports():
+        return _page(V2_REPORTS_HTML)
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
