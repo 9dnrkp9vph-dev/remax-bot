@@ -420,7 +420,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round"/></svg>קונים</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
-    <div class="it" onclick="toast('נכס נולד — בסשן הקרוב')"><div class="badge" id="nbBadge"></div><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><div class="badge" id="nbBadge"></div><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
   </nav>
 
   <!-- ── בריף הבוקר — סטורי ── -->
@@ -1454,7 +1454,7 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round"/></svg>קונים</div>
     <div class="it" onclick="location.href='/v2/home'"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
-    <div class="it" onclick="toast('נכס נולד — בסשן הקרוב')"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -1846,7 +1846,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
     <div class="it" style="color:#1E3A5F;font-weight:700"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#1E3A5F" stroke-width="1.9"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round"/></svg>קונים</div>
     <div class="it" onclick="location.href='/v2/home'"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
-    <div class="it" onclick="toast('נכס נולד — בסשן הקרוב')"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -2200,7 +2200,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round"/></svg>קונים</div>
     <div class="it" onclick="location.href='/v2/home'"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linejoin="round"/></svg>חתימות</div>
-    <div class="it" onclick="toast('נכס נולד — בסשן הקרוב')"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -2305,6 +2305,381 @@ function openSignInfo(kind){
 </script></body></html>'''
 
 
+# ── מסך נכס נולד (עיצוב 19a) — מונה חי, צ'יפי ותק, בעל הנכס, סטטוסים, פגישות ──
+V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>נכס נולד</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 12px;display:flex;align-items:center;justify-content:space-between}
+  .avatar{position:relative;width:44px;height:44px}
+  .avatar .c{width:44px;height:44px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:17px;font-weight:700}
+  .avatar .dot{position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;background:#1FAF5E;border:2px solid #F2EFE7}
+  .brand img{height:36px;max-width:150px;object-fit:contain}
+  .menuBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .card{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px 13px;
+      display:flex;flex-direction:column;gap:11px}
+  .hd{display:flex;align-items:center;justify-content:space-between}
+  .hd .tt{display:flex;align-items:center;gap:10px}
+  .hd h1{font-size:21px;font-weight:800}
+  .live{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700}
+  .live i{width:8px;height:8px;border-radius:50%;background:#1FAF5E;display:block}
+  @media (prefers-reduced-motion:no-preference){
+    @keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
+    .live i{animation:pulseDot 2s infinite}
+  }
+  .meetChip{display:flex;align-items:center;gap:6px;background:#EAF0FA;color:#2E6BD6;border-radius:999px;
+      padding:5px 12px;font-size:12px;font-weight:700;border:0;cursor:pointer;font-family:inherit;align-self:flex-start}
+  .ageHead{display:flex;align-items:center;justify-content:space-between}
+  .ageHead .l{font-size:11.5px;font-weight:700;color:#8B8F99}
+  .ageHead .r{font-size:11.5px;font-weight:700;color:#B8902F}
+  .ages{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;
+      mask-image:linear-gradient(to left, black 88%, transparent)}
+  .ages::-webkit-scrollbar{display:none}
+  .age{display:flex;flex-direction:column;align-items:center;background:#fff;border:1.5px solid #E9E4D8;
+      border-radius:12px;padding:7px 14px;flex-shrink:0;cursor:pointer}
+  .age .t{font-size:12.5px;font-weight:700;color:#1E3A5F}
+  .age .n{font-size:10.5px;font-weight:600;color:#9AA0AB}
+  .age.on{background:#C29435;border-color:#C29435;box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .age.on .t,.age.on .n{color:#fff}
+  .srch{display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;
+      border-radius:13px;padding:0 14px}
+  .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
+      color:#1E3A5F;padding:11px 0}
+  .nb{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
+      display:flex;flex-direction:column;gap:9px;margin-bottom:12px}
+  .nb .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .nb .ad{font-size:16px;font-weight:700;line-height:1.3}
+  .nb .dt{font-size:12.5px;color:#8B8F99}
+  .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .chip.new{color:#B8902F;background:#F6EEDB}
+  .chip.age{color:#8B8F99;background:#F0EDE3}
+  .nb .pr{font-size:21px;font-weight:800}
+  .owner{display:flex;align-items:center;gap:10px;background:#F7F5EE;border-radius:12px;padding:9px 12px}
+  .owner .ic{width:30px;height:30px;border-radius:50%;background:#EAF0FA;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .owner .nm{font-size:13.5px;font-weight:800}
+  .owner .sb{font-size:10.5px;color:#8B8F99}
+  .oActs{display:flex;gap:8px}
+  .oActs .a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:11px;
+      padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;text-decoration:none}
+  .oActs .call{background:#EAF0FA;color:#2E6BD6}
+  .oActs .wa{background:#E7F7EE;color:#1FAF5E}
+  .oActs .view{flex:1.2;background:#1E3A5F;color:#fff}
+  .contacted{display:flex;align-items:center;gap:6px;background:#E7F7EE;border-radius:999px;
+      padding:5px 12px;align-self:flex-start;font-size:11.5px;font-weight:700;color:#1FAF5E}
+  .stActs{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px}
+  .stActs .s{display:flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #DCD6C8;
+      border-radius:11px;padding:9px 0;font-size:11px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit}
+  .stActs .s.red{color:#C24040}
+  .stActs .s.on{background:#C29435;border-color:#C29435;color:#fff;box-shadow:0 3px 10px rgba(194,148,53,.25)}
+  .stLine{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#8B8F99}
+  .stLine i{width:6px;height:6px;border-radius:50%;background:#C29435;display:block;flex-shrink:0}
+  .notes{font-size:11.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
+  .more{display:flex;align-items:center;justify-content:center;padding:12px 0;font-size:13px;font-weight:700;
+      color:#2E6BD6;cursor:pointer}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .t{font-size:15px;font-weight:800}
+  .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
+  nav{background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+      display:flex;justify-content:space-around;align-items:flex-end}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+      font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
+  nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
+      box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
+  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#fff;font-size:10px;font-weight:800;
+      padding:1px 8px;border-radius:999px;display:none}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+      display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
+  #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
+  #sheet h3{font-size:19px;font-weight:800}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld input,.fld textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;
+      font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;resize:vertical}
+  .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
+      font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px}
+  .btn-gold{background:#C29435;color:#fff;box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .btn-blue{background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25)}
+  .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
+  .mRow{display:flex;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:11px 13px}
+  .mRow .mid{flex:1;min-width:0}
+  .mRow .t{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mRow .s{font-size:11.5px;color:#8B8F99}
+  .mRow .sq{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+      flex-shrink:0;border:0;cursor:pointer;text-decoration:none}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:80;white-space:nowrap}
+  @media (min-width:700px){
+    header,main,nav{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+  }
+</style></head><body>
+
+  <header>
+    <div class="avatar"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
+    <div class="brand"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
+    <button class="menuBtn" onclick="location.href='/v2/home'" aria-label="לבית">
+      <svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="hd">
+        <div class="tt">
+          <svg width="26" height="23" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>
+          <h1>נכס נולד</h1>
+        </div>
+        <div class="live"><i></i><span id="liveN">—</span></div>
+      </div>
+      <button class="meetChip" onclick="openMeetings()">
+        <svg width="12" height="12" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <span id="meetN">פגישות ופולו-אפ</span>
+      </button>
+      <div class="ageHead"><span class="l">ותק בפרסום · גלול לצדדים</span><span class="r" id="ageSum"></span></div>
+      <div class="ages" id="ages"></div>
+      <div class="srch">
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input id="q" placeholder="רחוב, שכונה או בעל הנכס" oninput="render()">
+      </div>
+    </div>
+    <div id="list"></div>
+  </main>
+
+  <nav>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" style="color:#1E3A5F;font-weight:700"><div class="badge" id="nbBadge"></div><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+  </nav>
+
+  <div id="ovl" onclick="closeSheet()"></div>
+  <div id="sheet"></div>
+  <div id="toast"></div>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function H(extra){
+  var h = {'X-Auth-Token': TOK};
+  if (extra) h['Content-Type'] = 'application/json';
+  return h;
+}
+function GET(u){ return fetch(u, {headers: H()}).then(function(r){ return r.json(); }); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers: H(true), body: JSON.stringify(d || {})})
+    .then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(msg){
+  var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+function openSheet(html){
+  el('sheet').innerHTML = '<div class="grip"></div>' + html;
+  el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+}
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+
+var ROWS = [], BUCKETS = [], TOTAL = 0, AGE = -1, MGR = false, MEETS = [];
+var BUCKET_RANGES = [[0,30],[30,60],[60,90],[90,120],[120,150],[150,180],[180,99999]];
+var ST_LABEL = {meeting:'פגישה', followup:'פולו-אפ', not_interested:'לא מעוניין'};
+
+function load(){
+  return Promise.all([
+    GET('/api/newborn').catch(function(){ return {}; }),
+    GET('/api/newborn/meetings').catch(function(){ return {}; })
+  ]).then(function(rs){
+    ROWS = (rs[0] && rs[0].results) || [];
+    BUCKETS = (rs[0] && rs[0].bucketCounts) || [];
+    TOTAL = (rs[0] && rs[0].total) || ROWS.length;
+    MEETS = (rs[1] && rs[1].meetings) || [];
+    render();
+  });
+}
+function fmtPrice(p){
+  p = String(p || '').trim();
+  if (!p) return '';
+  return (/^[\d,.]+$/.test(p) ? '₪' : '') + p;
+}
+function render(){
+  el('liveN').textContent = TOTAL.toLocaleString() + ' · חי';
+  var bd = el('nbBadge');
+  if (TOTAL){ bd.textContent = TOTAL.toLocaleString(); bd.style.display = 'block'; }
+  el('meetN').textContent = 'פגישות ופולו-אפ' + (MEETS.length ? ' · ' + MEETS.length : '');
+  // צ'יפי ותק
+  var ah = '';
+  BUCKET_RANGES.forEach(function(r, i){
+    var label = (i < 6) ? 'חודש ' + (i + 1) : '7+';
+    ah += '<div class="age' + (AGE === i ? ' on' : '') + '" onclick="setAge(' + i + ')">' +
+      '<span class="t">' + label + '</span><span class="n">' + (BUCKETS[i] || 0) + '</span></div>';
+  });
+  el('ages').innerHTML = ah;
+  el('ageSum').textContent = AGE < 0 ? 'כל הנכסים · ' + TOTAL.toLocaleString()
+    : ((AGE < 6 ? 'חודש ' + (AGE + 1) : '7+') + ' · ' + (BUCKETS[AGE] || 0) + ' נכסים');
+  // רשימה
+  var q = el('q').value.trim().toLowerCase();
+  var src = ROWS.filter(function(r){
+    if (AGE >= 0){
+      var rg = BUCKET_RANGES[AGE];
+      if (!(r.ageDays >= rg[0] && r.ageDays < rg[1])) return false;
+    }
+    if (q && ((r.address || '') + ' ' + (r.city || '') + ' ' + (r.owner || '') + ' ' + (r.desc || ''))
+        .toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  var h = '';
+  src.slice(0, 30).forEach(function(r, i){ h += nbCard(r, i); });
+  if (src.length > 30) h += '<div class="more">מוצגים 30 מתוך ' + src.length + ' — חדד עם חיפוש או ותק</div>';
+  el('list').innerHTML = h ||
+    '<div class="card empty"><div class="ic"><svg width="30" height="27" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg></div>' +
+    '<div class="t">אין נכסים להצגה</div><div class="s">נסה ותק אחר או חיפוש שונה — מודעות חדשות עולות כל היום</div></div>';
+  el('list')._src = src;
+}
+function nbCard(r, i){
+  var chip = (r.ageDays === 0) ? '<div class="chip new">חדש היום</div>'
+    : '<div class="chip age">' + (r.ageDays < 180 ? 'חודש ' + (Math.floor(r.ageDays / 30) + 1) : '7+ חודשים') + '</div>';
+  var st = r.stat;
+  var owner = (r.owner || r.phone)
+    ? '<div class="owner"><div class="ic"><svg width="13" height="13" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>' +
+      '<div style="flex:1"><div class="nm">' + esc([r.owner, r.phone].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="sb">בעל הנכס · מתעדכן יומית</div></div></div>' +
+      '<div class="oActs">' +
+      '<a class="a call" href="tel:' + esc((r.phone || '').replace(/\D/g, '')) + '" onclick="markContact(' + i + ')">' +
+      '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7"/></svg>חייג</a>' +
+      '<button class="a wa" onclick="waOwner(' + i + ')">' +
+      '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5"/></svg>וואטסאפ</button>' +
+      (r.link ? '<a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">צפייה במודעה</a>' : '') +
+      '</div>'
+    : '';
+  var contacted = (MGR && r.contacted && r.contacted.length)
+    ? '<div class="contacted">כבר פנו: ' + esc(r.contacted[0]) +
+      (r.contacted.length > 1 ? ' +' + (r.contacted.length - 1) : '') + ' · ' + r.contacted.length + ' פניות</div>'
+    : '';
+  var stLine = st ? '<div class="stLine"><i></i>' + esc((ST_LABEL[st.status] || st.status) +
+      (st.date ? ' · ' + st.date.replace('T', ' ') : '') + (st.agent ? ' · ' + st.agent : '')) + '</div>' : '';
+  var notes = (r.unotes && r.unotes.length)
+    ? '<div class="notes">' + esc(r.unotes[r.unotes.length - 1].name + ': ' + r.unotes[r.unotes.length - 1].text) + '</div>' : '';
+  return '<div class="nb">' +
+    '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
+    '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div></div>' + chip + '</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<div class="pr">' + esc(fmtPrice(r.price)) + '</div>' +
+    '<div style="font-size:11.5px;color:#8B8F99">' + esc(r.date || '') + '</div></div>' +
+    owner + contacted +
+    '<div class="stActs">' +
+    '<button class="s' + (st && st.status === 'meeting' ? ' on' : '') + '" onclick="stDate(' + i + ',\'meeting\')">פגישה</button>' +
+    '<button class="s' + (st && st.status === 'followup' ? ' on' : '') + '" onclick="stDate(' + i + ',\'followup\')">פולו-אפ</button>' +
+    '<button class="s red" onclick="stSet(' + i + ',\'not_interested\',\'\')">לא מעוניין</button>' +
+    '<button class="s" onclick="noteSheet(' + i + ')">הערה</button></div>' +
+    stLine + notes + '</div>';
+}
+function setAge(i){ AGE = (AGE === i) ? -1 : i; render(); }
+function markContact(i){
+  var r = el('list')._src[i];
+  POST('/api/newborn/contact', {key: r.key, addr: r.address}).catch(function(){});
+}
+function waOwner(i){
+  var r = el('list')._src[i];
+  markContact(i);
+  window.open('https://wa.me/' + (r.wa || '') + '?text=' +
+    encodeURIComponent('שלום' + (r.owner ? ' ' + r.owner : '') + ', ראיתי את המודעה שלך ב' +
+    ((r.address || '') + (r.city ? ', ' + r.city : '')) + '. אשמח לדבר איתך לגבי הנכס.'), '_blank');
+}
+function stDate(i, status){
+  var r = el('list')._src[i];
+  openSheet('<h3>' + (status === 'meeting' ? 'קביעת פגישה' : 'קביעת פולו-אפ') + '</h3>' +
+    '<div style="font-size:12px;color:#8B8F99">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
+    '<div class="fld"><span>מועד</span><input id="stDt" type="datetime-local"></div>' +
+    '<div style="font-size:11.5px;color:#8B8F99">נשמר גם ביומן Google שלך (אם מחובר)</div>' +
+    '<button class="btn btn-gold" onclick="stSave(' + i + ',\'' + status + '\')">שמירה</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function stSave(i, status){
+  stSet(i, status, el('stDt').value);
+}
+function stSet(i, status, date){
+  var r = el('list')._src[i];
+  if ((status === 'meeting' || status === 'followup') && !date){ toast('בחר מועד'); return; }
+  POST('/api/newborn/status', {key: r.key, addr: [r.address, r.city].filter(Boolean).join(', '),
+    price: r.price || '', phone: r.phone || '', owner: r.owner || '', status: status, date: date || ''})
+    .then(function(j){
+      if (!j.ok){ toast('שגיאה בשמירה'); return; }
+      closeSheet();
+      toast(status === 'not_interested' ? 'סומן: לא מעוניין' :
+        (ST_LABEL[status] + ' נקבע' + (j.calendar ? ' + נשמר ביומן' : '')));
+      load();
+    });
+}
+function noteSheet(i){
+  var r = el('list')._src[i];
+  var prev = (r.unotes || []).map(function(n){
+    return '<div class="notes">' + esc(n.name + ': ' + n.text) + '</div>';
+  }).join('');
+  openSheet('<h3>הערות · ' + esc(r.address || '') + '</h3>' + prev +
+    '<div class="fld"><span>הערה חדשה (כולם רואים)</span><textarea id="ntTx" rows="3"></textarea></div>' +
+    '<button class="btn btn-blue" onclick="noteSave(' + i + ')">שמירה</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function noteSave(i){
+  var r = el('list')._src[i];
+  var tx = el('ntTx').value.trim();
+  if (!tx){ toast('כתוב הערה'); return; }
+  POST('/api/newborn/note', {key: r.key, addr: r.address || '', text: tx}).then(function(j){
+    if (!j.ok){ toast('שגיאה בשמירה'); return; }
+    closeSheet(); toast('ההערה נשמרה'); load();
+  });
+}
+function openMeetings(){
+  var h = MEETS.map(function(m){
+    var d = String(m.date || '').replace('T', ' ');
+    return '<div class="mRow">' +
+      '<div class="mid"><div class="t">' + esc((m.label || '') + ': ' + (m.addr || '')) + '</div>' +
+      '<div class="s">' + esc([d, m.agent, m.owner].filter(Boolean).join(' · ')) + '</div></div>' +
+      (m.ophone ? '<a class="sq" style="background:#EAF0FA" href="tel:' + esc(m.ophone.replace(/\D/g, '')) + '">' +
+        '<svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7"/></svg></a>' : '') +
+      (m.wa ? '<a class="sq" style="background:#E7F7EE" target="_blank" rel="noopener" href="https://wa.me/' + esc(m.wa) + '">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5"/></svg></a>' : '') +
+      '</div>';
+  }).join('');
+  openSheet('<h3>פגישות ופולו-אפ · ' + MEETS.length + '</h3>' +
+    (h || '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:16px 0">אין פגישות או פולו-אפים פתוחים</div>') +
+    '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
+}
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
+    MGR = (j.role === 'admin' || j.role === 'coordinator');
+    render();
+  }).catch(function(){ location.replace('/v2'); });
+  fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
+    document.title = 'נכס נולד · ' + (o.name || '');
+  }).catch(function(){});
+  load();
+  setInterval(load, 60000);   // מונה חי — Realtime מלא כשעוברים ל-Supabase
+})();
+</script></body></html>'''
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -2403,6 +2778,10 @@ def register(app, G):
     @app.route("/v2/sigs", methods=["GET"])
     def v2_sigs():
         return _page(V2_SIGS_HTML)
+
+    @app.route("/v2/newborn", methods=["GET"])
+    def v2_newborn():
+        return _page(V2_NB_HTML)
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
