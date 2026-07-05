@@ -2214,6 +2214,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
   .chip.owner{color:#C24040;background:#FBEDED}
   .chip.buyer{color:#2E6BD6;background:#EAF0FA}
+  .chip.other{color:#5B6472;background:#F0EDE3}
   .st{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
   .st i{width:7px;height:7px;border-radius:50%;display:block;flex-shrink:0}
   .st.signed{color:#1FAF5E}.st.signed i{background:#1FAF5E}
@@ -2320,12 +2321,12 @@ function openSheet(html){
 }
 function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
 
-var SIGS = [], FILTER = 'buyer', MULTI = false;   // ברירת מחדל: קונים (מימין); שכירות וכו' — תחת "הכל"
-function kindOf(g){   // בעל נכס / מתעניין / בלעדיות — מתוך תווית הסוג
+var SIGS = [], FILTER = 'buyer', MULTI = false;   // ברירת מחדל: קונים (מימין); שכירות/מוכר וכו' — תחת "הכל"
+function kindOf(g){   // תוויות _deal_label בשרת: "קונים" / "בלעדיות" / "שכירות" / "מוכר"
   var t = g.type || '';
   if (t.indexOf('בלעדיות') >= 0) return 'excl';
-  if (t.indexOf('מתעניין') >= 0) return 'buyer';
-  return 'owner';
+  if (t.indexOf('קונים') >= 0 || t.indexOf('מתעניין') >= 0) return 'buyer';
+  return 'other';
 }
 function weekStart(){
   var d = new Date(); d.setHours(0,0,0,0);
@@ -2349,7 +2350,9 @@ function render(){
   var h = '';
   src.slice(0, 100).forEach(function(g){
     var k = kindOf(g);
-    var chip = (k === 'buyer') ? '<div class="chip buyer">מתעניין</div>' : '<div class="chip owner">בעל נכס</div>';
+    var chip = (k === 'buyer') ? '<div class="chip buyer">קונים</div>'
+      : (k === 'excl') ? '<div class="chip owner">בלעדיות</div>'
+      : '<div class="chip other">' + esc(g.type || 'חתימה') + '</div>';
     var signed = !!(g.link || g.pct);
     var sub = [g.client, MULTI ? g.agent : '', g.type].filter(Boolean).join(' · ');
     var acts = (signed && g.link)
