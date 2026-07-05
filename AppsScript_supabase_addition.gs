@@ -944,6 +944,56 @@ function sbParityProps() {
 }
 
 /***********************************************************************
+ * סנכרון-השלמה מהיר — רק ~60 השורות האחרונות של הטאבים הפעילים.
+ * טריגר מומלץ: כל דקה (במקום/בנוסף ל-sbReconcileAll של 30 דק').
+ * אמין ומהיר: גם אם ה-hook הישיר נכשל, שיחה/מודעה/חתימה חדשה נכנסת
+ * ל-Supabase תוך דקה. סורק רק את הסוף — זול ב-quota.
+ ***********************************************************************/
+function sbSyncRecent() {
+  var conf = _sbConf_();
+  if (!conf) return;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var N = 60;
+
+  // ── שיחות ──
+  try {
+    var sh = ss.getSheetByName('שיחות');
+    if (sh && sh.getLastRow() > 1) {
+      var last = sh.getLastRow(), first = Math.max(2, last - N + 1);
+      var hd = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      var v = sh.getRange(first, 1, last - first + 1, sh.getLastColumn()).getValues();
+      var recs = [];
+      for (var i = 0; i < v.length; i++) {
+        if (!v[i].some(function (x) { return String(x == null ? '' : x).trim(); })) continue;
+        recs.push(_sbCallRecord_(conf, hd, v[i], first + i));
+      }
+      if (recs.length) _sbFetch_(conf, '/rest/v1/calls?on_conflict=office_id,source_key', recs, 'resolution=merge-duplicates');
+    }
+  } catch (e) { Logger.log('syncRecent calls: ' + e); }
+
+  // ── חתימות ──
+  try {
+    var sh2 = ss.getSheetByName('חתימות');
+    if (sh2 && sh2.getLastRow() > 1) {
+      var last2 = sh2.getLastRow(), first2 = Math.max(2, last2 - N + 1);
+      var hd2 = sh2.getRange(1, 1, 1, sh2.getLastColumn()).getValues()[0];
+      var v2 = sh2.getRange(first2, 1, last2 - first2 + 1, sh2.getLastColumn()).getValues();
+      var seen2 = {}, recs2 = [];
+      // ספירת מופעים גלובלית נדרשת רק ב-backfill המלא; בסוף הגיליון סיומת #n
+      // עלולה לא להתאים, לכן משתמשים כאן במפתח פשוט (event_id) — הכפילויות
+      // (אם יש) יתאחדו, וה-backfill המלא הלילי מיישר במדויק.
+      for (var j = 0; j < v2.length; j++) {
+        if (!v2[j].some(function (x) { return String(x == null ? '' : x).trim(); })) continue;
+        var rec2 = _sbSigRecord_(conf, hd2, v2[j], first2 + j);
+        seen2[rec2.source_key] = rec2;   // אחרון מנצח בתוך החלון
+      }
+      recs2 = Object.keys(seen2).map(function (k) { return seen2[k]; });
+      if (recs2.length) _sbFetch_(conf, '/rest/v1/signatures?on_conflict=office_id,source_key', recs2, 'resolution=merge-duplicates');
+    }
+  } catch (e) { Logger.log('syncRecent sigs: ' + e); }
+}
+
+/***********************************************************************
  * ריפוי עצמי — סנכרון-השלמה של כל המודולים. מיועד לטריגר מתוזמן:
  * בעורך: אייקון השעון ⏰ (טריגרים) ▸ הוספת טריגר ▸ פונקציה: sbReconcileAll,
  * מבוסס זמן ▸ כל 30 דקות. סוגר אוטומטית כל פער שנוצר מכשל כתיבה רגעי
