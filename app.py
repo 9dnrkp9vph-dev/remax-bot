@@ -2805,6 +2805,22 @@ def web_contacts_phone_name():
             m[p] = name
     return m
 
+def _office_agent_keys():
+    """canon-keys של סוכני המשרד — מאנשי קשר + ספריית הקונסולה, בלי שנמחקו.
+    משמש לסינון ספירת עסקאות/תהליכים: מתווך חיצוני שאינו מהמשרד לא נספר."""
+    rem = _removed_agent_keys()
+    keys = set()
+    for _n in web_contacts_phone_name().values():
+        if _n and _name_key(_n) not in rem:
+            _k = _canon_key(_n)
+            if _k: keys.add(_k)
+    for _ag in (_load_config().get("agents") or []):
+        _nm = _ag.get("name", "")
+        if _nm and _name_key(_nm) not in rem:
+            _k = _canon_key(_nm)
+            if _k: keys.add(_k)
+    return keys
+
 def _phones_for_name(name):
     nn = _norm_name(name)
     if not nn: return set()
@@ -5258,6 +5274,7 @@ def api_report():
         try:
             from collections import Counter as _Counter
             _dc = _Counter()
+            _office_keys = _office_agent_keys()
             for _it in _deals_load():
                 if not _it.get("deal"): continue
                 try:
@@ -5265,8 +5282,8 @@ def api_report():
                 except Exception:
                     continue
                 if not (start.date() <= _dd <= end.date()): continue
-                _ags = [a for a in (_it.get("agents") or []) if a]
-                if not _ags: continue
+                _ags = [a for a in (_it.get("agents") or []) if a and _canon_key(a) in _office_keys]
+                if not _ags: continue   # רק סוכני המשרד — מתווך חיצוני לא נספר
                 if _it.get("side1") == "מוכר וקונה":
                     _dc[_ags[0]] += 2
                 else:
