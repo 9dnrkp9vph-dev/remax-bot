@@ -76,6 +76,7 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
         margin-left:auto;margin-right:auto}
   }
+  main{padding-bottom:124px}
 </style></head><body>
 
   <div class="ring"><div id="logoWrap"><img id="logo" src="/assets/logo" alt=""
@@ -236,7 +237,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .careEmpty .ic{width:56px;height:56px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .careEmpty .t{font-size:13.5px;font-weight:700}
   .careEmpty .s{font-size:12px;color:#8B8F99}
-  nav{background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
@@ -309,6 +310,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
         margin-left:auto;margin-right:auto}
   }
+  main{padding-bottom:124px}
 </style></head><body>
 
   <div id="impBar" style="display:none;position:sticky;top:0;z-index:75;background:#C29435;color:#fff;
@@ -770,7 +772,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .tg::after{content:'';position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
   .tg.on{background:#1FAF5E}
   .tg.on::after{transform:translateX(-14px)}
-  nav{background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;font-weight:600;color:#9AA0AB}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
@@ -821,6 +823,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
         margin-left:auto;margin-right:auto}
   }
+  main{padding-bottom:124px}
 </style></head><body>
 
   <header>
@@ -1389,7 +1392,7 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:250px}
-  nav{background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
@@ -1421,6 +1424,7 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
         margin-left:auto;margin-right:auto}
   }
+  main{padding-bottom:124px}
 </style></head><body>
 
   <header>
@@ -1692,6 +1696,39 @@ function saveBuyer(){
     });
 }
 
+
+/* זיכרון מצב הטאב — פילטר/חיפוש/גלילה נשמרים וחוזרים בכניסה הבאה */
+var _restY = 0;
+function saveSt(){
+  try{
+    var m = document.querySelector('main');
+    localStorage.setItem('v2st:calls', JSON.stringify({f:FILTER, v:VIEW, y:(m ? m.scrollTop : 0)}));
+  }catch(e){}
+}
+(function(){
+  try{
+    var s = JSON.parse(localStorage.getItem('v2st:calls') || 'null');
+    if (s){
+      FILTER = s.f || FILTER; VIEW = s.v || 'main'; _restY = s.y || 0;
+    }
+  }catch(e){}
+  var sg = document.querySelector('#filters .sg[data-f="' + FILTER + '"]');
+  if (sg){ var cs = sg.parentNode.children;
+    for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
+})();
+var _renderBase = render;
+render = function(){
+  _renderBase();
+  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
+  saveSt();
+};
+(function(){
+  var m = document.querySelector('main');
+  if (m) m.addEventListener('scroll', function(){
+    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
+  }, {passive:true});
+})();
+
 (function(){
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
@@ -1769,7 +1806,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:250px}
-  nav{background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer}
@@ -1823,6 +1860,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
     #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
         margin-left:auto;margin-right:auto}
   }
+  main{padding-bottom:124px}
 </style></head><body>
 
   <header>
@@ -2079,6 +2117,39 @@ function sendToBuyer(js){
   window.open('https://wa.me/' + ((CUR_BUYER && CUR_BUYER.wa) || '') + '?text=' + encodeURIComponent(msg), '_blank');
 }
 
+
+/* זיכרון מצב הטאב — פילטר/חיפוש/גלילה נשמרים וחוזרים בכניסה הבאה */
+var _restY = 0;
+function saveSt(){
+  try{
+    var m = document.querySelector('main');
+    localStorage.setItem('v2st:buyers', JSON.stringify({f:FILTER, q:el('q').value, y:(m ? m.scrollTop : 0)}));
+  }catch(e){}
+}
+(function(){
+  try{
+    var s = JSON.parse(localStorage.getItem('v2st:buyers') || 'null');
+    if (s){
+      FILTER = s.f || FILTER; el('q').value = s.q || ''; _restY = s.y || 0;
+    }
+  }catch(e){}
+  var sg = document.querySelector('#filters .sg[data-f="' + FILTER + '"]');
+  if (sg){ var cs = sg.parentNode.children;
+    for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
+})();
+var _renderBase = render;
+render = function(){
+  _renderBase();
+  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
+  saveSt();
+};
+(function(){
+  var m = document.querySelector('main');
+  if (m) m.addEventListener('scroll', function(){
+    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
+  }, {passive:true});
+})();
+
 (function(){
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
@@ -2155,7 +2226,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
-  nav{background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer}
@@ -2180,6 +2251,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
     #sheet{max-width:600px;margin-left:auto;margin-right:auto}
   }
+  main{padding-bottom:124px}
 </style></head><body>
 
   <header>
@@ -2311,6 +2383,39 @@ function openSignInfo(kind){
     '<button class="btn btn-gold" onclick="location.href=\'/app\'">להחתמה באפליקציה הקיימת</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
+
+/* זיכרון מצב הטאב — פילטר/חיפוש/גלילה נשמרים וחוזרים בכניסה הבאה */
+var _restY = 0;
+function saveSt(){
+  try{
+    var m = document.querySelector('main');
+    localStorage.setItem('v2st:sigs', JSON.stringify({f:FILTER, y:(m ? m.scrollTop : 0)}));
+  }catch(e){}
+}
+(function(){
+  try{
+    var s = JSON.parse(localStorage.getItem('v2st:sigs') || 'null');
+    if (s){
+      FILTER = s.f || FILTER; _restY = s.y || 0;
+    }
+  }catch(e){}
+  var sg = document.querySelector('#filters .sg[data-f="' + FILTER + '"]');
+  if (sg){ var cs = sg.parentNode.children;
+    for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
+})();
+var _renderBase = render;
+render = function(){
+  _renderBase();
+  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
+  saveSt();
+};
+(function(){
+  var m = document.querySelector('main');
+  if (m) m.addEventListener('scroll', function(){
+    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
+  }, {passive:true});
+})();
+
 (function(){
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
@@ -2407,7 +2512,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
-  nav{background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
@@ -2444,6 +2549,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
     nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
     #sheet{max-width:600px;margin-left:auto;margin-right:auto}
   }
+  main{padding-bottom:124px}
 </style></head><body>
 
   <header>
@@ -2684,6 +2790,36 @@ function openMeetings(){
     (h || '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:16px 0">אין פגישות או פולו-אפים פתוחים</div>') +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
 }
+
+/* זיכרון מצב הטאב — פילטר/חיפוש/גלילה נשמרים וחוזרים בכניסה הבאה */
+var _restY = 0;
+function saveSt(){
+  try{
+    var m = document.querySelector('main');
+    localStorage.setItem('v2st:newborn', JSON.stringify({a:AGE, q:el('q').value, y:(m ? m.scrollTop : 0)}));
+  }catch(e){}
+}
+(function(){
+  try{
+    var s = JSON.parse(localStorage.getItem('v2st:newborn') || 'null');
+    if (s){
+      AGE = (typeof s.a === 'number') ? s.a : -1; el('q').value = s.q || ''; _restY = s.y || 0;
+    }
+  }catch(e){}
+})();
+var _renderBase = render;
+render = function(){
+  _renderBase();
+  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
+  saveSt();
+};
+(function(){
+  var m = document.querySelector('main');
+  if (m) m.addEventListener('scroll', function(){
+    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
+  }, {passive:true});
+})();
+
 (function(){
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
