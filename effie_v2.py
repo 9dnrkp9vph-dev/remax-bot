@@ -412,7 +412,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
         <div class="l">חיפוש נכס</div>
       </div>
-      <div class="a lite" onclick="toast('תהליכים ועסקאות — בסשן קרוב')">
+      <div class="a lite" onclick="location.href='/v2/deals'">
         <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#B8902F" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/></svg></div>
         <div class="l">תהליכים</div>
       </div>
@@ -3436,6 +3436,419 @@ function myLoc(){
 </script></body></html>'''
 
 
+# ── תהליכים ועסקאות (עיצוב 22a + טפסים 24a/27a) — על /api/deals הקיים ────────
+V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>תהליכים ועסקאות</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 12px;display:flex;align-items:center;justify-content:space-between}
+  .avatar{position:relative;width:44px;height:44px}
+  .avatar .c{width:44px;height:44px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:17px;font-weight:700}
+  .avatar .dot{position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;background:#1FAF5E;border:2px solid #F2EFE7}
+  .brand img{height:36px;max-width:150px;object-fit:contain}
+  .menuBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  main{flex:1;padding:4px 16px 124px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .card{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px 13px;
+      display:flex;flex-direction:column;gap:11px}
+  .hd{display:flex;align-items:center;justify-content:space-between}
+  .hd .tt{display:flex;align-items:center;gap:10px}
+  .hd .ic{width:36px;height:36px;border-radius:11px;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .hd h1{font-size:21px;font-weight:800}
+  .cnt{font-size:13px;font-weight:700;color:#B8902F;background:#F6EEDB;padding:4px 11px;border-radius:999px}
+  .ctaRow{display:flex;gap:10px}
+  .ctaRow .b1{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#2E6BD6;color:#fff;
+      border-radius:14px;padding:13px 0;font-size:14px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
+      box-shadow:0 4px 12px rgba(46,107,214,.25)}
+  .ctaRow .b2{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#fff;color:#1E3A5F;
+      border:1.5px solid #DCD6C8;border-radius:14px;padding:13px 0;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .srch{display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;
+      border-radius:13px;padding:0 14px}
+  .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
+      color:#1E3A5F;padding:11px 0}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
+  .segs .sg{flex:1;text-align:center;padding:7px 0;font-size:12.5px;font-weight:700;color:#5B6472;
+      border-radius:10px;cursor:pointer}
+  .segs .sg.on{color:#fff;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
+  .deal{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
+      display:flex;flex-direction:column;gap:9px;margin-bottom:12px;border:2px solid transparent}
+  .deal.closed{border-color:#1FAF5E}
+  .deal .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .deal .ad{font-size:15.5px;font-weight:700}
+  .deal .sb{font-size:12.5px;color:#8B8F99}
+  .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .chip.stage{color:#B8902F;background:#F6EEDB}
+  .chip.open{color:#2E6BD6;background:#EAF0FA}
+  .chip.closed{color:#1FAF5E;background:#E7F7EE}
+  .deal .pr{font-size:20px;font-weight:800}
+  .deal .pr s{color:#9AA0AB;font-weight:600;font-size:14px;margin-right:8px}
+  .deal .acts{display:flex;gap:8px;align-items:center}
+  .deal .gold{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#C29435;color:#fff;
+      border-radius:11px;padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
+      box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .deal .sec{flex:1;display:flex;align-items:center;justify-content:center;background:#fff;color:#1E3A5F;
+      border:1.5px solid #DCD6C8;border-radius:11px;padding:10px 0;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
+  .trash{width:42px;height:42px;border-radius:11px;background:#FBEDED;border:0;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .t{font-size:15px;font-weight:800}
+  .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;
+      padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;justify-content:space-around;align-items:flex-end}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+      font-weight:600;color:#9AA0AB;cursor:pointer}
+  nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
+      box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
+  #sheet{position:fixed;left:0;right:0;bottom:0;top:70px;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);display:none;flex-direction:column;overflow:hidden}
+  #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center;margin:10px 0 2px;flex-shrink:0}
+  #sheet .body{flex:1;overflow:auto;padding:8px 18px 14px;display:flex;flex-direction:column;gap:12px}
+  #sheet .foot{background:#fff;border-top:1px solid #F0EDE3;padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 18px);
+      display:flex;gap:10px;flex-shrink:0}
+  #sheet h3{font-size:19px;font-weight:800}
+  .sec2{background:#fff;border-radius:18px;box-shadow:0 4px 14px rgba(30,58,95,.05);padding:14px 16px;
+      display:flex;flex-direction:column;gap:11px}
+  .sec2 .st{font-size:12px;font-weight:800;color:#B8902F;letter-spacing:.06em}
+  .fld{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}
+  .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld input,.fld select{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:10px 13px;
+      font-size:13.5px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;
+      appearance:none;-webkit-appearance:none}
+  .fld input.gold{background:#F6EEDB;border-color:#E4C56B;color:#B8902F;font-size:15px;font-weight:800}
+  .frow{display:flex;gap:9px}
+  .btnMain{flex:1.6;display:flex;align-items:center;justify-content:center;background:#2E6BD6;color:#fff;
+      border-radius:13px;padding:13px 0;font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
+      box-shadow:0 4px 12px rgba(46,107,214,.25)}
+  .btnMain.gold{background:#C29435;box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .btnSec{flex:1;display:flex;align-items:center;justify-content:center;background:#fff;color:#5B6472;
+      border:1.5px solid #DCD6C8;border-radius:13px;padding:13px 0;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit}
+  .comRow{display:flex;align-items:center;gap:9px}
+  .comRow .pencil{width:40px;height:40px;border-radius:11px;background:#F6EEDB;border:0;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:80;white-space:nowrap}
+  @media (min-width:700px){
+    header,main,nav{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+  }
+</style></head><body>
+
+  <header>
+    <div class="avatar"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
+    <div class="brand"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
+    <button class="menuBtn" onclick="location.href='/v2/home'" aria-label="לבית">
+      <svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="hd">
+        <div class="tt">
+          <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#B8902F" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <h1>תהליכים ועסקאות</h1>
+        </div>
+        <div class="cnt" id="cnt">—</div>
+      </div>
+      <div class="ctaRow">
+        <button class="b1" onclick="openForm(null, false)">
+          <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+          תהליך חדש
+        </button>
+        <button class="b2" onclick="openForm(null, true)">+ עסקה</button>
+      </div>
+      <div class="srch">
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input id="q" placeholder="כתובת, סוכן או עו&quot;ד" oninput="render()">
+      </div>
+      <div class="segs" id="filters">
+        <div class="sg on" data-f="open" onclick="setFilter(this)">תהליכים פתוחים</div>
+        <div class="sg" data-f="closed" onclick="setFilter(this)">נסגרו</div>
+        <div class="sg" data-f="all" onclick="setFilter(this)">הכל</div>
+      </div>
+    </div>
+    <div id="list"></div>
+  </main>
+
+  <nav>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+  </nav>
+
+  <div id="ovl" onclick="closeSheet()"></div>
+  <div id="sheet"></div>
+  <div id="toast"></div>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function H(extra){
+  var h = {'X-Auth-Token': TOK};
+  if (extra) h['Content-Type'] = 'application/json';
+  return h;
+}
+function GET(u){ return fetch(u, {headers: H()}).then(function(r){ return r.json(); }); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers: H(true), body: JSON.stringify(d || {})})
+    .then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(msg){
+  var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function fmtPrice(p){
+  p = String(p || '').trim();
+  if (!p) return '';
+  var n = parseInt(p.replace(/[^\d]/g, ''), 10);
+  return n ? '₪' + n.toLocaleString() : p;
+}
+
+var ITEMS = [], AGENTS = [], FILTER = 'open', MY = '';
+var SIDES = ['מוכר','קונה','מוכר וקונה','משכיר','שוכר'];
+var STAGES = ['ליווי ראשוני','משא ומתן','אצל עו"ד','לקראת חתימה'];
+var VAT = 0.18;
+
+function load(){
+  return GET('/api/deals').then(function(j){
+    ITEMS = (j && j.items) || [];
+    AGENTS = (j && j.agents) || [];
+    render();
+  }).catch(function(){});
+}
+function render(){
+  var q = el('q').value.trim().toLowerCase();
+  var src = ITEMS.filter(function(it){
+    if (FILTER === 'open' && it.deal) return false;
+    if (FILTER === 'closed' && !it.deal) return false;
+    if (q && ((it.notes || '') + ' ' + (it.agents || []).join(' ') + ' ' + (it.lawyers || ''))
+        .toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  el('cnt').textContent = src.length;
+  var h = '';
+  src.slice(0, 60).forEach(function(it, i){ h += dealCard(it, i); });
+  el('list').innerHTML = h ||
+    '<div class="card empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#C29435" stroke-width="1.4"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#C29435" stroke-width="1.4" stroke-linecap="round"/></svg></div>' +
+    '<div class="t">' + (FILTER === 'closed' ? 'עוד לא נסגרו עסקאות' : 'אין תהליכים פתוחים') + '</div>' +
+    '<div class="s">כל תהליך מכירה שתפתח יופיע כאן, ומ"נמכר" הוא הופך לעסקה</div>' +
+    '<button class="btnMain" style="max-width:220px;flex:none;padding:13px 26px" onclick="openForm(null,false)">+ תהליך חדש</button></div>';
+  el('list')._src = src;
+}
+function dealCard(it, i){
+  var agentsLine = (it.agents || []).map(function(a, k){
+    var side = k === 0 ? it.side1 : it.side2;
+    return a + (side ? ' (' + side + ')' : '');
+  }).join(' + ');
+  var chip = it.deal ? '<div class="chip closed">נסגרה' + (it.close_date ? ' · ' + esc(it.close_date) : '') + '</div>'
+    : (it.stage ? '<div class="chip stage">' + esc(it.stage) + '</div>' : '<div class="chip open">תהליך פתוח</div>');
+  var pr = it.deal
+    ? '<div class="pr">' + esc(fmtPrice(it.sale_price || it.price)) +
+      (it.sale_price && it.price && it.price !== it.sale_price ? '<s>' + esc(fmtPrice(it.price)) + '</s>' : '') + '</div>'
+    : (it.price ? '<div class="pr">' + esc(fmtPrice(it.price)) + '</div>' : '');
+  var com = it.deal && it.commission ? '<div class="sb">עמלה: ' + esc(fmtPrice(it.commission)) +
+      (it.commission_manual ? ' (ידני)' : '') + '</div>' : '';
+  var acts = it.deal
+    ? '<div class="acts"><button class="sec" onclick="openForm(' + i + ', true)">עריכה</button>' + trashBtn(i) + '</div>'
+    : '<div class="acts"><button class="gold" onclick="openForm(' + i + ', true)">' +
+      '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg>' +
+      'נמכר ← עסקה</button>' +
+      '<button class="sec" onclick="openForm(' + i + ', false)">עריכה</button>' + trashBtn(i) + '</div>';
+  return '<div class="deal' + (it.deal ? ' closed' : '') + '">' +
+    '<div class="top"><div><div class="ad">' + esc(it.notes || '') + '</div>' +
+    '<div class="sb">' + esc(agentsLine) + (it.lawyers ? ' · עו"ד ' + esc(it.lawyers) : '') + '</div></div>' +
+    chip + '</div>' + pr + com + acts + '</div>';
+}
+function trashBtn(i){
+  return '<button class="trash" onclick="delDeal(' + i + ')" aria-label="מחיקה">' +
+    '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button>';
+}
+function setFilter(node){
+  FILTER = node.getAttribute('data-f');
+  var sgs = node.parentNode.children;
+  for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
+  render();
+}
+function delDeal(i){
+  var it = el('list')._src[i];
+  if (!confirm('למחוק את "' + (it.notes || 'התהליך') + '"?')) return;
+  POST('/api/deals/delete', {id: it.id}).then(function(j){
+    if (!j.ok){ toast('שגיאה במחיקה'); return; }
+    toast('נמחק'); load();
+  });
+}
+
+/* ── טופס תהליך/עסקה (24a/27a) ── */
+function agentSel(id, val){
+  return '<select id="' + id + '"><option value="">—</option>' + AGENTS.map(function(a){
+    return '<option' + (a === val ? ' selected' : '') + '>' + esc(a) + '</option>';
+  }).join('') + '</select>';
+}
+function sideSel(id, val){
+  return '<select id="' + id + '">' + SIDES.map(function(s){
+    return '<option' + (s === val ? ' selected' : '') + '>' + esc(s) + '</option>';
+  }).join('') + '</select>';
+}
+function calcCom(){
+  var sp = parseInt((el('fSale').value || '').replace(/[^\d]/g, ''), 10) || 0;
+  if (!el('fCom')._manual){
+    el('fCom').value = sp ? Math.round(sp * 0.02 * (1 + VAT)).toLocaleString() : '';
+  }
+}
+function comEdit(){
+  el('fCom')._manual = true;
+  el('fCom').removeAttribute('readonly');
+  el('fCom').focus();
+  toast('עמלה ידנית — דורסת את החישוב');
+}
+function openForm(i, asDeal){
+  var it = (i === null) ? {} : el('list')._src[i];
+  var isDeal = asDeal || !!it.deal;
+  var title = (i === null) ? (isDeal ? 'עסקה חדשה' : 'תהליך חדש')
+            : (isDeal && !it.deal) ? 'סגירת עסקה' : (isDeal ? 'עסקה — עריכה' : 'תהליך — עריכה');
+  var s = el('sheet');
+  s.innerHTML = '<div class="grip"></div><div class="body">' +
+    '<h3>' + title + (it.notes ? ' · ' + esc(it.notes) : '') + '</h3>' +
+    (isDeal ?
+      '<div class="sec2"><div class="st">פרטי הסגירה</div>' +
+      '<div class="frow">' +
+      '<div class="fld"><span>מחיר מבוקש</span><input id="fPrice" inputmode="numeric" style="text-decoration:line-through;color:#9AA0AB" value="' + esc(it.price || '') + '"></div>' +
+      '<div class="fld"><span>מחיר מכירה *</span><input id="fSale" class="gold" inputmode="numeric" value="' + esc(it.sale_price || '') + '" oninput="calcCom()"></div></div>' +
+      '<div class="frow">' +
+      '<div class="fld"><span>תאריך סגירה *</span><input id="fDate" placeholder="dd/mm/yyyy" value="' + esc(it.close_date || '') + '"></div>' +
+      '<div class="fld"><span>כתובת *</span><input id="fAddr" value="' + esc(it.notes || '') + '"></div></div></div>'
+    :
+      '<div class="sec2"><div class="st">הנכס והמחיר</div>' +
+      '<div class="fld"><span>כתובת *</span><input id="fAddr" value="' + esc(it.notes || '') + '"></div>' +
+      '<div class="frow">' +
+      '<div class="fld"><span>מחיר</span><input id="fPrice" inputmode="numeric" value="' + esc(it.price || '') + '"></div>' +
+      '<div class="fld"><span>שלב בתהליך</span><select id="fStage">' + STAGES.map(function(st){
+        return '<option' + (st === it.stage ? ' selected' : '') + '>' + esc(st) + '</option>';
+      }).join('') + '</select></div></div></div>') +
+    '<div class="sec2"><div class="st">סוכנים' + (isDeal ? ' ועמלה' : '') + '</div>' +
+    '<div class="frow">' +
+    '<div class="fld" style="flex:1.3"><span>סוכן</span>' + agentSel('fAg1', (it.agents || [])[0] || MY) + '</div>' +
+    '<div class="fld"><span>מייצג</span>' + sideSel('fSide1', it.side1 || 'מוכר') + '</div></div>' +
+    '<div class="frow">' +
+    '<div class="fld" style="flex:1.3"><span>סוכן 2 · אופציונלי</span>' + agentSel('fAg2', (it.agents || [])[1] || '') + '</div>' +
+    '<div class="fld"><span>מייצג</span>' + sideSel('fSide2', it.side2 || 'קונה') + '</div></div>' +
+    (isDeal ?
+      '<div class="fld"><span>עמלה (2% + מע"מ — עיפרון לעריכה ידנית)</span>' +
+      '<div class="comRow"><input id="fCom" readonly value="' + esc(it.commission || '') + '">' +
+      '<button class="pencil" onclick="comEdit()">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
+      '</button></div></div>' : '') +
+    '</div>' +
+    '<div class="sec2"><div class="st">עו"ד · אופציונלי</div>' +
+    '<div class="fld"><input id="fLaw" placeholder="שם עו&quot;ד / משרד" value="' + esc(it.lawyers || '') + '"></div></div>' +
+    '</div>' +
+    '<div class="foot">' +
+    '<button class="btnMain' + (isDeal ? ' gold' : '') + '" onclick="saveForm(' + (i === null ? 'null' : i) + ',' + isDeal + ')">' +
+    (isDeal ? 'סגור עסקה' : 'שמירה') + '</button>' +
+    '<button class="btnSec" onclick="closeSheet()">ביטול</button></div>';
+  s.style.display = 'flex'; el('ovl').style.display = 'block';
+  if (isDeal){
+    el('fCom')._manual = !!it.commission_manual;
+    if (!it.commission_manual) calcCom();
+    else el('fCom').removeAttribute('readonly');
+  }
+}
+function saveForm(i, isDeal){
+  var it = (i === null) ? {} : el('list')._src[i];
+  var agents = [el('fAg1').value, el('fAg2').value].filter(Boolean);
+  var addr = el('fAddr').value.trim();
+  if (!addr){ toast('כתובת — חובה'); return; }
+  var body = {
+    id: it.id || '',
+    agents: agents,
+    notes: addr,
+    side1: el('fSide1').value,
+    side2: el('fAg2').value ? el('fSide2').value : '',
+    lawyers: el('fLaw').value.trim(),
+    price: el('fPrice') ? el('fPrice').value.trim() : (it.price || ''),
+    deal: isDeal,
+    sale_price: isDeal ? el('fSale').value.trim() : (it.sale_price || ''),
+    close_date: isDeal ? el('fDate').value.trim() : (it.close_date || ''),
+    stage: (!isDeal && el('fStage')) ? el('fStage').value : (it.stage || ''),
+    commission: isDeal ? el('fCom').value.trim() : (it.commission || ''),
+    commission_manual: isDeal ? !!el('fCom')._manual : !!it.commission_manual
+  };
+  if (isDeal && (!body.sale_price || !body.close_date)){
+    toast('מחיר מכירה ותאריך סגירה — חובה'); return;
+  }
+  POST('/api/deals/save', body).then(function(j){
+    if (!j.ok){ toast(j.reason || 'שגיאה בשמירה'); return; }
+    closeSheet();
+    toast(isDeal ? 'העסקה נסגרה 🎉'.replace(' 🎉','') : 'נשמר');
+    load();
+  });
+}
+
+/* זיכרון מצב הטאב */
+var _restY = 0;
+function saveSt(){
+  try{
+    var m = document.querySelector('main');
+    localStorage.setItem('v2st:deals', JSON.stringify({f:FILTER, q:el('q').value, y:(m ? m.scrollTop : 0)}));
+  }catch(e){}
+}
+(function(){
+  try{
+    var s = JSON.parse(localStorage.getItem('v2st:deals') || 'null');
+    if (s){
+      FILTER = s.f || FILTER; el('q').value = s.q || ''; _restY = s.y || 0;
+      var sg = document.querySelector('#filters .sg[data-f="' + FILTER + '"]');
+      if (sg){ var cs = sg.parentNode.children;
+        for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
+    }
+  }catch(e){}
+})();
+var _renderBase = render;
+render = function(){
+  _renderBase();
+  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
+  saveSt();
+};
+(function(){
+  var m = document.querySelector('main');
+  if (m) m.addEventListener('scroll', function(){
+    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
+  }, {passive:true});
+})();
+
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    MY = j.name || '';
+    el('avatarTx').textContent = (MY || ' ').trim()[0] || '';
+  }).catch(function(){ location.replace('/v2'); });
+  fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
+    document.title = 'תהליכים ועסקאות · ' + (o.name || '');
+  }).catch(function(){});
+  load();
+})();
+</script></body></html>'''
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -3548,6 +3961,10 @@ def register(app, G):
     @app.route("/v2/map", methods=["GET"])
     def v2_map():
         return _page(V2_MAP_HTML)
+
+    @app.route("/v2/deals", methods=["GET"])
+    def v2_deals():
+        return _page(V2_DEALS_HTML)
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
