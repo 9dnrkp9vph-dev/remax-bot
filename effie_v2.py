@@ -390,7 +390,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
         <div class="l">החתם</div>
       </div>
-      <div class="a lite" onclick="toast('חיפוש נכס — בסשן הנכסים הקרוב')">
+      <div class="a lite" onclick="location.href='/v2/props'">
         <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
         <div class="l">חיפוש נכס</div>
       </div>
@@ -406,7 +406,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="t">הנכסים שלי</div>
         <div class="s" id="propsSum">מתעדכן…</div>
       </div>
-      <button class="cta" onclick="toast('טאב הנכסים — בסשן קרוב')">הצג
+      <button class="cta" onclick="location.href='/v2/props?mine=1'">הצג
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M7 1L2 5l5 4" fill="none" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
@@ -2864,6 +2864,346 @@ render = function(){
 </script></body></html>'''
 
 
+# ── טאב הנכסים המאוחד (עיצוב 20a) — משרד / שת"פ / שלי + קונים מתאימים ──────
+V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>נכסים</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 12px;display:flex;align-items:center;justify-content:space-between}
+  .avatar{position:relative;width:44px;height:44px}
+  .avatar .c{width:44px;height:44px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:17px;font-weight:700}
+  .avatar .dot{position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;background:#1FAF5E;border:2px solid #F2EFE7}
+  .brand img{height:36px;max-width:150px;object-fit:contain}
+  .menuBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .card{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px 13px;
+      display:flex;flex-direction:column;gap:11px}
+  .hd{display:flex;align-items:center;justify-content:space-between}
+  .hd .tt{display:flex;align-items:center;gap:10px}
+  .hd .ic{width:36px;height:36px;border-radius:11px;background:#EAF0FA;display:flex;align-items:center;justify-content:center}
+  .hd h1{font-size:21px;font-weight:800}
+  .mapChip{display:flex;align-items:center;gap:6px;background:#EAF0FA;color:#2E6BD6;border-radius:999px;
+      padding:6px 13px;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
+  .segs .sg{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 0;
+      font-size:13px;font-weight:600;color:#8B8F99;border-radius:10px;cursor:pointer;white-space:nowrap}
+  .segs .sg b{font-size:11px;font-weight:700}
+  .segs .sg.on{color:#fff;font-weight:700;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
+  .segs .sg.on b{background:rgba(255,255,255,.22);padding:1px 8px;border-radius:999px;font-weight:800}
+  .srch{display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;
+      border-radius:13px;padding:0 14px}
+  .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
+      color:#1E3A5F;padding:11px 0}
+  .prop{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
+      display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+  .prop.shtaf{background:#F7F5EE;border:1.5px dashed #DCD6C8;box-shadow:none}
+  .prop.mine{border:2px solid #C29435;box-shadow:0 6px 20px rgba(194,148,53,.1)}
+  .prop .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .prop .ad{font-size:15.5px;font-weight:700}
+  .prop.shtaf .ad{color:#3D5273}
+  .prop .dt{font-size:12.5px;color:#8B8F99}
+  .prop .dt b{color:#1E3A5F}
+  .chip{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .chip.office{color:#2E6BD6;background:#EAF0FA}
+  .chip.shtaf{color:#8B8F99;background:#EBE8DD}
+  .chip.mine{color:#B8902F;background:#F6EEDB}
+  .prop .pr{font-size:21px;font-weight:800}
+  .prop.shtaf .pr{font-size:19px;color:#3D5273}
+  .prop .acts{display:flex;gap:8px}
+  .prop .a1{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#2E6BD6;color:#fff;
+      border-radius:11px;padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
+  .prop .a2{flex:1;display:flex;align-items:center;justify-content:center;background:#fff;color:#1E3A5F;
+      border:1.5px solid #DCD6C8;border-radius:11px;padding:10px 0;font-size:12.5px;font-weight:700;border-style:solid;cursor:pointer;font-family:inherit}
+  .more{display:flex;align-items:center;justify-content:center;padding:12px 0;font-size:13px;font-weight:700;color:#2E6BD6}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .t{font-size:15px;font-weight:800}
+  .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+      display:flex;justify-content:space-around;align-items:flex-end}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+      font-weight:600;color:#9AA0AB;cursor:pointer}
+  nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
+      box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+      display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
+  #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center;flex-shrink:0}
+  #sheet h3{font-size:19px;font-weight:800}
+  .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
+      font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px;flex-shrink:0}
+  .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
+  .bRow{background:#fff;border-radius:14px;padding:11px 13px;display:flex;flex-direction:column;gap:6px}
+  .bRow .t{font-size:13.5px;font-weight:700}
+  .bRow .s{font-size:12px;color:#5B6472;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .bRow .acts{display:flex;gap:8px}
+  .bRow .wa{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#E7F7EE;color:#1FAF5E;
+      border-radius:10px;padding:8px 0;font-size:12px;font-weight:700;border:0;cursor:pointer;font-family:inherit;text-decoration:none}
+  .bRow .tel{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#EAF0FA;color:#2E6BD6;
+      border-radius:10px;padding:8px 0;font-size:12px;font-weight:700;text-decoration:none}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:80;white-space:nowrap}
+  @media (min-width:700px){
+    header,main,nav{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+  }
+  main{padding-bottom:124px}
+</style></head><body>
+
+  <header>
+    <div class="avatar"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
+    <div class="brand"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
+    <button class="menuBtn" onclick="location.href='/v2/home'" aria-label="לבית">
+      <svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="hd">
+        <div class="tt">
+          <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+          <h1>נכסים</h1>
+        </div>
+        <button class="mapChip" onclick="toast('המפה — בסשן הקרוב')">
+          <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 14s-5-4.2-5-8a5 5 0 0 1 10 0c0 3.8-5 8-5 8z" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><circle cx="8" cy="6" r="1.8" fill="none" stroke="#2E6BD6" stroke-width="1.6"/></svg>
+          מפה
+        </button>
+      </div>
+      <div class="segs" id="modes">
+        <div class="sg on" data-m="office" onclick="setMode(this)">המשרד שלנו <b id="cOffice"></b></div>
+        <div class="sg" data-m="shtaf" onclick="setMode(this)">שת"פ <b id="cShtaf"></b></div>
+        <div class="sg" data-m="mine" onclick="setMode(this)">שלי <b id="cMine"></b></div>
+      </div>
+      <div class="srch">
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input id="q" placeholder="דירת 4 חדרים בקרית ביאליק עד 2 מיליון" oninput="qChanged()">
+      </div>
+      <div style="font-size:11.5px;color:#8B8F99" id="sumLine"></div>
+    </div>
+    <div id="list"></div>
+  </main>
+
+  <nav>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+  </nav>
+
+  <div id="ovl" onclick="closeSheet()"></div>
+  <div id="sheet"></div>
+  <div id="toast"></div>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function H(extra){
+  var h = {'X-Auth-Token': TOK};
+  if (extra) h['Content-Type'] = 'application/json';
+  return h;
+}
+function GET(u){ return fetch(u, {headers: H()}).then(function(r){ return r.json(); }); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers: H(true), body: JSON.stringify(d || {})})
+    .then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(msg){
+  var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+function openSheet(html){
+  el('sheet').innerHTML = '<div class="grip"></div>' + html;
+  el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+}
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function fmtPrice(p){
+  p = String(p || '').trim();
+  if (!p) return '';
+  if (/^\d+$/.test(p)) p = Number(p).toLocaleString();
+  return (/^[\d,.]+$/.test(p) ? '₪' : '') + p;
+}
+
+var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], SUM = {office:'', shtaf:''};
+
+function load(q){
+  return Promise.all([
+    POST('/api/search/properties', {q: q || '', nosave: true}).catch(function(){ return {}; }),
+    POST('/api/search/exclusives', {q: q || '', nosave: true}).catch(function(){ return {}; }),
+    GET('/api/my/properties').catch(function(){ return {}; })
+  ]).then(function(rs){
+    OFFICE = (rs[0] && rs[0].results) || [];
+    SUM.office = (rs[0] && rs[0].summary) || '';
+    SHTAF = (rs[1] && rs[1].results) || [];
+    SUM.shtaf = (rs[1] && rs[1].summary) || '';
+    MINE = (rs[2] && rs[2].results) || [];
+    render();
+  });
+}
+function render(){
+  el('cOffice').textContent = OFFICE.length;
+  el('cShtaf').textContent = SHTAF.length;
+  el('cMine').textContent = MINE.length;
+  var q = el('q').value.trim().toLowerCase();
+  var src, h = '';
+  if (MODE === 'office') src = OFFICE;
+  else if (MODE === 'shtaf') src = SHTAF;
+  else src = MINE.filter(function(p){
+    return !q || ((p.address || '') + ' ' + (p.city || '') + ' ' + (p.desc || '')).toLowerCase().indexOf(q) >= 0;
+  });
+  el('sumLine').textContent = (MODE === 'office' ? SUM.office : MODE === 'shtaf' ? SUM.shtaf : '') || '';
+  src.slice(0, 40).forEach(function(p, i){ h += propCard(p, i); });
+  if (src.length > 40) h += '<div class="more">מוצגים 40 מתוך ' + src.length + ' — חדד את החיפוש</div>';
+  el('list').innerHTML = h ||
+    '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#C29435" stroke-width="1.4" stroke-linejoin="round"/></svg></div>' +
+    '<div class="t">' + (MODE === 'mine' ? 'אין לך נכסים פעילים' : 'לא נמצאו נכסים') + '</div>' +
+    '<div class="s">' + (MODE === 'mine' ? 'נכסים שמשויכים אליך בגיליון המשרד יופיעו כאן' : 'נסה ניסוח אחר — החיפוש מבין תקציב, חדרים ואזור') + '</div></div>';
+  el('list')._src = src;
+}
+function propCard(p, i){
+  var isShtaf = MODE === 'shtaf';
+  var isMine = MODE === 'mine';
+  var dt = isShtaf ? (p.desc || p.dest || '')
+    : [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.floor ? 'קומה ' + p.floor : '',
+       p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
+  var whoRaw = isShtaf ? (p.office || 'משרד שותף') : (isMine ? 'שלך' : (p.agent || ''));
+  var sameNet = isShtaf && whoRaw.indexOf('רימקס') >= 0;   // אותה רשת — הדגשה בנייבי (network מ-offices בהמשך)
+  var who = sameNet ? '<b>' + esc(whoRaw) + '</b>' : esc(whoRaw);
+  var where = isShtaf ? [p.street || p.address, p.city].filter(Boolean).join(', ')
+                      : [p.address, p.neighborhood, p.city].filter(Boolean).join(', ');
+  var chip = isShtaf ? '<div class="chip shtaf">שת"פ</div>'
+    : isMine ? '<div class="chip mine">הנכס שלי</div>'
+    : '<div class="chip office">המשרד שלנו</div>';
+  var acts = isShtaf ? '' :
+    '<div class="acts"><button class="a1" onclick="matchBuyers(' + i + ')">' +
+    '<svg width="12" height="12" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
+    'קונים מתאימים</button>' +
+    '<button class="a2" onclick="propDetails(' + i + ')">פרטי הנכס</button></div>';
+  return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
+    '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
+    '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<div class="pr">' + esc(fmtPrice(p.price)) + '</div>' +
+    (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#B8902F') + '">' + p.score + '% התאמה</div>' : '') +
+    '</div>' + acts + '</div>';
+}
+function setMode(node){
+  MODE = node.getAttribute('data-m');
+  var sgs = node.parentNode.children;
+  for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
+  render();
+}
+var _qT = null;
+function qChanged(){
+  clearTimeout(_qT);
+  if (MODE === 'mine'){ render(); return; }
+  _qT = setTimeout(function(){ load(el('q').value.trim()); }, 500);
+}
+function propText(p){
+  return [p.type, p.rooms ? p.rooms + ' חדרים' : '', p.address, p.city,
+          p.price ? 'עד ' + p.price : ''].filter(Boolean).join(' ');
+}
+function matchBuyers(i){
+  var p = el('list')._src[i];
+  openSheet('<h3>קונים מתאימים</h3>' +
+    '<div style="font-size:12px;color:#8B8F99">' + esc([p.address, p.city].filter(Boolean).join(', ')) + '</div>' +
+    '<div id="bRes" style="display:flex;flex-direction:column;gap:10px">' +
+    '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:16px 0">מחפש בשיחות שנענו…</div></div>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
+  POST('/api/search/buyers', {q: propText(p)}).then(function(j){
+    var rs = (j && j.results) || [];
+    var h = rs.slice(0, 10).map(function(b){
+      return '<div class="bRow"><div class="t">' + esc(b.phone || '') +
+        (b.budget ? ' · ' + esc(b.budget) : '') + (b.agent ? ' · ' + esc(b.agent) : '') + '</div>' +
+        (b.summary ? '<div class="s">' + esc(b.summary) + '</div>' : '') +
+        '<div class="acts">' +
+        (b.wa ? '<a class="wa" target="_blank" rel="noopener" href="https://wa.me/' + esc(b.wa) + '">וואטסאפ</a>' : '') +
+        (b.tel ? '<a class="tel" href="tel:' + esc(b.tel) + '">חייג</a>' : '') + '</div></div>';
+    }).join('');
+    el('bRes').innerHTML = h ||
+      '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:12px 0">לא נמצאו קונים מתאימים בשיחות שנענו</div>';
+  }).catch(function(){});
+}
+function propDetails(i){
+  var p = el('list')._src[i];
+  openSheet('<h3>' + esc([p.address, p.city].filter(Boolean).join(', ')) + '</h3>' +
+    '<div style="font-size:13px;color:#5B6472">' +
+    esc([p.type, p.rooms ? p.rooms + ' חד׳' : '', p.floor ? 'קומה ' + p.floor : '', p.size ? p.size + ' מ"ר' : '',
+         p.agent].filter(Boolean).join(' · ')) + '</div>' +
+    '<div style="font-size:22px;font-weight:800">' + esc(fmtPrice(p.price)) + '</div>' +
+    (p.desc ? '<div style="background:#fff;border-radius:13px;padding:13px 15px;font-size:13px;color:#5B6472;line-height:1.7">' + esc(p.desc) + '</div>' : '') +
+    (p.wa ? '<a class="btn" style="background:#1FAF5E;color:#fff;text-decoration:none;box-shadow:0 4px 12px rgba(31,175,94,.25)" target="_blank" rel="noopener" href="https://wa.me/' + esc(p.wa) + '">וואטסאפ לסוכן המטפל</a>' : '') +
+    '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
+}
+
+/* זיכרון מצב הטאב */
+var _restY = 0;
+function saveSt(){
+  try{
+    var m = document.querySelector('main');
+    localStorage.setItem('v2st:props', JSON.stringify({m:MODE, q:el('q').value, y:(m ? m.scrollTop : 0)}));
+  }catch(e){}
+}
+(function(){
+  try{
+    var s = JSON.parse(localStorage.getItem('v2st:props') || 'null');
+    if (s){
+      MODE = s.m || MODE; el('q').value = s.q || ''; _restY = s.y || 0;
+      var sg = document.querySelector('#modes .sg[data-m="' + MODE + '"]');
+      if (sg){ var cs = sg.parentNode.children;
+        for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
+    }
+  }catch(e){}
+})();
+var _renderBase = render;
+render = function(){
+  _renderBase();
+  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
+  saveSt();
+};
+(function(){
+  var m = document.querySelector('main');
+  if (m) m.addEventListener('scroll', function(){
+    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
+  }, {passive:true});
+})();
+
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
+  }).catch(function(){ location.replace('/v2'); });
+  fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
+    document.title = 'נכסים · ' + (o.name || '');
+  }).catch(function(){});
+  if (location.search.indexOf('mine=1') >= 0){
+    MODE = 'mine';
+    var sg = document.querySelector('#modes .sg[data-m="mine"]');
+    if (sg){ var cs = sg.parentNode.children;
+      for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
+  }
+  load(el('q').value.trim());
+})();
+</script></body></html>'''
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -2968,6 +3308,10 @@ def register(app, G):
     @app.route("/v2/newborn", methods=["GET"])
     def v2_newborn():
         return _page(V2_NB_HTML)
+
+    @app.route("/v2/props", methods=["GET"])
+    def v2_props():
+        return _page(V2_PROPS_HTML)
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
