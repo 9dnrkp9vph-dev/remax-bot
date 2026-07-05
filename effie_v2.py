@@ -67,6 +67,15 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   #smsBox input::placeholder{color:rgba(255,255,255,.45)}
   .btn-go{background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25);border-radius:14px;padding:14px 0;font-size:15px}
   #err{color:#F0B9B9;font-size:12.5px;min-height:17px;line-height:1.4}
+  /* ── דסקטופ: עמודה ממורכזת (המובייל הוא המקור; מסך רחב מלא — בשלב הדסקטופ) ── */
+  @media (min-width:700px){
+    header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+    #menu{max-width:340px}
+    #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
+        margin-left:auto;margin-right:auto}
+  }
 </style></head><body>
 
   <div class="ring"><div id="logoWrap"><img id="logo" src="/assets/logo" alt=""
@@ -290,6 +299,15 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     #story .ringWrap{animation:glow 2.6s ease-out infinite}
     #story .load i{animation:pulseDot 1.6s infinite}
     #story .bars i b{transition:width .25s linear}
+  }
+  /* ── דסקטופ: עמודה ממורכזת (המובייל הוא המקור; מסך רחב מלא — בשלב הדסקטופ) ── */
+  @media (min-width:700px){
+    header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+    #menu{max-width:340px}
+    #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
+        margin-left:auto;margin-right:auto}
   }
 </style></head><body>
 
@@ -794,6 +812,15 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
        pointer-events:none;z-index:40;white-space:nowrap}
   #blocked{display:none;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:44px 18px}
   #blocked .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  /* ── דסקטופ: עמודה ממורכזת (המובייל הוא המקור; מסך רחב מלא — בשלב הדסקטופ) ── */
+  @media (min-width:700px){
+    header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+    #menu{max-width:340px}
+    #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
+        margin-left:auto;margin-right:auto}
+  }
 </style></head><body>
 
   <header>
@@ -1355,6 +1382,15 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
       font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
       pointer-events:none;z-index:80;white-space:nowrap}
+  /* ── דסקטופ: עמודה ממורכזת (המובייל הוא המקור; מסך רחב מלא — בשלב הדסקטופ) ── */
+  @media (min-width:700px){
+    header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+    #menu{max-width:340px}
+    #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
+        margin-left:auto;margin-right:auto}
+  }
 </style></head><body>
 
   <header>
@@ -1748,6 +1784,15 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
       font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
       pointer-events:none;z-index:80;white-space:nowrap}
+  /* ── דסקטופ: עמודה ממורכזת (המובייל הוא המקור; מסך רחב מלא — בשלב הדסקטופ) ── */
+  @media (min-width:700px){
+    header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+    #menu{max-width:340px}
+    #story .bars,#story .shead,#story .body,#story .sfoot{width:100%;max-width:600px;
+        margin-left:auto;margin-right:auto}
+  }
 </style></head><body>
 
   <header>
