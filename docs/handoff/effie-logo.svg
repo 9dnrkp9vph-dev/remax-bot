@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 118 106" width="118" height="106">
+  <title>Effie logo — origami chick</title>
+  <path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"></path>
+  <path d="M58 8L20 44h38z" fill="#C29435"></path>
+  <path d="M58 8l38 36H58z" fill="#EED9A0"></path>
+  <path d="M58 44L34 98h24z" fill="#D8AC4E"></path>
+  <path d="M20 44l-14 8 14 6z" fill="#1E3A5F"></path>
+  <circle cx="40" cy="34" r="4.2" fill="#1E3A5F"></circle>
+</svg>
