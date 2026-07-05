@@ -384,7 +384,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>
         <div class="l">הוסף קונה</div>
       </div>
-      <div class="a gold" onclick="toast('החתמה — בסשן החתימות הקרוב')">
+      <div class="a gold" onclick="location.href='/v2/sigs'">
         <div class="ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
         <div class="l">החתם</div>
       </div>
@@ -419,7 +419,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>שיחות</div>
     <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round"/></svg>קונים</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
-    <div class="it" onclick="toast('מסך החתימות — בסשן הקרוב')"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="toast('נכס נולד — בסשן הקרוב')"><div class="badge" id="nbBadge"></div><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
   </nav>
 
@@ -643,7 +643,7 @@ function renderCard(i){
     b.innerHTML = card('על הקו', q(M.sigs), 'חתימות<br>השבוע',
       M.sigSample ? ('האחרונה: ' + esc(M.sigSample.client || '') + (M.sigSample.address ? ' · ' + esc(M.sigSample.address) : '') + '.')
                   : 'כל החתמה דיגיטלית נשמרת ומחכה לך במסך החתימות.',
-      'לחתימות', 'toast(\'מסך החתימות — בסשן הקרוב\')', 'הבא: נכס נולד (4/4)');
+      'לחתימות', 'closeStory();location.href=\'/v2/sigs\'', 'הבא: נכס נולד (4/4)');
   } else {
     var nn = (M.nbNew || []).length;
     if (nn){
@@ -1444,7 +1444,7 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="it" style="color:#1E3A5F;font-weight:700"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linejoin="round"/></svg>שיחות</div>
     <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round"/></svg>קונים</div>
     <div class="it" onclick="location.href='/v2/home'"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
-    <div class="it" onclick="toast('מסך החתימות — בסשן הקרוב')"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="toast('נכס נולד — בסשן הקרוב')"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
   </nav>
 
@@ -1836,7 +1836,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
     <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>שיחות</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#1E3A5F" stroke-width="1.9"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round"/></svg>קונים</div>
     <div class="it" onclick="location.href='/v2/home'"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
-    <div class="it" onclick="toast('מסך החתימות — בסשן הקרוב')"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="toast('נכס נולד — בסשן הקרוב')"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
   </nav>
 
@@ -2065,6 +2065,237 @@ function sendToBuyer(js){
 </script></body></html>'''
 
 
+# ── מסך החתימות (עיצוב 17a) — רשימה, פילטרים, צפייה במסמך; הטפסים בסשן הבא ──
+V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>חתימות</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 12px;display:flex;align-items:center;justify-content:space-between}
+  .avatar{position:relative;width:44px;height:44px}
+  .avatar .c{width:44px;height:44px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:17px;font-weight:700}
+  .avatar .dot{position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;background:#1FAF5E;border:2px solid #F2EFE7}
+  .brand img{height:36px;max-width:150px;object-fit:contain}
+  .menuBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto}
+  .card{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:16px 18px 14px;
+      display:flex;flex-direction:column;gap:12px}
+  .hd{display:flex;align-items:center;justify-content:space-between}
+  .hd .tt{display:flex;align-items:center;gap:10px}
+  .hd .ic{width:36px;height:36px;border-radius:11px;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .hd h1{font-size:21px;font-weight:800}
+  .live{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700}
+  .live i{width:8px;height:8px;border-radius:50%;background:#1FAF5E;display:block}
+  @media (prefers-reduced-motion:no-preference){
+    @keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
+    .live i{animation:pulseDot 2s infinite}
+  }
+  .ctaRow{display:flex;gap:10px}
+  .ctaRow .b1{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#C29435;color:#fff;
+      border-radius:14px;padding:13px 0;font-size:14px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
+      box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .ctaRow .b2{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#fff;color:#1E3A5F;
+      border:1.5px solid #DCD6C8;border-radius:14px;padding:13px 0;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
+  .segs .sg{flex:1;text-align:center;padding:7px 0;font-size:12.5px;font-weight:700;color:#5B6472;
+      border-radius:10px;cursor:pointer}
+  .segs .sg.on{color:#fff;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
+  .sig{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
+      display:flex;flex-direction:column;gap:10px;margin-bottom:13px}
+  .sig .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .sig .ad{font-size:15.5px;font-weight:700}
+  .sig .sb{font-size:12px;color:#8B8F99}
+  .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .chip.owner{color:#C24040;background:#FBEDED}
+  .chip.buyer{color:#2E6BD6;background:#EAF0FA}
+  .st{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
+  .st i{width:7px;height:7px;border-radius:50%;display:block;flex-shrink:0}
+  .st.signed{color:#1FAF5E}.st.signed i{background:#1FAF5E}
+  .st.wait{color:#B8902F}.st.wait i{background:#C29435}
+  .acts{display:flex;gap:9px;align-items:center}
+  .acts .a{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;
+      padding:10px 0;font-size:13px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:40px}
+  .acts .sec{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .t{font-size:15px;font-weight:800}
+  .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
+  nav{background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+      display:flex;justify-content:space-around;align-items:flex-end}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+      font-weight:600;color:#9AA0AB;cursor:pointer}
+  nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
+      box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+      display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
+  #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
+  #sheet h3{font-size:19px;font-weight:800}
+  .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
+      font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px}
+  .btn-gold{background:#C29435;color:#fff;box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:80;white-space:nowrap}
+  /* ── דסקטופ: עמודה ממורכזת ── */
+  @media (min-width:700px){
+    header,main,nav{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+  }
+</style></head><body>
+
+  <header>
+    <div class="avatar"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
+    <div class="brand"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
+    <button class="menuBtn" onclick="location.href='/v2/home'" aria-label="לבית">
+      <svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="hd">
+        <div class="tt">
+          <div class="ic"><svg width="16" height="16" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#B8902F" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
+          <h1>חתימות</h1>
+        </div>
+        <div class="live"><i></i><span id="weekN">—</span></div>
+      </div>
+      <div class="ctaRow">
+        <button class="b1" onclick="openSignInfo('owner')">
+          <svg width="14" height="14" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg>
+          החתם בעל נכס
+        </button>
+        <button class="b2" onclick="openSignInfo('buyer')">החתם מתעניין</button>
+      </div>
+      <div class="segs" id="filters">
+        <div class="sg on" data-f="all" onclick="setFilter(this)">הכל</div>
+        <div class="sg" data-f="owner" onclick="setFilter(this)">בעלי נכס</div>
+        <div class="sg" data-f="buyer" onclick="setFilter(this)">מתעניינים</div>
+        <div class="sg" data-f="excl" onclick="setFilter(this)">בלעדיות</div>
+      </div>
+    </div>
+    <div id="list"></div>
+  </main>
+
+  <nav>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><div class="home"><svg width="19" height="19" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>בית</div>
+    <div class="it" style="color:#1E3A5F;font-weight:700"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="toast('נכס נולד — בסשן הקרוב')"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+  </nav>
+
+  <div id="ovl" onclick="closeSheet()"></div>
+  <div id="sheet"></div>
+  <div id="toast"></div>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(msg){
+  var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+function openSheet(html){
+  el('sheet').innerHTML = '<div class="grip"></div>' + html;
+  el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+}
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+
+var SIGS = [], FILTER = 'all', MULTI = false;
+function kindOf(g){   // בעל נכס / מתעניין / בלעדיות — מתוך תווית הסוג
+  var t = g.type || '';
+  if (t.indexOf('בלעדיות') >= 0) return 'excl';
+  if (t.indexOf('מתעניין') >= 0) return 'buyer';
+  return 'owner';
+}
+function weekStart(){
+  var d = new Date(); d.setHours(0,0,0,0);
+  d.setDate(d.getDate() - d.getDay());
+  return d.getTime() / 1000;
+}
+function load(){
+  return GET('/api/signatures').then(function(j){
+    SIGS = (j && j.signatures) || [];
+    MULTI = (j && j.role) !== 'agent';
+    render();
+  }).catch(function(){});
+}
+function render(){
+  var ws = weekStart();
+  el('weekN').textContent = SIGS.filter(function(g){ return (g.ts || 0) >= ws; }).length + ' השבוע';
+  var src = SIGS.filter(function(g){
+    if (FILTER === 'all') return true;
+    return kindOf(g) === FILTER;
+  });
+  var h = '';
+  src.slice(0, 100).forEach(function(g){
+    var k = kindOf(g);
+    var chip = (k === 'buyer') ? '<div class="chip buyer">מתעניין</div>' : '<div class="chip owner">בעל נכס</div>';
+    var signed = !!(g.link || g.pct);
+    var sub = [g.client, MULTI ? g.agent : '', g.type].filter(Boolean).join(' · ');
+    var acts = (signed && g.link)
+      ? '<div class="acts"><button class="a sec" onclick="window.open(\'' + esc(g.link) + '\',\'_blank\')">' +
+        '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M3 2.5h7l3 3V13a.9.9 0 0 1-.9.9H3.9A.9.9 0 0 1 3 13z" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2.5v3h3" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
+        'צפייה במסמך החתום</button></div>'
+      : '';
+    h += '<div class="sig">' +
+      '<div class="top"><div><div class="ad">' + esc(g.address || g.client || '') + '</div>' +
+      '<div class="sb">' + esc(sub) + '</div></div>' + chip + '</div>' +
+      '<div class="st ' + (signed ? 'signed' : 'wait') + '"><i></i>' +
+      (signed ? 'נחתם' : 'ממתין לחתימה') + (g.time ? ' · ' + esc(g.time) : '') +
+      (signed && g.pct ? ' · עמלה ' + esc(String(g.pct)) + '%' : '') + '</div>' + acts + '</div>';
+  });
+  el('list').innerHTML = h ||
+    '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#C29435" stroke-width="1.7" stroke-linejoin="round"/></svg></div>' +
+    '<div class="t">אין חתימות להצגה</div>' +
+    '<div class="s">כל החתמה דיגיטלית — בעל נכס או מתעניין — תופיע כאן עם המסמך החתום</div></div>';
+}
+function setFilter(node){
+  FILTER = node.getAttribute('data-f');
+  var sgs = node.parentNode.children;
+  for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
+  render();
+}
+function openSignInfo(kind){
+  openSheet('<h3>' + (kind === 'owner' ? 'החתם בעל נכס' : 'החתם מתעניין') + '</h3>' +
+    '<div style="font-size:13px;color:#5B6472;line-height:1.7">טפסי ההחתמה בקו של אפי נבנים בסשן הבא ' +
+    '(העיצוב אושר — סבב 18). בינתיים מחתימים דרך האפליקציה הקיימת — אותה זרימה ואותם הסכמים, ' +
+    'והחתימה תופיע כאן ברשימה.</div>' +
+    '<button class="btn btn-gold" onclick="location.href=\'/app\'">להחתמה באפליקציה הקיימת</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
+  }).catch(function(){ location.replace('/v2'); });
+  fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
+    document.title = 'חתימות · ' + (o.name || '');
+  }).catch(function(){});
+  load();
+  setInterval(load, 90000);
+})();
+</script></body></html>'''
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -2159,6 +2390,10 @@ def register(app, G):
     @app.route("/v2/buyers", methods=["GET"])
     def v2_buyers():
         return _page(V2_BUYERS_HTML)
+
+    @app.route("/v2/sigs", methods=["GET"])
+    def v2_sigs():
+        return _page(V2_SIGS_HTML)
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
