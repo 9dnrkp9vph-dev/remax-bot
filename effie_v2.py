@@ -2207,10 +2207,9 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <button class="b2" onclick="openSignInfo('buyer')">החתם מתעניין</button>
       </div>
       <div class="segs" id="filters">
-        <div class="sg on" data-f="all" onclick="setFilter(this)">הכל</div>
-        <div class="sg" data-f="owner" onclick="setFilter(this)">בעלי נכס</div>
-        <div class="sg" data-f="buyer" onclick="setFilter(this)">מתעניינים</div>
+        <div class="sg on" data-f="buyer" onclick="setFilter(this)">קונים</div>
         <div class="sg" data-f="excl" onclick="setFilter(this)">בלעדיות</div>
+        <div class="sg" data-f="all" onclick="setFilter(this)">הכל</div>
       </div>
     </div>
     <div id="list"></div>
@@ -2249,7 +2248,7 @@ function openSheet(html){
 }
 function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
 
-var SIGS = [], FILTER = 'all', MULTI = false;
+var SIGS = [], FILTER = 'buyer', MULTI = false;   // ברירת מחדל: קונים (מימין); שכירות וכו' — תחת "הכל"
 function kindOf(g){   // בעל נכס / מתעניין / בלעדיות — מתוך תווית הסוג
   var t = g.type || '';
   if (t.indexOf('בלעדיות') >= 0) return 'excl';
