@@ -539,10 +539,16 @@ function loadData(){
     GET('/api/my/properties').catch(function(){ return {}; }),
     GET('/api/signatures').catch(function(){ return {}; })
   ]).then(function(rs){
-    // בלעדיות שנחתמו ב-7 הימים האחרונים — "נכסים חדשים גויסו השבוע" (כרטיס 3 בבריף)
+    // גיוסים ב-7 הימים האחרונים — כל החתמת בעל נכס (בלעדיות או מוכר), בלי כפילויות
     var wk7 = Math.floor(Date.now() / 1000) - 7 * 86400;
+    var seen = {};
     M.exclWeek = (((rs[3] || {}).signatures) || []).filter(function(g){
-      return (g.type || '').indexOf('בלעדיות') >= 0 && (g.ts || 0) >= wk7;
+      var t = g.type || '';
+      if (!((t.indexOf('בלעדיות') >= 0 || t.indexOf('מוכר') >= 0) && (g.ts || 0) >= wk7)) return false;
+      var k = (g.address || '') + '|' + (g.client || '');
+      if (seen[k]) return false;
+      seen[k] = 1;
+      return true;
     });
     var rep = rs[0] || {}, sm = rep.summary || {};
     M.calls = (sm.calls || {}).total || 0;
@@ -682,7 +688,8 @@ function renderCard(i){
     if (ex.length){
       // סיכום הבלעדיות של 7 הימים האחרונים — "נכסים חדשים גויסו השבוע"
       var exRows = ex.slice(0, 4).map(function(g){
-        var t = (g.address || g.client || '') + (g.agent ? ' · ' + g.agent : '');
+        var t = (g.address || g.client || '') + (g.agent ? ' · ' + g.agent : '') +
+          ((g.type || '').indexOf('בלעדיות') >= 0 ? ' · בלעדיות' : '');
         return '<div class="r"><i></i><span>' + esc(t) + '</span></div>';
       }).join('');
       if (ex.length > 4) exRows += '<div class="more">+ עוד ' + (ex.length - 4) + ' בלעדיות</div>';
@@ -2049,7 +2056,11 @@ function render(){
       '<div class="acts">' +
       '<button class="main" onclick="matchProps(' + i + ')">' +
       '<svg width="13" height="13" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
-      'התאם נכסים</button>' +
+      'התאם</button>' +
+      '<button class="sq" style="background:' + (hot ? '#C29435' : '#F6EEDB') + '" onclick="toggleHot(' + i + ')" aria-label="קונה חם">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1.5c.4 2.2-.8 3.2-1.8 4.4C5 7.3 4.3 8.6 4.5 10.3c.3 2.3 2 3.9 3.7 4.2-.8-.9-1-2-.5-3 .4-.8 1.1-1.3 1.4-2.2 1 .8 1.7 2 1.5 3.3-.1.7-.4 1.3-.9 1.8 2-.5 3.6-2.2 3.8-4.5.2-3.2-2.3-4.6-3.1-6.9-.3-.6-.4-1.1-.4-1.5z" fill="' + (hot ? '#fff' : 'none') + '" stroke="' + (hot ? '#fff' : '#B8902F') + '" stroke-width="1.3" stroke-linejoin="round"/></svg></button>' +
+      '<button class="sq" style="background:#F5F3EC" onclick="openEdit(' + i + ')" aria-label="עריכה">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#5B6472" stroke-width="1.5" stroke-linejoin="round"/></svg></button>' +
       '<button class="sq" style="background:#E7F7EE" onclick="window.open(\'https://wa.me/' + esc(b.wa || '') + '\',\'_blank\')">' +
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
       '<button class="sq" style="background:#EAF0FA" onclick="location.href=\'tel:' + esc(b.tel || '') + '\'">' +
@@ -2089,6 +2100,63 @@ function setStatus(row, st){
   });
 }
 
+function toggleHot(i){
+  var b = el('list')._src[i];
+  setStatus(b.row, stOf(b) === 'hot' ? 'active' : 'hot');
+}
+/* ── עריכת קונה: דרישות + סטטוס (שאר השדות ייפתחו עם המעבר ל-Supabase) ── */
+function openEdit(i){
+  var b = el('list')._src[i];
+  var cur = stOf(b);
+  openSheet('<h3>עריכת קונה · ' + esc(b.name || '') + '</h3>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    '<div style="background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:700">' + esc(b.phone || '') + '</div>' +
+    (b.budget ? '<div style="background:#F6EEDB;border:1px solid #E4C56B;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:700;color:#B8902F">' + esc(b.budget) + '</div>' : '') +
+    '</div>' +
+    '<div class="fld"><span>סטטוס</span><div style="display:flex;gap:8px" id="edSt">' +
+    ['active','hot','frozen','closed'].map(function(st){
+      return '<div data-st="' + st + '" onclick="pickEdSt(this)" ' +
+        'style="flex:1;text-align:center;padding:9px 0;border-radius:11px;font-size:12.5px;font-weight:700;cursor:pointer;' +
+        (st === cur ? 'background:#2E6BD6;color:#fff' : 'background:#F5F3EC;border:1px solid #E9E4D8;color:#5B6472') + '">' +
+        ST_LABEL[st] + '</div>';
+    }).join('') + '</div></div>' +
+    '<div class="fld"><span>מה מחפש (דרישות)</span><textarea id="edSearch" rows="3">' + esc(b.search || '') + '</textarea></div>' +
+    '<div style="font-size:11px;color:#8B8F99;line-height:1.5">שם, טלפון ותקציב נערכים בינתיים בגיליון — ייפתחו לעריכה מלאה עם המעבר ל-Supabase.</div>' +
+    '<button class="btn btn-blue" onclick="saveEdit(' + i + ')">שמירה</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
+  el('sheet')._st = cur;
+}
+function pickEdSt(node){
+  el('sheet')._st = node.getAttribute('data-st');
+  var cs = node.parentNode.children;
+  for (var i = 0; i < cs.length; i++){
+    var on = cs[i] === node;
+    cs[i].style.cssText = 'flex:1;text-align:center;padding:9px 0;border-radius:11px;font-size:12.5px;font-weight:700;cursor:pointer;' +
+      (on ? 'background:#2E6BD6;color:#fff' : 'background:#F5F3EC;border:1px solid #E9E4D8;color:#5B6472');
+  }
+}
+function saveEdit(i){
+  var b = el('list')._src[i];
+  var jobs = [];
+  var q = el('edSearch').value.trim();
+  if (q !== (b.search || ''))
+    jobs.push(POST('/api/buyers/update', {row: b.row, search: q}).then(function(j){
+      if (j.ok) b.search = q;
+      return j;
+    }));
+  var st = el('sheet')._st;
+  if (st !== stOf(b))
+    jobs.push(POST('/v2/api/buyers/status', {row: b.row, status: st}).then(function(j){
+      if (j.ok) STATUSES[b.row] = st;
+      return j;
+    }));
+  if (!jobs.length){ closeSheet(); return; }
+  Promise.all(jobs).then(function(rs){
+    closeSheet();
+    toast(rs.every(function(j){ return j.ok; }) ? 'נשמר' : 'חלק מהשינויים לא נשמרו');
+    render();
+  });
+}
 /* ── הוספת קונה ── */
 function openAdd(){
   openSheet('<h3>קונה חדש</h3>' +
