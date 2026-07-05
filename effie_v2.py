@@ -2990,7 +2990,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
           <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
           <h1>נכסים</h1>
         </div>
-        <button class="mapChip" onclick="toast('המפה — בסשן הקרוב')">
+        <button class="mapChip" onclick="location.href='/v2/map'">
           <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 14s-5-4.2-5-8a5 5 0 0 1 10 0c0 3.8-5 8-5 8z" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><circle cx="8" cy="6" r="1.8" fill="none" stroke="#2E6BD6" stroke-width="1.6"/></svg>
           מפה
         </button>
@@ -3220,6 +3220,220 @@ render = function(){
 </script></body></html>'''
 
 
+# ── מפת הנכסים (עיצוב 21a) — Leaflet, קלאסטרים נייבי, פיני מחיר, כרטיס צף ──
+V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>מפה</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;height:100vh;height:100dvh;overflow:hidden;color:#1E3A5F}
+  #map{position:absolute;inset:0}
+  .topBar{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:14px;right:14px;z-index:500;
+      display:flex;flex-direction:column;gap:8px}
+  .row1{display:flex;gap:8px;align-items:center}
+  .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 4px 14px rgba(30,58,95,.18);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer;flex-shrink:0}
+  .srch{flex:1;display:flex;align-items:center;gap:9px;background:#fff;border-radius:14px;
+      box-shadow:0 4px 14px rgba(30,58,95,.18);padding:0 14px}
+  .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
+      color:#1E3A5F;padding:12px 0}
+  .filters{display:flex;gap:7px}
+  .fchip{display:flex;align-items:center;gap:6px;background:#fff;border-radius:999px;padding:7px 14px;
+      font-size:12.5px;font-weight:700;color:#5B6472;box-shadow:0 4px 14px rgba(30,58,95,.14);
+      border:0;cursor:pointer;font-family:inherit}
+  .fchip.on{background:#1E3A5F;color:#fff}
+  .fchip.on.coop{background:#2E6BD6}
+  .locBtn{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 170px);left:16px;z-index:500;
+      width:48px;height:48px;border-radius:50%;background:#fff;box-shadow:0 6px 18px rgba(30,58,95,.22);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  /* פיני מחיר */
+  .pin{background:#1E3A5F;color:#fff;border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:800;
+      font-family:'Heebo',sans-serif;box-shadow:0 3px 10px rgba(30,58,95,.35);white-space:nowrap;
+      border:2px solid #fff;direction:ltr}
+  .pin.coop{background:#2E6BD6}
+  .pin.sel{background:#C29435;box-shadow:0 4px 14px rgba(194,148,53,.5)}
+  .marker-cluster{background:rgba(30,58,95,.25)!important;border-radius:50%!important}
+  .marker-cluster div{background:#1E3A5F!important;color:#fff!important;font-family:'Heebo',sans-serif!important;
+      font-weight:800!important;border-radius:50%!important}
+  /* כרטיס נכס צף */
+  #propCard{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);left:14px;right:14px;z-index:600;
+      background:#fff;border-radius:20px;box-shadow:0 12px 36px rgba(14,29,51,.3);padding:15px 18px;
+      display:none;flex-direction:column;gap:8px}
+  #propCard .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  #propCard .ad{font-size:15.5px;font-weight:800}
+  #propCard .dt{font-size:12.5px;color:#8B8F99}
+  #propCard .x{width:30px;height:30px;border-radius:50%;background:#F5F3EC;display:flex;align-items:center;
+      justify-content:center;border:0;cursor:pointer;flex-shrink:0}
+  .feats{display:flex;gap:6px;flex-wrap:wrap}
+  .feat{font-size:11px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:3px 9px;border-radius:999px}
+  #propCard .pr{display:flex;align-items:baseline;gap:8px}
+  #propCard .pr b{font-size:20px;font-weight:800}
+  #propCard .pr span{font-size:11.5px;color:#8B8F99}
+  #propCard .cta{display:flex;align-items:center;justify-content:center;background:#2E6BD6;color:#fff;
+      border-radius:12px;padding:11px 0;font-size:13.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
+      box-shadow:0 4px 12px rgba(46,107,214,.25)}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:800;white-space:nowrap}
+  @media (min-width:700px){
+    .topBar,#propCard{max-width:600px;margin-left:auto;margin-right:auto}
+  }
+</style></head><body>
+
+  <div id="map"></div>
+  <div class="topBar">
+    <div class="row1">
+      <button class="backBtn" onclick="location.href='/v2/props'" aria-label="חזרה">
+        <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="srch">
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input id="q" placeholder="רחוב או עיר" oninput="qChanged()">
+      </div>
+    </div>
+    <div class="filters">
+      <button class="fchip on" id="fOffice" onclick="toggleF('office')">המשרד <span id="nOffice"></span></button>
+      <button class="fchip coop" id="fCoop" onclick="toggleF('coop')">שת"פ <span id="nCoop"></span></button>
+    </div>
+  </div>
+  <button class="locBtn" onclick="myLoc()" aria-label="המיקום שלי">
+    <svg width="20" height="20" viewBox="0 0 22 22"><circle cx="11" cy="11" r="3" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><circle cx="11" cy="11" r="7.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M11 1v3M11 18v3M1 11h3M18 11h3" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </button>
+
+  <div id="propCard">
+    <div class="top"><div><div class="ad" id="pcAd"></div><div class="dt" id="pcDt"></div></div>
+      <button class="x" onclick="hideCard()"><svg width="11" height="11" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+    <div class="feats" id="pcFeats"></div>
+    <div class="pr"><b id="pcPr"></b><span id="pcSqm"></span></div>
+    <button class="cta" id="pcCta">לכרטיס הנכס</button>
+  </div>
+  <div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(msg){
+  var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+function priceNum(p){
+  var n = parseInt(String(p || '').replace(/[^\d]/g, ''), 10);
+  return isNaN(n) ? 0 : n;
+}
+function priceShort(p){
+  var n = priceNum(p);
+  if (!n) return '—';
+  return n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 2 : 0).replace(/\.?0+$/, '') + 'M'
+       : Math.round(n / 1000) + 'K';
+}
+
+var MAP, CLUSTER, ITEMS = [], MARKERS = [], SEL = null;
+var SHOW = {office: true, coop: true};
+
+MAP = L.map('map', {zoomControl: false}).setView([32.83, 35.08], 12);   // הקריות
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(MAP);
+CLUSTER = L.markerClusterGroup({maxClusterRadius: 46, showCoverageOnHover: false});
+MAP.addLayer(CLUSTER);
+
+function pinIcon(it, sel){
+  return L.divIcon({className: '', html: '<div class="pin' + (it.t === 'coop' ? ' coop' : '') +
+    (sel ? ' sel' : '') + '">₪' + priceShort(it.p) + '</div>', iconSize: null, iconAnchor: [24, 14]});
+}
+function render(){
+  CLUSTER.clearLayers();
+  MARKERS = [];
+  var q = el('q').value.trim().toLowerCase();
+  var counts = {office: 0, coop: 0};
+  ITEMS.forEach(function(it, idx){
+    counts[it.t] = (counts[it.t] || 0) + 1;
+    if (!SHOW[it.t]) return;
+    if (q && ((it.a || '') + ' ' + (it.c || '')).toLowerCase().indexOf(q) < 0) return;
+    var mk = L.marker([it.lat, it.lng], {icon: pinIcon(it, SEL === idx)});
+    mk.on('click', function(){ selectItem(idx, mk); });
+    mk._idx = idx;
+    CLUSTER.addLayer(mk);
+    MARKERS.push(mk);
+  });
+  el('nOffice').textContent = counts.office || '';
+  el('nCoop').textContent = counts.coop || '';
+}
+function selectItem(idx, mk){
+  SEL = idx;
+  MARKERS.forEach(function(m){ m.setIcon(pinIcon(ITEMS[m._idx], m._idx === idx)); });
+  var it = ITEMS[idx];
+  el('pcAd').textContent = [it.a, it.c].filter(Boolean).join(', ');
+  el('pcDt').textContent = [it.t === 'coop' ? (it.g || 'משרד שותף') : '',
+    it.r ? it.r + ' חד׳' : '', it.fl ? 'קומה ' + it.fl : '', it.z ? it.z + ' מ"ר' : '',
+    it.t === 'office' ? it.g : ''].filter(Boolean).join(' · ');
+  // צ'יפי מאפיינים מהתיאור
+  var d = (it.d || '');
+  var feats = [];
+  [['מעלית','מעלית'],['חניה','חניה'],['מרפסת','מרפסת'],['ממ"ד','ממ"ד'],['ממ״ד','ממ"ד']].forEach(function(f){
+    if (d.indexOf(f[0]) >= 0 && feats.indexOf(f[1]) < 0) feats.push(f[1]);
+  });
+  el('pcFeats').innerHTML = feats.map(function(f){ return '<span class="feat">' + esc(f) + '</span>'; }).join('');
+  el('pcFeats').style.display = feats.length ? 'flex' : 'none';
+  var n = priceNum(it.p), sq = parseInt(it.z, 10);
+  el('pcPr').textContent = n ? '₪' + n.toLocaleString() : (it.p || '');
+  el('pcSqm').textContent = (n && sq) ? '₪' + Math.round(n / sq).toLocaleString() + ' למ"ר' : '';
+  el('pcCta').onclick = function(){
+    try{ localStorage.setItem('v2st:props', JSON.stringify(
+      {m: it.t === 'coop' ? 'shtaf' : 'office', q: it.a || '', y: 0})); }catch(e){}
+    location.href = '/v2/props';
+  };
+  el('propCard').style.display = 'flex';
+}
+function hideCard(){
+  el('propCard').style.display = 'none';
+  var old = SEL; SEL = null;
+  MARKERS.forEach(function(m){ if (m._idx === old) m.setIcon(pinIcon(ITEMS[old], false)); });
+}
+function toggleF(t){
+  SHOW[t] = !SHOW[t];
+  el(t === 'office' ? 'fOffice' : 'fCoop').classList.toggle('on', SHOW[t]);
+  hideCard(); render();
+}
+var _qT = null;
+function qChanged(){ clearTimeout(_qT); _qT = setTimeout(render, 300); }
+function myLoc(){
+  if (!navigator.geolocation){ toast('אין הרשאת מיקום'); return; }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    var ll = [pos.coords.latitude, pos.coords.longitude];
+    MAP.setView(ll, 15);
+    L.circleMarker(ll, {radius: 8, color: '#2E6BD6', fillColor: '#2E6BD6', fillOpacity: .9,
+      weight: 3, opacity: .35}).addTo(MAP);
+  }, function(){ toast('לא הצלחנו לאתר את המיקום'); });
+}
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+  }).catch(function(){ location.replace('/v2'); });
+  GET('/api/map/properties').then(function(j){
+    ITEMS = (j && j.items) || [];
+    render();
+    if (ITEMS.length){
+      var b = L.latLngBounds(ITEMS.map(function(it){ return [it.lat, it.lng]; }));
+      MAP.fitBounds(b, {padding: [60, 60], maxZoom: 14});
+    }
+  }).catch(function(){ toast('שגיאה בטעינת הנכסים'); });
+})();
+</script></body></html>'''
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -3328,6 +3542,10 @@ def register(app, G):
     @app.route("/v2/props", methods=["GET"])
     def v2_props():
         return _page(V2_PROPS_HTML)
+
+    @app.route("/v2/map", methods=["GET"])
+    def v2_map():
+        return _page(V2_MAP_HTML)
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
