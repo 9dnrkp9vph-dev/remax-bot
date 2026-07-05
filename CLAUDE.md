@@ -48,5 +48,12 @@
   (/api/dev/people, /api/dev/role, /api/dev/coordinators, /api/dev/suspend) + חדשים תחת /v2/api/*
   (overview, invite בוואטסאפ, policy, office). מדיניות נשמרת בקונפיג תחת `v2_policies`
   (transcribe, shtaf_sharing, share_buyers, require_followup, who_contacted_admins_only) — האכיפה במסכים הבאים.
-- ממתין לאישור/סשנים הבאים: badge מונה נכס נולד בניווט של /v2 (סשן 6) · אכיפת המדיניות במסכים ·
+- ממתין לאישור/סשנים הבאים: אכיפת המדיניות במסכים ·
   "פעילה עכשיו" בשורת חבר צוות (דורש presence) · חיבור מסך /v2/admin ל-users בסופאבייס במקום הקונפיג (אחרי המעבר).
+- 2026-07-05: המיגרציות הורצו ואומתו ב-Supabase ע"י אייל (4 טבלאות + 2 עמודות).
+- 2026-07-05: סשן 2 בוצע — מסך הבית (14a) + בריף הבוקר (13a) ב-/v2/home בתוך effie_v2.py:
+  סטורי 4 כרטיסים (פתיחה ← קונים בלי שיבוץ ← חתימות ← נכס נולד), נפתח פעם ביום (localStorage
+  `v2BriefSeen` — בשלב זה, daily_briefs יגיע עם ה-Edge Function), דשבורד נטען ברקע בזמן הסטורי.
+  נתונים מ-API קיימים בלבד: /api/report?period=week, /api/my/buyers, /api/my/properties, /api/newborn
+  (badge המונה בניווט כבר מחובר מכאן). תפריט צד מינימלי (ניהול/אפליקציה קיימת/התנתקות) — הגרסה
+  המלאה בסשן התפריט. טאבים/פעולות שטרם נבנו מציגים toast "בסשן הקרוב" — להחליף בקישורים אמיתיים בסשנים 3–8.
