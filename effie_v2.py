@@ -1054,10 +1054,28 @@ function resend(phone){
   });
 }
 
+var SEL_NB = 'default';
+function nbSeg(val, label){
+  return '<div class="seg' + (SEL_NB === val ? ' on' : '') + '" data-v="' + val +
+         '" onclick="pickNb(this)">' + label + '</div>';
+}
+function pickNb(node){
+  SEL_NB = node.getAttribute('data-v');
+  var segsWrap = node.parentNode.children;
+  for (var i = 0; i < segsWrap.length; i++)
+    segsWrap[i].classList.toggle('on', segsWrap[i] === node);
+  el('nbDays').style.display = (SEL_NB === 'custom') ? 'block' : 'none';
+  if (SEL_NB === 'custom') el('nbDays').focus();
+}
+function memberNb(p){   // מצב ההשהיה הנוכחי של החבר: default / custom / hidden
+  if (p.nbHidden) return 'hidden';
+  return (p.nbDelay === '' || p.nbDelay == null) ? 'default' : 'custom';
+}
 function openMember(i){
   var p = el('teamList')._list[i];
   SEL_ROLE = (p.role === 'developer') ? 'developer' :
              (p.role in {manager:1, coordinator:1, agent:1}) ? p.role : 'agent';
+  SEL_NB = memberNb(p);
   var isDev = p.role === 'developer';
   var agentsHtml = '';
   if (SEL_ROLE === 'coordinator'){
@@ -1073,14 +1091,24 @@ function openMember(i){
           esc(a.name) + '</div>';
       }).join('') + '</div></div>';
   }
+  var phDisp = p.phone ? '0' + p.phone.slice(0, 2) + '-' + p.phone.slice(2) : '—';
+  var vpDisp = p.vphone || '—';
   openSheet(
     '<h3>' + esc(p.name) + '</h3>' +
-    '<div style="font-size:12px;color:#8B8F99">' + esc(p.phone ? '0' + p.phone.slice(0, 2) + '-' + p.phone.slice(2) : 'ללא נייד') + '</div>' +
+    '<div class="fld"><span>טלפונים</span><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    '<div class="phChip">אישי · ' + esc(phDisp) + '</div>' +
+    '<div class="phChip gold">וירטואלי · ' + esc(vpDisp) + '</div></div></div>' +
     (isDev
       ? '<div style="font-size:13px;font-weight:700;color:#B8902F">בעל המשרד — התפקיד קבוע</div>'
       : '<div class="fld"><span>תפקיד</span><div class="segs">' +
         seg('agent', 'סוכן') + seg('coordinator', 'מתאמת') + seg('manager', 'מנהל') + '</div></div>') +
     agentsHtml +
+    (isDev ? '' :
+      '<div class="fld"><span>נכס נולד — ממתי רואה מודעות</span><div class="segs">' +
+      nbSeg('default', 'ברירת מחדל · ' + NB_DEFAULT + ' ימים') + nbSeg('custom', 'מותאם') + nbSeg('hidden', 'מוסתר') +
+      '</div><input id="nbDays" type="number" min="0" inputmode="numeric" placeholder="ימים מרגע הפרסום" value="' +
+      (SEL_NB === 'custom' ? esc(p.nbDelay) : '') + '" style="display:' + (SEL_NB === 'custom' ? 'block' : 'none') + '">' +
+      '<div style="font-size:11px;color:#8B8F99;margin-top:4px">0 = רואה מיד · מוסתר = לא רואה נכס נולד בכלל</div></div>') +
     (isDev ? '' :
       '<div class="swRow"><div><div class="lb">השהיה</div><div class="sb">מושהה לא רואה נתונים ולא נכנס</div></div>' +
       '<div class="tg' + (p.suspended ? ' on' : '') + '" id="tgSusp" onclick="this.classList.toggle(\'on\')"></div></div>') +
@@ -1096,13 +1124,17 @@ function saveMember(i){
     var suspNow = el('tgSusp') && el('tgSusp').classList.contains('on');
     if (p.phone && suspNow !== !!p.suspended)
       jobs.push(POST('/api/dev/suspend', {phone: p.phone, suspend: suspNow}));
+    // נכס נולד — ימי המתנה מהפרסום (ברירת מחדל של המשרד / מספר ימים / מוסתר)
+    var nbVal = (SEL_NB === 'hidden') ? 'hidden' :
+                (SEL_NB === 'custom') ? String(parseInt(el('nbDays').value, 10) || 0) : '';
+    var nbOrig = p.nbHidden ? 'hidden' :
+                 (p.nbDelay === '' || p.nbDelay == null) ? '' : String(p.nbDelay);
+    if (nbVal !== nbOrig)
+      jobs.push(POST('/api/dev/agent_update', {name: p.name, newbornDelay: nbVal}));
   }
   var box = el('coordAgents');
   if (box){
-    var names = [];
-    var rows = box.children;
-    for (var k = 0; k < rows.length; k++)
-      if (rows[k].classList.contains('on')) names.push(rows[k].getAttribute('data-n'));
+    var names = _pickedNames('coordAgents');
     var next = COORDS.filter(function(c){ return c.coordinator !== p.name; });
     if (names.length) next.push({coordinator: p.name, agents: names});
     jobs.push(POST('/api/dev/coordinators', {coordinators: next}));
