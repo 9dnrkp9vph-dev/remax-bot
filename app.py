@@ -123,6 +123,16 @@ _wa_throttle = {"ts": 0.0}
 _wa_throttle_lock = threading.Lock()
 WA_MIN_GAP = float(os.environ.get("WA_MIN_GAP", "4") or 4)   # שניות מינימום בין הודעות
 
+def _wa_auto_on():
+    """התראות וואטסאפ אוטומטיות מהשרת (שיחה חדשה/חתימה). מושהות כברירת מחדל —
+    בקשת אייל (2026-07-06), שוקל מעבר ל-API הרשמי. הפעלה מחדש: המתג "וואטסאפ
+    אוטומטי" בניהול /v2/admin (config v2_policies.wa_auto). תשובות הבוט לפקודות
+    ושליחת חוזים ע"י סוכן אינן מושפעות — הן "מבחירה"."""
+    try:
+        return bool((_load_config().get("v2_policies") or {}).get("wa_auto"))
+    except Exception:
+        return False
+
 def send_text(to: str, text: str):
     """שולח הודעת WhatsApp דרך Maytapi. מחזיר True/False לפי הצלחה אמיתית (success מ-Maytapi)."""
     global _WA_LAST
@@ -4170,7 +4180,8 @@ def _wa_signing(client, agent, address, link):
             if WA_GROUP_SIGNATURES:                                    # לקבוצת "חתימות" של המנהלים
                 try: send_text(WA_GROUP_SIGNATURES, msg)
                 except Exception: pass
-        threading.Thread(target=_send, daemon=True).start()
+        if _wa_auto_on():   # מושהה כברירת מחדל — בקשת אייל 06/07
+            threading.Thread(target=_send, daemon=True).start()
     except Exception:
         pass
 
@@ -8753,6 +8764,9 @@ def check_new_calls():
         return
     for k in new_keys:
         r = keymap[k]
+        if not _wa_auto_on():   # מושהה — מסמנים כנצפה בלי לשלוח (אין הצפת עבר בהפעלה מחדש)
+            _seen_calls.add(k)
+            continue
         try:
             _cmsg = _wa_call_message(r)
             # לסוכן האישי — לפי *שם* הסוכן (כמו בחתימות): agent_phone בגיליון הוא
