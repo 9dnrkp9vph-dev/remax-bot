@@ -475,8 +475,9 @@ function setTg(key, on){ el(TG_IDS[key]).classList.toggle('on', !!on); }
 
 function renderTeam(){
   var list = PEOPLE.slice().sort(function(a, b){
-    var r = {developer:0, manager:1, coordinator:2, agent:3};
-    return (r[a.role] || 3) - (r[b.role] || 3) || a.name.localeCompare(b.name, 'he');
+    var r = {developer:0, manager:1, accountant:1, secretary:1, coordinator:2, agent:3};
+    var ra = (a.role in r) ? r[a.role] : 3, rb = (b.role in r) ? r[b.role] : 3;
+    return (ra - rb) || a.name.localeCompare(b.name, 'he');
   });
   el('teamTitle').textContent = 'הצוות · ' + list.length;
   var html = '';
