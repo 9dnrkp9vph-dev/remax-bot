@@ -45,9 +45,9 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   @keyframes glow{0%{box-shadow:0 0 0 0 rgba(228,197,107,.45)}70%{box-shadow:0 0 0 16px rgba(228,197,107,0)}100%{box-shadow:0 0 0 0 rgba(228,197,107,0)}}
   @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
   .ring{width:104px;height:104px;border-radius:50%;border:3px solid #E4C56B;padding:6px;animation:glow 2.6s ease-out infinite}
-  .ring>div{width:100%;height:100%;border-radius:50%;background:rgba(228,197,107,.13);display:flex;align-items:center;
+  .ring>div{width:100%;height:100%;border-radius:50%;background:#fff;display:flex;align-items:center;
             justify-content:center;animation:float 3s ease-in-out infinite;overflow:hidden}
-  .ring img{width:66%;height:66%;object-fit:contain;border-radius:8px;background:#fff;padding:5px}
+  .ring img{width:76%;height:76%;object-fit:contain}
   h1{font-size:34px;font-weight:800;line-height:1.15;margin-top:24px}
   .tag{font-size:13px;font-weight:700;color:#E4C56B;letter-spacing:.26em;margin-top:6px;min-height:16px}
   .sub{font-size:14.5px;color:rgba(255,255,255,.65);line-height:1.65;max-width:300px;margin-top:16px}
@@ -279,9 +279,9 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   #story .load i{width:6px;height:6px;border-radius:50%;background:#1FAF5E;display:block}
   #story .hint{font-size:11.5px;color:rgba(255,255,255,.4);text-align:center}
   #story .ringWrap{align-self:center;width:104px;height:104px;border-radius:50%;border:3px solid #E4C56B;padding:6px}
-  #story .ringWrap>div{width:100%;height:100%;border-radius:50%;background:rgba(228,197,107,.13);
+  #story .ringWrap>div{width:100%;height:100%;border-radius:50%;background:#fff;
       display:flex;align-items:center;justify-content:center;overflow:hidden}
-  #story .ringWrap img{width:62%;height:62%;object-fit:contain;border-radius:8px;background:#fff;padding:4px}
+  #story .ringWrap img{width:72%;height:72%;object-fit:contain}
   #story .teasers{display:flex;gap:10px}
   #story .teasers .tz{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
       border-radius:14px;padding:12px 6px;display:flex;flex-direction:column;align-items:center;gap:2px}
@@ -1128,6 +1128,8 @@ function pickRole(node){
   var segsWrap = node.parentNode.children;
   for (var i = 0; i < segsWrap.length; i++)
     segsWrap[i].classList.toggle('on', segsWrap[i] === node);
+  var cw = el('coordWrap');   // בורר הסוכנים של המתאמת — מוצג מיד עם בחירת התפקיד
+  if (cw) cw.style.display = (SEL_ROLE === 'coordinator') ? 'flex' : 'none';
 }
 function sendInvite(){
   var nm = el('invNm').value.trim(), ph = el('invPh').value.replace(/\D/g, '');
@@ -1168,23 +1170,24 @@ function openMember(i){
              (p.role in {manager:1, coordinator:1, agent:1}) ? p.role : 'agent';
   SEL_NB = memberNb(p);
   var isDev = p.role === 'developer';
-  var agentsHtml = '';
-  if (SEL_ROLE === 'coordinator'){
-    var mine = coordAgentsOf(p.name);
-    var opts = el('teamList')._list.filter(function(x){
-      return x.name !== p.name && (x.role === 'agent' || !x.role);
-    });
-    agentsHtml = '<div class="fld"><span>הסוכנים המשויכים למתאמת</span><div id="coordAgents">' +
-      opts.map(function(a){
-        var on = mine.indexOf(a.name) >= 0;
-        return '<div class="chk' + (on ? ' on' : '') + '" data-n="' + esc(a.name) + '" onclick="this.classList.toggle(\'on\')">' +
-          '<div class="box"><svg width="11" height="9" viewBox="0 0 12 10"><path d="M1.5 5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>' +
-          esc(a.name) + '</div>';
-      }).join('') + '</div></div>';
-  }
+  var mine = coordAgentsOf(p.name);
+  var opts = PEOPLE.filter(function(x){
+    return x.name !== p.name && (x.role === 'agent' || !x.role);
+  });
+  var agentsHtml = '<div class="fld" id="coordWrap" style="display:' +
+    (SEL_ROLE === 'coordinator' ? 'flex' : 'none') + '"><span>הסוכנים המשויכים למתאמת</span><div id="coordAgents">' +
+    opts.map(function(a){
+      var on = mine.indexOf(a.name) >= 0;
+      return '<div class="chk' + (on ? ' on' : '') + '" data-n="' + esc(a.name) + '" onclick="this.classList.toggle(\'on\')">' +
+        '<div class="box"><svg width="11" height="9" viewBox="0 0 12 10"><path d="M1.5 5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>' +
+        esc(a.name) + '</div>';
+    }).join('') + '</div></div>';
   var phDisp = p.phone ? '0' + p.phone.slice(0, 2) + '-' + p.phone.slice(2) : '—';
   openSheet(
-    '<h3>' + esc(p.name) + '</h3>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between"><h3>' + esc(p.name) + '</h3>' +
+    (isDev ? '' : '<button class="trashBtn" onclick="delMember(' + i + ')" aria-label="מחיקת סוכן">' +
+      '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button>') +
+    '</div>' +
     '<div class="fld"><span>טלפונים</span><div style="display:flex;gap:8px;align-items:stretch">' +
     '<div class="phChip" style="display:flex;align-items:center">אישי · ' + esc(phDisp) + '</div>' +
     '<input id="memVp" value="' + esc(p.vphone || '') + '" placeholder="מספר וירטואלי" type="tel" ' +
@@ -1248,16 +1251,34 @@ function saveMember(i){
     if (Object.keys(upd).length > 1)
       jobs.push(POST('/api/dev/agent_update', upd));
   }
-  var box = el('coordAgents');
-  if (box){
+  if (el('coordAgents') && SEL_ROLE === 'coordinator'){
     var names = _pickedNames('coordAgents');
     var next = COORDS.filter(function(c){ return c.coordinator !== p.name; });
     if (names.length) next.push({coordinator: p.name, agents: names});
     jobs.push(POST('/api/dev/coordinators', {coordinators: next}));
+  } else if (SEL_ROLE !== 'coordinator' && coordAgentsOf(p.name).length){
+    jobs.push(POST('/api/dev/coordinators',
+      {coordinators: COORDS.filter(function(c){ return c.coordinator !== p.name; })}));
   }
   Promise.all(jobs).then(function(){ closeSheet(); toast('נשמר'); boot(); });
 }
 
+function delMember(i){
+  var p = el('teamList')._list[i];
+  openSheet('<h3>מחיקת ' + esc(p.name) + '</h3>' +
+    '<div style="font-size:13px;color:#5B6472;line-height:1.7">המחיקה מסירה את הסוכן מהצוות, מהצוותים ' +
+    'ומהשיוכים למתאמת, וחוסמת את הכניסה שלו למערכת. הנתונים ההיסטוריים (שיחות, חתימות, קונים) נשארים.</div>' +
+    '<button class="btn" style="background:#fff;color:#C24040;border:1.5px solid #C24040" onclick="delMemberGo(' + i + ')">' +
+    'מחק את ' + esc(p.name) + '</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function delMemberGo(i){
+  var p = el('teamList')._list[i];
+  POST('/api/dev/agent_delete', {name: p.name}).then(function(j){
+    if (!j.ok){ toast('שגיאה במחיקה'); return; }
+    closeSheet(); toast(p.name + ' הוסר מהמערכת'); boot();
+  });
+}
 function openOffice(){
   openSheet(
     '<h3>פרטי המשרד</h3>' +
