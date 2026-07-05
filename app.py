@@ -4817,6 +4817,10 @@ def api_deals_save():
             "deal": bool(b.get("deal")),
             "sale_price": str(b.get("sale_price", "") or "").strip(),
             "close_date": str(b.get("close_date", "") or "").strip(),
+            # שדות אפי (טופס 24a/27a): שלב בתהליך + עמלה (אוטומטית 2%+מע"מ או ידנית)
+            "stage": str(b.get("stage", "") or "").strip(),
+            "commission": str(b.get("commission", "") or "").strip(),
+            "commission_manual": bool(b.get("commission_manual")),
         }
         if existing:
             rec["created"] = existing.get("created", "")
