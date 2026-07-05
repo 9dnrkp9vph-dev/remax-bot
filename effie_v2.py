@@ -255,7 +255,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .careEmpty .ic{width:56px;height:56px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .careEmpty .t{font-size:13.5px;font-weight:700}
   .careEmpty .s{font-size:12px;color:#8B8F99}
-  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
@@ -760,8 +760,10 @@ el('story').addEventListener('touchmove', function(e){
     }
     var seen = null;
     try{ seen = localStorage.getItem(seenKey()); }catch(e){}
-    if (seen !== todayStr()) openStory();   // פעם ביום — הסטורי הוא מסך הטעינה
-    else el('briefCta').textContent = 'צפה שוב';
+    if (seen !== todayStr()){
+      try{ localStorage.setItem(seenKey(), todayStr()); }catch(e){}   // מסומן מיד — רענון לא יקפיץ שוב
+      openStory();   // פעם ביום — הסטורי הוא מסך הטעינה
+    } else el('briefCta').textContent = 'צפה שוב';
     loadData();
     GET('/api/newborn').then(function(nb){
       M.nb = (nb && (nb.total || (nb.results || []).length)) || 0;
@@ -831,15 +833,15 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .tg::after{content:'';position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
   .tg.on{background:#1FAF5E}
   .tg.on::after{transform:translateX(-14px)}
-  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;font-weight:600;color:#9AA0AB}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
             box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   /* bottom sheet */
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
-  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
-       box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+       box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
        display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
   #sheet h3{font-size:19px;font-weight:800}
@@ -1454,15 +1456,15 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:250px}
-  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
-  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
-      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
       display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
   #sheet h3{font-size:19px;font-weight:800}
@@ -1529,7 +1531,7 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       </div>
     </div>
 
-    <div id="list"></div>
+    <div id="list"><div class="card empty"><div class="s" style="padding:10px 0">טוען שיחות…</div></div></div>
     <div class="hiddenBar" id="hiddenBar" style="display:none">
       <svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 2l12 12M6.7 6.8a2 2 0 0 0 2.6 2.6M4.4 4.5C3 5.4 2 6.6 1.5 8c1 2.8 3.5 4.5 6.5 4.5 1.1 0 2.1-.2 3-.6M7 3.6c.3 0 .7-.1 1-.1 3 0 5.5 1.7 6.5 4.5-.3.9-.8 1.7-1.5 2.4" fill="none" stroke="#8B8F99" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span id="hiddenN"></span><b id="hiddenGo" onclick="toggleHidden()">הצג</b>
@@ -1609,21 +1611,30 @@ function weekStart(){
 }
 
 function load(){
-  return Promise.all([
-    GET('/api/history').catch(function(){ return {}; }),
-    GET('/api/history?hidden=1').catch(function(){ return {}; }),
-    GET('/api/my/buyers').catch(function(){ return {}; })
-  ]).then(function(rs){
-    CALLS = (rs[0] && rs[0].calls) || [];
-    HIDDEN = (rs[1] && rs[1].calls) || [];
-    if (rs[0] && rs[0].vphone){ el('vpNum').textContent = rs[0].vphone; el('vpRow').style.display = 'flex'; }
-    BUYER_BY_PHONE = {};
-    ((rs[2] && rs[2].results) || []).forEach(function(b){
-      var p = last9(b.tel || b.phone);
-      if (p) BUYER_BY_PHONE[p] = b.name || '';
-    });
+  // מהיר: מציירים מיד מהבקשה הראשית; מוסתרות וקונים נטענים ברקע (בלי לחסום)
+  var p = GET('/api/history').then(function(j){
+    CALLS = (j && j.calls) || [];
+    if (j && j.vphone){ el('vpNum').textContent = j.vphone; el('vpRow').style.display = 'flex'; }
     render();
-  });
+  }).catch(function(){});
+  GET('/api/my/buyers').then(function(j){
+    BUYER_BY_PHONE = {};
+    ((j && j.results) || []).forEach(function(b){
+      var pp = last9(b.tel || b.phone);
+      if (pp) BUYER_BY_PHONE[pp] = b.name || '';
+    });
+    render();   // רענון לזיהוי "קונה קיים" ולמשפך ההמרה
+  }).catch(function(){});
+  loadHidden();
+  return p;
+}
+function loadHidden(){
+  GET('/api/history?hidden=1').then(function(j){
+    HIDDEN = (j && j.calls) || [];
+    el('hiddenN').textContent = 'שיחות שהוסתרו · ' + HIDDEN.length;
+    el('hiddenBar').style.display = HIDDEN.length || VIEW === 'hidden' ? 'flex' : 'none';
+    if (VIEW === 'hidden') render();
+  }).catch(function(){});
 }
 
 function render(){
@@ -1801,7 +1812,12 @@ render = function(){
     document.title = 'שיחות · ' + OFFICE;
   }).catch(function(){});
   load();
-  setInterval(load, 90000);   // רענון עדין — Realtime מלא כשעוברים ל-Supabase
+  setInterval(function(){   // רענון עדין לראשי בלבד — Realtime מלא כשעוברים ל-Supabase
+    GET('/api/history').then(function(j){
+      CALLS = (j && j.calls) || [];
+      render();
+    }).catch(function(){});
+  }, 90000);
 })();
 </script></body></html>'''
 
@@ -1868,15 +1884,15 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:250px}
-  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
-  #sheet{position:fixed;left:0;right:0;bottom:0;top:70px;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
-      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);top:70px;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
       display:none;flex-direction:column;gap:12px;overflow:auto}
   #sheet.small{top:auto;max-height:82vh}
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center;flex-shrink:0}
@@ -2350,15 +2366,15 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
-  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
-  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
-      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
       display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
   #sheet h3{font-size:19px;font-weight:800}
@@ -2638,7 +2654,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
-  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
@@ -2647,8 +2663,8 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#fff;font-size:10px;font-weight:800;
       padding:1px 8px;border-radius:999px;display:none}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
-  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
-      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
       display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
   #sheet h3{font-size:19px;font-weight:800}
@@ -3023,15 +3039,15 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
-  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
-  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
-      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
       display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center;flex-shrink:0}
   #sheet h3{font-size:19px;font-weight:800}
@@ -3579,18 +3595,18 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
-  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;
       padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
-  #sheet{position:fixed;left:0;right:0;bottom:0;top:70px;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);top:70px;z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
       box-shadow:0 -12px 40px rgba(23,37,60,.3);display:none;flex-direction:column;overflow:hidden}
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center;margin:10px 0 2px;flex-shrink:0}
   #sheet .body{flex:1;overflow:auto;padding:8px 18px 14px;display:flex;flex-direction:column;gap:12px}
-  #sheet .foot{background:#fff;border-top:1px solid #F0EDE3;padding:12px 18px calc(env(safe-area-inset-bottom,0px) + 18px);
+  #sheet .foot{background:#fff;border-top:1px solid #F0EDE3;padding:12px 18px 14px;
       display:flex;gap:10px;flex-shrink:0}
   #sheet h3{font-size:19px;font-weight:800}
   .sec2{background:#fff;border-radius:18px;box-shadow:0 4px 14px rgba(30,58,95,.05);padding:14px 16px;
@@ -3991,7 +4007,7 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .exports .wa{background:#1FAF5E;color:#fff;box-shadow:0 4px 12px rgba(31,175,94,.25)}
   .exports .pdf{background:#1E3A5F;color:#fff;box-shadow:0 4px 12px rgba(30,58,95,.25)}
   .exports .cp{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
-  nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:#fff;border-top:1px solid #E9E4D8;
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;
       padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
       font-weight:600;color:#9AA0AB;cursor:pointer}
