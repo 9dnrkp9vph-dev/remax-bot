@@ -506,8 +506,14 @@ function loadData(){
   return Promise.all([
     GET('/api/report?period=week').catch(function(){ return {}; }),
     GET('/api/my/buyers').catch(function(){ return {}; }),
-    GET('/api/my/properties').catch(function(){ return {}; })
+    GET('/api/my/properties').catch(function(){ return {}; }),
+    GET('/api/signatures').catch(function(){ return {}; })
   ]).then(function(rs){
+    // בלעדיות שנחתמו ב-7 הימים האחרונים — "נכסים חדשים גויסו השבוע" (כרטיס 3 בבריף)
+    var wk7 = Math.floor(Date.now() / 1000) - 7 * 86400;
+    M.exclWeek = (((rs[3] || {}).signatures) || []).filter(function(g){
+      return (g.type || '').indexOf('בלעדיות') >= 0 && (g.ts || 0) >= wk7;
+    });
     var rep = rs[0] || {}, sm = rep.summary || {};
     M.calls = (sm.calls || {}).total || 0;
     M.sigs = (sm.sigs || {}).total || 0;
@@ -642,10 +648,26 @@ function renderCard(i){
       M.buyersUn ? 'שבץ אותם עכשיו' : 'לרשימת הקונים',
       'closeStory();location.href=\'/v2/buyers\'', 'הבא: חתימות (3/4)');
   } else if (i === 2){
-    b.innerHTML = card('על הקו', q(M.sigs), 'חתימות<br>השבוע',
-      M.sigSample ? ('האחרונה: ' + esc(M.sigSample.client || '') + (M.sigSample.address ? ' · ' + esc(M.sigSample.address) : '') + '.')
-                  : 'כל החתמה דיגיטלית נשמרת ומחכה לך במסך החתימות.',
-      'לחתימות', 'closeStory();location.href=\'/v2/sigs\'', 'הבא: נכס נולד (4/4)');
+    var ex = M.exclWeek || [];
+    if (ex.length){
+      // סיכום הבלעדיות של 7 הימים האחרונים — "נכסים חדשים גויסו השבוע"
+      var exRows = ex.slice(0, 4).map(function(g){
+        var t = (g.address || g.client || '') + (g.agent ? ' · ' + g.agent : '');
+        return '<div class="r"><i></i><span>' + esc(t) + '</span></div>';
+      }).join('');
+      if (ex.length > 4) exRows += '<div class="more">+ עוד ' + (ex.length - 4) + ' בלעדיות</div>';
+      b.innerHTML =
+        '<div class="kicker">גיוס · 7 ימים אחרונים</div>' +
+        '<div class="big"><div class="n">' + ex.length + '</div><div class="w">נכסים חדשים<br>גויסו השבוע</div></div>' +
+        '<div class="nbList">' + exRows + '</div>' +
+        '<div class="sub">' + (M.sigs ? 'סה"כ ' + M.sigs + ' חתימות השבוע — כולן במסך החתימות.' : '') + '</div>' +
+        '<div class="btns"><button class="bMain" onclick="closeStory();location.href=\'/v2/sigs\'">לחתימות</button>' +
+        '<button class="bSec" onclick="nextCard()">הבא: נכס נולד (4/4)</button></div>';
+    } else {
+      b.innerHTML = card('על הקו', q(M.sigs), 'חתימות<br>השבוע',
+        'השבוע עוד לא גויסו בלעדיות חדשות — כל החתמה דיגיטלית תופיע כאן ובמסך החתימות.',
+        'לחתימות', 'closeStory();location.href=\'/v2/sigs\'', 'הבא: נכס נולד (4/4)');
+    }
   } else {
     var nn = (M.nbNew || []).length;
     if (nn){
@@ -901,6 +923,9 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div class="sep"></div>
       <div class="swRow"><div><div class="lb">"מי פנה" למנהלים בלבד</div><div class="sb">סוכן רגיל לא רואה מי פנה לנכס וכמה</div></div>
         <div class="tg" id="tgWho" onclick="togglePolicy('who_contacted_admins_only', this)"></div></div>
+      <div class="sep"></div>
+      <div class="swRow"><div><div class="lb">וואטסאפ אוטומטי מהמערכת</div><div class="sb">התראות שיחה/חתימה לקבוצות ולסוכנים — מושהה עד מעבר ל-API רשמי</div></div>
+        <div class="tg" id="tgWaAuto" onclick="togglePolicy('wa_auto', this)"></div></div>
     </div>
   </main>
 
@@ -990,13 +1015,13 @@ function render(){
   el('vphoneRow').textContent = (OV.office.vphone || 'לא הוגדר') +
       (OV.policies.transcribe ? ' · תמלול פעיל' : ' · תמלול כבוי');
   el('sheetRow').textContent = OV.office.sheet_connected ? 'מסונכרן דרך Apps Script' : 'לא מחובר';
-  ['transcribe','shtaf_sharing','require_followup','who_contacted_admins_only']
+  ['transcribe','shtaf_sharing','require_followup','who_contacted_admins_only','wa_auto']
     .forEach(function(k){ setTg(k, OV.policies[k]); });
   renderTeam();
   renderTeams();
 }
 var TG_IDS = {transcribe:'tgTranscribe', shtaf_sharing:'tgShtaf',
-              require_followup:'tgFollowup', who_contacted_admins_only:'tgWho'};
+              require_followup:'tgFollowup', who_contacted_admins_only:'tgWho', wa_auto:'tgWaAuto'};
 function setTg(key, on){ el(TG_IDS[key]).classList.toggle('on', !!on); }
 
 function renderTeam(){
@@ -2853,11 +2878,13 @@ def register(app, G):
     log           = G.get("log")
 
     _POLICY_DEFAULTS = {"transcribe": True, "shtaf_sharing": True, "share_buyers": False,
-                        "require_followup": False, "who_contacted_admins_only": True}
+                        "require_followup": False, "who_contacted_admins_only": True,
+                        "wa_auto": False}   # שליחות וואטסאפ אוטומטיות — מושהות (בקשת אייל 06/07)
     _POLICY_LABELS = {"transcribe": "תמלול שיחות", "shtaf_sharing": "שת\"פ — שיתוף נכסים",
                       "share_buyers": "שיתוף קונים בין סוכנים",
                       "require_followup": "חיוב פולו-אפ לפני סגירה",
-                      "who_contacted_admins_only": "\"מי פנה\" למנהלים בלבד"}
+                      "who_contacted_admins_only": "\"מי פנה\" למנהלים בלבד",
+                      "wa_auto": "וואטסאפ אוטומטי מהמערכת"}
 
     _office_cache = {"name": "", "logo_url": "", "ts": 0.0}
 
