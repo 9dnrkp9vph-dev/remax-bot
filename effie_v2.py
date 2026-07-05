@@ -85,7 +85,7 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   <div class="sub">מסכם שיחות, מגייס נכסים ומחתים דיגיטלית — כדי שאתה תסגור עסקאות.</div>
 
   <div class="stack">
-    <button class="btn btn-g" onclick="location.href='/auth/google/login?next=v2'">
+    <button class="btn btn-g" onclick="location.href='/auth/google/login?' + (window.Capacitor ? 'native=1' : 'next=v2')">
       <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.6 9.2c0-.6-.1-1.2-.2-1.8H9v3.4h4.8a4.1 4.1 0 0 1-1.8 2.7v2.2h2.9c1.7-1.6 2.7-3.9 2.7-6.5z" fill="#4285F4"/><path d="M9 18c2.4 0 4.5-.8 6-2.2l-2.9-2.2c-.8.5-1.9.9-3.1.9-2.4 0-4.4-1.6-5.1-3.8H.9v2.3A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.9 10.7a5.4 5.4 0 0 1 0-3.4V5H.9a9 9 0 0 0 0 8l3-2.3z" fill="#FBBC05"/><path d="M9 3.6c1.3 0 2.5.5 3.4 1.3l2.6-2.6A9 9 0 0 0 .9 5l3 2.3C4.6 5.1 6.6 3.6 9 3.6z" fill="#EA4335"/></svg>
       המשך עם Google
     </button>
@@ -155,6 +155,22 @@ fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
     el('logoWrap').innerHTML = o.logo_svg || '';
   }
 }).catch(function(){});
+
+/* Capacitor (האפליקציה העטופה): כניסת Google חוזרת בדיפ-לינק עם טוקן */
+(function(){
+  try{
+    if (!window.Capacitor || !Capacitor.Plugins || !Capacitor.Plugins.App) return;
+    Capacitor.Plugins.App.addListener('appUrlOpen', function(data){
+      try{
+        var m = String((data && data.url) || '').match(/[?&#]token=([^&]+)/);
+        if (!m) return;
+        localStorage.setItem('fbTok', decodeURIComponent(m[1]));
+        try{ if (Capacitor.Plugins.Browser) Capacitor.Plugins.Browser.close(); }catch(e){}
+        location.replace('/v2/home');
+      }catch(e){}
+    });
+  }catch(e){}
+})();
 // כבר מחובר? — ישר פנימה
 (function(){
   var t = null;
