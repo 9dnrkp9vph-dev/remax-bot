@@ -7629,7 +7629,14 @@ function statusHe(s){var k=String(s||"").toUpperCase().replace(/[_-]/g," ").repl
 /* Local-first: זיכרון מכשיר — הטאב נפתח מיד מהעותק האחרון שנשמר, הרענון רץ ברקע.
    מפתח פר-משתמש (שם) · לא נשמר במצב התחזות/מוסתרות כדי לא לזהם את המטמון האישי */
 function lfKey(k){var u="";try{u=localStorage.getItem("fbName")||"";}catch(e){}return "fbLF:"+u+":"+k;}
-function lfSave(k,v){try{localStorage.setItem(lfKey(k),JSON.stringify(v));}catch(e){}}
+function lfSave(k,v){try{
+  var s=JSON.stringify(v);
+  if(s.length>350000)return;   /* גדול מדי — לא שומרים, כדי לא למלא את localStorage ולשבור כתיבות קריטיות */
+  localStorage.setItem(lfKey(k),s);
+}catch(e){
+  /* הזיכרון מלא — מנקים את כל מטמוני ה-local-first ומוותרים בשקט (לא שוברים את האפליקציה) */
+  try{Object.keys(localStorage).forEach(function(kk){if(kk.indexOf("fbLF:")===0)localStorage.removeItem(kk);});}catch(e2){}
+}}
 function lfLoad(k){try{return JSON.parse(localStorage.getItem(lfKey(k))||"null");}catch(e){return null;}}
 var CALLDATA=null,SIGDATA=null;
 function loadCalls(){if(!CALLDATA&&!IMP&&!HIDDENMODE)CALLDATA=lfLoad("calls");if(CALLDATA)renderCalls();   /* הצגה מיידית מהמטמון, מתרענן ברקע */
