@@ -945,6 +945,66 @@ function renderTeam(){
   el('teamList')._list = list;
 }
 
+/* ── צוותי שיתוף (קונפיג teams — משפיע על שיחות/קונים/חתימות/נכסים/תהליכים/דוחות) ── */
+function renderTeams(){
+  var h = '';
+  TEAMS.forEach(function(t, i){
+    h += (i ? '<div class="sep"></div>' : '') +
+      '<div class="setRow" onclick="editTeam(' + i + ')">' +
+      '<div class="setIc" style="background:#EAF0FA"><svg width="16" height="16" viewBox="0 0 22 22"><circle cx="8" cy="8" r="3" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><circle cx="15" cy="9.5" r="2.4" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M3 18c.6-2.8 2.6-4.3 5-4.3s4.4 1.5 5 4.3M13.5 14.2c1.9.3 3.3 1.5 3.8 3.8" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg></div>' +
+      '<div class="mid"><div class="nm">צוות ' + (i + 1) + ' · ' + t.length + ' חברים</div>' +
+      '<div class="sb">' + esc(t.join(' · ')) + '</div></div>' +
+      '<svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+  });
+  el('teamsList').innerHTML = h ||
+    '<div style="font-size:12px;color:#8B8F99;padding:4px 0">אין צוותים עדיין. צוות מחבר סוכנים שרואים הכל אחד של השני.</div>';
+}
+var TEAM_EDIT = -1;
+function editTeam(i){
+  TEAM_EDIT = i;
+  var members = (i >= 0 && TEAMS[i]) ? TEAMS[i] : [];
+  var opts = (el('teamList')._list || PEOPLE).filter(function(x){ return x.role !== 'developer'; });
+  var picks = opts.map(function(a){
+    var on = members.indexOf(a.name) >= 0;
+    return '<div class="chk' + (on ? ' on' : '') + '" data-n="' + esc(a.name) + '" onclick="this.classList.toggle(\'on\')">' +
+      '<div class="box"><svg width="11" height="9" viewBox="0 0 12 10"><path d="M1.5 5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>' +
+      esc(a.name) + '</div>';
+  }).join('');
+  openSheet(
+    '<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<h3>' + (i >= 0 ? 'עריכת צוות ' + (i + 1) : 'צוות חדש') + '</h3>' +
+    (i >= 0 ? '<button class="trashBtn" onclick="delTeam()" aria-label="מחיקת צוות">' +
+      '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button>' : '') +
+    '</div>' +
+    '<div style="font-size:12px;color:#8B8F99;line-height:1.5">חברי הצוות רואים הכל אחד של השני — שיחות, קונים, חתימות, נכסים, תהליכים ועסקאות. סוכן יכול להיות בכמה צוותים.</div>' +
+    '<div class="fld"><span>חברי הצוות</span><div id="teamPick">' + picks + '</div></div>' +
+    '<button class="btn btn-blue" onclick="saveTeam()">שמירה</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function _pickedNames(boxId){
+  var names = [], rows = el(boxId).children;
+  for (var k = 0; k < rows.length; k++)
+    if (rows[k].classList.contains('on')) names.push(rows[k].getAttribute('data-n'));
+  return names;
+}
+function saveTeam(){
+  var names = _pickedNames('teamPick');
+  if (names.length < 2){ toast('צוות צריך לפחות שני חברים'); return; }
+  var next = TEAMS.slice();
+  if (TEAM_EDIT >= 0) next[TEAM_EDIT] = names; else next.push(names);
+  POST('/api/dev/teams', {teams: next}).then(function(j){
+    if (!j.ok){ toast('שגיאה בשמירה'); return; }
+    closeSheet(); toast('הצוות נשמר'); boot();
+  });
+}
+function delTeam(){
+  var next = TEAMS.filter(function(_, k){ return k !== TEAM_EDIT; });
+  POST('/api/dev/teams', {teams: next}).then(function(j){
+    if (!j.ok){ toast('שגיאה בשמירה'); return; }
+    closeSheet(); toast('הצוות נמחק'); boot();
+  });
+}
+
 /* ── bottom sheets ── */
 function openSheet(html){
   el('sheet').innerHTML = '<div class="grip"></div>' + html;
