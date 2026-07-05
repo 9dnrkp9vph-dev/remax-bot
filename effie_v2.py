@@ -41,7 +41,8 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{font-family:'Heebo',sans-serif;background:linear-gradient(165deg,#0E1D33 0%,#1E3A5F 60%,#2C4C77 100%);
        min-height:100vh;min-height:100dvh;color:#fff;display:flex;flex-direction:column;align-items:center;
-       text-align:center;padding:calc(env(safe-area-inset-top,0px) + 84px) 28px calc(env(safe-area-inset-bottom,0px) + 34px)}
+       justify-content:center;text-align:center;
+       padding:calc(env(safe-area-inset-top,0px) + 40px) 28px calc(env(safe-area-inset-bottom,0px) + 28px)}
   @keyframes glow{0%{box-shadow:0 0 0 0 rgba(228,197,107,.45)}70%{box-shadow:0 0 0 16px rgba(228,197,107,0)}100%{box-shadow:0 0 0 0 rgba(228,197,107,0)}}
   @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
   .ring{width:104px;height:104px;border-radius:50%;border:3px solid #E4C56B;padding:6px;animation:glow 2.6s ease-out infinite}
@@ -49,9 +50,10 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
             justify-content:center;animation:float 3s ease-in-out infinite;overflow:hidden}
   .ring img{width:76%;height:76%;object-fit:contain}
   h1{font-size:34px;font-weight:800;line-height:1.15;margin-top:24px}
-  .tag{font-size:13px;font-weight:700;color:#E4C56B;letter-spacing:.26em;margin-top:6px;min-height:16px}
+  .tag{font-size:13px;font-weight:700;color:#E4C56B;letter-spacing:.26em;margin-top:6px}
+  .tag:empty{display:none}
   .sub{font-size:14.5px;color:rgba(255,255,255,.65);line-height:1.65;max-width:300px;margin-top:16px}
-  .stack{margin-top:auto;width:100%;max-width:330px;display:flex;flex-direction:column;gap:12px}
+  .stack{margin-top:34px;width:100%;max-width:330px;display:flex;flex-direction:column;gap:12px}
   .btn{display:flex;align-items:center;justify-content:center;gap:11px;border-radius:16px;padding:15px 0;
        font-size:15.5px;font-weight:800;border:0;width:100%;cursor:pointer;font-family:inherit;min-height:50px}
   .btn-g{background:#fff;color:#1E3A5F;box-shadow:0 10px 28px rgba(0,0,0,.25)}
