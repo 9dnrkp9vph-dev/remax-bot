@@ -119,6 +119,10 @@ SESSION_TIMEOUT = 45
 def maytapi_headers():
     return {"x-maytapi-key": MAYTAPI_TOKEN, "Content-Type": "application/json"}
 _WA_LAST = {}   # אבחון אחרון של שליחת WhatsApp — לצפייה ב-/api/wa/test
+_wa_throttle = {"ts": 0.0}
+_wa_throttle_lock = threading.Lock()
+WA_MIN_GAP = float(os.environ.get("WA_MIN_GAP", "4") or 4)   # שניות מינימום בין הודעות
+
 def send_text(to: str, text: str):
     """שולח הודעת WhatsApp דרך Maytapi. מחזיר True/False לפי הצלחה אמיתית (success מ-Maytapi)."""
     global _WA_LAST
@@ -126,6 +130,12 @@ def send_text(to: str, text: str):
         _WA_LAST = {"ok": False, "reason": "QUIET_MODE"}
         log.info("QUIET_MODE — WhatsApp suppressed")
         return False
+    # מגביל-קצב: מרווח מינימלי בין הודעות — מונע פרצים שגורמים ל-WhatsApp לחסום את המספר
+    with _wa_throttle_lock:
+        _gap = time.time() - _wa_throttle["ts"]
+        if _gap < WA_MIN_GAP:
+            time.sleep(WA_MIN_GAP - _gap)
+        _wa_throttle["ts"] = time.time()
     try:
         r = requests.post(f"{MAYTAPI_BASE}/sendMessage",
             headers=maytapi_headers(),
@@ -4483,6 +4493,20 @@ def api_dev_nb_default():
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "ברירת מחדל נכס נולד", str(v))
     return jsonify({"ok": ok})
 
+@app.route("/api/dev/sources", methods=["GET"])
+def api_dev_sources():
+    """מצב מקורות הנתונים — אילו מודולים קוראים מ-Supabase ואילו מהגיליון. מפתח בלבד."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    flags = {"נכס נולד": NEWBORN_SOURCE, "שיחות": CALLS_SOURCE, "חתימות": SIGNATURES_SOURCE,
+             "קונים": BUYERS_SOURCE, "שת\"פ": EXCL_SOURCE, "נכסים": PROPS_SOURCE, "קונפיג": CONFIG_SOURCE}
+    on_sb = [k for k, v in flags.items() if v == "supabase"]
+    return jsonify({"ok": True, "flags": flags,
+                    "supabase_ready": bool(_sbdb and _sbdb.enabled()),
+                    "all_on_supabase": len(on_sb) == len(flags),
+                    "count": f"{len(on_sb)}/{len(flags)}"})
+
 @app.route("/api/dev/diag", methods=["GET"])
 def api_dev_diag():
     """אבחון חיבור הקונפיג ל-Apps Script — לזיהוי 'השמירה נכשלה'."""
@@ -8565,7 +8589,7 @@ except Exception:
 _seen_calls = set()
 _seen_calls_seeded = False
 _CALLS_SEEN_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(__file__), "calls_seen.json")
-_CALLS_WA_MAX_BURST = 20   # שסתום בטיחות מפני הצפה (כמו נכס נולד)
+_CALLS_WA_MAX_BURST = 8   # שסתום בטיחות — פרץ גדול מדי = חסימת WhatsApp
 
 def _calls_seen_load():
     global _seen_calls, _seen_calls_seeded
