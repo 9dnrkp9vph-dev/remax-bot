@@ -280,6 +280,12 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       border-radius:14px;padding:12px 6px;display:flex;flex-direction:column;align-items:center;gap:2px}
   #story .teasers .tz .n{font-size:24px;font-weight:800;color:#E4C56B;font-variant-numeric:tabular-nums}
   #story .teasers .tz .l{font-size:10.5px;color:rgba(255,255,255,.65);text-align:center}
+  #story .nbList{display:flex;flex-direction:column;gap:9px;max-width:300px;width:100%}
+  #story .nbList .r{display:flex;align-items:center;gap:9px;font-size:14.5px;font-weight:600;
+      color:rgba(255,255,255,.92);white-space:nowrap;overflow:hidden}
+  #story .nbList .r span{overflow:hidden;text-overflow:ellipsis}
+  #story .nbList .r i{width:7px;height:7px;border-radius:50%;background:#E4C56B;flex-shrink:0}
+  #story .nbList .more{font-size:12.5px;color:rgba(255,255,255,.55);padding-right:16px}
   @media (prefers-reduced-motion:no-preference){
     @keyframes glow{0%{box-shadow:0 0 0 0 rgba(228,197,107,.45)}70%{box-shadow:0 0 0 16px rgba(228,197,107,0)}100%{box-shadow:0 0 0 0 rgba(228,197,107,0)}}
     @keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
@@ -288,6 +294,14 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     #story .bars i b{transition:width .25s linear}
   }
 </style></head><body>
+
+  <div id="impBar" style="display:none;position:sticky;top:0;z-index:75;background:#C29435;color:#fff;
+       padding:calc(env(safe-area-inset-top,0px) + 8px) 14px 8px;align-items:center;justify-content:center;gap:10px;
+       font-size:12.5px;font-weight:700">
+    <span id="impTx"></span>
+    <button onclick="impBack()" style="background:#fff;color:#B8902F;border:0;border-radius:999px;
+        padding:5px 12px;font-size:11.5px;font-weight:800;font-family:inherit;cursor:pointer">חזרה למנהל</button>
+  </div>
 
   <header>
     <div class="avatar"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
@@ -317,6 +331,14 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
       האפליקציה הקיימת</a>
+    <a id="menuIg" target="_blank" rel="noopener" style="display:none;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><rect x="3.5" y="3.5" width="15" height="15" rx="4.5" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="3.6" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="15.6" cy="6.4" r="1.1" fill="#1E3A5F"/></svg>
+      האינסטגרם של המשרד</a>
+    <a id="menuMd" target="_blank" rel="noopener" style="display:none;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/><path d="M7.5 16v-4.5h7V16" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      המשרד במדלן</a>
     <div style="flex:1"></div>
     <button onclick="logout()" style="display:flex;align-items:center;gap:11px;padding:12px 4px;border:0;
        background:none;color:#C24040;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;min-height:44px">
@@ -423,6 +445,14 @@ function toast(msg){
 }
 function openMenu(){ el('menuOvl').style.display = 'block'; el('menu').style.display = 'flex'; }
 function closeMenu(){ el('menuOvl').style.display = 'none'; el('menu').style.display = 'none'; }
+function impBack(){   // חזרה מסשן בדיקה לחשבון המנהל
+  try{
+    var t = localStorage.getItem('fbTokAdmin');
+    if (t){ localStorage.setItem('fbTok', t); localStorage.setItem('fbDev', '1'); }
+    localStorage.removeItem('fbTokAdmin');
+  }catch(e){}
+  location.href = '/v2/admin';
+}
 function logout(){
   try{
     ['fbTok','fbRole','fbDrole','fbName','fbDev','fbPhone','fbTabs'].forEach(function(k){ localStorage.removeItem(k); });
@@ -499,7 +529,9 @@ function renderDash(){
   el('dateTx').textContent = 'יום ' + HDAYS[new Date().getDay()] + ', ' + new Date().getDate() +
       ' ב' + HMON[new Date().getMonth()] + (open ? ' · ' + open + ' משימות פתוחות' : '');
   el('briefSum').textContent = (M.buyersUn || M.buyersNew || M.buyersTot) + ' קונים · ' +
-      M.sigs + ' חתימות' + (M.nb >= 0 ? ' · ' + M.nb.toLocaleString() + ' נכסים' : '');
+      M.sigs + ' חתימות' +
+      ((M.nbNew && M.nbNew.length) ? ' · ' + M.nbNew.length + ' נולדו ביממה האחרונה'
+        : (M.nb >= 0 ? ' · ' + M.nb.toLocaleString() + ' נכסים' : ''));
   el('propsSum').textContent = M.props + ' פעילים' + (M.excl ? ' · ' + M.excl + ' בבלעדיות' : '');
   var care = [];
   M.meets.slice().sort(function(a, b){
@@ -598,9 +630,25 @@ function renderCard(i){
                   : 'כל החתמה דיגיטלית נשמרת ומחכה לך במסך החתימות.',
       'לחתימות', 'toast(\'מסך החתימות — בסשן הקרוב\')', 'הבא: נכס נולד (4/4)');
   } else {
-    b.innerHTML = card('נכס נולד', (M.nb >= 0 ? M.nb.toLocaleString() : '…'), 'נכסים<br>מחכים לגיוס',
-      'מודעות חדשות של בעלי נכסים עולות כל היום — עם שם וטלפון של בעל הנכס. מי שמתקשר ראשון, מגייס.',
-      'בוא נתחיל את היום', 'closeStory()', '');
+    var nn = (M.nbNew || []).length;
+    if (nn){
+      // הבלטה: כמה נכסים נולדו (יצאו למכירה) ביממה האחרונה — כולל כתובות
+      var rows = M.nbNew.slice(0, 4).map(function(x){
+        var t = (x.a || '') + (x.c ? (x.a ? ', ' : '') + x.c : '');
+        return '<div class="r"><i></i><span>' + esc(t || 'ללא כתובת') + '</span></div>';
+      }).join('');
+      if (nn > 4) rows += '<div class="more">+ עוד ' + (nn - 4) + ' חדשים</div>';
+      b.innerHTML =
+        '<div class="kicker">נכס נולד · יממה אחרונה</div>' +
+        '<div class="big"><div class="n">' + nn + '</div><div class="w">נכסים חדשים<br>יצאו למכירה</div></div>' +
+        '<div class="nbList">' + rows + '</div>' +
+        '<div class="sub">' + (M.nb >= 0 ? 'סה"כ ' + M.nb.toLocaleString() + ' נכסים בפול — מי שמתקשר ראשון, מגייס.' : '') + '</div>' +
+        '<div class="btns"><button class="bMain" onclick="closeStory()">בוא נתחיל את היום</button></div>';
+    } else {
+      b.innerHTML = card('נכס נולד', (M.nb >= 0 ? M.nb.toLocaleString() : '…'), 'נכסים<br>מחכים לגיוס',
+        'ביממה האחרונה לא נולדו נכסים חדשים — אבל הפול מלא. מי שמתקשר ראשון, מגייס.',
+        'בוא נתחיל את היום', 'closeStory()', '');
+    }
   }
   STORY.timer = setTimeout(nextCard, STORY.DUR);
 }
@@ -628,6 +676,12 @@ el('story').addEventListener('touchmove', function(e){
     el('menuRole').textContent = j.dev ? 'בעל המשרד' :
         (j.role === 'admin') ? 'מנהל' : (j.role === 'coordinator') ? 'מתאמת' : 'סוכן';
     if (j.dev) el('menuAdmin').style.display = 'flex';
+    var impTok = null;
+    try{ impTok = localStorage.getItem('fbTokAdmin'); }catch(e){}
+    if (impTok && !j.dev){   // מצב "כניסה כסוכן (בדיקה)" — פס חזרה למנהל
+      el('impTx').textContent = 'מצב בדיקה — אתה צופה כ' + (j.name || 'סוכן');
+      el('impBar').style.display = 'flex';
+    }
     var seen = null;
     try{ seen = localStorage.getItem(seenKey()); }catch(e){}
     if (seen !== todayStr()) openStory();   // פעם ביום — הסטורי הוא מסך הטעינה
@@ -635,6 +689,9 @@ el('story').addEventListener('touchmove', function(e){
     loadData();
     GET('/api/newborn').then(function(nb){
       M.nb = (nb && (nb.total || (nb.results || []).length)) || 0;
+      // נולדו ביממה האחרונה (ageDays=0) — לכרטיס הסיום של הבריף, כולל כתובות
+      M.nbNew = ((nb && nb.results) || []).filter(function(r){ return r.ageDays === 0; })
+        .map(function(r){ return {a: r.address || '', c: r.city || ''}; });
       if (M.nb > 0){
         var bd = el('nbBadge');
         bd.textContent = M.nb.toLocaleString(); bd.style.display = 'block';
@@ -646,6 +703,8 @@ el('story').addEventListener('touchmove', function(e){
   fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
     el('officeName').textContent = o.name || '';
     document.title = o.name || 'בית';
+    if (o.instagram){ el('menuIg').href = o.instagram; el('menuIg').style.display = 'flex'; }
+    if (o.madlan){ el('menuMd').href = o.madlan; el('menuMd').style.display = 'flex'; }
   }).catch(function(){});
 })();
 </script></body></html>'''
@@ -1092,12 +1151,13 @@ function openMember(i){
       }).join('') + '</div></div>';
   }
   var phDisp = p.phone ? '0' + p.phone.slice(0, 2) + '-' + p.phone.slice(2) : '—';
-  var vpDisp = p.vphone || '—';
   openSheet(
     '<h3>' + esc(p.name) + '</h3>' +
-    '<div class="fld"><span>טלפונים</span><div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    '<div class="phChip">אישי · ' + esc(phDisp) + '</div>' +
-    '<div class="phChip gold">וירטואלי · ' + esc(vpDisp) + '</div></div></div>' +
+    '<div class="fld"><span>טלפונים</span><div style="display:flex;gap:8px;align-items:stretch">' +
+    '<div class="phChip" style="display:flex;align-items:center">אישי · ' + esc(phDisp) + '</div>' +
+    '<input id="memVp" value="' + esc(p.vphone || '') + '" placeholder="מספר וירטואלי" type="tel" ' +
+    'style="flex:1;min-width:0;background:#F6EEDB;border:1px solid #E4C56B;border-radius:10px;' +
+    'padding:7px 11px;font-size:12px;font-weight:700;color:#B8902F;font-family:inherit;outline:none"></div></div>' +
     (isDev
       ? '<div style="font-size:13px;font-weight:700;color:#B8902F">בעל המשרד — התפקיד קבוע</div>'
       : '<div class="fld"><span>תפקיד</span><div class="segs">' +
@@ -1113,7 +1173,27 @@ function openMember(i){
       '<div class="swRow"><div><div class="lb">השהיה</div><div class="sb">מושהה לא רואה נתונים ולא נכנס</div></div>' +
       '<div class="tg' + (p.suspended ? ' on' : '') + '" id="tgSusp" onclick="this.classList.toggle(\'on\')"></div></div>') +
     '<button class="btn btn-blue" onclick="saveMember(' + i + ')">שמירה</button>' +
+    (isDev ? '' :
+      '<button class="btn btn-sec" onclick="loginAs(' + i + ')">' +
+      '<svg width="15" height="15" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#5B6472" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#5B6472" stroke-width="1.7" stroke-linecap="round"/></svg>' +
+      'כניסה כסוכן (בדיקה)</button>') +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function loginAs(i){
+  var p = el('teamList')._list[i];
+  POST('/api/admin/loginas', {name: p.name}).then(function(j){
+    if (!j.ok){ toast('לא ניתן להיכנס כ' + p.name); return; }
+    try{
+      localStorage.setItem('fbTokAdmin', TOK);   // שמירת סשן המנהל — לחזרה בלחיצה
+      localStorage.setItem('fbTok', j.token);
+      localStorage.setItem('fbName', j.name || '');
+      localStorage.setItem('fbRole', j.role || '');
+      localStorage.setItem('fbDrole', j.drole || '');
+      localStorage.setItem('fbDev', '0');
+      localStorage.setItem('fbTabs', JSON.stringify(j.tabs || null));
+    }catch(e){}
+    location.href = '/v2/home';
+  });
 }
 function saveMember(i){
   var p = el('teamList')._list[i];
@@ -1124,13 +1204,17 @@ function saveMember(i){
     var suspNow = el('tgSusp') && el('tgSusp').classList.contains('on');
     if (p.phone && suspNow !== !!p.suspended)
       jobs.push(POST('/api/dev/suspend', {phone: p.phone, suspend: suspNow}));
-    // נכס נולד — ימי המתנה מהפרסום (ברירת מחדל של המשרד / מספר ימים / מוסתר)
+    // עדכוני agent_update (קריאה אחת): מספר וירטואלי + ימי נכס נולד — רק מה שהשתנה
+    var upd = {name: p.name};
     var nbVal = (SEL_NB === 'hidden') ? 'hidden' :
                 (SEL_NB === 'custom') ? String(parseInt(el('nbDays').value, 10) || 0) : '';
     var nbOrig = p.nbHidden ? 'hidden' :
                  (p.nbDelay === '' || p.nbDelay == null) ? '' : String(p.nbDelay);
-    if (nbVal !== nbOrig)
-      jobs.push(POST('/api/dev/agent_update', {name: p.name, newbornDelay: nbVal}));
+    if (nbVal !== nbOrig) upd.newbornDelay = nbVal;
+    var vpNow = el('memVp') ? el('memVp').value.trim() : null;
+    if (vpNow !== null && vpNow !== (p.vphone || '')) upd.vphone = vpNow;
+    if (Object.keys(upd).length > 1)
+      jobs.push(POST('/api/dev/agent_update', upd));
   }
   var box = el('coordAgents');
   if (box){
@@ -1144,17 +1228,20 @@ function saveMember(i){
 
 function openOffice(){
   openSheet(
-    '<h3>שם ולוגו המשרד</h3>' +
+    '<h3>פרטי המשרד</h3>' +
     '<div class="fld"><span>שם המשרד (white-label)</span><input id="offNm" value="' + esc(OV.office.name) + '"></div>' +
     '<div class="fld"><span>המספר הווירטואלי</span><input id="offVp" value="' + esc(OV.office.vphone || '') + '" placeholder="05X-XXXXXXX"></div>' +
+    '<div class="fld"><span>אינסטגרם של המשרד</span><input id="offIg" dir="ltr" type="url" value="' + esc(OV.office.instagram || '') + '" placeholder="https://instagram.com/..."></div>' +
+    '<div class="fld"><span>עמוד המשרד במדלן</span><input id="offMd" dir="ltr" type="url" value="' + esc(OV.office.madlan || '') + '" placeholder="https://www.madlan.co.il/..."></div>' +
     '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E9E4D8;border-radius:13px;padding:10px 13px">' +
       '<img src="/assets/logo" style="width:34px;height:34px;object-fit:contain" onerror="this.style.display=\'none\'">' +
-      '<div style="font-size:11.5px;color:#8B8F99;line-height:1.5">הלוגו מוצג מ-offices.settings.logo_url — החלפה דרך מנהל המערכת</div></div>' +
+      '<div style="font-size:11.5px;color:#8B8F99;line-height:1.5">הלוגו מוצג מ-offices.settings.logo_url — החלפה דרך מנהל המערכת. הקישורים מוצגים לצוות בתפריט הצד.</div></div>' +
     '<button class="btn btn-blue" onclick="saveOffice()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
 function saveOffice(){
-  POST('/v2/api/admin/office', {name: el('offNm').value.trim(), vphone: el('offVp').value.trim()})
+  POST('/v2/api/admin/office', {name: el('offNm').value.trim(), vphone: el('offVp').value.trim(),
+                                instagram: el('offIg').value.trim(), madlan: el('offMd').value.trim()})
     .then(function(j){
       if (!j.ok){ toast('שגיאה בשמירה'); return; }
       closeSheet(); toast('נשמר'); boot();
@@ -1266,8 +1353,10 @@ def register(app, G):
     # ── API ─────────────────────────────────────────────────────────────────
     @app.route("/v2/api/office", methods=["GET"])
     def v2_api_office():
-        """שם/לוגו למסך הכניסה — פתוח (אין עדיין טוקן בכניסה)."""
+        """שם/לוגו/קישורי המשרד — פתוח (אין עדיין טוקן בכניסה). white-label פר-משרד."""
+        v2o = _load_config().get("v2_office") or {}
         out = {"ok": True, "name": _office_name(), "logo": "/assets/logo",
+               "instagram": v2o.get("instagram", ""), "madlan": v2o.get("madlan", ""),
                "reveal": BRAND_REVEAL}
         if BRAND_REVEAL:
             out["name"] = "אֶפִי"
@@ -1296,6 +1385,8 @@ def register(app, G):
                 "name": _office_name(cfg),
                 "logo": "/assets/logo",
                 "vphone": v2o.get("vphone", "") or os.environ.get("VIRTUAL_PHONE_DISPLAY", ""),
+                "instagram": v2o.get("instagram", ""),
+                "madlan": v2o.get("madlan", ""),
                 "sheet_connected": bool(G.get("APPS_SCRIPT_URL") and G.get("APPS_SCRIPT_TOKEN")),
             },
             "policies": _policies(cfg),
@@ -1385,6 +1476,9 @@ def register(app, G):
         if name:
             v2o["name"] = name
         v2o["vphone"] = vphone
+        for _lk in ("instagram", "madlan"):   # קישורי המשרד (white-label — פר-משרד)
+            if _lk in b:
+                v2o[_lk] = (b.get(_lk) or "").strip()
         if not _save_config(cfg):
             return jsonify({"ok": False, "reason": "save_failed"})
         if name:
