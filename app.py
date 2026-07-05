@@ -8657,7 +8657,9 @@ def _wa_call_message(c):
     payload = json.dumps({"phone": (disp or tel or ""), "summary": text[:600]}, ensure_ascii=False)
     tok = _b64c.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
     link = base + "/l/" + _ab_link_make(tok)   # קישור קצר — וואטסאפ שובר URL ארוך
+    _ag = str(c.get("agent", "") or "").strip()
     lines = ["📞 *שיחה חדשה* — " + (disp or "מספר לא ידוע")]
+    if _ag: lines.append("👤 " + _ag)
     if when: lines.append("🕐 " + when + " · " + st_he)
     lines.append("")
     lines.append("📝 " + (text if text else "אין סיכום לשיחה זו"))
@@ -8700,17 +8702,20 @@ def check_new_calls():
             _cmsg = _wa_call_message(r)
             # לסוכן האישי — לפי *שם* הסוכן (כמו בחתימות): agent_phone בגיליון הוא
             # המספר הווירטואלי של המרכזיה, שאין לו וואטסאפ
-            _sent_agent = False
+            # יעד: הנייד האישי של הסוכן — לא המספר הווירטואלי (מרכזייה) שבשורת השיחה
+            _vphone9 = _last9(r.get("agent_phone", ""))
+            _agent_targets = set()
             for _p9 in _phones_for_name(str(r.get("agent", "") or "").strip()):
-                _w = _wa_phone(_p9)
+                _l = _last9(_p9)
+                if _l and _l != _vphone9:
+                    _agent_targets.add(_l)
+            if not _agent_targets and _vphone9:   # אין נייד ידוע — ננסה את מה שיש
+                _agent_targets.add(_vphone9)
+            for _t9 in _agent_targets:
+                _w = _wa_phone(_t9)
                 if _w:
-                    try:
-                        send_text(_w, _cmsg); _sent_agent = True
-                    except Exception:
-                        pass
-            if not _sent_agent:   # נפילה-לאחור: אולי agent_phone הוא בכל זאת נייד
-                _w = _wa_phone(r.get("agent_phone", ""))
-                if _w: send_text(_w, _cmsg)
+                    try: send_text(_w, _cmsg)
+                    except Exception: pass
             if WA_GROUP_CALLS:
                 send_text(WA_GROUP_CALLS, _cmsg)           # לקבוצת "שיחות" של המנהלים
         except Exception:
