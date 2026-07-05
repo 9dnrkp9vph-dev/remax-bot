@@ -4728,8 +4728,13 @@ def _deals_can_see(item, s):
     if s.get("role") in ("admin", "coordinator"):
         return True
     nm = _canon_key(s.get("name", ""))
+    keys = {nm}
+    t = _team_for(s.get("name", ""))   # צוות (קונפיג teams) — חברי צוות רואים גם תהליכים ועסקאות זה של זה
+    if t:
+        keys |= t[1]
+    keys.discard("")
     ags = [_canon_key(a) for a in (item.get("agents") or [])]
-    return (nm in ags) or (_canon_key(item.get("by", "")) == nm)
+    return any(a in keys for a in ags) or (_canon_key(item.get("by", "")) in keys)
 def _deals_notify(rec, is_new=False, became_deal=False):
     """פוש: עסקה חדשה / תהליך חדש → למנהלים + לסוכן/ים שביצעו (לא לכל המשרד)."""
     try:
