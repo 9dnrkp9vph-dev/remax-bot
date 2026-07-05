@@ -38,4 +38,15 @@
 
 ## 📓 יומן החלטות (להוסיף כל החלטה חדשה מיד)
 - 2026-07-05: סשן 0 בוצע — handoff ב-docs/handoff/, קובץ העיצוב נקרא effie-design.dc.html.
-- ממתין לאישור אייל: איפה אפי חי (מסלול /v2 במקביל לאפליקציה הקיימת — מומלץ) ומהו הסטאק (וניל באותו app.py לעומת פרויקט חדש).
+- 2026-07-05: **הוחלט (אייל): אפי חיה במסלול /v2 באותו שרת**, במקביל לאפליקציה הקיימת.
+- 2026-07-05: סשן 1 בוצע — מימוש ב-**מודול נפרד `effie_v2.py`** (וניל, אותו שרת); app.py נוגע במינימום:
+  רישום `effie_v2.register(app, globals())` עטוף try/except לפני STARTUP + פרמטר `next=v2` לזרימת Google
+  (חזרה ל-/v2/home במקום /app). אותם טוקנים/סשנים (fbTok) לשתי האפליקציות — כניסה אחת.
+- 2026-07-05: מיגרציות החוסרים בקובץ חדש `supabase_schema_effie.sql` (buyers.status, deals,
+  announcements+announcement_reads, users.coordinator_id, activity_log) — **ממתין לאייל להריץ ב-SQL Editor**.
+- 2026-07-05: מסכי /v2 (כניסה), /v2/home (זמני עד סשן 2), /v2/admin (ניהול 31a). הניהול משתמש ב-API הקיים
+  (/api/dev/people, /api/dev/role, /api/dev/coordinators, /api/dev/suspend) + חדשים תחת /v2/api/*
+  (overview, invite בוואטסאפ, policy, office). מדיניות נשמרת בקונפיג תחת `v2_policies`
+  (transcribe, shtaf_sharing, share_buyers, require_followup, who_contacted_admins_only) — האכיפה במסכים הבאים.
+- ממתין לאישור/סשנים הבאים: badge מונה נכס נולד בניווט של /v2 (סשן 6) · אכיפת המדיניות במסכים ·
+  "פעילה עכשיו" בשורת חבר צוות (דורש presence) · חיבור מסך /v2/admin ל-users בסופאבייס במקום הקונפיג (אחרי המעבר).
