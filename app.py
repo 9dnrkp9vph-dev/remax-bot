@@ -6080,7 +6080,14 @@ def api_newborn_status():
                 _nmm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
                 if _nmm: allowed.add(_canon_key(_nmm))
         if _canon_key(chosen) not in allowed:
-            chosen = ""   # לא מהסוכנים שלה — מתעלמים
+            # "אחר במשרד…" — מותר לתאם גם לסוכן שאינו שלה, כל עוד הוא סוכן מוכר במשרד
+            _office = set(_canon_key(n) for n in web_phone_name_map().values() if n)
+            try:
+                _office |= set(_canon_key(a.get("name", "")) for a in (_load_config().get("agents") or []) if a.get("name"))
+            except Exception:
+                pass
+            if _canon_key(chosen) not in _office:
+                chosen = ""   # שם לא מוכר — מתעלמים
     nm = chosen or as_name or s.get("name", "")
     if not key or status not in _NB_STATUS_LABELS:
         return jsonify({"ok": False, "reason": "bad_input"}), 400
