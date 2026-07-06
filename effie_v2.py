@@ -173,13 +173,58 @@ fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
     });
   }catch(e){}
 })();
-// כבר מחובר? — ישר פנימה
+// שער Face ID — פעיל רק בתוך אפליקציית Capacitor; בדפדפן נכנסים ישר
+function bioPlugin(){ try{ return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.NativeBiometric) || null; }catch(e){ return null; } }
+function bioLock(){
+  if (el('biolock')) return;
+  var d = document.createElement('div');
+  d.id = 'biolock';
+  d.setAttribute('style', 'position:fixed;inset:0;z-index:9999;background:#F2EFE7;display:flex;flex-direction:column;' +
+    'align-items:center;justify-content:center;text-align:center;padding:24px;font-family:Heebo,Arial,sans-serif');
+  d.innerHTML =
+    '<div style="width:92px;height:92px;border-radius:50%;background:#fff;border:2px solid #E4C56B;display:flex;' +
+      'align-items:center;justify-content:center;margin-bottom:20px;overflow:hidden">' +
+      '<img src="/assets/logo" style="width:64px;height:64px;object-fit:contain" onerror="this.style.display=\'none\'"></div>' +
+    '<svg width="34" height="34" viewBox="0 0 24 24" style="margin-bottom:10px"><rect x="5" y="10" width="14" height="10" rx="3" ' +
+      'fill="none" stroke="#1E3A5F" stroke-width="1.8"/><path d="M8 10V7.5a4 4 0 018 0V10" fill="none" stroke="#1E3A5F" ' +
+      'stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="15" r="1.6" fill="#1E3A5F"/></svg>' +
+    '<div style="font-size:19px;font-weight:800;color:#1E3A5F;margin-bottom:4px">האפליקציה נעולה</div>' +
+    '<div style="font-size:13.5px;color:#8B8F99;margin-bottom:24px">אמת את זהותך כדי להיכנס</div>' +
+    '<button id="biobtn" onclick="bioGo()" style="width:100%;max-width:320px;padding:15px;background:#2E6BD6;color:#fff;' +
+      'border:none;border-radius:14px;font-size:15.5px;font-weight:800;font-family:inherit">כניסה עם Face ID</button>' +
+    '<button onclick="bioSkip()" style="margin-top:14px;background:none;border:none;color:#8B8F99;font-size:13.5px;' +
+      'font-family:inherit;text-decoration:underline">כניסה עם מספר טלפון</button>';
+  document.body.appendChild(d);
+}
+function bioGo(){
+  var bp = bioPlugin(), b = el('biobtn');
+  if (!bp){ bioEnter(); return; }
+  if (b){ b.textContent = 'מאמת…'; b.disabled = true; }
+  bp.verifyIdentity({reason:'כניסה מאובטחת', title:'אימות זהות', subtitle:'', description:'אמת את זהותך כדי להיכנס',
+      useFallback:true, maxAttempts:3})
+    .then(bioEnter)
+    .catch(function(){ var b2 = el('biobtn'); if (b2){ b2.textContent = 'נסה שוב'; b2.disabled = false; } });
+}
+function bioEnter(){ location.replace('/v2/home'); }
+function bioSkip(){
+  // כניסה מחדש עם טלפון — מנקים את הסשן ונשארים במסך הכניסה
+  try{ ['fbTok','fbRole','fbDrole','fbName','fbDev','fbPhone','fbTabs'].forEach(function(k){ localStorage.removeItem(k); }); }catch(e){}
+  var d = el('biolock'); if (d) d.remove();
+}
+// כבר מחובר? — באפליקציה עוברים דרך Face ID, בדפדפן ישר פנימה
 (function(){
   var t = null;
   try{ t = localStorage.getItem('fbTok'); }catch(e){}
   if (!t) return;
   fetch('/api/auth/whoami', {headers:{'X-Auth-Token': t}}).then(function(r){ return r.json(); })
-    .then(function(j){ if (j.ok) location.replace('/v2/home'); }).catch(function(){});
+    .then(function(j){
+      if (!j.ok) return;
+      var bp = bioPlugin();
+      if (!bp){ bioEnter(); return; }
+      bp.isAvailable().then(function(res){
+        if (res && res.isAvailable){ bioLock(); bioGo(); } else bioEnter();
+      }).catch(bioEnter);
+    }).catch(function(){});
 })();
 </script></body></html>'''
 
@@ -785,11 +830,11 @@ el('story').addEventListener('touchmove', function(e){
       el('impTx').textContent = 'מצב בדיקה — אתה צופה כ' + (j.name || 'סוכן');
       el('impBar').style.display = 'flex';
     }
-    var seen = null;
-    try{ seen = localStorage.getItem(seenKey()); }catch(e){}
-    if (seen !== todayStr()){
-      try{ localStorage.setItem(seenKey(), todayStr()); }catch(e){}   // מסומן מיד — רענון לא יקפיץ שוב
-      openStory();   // פעם ביום — הסטורי הוא מסך הטעינה
+    var seenSess = null;
+    try{ seenSess = sessionStorage.getItem('v2BriefSess'); }catch(e){}
+    if (!seenSess){   // כל כניסה לאפליקציה (סשן חדש) — לא בכל רענון או חזרה לבית
+      try{ sessionStorage.setItem('v2BriefSess', '1'); localStorage.setItem(seenKey(), todayStr()); }catch(e){}
+      openStory();   // הסטורי הוא מסך הפתיחה
     } else el('briefCta').textContent = 'צפה שוב';
     loadData();
     GET('/api/newborn').then(function(nb){
@@ -1812,7 +1857,13 @@ function unhide(id){
 function trueCaller(p){
   var d = String(p || '').replace(/\D/g, '').replace(/^972/, '0');
   if (!d){ toast('אין מספר'); return; }
-  window.open('https://www.truecaller.com/search/il/' + d, '_blank');
+  if (window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
+    // באפליקציה: אין לטרוקולר חיפוש בקישור — מעתיקים ללוח ופותחים; טרוקולר מזהה ומציע חיפוש
+    var go = function(){ toast('המספר הועתק — טרוקולר יציע לחפש אותו'); setTimeout(function(){ location.href = 'truecaller://'; }, 450); };
+    try{ navigator.clipboard.writeText(d).then(go, go); }catch(e){ go(); }
+  } else {
+    window.open('https://www.truecaller.com/search/il/' + d, '_blank');
+  }
 }
 function openWa(i){
   var c = el('list')._src[i];
@@ -1873,14 +1924,19 @@ function saveSt(){
 var _renderBase = render;
 render = function(){
   _renderBase();
-  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
-  saveSt();
+  if (_restY){
+    var m = document.querySelector('main');
+    if (m){ m.scrollTop = _restY; if (m.scrollTop >= _restY - 4) _restY = 0; }
+  }
+  if (!_restY) saveSt();
 };
 (function(){
   var m = document.querySelector('main');
   if (m) m.addEventListener('scroll', function(){
+    if (window._svScrolled) _restY = 0; window._svScrolled = true;
     clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
   }, {passive:true});
+  window.addEventListener('pagehide', function(){ if (!_restY) saveSt(); });
 })();
 
 (function(){
@@ -2470,14 +2526,19 @@ function saveSt(){
 var _renderBase = render;
 render = function(){
   _renderBase();
-  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
-  saveSt();
+  if (_restY){
+    var m = document.querySelector('main');
+    if (m){ m.scrollTop = _restY; if (m.scrollTop >= _restY - 4) _restY = 0; }
+  }
+  if (!_restY) saveSt();
 };
 (function(){
   var m = document.querySelector('main');
   if (m) m.addEventListener('scroll', function(){
+    if (window._svScrolled) _restY = 0; window._svScrolled = true;
     clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
   }, {passive:true});
+  window.addEventListener('pagehide', function(){ if (!_restY) saveSt(); });
 })();
 
 (function(){
@@ -2760,14 +2821,19 @@ function saveSt(){
 var _renderBase = render;
 render = function(){
   _renderBase();
-  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
-  saveSt();
+  if (_restY){
+    var m = document.querySelector('main');
+    if (m){ m.scrollTop = _restY; if (m.scrollTop >= _restY - 4) _restY = 0; }
+  }
+  if (!_restY) saveSt();
 };
 (function(){
   var m = document.querySelector('main');
   if (m) m.addEventListener('scroll', function(){
+    if (window._svScrolled) _restY = 0; window._svScrolled = true;
     clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
   }, {passive:true});
+  window.addEventListener('pagehide', function(){ if (!_restY) saveSt(); });
 })();
 
 (function(){
@@ -3204,14 +3270,19 @@ function saveSt(){
 var _renderBase = render;
 render = function(){
   _renderBase();
-  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
-  saveSt();
+  if (_restY){
+    var m = document.querySelector('main');
+    if (m){ m.scrollTop = _restY; if (m.scrollTop >= _restY - 4) _restY = 0; }
+  }
+  if (!_restY) saveSt();
 };
 (function(){
   var m = document.querySelector('main');
   if (m) m.addEventListener('scroll', function(){
+    if (window._svScrolled) _restY = 0; window._svScrolled = true;
     clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
   }, {passive:true});
+  window.addEventListener('pagehide', function(){ if (!_restY) saveSt(); });
 })();
 
 (function(){
@@ -3568,14 +3639,19 @@ function saveSt(){
 var _renderBase = render;
 render = function(){
   _renderBase();
-  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
-  saveSt();
+  if (_restY){
+    var m = document.querySelector('main');
+    if (m){ m.scrollTop = _restY; if (m.scrollTop >= _restY - 4) _restY = 0; }
+  }
+  if (!_restY) saveSt();
 };
 (function(){
   var m = document.querySelector('main');
   if (m) m.addEventListener('scroll', function(){
+    if (window._svScrolled) _restY = 0; window._svScrolled = true;
     clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
   }, {passive:true});
+  window.addEventListener('pagehide', function(){ if (!_restY) saveSt(); });
 })();
 
 (function(){
@@ -4244,14 +4320,19 @@ function saveSt(){
 var _renderBase = render;
 render = function(){
   _renderBase();
-  if (_restY){ var m = document.querySelector('main'); if (m) m.scrollTop = _restY; _restY = 0; }
-  saveSt();
+  if (_restY){
+    var m = document.querySelector('main');
+    if (m){ m.scrollTop = _restY; if (m.scrollTop >= _restY - 4) _restY = 0; }
+  }
+  if (!_restY) saveSt();
 };
 (function(){
   var m = document.querySelector('main');
   if (m) m.addEventListener('scroll', function(){
+    if (window._svScrolled) _restY = 0; window._svScrolled = true;
     clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
   }, {passive:true});
+  window.addEventListener('pagehide', function(){ if (!_restY) saveSt(); });
 })();
 
 (function(){
