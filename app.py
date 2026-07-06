@@ -2845,9 +2845,11 @@ def _office_agent_keys():
 def _phones_for_name(name):
     nn = _norm_name(name)
     if not nn: return set()
-    s = set(p for p, n in web_phone_name_map().items() if _norm_name(n) == nn)
+    ck = _canon_key(name)   # התאמה קנונית — אותו סוכן בשני איותים (רווחים/גרשים) עדיין נמצא
+    s = set(p for p, n in web_phone_name_map().items()
+            if _norm_name(n) == nn or _canon_key(n) == ck)
     for p, n in web_contacts_phone_name().items():
-        if _norm_name(n) == nn:
+        if _norm_name(n) == nn or _canon_key(n) == ck:
             s.add(p)
     ck = _canon_key(name)
     for ag in (_load_config().get("agents") or []):
@@ -3336,12 +3338,6 @@ def api_auth_whoami():
            "name": s.get("name", ""), "phone": _last9(s.get("phone", "")),
            "dev": bool(s.get("dev", False)),
            "tabs": _tabs_for_role(s.get("drole", ""))}
-    if s.get("role") == "coordinator":   # שמות הסוכנים שלה — לבחירת "עבור סוכן" בתיאום פגישות
-        _names = set(n for n in (s.get("agent_names") or []) if n)
-        for _ph in (s.get("agents") or []):
-            _nm = web_phone_name_map().get(_last9(_ph)) or web_contacts_phone_name().get(_last9(_ph))
-            if _nm: _names.add(_nm)
-        out["agent_names"] = sorted(_names)
     return jsonify(out)
 
 def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
@@ -4132,8 +4128,9 @@ def api_sign_submit():
         # רק חתימת קונה (לא מוכר/בלעדיות) נכנסת אוטומטית ל"קונים שלי" של הסוכן
         if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
             _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית")
-        # פוש לכל המנהלים על חתימה חדשה
+        # פוש לכל המנהלים על חתימה חדשה + SMS לסוכן
         _notify_managers_signing("נחתם", client, agent, address)
+        _sms_agent_signing(client, agent, address, link)
     return jsonify({"ok": ok_any, "event_id": eid, "link": link, "doc_saved": doc_saved, "doc_resp": doc_resp})
 
 def _sign_now_iso():
@@ -4203,6 +4200,27 @@ def _manager_push_ids():
             if l: ids.add(l)
     ids.add(OWNER_PUSH_ID)   # אייל (במקום אליאס "owner" שירד מ-OneSignal)
     return [i for i in ids if i]
+
+def _sms_agent_signing(client, agent, address, link=""):
+    """SMS לנייד האישי של הסוכן על חתימה שהושלמה — עובד גם כשהוואטסאפ האוטומטי מושהה.
+    לא לוירטואלי (מרכזיה — לא מקבל SMS)."""
+    try:
+        _v = _last9(_vphone_for_name(agent or "") or "")
+        targets = sorted(set(_last9(p) for p in _phones_for_name(agent or "")
+                             if _last9(p) and _last9(p) != _v))
+        if not targets:
+            log.error(f"sms_agent_signing: no phone for agent '{agent}'")
+            return
+        msg = "נחתם: " + (client or "לקוח")
+        if address: msg += " · " + address
+        if link:    msg += "\nלמסמך החתום: " + link
+        def _send():
+            for _p in targets[:2]:
+                try: web_send_sms(_p, msg)
+                except Exception: pass
+        threading.Thread(target=_send, daemon=True).start()
+    except Exception:
+        pass
 
 def _notify_managers_signing(status_label, client, agent, address):
     """פוש לכל המנהלים על חתימה שנכנסה לטאב 'חתימות' — לא חוסם את התשובה."""
@@ -4372,6 +4390,7 @@ def api_sign_complete():
             elif _ln.startswith("נכס"):
                 _addr = re.split(r"\s*·\s*", _ln.split(":", 1)[-1].strip())[0].strip()
         _notify_managers_signing("נחתם", _cl, _ag, _addr)
+        _sms_agent_signing(_cl, _ag, _addr, link)
         _wa_signing(_cl, _ag, _addr, link)
     except Exception:
         pass
@@ -4998,7 +5017,8 @@ def api_recent():
 def api_agents():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
-    if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
+    if s["role"] not in ("admin", "coordinator"):   # מתאמת — בשביל "אחר במשרד…" בתיאום פגישה
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
     # מיזוג: אנשי קשר (קנוני) + סוכני קונפיג + לשונית שיחות — דדופ לפי מפתח גמיש
     by_canon = {}
     for n in (list(web_contacts_phone_name().values())
@@ -5028,13 +5048,22 @@ def api_my_agents():
             if ck not in by_canon: by_canon[ck] = nn
         return jsonify({"ok": True, "agents": [{"name": n} for n in sorted(by_canon.values())]})
     if role == "coordinator":
-        out = set()
+        # דדופ קנוני — אותו שם בשני איותים (קונפיג מול גיליון) לא יופיע פעמיים;
+        # עדיפות לאיות מאנשי הקשר (הקנוני), כמו ברשימת המנהל
+        _contacts = {_canon_key(n): n for n in web_contacts_phone_name().values() if n}
+        by_canon = {}
         for nm in (s.get("agent_names") or []):
-            if nm: out.add(str(nm).strip())
+            nn = _norm_name(nm)
+            if not nn: continue
+            ck = _canon_key(nn)
+            if ck not in by_canon: by_canon[ck] = _contacts.get(ck, nn)
         for ph in (s.get("agents") or []):
-            nm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
-            if nm: out.add(str(nm).strip())
-        return jsonify({"ok": True, "agents": [{"name": n} for n in sorted(x for x in out if x)]})
+            nm = web_contacts_phone_name().get(_last9(ph)) or web_phone_name_map().get(_last9(ph))
+            nn = _norm_name(nm or "")
+            if not nn: continue
+            ck = _canon_key(nn)
+            if ck not in by_canon: by_canon[ck] = _contacts.get(ck, nn)
+        return jsonify({"ok": True, "agents": [{"name": n} for n in sorted(by_canon.values())]})
     return jsonify({"ok": True, "agents": []})
 
 @app.route("/api/activity", methods=["GET"])
@@ -5633,6 +5662,8 @@ def _fetch_newborn_delays():
             d["_default"] = days
         elif nm:
             d[nm] = days
+            _ckk = _canon_key(nm)
+            if _ckk: d["c:" + _ckk] = days   # מפתח קנוני — סובל איות שונה (רווחים/גרשים)
     # שכבת קונפיג (קונסולת המפתח) — דורסת/משלימה את הגיליון
     _cfg = _load_config()
     _cd = _cfg.get("newbornDefaultDelay")
@@ -5650,6 +5681,8 @@ def _fetch_newborn_delays():
         for _nm in [ag.get("name", "")] + list(ag.get("aliases") or []):
             k = _norm_name(_nm)
             if k: d[k] = val
+            _ckk = _canon_key(_nm)
+            if _ckk: d["c:" + _ckk] = val
     if not _sheet_ok:
         # קריאת הגיליון נכשלה — לא מקבעים במטמון תמונה חסרה:
         if isinstance(_LAST_GOOD_NB_DELAYS, dict):
@@ -5953,9 +5986,11 @@ def api_newborn():
         _dphone = "" if as_name else s.get("phone", "")
         admin_all = (s["role"] == "admin" and not as_name and not _delayed_admin_days(eff_name, _dphone))
         delays = _fetch_newborn_delays()
-        delay = 0 if admin_all else int(delays.get(eff_norm, delays.get("_default", 0)))
+        _eff_ck = "c:" + _canon_key(eff_name)   # התאמה קנונית — איות שונה של אותו סוכן עדיין נתפס
+        _has_personal = (eff_norm in delays) or (_eff_ck in delays)
+        delay = 0 if admin_all else int(delays.get(eff_norm, delays.get(_eff_ck, delays.get("_default", 0))))
         _dadays = _delayed_admin_days(eff_name, _dphone)
-        if _dadays and not admin_all and eff_norm not in delays:   # בלי הגדרה אישית → השהיית ברירת מחדל
+        if _dadays and not admin_all and not _has_personal:   # בלי הגדרה אישית → השהיית ברירת מחדל
             delay = _dadays
         if not admin_all and delay >= NEWBORN_HIDDEN:   # מוסתר — לא רואה כלום, אין באנר
             return jsonify({"ok": True, "count": 0, "released": 0, "delay": delay, "results": []})
