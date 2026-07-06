@@ -621,13 +621,16 @@ function renderDash(){
   }).forEach(function(m){
     var d = parseDMY(m.date);
     var dd = d ? dayDiff(d) : 99;
-    if (dd > 1) return;   // רק באיחור / היום / מחר
+    var chipTx = dd < 0 ? 'באיחור' : dd === 0 ? 'היום' : dd === 1 ? 'מחר'
+               : (d ? ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) : '');
     care.push({t: (m.label || (m.status === 'meeting' ? 'פגישה' : 'פולו-אפ')) + ': ' + (m.addr || ''),
-               s: 'נכס נולד · ' + (m.agent || '') + (m.date ? ' · ' + m.date : ''),
+               s: 'נכס נולד · ' + (m.agent || '') + (m.date ? ' · ' + String(m.date).replace('T', ' ') : ''),
                chip: dd < 0 ? 'late' : dd === 0 ? 'today' : 'soon',
-               chipTx: dd < 0 ? 'באיחור' : dd === 0 ? 'היום' : 'מחר',
+               chipTx: chipTx,
+               ord: dd < 0 ? -1000 + dd : dd,   // באיחור קודם, אחר כך לפי קרבה
                meeting: m.status === 'meeting'});
   });
+  care.sort(function(a, b){ return a.ord - b.ord; });
   var h = '';
   care.slice(0, 4).forEach(function(c, i){
     h += (i ? '<div class="sep"></div>' : '') +
@@ -1113,6 +1116,8 @@ function renderTeam(){
     return (ra - rb) || a.name.localeCompare(b.name, 'he');
   });
   el('teamTitle').textContent = 'הצוות · ' + (tq ? list.length + ' מתוך ' + PEOPLE.length : list.length);
+  var full = list.length;
+  if (!tq) list = list.slice(0, 5);   // ברירת מחדל: 5 בלבד — השאר דרך חיפוש חופשי
   var html = '';
   list.forEach(function(p, i){
     var pending = isPending(p);
@@ -1138,6 +1143,9 @@ function renderTeam(){
           '<svg width="9" height="5" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>') +
       '</div>';
   });
+  if (!tq && full > 5)
+    html += '<div style="text-align:center;font-size:12.5px;font-weight:700;color:#8B8F99;padding:10px 0 2px">' +
+      '+ עוד ' + (full - 5) + ' חברי צוות — חפש לפי שם למעלה</div>';
   el('teamList').innerHTML = html;
   el('teamList')._list = list;
 }
@@ -1677,6 +1685,7 @@ function load(){
   var p = GET('/api/history').then(function(j){
     CALLS = (j && j.calls) || [];
     if (j && j.vphone){ el('vpNum').textContent = j.vphone; el('vpRow').style.display = 'flex'; }
+    try{ localStorage.setItem('v2c:calls', JSON.stringify({calls: CALLS.slice(0, 120), vphone: j.vphone || ''})); }catch(e){}
     render();
   }).catch(function(){});
   GET('/api/my/buyers').then(function(j){
@@ -1883,6 +1892,14 @@ render = function(){
     OFFICE = o.name || '';
     document.title = 'שיחות · ' + OFFICE;
   }).catch(function(){});
+  try{   // פתיחה מיידית מהעותק האחרון — הרענון מהשרת רץ ברקע
+    var c = JSON.parse(localStorage.getItem('v2c:calls') || 'null');
+    if (c && c.calls && c.calls.length){
+      CALLS = c.calls;
+      if (c.vphone){ el('vpNum').textContent = c.vphone; el('vpRow').style.display = 'flex'; }
+      render();
+    }
+  }catch(e){}
   load();
   setInterval(function(){   // רענון עדין לראשי בלבד — Realtime מלא כשעוברים ל-Supabase
     GET('/api/history').then(function(j){
@@ -2033,13 +2050,9 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
       <div class="srchRow">
         <div class="srch">
           <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
-          <input id="q" placeholder="שם, טלפון או חיפוש חופשי" oninput="qChanged()"
+          <input id="q" placeholder="שם, טלפון או חיפוש חופשי (Enter לחיפוש חכם)" oninput="qChanged()"
                  onkeydown="if(event.key==='Enter')smartSearch()">
         </div>
-        <button class="addBtn" style="background:#C29435;box-shadow:0 4px 12px rgba(194,148,53,.25)" onclick="smartSearch()">
-          <svg width="13" height="13" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
-          חפש
-        </button>
         <button class="addBtn" onclick="openAdd()">
           <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
           קונה
@@ -2180,9 +2193,16 @@ function load(){
     BUYERS = (rs[0] && rs[0].results) || [];
     MULTI = !!(rs[0] && rs[0].multi);
     STATUSES = (rs[1] && rs[1].statuses) || {};
+    try{ localStorage.setItem('v2c:buyers', JSON.stringify({b: BUYERS.slice(0, 200), m: MULTI, s: STATUSES})); }catch(e){}
     render();
   });
 }
+(function(){   // פתיחה מיידית מהעותק האחרון
+  try{
+    var c = JSON.parse(localStorage.getItem('v2c:buyers') || 'null');
+    if (c && c.b){ BUYERS = c.b; MULTI = !!c.m; STATUSES = c.s || {}; }
+  }catch(e){}
+})();
 
 function render(){
   if (SMART){ renderSmart(); return; }
@@ -2659,9 +2679,16 @@ function load(){
   return GET('/api/signatures').then(function(j){
     SIGS = (j && j.signatures) || [];
     MULTI = (j && j.role) !== 'agent';
+    try{ localStorage.setItem('v2c:sigs', JSON.stringify({g: SIGS.slice(0, 150), m: MULTI})); }catch(e){}
     render();
   }).catch(function(){});
 }
+(function(){
+  try{
+    var c = JSON.parse(localStorage.getItem('v2c:sigs') || 'null');
+    if (c && c.g){ SIGS = c.g; MULTI = !!c.m; }
+  }catch(e){}
+})();
 function render(){
   var ws = weekStart();
   el('weekN').textContent = SIGS.filter(function(g){ return (g.ts || 0) >= ws; }).length + ' השבוע';
@@ -2828,6 +2855,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       border-radius:11px;padding:9px 0;font-size:11px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit}
   .stActs .s.red{color:#C24040}
   .stActs .s.on{background:#C29435;border-color:#C29435;color:#fff;box-shadow:0 3px 10px rgba(194,148,53,.25)}
+  .stActs .s.red.on{background:#C24040;border-color:#C24040;color:#fff;box-shadow:0 3px 10px rgba(194,64,64,.25)}
   .stLine{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#8B8F99}
   .stLine i{width:6px;height:6px;border-radius:50%;background:#C29435;display:block;flex-shrink:0}
   .notes{font-size:11.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
@@ -2982,9 +3010,17 @@ function load(){
     BUCKETS = (rs[0] && rs[0].bucketCounts) || [];
     TOTAL = (rs[0] && rs[0].total) || ROWS.length;
     MEETS = (rs[1] && rs[1].meetings) || [];
+    try{ localStorage.setItem('v2c:nb', JSON.stringify(
+      {r: ROWS.slice(0, 150), b: BUCKETS, t: TOTAL, m: MEETS.slice(0, 40)})); }catch(e){}
     render();
   });
 }
+(function(){
+  try{
+    var c = JSON.parse(localStorage.getItem('v2c:nb') || 'null');
+    if (c && c.r){ ROWS = c.r; BUCKETS = c.b || []; TOTAL = c.t || 0; MEETS = c.m || []; }
+  }catch(e){}
+})();
 function fmtPrice(p){
   p = String(p || '').trim();
   if (!p) return '';
@@ -3060,7 +3096,7 @@ function nbCard(r, i){
     '<div class="stActs">' +
     '<button class="s' + (st && st.status === 'meeting' ? ' on' : '') + '" onclick="stDate(' + i + ',\'meeting\')">פגישה</button>' +
     '<button class="s' + (st && st.status === 'followup' ? ' on' : '') + '" onclick="stDate(' + i + ',\'followup\')">פולו-אפ</button>' +
-    '<button class="s red" onclick="stSet(' + i + ',\'not_interested\',\'\')">לא מעוניין</button>' +
+    '<button class="s red' + (st && st.status === 'not_interested' ? ' on' : '') + '" onclick="stToggleNI(' + i + ')">לא מעוניין</button>' +
     '<button class="s" onclick="noteSheet(' + i + ')">הערה</button></div>' +
     stLine + notes + '</div>';
 }
@@ -3087,6 +3123,16 @@ function stDate(i, status){
 }
 function stSave(i, status){
   stSet(i, status, el('stDt').value);
+}
+function stToggleNI(i){
+  var r = el('list')._src[i];
+  if (r.stat && r.stat.status === 'not_interested'){
+    // לחיצה נוספת — מחזירה למצב רגיל (מסיר את הסטטוס)
+    POST('/api/newborn/status/delete', {key: r.key}).then(function(j){
+      if (!j.ok){ toast('שגיאה בהסרה'); return; }
+      toast('הסטטוס הוסר'); load();
+    });
+  } else stSet(i, 'not_interested', '');
 }
 function stSet(i, status, date){
   var r = el('list')._src[i];
@@ -3391,9 +3437,17 @@ function load(q){
     SHTAF = (rs[1] && rs[1].results) || [];
     SUM.shtaf = (rs[1] && rs[1].summary) || '';
     MINE = (rs[2] && rs[2].results) || [];
+    if (!q) try{ localStorage.setItem('v2c:props', JSON.stringify(
+      {o: OFFICE.slice(0, 80), so: SUM.office, s: SHTAF.slice(0, 60), ss: SUM.shtaf, m: MINE.slice(0, 60)})); }catch(e){}
     render();
   });
 }
+(function(){
+  try{
+    var c = JSON.parse(localStorage.getItem('v2c:props') || 'null');
+    if (c && c.o){ OFFICE = c.o; SUM.office = c.so || ''; SHTAF = c.s || []; SUM.shtaf = c.ss || ''; MINE = c.m || []; }
+  }catch(e){}
+})();
 function render(){
   el('cOffice').textContent = OFFICE.length;
   el('cShtaf').textContent = SHTAF.length;
@@ -3986,9 +4040,16 @@ function load(){
   return GET('/api/deals').then(function(j){
     ITEMS = (j && j.items) || [];
     AGENTS = (j && j.agents) || [];
+    try{ localStorage.setItem('v2c:deals', JSON.stringify({i: ITEMS.slice(0, 150), a: AGENTS})); }catch(e){}
     render();
   }).catch(function(){});
 }
+(function(){
+  try{
+    var c = JSON.parse(localStorage.getItem('v2c:deals') || 'null');
+    if (c && c.i){ ITEMS = c.i; AGENTS = c.a || []; }
+  }catch(e){}
+})();
 function render(){
   var q = el('q').value.trim().toLowerCase();
   var src = ITEMS.filter(function(it){
@@ -4309,6 +4370,7 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
         <div class="sg" data-p="month" onclick="setPeriod(this)">החודש</div>
         <div class="sg" data-p="year" onclick="setPeriod(this)">השנה</div>
       </div>
+      <div class="chips" id="months" style="display:none"></div>
       <div class="kpis" id="kpis"></div>
       <div class="exports">
         <button class="e wa" onclick="sendWa()">
@@ -4378,12 +4440,34 @@ function toast(msg){
   clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
 }
 
-var PERIOD = 'week', R = null, DEALS = [], LEAD_TAB = 'gius', LEAD_ALL = false, IS_MGR = false;
+var PERIOD = 'week', MONTH = 0, R = null, DEALS = [], LEAD_TAB = 'gius', LEAD_ALL = false, IS_MGR = false;
+var HMON = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 
 function setPeriod(node){
   PERIOD = node.getAttribute('data-p');
   var sgs = node.parentNode.children;
   for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
+  if (PERIOD === 'month'){
+    MONTH = new Date().getMonth() + 1;   // ברירת מחדל: החודש הנוכחי
+    renderMonths();
+    el('months').style.display = 'flex';
+  } else {
+    MONTH = 0;
+    el('months').style.display = 'none';
+  }
+  load();
+}
+function renderMonths(){
+  var cur = new Date().getMonth() + 1;
+  var h = '';
+  for (var m = cur; m >= 1; m--)
+    h += '<button class="lchip' + (m === MONTH ? ' on' : '') + '" onclick="pickMonth(' + m + ')">' +
+         HMON[m - 1] + '</button>';
+  el('months').innerHTML = h;
+}
+function pickMonth(m){
+  MONTH = m;
+  renderMonths();
   load();
 }
 function parseDMY(s){
@@ -4405,7 +4489,8 @@ function dealsInRange(){
 function load(){
   el('kpis').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#8B8F99;font-size:12.5px;padding:14px 0">טוען את הדוח…</div>';
   return Promise.all([
-    GET('/api/report?period=' + PERIOD).catch(function(){ return {}; }),
+    GET('/api/report?period=' + PERIOD + (PERIOD === 'month' && MONTH ? '&month=' + MONTH : ''))
+      .catch(function(){ return {}; }),
     GET('/api/deals').catch(function(){ return {}; })
   ]).then(function(rs){
     R = rs[0] || {};
@@ -4427,7 +4512,6 @@ function render(){
     kpi(c.answered || 0, 'נענו', (c.rate || 0) + '%', '#1FAF5E') +
     kpi(g.total || 0, 'חתימות') +
     kpi(g.bladiut || 0, 'בלעדיות', '', '#B8902F') +
-    kpi(R.listings || 0, 'מודעות פעילות') +
     kpi(dr.length, 'עסקאות בתקופה', '', '#1FAF5E') +
     kpi((R.meetings || []).length, 'פגישות ופולו-אפ') +
     kpi(DEALS.filter(function(d){ return !d.deal; }).length, 'תהליכים פתוחים', 'לרגע זה', '#B8902F') +
