@@ -399,7 +399,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       border-radius:14px;padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:3px}
   #story .teasers .tz .n{font-size:30px;font-weight:800;color:#E4C56B;font-variant-numeric:tabular-nums}
   #story .teasers .tz .l{font-size:13px;font-weight:700;color:rgba(255,255,255,.85);text-align:center;line-height:1.3}
-  #story .teasers .tz .of{font-size:12px;font-weight:600;color:rgba(255,255,255,.55);margin-top:2px;
+  #story .teasers .tz .of{font-size:13.5px;font-weight:700;color:rgba(255,255,255,.7);margin-top:3px;
       font-variant-numeric:tabular-nums}
   #story .nbList{display:flex;flex-direction:column;gap:9px;max-width:300px;width:100%}
   #story .nbList .r{display:flex;align-items:center;gap:9px;font-size:14.5px;font-weight:600;
@@ -525,7 +525,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       </div>
       <div class="a gold" onclick="location.href='/v2/sigs'">
         <div class="ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
-        <div class="l">החתם</div>
+        <div class="l">חתימות</div>
       </div>
       <div class="a lite" onclick="location.href='/v2/props'">
         <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
@@ -824,13 +824,18 @@ function renderCard(i){
       '<button class="bMain" style="width:100%" onclick="nextCard()">בוא נתחיל ←</button>' +
       '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
   } else if (i === 1){
-    var n = M.buyersUn || M.buyersNew || M.buyersTot;
-    b.innerHTML = card('בזמן שישנת', q(n),
-      M.buyersUn ? 'קונים חדשים<br>בלי שיבוץ' : 'קונים חדשים<br>השבוע',
-      M.buyersUn ? ('מתוך ' + (M.buyersNew || M.buyersTot) + ' שנקלטו השבוע מהשיחות — עדיין בלי סוכן מטפל.')
-                 : 'נקלטו מהשיחות של המשרד. שווה לעבור עליהם לפני שהם מתקררים.',
-      M.buyersUn ? 'שבץ אותם עכשיו' : 'לרשימת הקונים',
-      'closeStory();location.href=\'/v2/buyers\'', 'הבא: חתימות (3/4)');
+    // הפגישות והפולו-אפים של הסוכן — בלי השוואה מול המשרד
+    var mt = M.meets || [];
+    var parts = [];
+    if (M.meetToday) parts.push(M.meetToday + ' מתוכננות להיום');
+    if (M.meetLate) parts.push(M.meetLate + ' באיחור');
+    b.innerHTML = card('פגישות ופולו-אפ', q(mt.length),
+      'משימות<br>פתוחות',
+      mt.length ? ('סה"כ פגישות ופולו-אפים פתוחים: ' + mt.length + '.' +
+        (parts.length ? ' ' + parts.join(' · ') + '.' : ''))
+        : 'אין פגישות או פולו-אפים פתוחים — היומן שלך נקי.',
+      'ליומן שלי',
+      'closeStory();location.href=\'/v2/meets\'', 'הבא: חתימות (3/4)');
   } else if (i === 2){
     var ex = M.exclWeek || [];
     if (ex.length){
@@ -6689,6 +6694,18 @@ def register(app, G):
                     buyers_me += 1
         except Exception:
             pass
+        calls_all = calls_me = 0
+        try:
+            my_phones = set(G["_last9"](x) for x in G["_phones_for_name"](s.get("name", "")))
+            for c in G["web_fetch_raw"]("שיחות"):
+                e = G["_epoch_from_iso"](c.get("received_at", ""))
+                if not e or e < week_ago:
+                    continue
+                calls_all += 1
+                if _canon(c.get("agent", "")) == me or G["_last9"](c.get("agent_phone", "")) in my_phones:
+                    calls_me += 1
+        except Exception:
+            pass
         sigb_all = sigb_me = excl_all = excl_me = 0
         try:
             import datetime as _dt3
@@ -6707,7 +6724,8 @@ def register(app, G):
             pass
         return jsonify({"ok": True, "buyersMe": buyers_me, "buyersAll": buyers_all,
                         "sigBMe": sigb_me, "sigBAll": sigb_all,
-                        "exclMe": excl_me, "exclAll": excl_all})
+                        "exclMe": excl_me, "exclAll": excl_all,
+                        "callsMe": calls_me, "callsAll": calls_all})
 
     @app.route("/v2/api/admin/overview", methods=["GET"])
     def v2_api_admin_overview():
