@@ -485,6 +485,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/><path d="M7.5 16v-4.5h7V16" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
       המשרד במדלן</a>
+    <button onclick="inviteWa()" style="display:flex;align-items:center;gap:11px;padding:12px 4px;border:0;
+       background:none;color:#1E3A5F;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;min-height:44px;text-align:right">
+      <svg width="18" height="18" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      הזמנה לאפליקציה בוואטסאפ</button>
     <div style="flex:1"></div>
     <button onclick="logout()" style="display:flex;align-items:center;gap:11px;padding:12px 4px;border:0;
        background:none;color:#C24040;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;min-height:44px">
@@ -616,6 +620,13 @@ function impBack(){   // חזרה מסשן בדיקה לחשבון המנהל
     localStorage.removeItem('fbTokAdmin');
   }catch(e){}
   location.href = '/v2/admin';
+}
+function inviteWa(){
+  // הזמנת עמית לאפליקציה — קישור הכניסה + שם המשרד (white-label)
+  var nm = (document.title && document.title !== 'בית') ? document.title : 'המשרד';
+  var msg = 'היי, מזמין אותך לאפליקציה של ' + nm + ' — שיחות, קונים, נכסים וחתימות דיגיטליות במקום אחד:\n' +
+    location.origin + '/v2';
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
 }
 function logout(){
   try{
@@ -2490,20 +2501,29 @@ function saveBuyer(){
 
 /* ── התאמת נכסים (16b): משרד + שת"פ, אחוז התאמה, שלח לקונה / החתם מתעניין ── */
 function matchQuery(b){
-  var q = [b.search, b.budget ? 'עד ' + b.budget : ''].filter(Boolean).join(' ');
-  return (q || (b.summary || '').slice(0, 80)).slice(0, 160);
+  // הדרישות: "מה מחפש" של הקונה, ואם ריק — סיכום השיחה; התקציב מצטרף תמיד
+  var base = (b.search || '').trim() || (b.summary || '').trim().slice(0, 90);
+  return {q: [base, b.budget ? 'עד ' + b.budget : ''].filter(Boolean).join(' ').slice(0, 160),
+          hasNeeds: !!base};
 }
 function matchProps(i){
   var b = el('list')._src[i];
-  var q = matchQuery(b);
-  openSheet('<h3>התאמת נכסים · ' + esc(b.name || '') + '</h3>' +
-    '<div style="font-size:12px;color:#8B8F99">' + esc(q || 'כל הנכסים הפעילים') + '</div>' +
+  var mq = matchQuery(b);
+  MQ_NEEDS = mq.hasNeeds;
+  openSheet('<div style="display:flex;align-items:flex-start;gap:10px">' +
+    '<div style="flex:1"><h3 style="margin:0">התאמת נכסים · ' + esc(b.name || '') + '</h3>' +
+    '<div style="font-size:12px;color:#8B8F99;margin-top:3px">מחפש: ' + esc(mq.q || '—') + '</div>' +
+    (mq.hasNeeds ? '' : '<div style="font-size:11.5px;color:#B8902F;font-weight:700;margin-top:2px">אין דרישות לקונה — ההתאמה לפי תקציב בלבד. הוסף "מה מחפש" בעריכת הקונה לדיוק</div>') +
+    '</div>' +
+    '<button onclick="closeSheet()" aria-label="סגירה" style="width:36px;height:36px;border-radius:50%;background:#F5F3EC;' +
+    'border:none;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer">' +
+    '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
     '<div id="mRes" style="display:flex;flex-direction:column;gap:10px">' +
     '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:20px 0">מחפש התאמות…</div></div>' +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
   Promise.all([
-    POST('/api/search/properties', {q: q, nosave: true}).catch(function(){ return {}; }),
-    POST('/api/search/exclusives', {q: q, nosave: true}).catch(function(){ return {}; })
+    POST('/api/search/properties', {q: mq.q, nosave: true}).catch(function(){ return {}; }),
+    POST('/api/search/exclusives', {q: mq.q, nosave: true}).catch(function(){ return {}; })
   ]).then(function(rs){
     var bySc = function(a, c){ return (c.score || 0) - (a.score || 0); };
     renderMatches(b, ((rs[0] && rs[0].results) || []).sort(bySc),
@@ -2556,8 +2576,16 @@ function signBuyer(js){
     addr: p.w || '', price: p.pr || ''})); }catch(e){}
   location.href = '/v2/sign?type=buyer';
 }
+var MQ_NEEDS = true;
 function renderMatches(b, office, shtaf){
   CUR_BUYER = b;
+  // כשיש דרישות אמיתיות — מציגים רק התאמות של 60%+ (לא מציפים בכל מה שנכנס בתקציב)
+  if (MQ_NEEDS){
+    var strong = function(p){ return (p.score || 0) >= 60; };
+    var o2 = office.filter(strong), s2 = shtaf.filter(strong);
+    if (o2.length || s2.length){ office = o2; shtaf = s2; }
+    else { office = office.slice(0, 5); shtaf = shtaf.slice(0, 3); }   // אין חזקות — מציגים את המובילות בלבד
+  }
   var h = '';
   if (office.length){
     h += '<div class="grpTitle">המשרד שלנו · ' + office.length + '</div>';
@@ -3303,7 +3331,10 @@ function agOther(sel){
     sel.focus();
   };
   if (OFFICE_AG.length){ fill(); return; }
-  GET('/api/deals').then(function(d){ OFFICE_AG = (d && d.agents) || []; fill(); }).catch(function(){ sel.value = ''; });
+  GET('/api/agents').then(function(d){   // רשימת המשרד הקנונית — בלי כפילויות איות
+    OFFICE_AG = ((d && d.agents) || []).map(function(a){ return a.name; });
+    fill();
+  }).catch(function(){ sel.value = ''; });
 }
 function stDate(i, status){
   var r = el('list')._src[i];
@@ -3423,10 +3454,14 @@ render = function(){
 (function(){
   GET('/api/auth/whoami').then(function(j){
     MYNAME = j.name || '';
-    if (j.role === 'coordinator'){ AG_OPTS = j.agent_names || []; IS_COORD = true; }
-    else if (j.role === 'admin') GET('/api/deals').then(function(d){
-      AG_OPTS = ((d && d.agents) || []).filter(function(a){ return a !== j.name; });
-    }).catch(function(){});
+    if (j.role === 'coordinator' || j.role === 'admin'){
+      IS_COORD = j.role === 'coordinator';
+      // רשימה קנונית (בלי כפילויות איות) — מתאמת: הסוכנים שלה; מנהל: כל המשרד
+      GET('/api/my/agents').then(function(d){
+        AG_OPTS = ((d && d.agents) || []).map(function(a){ return a.name; })
+          .filter(function(a){ return a && a !== j.name; });
+      }).catch(function(){});
+    }
     if (!j.ok){ location.replace('/v2'); return; }
     el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
     MGR = (j.role === 'admin' || j.role === 'coordinator');
@@ -3648,7 +3683,7 @@ function fmtPrice(p){
   return (/^[\d,.]+$/.test(p) ? '₪' : '') + p;
 }
 
-var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], SUM = {office:'', shtaf:''};
+var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''};
 
 function load(q){
   return Promise.all([
@@ -3661,15 +3696,16 @@ function load(q){
     SHTAF = (rs[1] && rs[1].results) || [];
     SUM.shtaf = (rs[1] && rs[1].summary) || '';
     MINE = (rs[2] && rs[2].results) || [];
+    MINE_MULTI = !!(rs[2] && rs[2].multi);   // מתאמת/מנהל/צוות — "שלי" מכיל כמה סוכנים
     if (!q) try{ localStorage.setItem('v2c:props', JSON.stringify(
-      {o: OFFICE.slice(0, 80), so: SUM.office, s: SHTAF.slice(0, 60), ss: SUM.shtaf, m: MINE.slice(0, 60)})); }catch(e){}
+      {o: OFFICE.slice(0, 80), so: SUM.office, s: SHTAF.slice(0, 60), ss: SUM.shtaf, m: MINE.slice(0, 60), mm: MINE_MULTI})); }catch(e){}
     render();
   });
 }
 (function(){
   try{
     var c = JSON.parse(localStorage.getItem('v2c:props') || 'null');
-    if (c && c.o){ OFFICE = c.o; SUM.office = c.so || ''; SHTAF = c.s || []; SUM.shtaf = c.ss || ''; MINE = c.m || []; }
+    if (c && c.o){ OFFICE = c.o; SUM.office = c.so || ''; SHTAF = c.s || []; SUM.shtaf = c.ss || ''; MINE = c.m || []; MINE_MULTI = !!c.mm; }
   }catch(e){}
 })();
 function render(){
@@ -3698,7 +3734,9 @@ function propCard(p, i){
   var dt = isShtaf ? (p.desc || p.dest || '')
     : [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.floor ? 'קומה ' + p.floor : '',
        p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
-  var whoRaw = isShtaf ? (p.office || 'משרד שותף') : (isMine ? 'שלך' : (p.agent || ''));
+  // מתאמת/מנהל רואים את שם הסוכן של כל נכס; סוכן רגיל — "שלך"
+  var whoRaw = isShtaf ? (p.office || 'משרד שותף')
+    : (isMine ? ((MINE_MULTI && p.agent) ? p.agent : 'שלך') : (p.agent || ''));
   var sameNet = isShtaf && whoRaw.indexOf('רימקס') >= 0;   // אותה רשת — הדגשה בנייבי (network מ-offices בהמשך)
   var who = sameNet ? '<b>' + esc(whoRaw) + '</b>' : esc(whoRaw);
   var where = isShtaf ? [p.street || p.address, p.city].filter(Boolean).join(', ')
@@ -4223,7 +4261,8 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   }
 </style></head><body>
 
-  <header>
+  <header style="position:relative">
+    <div style="position:absolute;top:2px;right:18px;font-size:11px;font-weight:700;color:#8B8F99">בס"ד</div>
     <div class="avatar"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
     <div class="brand"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
     <button class="menuBtn" onclick="location.href='/v2/home'" aria-label="לבית">
@@ -5273,6 +5312,9 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .dRow input{width:56px;text-align:center;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;
       padding:8px 0;font-size:14px;font-weight:800;color:#1E3A5F;font-family:inherit;outline:none}
   .dRow .un{font-size:12px;font-weight:600;color:#8B8F99}
+  .moChip{border:1.5px solid #DCD6C8;background:#fff;color:#5B6472;border-radius:999px;padding:5px 11px;
+      font-size:12px;font-weight:700;font-family:inherit;cursor:pointer}
+  .moChip.on{background:#C29435;border-color:#C29435;color:#fff}
   .fld{display:flex;flex-direction:column;gap:5px}
   .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
   .fld input{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:12px;padding:11px 13px;
@@ -5422,13 +5464,37 @@ var DEALS_DEF = KIND === 'buyer'
      {k: 'rent', lb: 'שכירות — עמלה', on: false, val: '1', un: 'חודשים'}]
   : [{k: 'sale', lb: 'מכירה — עמלה', on: true, val: '2', un: '%'},
      {k: 'rent', lb: 'השכרה — עמלה', on: false, val: '1', un: 'חודשים'},
-     {k: 'excl', lb: 'בלעדיות — תקופה', on: false, val: '', un: '', from: '', to: ''}];
+     {k: 'excl', lb: 'בלעדיות — תקופה', on: true, val: '', un: '', from: '', to: '', mo: 6}];
+
+function dstr(d){
+  return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear();
+}
+function exclPeriod(i, months){
+  var f = new Date(), t = new Date();
+  t.setMonth(t.getMonth() + months);
+  DEALS_DEF[i].from = dstr(f); DEALS_DEF[i].to = dstr(t); DEALS_DEF[i].mo = months;
+  renderDeals();
+}
+// ברירת מחדל לבלעדיות: 6 חודשים מהיום (העריכה הידנית של התאריכים נשארת פתוחה)
+(function(){
+  DEALS_DEF.forEach(function(d, i){ if (d.k === 'excl') exclPeriod._init = i; });
+  if (exclPeriod._init != null){
+    var i = exclPeriod._init, f = new Date(), t = new Date();
+    t.setMonth(t.getMonth() + 6);
+    DEALS_DEF[i].from = dstr(f); DEALS_DEF[i].to = dstr(t);
+  }
+})();
 
 function renderDeals(){
   el('dealRows').innerHTML = DEALS_DEF.map(function(d, i){
     var inputs = d.k === 'excl'
-      ? '<div class="in"><input style="width:88px" placeholder="מ- 07/07/26" value="' + esc(d.from) + '" onchange="DEALS_DEF[' + i + '].from=this.value">' +
-        '<input style="width:88px" placeholder="עד 07/01/27" value="' + esc(d.to) + '" onchange="DEALS_DEF[' + i + '].to=this.value"></div>'
+      ? '<div class="in" style="flex-direction:column;align-items:flex-end;gap:6px">' +
+        '<div style="display:flex;gap:5px">' + [3, 6].map(function(m){
+          return '<button type="button" class="moChip' + (d.mo === m ? ' on' : '') + '" onclick="exclPeriod(' + i + ',' + m + ')">' + m + ' ח׳</button>';
+        }).join('') + '</div>' +
+        '<div style="display:flex;gap:6px">' +
+        '<input style="width:88px" placeholder="מ- 07/07/26" value="' + esc(d.from) + '" onchange="DEALS_DEF[' + i + '].from=this.value;DEALS_DEF[' + i + '].mo=0">' +
+        '<input style="width:88px" placeholder="עד 07/01/27" value="' + esc(d.to) + '" onchange="DEALS_DEF[' + i + '].to=this.value;DEALS_DEF[' + i + '].mo=0"></div></div>'
       : '<div class="in"><input inputmode="decimal" value="' + esc(d.val) + '" onchange="DEALS_DEF[' + i + '].val=this.value">' +
         '<span class="un">' + d.un + '</span></div>';
     return '<div class="dRow' + (d.on ? ' on' : ' off') + '" style="' + (i ? 'margin-top:9px' : '') + '">' +
