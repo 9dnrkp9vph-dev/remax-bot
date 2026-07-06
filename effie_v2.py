@@ -362,6 +362,14 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
       ניהול (מפתח)</a>
+    <a href="/v2/updates" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
+       color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><path d="M4 14V9a7 7 0 0 1 14 0v5l1.5 2.5H2.5z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 18.5a2 2 0 0 0 4 0" fill="none" stroke="#1E3A5F" stroke-width="1.7"/></svg>
+      עדכונים למשרד</a>
+    <a id="menuActivity" href="/v2/activity" style="display:none;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M11 6.5V11l3 2" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
+      יומן שימוש</a>
     <a href="/v2/reports" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
        color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M3.5 18.5v-5M8.5 18.5v-9M13.5 18.5V5.5M18.5 18.5v-7" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round"/></svg>
@@ -398,7 +406,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
 
     <div class="stats">
       <div class="stat"><div class="n" style="color:#1E3A5F" id="stCalls">—</div><div class="l">שיחות השבוע</div></div>
-      <div class="stat"><div class="n" style="color:#1FAF5E" id="stSigs">—</div><div class="l">חתימות</div></div>
+      <div class="stat"><div class="n" style="color:#1FAF5E" id="stSigs">—</div><div class="l">גויסו השבוע</div></div>
       <div class="stat"><div class="n" style="color:#B8902F" id="stBuyers">—</div><div class="l">קונים חדשים</div></div>
     </div>
 
@@ -479,6 +487,21 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
 function el(id){ return document.getElementById(id); }
 function esc(s){
@@ -582,7 +605,7 @@ function loadData(){
 
 function renderDash(){
   el('stCalls').textContent = M.calls;
-  el('stSigs').textContent = M.sigs;
+  el('stSigs').textContent = (M.exclWeek || []).length;   // גויס בשבוע האחרון (החתמות בעלי נכס)
   el('stBuyers').textContent = M.buyersNew || M.buyersTot;
   var open = M.meetLate + M.meetToday;
   el('dateTx').textContent = 'יום ' + HDAYS[new Date().getDay()] + ', ' + new Date().getDate() +
@@ -752,6 +775,7 @@ el('story').addEventListener('touchmove', function(e){
     el('menuRole').textContent = j.dev ? 'בעל המשרד' :
         (j.role === 'admin') ? 'מנהל' : (j.role === 'coordinator') ? 'מתאמת' : 'סוכן';
     if (j.dev) el('menuAdmin').style.display = 'flex';
+    if (j.role === 'admin') el('menuActivity').style.display = 'flex';
     var impTok = null;
     try{ impTok = localStorage.getItem('fbTokAdmin'); }catch(e){}
     if (impTok && !j.dev){   // מצב "כניסה כסוכן (בדיקה)" — פס חזרה למנהל
@@ -991,6 +1015,21 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function H(extra){
   var h = {'X-Auth-Token': TOK};
   if (extra) h['Content-Type'] = 'application/json';
@@ -1167,8 +1206,12 @@ function delTeam(){
 function openSheet(html){
   el('sheet').innerHTML = '<div class="grip"></div>' + html;
   el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
 }
-function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.body.style.overflow = '';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
 var SEL_ROLE = 'agent';
 function openInvite(){
@@ -1554,6 +1597,21 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function H(extra){
   var h = {'X-Auth-Token': TOK};
   if (extra) h['Content-Type'] = 'application/json';
@@ -1577,8 +1635,12 @@ function toast(msg){
 function openSheet(html){
   el('sheet').innerHTML = '<div class="grip"></div>' + html;
   el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
 }
-function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.body.style.overflow = '';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 function last9(s){ return String(s || '').replace(/\D/g, '').slice(-9); }
 
 var CALLS = [], HIDDEN = [], FILTER = 'all', VIEW = 'main';
@@ -1694,6 +1756,8 @@ function callCard(c, i, hidden){
       '<button class="main blue" onclick="addBuyer(' + i + ')">' +
       '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>הוסף כקונה</button>' +
       '<button class="sq" style="background:#E7F7EE" onclick="openWa(' + i + ')">' + WA_SVG('#1FAF5E') + '</button>' +
+      '<button class="sq" style="background:#F0EDE3" onclick="trueCaller(\'' + esc(c.tel || c.caller || '') + '\')" aria-label="בדיקה בטרוקולר">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16"><circle cx="6.5" cy="5.5" r="2.6" fill="none" stroke="#5B6472" stroke-width="1.4"/><path d="M2.5 13c.5-2.4 2-3.7 4-3.7s3.5 1.3 4 3.7" fill="none" stroke="#5B6472" stroke-width="1.4" stroke-linecap="round"/><circle cx="11.8" cy="10.2" r="2.3" fill="none" stroke="#5B6472" stroke-width="1.4"/><path d="M13.5 12l1.8 1.8" stroke="#5B6472" stroke-width="1.4" stroke-linecap="round"/></svg></button>' +
       (c.summary ? '<button class="sq" style="background:#F5F3EC" onclick="showSummary(' + i + ')">' +
       '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M12 3L8 7M12 3v4M12 3H8M4 13l4-4M4 13v-4M4 13h4" stroke="#5B6472" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
       '<button class="sq" style="background:#F5F3EC" onclick="hide(\'' + esc(c.id) + '\')">' + EYE_SVG + '</button></div>';
@@ -1736,6 +1800,11 @@ function unhide(id){
     toast('השיחה שוחזרה'); load();
   });
 }
+function trueCaller(p){
+  var d = String(p || '').replace(/\D/g, '').replace(/^972/, '0');
+  if (!d){ toast('אין מספר'); return; }
+  window.open('https://www.truecaller.com/search/il/' + d, '_blank');
+}
 function openWa(i){
   var c = el('list')._src[i];
   var msg = 'היי, ראינו שהתקשרת ל' + (OFFICE || 'משרד') + ' — איך נוכל לעזור?';
@@ -1761,12 +1830,15 @@ function addBuyer(i){
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
 function saveBuyer(){
+  if (window._svBusy) return;   // מניעת לחיצה כפולה — קונה נוסף פעמיים
+  window._svBusy = true;
   POST('/api/buyers/add', {name: el('abNm').value.trim(), phone: el('abPh').value.trim(),
                            budget: el('abBd').value.trim(), summary: el('abSm').value.trim()})
     .then(function(j){
+      window._svBusy = false;
       if (!j.ok){ toast('שגיאה בשמירה'); return; }
       closeSheet(); toast('הקונה נוסף'); load();
-    });
+    }).catch(function(){ window._svBusy = false; toast('שגיאה בשמירה'); });
 }
 
 
@@ -1999,6 +2071,21 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function H(extra){
   var h = {'X-Auth-Token': TOK};
   if (extra) h['Content-Type'] = 'application/json';
@@ -2024,8 +2111,12 @@ function openSheet(html, small){
   s.className = small ? 'small' : '';
   s.innerHTML = '<div class="grip"></div>' + html;
   s.style.display = 'flex'; el('ovl').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
 }
-function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.body.style.overflow = '';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
 var BUYERS = [], STATUSES = {}, FILTER = 'active', OFFICE = '', MULTI = false, SMART = null;
 function qChanged(){ if (SMART) SMART = null; render(); }
@@ -2178,7 +2269,10 @@ function toggleHot(i){
 function openEdit(i){
   var b = el('list')._src[i];
   var cur = stOf(b);
-  openSheet('<h3>עריכת קונה · ' + esc(b.name || '') + '</h3>' +
+  openSheet('<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<h3>עריכת קונה · ' + esc(b.name || '') + '</h3>' +
+    '<button class="trashBtn" style="width:42px;height:42px;border-radius:11px;background:#FBEDED;border:0;cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="delBuyer(' + i + ')" aria-label="מחיקת קונה">' +
+    '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button></div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
     '<div style="background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:700">' + esc(b.phone || '') + '</div>' +
     (b.budget ? '<div style="background:#F6EEDB;border:1px solid #E4C56B;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:700;color:#B8902F">' + esc(b.budget) + '</div>' : '') +
@@ -2190,7 +2284,7 @@ function openEdit(i){
         (st === cur ? 'background:#2E6BD6;color:#fff' : 'background:#F5F3EC;border:1px solid #E9E4D8;color:#5B6472') + '">' +
         ST_LABEL[st] + '</div>';
     }).join('') + '</div></div>' +
-    '<div class="fld"><span>מה מחפש (דרישות)</span><textarea id="edSearch" rows="3">' + esc(b.search || '') + '</textarea></div>' +
+    '<div class="fld"><span>מה מחפש (דרישות) — זה הטקסט שמופיע בכרטיס ומשמש את ההתאמה</span><textarea id="edSearch" rows="3" placeholder="לדוגמה: 4 חדרים בקריות עד 1.5M, קומה נמוכה, מעלית">' + esc(b.search || '') + '</textarea></div>' +
     '<div style="font-size:11px;color:#8B8F99;line-height:1.5">שם, טלפון ותקציב נערכים בינתיים בגיליון — ייפתחו לעריכה מלאה עם המעבר ל-Supabase.</div>' +
     '<button class="btn btn-blue" onclick="saveEdit(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
@@ -2224,7 +2318,15 @@ function saveEdit(i){
   Promise.all(jobs).then(function(rs){
     closeSheet();
     toast(rs.every(function(j){ return j.ok; }) ? 'נשמר' : 'חלק מהשינויים לא נשמרו');
-    render();
+    load();   // רענון מהשרת — העדכון מופיע מיד בכרטיס ובחיפוש
+  });
+}
+function delBuyer(i){
+  var b = el('list')._src[i];
+  if (!confirm('למחוק את ' + (b.name || 'הקונה') + '? הפעולה מסירה אותו מהגיליון.')) return;
+  POST('/api/buyers/delete', {row: b.row}).then(function(j){
+    if (!j.ok){ toast('שגיאה במחיקה'); return; }
+    closeSheet(); toast('הקונה נמחק'); load();
   });
 }
 /* ── הוספת קונה ── */
@@ -2238,17 +2340,21 @@ function openAdd(){
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
 }
 function saveBuyer(){
+  if (window._svBusy) return;   // מניעת לחיצה כפולה — קונה נוסף פעמיים
+  window._svBusy = true;
   POST('/api/buyers/add', {name: el('abNm').value.trim(), phone: el('abPh').value.trim(),
                            budget: el('abBd').value.trim(), summary: el('abSm').value.trim()})
     .then(function(j){
+      window._svBusy = false;
       if (!j.ok){ toast('שגיאה בשמירה'); return; }
       closeSheet(); toast('הקונה נוסף'); load();
-    });
+    }).catch(function(){ window._svBusy = false; toast('שגיאה בשמירה'); });
 }
 
 /* ── התאמת נכסים (16b): משרד + שת"פ, אחוז התאמה, שלח לקונה / החתם מתעניין ── */
 function matchQuery(b){
-  return [b.search, b.budget ? 'עד ' + b.budget : '', b.summary].filter(Boolean).join(' ').slice(0, 160);
+  var q = [b.search, b.budget ? 'עד ' + b.budget : ''].filter(Boolean).join(' ');
+  return (q || (b.summary || '').slice(0, 80)).slice(0, 160);
 }
 function matchProps(i){
   var b = el('list')._src[i];
@@ -2262,7 +2368,9 @@ function matchProps(i){
     POST('/api/search/properties', {q: q, nosave: true}).catch(function(){ return {}; }),
     POST('/api/search/exclusives', {q: q, nosave: true}).catch(function(){ return {}; })
   ]).then(function(rs){
-    renderMatches(b, (rs[0] && rs[0].results) || [], (rs[1] && rs[1].results) || []);
+    var bySc = function(a, c){ return (c.score || 0) - (a.score || 0); };
+    renderMatches(b, ((rs[0] && rs[0].results) || []).sort(bySc),
+                     ((rs[1] && rs[1].results) || []).sort(bySc));
   });
 }
 function scoreChip(sc){
@@ -2270,9 +2378,11 @@ function scoreChip(sc){
   return '<span class="score ' + (sc >= 90 ? 'hi' : 'md') + '">' + sc + '% התאמה</span>';
 }
 function propCard(p, b, shtaf){
-  var dt = [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.floor ? 'קומה ' + p.floor : '',
-            p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
-  var where = [p.address, p.neighborhood, p.city].filter(Boolean).join(', ');
+  var dt = shtaf
+    ? [(p.desc || p.dest || ''), p.date ? 'פורסם ' + p.date : ''].filter(Boolean).join(' · ')
+    : [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.floor ? 'קומה ' + p.floor : '',
+       p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
+  var where = [(p.address || p.street), p.neighborhood, p.city].filter(Boolean).join(', ');
   return '<div class="prop' + (shtaf ? ' shtaf' : '') + '">' +
     '<div class="r1"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + esc(dt + (shtaf ? (dt ? ' · ' : '') + (p.office || 'משרד שותף') : (p.agent ? ' · ' + p.agent : ''))) + '</div></div>' +
@@ -2497,6 +2607,21 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
 function el(id){ return document.getElementById(id); }
 function esc(s){
@@ -2511,8 +2636,12 @@ function toast(msg){
 function openSheet(html){
   el('sheet').innerHTML = '<div class="grip"></div>' + html;
   el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
 }
-function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.body.style.overflow = '';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
 var SIGS = [], FILTER = 'buyer', MULTI = false;   // ברירת מחדל: קונים (מימין); שכירות/מוכר וכו' — תחת "הכל"
 function kindOf(g){   // תוויות _deal_label בשרת: "קונים" / "בלעדיות" / "שכירות" / "מוכר"
@@ -2795,6 +2924,21 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function H(extra){
   var h = {'X-Auth-Token': TOK};
   if (extra) h['Content-Type'] = 'application/json';
@@ -2818,8 +2962,12 @@ function toast(msg){
 function openSheet(html){
   el('sheet').innerHTML = '<div class="grip"></div>' + html;
   el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
 }
-function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.body.style.overflow = '';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
 var ROWS = [], BUCKETS = [], TOTAL = 0, AGE = -1, MGR = false, MEETS = [];
 var BUCKET_RANGES = [[0,30],[30,60],[60,90],[90,120],[120,150],[150,180],[180,99999]];
@@ -2869,7 +3017,9 @@ function render(){
     return true;
   });
   var h = '';
-  src.slice(0, 30).forEach(function(r, i){ h += nbCard(r, i); });
+  src.slice(0, 30).forEach(function(r, i){
+    try{ h += nbCard(r, i); }catch(e){}   // שורה בעייתית לא מפילה את המסך
+  });
   if (src.length > 30) h += '<div class="more">מוצגים 30 מתוך ' + src.length + ' — חדד עם חיפוש או ותק</div>';
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="30" height="27" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg></div>' +
@@ -3177,6 +3327,21 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function H(extra){
   var h = {'X-Auth-Token': TOK};
   if (extra) h['Content-Type'] = 'application/json';
@@ -3200,8 +3365,12 @@ function toast(msg){
 function openSheet(html){
   el('sheet').innerHTML = '<div class="grip"></div>' + html;
   el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
 }
-function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.body.style.overflow = '';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 function fmtPrice(p){
   p = String(p || '').trim();
   if (!p) return '';
@@ -3470,6 +3639,21 @@ V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
 function el(id){ return document.getElementById(id); }
 function esc(s){
@@ -3500,6 +3684,9 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(MAP);
 CLUSTER = L.markerClusterGroup({maxClusterRadius: 46, showCoverageOnHover: false});
 MAP.addLayer(CLUSTER);
+// סיכת המשרד — שושנה דמארי 4, קרית מוצקין (זהב, תמיד מעל הקלאסטרים)
+L.marker([32.85042, 35.08606], {zIndexOffset: 1000, icon: L.divIcon({className: '',
+  html: '<div class="pin sel" style="background:#C29435">המשרד</div>', iconSize: null, iconAnchor: [26, 14]})}).addTo(MAP);
 
 function pinIcon(it, sel){
   return L.divIcon({className: '', html: '<div class="pin' + (it.t === 'coop' ? ' coop' : '') +
@@ -3745,6 +3932,21 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function H(extra){
   var h = {'X-Auth-Token': TOK};
   if (extra) h['Content-Type'] = 'application/json';
@@ -3765,7 +3967,9 @@ function toast(msg){
   var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
   clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
 }
-function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.body.style.overflow = '';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 function fmtPrice(p){
   p = String(p || '').trim();
   if (!p) return '';
@@ -3916,6 +4120,8 @@ function openForm(i, asDeal){
     (isDeal ? 'סגור עסקה' : 'שמירה') + '</button>' +
     '<button class="btnSec" onclick="closeSheet()">ביטול</button></div>';
   s.style.display = 'flex'; el('ovl').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
   if (isDeal){
     el('fCom')._manual = !!it.commission_manual;
     if (!it.commission_manual) calcCom();
@@ -4145,6 +4351,21 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
+/* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
+  }
+});
+document.addEventListener('focusout', function(){
+  setTimeout(function(){
+    var a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')){
+      var nv = document.querySelector('nav'); if (nv) nv.style.display = '';
+    }
+  }, 150);
+});
 function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
 function el(id){ return document.getElementById(id); }
 function esc(s){
@@ -4207,9 +4428,14 @@ function render(){
     kpi(g.total || 0, 'חתימות') +
     kpi(g.bladiut || 0, 'בלעדיות', '', '#B8902F') +
     kpi(R.listings || 0, 'מודעות פעילות') +
-    kpi(dr.length, 'עסקאות נסגרו', '', '#1FAF5E') +
+    kpi(dr.length, 'עסקאות בתקופה', '', '#1FAF5E') +
     kpi((R.meetings || []).length, 'פגישות ופולו-אפ') +
-    kpi(R.nbTotal || 0, 'נכס נולד בתקופה', '', '#B8902F');
+    kpi(DEALS.filter(function(d){ return !d.deal; }).length, 'תהליכים פתוחים', 'לרגע זה', '#B8902F') +
+    kpi(DEALS.filter(function(d){
+      if (!d.deal) return false;
+      var cd = parseDMY(d.close_date);
+      return cd && cd.getFullYear() === new Date().getFullYear();
+    }).length, 'עסקאות השנה', '', '#1FAF5E');
   renderLeaders();
   renderShtaf();
   renderNb();
@@ -4298,6 +4524,259 @@ function copyTxt(){
     document.title = 'דוחות · ' + (o.name || '');
   }).catch(function(){});
   load();
+})();
+</script></body></html>'''
+
+
+# ── עדכונים למשרד (31b) — Supabase announcements + אישורי קריאה ─────────────
+V2_UPDATES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>עדכונים למשרד</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 12px;display:flex;align-items:center;justify-content:space-between}
+  .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  .t{font-size:17px;font-weight:800}
+  main{flex:1;padding:4px 16px 30px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 16px;
+      display:flex;flex-direction:column;gap:9px;border:2px solid transparent}
+  .card.pinned{border-color:#C29435}
+  .hd{display:flex;align-items:center;gap:9px}
+  .hd .av{width:34px;height:34px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+  .hd .nm{font-size:13px;font-weight:800}
+  .hd .sb{font-size:11px;color:#8B8F99}
+  .pin{margin-right:auto;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#B8902F}
+  .body{font-size:13.5px;line-height:1.7;color:#1E3A5F;white-space:pre-wrap}
+  .foot{display:flex;align-items:center;gap:8px}
+  .ok{display:flex;align-items:center;justify-content:center;gap:6px;background:#2E6BD6;color:#fff;
+      border-radius:11px;padding:9px 16px;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
+  .okd{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#1FAF5E}
+  .cnt{font-size:11.5px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:4px 11px;border-radius:999px}
+  .trash{width:36px;height:36px;border-radius:10px;background:#FBEDED;border:0;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;margin-right:auto}
+  .composer{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 16px;
+      display:flex;flex-direction:column;gap:9px}
+  .composer textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:12px;padding:11px 13px;
+      font-size:13.5px;font-family:inherit;outline:none;resize:vertical;min-height:64px;color:#1E3A5F}
+  .composer .row{display:flex;align-items:center;gap:10px}
+  .composer .pub{display:flex;align-items:center;justify-content:center;gap:7px;background:#2E6BD6;color:#fff;
+      border-radius:12px;padding:11px 20px;font-size:13px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
+      box-shadow:0 4px 12px rgba(46,107,214,.25)}
+  .pinTg{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#5B6472;cursor:pointer}
+  .pinTg .bx{width:18px;height:18px;border-radius:5px;border:1.5px solid #DCD6C8;background:#fff;
+      display:flex;align-items:center;justify-content:center}
+  .pinTg.on .bx{background:#C29435;border-color:#C29435}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .tt{font-size:15px;font-weight:800}
+  .empty .ss{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
+  #toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:80;white-space:nowrap}
+  @media (min-width:700px){ header,main{width:100%;max-width:600px;margin-left:auto;margin-right:auto} }
+</style></head><body>
+  <header>
+    <button class="backBtn" onclick="location.href='/v2/home'">
+      <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="t">עדכונים למשרד</div>
+    <div style="width:44px"></div>
+  </header>
+  <main>
+    <div class="composer" id="composer" style="display:none">
+      <textarea id="annTx" placeholder="עדכון לצוות — נכס חדש, נוהל, ברכה..."></textarea>
+      <div class="row">
+        <div class="pinTg" id="pinTg" onclick="this.classList.toggle('on')">
+          <div class="bx"><svg width="10" height="8" viewBox="0 0 12 10"><path d="M1.5 5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>
+          נעוץ למעלה
+        </div>
+        <button class="pub" style="margin-right:auto" onclick="publish()">פרסם</button>
+      </div>
+    </div>
+    <div id="list"><div class="card empty"><div class="ss">טוען עדכונים…</div></div></div>
+  </main>
+  <div id="toast"></div>
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type': 'application/json'},
+    body: JSON.stringify(d || {})}).then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(m){
+  var t = el('toast'); t.textContent = m; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+var ANN = [], ME = {}, CAN_POST = false, IS_ADMIN = false;
+function load(){
+  return GET('/v2/api/ann').then(function(j){
+    if (!j.ok){
+      el('list').innerHTML = '<div class="card empty"><div class="tt">העדכונים עוד לא זמינים</div>' +
+        '<div class="ss">' + (j.reason === 'no_supabase' ? 'החיבור ל-Supabase לא מוגדר בסביבה הזו' : 'שגיאה בטעינה') + '</div></div>';
+      return;
+    }
+    ANN = j.items || [];
+    render();
+  });
+}
+function fmtTs(iso){
+  try{
+    var d = new Date(iso);
+    return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' +
+           ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }catch(e){ return ''; }
+}
+function render(){
+  var h = '';
+  ANN.forEach(function(a){
+    var mine = a.my_read;
+    h += '<div class="card' + (a.pinned ? ' pinned' : '') + '">' +
+      '<div class="hd"><div class="av">' + esc((a.author_name || ' ')[0]) + '</div>' +
+      '<div><div class="nm">' + esc(a.author_name || '') + '</div>' +
+      '<div class="sb">' + esc((a.author_role === 'coordinator' ? 'מתאמת' : 'מנהל') + ' · ' + fmtTs(a.created_at)) + '</div></div>' +
+      (a.pinned ? '<div class="pin"><svg width="12" height="12" viewBox="0 0 16 16"><path d="M9.5 1.5l5 5-3 1-2.5 5.5-2-4-4.5 4 4-4.5-4-2L8 4z" fill="#C29435"/></svg>נעוץ</div>' : '') +
+      '</div>' +
+      '<div class="body">' + esc(a.body || '') + '</div>' +
+      '<div class="foot">' +
+      (mine ? '<div class="okd"><svg width="13" height="13" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round"/></svg>אישרת</div>'
+            : '<button class="ok" onclick="markRead(\'' + esc(a.id) + '\')">אישרתי · קראתי</button>') +
+      (IS_ADMIN ? '<div class="cnt">אישרו ' + (a.reads || 0) + '</div>' : '') +
+      (IS_ADMIN ? '<button class="trash" onclick="delAnn(\'' + esc(a.id) + '\')">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button>' : '') +
+      '</div></div>';
+  });
+  el('list').innerHTML = h ||
+    '<div class="card empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 22 22"><path d="M4 14V9a7 7 0 0 1 14 0v5l1.5 2.5H2.5z" fill="none" stroke="#C29435" stroke-width="1.6" stroke-linejoin="round"/></svg></div>' +
+    '<div class="tt">אין עדכונים עדיין</div><div class="ss">' + (CAN_POST ? 'פרסם את העדכון הראשון לצוות למעלה' : 'עדכונים מהמשרד יופיעו כאן') + '</div></div>';
+}
+function publish(){
+  var tx = el('annTx').value.trim();
+  if (!tx){ toast('כתוב עדכון'); return; }
+  POST('/v2/api/ann', {body: tx, pinned: el('pinTg').classList.contains('on')}).then(function(j){
+    if (!j.ok){ toast(j.reason === 'no_supabase' ? 'אין חיבור Supabase' : 'שגיאה בפרסום'); return; }
+    el('annTx').value = ''; el('pinTg').classList.remove('on');
+    toast('פורסם'); load();
+  });
+}
+function markRead(id){
+  POST('/v2/api/ann/read', {id: id}).then(function(j){
+    if (!j.ok){ toast('שגיאה'); return; }
+    load();
+  });
+}
+function delAnn(id){
+  if (!confirm('למחוק את העדכון?')) return;
+  POST('/v2/api/ann/del', {id: id}).then(function(j){
+    if (!j.ok){ toast('שגיאה'); return; }
+    toast('נמחק'); load();
+  });
+}
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    ME = j;
+    IS_ADMIN = j.role === 'admin';
+    CAN_POST = j.role === 'admin' || j.role === 'coordinator';
+    el('composer').style.display = CAN_POST ? 'flex' : 'none';
+    load();
+  }).catch(function(){ location.replace('/v2'); });
+})();
+</script></body></html>'''
+
+# ── יומן שימוש — דשבורד כניסות ופעולות (9ו, למנהל) ──────────────────────────
+V2_ACTIVITY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>יומן שימוש</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 12px;display:flex;align-items:center;justify-content:space-between}
+  .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  .t{font-size:17px;font-weight:800}
+  .live{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:#1FAF5E}
+  .live i{width:8px;height:8px;border-radius:50%;background:#1FAF5E;display:block}
+  @media (prefers-reduced-motion:no-preference){
+    @keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
+    .live i{animation:pulseDot 2s infinite}
+  }
+  main{flex:1;padding:4px 16px 30px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+  .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:6px 16px}
+  .row{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid #F0EDE3;min-height:44px}
+  .row:last-child{border-bottom:0}
+  .row .av{width:32px;height:32px;border-radius:50%;background:#EAF0FA;color:#2E6BD6;display:flex;
+      align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+  .row .av.login{background:#E7F7EE;color:#1FAF5E}
+  .row .mid{flex:1;min-width:0}
+  .row .a{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .d{font-size:11.5px;color:#8B8F99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .tm{font-size:11.5px;font-weight:700;color:#8B8F99;flex-shrink:0;font-variant-numeric:tabular-nums}
+  .empty{text-align:center;color:#8B8F99;font-size:13px;padding:24px 0}
+  @media (min-width:700px){ header,main{width:100%;max-width:600px;margin-left:auto;margin-right:auto} }
+</style></head><body>
+  <header>
+    <button class="backBtn" onclick="location.href='/v2/home'">
+      <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="t">יומן שימוש</div>
+    <div class="live"><i></i>חי</div>
+  </header>
+  <main><div class="card" id="list"><div class="empty">טוען…</div></div></main>
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function fmt(ts){
+  var d = new Date((parseFloat(ts) || 0) * 1000);
+  var today = new Date();
+  var hm = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  return (d.toDateString() === today.toDateString()) ? hm
+    : ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' + hm;
+}
+function load(){
+  GET('/api/activity').then(function(j){
+    if (!j.ok){
+      el('list').innerHTML = '<div class="empty">' + (j.reason === 'forbidden' ? 'המסך למנהל בלבד' : 'שגיאה בטעינה') + '</div>';
+      return;
+    }
+    var items = j.items || [];
+    el('list').innerHTML = items.slice(0, 120).map(function(it){
+      var isLogin = (it.action || '').indexOf('כניסה') >= 0;
+      return '<div class="row"><div class="av' + (isLogin ? ' login' : '') + '">' + esc((it.name || ' ')[0]) + '</div>' +
+        '<div class="mid"><div class="a">' + esc((it.name || '') + ' · ' + (it.action || '')) + '</div>' +
+        (it.detail ? '<div class="d">' + esc(it.detail) + '</div>' : '') + '</div>' +
+        '<div class="tm">' + fmt(it.ts) + '</div></div>';
+    }).join('') || '<div class="empty">אין פעילות עדיין היום</div>';
+  }).catch(function(){});
+}
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    load();
+    setInterval(load, 45000);
+  }).catch(function(){ location.replace('/v2'); });
 })();
 </script></body></html>'''
 
@@ -4422,6 +4901,122 @@ def register(app, G):
     @app.route("/v2/reports", methods=["GET"])
     def v2_reports():
         return _page(V2_REPORTS_HTML)
+
+    @app.route("/v2/updates", methods=["GET"])
+    def v2_updates():
+        return _page(V2_UPDATES_HTML)
+
+    @app.route("/v2/activity", methods=["GET"])
+    def v2_activity():
+        return _page(V2_ACTIVITY_HTML)
+
+    # ── עדכונים למשרד — Supabase announcements + announcement_reads (מהמיגרציה) ──
+    def _sb_mod():
+        import supabase_db as _sb
+        return _sb if _sb.enabled() else None
+
+    @app.route("/v2/api/ann", methods=["GET"])
+    def v2_api_ann_list():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": False, "reason": "no_supabase"})
+        try:
+            r = _requests.get(_sb.SUPABASE_URL + "/rest/v1/announcements", headers=_sb._headers(),
+                              params={"office_id": "eq." + _sb.SB_OFFICE_ID,
+                                      "select": "id,author_name,author_role,body,pinned,created_at",
+                                      "order": "pinned.desc,created_at.desc", "limit": "50"}, timeout=10)
+            r.raise_for_status()
+            items = r.json() or []
+            ids = [it["id"] for it in items]
+            reads = {}
+            mine = set()
+            my9 = _last9(s.get("phone", ""))
+            if ids:
+                r2 = _requests.get(_sb.SUPABASE_URL + "/rest/v1/announcement_reads", headers=_sb._headers(),
+                                   params={"announcement_id": "in.(" + ",".join(ids) + ")",
+                                           "select": "announcement_id,reader_phone", "limit": "5000"}, timeout=10)
+                r2.raise_for_status()
+                for rec in (r2.json() or []):
+                    reads[rec["announcement_id"]] = reads.get(rec["announcement_id"], 0) + 1
+                    if rec.get("reader_phone") == my9:
+                        mine.add(rec["announcement_id"])
+            for it in items:
+                it["reads"] = reads.get(it["id"], 0)
+                it["my_read"] = it["id"] in mine
+            return jsonify({"ok": True, "items": items})
+        except Exception as e:
+            if log: log.warning(f"effie ann list: {e}")
+            return jsonify({"ok": False, "reason": "read_failed"})
+
+    @app.route("/v2/api/ann", methods=["POST"])
+    def v2_api_ann_post():
+        s = _web_auth()
+        if not s or s.get("role") not in ("admin", "coordinator"):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        body = (b.get("body") or "").strip()[:2000]
+        if not body:
+            return jsonify({"ok": False, "reason": "empty"}), 400
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": False, "reason": "no_supabase"})
+        try:
+            r = _requests.post(_sb.SUPABASE_URL + "/rest/v1/announcements",
+                               headers={**_sb._headers(), "Content-Type": "application/json"},
+                               json={"office_id": _sb.SB_OFFICE_ID, "author_name": s.get("name", ""),
+                                     "author_role": s.get("role", ""), "body": body,
+                                     "pinned": bool(b.get("pinned"))}, timeout=10)
+            r.raise_for_status()
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
+                          "עדכון למשרד", body[:60])
+            return jsonify({"ok": True})
+        except Exception as e:
+            if log: log.warning(f"effie ann post: {e}")
+            return jsonify({"ok": False, "reason": "write_failed"})
+
+    @app.route("/v2/api/ann/read", methods=["POST"])
+    def v2_api_ann_read():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        aid = ((request.get_json(silent=True) or {}).get("id") or "").strip()
+        _sb = _sb_mod()
+        if not (_sb and aid):
+            return jsonify({"ok": False, "reason": "no_supabase" if not _sb else "bad_id"})
+        try:
+            r = _requests.post(_sb.SUPABASE_URL + "/rest/v1/announcement_reads?on_conflict=announcement_id,reader_phone",
+                               headers={**_sb._headers(), "Content-Type": "application/json",
+                                        "Prefer": "resolution=merge-duplicates"},
+                               json={"office_id": _sb.SB_OFFICE_ID, "announcement_id": aid,
+                                     "reader_phone": _last9(s.get("phone", "")),
+                                     "reader_name": s.get("name", "")}, timeout=10)
+            r.raise_for_status()
+            return jsonify({"ok": True})
+        except Exception as e:
+            if log: log.warning(f"effie ann read: {e}")
+            return jsonify({"ok": False, "reason": "write_failed"})
+
+    @app.route("/v2/api/ann/del", methods=["POST"])
+    def v2_api_ann_del():
+        s = _web_auth()
+        if not s or s.get("role") != "admin":
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        aid = ((request.get_json(silent=True) or {}).get("id") or "").strip()
+        _sb = _sb_mod()
+        if not (_sb and aid):
+            return jsonify({"ok": False, "reason": "no_supabase" if not _sb else "bad_id"})
+        try:
+            r = _requests.delete(_sb.SUPABASE_URL + "/rest/v1/announcements",
+                                 headers=_sb._headers(),
+                                 params={"id": "eq." + aid, "office_id": "eq." + _sb.SB_OFFICE_ID}, timeout=10)
+            r.raise_for_status()
+            return jsonify({"ok": True})
+        except Exception as e:
+            if log: log.warning(f"effie ann del: {e}")
+            return jsonify({"ok": False, "reason": "delete_failed"})
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
