@@ -1849,14 +1849,14 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .hd .ic{width:36px;height:36px;border-radius:11px;background:#EAF0FA;display:flex;align-items:center;justify-content:center}
   .hd h1{font-size:21px;font-weight:800}
   .cnt{font-size:13px;font-weight:700;color:#2E6BD6;background:#EAF0FA;padding:4px 11px;border-radius:999px}
-  .srchRow{display:flex;gap:10px}
-  .srch{flex:1;display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;
-      border-radius:14px;padding:0 14px}
-  .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
+  .srchRow{display:flex;gap:7px}
+  .srch{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:#F5F3EC;border:1px solid #E9E4D8;
+      border-radius:14px;padding:0 12px}
+  .srch input{flex:1;min-width:0;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
       color:#1E3A5F;padding:11px 0}
-  .addBtn{display:flex;align-items:center;justify-content:center;gap:7px;background:#2E6BD6;color:#fff;
-      border-radius:14px;padding:0 16px;font-size:13.5px;font-weight:700;border:0;cursor:pointer;
-      font-family:inherit;box-shadow:0 4px 12px rgba(46,107,214,.25);white-space:nowrap}
+  .addBtn{display:flex;align-items:center;justify-content:center;gap:5px;background:#2E6BD6;color:#fff;
+      border-radius:14px;padding:0 11px;font-size:13px;font-weight:700;border:0;cursor:pointer;
+      font-family:inherit;box-shadow:0 4px 12px rgba(46,107,214,.25);white-space:nowrap;flex-shrink:0}
   .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
   .segs .sg{flex:1;text-align:center;padding:7px 0;font-size:12.5px;font-weight:700;color:#5B6472;
       border-radius:10px;cursor:pointer}
@@ -1961,8 +1961,13 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
       <div class="srchRow">
         <div class="srch">
           <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
-          <input id="q" placeholder="שם, טלפון או דרישה" oninput="render()">
+          <input id="q" placeholder="שם, טלפון או חיפוש חופשי" oninput="qChanged()"
+                 onkeydown="if(event.key==='Enter')smartSearch()">
         </div>
+        <button class="addBtn" style="background:#C29435;box-shadow:0 4px 12px rgba(194,148,53,.25)" onclick="smartSearch()">
+          <svg width="13" height="13" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+          חפש
+        </button>
         <button class="addBtn" onclick="openAdd()">
           <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
           קונה
@@ -2022,7 +2027,55 @@ function openSheet(html, small){
 }
 function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
 
-var BUYERS = [], STATUSES = {}, FILTER = 'active', OFFICE = '', MULTI = false;
+var BUYERS = [], STATUSES = {}, FILTER = 'active', OFFICE = '', MULTI = false, SMART = null;
+function qChanged(){ if (SMART) SMART = null; render(); }
+function smartSearch(){
+  var q = el('q').value.trim();
+  if (!q){ toast('כתוב מה לחפש — למשל "קונה בתקציב 3 מיליון בגושן"'); return; }
+  el('list').innerHTML = '<div class="card empty"><div class="s" style="padding:10px 0">מחפש בשיחות שנענו…</div></div>';
+  POST('/api/search/buyers', {q: q}).then(function(j){
+    SMART = (j && j.results) || [];
+    render();
+  }).catch(function(){ SMART = []; render(); });
+}
+function renderSmart(){
+  el('cnt').textContent = SMART.length;
+  var h = '<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px 10px">' +
+    '<div style="font-size:13px;font-weight:800;color:#B8902F">חיפוש חכם · מהשיחות שנענו</div>' +
+    '<div style="font-size:12.5px;font-weight:700;color:#2E6BD6;cursor:pointer" onclick="SMART=null;el(\'q\').value=\'\';render()">נקה חיפוש</div></div>';
+  SMART.slice(0, 15).forEach(function(b, i){
+    h += '<div class="buyer">' +
+      '<div class="top"><div><div class="nm">' + esc(b.phone || '') + '</div>' +
+      '<div class="sb">' + esc([b.agent, b.date].filter(Boolean).join(' · ')) + '</div></div>' +
+      (b.budget ? '<div class="bdg">' + esc(b.budget) + '</div>' : '') + '</div>' +
+      (b.summary ? '<div class="ai"><div class="t">' +
+        '<svg width="14" height="13" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>' +
+        'סיכום חכם</div><div class="x">' + esc(b.summary) + '</div></div>' : '') +
+      '<div class="acts">' +
+      '<button class="main" onclick="smartAdd(' + i + ')">' +
+      '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>' +
+      'הוסף כקונה</button>' +
+      (b.wa ? '<button class="sq" style="background:#E7F7EE" onclick="window.open(\'https://wa.me/' + esc(b.wa) + '\',\'_blank\')">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5"/></svg></button>' : '') +
+      (b.tel ? '<button class="sq" style="background:#EAF0FA" onclick="location.href=\'tel:' + esc(b.tel) + '\'">' +
+      '<svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7"/></svg></button>' : '') +
+      '</div></div>';
+  });
+  if (!SMART.length)
+    h += '<div class="card empty"><div class="t">לא נמצאו קונים מתאימים</div>' +
+      '<div class="s">חיפשנו בשיחות שנענו לפי תקציב ומילות מפתח — נסה ניסוח אחר</div></div>';
+  el('list').innerHTML = h;
+  el('list')._smart = SMART;
+}
+function smartAdd(i){
+  var b = el('list')._smart[i];
+  openAdd();
+  setTimeout(function(){
+    el('abPh').value = b.phone || '';
+    el('abBd').value = (b.budget || '').replace(/[^\d,]/g, '');
+    el('abSm').value = b.summary || '';
+  }, 50);
+}
 var ST_LABEL = {active:'פעיל', hot:'חם', frozen:'בהקפאה', closed:'סגר'};
 var ST_COLOR = {active:'#2E6BD6', hot:'#C29435', frozen:'#5B6472', closed:'#1FAF5E'};
 
@@ -2041,6 +2094,7 @@ function load(){
 }
 
 function render(){
+  if (SMART){ renderSmart(); return; }
   var q = el('q').value.trim().toLowerCase();
   var src = BUYERS.filter(function(b){
     var st = stOf(b);
