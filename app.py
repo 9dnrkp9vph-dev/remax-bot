@@ -3332,10 +3332,17 @@ def api_auth_whoami():
     s = _web_auth()
     if not s:
         return jsonify({"ok": False, "auth": False}), 401
-    return jsonify({"ok": True, "role": s.get("role"), "drole": s.get("drole", ""),
-                    "name": s.get("name", ""), "phone": _last9(s.get("phone", "")),
-                    "dev": bool(s.get("dev", False)),
-                    "tabs": _tabs_for_role(s.get("drole", ""))})
+    out = {"ok": True, "role": s.get("role"), "drole": s.get("drole", ""),
+           "name": s.get("name", ""), "phone": _last9(s.get("phone", "")),
+           "dev": bool(s.get("dev", False)),
+           "tabs": _tabs_for_role(s.get("drole", ""))}
+    if s.get("role") == "coordinator":   # שמות הסוכנים שלה — לבחירת "עבור סוכן" בתיאום פגישות
+        _names = set(n for n in (s.get("agent_names") or []) if n)
+        for _ph in (s.get("agents") or []):
+            _nm = web_phone_name_map().get(_last9(_ph)) or web_contacts_phone_name().get(_last9(_ph))
+            if _nm: _names.add(_nm)
+        out["agent_names"] = sorted(_names)
+    return jsonify(out)
 
 def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
                       location=None, tz="Asia/Jerusalem", attendees=None, send_updates="none"):
@@ -4873,6 +4880,8 @@ def api_deals_save():
             "stage": str(b.get("stage", "") or "").strip(),
             "commission": str(b.get("commission", "") or "").strip(),
             "commission_manual": bool(b.get("commission_manual")),
+            "commission2": str(b.get("commission2", "") or "").strip(),
+            "commission2_manual": bool(b.get("commission2_manual")),
         }
         if existing:
             rec["created"] = existing.get("created", "")
