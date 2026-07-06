@@ -1400,6 +1400,49 @@ def fetch_signings_from_sheet():
     except Exception as e:
         log.error(f"signings sheet error: {e}")
         return []
+_RECENT_SIGNS = []   # (ts, rec) — גשר נראות: חתימה שנשלחה עכשיו מופיעה מיד, עד שהסנכרון למקור נוחת
+def _recent_signs_add(rec):
+    try:
+        _RECENT_SIGNS.append((time.time(), dict(rec)))
+    except Exception:
+        pass
+_RECENT_SIGN_DELS = []   # (ts, eid, received, client_canon) — הסתרה מיידית של חתימות שנמחקו
+def _recent_sign_del_add(eid, received, client):
+    try:
+        _RECENT_SIGN_DELS.append((time.time(), str(eid or ""), str(received or ""), _canon_key(client or "")))
+    except Exception:
+        pass
+def _recent_sign_dels_filter(rows):
+    now = time.time()
+    keep = [x for x in _RECENT_SIGN_DELS if now - x[0] < 900]
+    _RECENT_SIGN_DELS[:] = keep
+    if not keep:
+        return rows
+    def _gone(r):
+        r_eid = str(r.get("event_id", "") or "")
+        r_rc = str(r.get("received_at", "") or "")
+        r_cl = _canon_key(r.get("client_name", "") or "")
+        for (_t, eid, rc, cl) in keep:
+            if eid and r_eid == eid and (not rc or r_rc == rc):
+                return True
+            if not eid and cl and r_cl == cl and rc and r_rc == rc:
+                return True
+        return False
+    return [r for r in rows if not _gone(r)]
+
+def _recent_signs_merge(rows):
+    """מוסיף חתימות טריות (עד 15 דק') שעוד לא הגיעו מהמקור — דדופ לפי event_id+deal_type,
+    כך שברגע שהסנכרון נוחת הרשומה מהמקור גוברת ואין כפילות."""
+    now = time.time()
+    keep = [(t, r) for (t, r) in _RECENT_SIGNS if now - t < 900]
+    _RECENT_SIGNS[:] = keep
+    if not keep:
+        return rows
+    seen = set((str(r.get("event_id", "") or ""), str(r.get("deal_type", "") or "")) for r in rows)
+    extra = [r for (t, r) in keep
+             if (str(r.get("event_id", "") or ""), str(r.get("deal_type", "") or "")) not in seen]
+    return (rows + extra) if extra else rows
+
 def get_signings(frm="01/01/2020", to="31/12/2099"):
     """חתימות לתקופה. אם יש טאב מלא (ייצוא מהקרם) — הוא הבסיס המדויק, ומוסיפים מהמקור
     האוטומטי (Apps Script) רק חתימות חדשות יותר מההדבקה האחרונה, כך שהדוח תמיד עדכני
@@ -1427,6 +1470,8 @@ def get_signings(frm="01/01/2020", to="31/12/2099"):
         allsig = manual + extra
     else:
         allsig = web_fetch_raw("חתימות", frm, to)
+    allsig = _recent_signs_merge(allsig)
+    allsig = _recent_sign_dels_filter(allsig)
     # שורות זהות לגמרי (אותו event_id + אותה חותמת זמן + אותו לקוח) = כפילות ודאית במקור — מסננים
     _seen_exact = set()
     _dedup = []
@@ -4105,12 +4150,13 @@ def api_sign_submit():
     link = base + "/s/" + token
     ok_any = False
     for d in docs:
-        j = _buyers_apps_post("addsigning", {
-            "event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
-            "client_name": client, "address": address, "city": city,
-            "commission_pct": link, "received_at": now_iso, "notes": notes})
+        _srec = {"event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
+                 "client_name": client, "address": address, "city": city,
+                 "commission_pct": link, "received_at": now_iso, "notes": notes}
+        j = _buyers_apps_post("addsigning", _srec)
         if j and j.get("ok"):
             ok_any = True
+            _recent_signs_add(_srec)   # נראות מיידית במסך החתימות
     doc_saved = False; doc_resp = ""
     try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה)
         jd = _buyers_apps_post("savesigndoc", {
@@ -4300,12 +4346,13 @@ def api_sign_send_remote():
     # שורת חתימה 'ממתינה' — event_id=token זמני, ללא קישור (commission_pct ריק) עד שהלקוח חותם
     ok_any = False
     for d in docs:
-        j = _buyers_apps_post("addsigning", {
-            "event_id": token, "deal_type": d.get("deal_type", ""), "agent": agent,
-            "client_name": client, "address": address, "city": city,
-            "commission_pct": "", "received_at": now_iso, "notes": notes})
+        _srec = {"event_id": token, "deal_type": d.get("deal_type", ""), "agent": agent,
+                 "client_name": client, "address": address, "city": city,
+                 "commission_pct": "", "received_at": now_iso, "notes": notes}
+        j = _buyers_apps_post("addsigning", _srec)
         if j and j.get("ok"):
             ok_any = True
+            _recent_signs_add(_srec)   # נראות מיידית ב"ממתין לחתימה" — עד שהסנכרון נוחת
     # שמירת המסמך במצב 'pending' — ללא חתימה, ימתין שהלקוח יחתום
     try:
         _buyers_apps_post("savesigndoc", {
@@ -6132,6 +6179,7 @@ def api_newborn_status():
     skey = _canon_key(nm) + "::" + key
     rec = {"status": status, "addr": addr, "agent": nm, "pkey": key, "ts": int(time.time()),
            "owner": owner_name, "price": price, "ophone": owner_phone,
+           "note": str(d.get("note", "") or "")[:1000],
            "date": (date if status in ("meeting", "followup") else ""), "cal": []}
     # אירוע יומן לפגישה/פולואפ (שומרים מזהי אירוע למחיקה/עריכה עתידית)
     cal_ok = False
@@ -6722,6 +6770,7 @@ def api_sign_delete():
     if ok:
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+        _recent_sign_del_add(eid, received, client)   # ירידה מיידית מהלוח — עד שהסנכרון מוריד מהמקור
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת הסכם", (client + " " + eid)[:80])
     return jsonify({"ok": ok, "deleted": (j.get("deleted") if j else 0)})
 
