@@ -3540,12 +3540,14 @@ def api_dev_people():
                 d["aliases"].append(al)
                 alias_keys[_name_key(al)] = cn
     known_keys = set(known.keys()) | set(alias_keys.keys())
+    _removed_keys = _removed_agent_keys()   # שם שנמחק — לא מוצג גם ברשימת הלא-משויכים
     def _scan(names):
         cnt = {}
         for nm in names:
             nm = (nm or "").strip()
             if nm: cnt[nm] = cnt.get(nm, 0) + 1
-        out = [{"name": nm, "count": c} for nm, c in cnt.items() if _name_key(nm) not in known_keys]
+        out = [{"name": nm, "count": c} for nm, c in cnt.items()
+               if _name_key(nm) not in known_keys and _name_key(nm) not in _removed_keys]
         out.sort(key=lambda x: -x["count"])
         return out
     sig_names = [g.get("agent", "") for g in get_signings()]
@@ -6589,6 +6591,23 @@ def api_buyers_add():
             eff_name = as_name
             ps = list(_phones_for_name(as_name))
             eff_phone = ps[0] if ps else ""
+    # חסימת כפילות: אותו טלפון (או אותו שם אצל אותו סוכן) כבר קיים — אלא אם force
+    if not body.get("force"):
+        try:
+            _ln = _last9(phone)
+            _nk = _canon_key(name)
+            _ek = _canon_key(eff_name)
+            for _r in _fetch_manual_buyers():
+                _same_phone = bool(_ln) and _last9(_r.get("phone", "")) == _ln
+                _same_name = (not _ln) and bool(_nk) and _canon_key(_r.get("name", "")) == _nk \
+                             and _canon_key(_r.get("agent", "")) == _ek
+                if _same_phone or _same_name:
+                    _own = (_r.get("agent", "") or "").strip()
+                    return jsonify({"ok": False, "dup": True,
+                                    "reason": "הקונה כבר קיים" + ((" אצל " + _own) if _own else ""),
+                                    "agent": _own, "existing": (_r.get("name", "") or "").strip()})
+        except Exception:
+            pass
     payload = {
         "date": now.strftime("%d/%m/%Y %H:%M"),
         "name": name, "phone": phone, "budget": budget, "summary": summary,
