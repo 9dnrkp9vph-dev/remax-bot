@@ -273,6 +273,9 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .qa .blue .l,.qa .gold .l{color:#fff}
   .qa .blue .ic,.qa .gold .ic{background:rgba(255,255,255,.18)}
   .qa .lite{background:#fff;border:1.5px solid #E9E4D8}
+  .qaBadge{display:none;position:absolute;top:-7px;left:-4px;background:#C29435;color:#fff;font-size:11px;
+      font-weight:800;min-width:20px;height:20px;border-radius:999px;padding:0 6px;align-items:center;
+      justify-content:center;box-shadow:0 2px 6px rgba(194,148,53,.35)}
   .strip{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
       display:flex;align-items:center;gap:12px}
   .strip .ic{width:38px;height:38px;border-radius:12px;background:#EAF0FA;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -477,9 +480,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
         <div class="l">חיפוש נכס</div>
       </div>
-      <div class="a lite" onclick="location.href='/v2/deals'">
+      <div class="a lite" style="position:relative" onclick="location.href='/v2/deals'">
         <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#B8902F" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/></svg></div>
         <div class="l">תהליכים</div>
+        <div class="qaBadge" id="dealsBadge"></div>
       </div>
     </div>
 
@@ -837,6 +841,11 @@ el('story').addEventListener('touchmove', function(e){
       openStory();   // הסטורי הוא מסך הפתיחה
     } else el('briefCta').textContent = 'צפה שוב';
     loadData();
+    GET('/api/deals').then(function(d){
+      var n = ((d && d.items) || []).filter(function(x){ return !x.deal; }).length;
+      var b = el('dealsBadge');
+      if (b && n > 0){ b.textContent = n; b.style.display = 'flex'; }
+    }).catch(function(){});
     GET('/api/newborn').then(function(nb){
       M.nb = (nb && (nb.total || (nb.results || []).length)) || 0;
       // נולדו ביממה האחרונה (ageDays=0) — לכרטיס הסיום של הבריף, כולל כתובות
@@ -1810,8 +1819,6 @@ function callCard(c, i, hidden){
       '<button class="main blue" onclick="addBuyer(' + i + ')">' +
       '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>הוסף כקונה</button>' +
       '<button class="sq" style="background:#E7F7EE" onclick="openWa(' + i + ')">' + WA_SVG('#1FAF5E') + '</button>' +
-      '<button class="sq" style="background:#F0EDE3" onclick="trueCaller(\'' + esc(c.tel || c.caller || '') + '\')" aria-label="בדיקה בטרוקולר">' +
-      '<svg width="14" height="14" viewBox="0 0 16 16"><circle cx="6.5" cy="5.5" r="2.6" fill="none" stroke="#5B6472" stroke-width="1.4"/><path d="M2.5 13c.5-2.4 2-3.7 4-3.7s3.5 1.3 4 3.7" fill="none" stroke="#5B6472" stroke-width="1.4" stroke-linecap="round"/><circle cx="11.8" cy="10.2" r="2.3" fill="none" stroke="#5B6472" stroke-width="1.4"/><path d="M13.5 12l1.8 1.8" stroke="#5B6472" stroke-width="1.4" stroke-linecap="round"/></svg></button>' +
       (c.summary ? '<button class="sq" style="background:#F5F3EC" onclick="showSummary(' + i + ')">' +
       '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M12 3L8 7M12 3v4M12 3H8M4 13l4-4M4 13v-4M4 13h4" stroke="#5B6472" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
       '<button class="sq" style="background:#F5F3EC" onclick="hide(\'' + esc(c.id) + '\')">' + EYE_SVG + '</button></div>';
@@ -1826,7 +1833,9 @@ function callCard(c, i, hidden){
   return '<div class="call" style="margin-bottom:13px">' +
     '<div class="top"><div class="tile" style="background:' + (ok ? '#E7F7EE' : '#FBEDED') + '">' +
     PHONE_SVG(ok ? '#1FAF5E' : '#C24040') + '</div>' +
-    '<div class="mid"><div class="num">' + esc(title) + '</div><div class="sub">' + esc(subParts.join(' · ')) + '</div></div>' +
+    '<div class="mid"><div class="num">' +
+    (c.tel ? '<a href="tel:' + esc(c.tel) + '" style="color:inherit;text-decoration:none">' + esc(title) + '</a>' : esc(title)) +
+    '</div><div class="sub">' + esc(subParts.join(' · ')) + '</div></div>' +
     chip + '</div>' + ai + acts + '</div>';
 }
 
@@ -1853,17 +1862,6 @@ function unhide(id){
     if (!j.ok){ toast('שגיאה בשחזור'); return; }
     toast('השיחה שוחזרה'); load();
   });
-}
-function trueCaller(p){
-  var d = String(p || '').replace(/\D/g, '').replace(/^972/, '0');
-  if (!d){ toast('אין מספר'); return; }
-  if (window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
-    // באפליקציה: אין לטרוקולר חיפוש בקישור — מעתיקים ללוח ופותחים; טרוקולר מזהה ומציע חיפוש
-    var go = function(){ toast('המספר הועתק — טרוקולר יציע לחפש אותו'); setTimeout(function(){ location.href = 'truecaller://'; }, 450); };
-    try{ navigator.clipboard.writeText(d).then(go, go); }catch(e){ go(); }
-  } else {
-    window.open('https://www.truecaller.com/search/il/' + d, '_blank');
-  }
 }
 function openWa(i){
   var c = el('list')._src[i];
@@ -2059,8 +2057,14 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .prop.shtaf{background:#F7F5EE;border:1.5px dashed #DCD6C8;box-shadow:none}
   .prop .r1{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .prop .ad{font-size:14.5px;font-weight:800}
-  .prop .dt{font-size:11.5px;color:#8B8F99}
+  .prop .dt{font-size:11.5px;color:#8B8F99;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .prop .pr{font-size:15px;font-weight:800;white-space:nowrap}
+  .prop .dxBtn{width:30px;height:30px;border-radius:9px;background:#F5F3EC;border:none;padding:0;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center;cursor:pointer}
+  .prop.shtaf .dxBtn{background:#EFEBDD}
+  .prop .dx{font-size:12.5px;color:#5B6472;line-height:1.55;background:#FAF8F2;border-radius:12px;
+      padding:10px 12px;white-space:pre-wrap}
+  .prop.shtaf .dx{background:#F1EDE0}
   .score{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
   .score.hi{color:#157A43;background:#E7F7EE}
   .score.md{color:#B8902F;background:#F6EEDB}
@@ -2453,17 +2457,32 @@ function scoreChip(sc){
   if (sc == null) return '';
   return '<span class="score ' + (sc >= 90 ? 'hi' : 'md') + '">' + sc + '% התאמה</span>';
 }
+var DXN = 0;
+function toggleDx(id, btn){
+  var d = el(id); if (!d) return;
+  var open = d.style.display !== 'none';
+  d.style.display = open ? 'none' : 'block';
+  var sv = btn && btn.querySelector('svg');
+  if (sv) sv.style.transform = open ? '' : 'rotate(180deg)';
+}
 function propCard(p, b, shtaf){
+  // שת"פ באותו פורמט של המשרד: שורת פרטים קצרה; התיאור המלא נפתח באייקון "הרחב לתיאור"
   var dt = shtaf
-    ? [(p.desc || p.dest || ''), p.date ? 'פורסם ' + p.date : ''].filter(Boolean).join(' · ')
+    ? [(p.dest || ''), p.date ? 'פורסם ' + p.date : '', p.office || 'משרד שותף'].filter(Boolean).join(' · ')
     : [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.floor ? 'קומה ' + p.floor : '',
-       p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
+       p.size ? p.size + ' מ"ר' : '', p.agent || ''].filter(Boolean).join(' · ');
   var where = [(p.address || p.street), p.neighborhood, p.city].filter(Boolean).join(', ');
+  var desc = String(p.desc || '').trim();
+  var did = 'dx' + (DXN++);
   return '<div class="prop' + (shtaf ? ' shtaf' : '') + '">' +
     '<div class="r1"><div><div class="ad">' + esc(where) + '</div>' +
-    '<div class="dt">' + esc(dt + (shtaf ? (dt ? ' · ' : '') + (p.office || 'משרד שותף') : (p.agent ? ' · ' + p.agent : ''))) + '</div></div>' +
+    '<div class="dt">' + esc(dt) + '</div></div>' +
     '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">' +
-    '<div class="pr">' + esc(p.price ? '₪' + p.price : '') + '</div>' + scoreChip(p.score) + '</div></div>' +
+    '<div class="pr">' + esc(p.price ? '₪' + p.price : '') + '</div>' + scoreChip(p.score) + '</div>' +
+    (desc ? '<button class="dxBtn" onclick="toggleDx(\'' + did + '\', this)" aria-label="הרחב לתיאור">' +
+      '<svg width="13" height="13" viewBox="0 0 16 16" style="transition:transform .18s"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
+    '</div>' +
+    (desc ? '<div class="dx" id="' + did + '" style="display:none;margin-top:2px">' + esc(desc) + '</div>' : '') +
     '<div class="acts2">' +
     '<button class="a1" onclick=\'sendToBuyer(' + JSON.stringify(JSON.stringify({w: where, d: dt, pr: p.price || ''})) + ')\'>' +
     '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
@@ -2614,6 +2633,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .acts .a{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;
       padding:10px 0;font-size:13px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:40px}
   .acts .sec{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
+  .acts .del{flex:0 0 42px;width:42px;background:#FBEDED}
   .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
@@ -2730,8 +2750,12 @@ function openSheet(html){
 function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
   document.body.style.overflow = '';
   (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type':'application/json'},
+    body: JSON.stringify(d)}).then(function(r){ return r.json(); });
+}
 
-var SIGS = [], FILTER = 'buyer', MULTI = false;   // ברירת מחדל: קונים (מימין); שכירות/מוכר וכו' — תחת "הכל"
+var SIGS = [], FILTER = 'buyer', MULTI = false, ROLE = '';   // ברירת מחדל: קונים (מימין); שכירות/מוכר וכו' — תחת "הכל"
 function kindOf(g){   // תוויות _deal_label בשרת: "קונים" / "בלעדיות" / "שכירות" / "מוכר"
   var t = g.type || '';
   if (t.indexOf('בלעדיות') >= 0) return 'excl';
@@ -2747,14 +2771,15 @@ function load(){
   return GET('/api/signatures').then(function(j){
     SIGS = (j && j.signatures) || [];
     MULTI = (j && j.role) !== 'agent';
-    try{ localStorage.setItem('v2c:sigs', JSON.stringify({g: SIGS.slice(0, 150), m: MULTI})); }catch(e){}
+    ROLE = (j && j.role) || '';
+    try{ localStorage.setItem('v2c:sigs', JSON.stringify({g: SIGS.slice(0, 150), m: MULTI, r: ROLE})); }catch(e){}
     render();
   }).catch(function(){});
 }
 (function(){
   try{
     var c = JSON.parse(localStorage.getItem('v2c:sigs') || 'null');
-    if (c && c.g){ SIGS = c.g; MULTI = !!c.m; }
+    if (c && c.g){ SIGS = c.g; MULTI = !!c.m; ROLE = c.r || ''; }
   }catch(e){}
 })();
 function render(){
@@ -2765,18 +2790,25 @@ function render(){
     return kindOf(g) === FILTER;
   });
   var h = '';
-  src.slice(0, 100).forEach(function(g){
+  var shown = src.slice(0, 100);
+  shown.forEach(function(g, gi){
     var k = kindOf(g);
     var chip = (k === 'buyer') ? '<div class="chip buyer">קונים</div>'
       : (k === 'excl') ? '<div class="chip owner">בלעדיות</div>'
       : '<div class="chip other">' + esc(g.type || 'חתימה') + '</div>';
     var signed = !!(g.link || g.pct);
     var sub = [g.client, MULTI ? g.agent : '', g.type].filter(Boolean).join(' · ');
-    var acts = (signed && g.link)
-      ? '<div class="acts"><button class="a sec" onclick="window.open(\'' + esc(g.link) + '\',\'_blank\')">' +
+    var vw = (signed && g.link)
+      ? '<button class="a sec" onclick="window.open(\'' + esc(g.link) + '\',\'_blank\')">' +
         '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M3 2.5h7l3 3V13a.9.9 0 0 1-.9.9H3.9A.9.9 0 0 1 3 13z" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2.5v3h3" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
-        'צפייה במסמך החתום</button></div>'
+        'צפייה במסמך החתום</button>'
       : '';
+    // מחיקת חתימה דיגיטלית — מנהל בלבד (רק לרשומות מהאפליקציה, עם eid)
+    var dl = (ROLE === 'admin' && g.eid)
+      ? '<button class="a del" onclick="delSig(' + gi + ')" aria-label="מחיקת חתימה">' +
+        '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
+      : '';
+    var acts = (vw || dl) ? '<div class="acts">' + vw + dl + '</div>' : '';
     h += '<div class="sig">' +
       '<div class="top"><div><div class="ad">' + esc(g.address || g.client || '') + '</div>' +
       '<div class="sb">' + esc(sub) + '</div></div>' + chip + '</div>' +
@@ -2788,6 +2820,15 @@ function render(){
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#C29435" stroke-width="1.7" stroke-linejoin="round"/></svg></div>' +
     '<div class="t">אין חתימות להצגה</div>' +
     '<div class="s">כל החתמה דיגיטלית — בעל נכס או מתעניין — תופיע כאן עם המסמך החתום</div></div>';
+  el('list')._shown = shown;
+}
+function delSig(i){
+  var g = (el('list')._shown || [])[i]; if (!g) return;
+  if (!confirm('למחוק את החתימה של ' + (g.client || 'הלקוח') + '? הפעולה אינה הפיכה.')) return;
+  POST('/api/sign/delete', {eid: g.eid || '', received: g.raw || '', client: g.client || ''}).then(function(j){
+    if (!j.ok){ toast('שגיאה במחיקה'); return; }
+    toast('החתימה נמחקה'); load();
+  });
 }
 function setFilter(node){
   FILTER = node.getAttribute('data-f');
