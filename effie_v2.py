@@ -13,6 +13,7 @@
 # - אותם טוקנים/סשנים כמו האפליקציה הקיימת (fbTok) — כניסה אחת לשתיהן.
 # ============================================================================
 import os
+import re as _re
 import time
 import json as _json
 from urllib.parse import quote as _quote
@@ -395,9 +396,11 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   #story .ringWrap img{width:72%;height:72%;object-fit:contain}
   #story .teasers{display:flex;gap:10px}
   #story .teasers .tz{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
-      border-radius:14px;padding:12px 6px;display:flex;flex-direction:column;align-items:center;gap:2px}
-  #story .teasers .tz .n{font-size:24px;font-weight:800;color:#E4C56B;font-variant-numeric:tabular-nums}
-  #story .teasers .tz .l{font-size:10.5px;color:rgba(255,255,255,.65);text-align:center}
+      border-radius:14px;padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:3px}
+  #story .teasers .tz .n{font-size:30px;font-weight:800;color:#E4C56B;font-variant-numeric:tabular-nums}
+  #story .teasers .tz .l{font-size:13px;font-weight:700;color:rgba(255,255,255,.85);text-align:center;line-height:1.3}
+  #story .teasers .tz .of{font-size:12px;font-weight:600;color:rgba(255,255,255,.55);margin-top:2px;
+      font-variant-numeric:tabular-nums}
   #story .nbList{display:flex;flex-direction:column;gap:9px;max-width:300px;width:100%}
   #story .nbList .r{display:flex;align-items:center;gap:9px;font-size:14.5px;font-weight:600;
       color:rgba(255,255,255,.92);white-space:nowrap;overflow:hidden}
@@ -760,6 +763,12 @@ function renderDash(){
 
 /* ── הסטורי ── */
 var STORY = {open:false, i:0, timer:null, DUR:6000};
+var B = {buyersMe:null, buyersAll:null, sigBMe:null, sigBAll:null, exclMe:null, exclAll:null};
+GET('/v2/api/brief').then(function(j){
+  if (!j.ok) return;
+  B = j;
+  if (STORY.open && STORY.i === 0) renderCard(0);
+}).catch(function(){});
 function seenKey(){ return 'v2BriefSeen'; }
 function openStory(fromBar){
   STORY.open = true; STORY.i = 0;
@@ -795,6 +804,8 @@ function card(kicker, n, w, sub, mainTx, mainFn, secTx){
 }
 function renderCard(i){
   clearTimeout(STORY.timer);
+  STORY.paused = false;
+  el('storyHint').textContent = 'הקש להמשך · החלק למטה לסגירה';
   setBars(i);
   el('storyDate').textContent = 'יום ' + HDAYS[new Date().getDay()] + ', ' + new Date().getDate() +
       ' ב' + HMON[new Date().getMonth()] + ' · ' + (i + 1) + ' מתוך 4';
@@ -806,9 +817,9 @@ function renderCard(i){
       '<div style="font-size:30px;font-weight:800">' + greetWord() + ', ' + esc(M.name) + '</div>' +
       '<div style="font-size:13.5px;color:rgba(255,255,255,.55)">ככה נראה היום שלך</div></div>' +
       '<div class="teasers">' +
-      '<div class="tz"><div class="n">' + q(M.buyersNew || M.buyersTot) + '</div><div class="l">קונים חדשים</div></div>' +
-      '<div class="tz"><div class="n">' + q(M.sigs) + '</div><div class="l">חתימות השבוע</div></div>' +
-      '<div class="tz"><div class="n">' + q(M.meetToday) + '</div><div class="l">ביומן היום</div></div></div>' +
+      '<div class="tz"><div class="n">' + q(B.buyersMe) + '</div><div class="l">קונים שלי</div><div class="of">המשרד · ' + q(B.buyersAll) + '</div></div>' +
+      '<div class="tz"><div class="n">' + q(B.sigBMe) + '</div><div class="l">חתימות קונים</div><div class="of">המשרד · ' + q(B.sigBAll) + '</div></div>' +
+      '<div class="tz"><div class="n">' + q(B.exclMe) + '</div><div class="l">בלעדיות</div><div class="of">המשרד · ' + q(B.exclAll) + '</div></div></div>' +
       '<div class="btns" style="align-self:center;align-items:center">' +
       '<button class="bMain" style="width:100%" onclick="nextCard()">בוא נתחיל ←</button>' +
       '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
@@ -866,10 +877,37 @@ function renderCard(i){
   STORY.timer = setTimeout(nextCard, STORY.DUR);
 }
 /* ניווט בהקשה: שמאל=הבא (RTL), ימין=הקודם; החלקה למטה=סגירה */
+function pauseStory(){
+  STORY.paused = true;
+  clearTimeout(STORY.timer);
+  var b = el('story').querySelectorAll('.bars i b')[STORY.i];
+  if (b){ b.style.width = getComputedStyle(b).width; b.style.transition = 'none'; }
+  el('storyHint').textContent = 'מושהה — הקש באמצע להמשך';
+}
+function resumeStory(){
+  STORY.paused = false;
+  var b = el('story').querySelectorAll('.bars i b')[STORY.i];
+  var remain = STORY.DUR;
+  if (b){
+    var w = parseFloat(getComputedStyle(b).width) || 0;
+    var total = b.parentNode.getBoundingClientRect().width || 1;
+    remain = Math.max(400, (1 - w / total) * STORY.DUR);
+    b.style.transition = 'width ' + remain + 'ms linear';
+    b.style.width = '100%';
+  }
+  clearTimeout(STORY.timer);
+  STORY.timer = setTimeout(nextCard, remain);
+  el('storyHint').textContent = 'הקש להמשך · החלק למטה לסגירה';
+}
 el('story').addEventListener('click', function(e){
   if (e.target.closest('button')) return;
   var x = e.clientX, w = window.innerWidth;
-  (x < w * 0.65) ? nextCard() : prevCard();
+  if (x > w * 0.33 && x < w * 0.66){   // אמצע המסך — השהיה/המשך
+    STORY.paused ? resumeStory() : pauseStory();
+    return;
+  }
+  STORY.paused = false;
+  (x < w * 0.33) ? nextCard() : prevCard();
 });
 var _ty = null;
 el('story').addEventListener('touchstart', function(e){ _ty = e.touches[0].clientY; }, {passive:true});
@@ -1238,6 +1276,7 @@ function render(){
   renderUnmatched();
 }
 var UNMATCHED = [];
+var SHOW_ALL = false;
 function renderUnmatched(){
   var card = el('unmCard');
   if (!card) return;
@@ -1251,8 +1290,19 @@ function renderUnmatched(){
       '<select id="unmSel' + i + '" style="max-width:130px;padding:9px 10px;border:1.5px solid #DCD6C8;border-radius:11px;' +
       'font-size:12.5px;font-family:inherit;background:#fff;color:#1E3A5F"><option value="">— שייך לסוכן —</option>' + opts + '</select>' +
       '<button onclick="assignAlias(' + i + ')" style="padding:9px 14px;border:none;border-radius:11px;background:#C29435;' +
-      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שייך</button></div>';
+      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שייך</button>' +
+      '<button onclick="delUnmatched(' + i + ')" aria-label="מחיקת שם" style="width:38px;height:38px;border:none;' +
+      'border-radius:11px;background:#FBEDED;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
   }).join('');
+}
+function delUnmatched(i){
+  var u = UNMATCHED[i]; if (!u) return;
+  if (!confirm('למחוק את השם "' + u.n + '"? הוא לא יוצג יותר — לא בספרייה ולא ברשימה הזו.')) return;
+  POST('/api/dev/agent_delete', {name: u.n}).then(function(j){
+    if (!j.ok){ toast('שגיאה במחיקה'); return; }
+    toast('השם נמחק'); boot();
+  });
 }
 function assignAlias(i){
   var u = UNMATCHED[i]; if (!u) return;
@@ -1280,7 +1330,7 @@ function renderTeam(){
   });
   el('teamTitle').textContent = 'הצוות · ' + (tq ? list.length + ' מתוך ' + PEOPLE.length : list.length);
   var full = list.length;
-  if (!tq) list = list.slice(0, 5);   // ברירת מחדל: 5 בלבד — השאר דרך חיפוש חופשי
+  if (!tq && !SHOW_ALL) list = list.slice(0, 5);   // ברירת מחדל: 5 בלבד — "הצג את כולם" או חיפוש פותחים הכל
   var html = '';
   list.forEach(function(p, i){
     var pending = isPending(p);
@@ -1306,9 +1356,12 @@ function renderTeam(){
           '<svg width="9" height="5" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>') +
       '</div>';
   });
-  if (!tq && full > 5)
-    html += '<div style="text-align:center;font-size:12.5px;font-weight:700;color:#8B8F99;padding:10px 0 2px">' +
-      '+ עוד ' + (full - 5) + ' חברי צוות — חפש לפי שם למעלה</div>';
+  if (!tq && !SHOW_ALL && full > 5)
+    html += '<div onclick="SHOW_ALL=true;renderTeam()" style="text-align:center;font-size:12.5px;font-weight:800;' +
+      'color:#2E6BD6;padding:12px 0 4px;cursor:pointer">הצג את כל ' + full + ' חברי הצוות</div>';
+  else if (!tq && SHOW_ALL && full > 5)
+    html += '<div onclick="SHOW_ALL=false;renderTeam()" style="text-align:center;font-size:12.5px;font-weight:800;' +
+      'color:#8B8F99;padding:12px 0 4px;cursor:pointer">הצג פחות</div>';
   el('teamList').innerHTML = html;
   el('teamList')._list = list;
 }
@@ -1998,14 +2051,21 @@ function addBuyer(i){
     '<button class="btn btn-blue" onclick="saveBuyer()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
-function saveBuyer(){
+function saveBuyer(force){
   if (window._svBusy) return;   // מניעת לחיצה כפולה — קונה נוסף פעמיים
   window._svBusy = true;
   POST('/api/buyers/add', {name: el('abNm').value.trim(), phone: el('abPh').value.trim(),
-                           budget: el('abBd').value.trim(), summary: el('abSm').value.trim()})
+                           budget: el('abBd').value.trim(), summary: el('abSm').value.trim(),
+                           force: !!force})
     .then(function(j){
       window._svBusy = false;
-      if (!j.ok){ toast('שגיאה בשמירה'); return; }
+      if (!j.ok){
+        if (j.dup){   // כבר קיים — מאשרים במפורש אם באמת רוצים כפול
+          if (confirm(j.reason + '. להוסיף בכל זאת?')) saveBuyer(true);
+          return;
+        }
+        toast('שגיאה בשמירה'); return;
+      }
       closeSheet(); toast('הקונה נוסף'); load();
     }).catch(function(){ window._svBusy = false; toast('שגיאה בשמירה'); });
 }
@@ -2555,10 +2615,16 @@ function saveBuyer(){
   var hot = !!(el('abHot') && el('abHot')._on);
   POST('/api/buyers/add', {name: nm, phone: ph,
                            budget: el('abBd').value.trim(), summary: el('abSm').value.trim(),
-                           as: (el('abAg') && el('abAg').value) || ''})
+                           as: (el('abAg') && el('abAg').value) || '', force: !!window._svForce})
     .then(function(j){
       window._svBusy = false;
-      if (!j.ok){ toast('שגיאה בשמירה'); return; }
+      if (!j.ok){
+        if (j.dup){
+          if (confirm(j.reason + '. להוסיף בכל זאת?')){ window._svForce = true; saveBuyer(); window._svForce = false; }
+          return;
+        }
+        toast('שגיאה בשמירה'); return;
+      }
       closeSheet(); toast('הקונה נוסף');
       // חוזרים לפילטר שמציג אותו — קונה חדש לא ייעלם מאחורי "חמים"/"בהקפאה" שנשארו מסומנים
       FILTER = 'active';
@@ -6594,6 +6660,54 @@ def register(app, G):
             out["name"] = "אֶפִי"
             out["logo_svg"] = EFFIE_LOGO_SVG.format(w=52, h=47, beak="#fff")
         return jsonify(out)
+
+    @app.route("/v2/api/brief", methods=["GET"])
+    def v2_api_brief():
+        """מספרי הבריף (7 ימים): קונים / חתימות קונים / בלעדיות — של הסוכן ושל כל המשרד."""
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        _canon = G["_canon_key"]
+        me = _canon(s.get("name", ""))
+        week_ago = time.time() - 7 * 86400
+        buyers_all = buyers_me = 0
+        try:
+            for r in G["_fetch_manual_buyers"]():
+                dt = str(r.get("date", "") or "")
+                m = _re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", dt)
+                if not m:
+                    continue
+                import datetime as _dt2
+                try:
+                    e = _dt2.datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).timestamp()
+                except Exception:
+                    continue
+                if e < week_ago:
+                    continue
+                buyers_all += 1
+                if _canon(r.get("agent", "")) == me:
+                    buyers_me += 1
+        except Exception:
+            pass
+        sigb_all = sigb_me = excl_all = excl_me = 0
+        try:
+            import datetime as _dt3
+            frm = (_dt3.date.today() - _dt3.timedelta(days=7)).strftime("%d/%m/%Y")
+            to = _dt3.date.today().strftime("%d/%m/%Y")
+            for g in G["get_signings"](frm, to):
+                lb = G["_deal_label"](g.get("deal_type", ""))
+                mine = _canon(g.get("agent", "")) == me
+                if lb == "קונים":
+                    sigb_all += 1
+                    if mine: sigb_me += 1
+                elif lb == "בלעדיות":
+                    excl_all += 1
+                    if mine: excl_me += 1
+        except Exception:
+            pass
+        return jsonify({"ok": True, "buyersMe": buyers_me, "buyersAll": buyers_all,
+                        "sigBMe": sigb_me, "sigBAll": sigb_all,
+                        "exclMe": excl_me, "exclAll": excl_all})
 
     @app.route("/v2/api/admin/overview", methods=["GET"])
     def v2_api_admin_overview():
