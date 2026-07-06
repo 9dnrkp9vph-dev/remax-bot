@@ -231,3 +231,9 @@
   (עם eid — ייצוא מהקרם לא ניתן למחיקה מכאן), עם confirm ו-load() מחדש.
 - 2026-07-06: בית — תג מונה (qaBadge, זהב) על אריח "תהליכים": מספר התהליכים הפתוחים (deal=false
   מ-/api/deals). ההיקף מגיע מהשרת שכבר מסנן לפי תפקיד — סוכן רואה את שלו (+צוות שיתוף), מנהל את כולם.
+- 2026-07-06: הכנה להדלקת PROPS/EXCL_SOURCE: (א) ל-parity_check.py נוספה השוואת **נכסים במשרד**
+  (Google Sheets API ↔ properties, שורה-שורה ושדה-שדה, כולל _desc_ae וסינון אווה אזולאי) — עד עכשיו
+  הסקריפט לא בדק את הטאב שהדגל PROPS_SOURCE מדליק; (ב) endpoint חדש /api/dev/parity (מפתח בלבד)
+  שמריץ את parity_check על השרת עצמו (הסודות בסביבת Render, לא עוברים למחשב) ומחזיר את הדוח +
+  green. תהליך ההדלקה: דפלוי → GET /api/dev/parity → אם green: להוסיף PROPS_SOURCE=supabase +
+  EXCL_SOURCE=supabase ב-Render Environment (שומר ומרנדר מחדש אוטומטית).
