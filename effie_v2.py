@@ -5978,7 +5978,7 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div id="list"></div>
   </main>
 
-  <button class="addB" onclick="location.href='/v2/newborn'" aria-label="קביעת פגישה חדשה">
+  <button class="addB" onclick="newMeet()" aria-label="קביעת פגישה חדשה">
     <svg width="20" height="20" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
   </button>
 
@@ -6111,6 +6111,52 @@ function setFilter(node){
   for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
   render();
 }
+var MYNAME = '', AG_OPTS = [];
+function newMeet(){
+  var agSel = AG_OPTS.length
+    ? '<div class="fld2"><span>עבור סוכן</span><select id="nmAg" style="background:#fff;border:1.5px solid #DCD6C8;' +
+      'border-radius:13px;padding:12px 13px;font-size:14px;font-family:inherit;color:#1E3A5F;width:100%">' +
+      '<option value="">עליי (' + esc(MYNAME) + ')</option>' +
+      AG_OPTS.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
+      '</select></div>'
+    : '';
+  openSheet('<h3>פגישה / פולו-אפ חדש</h3>' +
+    '<div class="stSeg"><div id="nmMeet" class="on" onclick="nmType(\'meeting\')">פגישה</div>' +
+    '<div id="nmFu" onclick="nmType(\'followup\')">פולו-אפ</div></div>' +
+    '<div class="fld2"><span>כתובת / נושא *</span><input id="nmAddr" placeholder="למשל: יקינטון 18, קרית ביאליק"></div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<div class="fld2" style="flex:1"><span>שם (אופציונלי)</span><input id="nmOwner" placeholder="בעל הנכס / הלקוח"></div>' +
+    '<div class="fld2" style="flex:1"><span>טלפון (אופציונלי)</span><input id="nmPhone" type="tel" placeholder="05X-XXXXXXX"></div></div>' +
+    agSel +
+    '<div class="fld2"><span>מועד *</span><input id="nmDt" type="datetime-local"></div>' +
+    '<div class="fld2"><span>הערה</span><textarea id="nmNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)"></textarea></div>' +
+    '<div style="font-size:11.5px;color:#8B8F99">נשמר גם ביומן Google (אם מחובר)</div>' +
+    '<button class="btn btn-gold" onclick="saveNewMeet()">שמירה</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+  el('sheet')._nst = 'meeting';
+}
+function nmType(st){
+  el('sheet')._nst = st;
+  el('nmMeet').classList.toggle('on', st === 'meeting');
+  el('nmFu').classList.toggle('on', st === 'followup');
+}
+function saveNewMeet(){
+  var addr = el('nmAddr').value.trim(), dt = el('nmDt').value;
+  if (!addr){ toast('כתובת או נושא — חובה'); return; }
+  if (!dt){ toast('בחר מועד'); return; }
+  POST('/api/newborn/status', {
+    key: 'manual:' + Date.now(), addr: addr, price: '',
+    phone: el('nmPhone').value.trim(), owner: el('nmOwner').value.trim(),
+    status: el('sheet')._nst || 'meeting', date: dt,
+    agent: (el('nmAg') && el('nmAg').value) || '',
+    note: el('nmNote').value.trim()
+  }).then(function(j){
+    if (!j.ok){ toast('שגיאה בשמירה'); return; }
+    closeSheet();
+    toast((el('sheet')._nst === 'followup' ? 'הפולו-אפ נקבע' : 'הפגישה נקבעה') + (j.calendar ? ' + נשמר ביומן' : ''));
+    load();
+  });
+}
 function editMeet(i){
   var m = MEETS[i]; if (!m) return;
   var w = parseWhen(m.date);
@@ -6171,7 +6217,12 @@ function load(){
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
     MULTI = j.role !== 'agent';
+    MYNAME = j.name || '';
     el('avatarTx').textContent = j.name ? j.name.trim()[0] : '';
+    if (MULTI) GET('/api/my/agents').then(function(d){
+      AG_OPTS = ((d && d.agents) || []).map(function(a){ return a.name; })
+        .filter(function(a){ return a && a !== MYNAME; });
+    }).catch(function(){});
     load();
   }).catch(function(){ location.replace('/v2'); });
   fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
