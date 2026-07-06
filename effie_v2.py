@@ -3090,7 +3090,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
         </div>
         <div class="live"><i></i><span id="liveN">—</span></div>
       </div>
-      <button class="meetChip" onclick="openMeetings()">
+      <button class="meetChip" onclick="location.href='/v2/meets'">
         <svg width="12" height="12" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg>
         <span id="meetN">פגישות ופולו-אפ</span>
       </button>
@@ -3179,7 +3179,7 @@ function load(){
     ROWS = (rs[0] && rs[0].results) || [];
     BUCKETS = (rs[0] && rs[0].bucketCounts) || [];
     TOTAL = (rs[0] && rs[0].total) || ROWS.length;
-    MEETS = (rs[1] && rs[1].meetings) || [];
+    MEETS = (rs[1] && (rs[1].results || rs[1].meetings)) || [];
     try{ localStorage.setItem('v2c:nb', JSON.stringify(
       {r: ROWS.slice(0, 150), b: BUCKETS, t: TOTAL, m: MEETS.slice(0, 40)})); }catch(e){}
     render();
@@ -3282,10 +3282,20 @@ function waOwner(i){
     encodeURIComponent('שלום' + (r.owner ? ' ' + r.owner : '') + ', ראיתי את המודעה שלך ב' +
     ((r.address || '') + (r.city ? ', ' + r.city : '')) + '. אשמח לדבר איתך לגבי הנכס.'), '_blank');
 }
+var MYNAME = '';
+var AG_OPTS = [];   // מתאמת: הסוכנים שלה בלבד (מהשרת); מנהל: כל סוכני המשרד
 function stDate(i, status){
   var r = el('list')._src[i];
+  var agSel = AG_OPTS.length
+    ? '<div class="fld"><span>עבור סוכן</span><select id="stAg" style="width:100%;padding:12px 13px;' +
+      'border:1.5px solid #DCD6C8;border-radius:13px;font-size:14px;font-family:inherit;background:#fff;color:#1E3A5F">' +
+      '<option value="">עליי (' + esc(MYNAME || '') + ')</option>' +
+      AG_OPTS.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
+      '</select></div>'
+    : '';
   openSheet('<h3>' + (status === 'meeting' ? 'קביעת פגישה' : 'קביעת פולו-אפ') + '</h3>' +
     '<div style="font-size:12px;color:#8B8F99">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
+    agSel +
     '<div class="fld"><span>מועד</span><input id="stDt" type="datetime-local"></div>' +
     '<div style="font-size:11.5px;color:#8B8F99">נשמר גם ביומן Google שלך (אם מחובר)</div>' +
     '<button class="btn btn-gold" onclick="stSave(' + i + ',\'' + status + '\')">שמירה</button>' +
@@ -3307,8 +3317,10 @@ function stToggleNI(i){
 function stSet(i, status, date){
   var r = el('list')._src[i];
   if ((status === 'meeting' || status === 'followup') && !date){ toast('בחר מועד'); return; }
+  var forAg = (el('stAg') && el('stAg').value) || '';   // מתאמת/מנהל — הפגישה נרשמת על הסוכן הנבחר
   POST('/api/newborn/status', {key: r.key, addr: [r.address, r.city].filter(Boolean).join(', '),
-    price: r.price || '', phone: r.phone || '', owner: r.owner || '', status: status, date: date || ''})
+    price: r.price || '', phone: r.phone || '', owner: r.owner || '', status: status, date: date || '',
+    agent: forAg})
     .then(function(j){
       if (!j.ok){ toast('שגיאה בשמירה'); return; }
       closeSheet();
@@ -3389,6 +3401,11 @@ render = function(){
 
 (function(){
   GET('/api/auth/whoami').then(function(j){
+    MYNAME = j.name || '';
+    if (j.role === 'coordinator') AG_OPTS = j.agent_names || [];
+    else if (j.role === 'admin') GET('/api/deals').then(function(d){
+      AG_OPTS = ((d && d.agents) || []).filter(function(a){ return a !== j.name; });
+    }).catch(function(){});
     if (!j.ok){ location.replace('/v2'); return; }
     el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
     MGR = (j.role === 'admin' || j.role === 'coordinator');
@@ -4334,8 +4351,10 @@ function dealCard(it, i){
     ? '<div class="pr">' + esc(fmtPrice(it.sale_price || it.price)) +
       (it.sale_price && it.price && it.price !== it.sale_price ? '<s>' + esc(fmtPrice(it.price)) + '</s>' : '') + '</div>'
     : (it.price ? '<div class="pr">' + esc(fmtPrice(it.price)) + '</div>' : '');
-  var com = it.deal && it.commission ? '<div class="sb">עמלה: ' + esc(fmtPrice(it.commission)) +
-      (it.commission_manual ? ' (ידני)' : '') + '</div>' : '';
+  var com = it.deal && it.commission ? '<div class="sb">עמלה' +
+      (it.commission2 ? ' סוכן 1' : '') + ': ' + esc(fmtPrice(it.commission)) +
+      (it.commission_manual ? ' (ידני)' : '') +
+      (it.commission2 ? ' · סוכן 2: ' + esc(fmtPrice(it.commission2)) : '') + '</div>' : '';
   var acts = it.deal
     ? '<div class="acts"><button class="sec" onclick="openForm(' + i + ', true)">עריכה</button>' + trashBtn(i) + '</div>'
     : '<div class="acts"><button class="gold" onclick="openForm(' + i + ', true)">' +
@@ -4382,11 +4401,16 @@ function calcCom(){
   if (!el('fCom')._manual){
     el('fCom').value = sp ? Math.round(sp * 0.02 * (1 + VAT)).toLocaleString() : '';
   }
+  var c2 = el('fCom2');
+  if (c2 && !c2._manual){
+    c2.value = (sp && el('fAg2') && el('fAg2').value) ? Math.round(sp * 0.02 * (1 + VAT)).toLocaleString() : '';
+  }
 }
-function comEdit(){
-  el('fCom')._manual = true;
-  el('fCom').removeAttribute('readonly');
-  el('fCom').focus();
+function comEdit(id){
+  var f = el(id || 'fCom');
+  f._manual = true;
+  f.removeAttribute('readonly');
+  f.focus();
   toast('עמלה ידנית — דורסת את החישוב');
 }
 function openForm(i, asDeal){
@@ -4421,9 +4445,14 @@ function openForm(i, asDeal){
     '<div class="fld" style="flex:1.3"><span>סוכן 2 · אופציונלי</span>' + agentSel('fAg2', (it.agents || [])[1] || '') + '</div>' +
     '<div class="fld"><span>מייצג</span>' + sideSel('fSide2', it.side2 || 'קונה') + '</div></div>' +
     (isDeal ?
-      '<div class="fld"><span>עמלה (2% + מע"מ — עיפרון לעריכה ידנית)</span>' +
+      '<div class="fld"><span>עמלה סוכן 1 (2% + מע"מ — עיפרון לעריכה ידנית)</span>' +
       '<div class="comRow"><input id="fCom" readonly value="' + esc(it.commission || '') + '">' +
-      '<button class="pencil" onclick="comEdit()">' +
+      '<button class="pencil" onclick="comEdit(\'fCom\')">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
+      '</button></div></div>' +
+      '<div class="fld" id="com2Wrap" style="display:none"><span>עמלה סוכן 2</span>' +
+      '<div class="comRow"><input id="fCom2" readonly value="' + esc(it.commission2 || '') + '">' +
+      '<button class="pencil" onclick="comEdit(\'fCom2\')">' +
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
       '</button></div></div>' : '') +
     '</div>' +
@@ -4439,6 +4468,14 @@ function openForm(i, asDeal){
   (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
   if (isDeal){
     el('fCom')._manual = !!it.commission_manual;
+    el('fCom2')._manual = !!it.commission2_manual;
+    if (it.commission2_manual) el('fCom2').removeAttribute('readonly');
+    var _syncC2 = function(){
+      el('com2Wrap').style.display = el('fAg2').value ? '' : 'none';
+      calcCom();
+    };
+    el('fAg2').addEventListener('change', _syncC2);
+    _syncC2();
     if (!it.commission_manual) calcCom();
     else el('fCom').removeAttribute('readonly');
   }
@@ -4461,7 +4498,9 @@ function saveForm(i, isDeal){
     close_date: isDeal ? el('fDate').value.trim() : (it.close_date || ''),
     stage: (!isDeal && el('fStage')) ? el('fStage').value : (it.stage || ''),
     commission: isDeal ? el('fCom').value.trim() : (it.commission || ''),
-    commission_manual: isDeal ? !!el('fCom')._manual : !!it.commission_manual
+    commission_manual: isDeal ? !!el('fCom')._manual : !!it.commission_manual,
+    commission2: isDeal ? (el('fAg2').value ? el('fCom2').value.trim() : '') : (it.commission2 || ''),
+    commission2_manual: isDeal ? !!el('fCom2')._manual : !!it.commission2_manual
   };
   if (isDeal && (!body.sale_price || !body.close_date)){
     toast('מחיר מכירה ותאריך סגירה — חובה'); return;
