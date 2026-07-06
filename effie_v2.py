@@ -228,6 +228,47 @@ function bioSkip(){
 })();
 </script></body></html>'''
 
+
+# ── שכבת דסקטופ/טאבלט (עיצוב §13): סרגל צד מימין, תוכן רחב, בית בגריד ─────────
+# מוזרק לכל דף ב-_page(); ממוקד ב-body:has(nav) כדי לא לגעת בדף הכניסה/טפסים.
+V2_DESKTOP_CSS = r"""<style>
+/* טאבלט 768–1023: הסרגל מתכווץ לאייקונים (§13) */
+@media (min-width:768px){
+  body:has(nav){padding-right:96px}
+  body:has(nav) header, body:has(nav) main, body:has(nav) #impBar{max-width:640px}
+  body:has(nav) main{padding-bottom:28px}
+  nav{position:fixed;top:16px;bottom:16px;right:14px;left:auto;width:66px;max-width:none;margin:0;
+      border:1px solid #E9E4D8;border-radius:20px;box-shadow:0 8px 26px rgba(30,58,95,.07);
+      padding:14px 8px;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;gap:8px}
+  nav .it{flex-direction:column;width:100%;padding:10px 0;border-radius:13px;font-size:0;gap:0;min-width:0}
+  nav .it:hover{background:#F5F2E9}
+  nav .it:has(.home){background:#1E3A5F}
+  nav .it:has(.home):hover{background:#1E3A5F}
+  nav .home{margin-top:0;box-shadow:none;background:rgba(255,255,255,.14)}
+  nav .badge{top:2px;right:6px}
+  #toast{bottom:40px}
+}
+/* דסקטופ ≥1024: סרגל מלא עם תוויות (בית פעיל נייבי, נכס נולד עם badge) */
+@media (min-width:1024px){
+  body:has(nav){padding-right:264px}
+  body:has(nav) header, body:has(nav) main, body:has(nav) #impBar{max-width:940px}
+  #sheet{max-width:640px}
+  nav{width:224px;padding:88px 12px 16px;align-items:stretch}
+  nav::before{content:'';position:absolute;top:18px;left:14px;right:14px;height:52px;
+      background:url(/assets/logo) center/contain no-repeat}
+  nav .it{flex-direction:row;justify-content:flex-start;gap:11px;padding:11px 12px;font-size:14px;
+      font-weight:600;border-radius:14px;width:auto}
+  nav .it:has(.home){color:#fff !important;font-weight:800}
+  nav .home{width:36px;height:36px;border-radius:12px}
+  nav .badge{position:static;margin-inline-start:auto;top:auto;right:auto}
+  /* הבית: הבריף כבאנר רוחבי, סטטיסטיקות בשורה, גריד שתי עמודות (§13) */
+  body:has(nav) main:has(.briefBar){display:grid;grid-template-columns:1fr 1fr;gap:13px;
+      align-items:start;max-width:1000px}
+  main:has(.briefBar) > .greet, main:has(.briefBar) > .stats,
+  main:has(.briefBar) > .briefBar, main:has(.briefBar) > .care{grid-column:1 / -1}
+}
+</style>"""
+
 # ── מסך הבית (עיצוב 14a) + בריף הבוקר (עיצוב 13a — סטורי 4 כרטיסים) ─────────
 V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
@@ -539,7 +580,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -1075,7 +1116,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -1662,7 +1703,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -2147,7 +2188,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -2718,7 +2759,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -3064,7 +3105,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -3490,7 +3531,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -3815,7 +3856,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -4108,7 +4149,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -4540,7 +4581,7 @@ if (!TOK) location.replace('/v2');
 /* מקלדת פתוחה: מסתירים את הניווט התחתון כדי שלא "יקפוץ" מעל המקלדת */
 document.addEventListener('focusin', function(e){
   var t = e.target;
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+  if (window.innerWidth < 768) if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
     var nv = document.querySelector('nav'); if (nv) nv.style.display = 'none';
   }
 });
@@ -5468,6 +5509,8 @@ def register(app, G):
 
     # ── דפים ────────────────────────────────────────────────────────────────
     def _page(html):
+        # שכבת הדסקטופ מוזרקת לכל דף — אחרי ה-CSS של הדף כדי לגבור עליו במסכים רחבים
+        html = html.replace("</head>", V2_DESKTOP_CSS + "</head>", 1)
         resp = Response(html, mimetype="text/html")
         resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         return resp
