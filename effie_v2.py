@@ -262,7 +262,8 @@ nav .it.dk{display:none}   /* תהליכים+יומן — רק בסרגל הצד
       font-weight:600;border-radius:14px;width:auto}
   nav .it:has(.home){color:#fff !important;font-weight:800}
   nav .home{width:36px;height:36px;border-radius:12px}
-  nav .badge{position:static;margin-inline-start:auto;top:auto;right:auto}
+  nav .badge{position:static;top:auto;right:auto;order:9;margin-inline-start:auto;align-self:center;
+      font-size:10.5px;padding:2px 9px;line-height:1.4;flex-shrink:0}
   /* הבית: הבריף כבאנר רוחבי, סטטיסטיקות בשורה, גריד שתי עמודות (§13) */
   body:has(nav) main:has(.briefBar){display:grid;grid-template-columns:1fr 1fr;gap:13px;
       align-items:start;max-width:1000px}
@@ -1056,6 +1057,14 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div id="teamList"></div>
     </div>
 
+    <!-- שמות לא משויכים — מניעת כפילויות איות (מפתח בלבד) -->
+    <div class="card" id="unmCard" style="display:none">
+      <div class="cardTitle">שמות לא משויכים · מניעת כפילויות</div>
+      <div style="font-size:12px;color:#8B8F99;line-height:1.5">שמות שמופיעים בחתימות או בנכסים ולא מזוהים
+        לאף חבר צוות — שיוך לסוכן הופך אותם לכינוי שלו, וכל הנתונים (חתימות, השהיות, התראות) מתאחדים.</div>
+      <div id="unmList"></div>
+    </div>
+
     <!-- הגדרות המשרד -->
     <div class="card">
       <div class="cardTitle">הגדרות המשרד</div>
@@ -1186,6 +1195,8 @@ function boot(){
       .then(function(rs){
         OV = rs[0]; PEOPLE = (rs[1] && rs[1].agents) || []; COORDS = (rs[2] && rs[2].coordinators) || [];
         NB_DEFAULT = (rs[1] && rs[1].nbDefault) || 0;
+        UNMATCHED = ((rs[1] && rs[1].unmatchedSignings) || []).map(function(u){ return {n: u.name, c: u.count, w: 'חתימות'}; })
+          .concat(((rs[1] && rs[1].unmatchedListings) || []).map(function(u){ return {n: u.name, c: u.count, w: 'נכסים'}; }));
         TEAMS = (rs[3] && rs[3].teams) || [];
         render();
       });
@@ -1218,6 +1229,34 @@ function render(){
     .forEach(function(k){ setTg(k, OV.policies[k]); });
   renderTeam();
   renderTeams();
+  renderUnmatched();
+}
+var UNMATCHED = [];
+function renderUnmatched(){
+  var card = el('unmCard');
+  if (!card) return;
+  if (!UNMATCHED.length){ card.style.display = 'none'; return; }
+  card.style.display = 'flex';
+  var opts = PEOPLE.map(function(p){ return '<option value="' + esc(p.name) + '">' + esc(p.name) + '</option>'; }).join('');
+  el('unmList').innerHTML = UNMATCHED.map(function(u, i){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid #F0EDE3">' +
+      '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(u.n) + '</div>' +
+      '<div style="font-size:11px;color:#8B8F99">' + u.c + ' רשומות · ' + u.w + '</div></div>' +
+      '<select id="unmSel' + i + '" style="max-width:130px;padding:9px 10px;border:1.5px solid #DCD6C8;border-radius:11px;' +
+      'font-size:12.5px;font-family:inherit;background:#fff;color:#1E3A5F"><option value="">— שייך לסוכן —</option>' + opts + '</select>' +
+      '<button onclick="assignAlias(' + i + ')" style="padding:9px 14px;border:none;border-radius:11px;background:#C29435;' +
+      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שייך</button></div>';
+  }).join('');
+}
+function assignAlias(i){
+  var u = UNMATCHED[i]; if (!u) return;
+  var ag = el('unmSel' + i).value;
+  if (!ag){ toast('בחר סוכן'); return; }
+  if (!confirm('לשייך את "' + u.n + '" כאיות נוסף של ' + ag + '?')) return;
+  POST('/api/dev/alias', {alias: u.n, agent: ag}).then(function(j){
+    if (!j.ok){ toast(j.reason === 'forbidden' ? 'למפתח בלבד' : 'שגיאה בשיוך'); return; }
+    toast('שויך — הנתונים יתאחדו'); boot();
+  });
 }
 var TG_IDS = {transcribe:'tgTranscribe', shtaf_sharing:'tgShtaf',
               require_followup:'tgFollowup', who_contacted_admins_only:'tgWho', wa_auto:'tgWaAuto'};
