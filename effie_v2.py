@@ -2518,23 +2518,59 @@ function delBuyer(i){
 }
 /* ── הוספת קונה ── */
 function openAdd(){
+  // מנהל/מתאמת: שיוך הקונה לסוכן כבר בהוספה (מתאמת — הסוכנים שלה בלבד, נאכף בשרת)
+  var agRow = MULTI
+    ? '<div class="fld"><span>שייך לסוכן</span><select id="abAg" style="background:#fff;border:1.5px solid #DCD6C8;' +
+      'border-radius:13px;padding:12px 13px;font-size:14px;font-family:inherit;color:#1E3A5F;width:100%">' +
+      '<option value="">עליי</option></select></div>'
+    : '';
   openSheet('<h3>קונה חדש</h3>' +
     '<div class="fld"><span>שם</span><input id="abNm" placeholder="שם הקונה"></div>' +
     '<div class="fld"><span>טלפון</span><input id="abPh" type="tel" placeholder="05X-XXXXXXX"></div>' +
+    agRow +
     '<div class="fld"><span>תקציב</span><input id="abBd" inputmode="numeric" placeholder="₪"></div>' +
     '<div class="fld"><span>מה מחפש</span><textarea id="abSm" rows="3" placeholder="4 חדרים בקריות, קומה נמוכה..."></textarea></div>' +
+    '<div id="abHot" onclick="this._on=!this._on;this.style.background=this._on?\'#F6EEDB\':\'#fff\';this.style.borderColor=this._on?\'#C29435\':\'#DCD6C8\'" ' +
+    'style="display:flex;align-items:center;gap:9px;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;cursor:pointer">' +
+    '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1.5c1 2-.5 3-.5 4.5a2.6 2.6 0 0 0 5-1c1.5 2 2 3.5 2 5a6.5 6.5 0 1 1-13 0c0-3 2.5-4.5 3.5-7 .6 1 .8 1.8.7 2.8C7 4.3 7.3 2.8 8 1.5z" fill="none" stroke="#C29435" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
+    '<span style="font-size:14px;font-weight:700">קונה חם</span></div>' +
     '<button class="btn btn-blue" onclick="saveBuyer()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
+  if (MULTI) GET('/api/my/agents').then(function(d){
+    var sel = el('abAg'); if (!sel) return;
+    sel.innerHTML = '<option value="">עליי</option>' + (((d && d.agents) || []).map(function(a){
+      return '<option value="' + esc(a.name) + '">' + esc(a.name) + '</option>'; }).join(''));
+  }).catch(function(){});
 }
 function saveBuyer(){
   if (window._svBusy) return;   // מניעת לחיצה כפולה — קונה נוסף פעמיים
   window._svBusy = true;
-  POST('/api/buyers/add', {name: el('abNm').value.trim(), phone: el('abPh').value.trim(),
-                           budget: el('abBd').value.trim(), summary: el('abSm').value.trim()})
+  var nm = el('abNm').value.trim(), ph = el('abPh').value.trim();
+  var hot = !!(el('abHot') && el('abHot')._on);
+  POST('/api/buyers/add', {name: nm, phone: ph,
+                           budget: el('abBd').value.trim(), summary: el('abSm').value.trim(),
+                           as: (el('abAg') && el('abAg').value) || ''})
     .then(function(j){
       window._svBusy = false;
       if (!j.ok){ toast('שגיאה בשמירה'); return; }
-      closeSheet(); toast('הקונה נוסף'); load();
+      closeSheet(); toast('הקונה נוסף');
+      // חוזרים לפילטר שמציג אותו — קונה חדש לא ייעלם מאחורי "חמים"/"בהקפאה" שנשארו מסומנים
+      FILTER = 'active';
+      var sg = document.querySelector('.sg[data-f="active"]');
+      if (sg){ var cs = sg.parentNode.children;
+        for (var i2 = 0; i2 < cs.length; i2++) cs[i2].classList.toggle('on', cs[i2] === sg); }
+      load().then(function(){
+        if (!hot) return;
+        // מאתרים את הקונה שנוסף (לפי טלפון, ואם אין — שם) ומסמנים חם
+        var dg = ph.replace(/\D/g, ''), b = null;
+        BUYERS.forEach(function(x){
+          if (b) return;
+          var xd = String(x.phone || '').replace(/\D/g, '');
+          if ((dg && xd === dg) || (!dg && nm && (x.name || '').trim() === nm)) b = x;
+        });
+        if (b && b.row != null) setStatus(b.row, 'hot');
+        else toast('הקונה נוסף — סמן חם מהכרטיס');
+      });
     }).catch(function(){ window._svBusy = false; toast('שגיאה בשמירה'); });
 }
 
@@ -3387,6 +3423,9 @@ function stDate(i, status){
     '<div style="font-size:12px;color:#8B8F99">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
     agSel +
     '<div class="fld"><span>מועד</span><input id="stDt" type="datetime-local"></div>' +
+    '<div class="fld"><span>הערה</span><textarea id="stNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)" ' +
+    'style="background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:14px;' +
+    'font-family:inherit;outline:none;color:#1E3A5F;width:100%;resize:vertical"></textarea></div>' +
     '<div style="font-size:11.5px;color:#8B8F99">נשמר גם ביומן Google שלך (אם מחובר)</div>' +
     '<button class="btn btn-gold" onclick="stSave(' + i + ',\'' + status + '\')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
@@ -3411,7 +3450,7 @@ function stSet(i, status, date){
   if (forAg === '__more') forAg = '';
   POST('/api/newborn/status', {key: r.key, addr: [r.address, r.city].filter(Boolean).join(', '),
     price: r.price || '', phone: r.phone || '', owner: r.owner || '', status: status, date: date || '',
-    agent: forAg})
+    agent: forAg, note: (el('stNote') && el('stNote').value.trim()) || ''})
     .then(function(j){
       if (!j.ok){ toast('שגיאה בשמירה'); return; }
       closeSheet();
@@ -4300,8 +4339,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   }
 </style></head><body>
 
-  <header style="position:relative">
-    <div style="position:absolute;top:2px;right:18px;font-size:11px;font-weight:700;color:#8B8F99">בס"ד</div>
+  <header>
     <div class="avatar"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
     <div class="brand"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
     <button class="menuBtn" onclick="location.href='/v2/home'" aria-label="לבית">
@@ -4315,6 +4353,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <div class="tt">
           <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#B8902F" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/></svg></div>
           <h1>תהליכים ועסקאות</h1>
+          <span style="font-size:11px;font-weight:700;color:#8B8F99;align-self:flex-start;margin-top:2px">בס"ד</span>
         </div>
         <div class="cnt" id="cnt">—</div>
       </div>
@@ -5813,6 +5852,24 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#fff;font-size:10px;font-weight:800;
       padding:1px 8px;border-radius:999px;display:none}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
+      display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
+  #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
+  #sheet h3{font-size:19px;font-weight:800}
+  @media (min-width:700px){ #sheet{max-width:600px;margin-left:auto;margin-right:auto} }
+  .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
+      font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px}
+  .btn-gold{background:#C29435;color:#fff;box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
+  .fld2{display:flex;flex-direction:column;gap:5px}
+  .fld2 span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld2 input,.fld2 textarea{background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;
+      font-size:14px;font-family:inherit;outline:none;color:#1E3A5F;width:100%}
+  .stSeg{display:flex;background:#EBE8DD;border-radius:12px;padding:4px;gap:4px}
+  .stSeg div{flex:1;text-align:center;padding:8px 0;font-size:13px;font-weight:700;color:#5B6472;border-radius:9px;cursor:pointer}
+  .stSeg div.on{color:#fff;background:#2E6BD6}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
       font-size:13px;font-weight:600;padding:10px 18px;border-radius:12px;opacity:0;transition:opacity .25s;
       pointer-events:none;z-index:100;white-space:nowrap}
@@ -5858,6 +5915,8 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
+  <div id="ovl" onclick="closeSheet()"></div>
+  <div id="sheet"></div>
   <div id="toast"></div>
 
 <script>
@@ -5879,6 +5938,16 @@ function toast(msg){
   var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
   clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
 }
+
+function openSheet(html){
+  el('sheet').innerHTML = '<div class="grip"></div>' + html;
+  el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
+}
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.body.style.overflow = '';
+  (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
 var MEETS = [], FILTER = 'today', MULTI = false;
 try{ FILTER = localStorage.getItem('v2st:meets') || 'today'; }catch(e){}
@@ -5922,7 +5991,7 @@ function itemRow(m, i){
       '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7" stroke-linejoin="round"/></svg></button>' : '') +
     (m.wa ? '<button class="sq" style="background:#E7F7EE" onclick="window.open(\'https://wa.me/' + esc(m.wa) + '\',\'_blank\')" aria-label="וואטסאפ">' +
       '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
-    '<button class="sq" style="background:#F5F3EC" onclick="signOwner(' + i + ')" aria-label="החתם בעל נכס">' +
+    '<button class="sq" style="background:#F5F3EC" onclick="editMeet(' + i + ')" aria-label="עריכה">' +
       '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#5B6472" stroke-width="1.6" stroke-linejoin="round"/></svg></button>' +
     '<button class="sq" style="background:#E7F7EE" onclick="doneMeet(' + i + ')" aria-label="בוצע">' +
       '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
@@ -5965,11 +6034,39 @@ function setFilter(node){
   for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
   render();
 }
-function signOwner(i){
+function editMeet(i){
   var m = MEETS[i]; if (!m) return;
-  try{ localStorage.setItem('v2signPre', JSON.stringify({
-    client: m.owner || '', phone: m.ophone || '', addr: m.addr || '', price: ''})); }catch(e){}
-  location.href = '/v2/sign?type=owner';
+  var w = parseWhen(m.date);
+  var dtVal = '';
+  if (w.d){
+    dtVal = w.d.getFullYear() + '-' + ('0' + (w.d.getMonth() + 1)).slice(-2) + '-' + ('0' + w.d.getDate()).slice(-2) +
+      'T' + (w.time || '10:00');
+  }
+  var meet = m.status === 'meeting';
+  openSheet('<h3>עריכה · ' + esc(m.addr || '') + '</h3>' +
+    '<div class="stSeg"><div id="emMeet" class="' + (meet ? 'on' : '') + '" onclick="emType(this,\'meeting\')">פגישה</div>' +
+    '<div id="emFu" class="' + (meet ? '' : 'on') + '" onclick="emType(this,\'followup\')">פולו-אפ</div></div>' +
+    '<div class="fld2"><span>מועד</span><input id="emDt" type="datetime-local" value="' + dtVal + '"></div>' +
+    '<div class="fld2"><span>הערה</span><textarea id="emNote" rows="3" placeholder="הערה לפגישה (אופציונלי)">' + esc(m.note || '') + '</textarea></div>' +
+    '<div style="font-size:11.5px;color:#8B8F99">שינוי מועד מעדכן גם את האירוע ביומן Google</div>' +
+    '<button class="btn btn-gold" onclick="saveMeet(' + i + ')">שמירה</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+  el('sheet')._st = m.status;
+}
+function emType(node, st){
+  el('sheet')._st = st;
+  el('emMeet').classList.toggle('on', st === 'meeting');
+  el('emFu').classList.toggle('on', st === 'followup');
+}
+function saveMeet(i){
+  var m = MEETS[i]; if (!m) return;
+  var dt = el('emDt').value;
+  if (!dt){ toast('בחר מועד'); return; }
+  POST('/api/newborn/status/edit', {skey: m.skey || '', date: dt,
+    status: el('sheet')._st || m.status, note: el('emNote').value.trim()}).then(function(j){
+    if (!j.ok){ toast(j.reason === 'forbidden' ? 'אין הרשאה לעריכה' : 'שגיאה בשמירה'); return; }
+    closeSheet(); toast('עודכן' + (j.calendar === false ? '' : ' + היומן')); load();
+  });
 }
 function doneMeet(i){
   var m = MEETS[i]; if (!m) return;
