@@ -3247,7 +3247,8 @@ function nbCard(r, i){
       '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5"/></svg>וואטסאפ</button>' +
       (r.link ? '<a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">צפייה במודעה</a>' : '') +
       '</div>'
-    : '';
+    // אין שם/טלפון של בעל הנכס — עדיין מציגים את הקישור למודעה
+    : (r.link ? '<div class="oActs"><a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">צפייה במודעה</a></div>' : '');
   var contacted = (MGR && r.contacted && r.contacted.length)
     ? '<div class="contacted">כבר פנו: ' + esc(r.contacted[0]) +
       (r.contacted.length > 1 ? ' +' + (r.contacted.length - 1) : '') + ' · ' + r.contacted.length + ' פניות</div>'
@@ -3283,14 +3284,33 @@ function waOwner(i){
     ((r.address || '') + (r.city ? ', ' + r.city : '')) + '. אשמח לדבר איתך לגבי הנכס.'), '_blank');
 }
 var MYNAME = '';
-var AG_OPTS = [];   // מתאמת: הסוכנים שלה בלבד (מהשרת); מנהל: כל סוכני המשרד
+var AG_OPTS = [];      // מתאמת: הסוכנים שלה (מהשרת); מנהל: כל סוכני המשרד
+var IS_COORD = false;  // למתאמת נוספת אופציית "אחר במשרד…" — כל סוכני המשרד
+var OFFICE_AG = [];
+function agOpts(list, withMore){
+  return '<option value="">עליי (' + esc(MYNAME || '') + ')</option>' +
+    list.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
+    (withMore ? '<option value="__more">אחר במשרד…</option>' : '');
+}
+function agOther(sel){
+  if (sel.value !== '__more') return;
+  var fill = function(){
+    var mine = {};
+    AG_OPTS.forEach(function(a){ mine[a] = 1; });
+    var rest = OFFICE_AG.filter(function(a){ return !mine[a] && a !== MYNAME; });
+    sel.innerHTML = agOpts(AG_OPTS.concat(rest), false);
+    sel.value = '';
+    sel.focus();
+  };
+  if (OFFICE_AG.length){ fill(); return; }
+  GET('/api/deals').then(function(d){ OFFICE_AG = (d && d.agents) || []; fill(); }).catch(function(){ sel.value = ''; });
+}
 function stDate(i, status){
   var r = el('list')._src[i];
   var agSel = AG_OPTS.length
-    ? '<div class="fld"><span>עבור סוכן</span><select id="stAg" style="width:100%;padding:12px 13px;' +
+    ? '<div class="fld"><span>עבור סוכן</span><select id="stAg" onchange="agOther(this)" style="width:100%;padding:12px 13px;' +
       'border:1.5px solid #DCD6C8;border-radius:13px;font-size:14px;font-family:inherit;background:#fff;color:#1E3A5F">' +
-      '<option value="">עליי (' + esc(MYNAME || '') + ')</option>' +
-      AG_OPTS.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
+      agOpts(AG_OPTS, IS_COORD) +
       '</select></div>'
     : '';
   openSheet('<h3>' + (status === 'meeting' ? 'קביעת פגישה' : 'קביעת פולו-אפ') + '</h3>' +
@@ -3318,6 +3338,7 @@ function stSet(i, status, date){
   var r = el('list')._src[i];
   if ((status === 'meeting' || status === 'followup') && !date){ toast('בחר מועד'); return; }
   var forAg = (el('stAg') && el('stAg').value) || '';   // מתאמת/מנהל — הפגישה נרשמת על הסוכן הנבחר
+  if (forAg === '__more') forAg = '';
   POST('/api/newborn/status', {key: r.key, addr: [r.address, r.city].filter(Boolean).join(', '),
     price: r.price || '', phone: r.phone || '', owner: r.owner || '', status: status, date: date || '',
     agent: forAg})
@@ -3402,7 +3423,7 @@ render = function(){
 (function(){
   GET('/api/auth/whoami').then(function(j){
     MYNAME = j.name || '';
-    if (j.role === 'coordinator') AG_OPTS = j.agent_names || [];
+    if (j.role === 'coordinator'){ AG_OPTS = j.agent_names || []; IS_COORD = true; }
     else if (j.role === 'admin') GET('/api/deals').then(function(d){
       AG_OPTS = ((d && d.agents) || []).filter(function(a){ return a !== j.name; });
     }).catch(function(){});
