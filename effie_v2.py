@@ -232,8 +232,10 @@ function bioSkip(){
 # ── שכבת דסקטופ/טאבלט (עיצוב §13): סרגל צד מימין, תוכן רחב, בית בגריד ─────────
 # מוזרק לכל דף ב-_page(); ממוקד ב-body:has(nav) כדי לא לגעת בדף הכניסה/טפסים.
 V2_DESKTOP_CSS = r"""<style>
+nav .it.dk{display:none}   /* תהליכים+יומן — רק בסרגל הצד (טאבלט/דסקטופ) */
 /* טאבלט 768–1023: הסרגל מתכווץ לאייקונים (§13) */
 @media (min-width:768px){
+  nav .it.dk{display:flex}
   body:has(nav){padding-right:96px}
   body:has(nav) header, body:has(nav) main, body:has(nav) #impBar{max-width:640px}
   body:has(nav) main{padding-bottom:28px}
@@ -551,6 +553,8 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg></div>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><div class="badge" id="nbBadge"></div><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <!-- ── בריף הבוקר — סטורי ── -->
@@ -1109,6 +1113,8 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -1696,6 +1702,8 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -2181,6 +2189,8 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
     <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -2752,6 +2762,8 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg></div>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -3098,6 +3110,8 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
     <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#fff"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg></div>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -3438,6 +3452,15 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .chip.office{color:#2E6BD6;background:#EAF0FA}
   .chip.shtaf{color:#8B8F99;background:#EBE8DD}
   .chip.mine{color:#B8902F;background:#F6EEDB}
+  .chip.pend{color:#B8902F;background:#F6EEDB;border:1px dashed #C29435}
+  .reqRow{display:flex;gap:8px;margin-top:8px}
+  .reqRow .rq{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;
+      padding:10px 0;font-size:12.5px;font-weight:700;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F;
+      cursor:pointer;font-family:inherit;min-height:40px}
+  .reqRow .tr{flex:0 0 42px;width:42px;background:#FBEDED;border:none;border-radius:12px;display:flex;
+      align-items:center;justify-content:center;cursor:pointer;min-height:40px}
+  .reqRow .dn{flex:1;background:#E7F7EE;border:none;color:#157A43;border-radius:12px;font-size:12.5px;
+      font-weight:700;cursor:pointer;font-family:inherit;min-height:40px}
   .prop .pr{font-size:21px;font-weight:800}
   .prop.shtaf .pr{font-size:19px;color:#3D5273}
   .prop .acts{display:flex;gap:8px}
@@ -3524,6 +3547,8 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -3641,13 +3666,21 @@ function propCard(p, i){
   var where = isShtaf ? [p.street || p.address, p.city].filter(Boolean).join(', ')
                       : [p.address, p.neighborhood, p.city].filter(Boolean).join(', ');
   var chip = isShtaf ? '<div class="chip shtaf">שת"פ</div>'
-    : isMine ? '<div class="chip mine">הנכס שלי</div>'
+    : isMine ? (p.pending ? '<div class="chip pend">בטיפול אצל המזכירה</div>' : '<div class="chip mine">הנכס שלי</div>')
     : '<div class="chip office">המשרד שלנו</div>';
   var acts = isShtaf ? '' :
     '<div class="acts"><button class="a1" onclick="matchBuyers(' + i + ')">' +
     '<svg width="12" height="12" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
     'קונים מתאימים</button>' +
-    '<button class="a2" onclick="propDetails(' + i + ')">פרטי הנכס</button></div>';
+    '<button class="a2" onclick="propDetails(' + i + ')">פרטי הנכס</button></div>' +
+    // בקשות למזכירה — עדכון מחיר / הסרת מודעה (רק בנכס שלי, עם מספר מודעה)
+    (isMine && p.own && p.id ? (p.pending
+      ? '<div class="reqRow"><button class="dn" onclick="doneListing(' + i + ')">הטיפול בוצע — הסר את הסימון</button></div>'
+      : '<div class="reqRow"><button class="rq" onclick="reqPrice(' + i + ')">' +
+        '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
+        'עדכן מחיר</button>' +
+        '<button class="tr" onclick="reqRemove(' + i + ')" aria-label="בקשת הסרת מודעה">' +
+        '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>') : '');
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
@@ -3703,6 +3736,45 @@ function propDetails(i){
     (p.desc ? '<div style="background:#fff;border-radius:13px;padding:13px 15px;font-size:13px;color:#5B6472;line-height:1.7">' + esc(p.desc) + '</div>' : '') +
     (p.wa ? '<a class="btn" style="background:#1FAF5E;color:#fff;text-decoration:none;box-shadow:0 4px 12px rgba(31,175,94,.25)" target="_blank" rel="noopener" href="https://wa.me/' + esc(p.wa) + '">וואטסאפ לסוכן המטפל</a>' : '') +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
+}
+
+/* בקשות למזכירה — עדכון מחיר / הסרת מודעה (זהה לזרימה באפליקציה הקיימת: requestchange) */
+function reqPrice(i){
+  var p = el('list')._src[i]; if (!p) return;
+  openSheet('<h3>עדכון מחיר</h3>' +
+    '<div style="font-size:12.5px;color:#8B8F99">' + esc([p.address, p.city].filter(Boolean).join(', ')) +
+    ' · מחיר נוכחי: ' + esc(fmtPrice(p.price)) + '</div>' +
+    '<input id="npr" type="text" inputmode="numeric" placeholder="המחיר החדש" style="width:100%;padding:13px 14px;' +
+    'border:1.5px solid #DCD6C8;border-radius:13px;font-size:15px;font-family:inherit;outline:none;background:#fff">' +
+    '<button class="btn" style="background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25)" ' +
+    'onclick="sendPrice(' + i + ')">שלח בקשה למזכירה</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+  setTimeout(function(){ var n = el('npr'); if (n) n.focus(); }, 150);
+}
+function sendPrice(i){
+  var p = el('list')._src[i]; if (!p) return;
+  var np = (el('npr') && el('npr').value || '').trim();
+  if (!np){ toast('כתוב את המחיר החדש'); return; }
+  POST('/api/listing/request', {kind:'price', id: p.id, address: p.address || '', new_price: np}).then(function(j){
+    if (!j.ok){ toast('השליחה נכשלה'); return; }
+    closeSheet(); toast('הבקשה נשלחה למזכירה'); load(el('q').value.trim());
+  });
+}
+function reqRemove(i){
+  var p = el('list')._src[i]; if (!p) return;
+  if (!confirm('לשלוח בקשה למזכירה להסיר את המודעה?\n' + [p.address, p.city].filter(Boolean).join(', '))) return;
+  POST('/api/listing/request', {kind:'remove', id: p.id, address: p.address || ''}).then(function(j){
+    if (!j.ok){ toast('השליחה נכשלה'); return; }
+    toast('הבקשה נשלחה למזכירה'); load(el('q').value.trim());
+  });
+}
+function doneListing(i){
+  var p = el('list')._src[i]; if (!p) return;
+  if (!confirm('לסמן שהטיפול בוצע? הנכס לא יסומן יותר כ"בטיפול אצל המזכירה".')) return;
+  POST('/api/listing/done', {id: p.id}).then(function(j){
+    if (!j.ok){ toast('שגיאה'); return; }
+    toast('הסימון הוסר'); load(el('q').value.trim());
+  });
 }
 
 /* זיכרון מצב הטאב */
@@ -3904,9 +3976,11 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(MAP);
 CLUSTER = L.markerClusterGroup({maxClusterRadius: 46, showCoverageOnHover: false});
 MAP.addLayer(CLUSTER);
-// סיכת המשרד — שושנה דמארי 4, קרית מוצקין (זהב, תמיד מעל הקלאסטרים)
-L.marker([32.85042, 35.08606], {zIndexOffset: 1000, icon: L.divIcon({className: '',
-  html: '<div class="pin sel" style="background:#C29435">המשרד</div>', iconSize: null, iconAnchor: [26, 14]})}).addTo(MAP);
+// סיכות המשרדים (זהב, תמיד מעל הקלאסטרים): מוצקין — שושנה דמארי 4; ביאליק (אפק) — יגאל בשן 2
+[[32.85042, 35.08606, 'המשרד · מוצקין'], [32.85012, 35.10338, 'המשרד · ביאליק']].forEach(function(o){
+  L.marker([o[0], o[1]], {zIndexOffset: 1000, icon: L.divIcon({className: '',
+    html: '<div class="pin sel" style="background:#C29435">' + o[2] + '</div>', iconSize: null, iconAnchor: [40, 14]})}).addTo(MAP);
+});
 
 function pinIcon(it, sel){
   return L.divIcon({className: '', html: '<div class="pin' + (it.t === 'coop' ? ' coop' : '') +
@@ -3977,6 +4051,21 @@ function myLoc(){
       weight: 3, opacity: .35}).addTo(MAP);
   }, function(){ toast('לא הצלחנו לאתר את המיקום'); });
 }
+/* מיקוד על האזור עם רוב הנכסים: חציון → 80% הקרובים אליו — נכס חריג רחוק לא מרחיק את הזום */
+function focusDense(){
+  var pts = ITEMS.filter(function(it){ return it.lat && it.lng; });
+  if (!pts.length) return;
+  var lats = pts.map(function(x){ return x.lat; }).sort(function(a, b){ return a - b; });
+  var lngs = pts.map(function(x){ return x.lng; }).sort(function(a, b){ return a - b; });
+  var cLat = lats[Math.floor(lats.length / 2)], cLng = lngs[Math.floor(lngs.length / 2)];
+  var byDist = pts.slice().sort(function(a, b){
+    return (Math.pow(a.lat - cLat, 2) + Math.pow(a.lng - cLng, 2)) -
+           (Math.pow(b.lat - cLat, 2) + Math.pow(b.lng - cLng, 2));
+  });
+  var core = byDist.slice(0, Math.max(3, Math.ceil(byDist.length * 0.8)));
+  var b = L.latLngBounds(core.map(function(it){ return [it.lat, it.lng]; }));
+  MAP.fitBounds(b, {padding: [46, 46], maxZoom: 15});
+}
 (function(){
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
@@ -3984,10 +4073,7 @@ function myLoc(){
   GET('/api/map/properties').then(function(j){
     ITEMS = (j && j.items) || [];
     render();
-    if (ITEMS.length){
-      var b = L.latLngBounds(ITEMS.map(function(it){ return [it.lat, it.lng]; }));
-      MAP.fitBounds(b, {padding: [60, 60], maxZoom: 14});
-    }
+    focusDense();
   }).catch(function(){ toast('שגיאה בטעינת הנכסים'); });
 })();
 </script></body></html>'''
@@ -4142,6 +4228,8 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -4577,6 +4665,8 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
     <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
   <div id="toast"></div>
 
@@ -5545,6 +5635,8 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="toast"></div>
