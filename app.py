@@ -1307,7 +1307,7 @@ def _cache_clear(key):
         _TTL_CACHE.pop(key, None)
 
 def fetch_sheet_rows() -> list:
-    c = _cache_get('sheet_rows', _src_ttl(PROPS_SOURCE, 60, 15))
+    c = _cache_get('sheet_rows', _src_ttl(PROPS_SOURCE, 60, 90))
     if c is not None:
         return c
     if PROPS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
@@ -2757,8 +2757,8 @@ def _sf_lock(key):
 def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
     _ck = "raw:" + str(type_he) + ":" + str(frm) + ":" + str(to)
     _ttl = 60
-    if type_he == "שיחות":     _ttl = _src_ttl(CALLS_SOURCE, 60, 10)
-    elif type_he == "חתימות":  _ttl = _src_ttl(SIGNATURES_SOURCE, 60, 10)
+    if type_he == "שיחות":     _ttl = _src_ttl(CALLS_SOURCE, 60, 90)
+    elif type_he == "חתימות":  _ttl = _src_ttl(SIGNATURES_SOURCE, 60, 90)
     c = _cache_get(_ck, _ttl)
     if c is not None:
         return c
@@ -5552,10 +5552,10 @@ def _src_ttl(flag, sheets_ttl, sb_ttl):
     return sb_ttl if (flag == "supabase" and _sbdb and _sbdb.enabled()) else sheets_ttl
 
 def fetch_newborn():
-    c = _cache_get("newborn_rows", _src_ttl(NEWBORN_SOURCE, 300, 15))
+    c = _cache_get("newborn_rows", _src_ttl(NEWBORN_SOURCE, 300, 90))
     if c is not None: return c
     with _sf_lock("newborn_rows"):
-        c = _cache_get("newborn_rows", _src_ttl(NEWBORN_SOURCE, 300, 15))
+        c = _cache_get("newborn_rows", _src_ttl(NEWBORN_SOURCE, 300, 90))
         if c is not None: return c
         rows = None
         if NEWBORN_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
@@ -6594,7 +6594,7 @@ def api_buyers_delete():
     return jsonify({"ok": True})
 
 def _fetch_hidden_calls():
-    c = _cache_get("hidden_calls", _src_ttl(CALLS_SOURCE, 180, 15))
+    c = _cache_get("hidden_calls", _src_ttl(CALLS_SOURCE, 180, 90))
     if c is not None: return c
     if CALLS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
         try:
@@ -6627,10 +6627,10 @@ def api_help():
 
 @app.route("/api/sign/delete", methods=["POST"])
 def api_sign_delete():
-    """מחיקת הסכם מגיליון 'חתימות' — מפתח בלבד. נמחק גם מהרשימה וגם מהדוחות (אותו מקור)."""
+    """מחיקת הסכם מגיליון 'חתימות' — מפתח או מנהל בלבד. נמחק גם מהרשימה וגם מהדוחות (אותו מקור)."""
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
-    if not _is_dev(s.get("phone", "")):
+    if not (_is_dev(s.get("phone", "")) or s.get("role") == "admin"):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
     body = request.get_json(silent=True) or {}
     eid = str(body.get("eid", "") or "").strip()
@@ -8493,39 +8493,55 @@ function daysLabel(dd){return dd==0?"נכנס לבלעדיות היום":(dd==1?
 # ══════════════════════════════════════════════════════════════════════════════
 WARM_INTERVAL = int(os.environ.get("WARM_INTERVAL", "30") or 30)
 
-def _warm_once():
-    for _tab in ("שיחות", "חתימות", "נכסים"):
+def _key_age(key):
+    with _TTL_LOCK:
+        e = _TTL_CACHE.get(key)
+    return (time.time() - e[0]) if e else 1e9
+
+def _warm_key(key, ttl, fetch):
+    """רענון-מקדים: מושך מחדש רק כשהמטמון יפוג לפני המחזור הבא של ה-warmer, כך
+    שמשתמשים תמיד פוגעים במטמון חם — ואף מקור לא נקרא בתדירות גבוהה מה-TTL שלו."""
+    if _key_age(key) < max(ttl - WARM_INTERVAL - 5, 1):
+        return
+    try:
+        rows = fetch()
+        if rows:   # תשובה ריקה = כמעט תמיד תקלה זמנית — לא מקבעים אותה במטמון
+            _cache_put(key, rows)
+    except Exception:
+        pass
+
+def _newborn_fetch_raw():
+    if NEWBORN_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
         try:
-            _r = _web_fetch_raw_uncached(_tab)
-            if _r:
-                _cache_put("raw:%s:01/01/2020:31/12/2099" % _tab, _r)
+            return _sbdb.fetch_newborn_rows()
+        except Exception as _sbe:
+            log.error(f"warmer newborn supabase: {_sbe}")
+    j = _buyers_apps_post("listnewborn", {})
+    return (j.get("rows", []) or []) if (j and j.get("ok")) else []
+
+def _props_fetch_raw():
+    if PROPS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            return _sbdb.fetch_properties_rows()
+        except Exception as _sbe:
+            log.error(f"warmer props supabase: {_sbe}")
+    return _fetch_sheet_rows_raw()
+
+def _warm_once():
+    # המפתחות הכבדים — רענון-מקדים לפי דגל המקור (Supabase = שאילתה זולה; Sheets בקצב ה-TTL)
+    _warm_key("raw:שיחות:01/01/2020:31/12/2099", _src_ttl(CALLS_SOURCE, 60, 90),
+              lambda: _web_fetch_raw_uncached("שיחות"))
+    _warm_key("raw:חתימות:01/01/2020:31/12/2099", _src_ttl(SIGNATURES_SOURCE, 60, 90),
+              lambda: _web_fetch_raw_uncached("חתימות"))
+    _warm_key("newborn_rows", _src_ttl(NEWBORN_SOURCE, 300, 90), _newborn_fetch_raw)
+    _warm_key("sheet_rows", _src_ttl(PROPS_SOURCE, 60, 90), _props_fetch_raw)
+    # אלה מנהלים מטמון בעצמם — קריאה דרך העטיפה עושה עבודה רק כשה-TTL פג,
+    # וכך ברוב המקרים ה-warmer (ולא משתמש) משלם את המשיכה האיטית
+    for _fn in (fetch_signings_from_sheet, _fetch_hidden_calls, fetch_external_exclusives, _load_config):
+        try:
+            _fn()
         except Exception:
             pass
-    try:
-        _j = _buyers_apps_post("listnewborn", {})
-        if _j and _j.get("ok"):
-            _cache_put("newborn_rows", _j.get("rows", []) or [])
-    except Exception:
-        pass
-    try:   # קונפיג (תפקידים/צוותים/כינויים) — שמירה חמה כדי שלא יחסום תחת עומס
-        _jc = _buyers_apps_post("getconfig", {})
-        if _jc and _jc.get("ok"):
-            _rawc = (_jc.get("config") or "").strip()
-            _cfgc = _json.loads(_rawc) if _rawc else {}
-            if isinstance(_cfgc, dict): _cache_put("app_config", _cfgc)
-    except Exception:
-        pass
-    try:
-        if APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN:
-            from urllib.parse import quote as _q
-            _u = ("%s?action=raw&type=%s&from=01/01/2020&to=31/12/2099&token=%s"
-                  % (APPS_SCRIPT_URL, _q("בלעדויות חיצוניות"), APPS_SCRIPT_TOKEN))
-            _rr = requests.get(_u, timeout=30, allow_redirects=True)
-            if _rr.status_code == 200 and _rr.json().get("ok"):
-                _external_excl_cache["data"] = _rr.json().get("rows", [])
-                _external_excl_cache["ts"] = time.time()
-    except Exception:
-        pass
 
 _warmer_started = False
 def _start_warmer():
@@ -8547,10 +8563,10 @@ def _start_warmer():
     except Exception as _e:
         log.error("warmer start failed: %s" % _e)
 
-# ⚠️ ה-warmer הרקעי כובה כברירת מחדל: בריצה כל 30ש' הוא מונופוליזציה של Apps Script
-# וחנק כתיבות/קריאות (add/activity נתקעו). החימום נעשה ממילא פר-משתמש ב-prewarm().
-# להחזרה: הגדר משתנה סביבה ENABLE_WARMER=1
-if os.environ.get("ENABLE_WARMER", "") == "1":
+# ה-warmer פעיל כברירת מחדל. הגרסה הישנה כובתה כי משכה הכל מ-Apps Script ללא מטמון
+# כל 30ש' (מונופוליזציה שחנקה כתיבות); הנוכחית קוראת כל מקור לפי הדגל וה-TTL שלו —
+# Supabase מתרענן בזול, Sheets לא נקרא תכוף יותר מהיום. לכיבוי: DISABLE_WARMER=1
+if os.environ.get("DISABLE_WARMER", "") != "1":
     _start_warmer()
 
 # ── פוש "נכס נולד 🐥" — גלאי שמזהה נכס חדש שנכנס למערכת ושולח לכל הסוכנים והמנהלים ──
