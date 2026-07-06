@@ -2412,11 +2412,18 @@ function propCard(p, b, shtaf){
     '<button class="a1" onclick=\'sendToBuyer(' + JSON.stringify(JSON.stringify({w: where, d: dt, pr: p.price || ''})) + ')\'>' +
     '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
     'שלח לקונה</button>' +
-    '<button class="a2" onclick="toast(\'טופס החתמת מתעניין — בסשן החתימות\')">' +
+    '<button class="a2" onclick=\'signBuyer(' + JSON.stringify(JSON.stringify({w: where, pr: p.price || ''})) + ')\'>' +
     '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg>' +
     'החתם מתעניין</button></div></div>';
 }
 var CUR_BUYER = null;
+function signBuyer(js){
+  var p = JSON.parse(js);
+  try{ localStorage.setItem('v2signPre', JSON.stringify({
+    client: (CUR_BUYER && CUR_BUYER.name) || '', phone: (CUR_BUYER && CUR_BUYER.phone) || '',
+    addr: p.w || '', price: p.pr || ''})); }catch(e){}
+  location.href = '/v2/sign?type=buyer';
+}
 function renderMatches(b, office, shtaf){
   CUR_BUYER = b;
   var h = '';
@@ -2728,12 +2735,7 @@ function setFilter(node){
   render();
 }
 function openSignInfo(kind){
-  openSheet('<h3>' + (kind === 'owner' ? 'החתם בעל נכס' : 'החתם מתעניין') + '</h3>' +
-    '<div style="font-size:13px;color:#5B6472;line-height:1.7">טפסי ההחתמה בקו של אפי נבנים בסשן הבא ' +
-    '(העיצוב אושר — סבב 18). בינתיים מחתימים דרך האפליקציה הקיימת — אותה זרימה ואותם הסכמים, ' +
-    'והחתימה תופיע כאן ברשימה.</div>' +
-    '<button class="btn btn-gold" onclick="location.href=\'/app\'">להחתמה באפליקציה הקיימת</button>' +
-    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+  location.href = '/v2/sign?type=' + (kind === 'owner' ? 'owner' : 'buyer');
 }
 
 /* זיכרון מצב הטאב — פילטר/חיפוש/גלילה נשמרים וחוזרים בכניסה הבאה */
@@ -4865,6 +4867,412 @@ function load(){
 </script></body></html>'''
 
 
+# ── טופס החתמה (18a/18b) — מתעניין/בעל נכס: מרחוק (SMS+וואטסאפ) או במקום ──
+V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>החתמה</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 10px;display:flex;align-items:center;justify-content:space-between}
+  .backBtn{width:40px;height:40px;border-radius:13px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  header .mid{display:flex;flex-direction:column;align-items:center}
+  header .t{font-size:17px;font-weight:800}
+  header .s{font-size:11px;color:#8B8F99}
+  main{flex:1;padding:0 16px 130px;display:flex;flex-direction:column;gap:11px;overflow:auto}
+  .sec{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 16px;
+      display:flex;flex-direction:column;gap:11px}
+  .sec .hd{display:flex;align-items:center;gap:8px}
+  .sec .ic{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .sec .tt{font-size:14px;font-weight:800}
+  .sec .note{font-size:11px;color:#8B8F99;margin-right:auto}
+  .dRow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .dRow.off{opacity:.55}
+  .dRow .r{display:flex;align-items:center;gap:9px;cursor:pointer}
+  .cb{width:22px;height:22px;border-radius:7px;border:1.5px solid #DCD6C8;background:#fff;display:flex;
+      align-items:center;justify-content:center;flex-shrink:0}
+  .dRow.on .cb{background:#C29435;border-color:#C29435}
+  .dRow .lb{font-size:14px;font-weight:700}
+  .dRow .in{display:flex;align-items:center;gap:6px}
+  .dRow input{width:56px;text-align:center;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;
+      padding:8px 0;font-size:14px;font-weight:800;color:#1E3A5F;font-family:inherit;outline:none}
+  .dRow .un{font-size:12px;font-weight:600;color:#8B8F99}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld input{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:12px;padding:11px 13px;
+      font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%}
+  .preChip{background:#EAF0FA;border:1.5px solid #2E6BD6;border-radius:12px;padding:10px 13px;
+      display:flex;align-items:center;justify-content:space-between}
+  .preChip b{font-size:13.5px;font-weight:700}
+  .preChip i{font-size:10.5px;font-weight:800;color:#2E6BD6;font-style:normal}
+  #idMsg{font-size:11.5px;font-weight:700;min-height:15px}
+  .propRow{background:#F7F5EE;border-radius:12px;padding:10px 13px;display:flex;align-items:center;gap:8px}
+  .propRow .mid2{flex:1;min-width:0}
+  .propRow .a{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .propRow .p{font-size:11.5px;color:#8B8F99}
+  .propRow .x{width:28px;height:28px;border-radius:50%;background:#FBEDED;border:0;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .pBtns{display:flex;gap:8px}
+  .pBtns .b{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#fff;
+      border-radius:12px;padding:10px 0;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
+  .pBtns .dash{border:1.5px dashed #DCD6C8;color:#5B6472}
+  .pBtns .sol{border:1.5px solid #DCD6C8;color:#1E3A5F}
+  .radio{display:flex;align-items:center;gap:9px;cursor:pointer;min-height:36px}
+  .radio .dot{width:20px;height:20px;border-radius:50%;border:1.5px solid #DCD6C8;background:#fff;flex-shrink:0}
+  .radio.on .dot{border:6px solid #C29435}
+  .radio .lb{font-size:13.5px;font-weight:700}
+  .radio:not(.on){opacity:.6}
+  .hint{background:#EAF0FA;border-radius:11px;padding:9px 12px;font-size:11.5px;color:#3D5273;line-height:1.55}
+  #padWrap{display:none;flex-direction:column;gap:8px}
+  #pad{width:100%;height:160px;background:#fff;border:1.5px dashed #C9CDD4;border-radius:14px;touch-action:none}
+  .padClear{align-self:flex-start;font-size:12px;font-weight:700;color:#2E6BD6;background:none;border:0;
+      cursor:pointer;font-family:inherit}
+  .cta{position:fixed;left:0;right:0;bottom:0;z-index:40;
+      padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 18px);
+      background:linear-gradient(to top, #F2EFE7 75%, transparent)}
+  .cta button{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:#C29435;
+      color:#fff;border-radius:15px;padding:15px 0;font-size:15.5px;font-weight:800;border:0;cursor:pointer;
+      font-family:inherit;box-shadow:0 8px 22px rgba(194,148,53,.32)}
+  .cta button:disabled{opacity:.6}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:50}
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:51;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 20px;display:none;flex-direction:column;
+      gap:10px;max-height:75vh;overflow:auto}
+  #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
+  #sheet h3{font-size:18px;font-weight:800}
+  .pick{background:#fff;border-radius:13px;padding:11px 13px;display:flex;align-items:center;
+      justify-content:space-between;gap:8px;cursor:pointer}
+  .pick .a{font-size:13px;font-weight:700}
+  .pick .p{font-size:11.5px;color:#8B8F99}
+  .btnSec{display:flex;align-items:center;justify-content:center;background:#fff;color:#5B6472;
+      border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 0;font-size:14px;font-weight:700;
+      cursor:pointer;font-family:inherit}
+  #toast{position:fixed;bottom:120px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:80;white-space:nowrap}
+  @media (min-width:700px){
+    header,main,.cta{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+  }
+</style></head><body>
+
+  <header>
+    <button class="backBtn" onclick="location.href='/v2/sigs'">
+      <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="mid"><div class="t" id="pgT">החתמה</div><div class="s" id="pgS"></div></div>
+    <div style="width:40px"></div>
+  </header>
+
+  <main>
+    <div class="sec" id="secDeal">
+      <div class="hd"><div class="ic" style="background:#F6EEDB">
+        <svg width="13" height="13" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+        <span class="tt">סוג עסקה ועמלה</span></div>
+      <div id="dealRows"></div>
+    </div>
+
+    <div class="sec">
+      <div class="hd"><div class="ic" style="background:#EAF0FA">
+        <svg width="13" height="13" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+        <span class="tt">פרטי הלקוח</span></div>
+      <div class="preChip" id="preChip" style="display:none"><b id="preTx"></b><i>הועבר מהמסך הקודם</i></div>
+      <div class="fld"><span>שם מלא *</span><input id="cName"></div>
+      <div class="fld"><span>טלפון *</span><input id="cPhone" type="tel" inputmode="numeric"></div>
+      <div class="fld"><span>תעודת זהות <span id="idReq" style="color:#C24040;display:none">*</span></span>
+        <input id="cId" inputmode="numeric" oninput="checkId()">
+        <div id="idMsg"></div></div>
+    </div>
+
+    <div class="sec">
+      <div class="hd"><div class="ic" style="background:#F6EEDB">
+        <svg width="13" height="13" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#B8902F" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+        <span class="tt">פרטי הנכס</span><span class="note" id="propNote">אפשר יותר מנכס אחד</span></div>
+      <div id="propList"></div>
+      <div class="pBtns">
+        <button class="b dash" onclick="addPropFree()">+ הוסף נכס</button>
+        <button class="b sol" onclick="pickProp()">בחר מהנכסים שלי</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <span class="tt">אופן ההחתמה</span>
+      <div class="radio on" id="rRemote" onclick="setMode('remote')">
+        <div class="dot"></div><span class="lb">שליחה לחתימה ב-SMS ו-WhatsApp</span></div>
+      <div class="radio" id="rLocal" onclick="setMode('local')">
+        <div class="dot"></div><span class="lb">חתימה במקום (על המכשיר הזה)</span></div>
+      <div class="hint" id="modeHint">הלקוח יקבל קישור, ימלא ת"ז ויחתום במכשירו. המסמך החתום יתווסף לשורת החתימה.</div>
+      <div id="padWrap">
+        <canvas id="pad"></canvas>
+        <button class="padClear" onclick="clearPad()">נקה חתימה</button>
+      </div>
+    </div>
+  </main>
+
+  <div class="cta"><button id="go" onclick="submitSign()">שלח לחתימה בוואטסאפ וב-SMS</button></div>
+  <div id="ovl" onclick="closeSheet()"></div>
+  <div id="sheet"></div>
+  <div id="toast"></div>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type': 'application/json'},
+    body: JSON.stringify(d || {})}).then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(m){
+  var t = el('toast'); t.textContent = m; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 2200);
+}
+function openSheet(html){
+  el('sheet').innerHTML = '<div class="grip"></div>' + html;
+  el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+}
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+
+var KIND = (location.search.indexOf('type=owner') >= 0 || location.search.indexOf('type=seller') >= 0) ? 'owner' : 'buyer';
+var AGENT = '', MODE = 'remote', PROPS = [], BUSY = false;
+var DEALS_DEF = KIND === 'buyer'
+  ? [{k: 'buy', lb: 'קניה — עמלה', on: true, val: '2', un: '%'},
+     {k: 'rent', lb: 'שכירות — עמלה', on: false, val: '1', un: 'חודשים'}]
+  : [{k: 'sale', lb: 'מכירה — עמלה', on: true, val: '2', un: '%'},
+     {k: 'rent', lb: 'השכרה — עמלה', on: false, val: '1', un: 'חודשים'},
+     {k: 'excl', lb: 'בלעדיות — תקופה', on: false, val: '', un: '', from: '', to: ''}];
+
+function renderDeals(){
+  el('dealRows').innerHTML = DEALS_DEF.map(function(d, i){
+    var inputs = d.k === 'excl'
+      ? '<div class="in"><input style="width:88px" placeholder="מ- 07/07/26" value="' + esc(d.from) + '" onchange="DEALS_DEF[' + i + '].from=this.value">' +
+        '<input style="width:88px" placeholder="עד 07/01/27" value="' + esc(d.to) + '" onchange="DEALS_DEF[' + i + '].to=this.value"></div>'
+      : '<div class="in"><input inputmode="decimal" value="' + esc(d.val) + '" onchange="DEALS_DEF[' + i + '].val=this.value">' +
+        '<span class="un">' + d.un + '</span></div>';
+    return '<div class="dRow' + (d.on ? ' on' : ' off') + '" style="' + (i ? 'margin-top:9px' : '') + '">' +
+      '<div class="r" onclick="DEALS_DEF[' + i + '].on=!DEALS_DEF[' + i + '].on;renderDeals()">' +
+      '<div class="cb"><svg width="12" height="10" viewBox="0 0 12 10"><path d="M1.5 5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>' +
+      '<span class="lb">' + d.lb + '</span></div>' + inputs + '</div>';
+  }).join('');
+}
+function renderProps(){
+  el('propList').innerHTML = PROPS.map(function(p, i){
+    return '<div class="propRow" style="' + (i ? 'margin-top:8px' : '') + '"><div class="mid2"><div class="a">' + esc(p.addr) + '</div>' +
+      (p.price ? '<div class="p">₪' + esc(p.price) + '</div>' : '') + '</div>' +
+      '<button class="x" onclick="PROPS.splice(' + i + ',1);renderProps()">' +
+      '<svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#C24040" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>';
+  }).join('') || '<div style="font-size:12px;color:#8B8F99">עוד לא נבחר נכס</div>';
+}
+function addPropFree(){
+  openSheet('<h3>הוספת נכס</h3>' +
+    '<div class="fld"><span>כתובת (רחוב, עיר) *</span><input id="npAddr"></div>' +
+    '<div class="fld"><span>מחיר מבוקש</span><input id="npPrice" inputmode="numeric"></div>' +
+    '<button class="btnSec" style="background:#2E6BD6;color:#fff;border:0" onclick="addPropGo()">הוסף</button>' +
+    '<button class="btnSec" onclick="closeSheet()">ביטול</button>');
+}
+function addPropGo(){
+  var a = el('npAddr').value.trim();
+  if (!a){ toast('כתובת — חובה'); return; }
+  PROPS.push({addr: a, price: el('npPrice').value.trim()});
+  closeSheet(); renderProps();
+}
+function pickProp(){
+  openSheet('<h3>הנכסים שלי</h3><div id="pkList" style="display:flex;flex-direction:column;gap:8px">' +
+    '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:12px 0">טוען…</div></div>' +
+    '<button class="btnSec" onclick="closeSheet()">ביטול</button>');
+  GET('/api/sign/properties').then(function(j){
+    var rows = (j && (j.properties || j.items || j.results)) || [];
+    el('pkList').innerHTML = rows.slice(0, 40).map(function(p){
+      var addr = p.address || p.addr || '';
+      var price = String(p.price || '');
+      return '<div class="pick" onclick=\'pickGo(' + JSON.stringify(JSON.stringify({a: addr, p: price})) + ')\'>' +
+        '<span class="a">' + esc(addr) + '</span><span class="p">' + esc(price ? '₪' + price : '') + '</span></div>';
+    }).join('') || '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:10px 0">אין מודעות משויכות אליך — הוסף נכס ידנית</div>';
+  }).catch(function(){});
+}
+function pickGo(js){
+  var p = JSON.parse(js);
+  PROPS.push({addr: p.a, price: p.p});
+  closeSheet(); renderProps();
+}
+function validILID(v){
+  var s = (v || '').replace(/\D/g, '');
+  if (!s || s.length > 9) return false;
+  s = ('000000000' + s).slice(-9);
+  var t = 0;
+  for (var i = 0; i < 9; i++){
+    var d = parseInt(s[i], 10) * (i % 2 === 0 ? 1 : 2);
+    t += d > 9 ? d - 9 : d;
+  }
+  return t % 10 === 0;
+}
+function checkId(){
+  var v = el('cId').value.trim(), m = el('idMsg');
+  if (!v){ m.textContent = ''; return; }
+  var ok = validILID(v);
+  m.textContent = ok ? '✓ תעודת זהות תקינה' : '✗ תעודת זהות לא תקינה';
+  m.style.color = ok ? '#1FAF5E' : '#C24040';
+}
+function setMode(m){
+  MODE = m;
+  el('rRemote').classList.toggle('on', m === 'remote');
+  el('rLocal').classList.toggle('on', m === 'local');
+  el('padWrap').style.display = m === 'local' ? 'flex' : 'none';
+  el('idReq').style.display = m === 'local' ? 'inline' : 'none';
+  el('modeHint').textContent = m === 'local'
+    ? 'הלקוח מזין ת"ז וחותם באצבע על המסך — המסמך נשמר מיד עם קישור לצפייה.'
+    : 'הלקוח יקבל קישור, ימלא ת"ז ויחתום במכשירו. המסמך החתום יתווסף לשורת החתימה.';
+  el('go').textContent = m === 'local' ? 'החתם עכשיו' : 'שלח לחתימה בוואטסאפ וב-SMS';
+  if (m === 'local') initPad();
+}
+var padInit = false;
+function initPad(){
+  if (padInit) return;
+  padInit = true;
+  var c = el('pad'), r = c.getBoundingClientRect();
+  c.width = r.width || 340; c.height = 160;
+  var x = c.getContext('2d');
+  x.lineWidth = 2.2; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#1E3A5F';
+  var down = false;
+  function pos(e){
+    var b = c.getBoundingClientRect(), t = (e.touches && e.touches[0]) || e;
+    return {x: t.clientX - b.left, y: t.clientY - b.top};
+  }
+  function st(e){ down = true; var p = pos(e); x.beginPath(); x.moveTo(p.x, p.y); e.preventDefault(); }
+  function mv(e){ if (!down) return; var p = pos(e); x.lineTo(p.x, p.y); x.stroke(); c.dataset.signed = '1'; e.preventDefault(); }
+  c.onmousedown = st; c.onmousemove = mv; c.onmouseup = c.onmouseleave = function(){ down = false; };
+  c.ontouchstart = st; c.ontouchmove = mv; c.ontouchend = function(){ down = false; };
+}
+function clearPad(){
+  var c = el('pad');
+  c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  c.dataset.signed = '';
+}
+function todayStr(){
+  var d = new Date();
+  return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear();
+}
+/* החלפות בתבנית ההסכם — זהה לאפליקציה הקיימת */
+function fill(body, v){
+  var addr = PROPS.map(function(p){ return p.addr; }).join(', ');
+  var price = PROPS.map(function(p){ return p.price; }).filter(Boolean).join(' / ');
+  var map = {
+    'SALE_FEE': v.fee ? v.fee + '%' : '____',
+    'RENT_FEE': v.months ? v.months + ' חודשי שכירות' : '____',
+    'EXCLUSIVE_FROM': v.exfrom || '____', 'EXCLUSIVE_TO': v.exto || '____',
+    'CON_REF_ID': '____', 'CON_REF_DATE': todayStr(),
+    '{תאריך}': todayStr(), '{שם_הסוכן}': AGENT, '{שם_הלקוח}': v.cname,
+    '{טלפון_הלקוח}': v.cphone, '{תז_הלקוח}': v.cid || '____',
+    '{כתובת_הנכס}': addr, '{מחיר_מבוקש}': price,
+    '{עמלת_קניה}': v.fee || '', '{עמלת_שכירות}': v.months || ''
+  };
+  var out = String(body || '');
+  Object.keys(map).forEach(function(k){ out = out.split(k).join(map[k]); });
+  return out;
+}
+function selectedDocs(){
+  var on = {};
+  DEALS_DEF.forEach(function(d){ if (d.on) on[d.k] = d; });
+  var picks = [];
+  if (KIND === 'buyer'){
+    if (on.buy && on.rent) picks.push(['buyer_both', 'CLIENT_SALE']);
+    else if (on.buy) picks.push(['buyer_buy', 'CLIENT_SALE']);
+    else if (on.rent) picks.push(['buyer_rent', 'CLIENT_RENT']);
+  } else {
+    if (on.excl) picks.push(['exclusive', 'OWNER_EXCLUSIVE']);
+    else if (on.sale && on.rent) picks.push(['seller_both', 'OWNER_SALE']);
+    else if (on.sale) picks.push(['seller_sell', 'OWNER_SALE']);
+    else if (on.rent) picks.push(['seller_both', 'OWNER_RENT']);
+  }
+  return picks;
+}
+function submitSign(){
+  if (BUSY) return;
+  var cname = el('cName').value.trim(), cphone = el('cPhone').value.trim(), cid = el('cId').value.trim();
+  if (!cname || !cphone){ toast('שם וטלפון — חובה'); return; }
+  if (!PROPS.length){ toast('הוסף לפחות נכס אחד'); return; }
+  var picks = selectedDocs();
+  if (!picks.length){ toast('בחר סוג עסקה'); return; }
+  var exclRow = null, feeRow = null, mRow = null;
+  DEALS_DEF.forEach(function(d){
+    if (!d.on) return;
+    if (d.k === 'excl') exclRow = d;
+    else if (d.k === 'rent') mRow = d;
+    else feeRow = d;
+  });
+  if (exclRow && (!exclRow.from || !exclRow.to)){ toast('בבלעדיות — מלא תקופה (מ/עד)'); return; }
+  if (MODE === 'local'){
+    if (!validILID(cid)){ toast('ת"ז לא תקינה — חובה בחתימה במקום'); return; }
+    if (!el('pad').dataset.signed){ toast('חסרה חתימה על המסך'); return; }
+  }
+  var v = {cname: cname, cphone: cphone, cid: cid,
+           fee: feeRow ? feeRow.val : '', months: mRow ? mRow.val : '',
+           exfrom: exclRow ? exclRow.from : '', exto: exclRow ? exclRow.to : ''};
+  BUSY = true; el('go').disabled = true;
+  Promise.all(picks.map(function(pk){
+    return GET('/api/sign/contract?type=' + pk[0]);
+  })).then(function(cons){
+    var docs = picks.map(function(pk, i){
+      return {deal_type: pk[1], title: (cons[i] && cons[i].title) || '',
+              body: fill((cons[i] && cons[i].body) || '', v)};
+    });
+    var addr = PROPS.map(function(p){ return p.addr; }).join(PROPS.length > 1 ? ' | ' : '');
+    var header = 'פרטי הלקוח: ' + cname + (cid ? ' · ת"ז ' + cid : '') + ' · ' + cphone +
+      ' | סוכן: ' + AGENT + ' · ' + todayStr() +
+      ' | נכס: ' + PROPS.map(function(p){ return p.addr + (p.price ? ' (₪' + p.price + ')' : ''); }).join(' | ');
+    var done = function(j, txt){
+      BUSY = false; el('go').disabled = false;
+      if (!j.ok){ toast('שגיאה — נסה שוב'); return; }
+      toast(txt);
+      setTimeout(function(){ location.href = '/v2/sigs'; }, 1200);
+    };
+    if (MODE === 'remote')
+      return POST('/api/sign/send_remote', {docs: docs, client: cname, phone: cphone,
+        address: addr, notes: '', header: header}).then(function(j){
+          done(j, 'נשלח לחתימה' + (j.wa ? ' · וואטסאפ' : '') + (j.sms ? ' · SMS' : ''));
+        });
+    var sig = el('pad').toDataURL('image/png');
+    return POST('/api/sign/submit', {docs: docs, client: cname, cid: cid, phone: cphone,
+      address: addr, notes: '', signature: sig, header: header}).then(function(j){
+        done(j, 'נחתם ונשמר');
+      });
+  }).catch(function(){ BUSY = false; el('go').disabled = false; toast('שגיאה'); });
+}
+(function(){
+  el('pgT').textContent = KIND === 'buyer' ? 'החתמת מתעניין' : 'החתמת בעל נכס';
+  el('propNote').textContent = KIND === 'buyer' ? 'אפשר יותר מנכס אחד' : 'הנכס של בעל הנכס';
+  renderDeals(); renderProps();
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    AGENT = j.name || '';
+  }).catch(function(){ location.replace('/v2'); });
+  try{
+    var pre = JSON.parse(localStorage.getItem('v2signPre') || 'null');
+    localStorage.removeItem('v2signPre');
+    if (pre){
+      if (pre.client) el('cName').value = pre.client;
+      if (pre.phone) el('cPhone').value = pre.phone;
+      if (pre.addr){ PROPS.push({addr: pre.addr, price: pre.price || ''}); renderProps(); }
+      if (pre.client){
+        el('preTx').textContent = pre.client + (pre.phone ? ' · ' + pre.phone : '');
+        el('preChip').style.display = 'flex';
+        el('pgS').textContent = pre.client;
+      }
+    }
+  }catch(e){}
+})();
+</script></body></html>'''
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -4965,6 +5373,10 @@ def register(app, G):
     @app.route("/v2/sigs", methods=["GET"])
     def v2_sigs():
         return _page(V2_SIGS_HTML)
+
+    @app.route("/v2/sign", methods=["GET"])
+    def v2_sign():
+        return _page(V2_SIGN_HTML)
 
     @app.route("/v2/newborn", methods=["GET"])
     def v2_newborn():
