@@ -1068,6 +1068,12 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <!-- הגדרות המשרד -->
     <div class="card">
       <div class="cardTitle">הגדרות המשרד</div>
+      <div class="setRow" onclick="location.href='/v2/onboard'">
+        <div class="setIc" style="background:#EAF0FA"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+        <div class="mid"><div class="nm">חיבור משרד חדש</div><div class="sb">צ'קליסט המקורות המלא — עתידי</div></div>
+        <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="sep"></div>
       <div class="setRow" onclick="openOffice()">
         <div class="setIc" style="background:#F6EEDB"><img id="miniLogo" src="/assets/logo" style="width:22px;height:22px;object-fit:contain" onerror="this.style.display='none'"></div>
         <div class="mid"><div class="nm">שם ולוגו המשרד</div><div class="sb" id="officeNameRow"></div></div>
@@ -6104,6 +6110,131 @@ function load(){
 </script></body></html>"""
 
 
+
+# ── חיבור משרד חדש (עתידי) — צ'קליסט המקורות המלא, עם סטטוס חי למשרד הנוכחי ─────
+V2_ONBOARD_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>חיבור משרד חדש</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px}
+  header .bk{width:42px;height:42px;border-radius:14px;background:#fff;border:1px solid #E9E4D8;display:flex;
+      align-items:center;justify-content:center;cursor:pointer}
+  header .lg{height:44px;max-width:150px;object-fit:contain}
+  @media (min-width:700px){ header,main{width:100%;max-width:600px;margin-left:auto;margin-right:auto} }
+  main{flex:1;padding:4px 16px 40px;display:flex;flex-direction:column;gap:13px;overflow:auto}
+  h1{font-size:19px;font-weight:800}
+  .sub{font-size:12.5px;color:#8B8F99;line-height:1.6}
+  .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 17px;
+      display:flex;flex-direction:column;gap:2px}
+  .card .tt{font-size:14.5px;font-weight:800;padding-bottom:6px}
+  .row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid #F0EDE3}
+  .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:5px}
+  .dot.ok{background:#1FAF5E}
+  .dot.no{background:#C24040}
+  .dot.info{background:#C29435}
+  .row .nm{font-size:13.5px;font-weight:700}
+  .row .ds{font-size:11.5px;color:#8B8F99;line-height:1.55;margin-top:1px}
+  .steps{background:#1E3A5F;border-radius:20px;padding:16px 18px;color:#fff;display:flex;flex-direction:column;gap:9px}
+  .steps .tt{font-size:14.5px;font-weight:800;color:#E4C56B}
+  .steps .st{display:flex;gap:10px;font-size:12.5px;line-height:1.55}
+  .steps .n{width:20px;height:20px;border-radius:50%;background:rgba(228,197,107,.2);color:#E4C56B;
+      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;margin-top:1px}
+</style></head><body>
+
+  <header>
+    <div class="bk" onclick="history.length > 1 ? history.back() : location.href='/v2/admin'">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <img class="lg" src="/assets/logo" alt="" onerror="this.style.display='none'">
+    <div style="width:42px"></div>
+  </header>
+
+  <main>
+    <div>
+      <h1>חיבור משרד חדש</h1>
+      <div class="sub">כל המקורות שהאפליקציה צריכה כדי להרים משרד מאפס. הנקודות מציגות את הסטטוס
+        של המשרד הנוכחי — למשרד חדש צריך להשיג את אותם פריטים בדיוק.</div>
+    </div>
+    <div id="list"><div class="card"><div class="sub" style="padding:8px 0">טוען סטטוס…</div></div></div>
+
+    <div class="steps">
+      <div class="tt">סדר הפעולות המומלץ</div>
+      <div class="st"><div class="n">1</div><div>פותחים משרד ב-Supabase: שורת office חדשה (שם, לוגו, office_id) + משתמשים ראשונים (בעלים/מנהל).</div></div>
+      <div class="st"><div class="n">2</div><div>טלפוניה: מספר וירטואלי במרכזיה (Maskyoo) + הפניית webhook השיחות לשרת, וחשבון SMS (sms.deals) עם שם שולח.</div></div>
+      <div class="st"><div class="n">3</div><div>וואטסאפ: מופע Maytapi למשרד + קבוצות מנהלים (שיחות/חתימות).</div></div>
+      <div class="st"><div class="n">4</div><div>נתונים: גיליון נכסים + Apps Script (או ישר Supabase), מזהה גיליון ומפתח Sheets API.</div></div>
+      <div class="st"><div class="n">5</div><div>Google OAuth לכניסה וליומן (אפשר להשתמש באפליקציה הקיימת — רק להוסיף redirect).</div></div>
+      <div class="st"><div class="n">6</div><div>פוש: אפליקציית OneSignal (או שימוש בקיימת עם סגמנטים לפי משרד).</div></div>
+      <div class="st"><div class="n">7</div><div>תוכן: חוזי החתמה של המשרד, לוגו, אינסטגרם/מדלן, אימייל מזכירה.</div></div>
+      <div class="st"><div class="n">8</div><div>צוות: הזמנת סוכנים/מתאמות, תפקידים, צוותי שיתוף והשהיות נכס נולד.</div></div>
+    </div>
+  </main>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+var SECTIONS = [
+  {t: 'זהות המשרד (white-label)', items: [
+    ['name', 'שם המשרד', 'offices.name ב-Supabase — מופיע בכותרות, בוואטסאפ ובמסמכים'],
+    ['logo', 'לוגו', 'קובץ הלוגו שמוצג בכל המסכים ובטפסי החתימה'],
+    ['office_id', 'מזהה משרד ב-Supabase', 'office_id ייחודי — כל הנתונים מסוננים לפיו (מולטי-טננט)'],
+    ['links', 'אינסטגרם + מדלן', 'קישורי המשרד בתפריט הצד — נשמרים בהגדרות המשרד בניהול']]},
+  {t: 'טלפוניה', items: [
+    ['vphone', 'מספר וירטואלי (מרכזיה)', 'המספר שהלקוחות מחייגים אליו; ה-webhook של המרכזיה שולח את השיחות והתמלולים לשרת'],
+    ['sms', 'ספק SMS (sms.deals)', 'טוקן + שם שולח מאושר — קוד כניסה, קישורי חתימה, התראות לסוכן']]},
+  {t: 'וואטסאפ', items: [
+    ['maytapi', 'חיבור Maytapi', 'מופע וואטסאפ של המשרד — הודעות אוטומטיות לסוכנים וללקוחות'],
+    ['wa_groups', 'קבוצות מנהלים', 'קבוצת "שיחות" וקבוצת "חתימות" — עדכונים שוטפים להנהלה']]},
+  {t: 'נתונים', items: [
+    ['supabase', 'Supabase', 'מסד הנתונים המהיר — שיחות, חתימות, קונים, נכס נולד, קונפיג'],
+    ['apps_script', 'Apps Script + גיליון', 'הכתיבות (הוספת קונה, חתימות) והגיליון התפעולי של המזכירה'],
+    ['sheets_api', 'Google Sheets API', 'קריאת גיליון הנכסים (עד המעבר המלא ל-Supabase)'],
+    ['contracts', 'חוזי החתמה', 'נוסחי ההסכמים (בלעדיות/מכירה/קניה/שכירות) — פר-משרד']]},
+  {t: 'Google', items: [
+    ['google_oauth', 'כניסה עם Google + יומן', 'OAuth Client — כניסת סוכנים וסנכרון פגישות ליומן']]},
+  {t: 'התראות', items: [
+    ['onesignal', 'פוש (OneSignal)', 'התראות דחיפה לאפליקציה — חתימות, נכס נולד']]},
+  {t: 'צוות והרשאות', items: [
+    ['admins', 'מנהלים', 'טלפוני מנהלים — גישה מלאה ודוחות'],
+    ['agents', 'סוכנים', 'ספריית הסוכנים (שם, נייד, וירטואלי, תפקיד)'],
+    ['coordinators', 'מתאמות', 'שיוך מתאמת ← סוכנים']]},
+  {t: 'תשתית', items: [
+    ['session_secret', 'סוד חתימת טוקנים', 'SESSION_SECRET ייחודי — כניסות מאובטחות'],
+    ['base_url', 'כתובת השרת', 'APP_BASE_URL — קישורי חתימה, דיפ-לינקים לאפליקציה']]}
+];
+fetch('/v2/api/onboard', {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); })
+  .then(function(j){
+    if (!j.ok){ el('list').innerHTML = '<div class="card"><div class="sub" style="padding:8px 0">למפתח בלבד</div></div>'; return; }
+    var it = j.items || {};
+    el('list').innerHTML = SECTIONS.map(function(sec){
+      return '<div class="card"><div class="tt">' + esc(sec.t) + '</div>' +
+        sec.items.map(function(x){
+          var v = it[x[0]];
+          var cls = (v === true || (typeof v === 'number' && v > 0)) ? 'ok' : (v === false || v === 0) ? 'no' : 'info';
+          var extra = (typeof v === 'number') ? ' · ' + v : '';
+          return '<div class="row"><div class="dot ' + cls + '"></div>' +
+            '<div style="flex:1"><div class="nm">' + esc(x[1]) + extra + '</div>' +
+            '<div class="ds">' + esc(x[2]) + '</div></div></div>';
+        }).join('') + '</div>';
+    }).join('');
+  }).catch(function(){});
+fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
+  document.title = 'חיבור משרד חדש · ' + (o.name || '');
+}).catch(function(){});
+</script></body></html>"""
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -6190,6 +6321,50 @@ def register(app, G):
     @app.route("/v2/home", methods=["GET"])
     def v2_home():
         return _page(V2_HOME_HTML)
+
+    @app.route("/v2/onboard", methods=["GET"])
+    def v2_onboard():
+        return _page(V2_ONBOARD_HTML)
+
+    @app.route("/v2/api/onboard", methods=["GET"])
+    def v2_api_onboard():
+        """סטטוס המקורות של המשרד הנוכחי — בוליאנים בלבד, בלי סודות. מפתח בלבד."""
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        env = os.environ.get
+        def _has(*names):
+            return all(bool((env(n) or "").strip()) for n in names)
+        cfg = _load_config()
+        v2o = cfg.get("v2_office") or {}
+        try:
+            import supabase_db as _sb
+            sb_on = bool(_sb.enabled())
+            office_id = bool(getattr(_sb, "SB_OFFICE_ID", ""))
+        except Exception:
+            sb_on = False; office_id = False
+        items = {
+            "name": bool(_office_name(cfg)),
+            "logo": True,   # מוגש מ-/assets/logo
+            "office_id": office_id,
+            "links": bool(v2o.get("instagram") or v2o.get("madlan")),
+            "vphone": bool(v2o.get("vphone") or env("VIRTUAL_PHONE_DISPLAY")),
+            "sms": _has("SMS_DEALS_TOKEN", "SMS_DEALS_SENDER"),
+            "maytapi": _has("MAYTAPI_TOKEN", "MAYTAPI_PHONE_ID", "MAYTAPI_PRODUCT_ID"),
+            "wa_groups": _has("WA_GROUP_CALLS") or _has("WA_GROUP_SIGNATURES"),
+            "supabase": sb_on,
+            "apps_script": _has("APPS_SCRIPT_URL", "APPS_SCRIPT_TOKEN"),
+            "sheets_api": _has("GOOGLE_SHEETS_API_KEY", "PROPERTIES_SHEET_ID"),
+            "contracts": bool(cfg.get("contracts")),
+            "google_oauth": _has("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"),
+            "onesignal": _has("ONESIGNAL_REST_KEY"),
+            "admins": len([p for p in (env("ADMIN_PHONES") or "").split(",") if p.strip()]),
+            "agents": len(cfg.get("agents") or []),
+            "coordinators": len(cfg.get("coordinators") or {}) or len((env("COORDINATORS") or "").strip()) and 1 or 0,
+            "session_secret": _has("SESSION_SECRET"),
+            "base_url": _has("APP_BASE_URL"),
+        }
+        return jsonify({"ok": True, "items": items})
 
     @app.route("/v2/admin", methods=["GET"])
     def v2_admin():
