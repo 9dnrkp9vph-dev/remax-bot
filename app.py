@@ -1427,6 +1427,17 @@ def get_signings(frm="01/01/2020", to="31/12/2099"):
         allsig = manual + extra
     else:
         allsig = web_fetch_raw("חתימות", frm, to)
+    # שורות זהות לגמרי (אותו event_id + אותה חותמת זמן + אותו לקוח) = כפילות ודאית במקור — מסננים
+    _seen_exact = set()
+    _dedup = []
+    for g in allsig:
+        _k = (str(g.get("event_id", "") or ""), str(g.get("received_at", "") or ""),
+              _canon_key(g.get("client_name", "")))
+        if _k in _seen_exact:
+            continue
+        _seen_exact.add(_k)
+        _dedup.append(g)
+    allsig = _dedup
     lo = _excl_epoch(frm); hi = _excl_epoch(to) + 86399
     out = []
     for g in allsig:
