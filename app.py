@@ -5089,9 +5089,9 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None, agent_keys=Non
         "exclusives": exc,
         "sigsList": sigs_list,
         "topGius": sorted(({"name": k, "n": v["bladiut"]} for k, v in sig_agents.items() if v["bladiut"]),
-                          key=lambda x: -x["n"])[:5],
+                          key=lambda x: -x["n"])[:10],
         "topKonim": sorted(({"name": k, "n": v["konim"]} for k, v in sig_agents.items() if v["konim"]),
-                           key=lambda x: -x["n"])[:5],
+                           key=lambda x: -x["n"])[:10],
         "props": {"total": len(props), "topCities": top_cities},
     }
 
@@ -5335,7 +5335,7 @@ def api_report():
                 else:
                     for _a in _ags:
                         _dc[_a] += 1
-            top_deals = [{"name": n, "n": c} for n, c in _dc.most_common(5)]
+            top_deals = [{"name": n, "n": c} for n, c in _dc.most_common(10)]
         except Exception:
             top_deals = []
         _resp = {"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
