@@ -71,10 +71,11 @@ def check_raw_tab(type_he, fetch_fn, emoji):
     print(f"{emoji} {type_he} — גיליון (raw): {len(sheet_rows)} · Supabase: {len(sb_rows)}")
 
     def _ckey(r):
-        # event_id יכול להיות ממוחזר (חתימות) — received_at מבדיל בין הרשומות
+        # event_id יכול להיות ממוחזר (חתימות) — היום מבדיל בין הרשומות.
+        # ברמת יום (לא שנייה): הכתיבה הכפולה מחתימה כל צד בנפרד בהפרש שניות
         eid = str(r.get("event_id", "") or "").strip()
         if eid:
-            return eid + "|" + str(r.get("received_at", "") or "")
+            return eid + "|" + str(r.get("received_at", "") or "")[:10]
         return "?" + "|".join(str(r.get(f, "") or "") for f in
                               ("agent_phone", "caller_phone", "received_at"))
     sheet_by = {}
