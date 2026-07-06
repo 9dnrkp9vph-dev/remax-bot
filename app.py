@@ -3519,6 +3519,23 @@ def api_dev_people():
                     "unmatchedSignings": _scan(sig_names),
                     "unmatchedListings": _scan(list_names)})
 
+@app.route("/api/dev/parity", methods=["GET"])
+def api_dev_parity():
+    """הרצת parity_check על השרת (שם הסודות כבר בסביבה) — מפתח בלבד.
+    מחזיר את הדוח המלא; green=true אומר שבטוח להדליק את דגלי ה-Supabase."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    import io as _io, contextlib as _ctx
+    buf = _io.StringIO()
+    try:
+        import parity_check as _pc
+        with _ctx.redirect_stdout(buf):
+            code = _pc.main()
+        return jsonify({"ok": True, "green": code == 0, "report": buf.getvalue()})
+    except Exception as e:
+        return jsonify({"ok": False, "report": buf.getvalue(), "error": str(e)[:300]})
+
 @app.route("/api/dev/suspend", methods=["POST"])
 def api_dev_suspend():
     """השהיית/שחרור סוכן — מפתח בלבד. מושהה לא יכול לקבל SMS או להיכנס (חיסכון בטווילו)."""
