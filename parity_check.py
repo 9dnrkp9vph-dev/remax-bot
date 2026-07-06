@@ -220,6 +220,55 @@ def main():
     if ex_missing:
         problems += 1
 
+    # ── נכסים במשרד (Google Sheets API ↔ properties) — מה ש-PROPS_SOURCE מדליק ──
+    GS_KEY = (os.environ.get("GOOGLE_SHEETS_API_KEY", "") or "").strip()
+    PROPS_ID = os.environ.get("PROPERTIES_SHEET_ID", "1PnQm-ifyLrh6sBbNNQbNlAHmJWeBnbzXJJERmTuaAVM")
+    if not GS_KEY:
+        problems += 1
+        print("🏢 נכסים — ❌ חסר GOOGLE_SHEETS_API_KEY בסביבה, אי אפשר להשוות")
+    else:
+        from urllib.parse import quote as _q
+        _r = requests.get(f"https://sheets.googleapis.com/v4/spreadsheets/{PROPS_ID}/values/"
+                          f"{_q('נכסים')}!A1:AR?key={GS_KEY}", timeout=30)
+        _r.raise_for_status()
+        _data = _r.json().get("values", [])
+        _hdr = _data[0] if _data else []
+        props_sheet = []
+        for _row in _data[1:]:
+            _pad = _row + [""] * (len(_hdr) - len(_row))
+            _d = dict(zip(_hdr, _pad))
+            if len(_pad) > 30:
+                _d["_desc_ae"] = str(_pad[30] or "").strip()
+            props_sheet.append(_d)
+        _EXCL_AG = {"אווה אזולאי"}   # זהה ל-_fetch_sheet_rows_raw ב-app.py
+        props_sheet = [r for r in props_sheet
+                       if (r.get("סוכן 1", "") or "").strip() not in _EXCL_AG
+                       and (r.get("סוכן 2", "") or "").strip() not in _EXCL_AG]
+        props_sb = supabase_db.fetch_properties_rows()
+        print(f"🏢 נכסים — גיליון: {len(props_sheet)} · Supabase: {len(props_sb)}")
+        p_diffs = 0
+        p_example = None
+        if len(props_sheet) != len(props_sb):
+            p_diffs += abs(len(props_sheet) - len(props_sb))
+        for i2, a in enumerate(props_sheet):
+            b = props_sb[i2] if i2 < len(props_sb) else {}
+            for f in set(a.keys()) | set(b.keys()):
+                va = str(a.get(f, "") or "").strip()
+                vb = str(b.get(f, "") or "").strip()
+                if va != vb:
+                    p_diffs += 1
+                    if p_example is None:
+                        p_example = (i2 + 2, f, va[:60], vb[:60])
+        if p_diffs:
+            problems += 1
+            print(f"❌ אי-התאמות בנכסים: {p_diffs}")
+            if p_example:
+                print(f"   לדוגמה: שורה {p_example[0]} · שדה '{p_example[1]}':")
+                print(f"   גיליון:  '{p_example[2]}'")
+                print(f"   Supabase: '{p_example[3]}'")
+        else:
+            print("✅ הנכסים זהים שורה-שורה ושדה-שדה")
+
     # ── קונפיג (הבלוב מול השורות) ──
     import json as _j
     blob_raw = (_apps_post("getconfig").get("config") or "").strip()
