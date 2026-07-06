@@ -531,16 +531,16 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="strip">
       <div class="ic"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
       <div style="flex:1;display:flex;flex-direction:column;gap:1px">
-        <div class="t">הנכסים שלי</div>
+        <div class="t" id="propsT">הנכסים שלי</div>
         <div class="s" id="propsSum">מתעדכן…</div>
       </div>
-      <button class="cta" onclick="location.href='/v2/props?mine=1'">הצג
+      <button class="cta" onclick="location.href = (M.role === 'admin') ? '/v2/props' : '/v2/props?mine=1'">הצג
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M7 1L2 5l5 4" fill="none" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
 
     <div class="care">
-      <div class="hd"><div class="t">דורש טיפול</div><div class="all" onclick="toast('פגישות ופולו-אפ — בסשן קרוב')">הכל</div></div>
+      <div class="hd"><div class="t">דורש טיפול</div><div class="all" onclick="location.href='/v2/meets'">הכל</div></div>
       <div id="careList"><div class="careEmpty" style="padding:6px 0"><div class="s">מתעדכן…</div></div></div>
     </div>
   </main>
@@ -667,7 +667,9 @@ function loadData(){
     M.calls = (sm.calls || {}).total || 0;
     M.sigs = (sm.sigs || {}).total || 0;
     M.sigSample = (sm.sigsList && sm.sigsList[0]) || null;
-    M.excl = (sm.exclusives || []).length;
+    M.excl = (sm.exclusives || []).length;   // נכסים שגויסו בבלעדיות בתקופת הדוח
+    M.repLabel = rep.label || 'השבוע';
+    M.listings = rep.listings || 0;
     M.meets = rep.meetings || [];
     M.meetToday = 0; M.meetLate = 0;
     M.meets.forEach(function(m){
@@ -704,7 +706,10 @@ function renderDash(){
       M.sigs + ' חתימות' +
       ((M.nbNew && M.nbNew.length) ? ' · ' + M.nbNew.length + ' נולדו ביממה האחרונה'
         : (M.nb >= 0 ? ' · ' + M.nb.toLocaleString() + ' נכסים' : ''));
-  el('propsSum').textContent = M.props + ' פעילים' + (M.excl ? ' · ' + M.excl + ' בבלעדיות' : '');
+  // מנהל: נכסי כל המשרד; סוכן: שלו. "בבלעדיות" הישן היה למעשה גיוסי התקופה — עכשיו מפורש
+  if (M.role === 'admin') el('propsT').textContent = 'נכסי המשרד';
+  el('propsSum').textContent = ((M.role === 'admin' && M.listings) ? M.listings : M.props) + ' פעילים' +
+      (M.excl ? ' · ' + M.excl + ' גויסו בבלעדיות ' + (M.repLabel || 'השבוע') : '');
   var care = [];
   M.meets.slice().sort(function(a, b){
     return (parseDMY(a.date) || 0) - (parseDMY(b.date) || 0);
@@ -861,6 +866,7 @@ el('story').addEventListener('touchmove', function(e){
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
     M.name = j.name || '';
+    M.role = j.role || '';
     el('greetTx').textContent = greetWord() + ', ' + M.name;
     el('avatarTx').textContent = M.name ? M.name.trim()[0] : '';
     el('menuAv').textContent = el('avatarTx').textContent;
@@ -5436,6 +5442,260 @@ function submitSign(){
 </script></body></html>'''
 
 
+
+# ── פגישות ופולו-אפ (עיצוב 21a) — על /api/newborn/meetings הקיים ────────────────
+V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>פגישות ופולו-אפ</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px}
+  header .av{width:42px;height:42px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:16px;font-weight:700}
+  header .lg{height:44px;max-width:150px;object-fit:contain}
+  header .bk{width:42px;height:42px;border-radius:14px;background:#fff;border:1px solid #E9E4D8;display:flex;
+      align-items:center;justify-content:center;cursor:pointer}
+  @media (min-width:700px){
+    header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+  }
+  main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto;padding-bottom:124px}
+  .hd2{display:flex;align-items:center;gap:10px}
+  .hd2 .ic{width:36px;height:36px;border-radius:11px;background:#EAF0FA;display:flex;align-items:center;justify-content:center}
+  .hd2 h1{font-size:19px;font-weight:800}
+  .hd2 .cnt{font-size:12.5px;font-weight:700;color:#2E6BD6;background:#EAF0FA;padding:3px 10px;border-radius:999px}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
+  .sg{flex:1;text-align:center;padding:8px 0;font-size:13px;font-weight:700;color:#5B6472;border-radius:10px;cursor:pointer}
+  .sg.on{color:#fff;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
+  .sync{display:flex;align-items:center;gap:7px}
+  .sync i{width:7px;height:7px;border-radius:50%;background:#1FAF5E;display:block}
+  .sync span{font-size:11.5px;font-weight:600;color:#8B8F99}
+  .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:6px 15px;display:flex;flex-direction:column}
+  .mt{display:flex;align-items:center;gap:11px;padding:11px 0}
+  .mt + .mt{border-top:1px solid #F0EDE3}
+  .mt .tile{width:40px;height:40px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .mt .tt{font-size:14px;font-weight:700;line-height:1.3}
+  .mt .sb{font-size:12px;color:#8B8F99;margin-top:1px}
+  .mt .when{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .mt .acts{display:flex;gap:6px;margin-top:6px}
+  .mt .sq{width:32px;height:32px;border-radius:10px;border:none;display:flex;align-items:center;justify-content:center;
+      cursor:pointer;padding:0}
+  .late{background:#FBEDED;border-radius:14px;padding:2px 13px;display:flex;flex-direction:column}
+  .late .mt + .mt{border-top:1px solid rgba(194,64,64,.12)}
+  .late .tile{background:#fff}
+  .late .sb{color:#C24040;font-weight:700}
+  .grpT{font-size:13px;font-weight:800;color:#B8902F;letter-spacing:.05em;padding:2px 2px 0}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px;
+      background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .t{font-size:15px;font-weight:800}
+  .empty .s{font-size:12.5px;color:#8B8F99;line-height:1.5;max-width:280px}
+  .addB{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);left:18px;z-index:35;width:52px;height:52px;
+      border-radius:50%;background:#2E6BD6;border:none;box-shadow:0 8px 20px rgba(46,107,214,.35);display:flex;
+      align-items:center;justify-content:center;cursor:pointer}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+      display:flex;justify-content:space-around;align-items:flex-end}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+      font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
+  nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
+      box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
+  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#fff;font-size:10px;font-weight:800;
+      padding:1px 8px;border-radius:999px;display:none}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:600;padding:10px 18px;border-radius:12px;opacity:0;transition:opacity .25s;
+      pointer-events:none;z-index:100;white-space:nowrap}
+</style></head><body>
+
+  <header>
+    <div class="bk" onclick="history.length > 1 ? history.back() : location.href='/v2/home'">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <img class="lg" src="/assets/logo" alt="" onerror="this.style.display='none'">
+    <div class="av" id="avatarTx"></div>
+  </header>
+
+  <main>
+    <div class="hd2">
+      <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      <h1>פגישות ופולו-אפ</h1>
+      <div class="cnt" id="cnt">—</div>
+    </div>
+
+    <div class="segs">
+      <div class="sg on" data-f="today" onclick="setFilter(this)">היום</div>
+      <div class="sg" data-f="week" onclick="setFilter(this)">השבוע</div>
+      <div class="sg" data-f="all" onclick="setFilter(this)">הכל</div>
+    </div>
+
+    <div class="sync"><i></i><span>כל פגישה שנקבעת נרשמת גם ביומן Google של הסוכן</span></div>
+
+    <div id="list"></div>
+  </main>
+
+  <button class="addB" onclick="location.href='/v2/newborn'" aria-label="קביעת פגישה חדשה">
+    <svg width="20" height="20" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+  </button>
+
+  <nav>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+  </nav>
+
+  <div id="toast"></div>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type':'application/json'},
+    body: JSON.stringify(d)}).then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(msg){
+  var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+
+var MEETS = [], FILTER = 'today', MULTI = false;
+try{ FILTER = localStorage.getItem('v2st:meets') || 'today'; }catch(e){}
+
+/* תאריכי הפגישות מגיעים בכמה צורות: yyyy-mm-dd / dd/mm/yyyy, עם או בלי שעה, בכל סדר */
+function parseWhen(s){
+  s = String(s || '').trim();
+  var time = '';
+  var tm = /(\d{1,2}):(\d{2})/.exec(s);
+  if (tm) time = ('0' + tm[1]).slice(-2) + ':' + tm[2];
+  var d = null, m;
+  if ((m = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s))) d = new Date(+m[1], +m[2] - 1, +m[3]);
+  else if ((m = /(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})/.exec(s))){
+    var y = +m[3]; if (y < 100) y += 2000;
+    d = new Date(y, +m[2] - 1, +m[1]);
+  }
+  return {d: d, time: time};
+}
+function dayDiff(d){
+  var t = new Date(); t.setHours(0,0,0,0);
+  var x = new Date(d); x.setHours(0,0,0,0);
+  return Math.round((x - t) / 86400000);
+}
+
+var CAL_SVG = '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg>';
+var FU_SVG = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 6.5a5 5 0 0 1 9-2M13 9.5a5 5 0 0 1-9 2" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.5v3h-3M4 14.5v-3h3" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var LATE_SVG = '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 6.5a5 5 0 0 1 9-2M13 9.5a5 5 0 0 1-9 2" fill="none" stroke="#C24040" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.5v3h-3M4 14.5v-3h3" fill="none" stroke="#C24040" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function itemRow(m, i){
+  var meet = m.status === 'meeting';
+  var w = parseWhen(m.date);
+  var dd = w.d ? dayDiff(w.d) : 99;
+  var late = w.d && dd < 0;
+  var whenTx = late ? ((w.d.getDate()) + '/' + (w.d.getMonth() + 1) + (w.time ? ' ' + w.time : ''))
+    : dd === 0 ? (w.time || 'היום') : dd === 1 ? ('מחר' + (w.time ? ' ' + w.time : ''))
+    : w.d ? (('0' + w.d.getDate()).slice(-2) + '/' + ('0' + (w.d.getMonth() + 1)).slice(-2) + (w.time ? ' ' + w.time : '')) : '';
+  var sb = late ? ('באיחור · ' + (m.label || '') + (whenTx ? ' · ' + whenTx : ''))
+    : ['נכס נולד', m.owner ? ('בעל הנכס: ' + m.owner) : '', MULTI ? m.agent : ''].filter(Boolean).join(' · ');
+  var acts = '<div class="acts">' +
+    (m.ophone ? '<button class="sq" style="background:#EAF0FA" onclick="location.href=\'tel:' + esc(m.ophone) + '\'" aria-label="חיוג">' +
+      '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7" stroke-linejoin="round"/></svg></button>' : '') +
+    (m.wa ? '<button class="sq" style="background:#E7F7EE" onclick="window.open(\'https://wa.me/' + esc(m.wa) + '\',\'_blank\')" aria-label="וואטסאפ">' +
+      '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
+    '<button class="sq" style="background:#F5F3EC" onclick="signOwner(' + i + ')" aria-label="החתם בעל נכס">' +
+      '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#5B6472" stroke-width="1.6" stroke-linejoin="round"/></svg></button>' +
+    '<button class="sq" style="background:#E7F7EE" onclick="doneMeet(' + i + ')" aria-label="בוצע">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
+  return '<div class="mt">' +
+    '<div class="tile" style="background:' + (late ? '#fff' : meet ? '#EAF0FA' : '#F6EEDB') + '">' +
+    (late ? LATE_SVG : meet ? CAL_SVG : FU_SVG) + '</div>' +
+    '<div style="flex:1;min-width:0"><div class="tt">' + esc((m.label || (meet ? 'פגישה' : 'פולו-אפ')) + ': ' + (m.addr || '')) + '</div>' +
+    '<div class="sb">' + esc(sb) + '</div>' + acts + '</div>' +
+    (whenTx && !late ? '<div class="when" style="' + (meet ? 'color:#2E6BD6;background:#EAF0FA' : 'color:#B8902F;background:#F6EEDB') + '">' + esc(whenTx) + '</div>' : '') +
+    '</div>';
+}
+function render(){
+  var withD = MEETS.map(function(m, i){
+    var w = parseWhen(m.date);
+    return {m: m, i: i, d: w.d, dd: w.d ? dayDiff(w.d) : 99};
+  });
+  var late = withD.filter(function(x){ return x.d && x.dd < 0; });
+  var rest = withD.filter(function(x){ return !(x.d && x.dd < 0); });
+  if (FILTER === 'today') rest = rest.filter(function(x){ return x.dd === 0; });
+  else if (FILTER === 'week') rest = rest.filter(function(x){ return x.dd <= 7; });
+  rest.sort(function(a, b){ return (a.d || 0) - (b.d || 0); });
+  el('cnt').textContent = late.length + rest.length;
+  var h = '';
+  if (late.length){
+    h += '<div class="late" style="margin-bottom:13px">' +
+      late.map(function(x){ return itemRow(x.m, x.i); }).join('') + '</div>';
+  }
+  if (rest.length){
+    h += '<div class="card">' + rest.map(function(x){ return itemRow(x.m, x.i); }).join('') + '</div>';
+  }
+  el('list').innerHTML = h ||
+    '<div class="empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#C29435" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' +
+    '<div class="t">' + (FILTER === 'today' ? 'אין פגישות להיום' : 'הכל מטופל') + '</div>' +
+    '<div class="s">פגישה או פולו-אפ נקבעים מכרטיס נכס במסך נכס נולד — ויופיעו כאן וביומן</div></div>';
+}
+function setFilter(node){
+  FILTER = node.getAttribute('data-f');
+  try{ localStorage.setItem('v2st:meets', FILTER); }catch(e){}
+  var sgs = node.parentNode.children;
+  for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
+  render();
+}
+function signOwner(i){
+  var m = MEETS[i]; if (!m) return;
+  try{ localStorage.setItem('v2signPre', JSON.stringify({
+    client: m.owner || '', phone: m.ophone || '', addr: m.addr || '', price: ''})); }catch(e){}
+  location.href = '/v2/sign?type=owner';
+}
+function doneMeet(i){
+  var m = MEETS[i]; if (!m) return;
+  if (!confirm('לסמן כבוצע? ' + (m.label || '') + ' — ' + (m.addr || '') + ' יוסר מהרשימה ומהיומן.')) return;
+  POST('/api/newborn/status/delete', {skey: m.skey || ''}).then(function(j){
+    if (!j.ok){ toast('שגיאה'); return; }
+    toast('סומן כבוצע'); load();
+  });
+}
+function load(){
+  return GET('/api/newborn/meetings').then(function(j){
+    MEETS = (j && j.results) || [];
+    try{ localStorage.setItem('v2c:meets', JSON.stringify(MEETS.slice(0, 100))); }catch(e){}
+    render();
+  }).catch(function(){});
+}
+(function(){
+  try{
+    var c = JSON.parse(localStorage.getItem('v2c:meets') || 'null');
+    if (c){ MEETS = c; }
+  }catch(e){}
+  var sgs = document.querySelectorAll('.sg');
+  for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i].getAttribute('data-f') === FILTER);
+  if (MEETS.length) render();
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    MULTI = j.role !== 'agent';
+    el('avatarTx').textContent = j.name ? j.name.trim()[0] : '';
+    load();
+  }).catch(function(){ location.replace('/v2'); });
+  fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
+    document.title = 'פגישות ופולו-אפ · ' + (o.name || '');
+  }).catch(function(){});
+})();
+</script></body></html>"""
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -5542,6 +5802,10 @@ def register(app, G):
     @app.route("/v2/sign", methods=["GET"])
     def v2_sign():
         return _page(V2_SIGN_HTML)
+
+    @app.route("/v2/meets", methods=["GET"])
+    def v2_meets():
+        return _page(V2_MEETS_HTML)
 
     @app.route("/v2/newborn", methods=["GET"])
     def v2_newborn():
