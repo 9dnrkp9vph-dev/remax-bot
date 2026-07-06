@@ -4964,6 +4964,7 @@ V2_UPDATES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .cnt{font-size:11.5px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:4px 11px;border-radius:999px}
   .trash{width:36px;height:36px;border-radius:10px;background:#FBEDED;border:0;cursor:pointer;
       display:flex;align-items:center;justify-content:center;margin-right:auto}
+  .waSh{width:36px;height:36px;border-radius:11px;background:#E7F7EE;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .composer{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 16px;
       display:flex;flex-direction:column;gap:9px}
   .composer textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:12px;padding:11px 13px;
@@ -5059,6 +5060,8 @@ function render(){
       (mine ? '<div class="okd"><svg width="13" height="13" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round"/></svg>אישרת</div>'
             : '<button class="ok" onclick="markRead(\'' + esc(a.id) + '\')">אישרתי · קראתי</button>') +
       (IS_ADMIN ? '<div class="cnt">אישרו ' + (a.reads || 0) + '</div>' : '') +
+      '<button class="waSh" onclick="waAnn(\'' + esc(a.id) + '\')" aria-label="שליחה בוואטסאפ">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
       (IS_ADMIN ? '<button class="trash" onclick="delAnn(\'' + esc(a.id) + '\')">' +
         '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button>' : '') +
       '</div></div>';
@@ -5066,6 +5069,13 @@ function render(){
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 22 22"><path d="M4 14V9a7 7 0 0 1 14 0v5l1.5 2.5H2.5z" fill="none" stroke="#C29435" stroke-width="1.6" stroke-linejoin="round"/></svg></div>' +
     '<div class="tt">אין עדכונים עדיין</div><div class="ss">' + (CAN_POST ? 'פרסם את העדכון הראשון לצוות למעלה' : 'עדכונים מהמשרד יופיעו כאן') + '</div></div>';
+}
+function waAnn(id){
+  var a = null;
+  ANN.forEach(function(x){ if (String(x.id) === String(id)) a = x; });
+  if (!a) return;
+  var tx = 'עדכון מהמשרד' + (a.author_name ? ' (' + a.author_name + ')' : '') + ':\n' + (a.body || '');
+  window.open('https://wa.me/?text=' + encodeURIComponent(tx), '_blank');
 }
 function publish(){
   var tx = el('annTx').value.trim();
@@ -5141,7 +5151,10 @@ V2_ACTIVITY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta char
     <div class="t">יומן שימוש</div>
     <div class="live"><i></i>חי</div>
   </header>
-  <main><div class="card" id="list"><div class="empty">טוען…</div></div></main>
+  <main>
+  <div class="card" id="useDash" style="display:none"></div>
+  <div class="card" id="list"><div class="empty">טוען…</div></div>
+</main>
 <script>
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
@@ -5167,6 +5180,7 @@ function load(){
       return;
     }
     var items = j.items || [];
+    renderUsage(items);
     el('list').innerHTML = items.slice(0, 120).map(function(it){
       var isLogin = (it.action || '').indexOf('כניסה') >= 0;
       return '<div class="row"><div class="av' + (isLogin ? ' login' : '') + '">' + esc((it.name || ' ')[0]) + '</div>' +
@@ -5175,6 +5189,46 @@ function load(){
         '<div class="tm">' + fmt(it.ts) + '</div></div>';
     }).join('') || '<div class="empty">אין פעילות עדיין היום</div>';
   }).catch(function(){});
+}
+/* זמן שימוש לפי סוכן — נגזר מיומן הפעילות: פעולות ברצף (פער עד 10 דק') = סשן אחד */
+function fmtMin(m){
+  if (m >= 60) return Math.floor(m / 60) + ' ש\'' + (m % 60 ? ' ' + (m % 60) + ' דק\'' : '');
+  return m + ' דק\'';
+}
+function renderUsage(items){
+  var by = {};
+  items.forEach(function(it){
+    var n = (it.name || '').trim(), t = parseFloat(it.ts) || 0;
+    if (!n || !t) return;
+    (by[n] = by[n] || []).push(t);
+  });
+  var rows = [];
+  Object.keys(by).forEach(function(n){
+    var ts = by[n].sort(function(a, b){ return a - b; });
+    var mins = 0, start = ts[0], prev = ts[0];
+    for (var i = 1; i <= ts.length; i++){
+      if (i === ts.length || ts[i] - prev > 600){
+        mins += Math.max((prev - start) / 60, 1);   // סשן עם פעולה בודדת = דקה
+        if (i < ts.length) start = ts[i];
+      }
+      if (i < ts.length) prev = ts[i];
+    }
+    rows.push({n: n, m: Math.round(mins), c: ts.length});
+  });
+  if (!rows.length){ el('useDash').style.display = 'none'; return; }
+  rows.sort(function(a, b){ return b.m - a.m; });
+  var mx = rows[0].m || 1;
+  el('useDash').style.display = 'block';
+  el('useDash').innerHTML =
+    '<div style="font-size:14.5px;font-weight:800;padding:2px 2px 10px">זמן באפליקציה היום</div>' +
+    rows.slice(0, 12).map(function(r){
+      return '<div style="display:flex;align-items:center;gap:10px;padding:5px 2px">' +
+        '<div style="width:92px;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.n) + '</div>' +
+        '<div style="flex:1;height:9px;border-radius:999px;background:#F0EDE3;overflow:hidden">' +
+        '<div style="height:100%;width:' + Math.max(4, Math.round(r.m / mx * 100)) + '%;border-radius:999px;background:#2E6BD6"></div></div>' +
+        '<div style="font-size:11.5px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.m) + ' · ' + r.c + ' פעולות</div></div>';
+    }).join('') +
+    '<div style="font-size:10.5px;color:#8B8F99;padding:8px 2px 2px">הערכה לפי יומן הפעילות — פעולות ברצף נספרות כסשן אחד</div>';
 }
 (function(){
   GET('/api/auth/whoami').then(function(j){
