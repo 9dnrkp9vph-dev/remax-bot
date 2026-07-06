@@ -6194,7 +6194,8 @@ def api_newborn_status():
     if not isinstance(m, dict): m = {}
     m[skey] = rec
     cfg["nbStatus"] = m
-    _save_config(cfg)
+    if not _save_config(cfg):   # שמירה נכשלה — לא מדווחים הצלחה כוזבת
+        return jsonify({"ok": False, "reason": "save_failed"})
     _NB_RESULT_VER[0] += 1
     _log_activity(nm, s["role"], s.get("phone", ""), "סטטוס נכס נולד",
                   (_NB_STATUS_LABELS.get(status, status) + " · " + (addr or key))[:80])
