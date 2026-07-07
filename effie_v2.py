@@ -1579,11 +1579,14 @@ function openInvite(){
     '<div class="fld"><span>נייד</span><input id="invPh" type="tel" inputmode="numeric" placeholder="05X-XXXXXXX"></div>' +
     '<div class="fld"><span>תפקיד</span><div class="segs">' +
       seg('agent', 'סוכן') + seg('coordinator', 'מתאמת') + seg('manager', 'מנהל') + '</div></div>' +
-    '<div style="font-size:11.5px;color:#8B8F99;line-height:1.5">ההזמנה נשלחת בוואטסאפ עם קישור כניסה. ' +
+    '<div style="font-size:11.5px;color:#8B8F99;line-height:1.5">ההזמנה נשלחת בוואטסאפ או ב-SMS עם קישור כניסה. ' +
       'ההצטרפות למשרד היא בהזמנה בלבד — אין הרשמה פתוחה.</div>' +
-    '<button class="btn btn-green" onclick="sendInvite()">' +
+    '<button class="btn btn-green" onclick="sendInvite(\'wa\')">' +
       '<svg width="16" height="16" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg>' +
       'שלח הזמנה בוואטסאפ</button>' +
+    '<button class="btn btn-sec" onclick="sendInvite(\'sms\')">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M2.5 3h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5V11H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="#5B6472" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
+      'שלח הזמנה ב-SMS</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
 function seg(val, label){
@@ -1598,13 +1601,15 @@ function pickRole(node){
   var cw = el('coordWrap');   // בורר הסוכנים של המתאמת — מוצג מיד עם בחירת התפקיד
   if (cw) cw.style.display = (SEL_ROLE === 'coordinator') ? 'flex' : 'none';
 }
-function sendInvite(){
+function sendInvite(via){
   var nm = el('invNm').value.trim(), ph = el('invPh').value.replace(/\D/g, '');
   if (!nm || ph.length < 9){ toast('שם ונייד תקין — חובה'); return; }
-  POST('/v2/api/admin/invite', {name: nm, phone: ph, role: SEL_ROLE}).then(function(j){
+  POST('/v2/api/admin/invite', {name: nm, phone: ph, role: SEL_ROLE, via: via || 'wa'}).then(function(j){
     if (!j.ok){ toast('שגיאה בשמירה'); return; }
-    closeSheet(); toast('נשמר — נפתח וואטסאפ');
+    closeSheet();
     boot();
+    if (via === 'sms'){ toast(j.sms ? 'ההזמנה נשלחה ב-SMS' : 'נשמר — אך שליחת ה-SMS נכשלה'); return; }
+    toast('נשמר — נפתח וואטסאפ');
     if (j.wa) window.open(j.wa, '_blank');
   });
 }
@@ -6721,6 +6726,11 @@ fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
 </script></body></html>"""
 
 
+# אייקוני הכניסה (בקשת אייל 08/07): לוגו אפי כ-favicon ו-apple-touch-icon בלבד —
+# שאר ה-UI נשאר white-label עם לוגו המשרד.
+_V2_ICON_TAGS = ('<link rel="icon" type="image/png" sizes="64x64" href="/v2/icon-64.png">'
+                 '<link rel="apple-touch-icon" sizes="180x180" href="/v2/icon-180.png">')
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -6794,12 +6804,24 @@ def register(app, G):
 
     # ── דפים ────────────────────────────────────────────────────────────────
     def _page(html):
-        # שכבת הדסקטופ + שכבת המהירות מוזרקות לכל דף
-        html = html.replace("</head>", V2_BOOST + V2_DESKTOP_CSS + "</head>", 1)
+        # שכבת הדסקטופ + שכבת המהירות + אייקוני הכניסה מוזרקים לכל דף
+        html = html.replace("</head>", _V2_ICON_TAGS + V2_BOOST + V2_DESKTOP_CSS + "</head>", 1)
         resp = Response(html, mimetype="text/html")
         # קאש קצרצר — מאפשר ל-prefetch מהנגיעה בטאב להיתפס בניווט שמיד אחריה
         resp.headers["Cache-Control"] = "private, max-age=30"
         return resp
+
+    _ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "handoff")
+
+    @app.route("/v2/icon-<int:sz>.png", methods=["GET"])
+    def v2_icon(sz):
+        """אייקוני הכניסה — לוגו אפי (favicon / apple-touch-icon)."""
+        fp = os.path.join(_ICON_DIR, "app-icon-%d.png" % sz)
+        if sz not in (64, 180, 1024) or not os.path.exists(fp):
+            return Response("", status=404)
+        with open(fp, "rb") as f:
+            return Response(f.read(), mimetype="image/png",
+                            headers={"Cache-Control": "public, max-age=86400"})
 
     @app.route("/v2", methods=["GET"])
     def v2_login():
@@ -7260,6 +7282,16 @@ def register(app, G):
         msg = (f"היי {name}, הוזמנת להצטרף למערכת של {office}.\n"
                f"נכנסים כאן עם חשבון Google או קוד ב-SMS:\nhttps://{host}/v2")
         wa = "https://wa.me/972" + phone + "?text=" + _quote(msg)
+        if (b.get("via") or "") == "sms":
+            # שליחה ישירה מהשרת — אותו ספק SMS של קודי הכניסה
+            sent = False
+            try:
+                fn = G.get("web_send_sms")
+                sent = bool(fn and fn(phone, msg))
+            except Exception as e:
+                if log:
+                    log.error(f"v2 invite sms: {e}")
+            return jsonify({"ok": True, "sms": sent, "wa": wa})
         return jsonify({"ok": True, "wa": wa})
 
     @app.route("/v2/api/admin/policy", methods=["POST"])
