@@ -6883,8 +6883,8 @@ def family_logo():
             if p.exists():
                 ext = p.suffix.lower()
                 mt = "image/jpeg" if ext in (".jpg", ".jpeg") else ("image/webp" if ext == ".webp" else "image/png")
-                resp = send_file(str(p), mimetype=mt, max_age=0)
-                resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                resp = send_file(str(p), mimetype=mt, max_age=3600)
+                resp.headers["Cache-Control"] = "public, max-age=3600"
                 return resp
     return ("", 404)
 
@@ -9020,6 +9020,38 @@ def check_new_calls():
         _seen_calls.add(k)
     if new_keys:
         _calls_seen_save()
+
+def _sync_signing_buyers():
+    """כל חתימת מתעניין (קונים) ב-14 הימים האחרונים — נכנסת אוטומטית ל"קונים שלי",
+    לא משנה מאיפה הגיעה (האפליקציה או השיטס). דדופ מובנה ב-_add_buyer_from_signing."""
+    try:
+        import datetime as _dt
+        frm = (_dt.date.today() - _dt.timedelta(days=14)).strftime("%d/%m/%Y")
+        to = _dt.date.today().strftime("%d/%m/%Y")
+        for g in get_signings(frm, to):
+            dt = str(g.get("deal_type", "") or "")
+            if not (_deal_label(dt) == "קונים" or "מתעניין" in dt):
+                continue
+            ag = (g.get("agent", "") or "").strip()
+            cl = (g.get("client_name", "") or "").strip()
+            if not (ag and cl):
+                continue
+            addr = ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x])
+            _add_buyer_from_signing(ag, cl, "", addr, "מהחתמת מתעניין")
+    except Exception as _e:
+        log.error(f"sync_signing_buyers: {_e}")
+
+def _signing_buyers_loop():
+    import time as _t
+    _t.sleep(240)
+    while True:
+        try: _sync_signing_buyers()
+        except Exception: pass
+        _t.sleep(600)
+try:
+    threading.Thread(target=_signing_buyers_loop, daemon=True).start()
+except Exception:
+    pass
 
 def _calls_wa_loop():
     import time as _t

@@ -140,6 +140,7 @@ function smsGo(){
       if (!p.ok){ fail(p.reason); return; }
       try{
         localStorage.setItem('fbTok', p.token);
+        localStorage.removeItem('v2who');
         localStorage.setItem('fbRole', p.role || '');
         localStorage.setItem('fbDrole', p.drole || '');
         localStorage.setItem('fbName', p.name || '');
@@ -169,6 +170,7 @@ fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
         var m = String((data && data.url) || '').match(/[?&#]token=([^&]+)/);
         if (!m) return;
         localStorage.setItem('fbTok', decodeURIComponent(m[1]));
+        localStorage.removeItem('v2who');
         try{ if (Capacitor.Plugins.Browser) Capacitor.Plugins.Browser.close(); }catch(e){}
         location.replace('/v2/home');
       }catch(e){}
@@ -230,6 +232,50 @@ function bioSkip(){
 })();
 </script></body></html>'''
 
+
+# ── שכבת מהירות (V2_BOOST): preconnect לפונטים, whoami מהמטמון, prefetch טאבים ──
+V2_BOOST = r"""<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script>
+(function(){
+  /* whoami מיידי מהמטמון (10 דק') — הדף לא מחכה לרשת; רענון רץ ברקע ומעדכן.
+     טוקן שפג: הרענון ברקע מוחק את המטמון ומחזיר למסך הכניסה. */
+  var _f = window.fetch.bind(window);
+  window.fetch = function(u, o){
+    try{
+      if (String(u).indexOf('/api/auth/whoami') >= 0){
+        var c = null;
+        try{ c = JSON.parse(localStorage.getItem('v2who') || 'null'); }catch(e){}
+        var live = _f(u, o).then(function(r){ return r.json(); }).then(function(j){
+          try{
+            if (j && j.ok) localStorage.setItem('v2who', JSON.stringify({t: Date.now(), j: j}));
+            else{
+              localStorage.removeItem('v2who');
+              if (c) location.replace('/v2');
+            }
+          }catch(e){}
+          return new Response(JSON.stringify(j), {headers: {'Content-Type': 'application/json'}});
+        });
+        if (c && c.j && c.j.ok && (Date.now() - c.t) < 600000){
+          live.catch(function(){});
+          return Promise.resolve(new Response(JSON.stringify(c.j), {headers: {'Content-Type': 'application/json'}}));
+        }
+        return live;
+      }
+    }catch(e){}
+    return _f(u, o);
+  };
+  /* prefetch: נגיעה/ריחוף על טאב מחמם את הדף הבא עוד לפני הניווט */
+  function warm(e){
+    var it = e.target && e.target.closest ? e.target.closest('nav .it') : null;
+    if (!it) return;
+    var m = /location\.href='([^']+)'/.exec(it.getAttribute('onclick') || '');
+    if (m && !it._warmed){ it._warmed = 1; _f(m[1], {credentials: 'same-origin'}).catch(function(){}); }
+  }
+  document.addEventListener('touchstart', warm, {passive: true, capture: true});
+  document.addEventListener('mouseover', warm, {passive: true, capture: true});
+})();
+</script>"""
 
 # ── שכבת דסקטופ/טאבלט (עיצוב §13): סרגל צד מימין, תוכן רחב, בית בגריד ─────────
 # מוזרק לכל דף ב-_page(); ממוקד ב-body:has(nav) כדי לא לגעת בדף הכניסה/טפסים.
@@ -632,6 +678,7 @@ function impBack(){   // חזרה מסשן בדיקה לחשבון המנהל
   try{
     var t = localStorage.getItem('fbTokAdmin');
     if (t){ localStorage.setItem('fbTok', t); localStorage.setItem('fbDev', '1'); }
+    try{ localStorage.removeItem('v2who'); }catch(e){}
     localStorage.removeItem('fbTokAdmin');
   }catch(e){}
   location.href = '/v2/admin';
@@ -708,7 +755,7 @@ function inviteWa(){
 }
 function logout(){
   try{
-    ['fbTok','fbRole','fbDrole','fbName','fbDev','fbPhone','fbTabs'].forEach(function(k){ localStorage.removeItem(k); });
+    ['fbTok','fbRole','fbDrole','fbName','fbDev','fbPhone','fbTabs','v2who'].forEach(function(k){ localStorage.removeItem(k); });
   }catch(e){}
   location.replace('/v2');
 }
@@ -1641,6 +1688,7 @@ function loginAs(i){
     try{
       localStorage.setItem('fbTokAdmin', TOK);   // שמירת סשן המנהל — לחזרה בלחיצה
       localStorage.setItem('fbTok', j.token);
+      try{ localStorage.removeItem('v2who'); }catch(e){}
       localStorage.setItem('fbName', j.name || '');
       localStorage.setItem('fbRole', j.role || '');
       localStorage.setItem('fbDrole', j.drole || '');
@@ -6671,10 +6719,11 @@ def register(app, G):
 
     # ── דפים ────────────────────────────────────────────────────────────────
     def _page(html):
-        # שכבת הדסקטופ מוזרקת לכל דף — אחרי ה-CSS של הדף כדי לגבור עליו במסכים רחבים
-        html = html.replace("</head>", V2_DESKTOP_CSS + "</head>", 1)
+        # שכבת הדסקטופ + שכבת המהירות מוזרקות לכל דף
+        html = html.replace("</head>", V2_BOOST + V2_DESKTOP_CSS + "</head>", 1)
         resp = Response(html, mimetype="text/html")
-        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        # קאש קצרצר — מאפשר ל-prefetch מהנגיעה בטאב להיתפס בניווט שמיד אחריה
+        resp.headers["Cache-Control"] = "private, max-age=30"
         return resp
 
     @app.route("/v2", methods=["GET"])
