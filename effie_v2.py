@@ -3717,6 +3717,24 @@ function agOther(sel){
     fill();
   }).catch(function(){ sel.value = ''; });
 }
+function dt15Opts(sel){
+  var ts = [], h, m;
+  for (h = 0; h < 24; h++) for (m = 0; m < 60; m += 15)
+    ts.push(('0' + h).slice(-2) + ':' + ('0' + m).slice(-2));
+  if (sel && ts.indexOf(sel) < 0){ ts.push(sel); ts.sort(); }   // מועד קיים שאינו על רבע שעה — נשמר
+  return ts.map(function(t){
+    return '<option value="' + t + '"' + (t === sel ? ' selected' : '') + '>' + t + '</option>';
+  }).join('');
+}
+function dtNextQ(){
+  var d = new Date();
+  d.setMinutes(d.getMinutes() + ((15 - d.getMinutes() % 15) % 15), 0, 0);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+function dtJoin(dId, tId){
+  var dv = el(dId).value;
+  return dv ? dv + 'T' + (el(tId).value || '10:00') : '';
+}
 function stDate(i, status){
   var r = el('list')._src[i];
   var agSel = AG_OPTS.length
@@ -3728,7 +3746,11 @@ function stDate(i, status){
   openSheet('<h3>' + (status === 'meeting' ? 'קביעת פגישה' : 'קביעת פולו-אפ') + '</h3>' +
     '<div style="font-size:12px;color:#8B8F99">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
     agSel +
-    '<div class="fld"><span>מועד</span><input id="stDt" type="datetime-local"></div>' +
+    '<div class="fld"><span>מועד</span><div style="display:flex;gap:8px">' +
+    '<input id="stDtD" type="date" style="flex:1.2;min-width:0;-webkit-appearance:none;appearance:none;display:block;min-height:44px;text-align:right">' +
+    '<select id="stDtT" style="flex:1;min-width:0;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;' +
+    'font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none">' + dt15Opts(dtNextQ()) + '</select>' +
+    '</div></div>' +
     '<div class="fld"><span>הערה</span><textarea id="stNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)" ' +
     'style="background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:14px;' +
     'font-family:inherit;outline:none;color:#1E3A5F;width:100%;resize:vertical"></textarea></div>' +
@@ -3737,7 +3759,7 @@ function stDate(i, status){
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
 function stSave(i, status){
-  stSet(i, status, el('stDt').value);
+  stSet(i, status, dtJoin('stDtD', 'stDtT'));
 }
 function stToggleNI(i){
   var r = el('list')._src[i];
@@ -6230,7 +6252,7 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .fld2 input,.fld2 textarea,.fld2 select{background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;
       font-size:14px;font-family:inherit;outline:none;color:#1E3A5F;width:100%;min-width:0;max-width:100%}
   /* iOS: לשדה datetime-local יש רוחב מינימלי משלו שגורם לגלישה רוחבית — מנטרלים */
-  .fld2 input[type="datetime-local"]{-webkit-appearance:none;appearance:none;display:block;min-height:47px;text-align:right}
+  .fld2 input[type="datetime-local"],.fld2 input[type="date"]{-webkit-appearance:none;appearance:none;display:block;min-height:47px;text-align:right}
   #sheet{overflow-x:hidden;overscroll-behavior:contain}
   #ovl{touch-action:none}
   .stSeg{display:flex;background:#EBE8DD;border-radius:12px;padding:4px;gap:4px}
@@ -6403,6 +6425,24 @@ function setFilter(node){
   render();
 }
 var MYNAME = '', AG_OPTS = [];
+function dt15Opts(sel){
+  var ts = [], h, m;
+  for (h = 0; h < 24; h++) for (m = 0; m < 60; m += 15)
+    ts.push(('0' + h).slice(-2) + ':' + ('0' + m).slice(-2));
+  if (sel && ts.indexOf(sel) < 0){ ts.push(sel); ts.sort(); }   // מועד קיים שאינו על רבע שעה — נשמר
+  return ts.map(function(t){
+    return '<option value="' + t + '"' + (t === sel ? ' selected' : '') + '>' + t + '</option>';
+  }).join('');
+}
+function dtNextQ(){
+  var d = new Date();
+  d.setMinutes(d.getMinutes() + ((15 - d.getMinutes() % 15) % 15), 0, 0);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+function dtJoin(dId, tId){
+  var dv = el(dId).value;
+  return dv ? dv + 'T' + (el(tId).value || '10:00') : '';
+}
 function newMeet(){
   var agSel = AG_OPTS.length
     ? '<div class="fld2"><span>עבור סוכן</span><select id="nmAg" style="background:#fff;border:1.5px solid #DCD6C8;' +
@@ -6423,7 +6463,9 @@ function newMeet(){
     '<div class="fld2" style="flex:1"><span>שם (אופציונלי)</span><input id="nmOwner" placeholder="בעל הנכס / הלקוח"></div>' +
     '<div class="fld2" style="flex:1"><span>טלפון (אופציונלי)</span><input id="nmPhone" type="tel" placeholder="05X-XXXXXXX"></div></div>' +
     agSel +
-    '<div class="fld2"><span>מועד *</span><input id="nmDt" type="datetime-local"></div>' +
+    '<div class="fld2"><span>מועד *</span><div style="display:flex;gap:8px">' +
+    '<input id="nmDtD" type="date" style="flex:1.2">' +
+    '<select id="nmDtT" style="flex:1">' + dt15Opts(dtNextQ()) + '</select></div></div>' +
     '<div class="fld2"><span>הערה</span><textarea id="nmNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)"></textarea></div>' +
     '<div style="font-size:11.5px;color:#8B8F99">נשמר גם ביומן Google (אם מחובר)</div>' +
     '<button class="btn btn-gold" onclick="saveNewMeet()">שמירה</button>' +
@@ -6436,7 +6478,7 @@ function nmType(st){
   el('nmFu').classList.toggle('on', st === 'followup');
 }
 function saveNewMeet(){
-  var addr = el('nmAddr').value.trim(), dt = el('nmDt').value;
+  var addr = el('nmAddr').value.trim(), dt = dtJoin('nmDtD', 'nmDtT');
   if (!addr){ toast('כתובת או נושא — חובה'); return; }
   if (!dt){ toast('בחר מועד'); return; }
   POST('/api/newborn/status', {
@@ -6455,10 +6497,10 @@ function saveNewMeet(){
 function editMeet(i){
   var m = MEETS[i]; if (!m) return;
   var w = parseWhen(m.date);
-  var dtVal = '';
+  var dVal = '', tVal = '10:00';
   if (w.d){
-    dtVal = w.d.getFullYear() + '-' + ('0' + (w.d.getMonth() + 1)).slice(-2) + '-' + ('0' + w.d.getDate()).slice(-2) +
-      'T' + (w.time || '10:00');
+    dVal = w.d.getFullYear() + '-' + ('0' + (w.d.getMonth() + 1)).slice(-2) + '-' + ('0' + w.d.getDate()).slice(-2);
+    tVal = w.time || '10:00';
   }
   var meet = m.status === 'meeting';
   openSheet('<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
@@ -6468,7 +6510,9 @@ function editMeet(i){
     '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
     '<div class="stSeg"><div id="emMeet" class="' + (meet ? 'on' : '') + '" onclick="emType(this,\'meeting\')">פגישה</div>' +
     '<div id="emFu" class="' + (meet ? '' : 'on') + '" onclick="emType(this,\'followup\')">פולו-אפ</div></div>' +
-    '<div class="fld2"><span>מועד</span><input id="emDt" type="datetime-local" value="' + dtVal + '"></div>' +
+    '<div class="fld2"><span>מועד</span><div style="display:flex;gap:8px">' +
+    '<input id="emDtD" type="date" style="flex:1.2" value="' + dVal + '">' +
+    '<select id="emDtT" style="flex:1">' + dt15Opts(tVal) + '</select></div></div>' +
     '<div class="fld2"><span>הערה</span><textarea id="emNote" rows="3" placeholder="הערה לפגישה (אופציונלי)">' + esc(m.note || '') + '</textarea></div>' +
     '<div style="font-size:11.5px;color:#8B8F99">שינוי מועד מעדכן גם את האירוע ביומן Google</div>' +
     '<button class="btn btn-gold" onclick="saveMeet(' + i + ')">שמירה</button>' +
@@ -6482,7 +6526,7 @@ function emType(node, st){
 }
 function saveMeet(i){
   var m = MEETS[i]; if (!m) return;
-  var dt = el('emDt').value;
+  var dt = dtJoin('emDtD', 'emDtT');
   if (!dt){ toast('בחר מועד'); return; }
   POST('/api/newborn/status/edit', {skey: m.skey || '', date: dt,
     status: el('sheet')._st || m.status, note: el('emNote').value.trim()}).then(function(j){
