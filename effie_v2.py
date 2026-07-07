@@ -2553,7 +2553,11 @@ function smartAdd(i){
 var ST_LABEL = {active:'פעיל', hot:'חם', frozen:'בהקפאה', closed:'סגר'};
 var ST_COLOR = {active:'#2E6BD6', hot:'#C29435', frozen:'#5B6472', closed:'#1FAF5E'};
 
-function stOf(b){ return STATUSES[b.row] || 'active'; }
+function bKey(b){
+  var d = String(b.phone || '').replace(/[^0-9]/g, '').slice(-9);
+  return d || ('r' + b.row);
+}
+function stOf(b){ return STATUSES[bKey(b)] || STATUSES[b.row] || 'active'; }
 
 function load(){
   return Promise.all([
@@ -2637,23 +2641,26 @@ function pickStatus(i){
   var b = el('list')._src[i];
   var cur = stOf(b);
   var opts = ['active','hot','frozen','closed'].map(function(st){
-    return '<div class="stChoice" onclick="setStatus(' + b.row + ',\'' + st + '\')">' +
+    return '<div class="stChoice" onclick="setStatusIdx(' + i + ',\'' + st + '\')">' +
       '<div class="d" style="background:' + ST_COLOR[st] + '"></div>' + ST_LABEL[st] +
       (st === cur ? ' <span style="color:#8B8F99;font-size:11px">· נוכחי</span>' : '') + '</div>';
   }).join('<div style="height:1px;background:#F0EDE3"></div>');
   openSheet('<h3>' + esc(b.name || 'קונה') + ' — סטטוס</h3>' + opts +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
 }
-function setStatus(row, st){
-  POST('/v2/api/buyers/status', {row: row, status: st}).then(function(j){
-    if (!j.ok){ toast(j.reason === 'no_supabase' ? 'סטטוסים יעבדו אחרי חיבור Supabase' : 'שגיאה בשמירה'); closeSheet(); return; }
-    STATUSES[row] = st; closeSheet(); toast('הסטטוס עודכן'); render();
+function setStatus(b, st){
+  POST('/v2/api/buyers/status', {row: b.row, phone: b.phone || '', status: st}).then(function(j){
+    if (!j.ok){ toast('שגיאה בשמירה'); closeSheet(); return; }
+    if (st === 'active') delete STATUSES[bKey(b)]; else STATUSES[bKey(b)] = st;
+    delete STATUSES[b.row];
+    closeSheet(); toast('הסטטוס עודכן'); render();
   });
 }
 
+function setStatusIdx(i, st){ setStatus(el('list')._src[i], st); }
 function toggleHot(i){
   var b = el('list')._src[i];
-  setStatus(b.row, stOf(b) === 'hot' ? 'active' : 'hot');
+  setStatus(b, stOf(b) === 'hot' ? 'active' : 'hot');
 }
 /* ── עריכת קונה: דרישות + סטטוס (שאר השדות ייפתחו עם המעבר ל-Supabase) ── */
 function openEdit(i){
@@ -2700,8 +2707,8 @@ function saveEdit(i){
     }));
   var st = el('sheet')._st;
   if (st !== stOf(b))
-    jobs.push(POST('/v2/api/buyers/status', {row: b.row, status: st}).then(function(j){
-      if (j.ok) STATUSES[b.row] = st;
+    jobs.push(POST('/v2/api/buyers/status', {row: b.row, phone: b.phone || '', status: st}).then(function(j){
+      if (j.ok){ if (st === 'active') delete STATUSES[bKey(b)]; else STATUSES[bKey(b)] = st; delete STATUSES[b.row]; }
       return j;
     }));
   if (!jobs.length){ closeSheet(); return; }
@@ -2777,7 +2784,7 @@ function saveBuyer(){
           var xd = String(x.phone || '').replace(/\D/g, '');
           if ((dg && xd === dg) || (!dg && nm && (x.name || '').trim() === nm)) b = x;
         });
-        if (b && b.row != null) setStatus(b.row, 'hot');
+        if (b && b.row != null) setStatus(b, 'hot');
         else toast('הקונה נוסף — סמן חם מהכרטיס');
       });
     }).catch(function(){ window._svBusy = false; toast('שגיאה בשמירה'); });
@@ -6946,20 +6953,8 @@ def register(app, G):
         if not _web_auth():
             return jsonify({"ok": False, "auth": False}), 401
         try:
-            import supabase_db as _sb
-            if not _sb.enabled():
-                return jsonify({"ok": True, "statuses": {}, "source": "none"})
-            r = _requests.get(_sb.SUPABASE_URL + "/rest/v1/buyers",
-                              headers=_sb._headers(),
-                              params={"office_id": "eq." + _sb.SB_OFFICE_ID,
-                                      "select": "sheet_row,status", "limit": "5000"},
-                              timeout=10)
-            r.raise_for_status()
-            st = {}
-            for rec in (r.json() or []):
-                if rec.get("status") and rec.get("status") != "active":
-                    st[rec["sheet_row"]] = rec["status"]
-            return jsonify({"ok": True, "statuses": st})
+            m = _load_config().get("v2_buyer_status")
+            return jsonify({"ok": True, "statuses": m if isinstance(m, dict) else {}})
         except Exception as e:
             if log: log.warning(f"effie v2: buyers statuses read failed: {e}")
             return jsonify({"ok": True, "statuses": {}})
@@ -6977,18 +6972,22 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "bad_row"}), 400
         if status not in _BUYER_STATUSES:
             return jsonify({"ok": False, "reason": "bad_status"}), 400
+        # נשמר בקונפיג (לא בטבלת buyers!) — הסנכרון מהגיליון משכתב את buyers ומחק סטטוסים.
+        # מפתח: טלפון הקונה (עמיד גם להזזת שורות במחיקה); בלי טלפון — לפי שורה.
+        key = "".join(ch for ch in str(b.get("phone", "") or "") if ch.isdigit())[-9:] or ("r" + str(row))
         try:
-            import supabase_db as _sb
-            if not _sb.enabled():
-                return jsonify({"ok": False, "reason": "no_supabase"})
-            r = _requests.patch(_sb.SUPABASE_URL + "/rest/v1/buyers",
-                                headers={**_sb._headers(), "Content-Type": "application/json"},
-                                params={"office_id": "eq." + _sb.SB_OFFICE_ID,
-                                        "sheet_row": "eq." + str(row)},
-                                json={"status": status}, timeout=10)
-            r.raise_for_status()
+            cfg = _load_config()
+            m = cfg.get("v2_buyer_status")
+            if not isinstance(m, dict): m = {}
+            if status == "active":
+                m.pop(key, None)   # ברירת המחדל — אין צורך לרשום
+            else:
+                m[key] = status
+            cfg["v2_buyer_status"] = m
+            if not _save_config(cfg):
+                return jsonify({"ok": False, "reason": "write_failed"})
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
-                          "עדכון סטטוס קונה", f"שורה {row} → {status}")
+                          "עדכון סטטוס קונה", f"{key} → {status}")
             return jsonify({"ok": True})
         except Exception as e:
             if log: log.warning(f"effie v2: buyer status write failed: {e}")
