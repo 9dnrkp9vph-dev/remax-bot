@@ -2801,7 +2801,8 @@ function matchProps(i){
   var b = el('list')._src[i];
   var mq = matchQuery(b);
   MQ_NEEDS = mq.hasNeeds;
-  openSheet('<div style="display:flex;align-items:flex-start;gap:10px">' +
+  openSheet('<div style="display:flex;align-items:flex-start;gap:10px;position:sticky;top:-12px;z-index:2;' +
+    'background:#F7F5EE;margin:0 -18px;padding:10px 18px 8px;box-shadow:0 8px 14px -10px rgba(30,58,95,.22)">' +
     '<div style="flex:1"><h3 style="margin:0">התאמת נכסים · ' + esc(b.name || '') + '</h3>' +
     '<div style="font-size:12px;color:#8B8F99;margin-top:3px">מחפש: ' + esc(mq.q || '—') + '</div>' +
     (mq.hasNeeds ? '' : '<div style="font-size:11.5px;color:#B8902F;font-weight:700;margin-top:2px">אין דרישות לקונה — ההתאמה לפי תקציב בלבד. הוסף "מה מחפש" בעריכת הקונה לדיוק</div>') +
@@ -2896,6 +2897,20 @@ function _priceNum(p){
   var n = parseInt(String(p || '').replace(/[^0-9]/g, ''), 10);
   return isNaN(n) ? 0 : n;
 }
+function _budgetNum(s){
+  // תקציב כטקסט חופשי: "2,000,000" / "2 מיליון" / "800 אלף" / "1.5-2 מיליון" — לוקחים את הגבוה
+  s = String(s || '');
+  var mil = /מי?ליון/.test(s), elf = /אלף/.test(s);
+  var best = 0;
+  (s.match(/\d[\d,\.]*/g) || []).forEach(function(t){
+    var n = parseFloat(t.replace(/,/g, ''));
+    if (isNaN(n)) return;
+    if (mil && n < 100) n *= 1000000;
+    else if (elf && n < 10000) n *= 1000;
+    if (n > best) best = n;
+  });
+  return best;
+}
 function dedupeShtaf(office, shtaf){
   // אותו נכס גם במשרד וגם בשת"פ (כתובת זהה + מחיר בהפרש עד 100 אלף) — משאירים את של המשרד
   return shtaf.filter(function(s){
@@ -2910,6 +2925,12 @@ function dedupeShtaf(office, shtaf){
 function renderMatches(b, office, shtaf){
   CUR_BUYER = b;
   MITEMS = []; MSEL = {};
+  // תקציב 2 מיליון לא מקבל נכס של 1.35/2.6 מיליון — עד 20% הפרש; נכס בלי מחיר לא נפסל
+  var bd = _budgetNum(b.budget);
+  if (bd >= 10000){
+    var bok = function(p){ var pr = _priceNum(p.price); return !pr || Math.abs(pr - bd) <= bd * 0.2; };
+    office = office.filter(bok); shtaf = shtaf.filter(bok);
+  }
   shtaf = dedupeShtaf(office, shtaf);
   // חזקות (60%+) קודם; כל השאר תחת "התאמות נוספות" — שום דבר לא נחתך ל-5
   var strong = function(p){ return (p.score || 0) >= 60; };
