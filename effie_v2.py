@@ -6956,8 +6956,7 @@ def register(app, G):
         if not _web_auth():
             return jsonify({"ok": False, "auth": False}), 401
         try:
-            m = _load_config().get("v2_buyer_status")
-            return jsonify({"ok": True, "statuses": m if isinstance(m, dict) else {}})
+            return jsonify({"ok": True, "statuses": _bstat_load()})
         except Exception as e:
             if log: log.warning(f"effie v2: buyers statuses read failed: {e}")
             return jsonify({"ok": True, "statuses": {}})
@@ -6975,20 +6974,18 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "bad_row"}), 400
         if status not in _BUYER_STATUSES:
             return jsonify({"ok": False, "reason": "bad_status"}), 400
-        # נשמר בקונפיג (לא בטבלת buyers!) — הסנכרון מהגיליון משכתב את buyers ומחק סטטוסים.
-        # מפתח: טלפון הקונה (עמיד גם להזזת שורות במחיקה); בלי טלפון — לפי שורה.
+        # נשמר בקובץ על הדיסק הקבוע (כמו deals.json) — הסנכרון גיליון→Supabase דרס גם את
+        # טבלת buyers וגם מפתחות קונפיג חדשים; לדיסק הזה אין לו גישה.
+        # מפתח: טלפון הקונה (עמיד להזזת שורות); בלי טלפון — לפי שורה.
         key = "".join(ch for ch in str(b.get("phone", "") or "") if ch.isdigit())[-9:] or ("r" + str(row))
         try:
-            cfg = _load_config()
-            m = cfg.get("v2_buyer_status")
-            if not isinstance(m, dict): m = {}
-            if status == "active":
-                m.pop(key, None)   # ברירת המחדל — אין צורך לרשום
-            else:
-                m[key] = status
-            cfg["v2_buyer_status"] = m
-            if not _save_config(cfg):
-                return jsonify({"ok": False, "reason": "write_failed"})
+            with _BSTAT_LOCK:
+                m = _bstat_load()
+                if status == "active":
+                    m.pop(key, None)   # ברירת המחדל — אין צורך לרשום
+                else:
+                    m[key] = status
+                _bstat_save(m)
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                           "עדכון סטטוס קונה", f"{key} → {status}")
             return jsonify({"ok": True})
@@ -7010,6 +7007,22 @@ def register(app, G):
         return jsonify(out)
 
     _AV_DIR = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)), "v2_avatars")
+    import threading as _bth
+    _BSTAT_LOCK = _bth.Lock()
+    _BSTAT_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)),
+                               "v2_buyer_status.json")
+
+    def _bstat_load():
+        try:
+            with open(_BSTAT_PATH, encoding="utf-8") as f:
+                m = _json.load(f)
+            return m if isinstance(m, dict) else {}
+        except Exception:
+            return {}
+
+    def _bstat_save(m):
+        with open(_BSTAT_PATH, "w", encoding="utf-8") as f:
+            _json.dump(m, f, ensure_ascii=False)
 
     @app.route("/v2/api/avatar", methods=["GET", "POST"])
     def v2_api_avatar():
