@@ -8774,6 +8774,46 @@ def _all_agent_push_ids():
     except Exception: pass
     return [i for i in ids if i]
 
+def _nb_push_targets():
+    """פוש נכס נולד — רק למי שהמודעות פתוחות אצלו מיד (השהיה 0).
+    מוסתר או מושהה (כולל מנהל מושהה) לא מקבל פוש על נכס שעוד לא נחשף לו."""
+    delays = _fetch_newborn_delays()
+    try:
+        default = int(delays.get("_default", 0))
+    except Exception:
+        default = 0
+    def _d_for(nm):
+        if not nm:
+            return default
+        v = delays.get(_norm_name(nm), delays.get("c:" + _canon_key(nm), default))
+        try:
+            return int(v)
+        except Exception:
+            return default
+    names_by_phone = {}
+    for src_map in (web_contacts_phone_name(), web_phone_name_map()):
+        for ph, nm in src_map.items():
+            l = _last9(ph)
+            if l and nm:
+                names_by_phone.setdefault(l, nm)
+    for ag in (_load_config().get("agents") or []):
+        for fld in ("phone", "vphone"):
+            l = _last9(ag.get(fld, ""))
+            if l and ag.get("name"):
+                names_by_phone.setdefault(l, ag["name"])
+    ids = set(l for l, nm in names_by_phone.items() if _d_for(nm) == 0)
+    try:
+        ids |= set(_manager_push_ids())
+    except Exception:
+        pass
+    for l in list(ids):
+        nm = names_by_phone.get(l, "")
+        if nm and _d_for(nm) != 0:
+            ids.discard(l)
+        elif _delayed_admin_days(nm, l):
+            ids.discard(l)
+    return [i for i in ids if i]
+
 _seen_newborns = set()
 _seen_newborns_seeded = False
 _NB_SEEN_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(__file__), "newborn_seen.json")
@@ -8834,7 +8874,7 @@ def check_new_newborns():
         label = (_addr + ((", " + _city) if _city else "")).strip(" ,") or "נכס חדש"
         try:
             threading.Thread(target=send_push,
-                args=("נכס נולד 🐥", "נכס חדש נכנס למערכת: " + label, _all_agent_push_ids()),
+                args=("נכס נולד 🐥", "נכס חדש נכנס למערכת: " + label, _nb_push_targets()),
                 daemon=True).start()
         except Exception:
             pass
