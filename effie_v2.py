@@ -5954,7 +5954,8 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       font-size:14px;font-family:inherit;outline:none;color:#1E3A5F;width:100%;min-width:0;max-width:100%}
   /* iOS: לשדה datetime-local יש רוחב מינימלי משלו שגורם לגלישה רוחבית — מנטרלים */
   .fld2 input[type="datetime-local"]{-webkit-appearance:none;appearance:none;display:block;min-height:47px;text-align:right}
-  #sheet{overflow-x:hidden}
+  #sheet{overflow-x:hidden;overscroll-behavior:contain}
+  #ovl{touch-action:none}
   .stSeg{display:flex;background:#EBE8DD;border-radius:12px;padding:4px;gap:4px}
   .stSeg div{flex:1;text-align:center;padding:8px 0;font-size:13px;font-weight:700;color:#5B6472;border-radius:9px;cursor:pointer}
   .stSeg div.on{color:#fff;background:#2E6BD6}
@@ -6030,10 +6031,12 @@ function toast(msg){
 function openSheet(html){
   el('sheet').innerHTML = '<div class="grip"></div>' + html;
   el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.documentElement.style.overflow = 'hidden';
   document.body.style.overflow = 'hidden';
   (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = 'hidden'; })();
 }
 function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.documentElement.style.overflow = '';
   document.body.style.overflow = '';
   (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
@@ -6131,7 +6134,11 @@ function newMeet(){
       AG_OPTS.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
       '</select></div>'
     : '';
-  openSheet('<h3>פגישה / פולו-אפ חדש</h3>' +
+  openSheet('<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<h3 style="margin:0">פגישה / פולו-אפ חדש</h3>' +
+    '<button onclick="closeSheet()" aria-label="סגירה" style="width:36px;height:36px;border-radius:50%;background:#EFEBDD;' +
+    'border:none;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer">' +
+    '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
     '<div class="stSeg"><div id="nmMeet" class="on" onclick="nmType(\'meeting\')">פגישה</div>' +
     '<div id="nmFu" onclick="nmType(\'followup\')">פולו-אפ</div></div>' +
     '<div class="fld2"><span>כתובת / נושא *</span><input id="nmAddr" placeholder="למשל: יקינטון 18, קרית ביאליק"></div>' +
@@ -6177,7 +6184,11 @@ function editMeet(i){
       'T' + (w.time || '10:00');
   }
   var meet = m.status === 'meeting';
-  openSheet('<h3>עריכה · ' + esc(m.addr || '') + '</h3>' +
+  openSheet('<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
+    '<h3 style="margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">עריכה · ' + esc(m.addr || '') + '</h3>' +
+    '<button onclick="closeSheet()" aria-label="סגירה" style="width:36px;height:36px;border-radius:50%;background:#EFEBDD;' +
+    'border:none;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer">' +
+    '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
     '<div class="stSeg"><div id="emMeet" class="' + (meet ? 'on' : '') + '" onclick="emType(this,\'meeting\')">פגישה</div>' +
     '<div id="emFu" class="' + (meet ? '' : 'on') + '" onclick="emType(this,\'followup\')">פולו-אפ</div></div>' +
     '<div class="fld2"><span>מועד</span><input id="emDt" type="datetime-local" value="' + dtVal + '"></div>' +

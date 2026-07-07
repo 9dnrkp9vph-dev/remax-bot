@@ -396,3 +396,7 @@
   fixed. תוקן ב-V2_MEETS: overflow-x:hidden על html/body/#sheet, min-width:0 ל-fld2 ולשדות,
   -webkit-appearance:none ל-datetime-local. אומת: אפס גלישה, הגיליון 375px בדיוק.
 - 2026-07-07: עוז שרד 5 דקות אחרי יישור שני הצדדים — אישוש שהשורש היה בלוב הגיליון הישן.
+- 2026-07-07: טופס פגישה חדשה — (א) נעילת רקע מלאה בפתיחת גיליון: overflow hidden גם על html
+  (לא רק body/main) + overscroll-behavior:contain על הגיליון + touch-action:none על השכבה —
+  הרקע לא זז יותר ב-iOS; (ב) כפתור X עגול בכותרת של "פגישה/פולו-אפ חדש" ושל גיליון העריכה —
+  סגירה בלי לגלול לתחתית.
