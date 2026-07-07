@@ -5155,6 +5155,25 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None, agent_keys=Non
         _fs = _ex.submit(get_signings, frm, to)
         _fp = _ex.submit(web_fetch_raw, "נכסים", frm, to)
         calls, sigs, props = _fc.result(), _fs.result(), _fp.result()
+    # דירוג משרדי (לפני הסינון): איפה הסוכן עומד מול כל המשרד בגיוסים ובהחתמות
+    _rank = None
+    if agent_name or agent_keys:
+        _rk_keys = set(agent_keys) if agent_keys else ({_canon_key(agent_name)} if (agent_name and _canon_key(agent_name)) else set())
+        _cnt_b, _cnt_k = {}, {}
+        for _g in sigs:
+            _dtu = str(_g.get("deal_type", "") or "")
+            _agk = _canon_key(_g.get("agent", ""))
+            if not _agk:
+                continue
+            if "OWNER_EXCLUSIVE" in _dtu: _cnt_b[_agk] = _cnt_b.get(_agk, 0) + 1
+            if "CLIENT_SALE" in _dtu:     _cnt_k[_agk] = _cnt_k.get(_agk, 0) + 1
+        def _pos(cnt):
+            if not cnt:
+                return None
+            mine = max([cnt.get(k, 0) for k in _rk_keys] or [0])
+            return {"pos": len([v for v in cnt.values() if v > mine]) + 1,
+                    "of": len(cnt), "n": mine}
+        _rank = {"gius": _pos(_cnt_b), "konim": _pos(_cnt_k)}
     if agent_name or agent_phones or agent_keys:
         _nks = set(agent_keys) if agent_keys else ({_canon_key(agent_name)} if (agent_name and _canon_key(agent_name)) else set())
         _phs = set(agent_phones or [])
@@ -5221,6 +5240,7 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None, agent_keys=Non
         "topKonim": sorted(({"name": k, "n": v["konim"]} for k, v in sig_agents.items() if v["konim"]),
                            key=lambda x: -x["n"])[:10],
         "props": {"total": len(props), "topCities": top_cities},
+        "myRank": _rank,
     }
 
 def _agent_insights(frm, to, prev_frm, prev_to, eff_name, eff_phones, cur_sm, eff_keys=None):
@@ -6731,7 +6751,10 @@ def api_buyers_update():
     search = (body.get("search") or "").strip()
     if not row:
         return jsonify({"ok": False, "reason": "no_row"}), 400
-    j = _buyers_apps_post("updatebuyer", {"row": row, "search": search})
+    _up = {"row": row, "search": search}
+    if (body.get("phone") or "").strip():   # עריכת טלפון הקונה (אם ה-Apps Script תומך בשדה)
+        _up["phone"] = str(body.get("phone")).strip()
+    j = _buyers_apps_post("updatebuyer", _up)
     if not j or not j.get("ok"):
         return jsonify({"ok": False, "reason": (j or {}).get("error", "update_failed")}), 502
     _cache_clear("buyers")

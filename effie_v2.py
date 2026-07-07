@@ -12,6 +12,7 @@
 # - כתיבה דרך השרת בלבד; הקליינט קורא דרך ה-API הקיים (X-Auth-Token).
 # - אותם טוקנים/סשנים כמו האפליקציה הקיימת (fbTok) — כניסה אחת לשתיהן.
 # ============================================================================
+import base64 as _b64
 import os
 import re as _re
 import time
@@ -435,7 +436,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   </div>
 
   <header>
-    <div class="avatar"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
+    <div class="avatar" onclick="openMe()" style="cursor:pointer"><div class="c" id="avatarTx"></div><div class="dot"></div></div>
     <div class="brand"><img id="brandLogo" src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
     <button class="menuBtn" onclick="openMenu()" aria-label="תפריט">
       <svg width="18" height="14" viewBox="0 0 18 14"><path d="M1 1h16M1 7h16M1 13h16" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round"/></svg>
@@ -538,15 +539,21 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       </div>
     </div>
 
-    <div class="strip">
-      <div class="ic"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
-      <div style="flex:1;display:flex;flex-direction:column;gap:1px">
-        <div class="t" id="propsT">הנכסים שלי</div>
-        <div class="s" id="propsSum">מתעדכן…</div>
+    <div style="display:flex;gap:10px">
+      <div class="strip" style="flex:1;min-width:0;cursor:pointer" onclick="location.href = (M.role === 'admin') ? '/v2/props' : '/v2/props?mine=1'">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
+          <div class="t" id="propsT">הנכסים שלי</div>
+          <div class="s" id="propsSum" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">מתעדכן…</div>
+        </div>
       </div>
-      <button class="cta" onclick="location.href = (M.role === 'admin') ? '/v2/props' : '/v2/props?mine=1'">הצג
-        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M7 1L2 5l5 4" fill="none" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
+      <div class="strip" style="flex:1;min-width:0;cursor:pointer" onclick="location.href='/v2/meets'">
+        <div class="ic" style="background:#F6EEDB"><svg width="17" height="17" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#B8902F" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
+          <div class="t">יומן</div>
+          <div class="s" id="meetsSum" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">פגישות ופולו-אפ</div>
+        </div>
+      </div>
     </div>
 
     <div class="care">
@@ -583,6 +590,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       <div class="hint" id="storyHint">הקש להמשך · החלק למטה לסגירה</div>
     </div>
   </div>
+  <div id="ovl" onclick="closeSheet()" style="position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:60"></div>
+  <div id="meSheet" style="position:fixed;left:0;right:0;bottom:0;z-index:61;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:14px 18px calc(env(safe-area-inset-bottom,0px) + 18px);
+      display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto;max-width:600px;margin:0 auto"></div>
   <div id="toast"></div>
 
 <script>
@@ -624,6 +635,69 @@ function impBack(){   // חזרה מסשן בדיקה לחשבון המנהל
     localStorage.removeItem('fbTokAdmin');
   }catch(e){}
   location.href = '/v2/admin';
+}
+function openSheet(html){
+  el('meSheet').innerHTML = '<div style="width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center"></div>' + html;
+  el('meSheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden';
+}
+function closeSheet(){
+  el('meSheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.documentElement.style.overflow = ''; document.body.style.overflow = '';
+}
+function POST(u, d){
+  return fetch(u, {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type':'application/json'},
+    body: JSON.stringify(d)}).then(function(r){ return r.json(); });
+}
+var ME = {phone: '', name: '', role: ''};
+function openMe(){
+  var avUrl = '/v2/api/avatar?p=' + ME.phone + '&t=' + Date.now();
+  openSheet('<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<h3 style="margin:0">אזור אישי</h3>' +
+    '<button onclick="closeSheet()" aria-label="סגירה" style="width:36px;height:36px;border-radius:50%;background:#EFEBDD;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer">' +
+    '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
+    '<div style="display:flex;align-items:center;gap:14px">' +
+    '<div style="position:relative;width:72px;height:72px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;overflow:hidden;flex-shrink:0">' +
+    '<img id="meAv" src="' + avUrl + '" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">' +
+    '<span style="position:absolute">' + esc((ME.name || ' ')[0]) + '</span></div>' +
+    '<div><div style="font-size:16.5px;font-weight:800">' + esc(ME.name) + '</div>' +
+    '<div style="font-size:12.5px;color:#8B8F99">' + esc(ME.role) + (ME.phone ? ' · 0' + esc(ME.phone) : '') + '</div></div></div>' +
+    '<input type="file" id="meFile" accept="image/*" style="display:none" onchange="meUpload(this)">' +
+    '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" onclick="el(\'meFile\').click()">החלפת תמונת פרופיל</button>' +
+    '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" ' +
+    'onclick="location.href=\'/auth/google/login?\' + (window.Capacitor ? \'native=1\' : \'next=v2\')">' +
+    'סנכרון יומן Google (גם אחרי כניסה ב-SMS)</button>' +
+    '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#EFEBDD;color:#5B6472;border:0" onclick="closeSheet()">סגירה</button>');
+  // תמונה קיימת מכסה את האות
+  var im = el('meAv');
+  if (im) im.onload = function(){ var sp = im.parentNode.querySelector('span'); if (sp) sp.style.display = 'none'; };
+}
+function meUpload(inp){
+  var f = inp.files && inp.files[0];
+  if (!f) return;
+  var img = new Image();
+  img.onload = function(){
+    var c = document.createElement('canvas');
+    var s = Math.min(img.width, img.height);
+    c.width = 144; c.height = 144;
+    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 144, 144);
+    var data = c.toDataURL('image/jpeg', 0.82);
+    POST('/v2/api/avatar', {img: data}).then(function(j){
+      if (!j.ok){ toast('שגיאה בשמירת התמונה'); return; }
+      toast('התמונה נשמרה');
+      openMe();
+      setHeaderAvatar();
+    });
+  };
+  img.src = URL.createObjectURL(f);
+}
+function setHeaderAvatar(){
+  if (!ME.phone) return;
+  var c = el('avatarTx');
+  if (!c) return;
+  c.innerHTML = '<img src="/v2/api/avatar?p=' + ME.phone + '&t=' + Date.now() + '" ' +
+    'style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.remove()">' +
+    '<span>' + esc((ME.name || ' ')[0]) + '</span>';
 }
 function inviteWa(){
   // הזמנת עמית לאפליקציה — קישור הכניסה + שם המשרד (white-label)
@@ -692,6 +766,8 @@ function loadData(){
     M.listings = rep.listings || 0;
     // אותו סינון של מסך היומן — לדוח יש סקופ אחר למתאמת (כל המשרד) והבריף היה מציג יותר מדי
     M.meets = ((rs[4] || {}).results) || rep.meetings || [];
+    var _ms = el('meetsSum');
+    if (_ms) _ms.textContent = M.meets.length ? (M.meets.length + ' פגישות ופולו-אפ פתוחים') : 'אין משימות פתוחות';
     M.meetToday = 0; M.meetLate = 0;
     M.meets.forEach(function(m){
       var d = parseDMY(m.date);
@@ -928,6 +1004,9 @@ el('story').addEventListener('touchmove', function(e){
     if (!j.ok){ location.replace('/v2'); return; }
     M.name = j.name || '';
     M.role = j.role || '';
+    ME = {phone: j.phone || '', name: j.name || '',
+          role: j.dev ? 'בעל המשרד' : (j.role === 'admin') ? 'מנהל' : (j.role === 'coordinator') ? 'מתאמת' : 'סוכן'};
+    setHeaderAvatar();
     el('greetTx').textContent = greetWord() + ', ' + M.name;
     el('avatarTx').textContent = M.name ? M.name.trim()[0] : '';
     el('menuAv').textContent = el('avatarTx').textContent;
@@ -2053,7 +2132,7 @@ function addBuyer(i){
   openSheet('<h3>הוסף כקונה</h3>' +
     '<div class="fld"><span>שם</span><input id="abNm" placeholder="שם הקונה" value="' + esc(BUYER_BY_PHONE[last9(c.tel)] || '') + '"></div>' +
     '<div class="fld"><span>טלפון</span><input id="abPh" type="tel" value="' + esc(c.caller || '') + '"></div>' +
-    '<div class="fld"><span>תקציב</span><input id="abBd" inputmode="numeric" placeholder="₪"></div>' +
+    '<div class="fld"><span>תקציב</span><input id="abBd" inputmode="numeric" placeholder="₪" oninput="var d=this.value.replace(/[^0-9]/g,\'\');this.value=d?Number(d).toLocaleString():\'\'"></div>' +
     '<div class="fld"><span>מה מחפש</span><textarea id="abSm" rows="3">' + esc(c.summary || '') + '</textarea></div>' +
     '<button class="btn btn-blue" onclick="saveBuyer()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
@@ -2247,6 +2326,9 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .score.hi{color:#157A43;background:#E7F7EE}
   .score.md{color:#B8902F;background:#F6EEDB}
   .prop .acts2{display:flex;gap:8px}
+  .prop .sel{flex:0 0 40px;width:40px;border-radius:12px;border:1.5px solid #DCD6C8;background:#fff;color:#C9C4B6;
+      display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:40px}
+  .prop .sel.on{background:#1FAF5E;border-color:#1FAF5E;color:#fff}
   .prop .a1{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#1FAF5E;color:#fff;
       border-radius:11px;padding:9px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
       box-shadow:0 4px 12px rgba(31,175,94,.25)}
@@ -2533,9 +2615,9 @@ function openEdit(i){
     '<h3>עריכת קונה · ' + esc(b.name || '') + '</h3>' +
     '<button class="trashBtn" style="width:42px;height:42px;border-radius:11px;background:#FBEDED;border:0;cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="delBuyer(' + i + ')" aria-label="מחיקת קונה">' +
     '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button></div>' +
-    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    '<div style="background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:700">' + esc(b.phone || '') + '</div>' +
-    (b.budget ? '<div style="background:#F6EEDB;border:1px solid #E4C56B;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:700;color:#B8902F">' + esc(b.budget) + '</div>' : '') +
+    '<div style="display:flex;gap:8px;align-items:flex-end">' +
+    '<div class="fld" style="flex:1"><span>טלפון הקונה</span><input id="edPhone" type="tel" value="' + esc(b.phone || '') + '"></div>' +
+    (b.budget ? '<div style="background:#F6EEDB;border:1px solid #E4C56B;border-radius:10px;padding:10px 11px;font-size:12px;font-weight:700;color:#B8902F;white-space:nowrap">' + esc(b.budget) + '</div>' : '') +
     '</div>' +
     '<div class="fld"><span>סטטוס</span><div style="display:flex;gap:8px" id="edSt">' +
     ['active','hot','frozen','closed'].map(function(st){
@@ -2545,7 +2627,7 @@ function openEdit(i){
         ST_LABEL[st] + '</div>';
     }).join('') + '</div></div>' +
     '<div class="fld"><span>מה מחפש (דרישות) — זה הטקסט שמופיע בכרטיס ומשמש את ההתאמה</span><textarea id="edSearch" rows="3" placeholder="לדוגמה: 4 חדרים בקריות עד 1.5M, קומה נמוכה, מעלית">' + esc(b.search || '') + '</textarea></div>' +
-    '<div style="font-size:11px;color:#8B8F99;line-height:1.5">שם, טלפון ותקציב נערכים בינתיים בגיליון — ייפתחו לעריכה מלאה עם המעבר ל-Supabase.</div>' +
+    '<div style="font-size:11px;color:#8B8F99;line-height:1.5">שם ותקציב נערכים בינתיים בגיליון — ייפתחו לעריכה מלאה עם המעבר ל-Supabase.</div>' +
     '<button class="btn btn-blue" onclick="saveEdit(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
   el('sheet')._st = cur;
@@ -2564,7 +2646,7 @@ function saveEdit(i){
   var jobs = [];
   var q = el('edSearch').value.trim();
   if (q !== (b.search || ''))
-    jobs.push(POST('/api/buyers/update', {row: b.row, search: q}).then(function(j){
+    jobs.push(POST('/api/buyers/update', {row: b.row, search: q, phone: (el('edPhone') && el('edPhone').value.trim()) || ''}).then(function(j){
       if (j.ok) b.search = q;
       return j;
     }));
@@ -2601,7 +2683,7 @@ function openAdd(){
     '<div class="fld"><span>שם</span><input id="abNm" placeholder="שם הקונה"></div>' +
     '<div class="fld"><span>טלפון</span><input id="abPh" type="tel" placeholder="05X-XXXXXXX"></div>' +
     agRow +
-    '<div class="fld"><span>תקציב</span><input id="abBd" inputmode="numeric" placeholder="₪"></div>' +
+    '<div class="fld"><span>תקציב</span><input id="abBd" inputmode="numeric" placeholder="₪" oninput="var d=this.value.replace(/[^0-9]/g,\'\');this.value=d?Number(d).toLocaleString():\'\'"></div>' +
     '<div class="fld"><span>מה מחפש</span><textarea id="abSm" rows="3" placeholder="4 חדרים בקריות, קומה נמוכה..."></textarea></div>' +
     '<div id="abHot" onclick="this._on=!this._on;this.style.background=this._on?\'#F6EEDB\':\'#fff\';this.style.borderColor=this._on?\'#C29435\':\'#DCD6C8\'" ' +
     'style="display:flex;align-items:center;gap:9px;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;cursor:pointer">' +
@@ -2696,7 +2778,19 @@ function toggleDx(id, btn){
   var sv = btn && btn.querySelector('svg');
   if (sv) sv.style.transform = open ? '' : 'rotate(180deg)';
 }
+var MITEMS = [], MSEL = {};
+function msgLine(p, shtaf){
+  // שורת נכס להודעת הוואטסאפ — בלי שם הסוכן/המשרד המקורי (בקשת אייל)
+  var where = [(p.address || p.street), p.neighborhood, p.city].filter(Boolean).join(', ');
+  var dt = shtaf
+    ? (p.dest || '')
+    : [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.floor ? 'קומה ' + p.floor : '',
+       p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
+  return where + (dt ? '\n' + dt : '') + (p.price ? '\nמחיר: ₪' + p.price : '');
+}
 function propCard(p, b, shtaf){
+  var mi = MITEMS.length;
+  MITEMS.push({p: p, shtaf: shtaf});
   // שת"פ באותו פורמט של המשרד: שורת פרטים קצרה; התיאור המלא נפתח באייקון "הרחב לתיאור"
   var dt = shtaf
     ? [(p.dest || ''), p.date ? 'פורסם ' + p.date : '', p.office || 'משרד שותף'].filter(Boolean).join(' · ')
@@ -2721,7 +2815,9 @@ function propCard(p, b, shtaf){
       '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M6.5 9.5l6-6M9 2.5h4.5V7M13 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3.5" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
       'צפייה במודעה בנדל"ן וואן</a>' : '') +
     '<div class="acts2">' +
-    '<button class="a1" onclick=\'sendToBuyer(' + JSON.stringify(JSON.stringify({w: where, d: dt, pr: p.price || ''})) + ')\'>' +
+    '<button class="sel' + (MSEL[mi] ? ' on' : '') + '" onclick="toggleSel(' + mi + ')" aria-label="בחירה לשליחה">' +
+    '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7.5l3.5 3.5L12 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+    '<button class="a1" onclick="sendOne(' + mi + ')">' +
     '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
     'שלח לקונה</button>' +
     '<button class="a2" onclick=\'signBuyer(' + JSON.stringify(JSON.stringify({w: where, pr: p.price || ''})) + ')\'>' +
@@ -2737,35 +2833,96 @@ function signBuyer(js){
   location.href = '/v2/sign?type=buyer';
 }
 var MQ_NEEDS = true;
+function _streetKey(s){
+  var m = /([א-ת"'\.\- ]+?\s?\d+[א-ת]?)/.exec(String(s || ''));
+  return (m ? m[1] : String(s || '')).replace(/[^א-ת0-9]/g, '');
+}
+function _priceNum(p){
+  var n = parseInt(String(p || '').replace(/[^0-9]/g, ''), 10);
+  return isNaN(n) ? 0 : n;
+}
+function dedupeShtaf(office, shtaf){
+  // אותו נכס גם במשרד וגם בשת"פ (כתובת זהה + מחיר בהפרש עד 100 אלף) — משאירים את של המשרד
+  return shtaf.filter(function(s){
+    var sk = _streetKey(s.street || s.address), sp = _priceNum(s.price);
+    if (!sk) return true;
+    return !office.some(function(o){
+      var ok = _streetKey(o.address || o.street);
+      return ok && ok === sk && Math.abs(_priceNum(o.price) - sp) <= 100000;
+    });
+  });
+}
 function renderMatches(b, office, shtaf){
   CUR_BUYER = b;
-  // כשיש דרישות אמיתיות — מציגים רק התאמות של 60%+ (לא מציפים בכל מה שנכנס בתקציב)
+  MITEMS = []; MSEL = {};
+  shtaf = dedupeShtaf(office, shtaf);
+  // חזקות (60%+) קודם; כל השאר תחת "התאמות נוספות" — שום דבר לא נחתך ל-5
+  var strong = function(p){ return (p.score || 0) >= 60; };
+  var oS = office, oW = [], sS = shtaf, sW = [];
   if (MQ_NEEDS){
-    var strong = function(p){ return (p.score || 0) >= 60; };
-    var o2 = office.filter(strong), s2 = shtaf.filter(strong);
-    if (o2.length || s2.length){ office = o2; shtaf = s2; }
-    else { office = office.slice(0, 5); shtaf = shtaf.slice(0, 3); }   // אין חזקות — מציגים את המובילות בלבד
+    oS = office.filter(strong); oW = office.filter(function(p){ return !strong(p); });
+    sS = shtaf.filter(strong);  sW = shtaf.filter(function(p){ return !strong(p); });
   }
   var h = '';
-  if (office.length){
-    h += '<div class="grpTitle">המשרד שלנו · ' + office.length + '</div>';
-    office.slice(0, 20).forEach(function(p){ h += propCard(p, b, false); });
+  if (oS.length){
+    h += '<div class="grpTitle">המשרד שלנו · ' + oS.length + '</div>';
+    oS.slice(0, 25).forEach(function(p){ h += propCard(p, b, false); });
   }
-  if (shtaf.length){
-    h += '<div class="grpTitle">שת"פ · ' + shtaf.length + '</div>';
-    shtaf.slice(0, 12).forEach(function(p){ h += propCard(p, b, true); });
+  if (sS.length){
+    h += '<div class="grpTitle">שת"פ · ' + sS.length + '</div>';
+    sS.slice(0, 15).forEach(function(p){ h += propCard(p, b, true); });
   }
-  el('mRes').innerHTML = h ||
+  if (oW.length || sW.length){
+    h += '<div class="grpTitle" style="color:#8B8F99">התאמות נוספות · ' + (oW.length + sW.length) + '</div>';
+    oW.slice(0, 15).forEach(function(p){ h += propCard(p, b, false); });
+    sW.slice(0, 10).forEach(function(p){ h += propCard(p, b, true); });
+  }
+  el('mRes').innerHTML = (h ||
     '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:16px 0">' +
-    'לא נמצאו התאמות — נסה לעדכן את הדרישות של הקונה</div>';
+    'לא נמצאו התאמות — נסה לעדכן את הדרישות של הקונה</div>') +
+    '<div id="selBar" style="display:none;position:sticky;bottom:0;padding:8px 0">' +
+    '<button class="btn" style="background:#1FAF5E;color:#fff;box-shadow:0 4px 14px rgba(31,175,94,.3)" ' +
+    'onclick="sendSelected()"><span id="selN"></span></button></div>';
+  updateSelBar();
 }
-function sendToBuyer(js){
-  var p = JSON.parse(js);
+function toggleSel(mi){
+  if (MSEL[mi]) delete MSEL[mi]; else MSEL[mi] = 1;
+  document.querySelectorAll('#mRes .sel').forEach(function(btn){
+    var m = /toggleSel\((\d+)\)/.exec(btn.getAttribute('onclick') || '');
+    if (m) btn.classList.toggle('on', !!MSEL[m[1]]);
+  });
+  updateSelBar();
+}
+function updateSelBar(){
+  var n = Object.keys(MSEL).length;
+  var bar = el('selBar');
+  if (!bar) return;
+  bar.style.display = n ? 'block' : 'none';
+  if (n) el('selN').textContent = 'שלח ' + n + ' נכסים לקונה בוואטסאפ';
+}
+function waToBuyer(msg){
+  // וואטסאפ ללקוח — גם כשאין מספר שמור נפתח וואטסאפ עם ההודעה לבחירת איש קשר
+  var wa = (CUR_BUYER && CUR_BUYER.wa) || '';
+  window.open('https://wa.me/' + wa + '?text=' + encodeURIComponent(msg), '_blank');
+}
+function sendOne(mi){
+  var it = MITEMS[mi]; if (!it) return;
   var msg = 'היי' + (CUR_BUYER && CUR_BUYER.name ? ' ' + CUR_BUYER.name : '') +
-    ', מצאתי נכס שיכול להתאים לך:\n' + p.w + (p.d ? '\n' + p.d : '') +
-    (p.pr ? '\nמחיר: ₪' + p.pr : '') + '\nמעניין אותך לשמוע עוד?';
-  window.open('https://wa.me/' + ((CUR_BUYER && CUR_BUYER.wa) || '') + '?text=' + encodeURIComponent(msg), '_blank');
+    ', מצאתי נכס שיכול להתאים לך:\n\n' + msgLine(it.p, it.shtaf) + '\n\nמעניין אותך לשמוע עוד?';
+  waToBuyer(msg);
 }
+function sendSelected(){
+  var ks = Object.keys(MSEL);
+  if (!ks.length) return;
+  var lines = ks.map(function(k, i){
+    var it = MITEMS[k];
+    return (i + 1) + '. ' + msgLine(it.p, it.shtaf);
+  });
+  var msg = 'היי' + (CUR_BUYER && CUR_BUYER.name ? ' ' + CUR_BUYER.name : '') +
+    ', מצאתי ' + ks.length + ' נכסים שיכולים להתאים לך:\n\n' + lines.join('\n\n') + '\n\nמעניין אותך לשמוע עוד?';
+  waToBuyer(msg);
+}
+
 
 
 /* זיכרון מצב הטאב — פילטר/חיפוש/גלילה נשמרים וחוזרים בכניסה הבאה */
@@ -3878,7 +4035,14 @@ function render(){
   var q = el('q').value.trim().toLowerCase();
   var src, h = '';
   if (MODE === 'office') src = OFFICE;
-  else if (MODE === 'shtaf') src = SHTAF;
+  else if (MODE === 'shtaf') src = SHTAF.filter(function(s){   // נכס שקיים גם במשרד — מציגים רק את של המשרד
+    var sk = pStreetKey(s.street || s.address), sp = pPriceNum(s.price);
+    if (!sk) return true;
+    return !OFFICE.some(function(o){
+      var ok = pStreetKey(o.address || o.street);
+      return ok && ok === sk && Math.abs(pPriceNum(o.price) - sp) <= 100000;
+    });
+  });
   else src = MINE.filter(function(p){
     return !q || ((p.address || '') + ' ' + (p.city || '') + ' ' + (p.desc || '')).toLowerCase().indexOf(q) >= 0;
   });
@@ -3907,7 +4071,12 @@ function propCard(p, i){
   var chip = isShtaf ? '<div class="chip shtaf">שת"פ</div>'
     : isMine ? (p.pending ? '<div class="chip pend">בטיפול אצל המזכירה</div>' : '<div class="chip mine">הנכס שלי</div>')
     : '<div class="chip office">המשרד שלנו</div>';
-  var acts = isShtaf ? '' :
+  var acts = isShtaf
+    ? '<div class="acts"><button class="a1" onclick="matchBuyers(' + i + ')">' +
+      '<svg width="12" height="12" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
+      'קונים מתאימים</button>' +
+      (p.link ? '<button class="a2" onclick="window.open(\'' + esc(p.link) + '\',\'_blank\')">למודעה</button>' : '') + '</div>'
+    :
     '<div class="acts"><button class="a1" onclick="matchBuyers(' + i + ')">' +
     '<svg width="12" height="12" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
     'קונים מתאימים</button>' +
@@ -3940,6 +4109,14 @@ function qChanged(){
   if (MODE === 'mine'){ render(); return; }
   _qT = setTimeout(function(){ load(el('q').value.trim()); }, 500);
 }
+function pStreetKey(s){
+  var m = /([א-ת"'\.\- ]+?\s?\d+[א-ת]?)/.exec(String(s || ''));
+  return (m ? m[1] : String(s || '')).replace(/[^א-ת0-9]/g, '');
+}
+function pPriceNum(p){
+  var n = parseInt(String(p || '').replace(/[^0-9]/g, ''), 10);
+  return isNaN(n) ? 0 : n;
+}
 function propText(p){
   return [p.type, p.rooms ? p.rooms + ' חדרים' : '', p.address, p.city,
           p.price ? 'עד ' + p.price : ''].filter(Boolean).join(' ');
@@ -3947,22 +4124,37 @@ function propText(p){
 function matchBuyers(i){
   var p = el('list')._src[i];
   openSheet('<h3>קונים מתאימים</h3>' +
-    '<div style="font-size:12px;color:#8B8F99">' + esc([p.address, p.city].filter(Boolean).join(', ')) + '</div>' +
+    '<div style="font-size:12px;color:#8B8F99">' + esc([p.address || p.street, p.city].filter(Boolean).join(', ')) + '</div>' +
     '<div id="bRes" style="display:flex;flex-direction:column;gap:10px">' +
-    '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:16px 0">מחפש בשיחות שנענו…</div></div>' +
+    '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:16px 0">מחפש בקונים השמורים…</div></div>' +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
-  POST('/api/search/buyers', {q: propText(p)}).then(function(j){
-    var rs = (j && j.results) || [];
-    var h = rs.slice(0, 10).map(function(b){
-      return '<div class="bRow"><div class="t">' + esc(b.phone || '') +
-        (b.budget ? ' · ' + esc(b.budget) : '') + (b.agent ? ' · ' + esc(b.agent) : '') + '</div>' +
-        (b.summary ? '<div class="s">' + esc(b.summary) + '</div>' : '') +
+  // חיפוש בקונים השמורים בלבד (לא בשיחות) — בהיקף של המשתמש (סוכן=שלו)
+  GET('/api/my/buyers').then(function(j){
+    var price = parseInt(String(p.price || '').replace(/[^0-9]/g, ''), 10) || 0;
+    var city = String(p.city || '').replace('קריית', 'קרית').trim();
+    var rooms = String(p.rooms || '').trim();
+    var scored = ((j && j.results) || []).map(function(b){
+      var sc = 0, why = [];
+      var bud = parseInt(String(b.budget || '').replace(/[^0-9]/g, ''), 10) || 0;
+      var tx = ((b.search || '') + ' ' + (b.summary || '')).replace(/קריית/g, 'קרית');
+      if (price && bud && bud >= price * 0.85){ sc += 2; why.push('תקציב מתאים'); }
+      if (city && tx.indexOf(city) >= 0){ sc += 2; why.push('אזור'); }
+      if (rooms && new RegExp('(^|[^0-9])' + rooms + "\\s*חד").test(tx)){ sc += 1; why.push('חדרים'); }
+      return {b: b, sc: sc, why: why};
+    }).filter(function(x){ return x.sc > 0; }).sort(function(a, c){ return c.sc - a.sc; });
+    var h = scored.slice(0, 10).map(function(x){
+      var b = x.b;
+      return '<div class="bRow"><div class="t">' + esc(b.name || b.phone || '') +
+        (b.phone && b.name ? ' · ' + esc(b.phone) : '') +
+        (b.budget ? ' · ' + esc(b.budget) : '') + '</div>' +
+        '<div class="s" style="color:#157A43;font-weight:700">' + esc(x.why.join(' · ')) + '</div>' +
+        (b.summary || b.search ? '<div class="s">' + esc((b.search || b.summary).slice(0, 120)) + '</div>' : '') +
         '<div class="acts">' +
         (b.wa ? '<a class="wa" target="_blank" rel="noopener" href="https://wa.me/' + esc(b.wa) + '">וואטסאפ</a>' : '') +
         (b.tel ? '<a class="tel" href="tel:' + esc(b.tel) + '">חייג</a>' : '') + '</div></div>';
     }).join('');
     el('bRes').innerHTML = h ||
-      '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:12px 0">לא נמצאו קונים מתאימים בשיחות שנענו</div>';
+      '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:12px 0">אין קונים שמורים שמתאימים לנכס הזה</div>';
   }).catch(function(){});
 }
 function propDetails(i){
@@ -5048,6 +5240,7 @@ function render(){
   renderNb();
 }
 var LEADS = {gius: 'גיוס נכסים', konim: 'החתמת קונים', deals: 'עסקאות', calls: 'שיחות'};
+var REP_NAME = '';
 function leadData(){
   var sm = R.summary || {};
   if (LEAD_TAB === 'gius') return (sm.topGius || []).map(function(x){ return {n: x.name, v: x.n}; });
@@ -5066,12 +5259,27 @@ function renderLeaders(){
   var data = leadData();
   var max = data.length ? data[0].v : 0;
   var shown = LEAD_ALL ? data.slice(0, 10) : data.slice(0, 3);
-  el('leadList').innerHTML = shown.map(function(d, i){
-    return '<div class="leadRow' + (i === 0 ? ' first' : '') + '">' +
-      '<div class="rank">' + (i + 1) + '</div><div class="nm">' + esc(d.n) + '</div>' +
-      '<div class="val">' + d.v + '</div></div>' +
-      (i === 0 && max ? '<div class="bar"><i style="width:' + Math.round(d.v / max * 100) + '%"></i></div>' : '');
-  }).join('') || '<div style="font-size:12px;color:#8B8F99;padding:6px 0">אין נתונים בתקופה</div>';
+  // סוכן: רואה את הדירוג — שמות לפי סדר, בלי מספרי העסקאות של האחרים (בקשת אייל)
+  var rankLine = '';
+  if (!IS_MGR){
+    var mr = (R.summary && R.summary.myRank) || {};
+    var r = (LEAD_TAB === 'gius') ? mr.gius : (LEAD_TAB === 'konim') ? mr.konim : null;
+    if (LEAD_TAB === 'deals' && REP_NAME){
+      var pos = -1;
+      (R.top_deals || []).forEach(function(x, i2){ if (pos < 0 && x.name === REP_NAME) pos = i2 + 1; });
+      r = pos > 0 ? {pos: pos, of: (R.top_deals || []).length} : null;
+    }
+    if (r && r.pos) rankLine = '<div style="background:#F6EEDB;border:1px solid #E4C56B;border-radius:12px;' +
+      'padding:9px 13px;font-size:13px;font-weight:800;color:#B8902F;margin-bottom:4px">' +
+      'הדירוג שלך: מקום ' + r.pos + (r.of ? ' מתוך ' + r.of : '') + '</div>';
+  }
+  el('leadList').innerHTML = rankLine + (shown.map(function(d, i){
+    var mine = !IS_MGR && REP_NAME && d.n === REP_NAME;
+    return '<div class="leadRow' + (i === 0 ? ' first' : '') + '"' + (mine ? ' style="color:#B8902F"' : '') + '>' +
+      '<div class="rank">' + (i + 1) + '</div><div class="nm"' + (mine ? ' style="font-weight:800"' : '') + '>' + esc(d.n) + (mine ? ' · אתה' : '') + '</div>' +
+      (IS_MGR ? '<div class="val">' + d.v + '</div>' : '') + '</div>' +
+      (IS_MGR && i === 0 && max ? '<div class="bar"><i style="width:' + Math.round(d.v / max * 100) + '%"></i></div>' : '');
+  }).join('') || '<div style="font-size:12px;color:#8B8F99;padding:6px 0">אין נתונים בתקופה</div>');
   el('leadMore').style.display = data.length > 3 ? 'block' : 'none';
   el('leadMore').textContent = LEAD_ALL ? 'הצג פחות' : 'כל 10 המובילים';
   // פילוח עסקאות לפי צד — מתחת לצ'יפ עסקאות
@@ -5124,6 +5332,7 @@ function copyTxt(){
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
     IS_MGR = (j.role === 'admin' || j.role === 'coordinator');
+    REP_NAME = j.name || '';
     el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
     el('pgT').textContent = IS_MGR ? 'דוחות מנהל' : 'הדוחות שלי';
   }).catch(function(){ location.replace('/v2'); });
@@ -6738,6 +6947,40 @@ def register(app, G):
             out["name"] = "אֶפִי"
             out["logo_svg"] = EFFIE_LOGO_SVG.format(w=52, h=47, beak="#fff")
         return jsonify(out)
+
+    _AV_DIR = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)), "v2_avatars")
+
+    @app.route("/v2/api/avatar", methods=["GET", "POST"])
+    def v2_api_avatar():
+        """תמונת פרופיל של סוכן: GET לפי ?p=<טלפון> (ציבורי, כמו הלוגו); POST — המשתמש לעצמו."""
+        if request.method == "GET":
+            pp = "".join(ch for ch in (request.args.get("p", "") or "") if ch.isdigit())[-9:]
+            fp = os.path.join(_AV_DIR, pp + ".jpg") if pp else ""
+            if not (pp and os.path.exists(fp)):
+                return Response("", status=404)
+            with open(fp, "rb") as f:
+                return Response(f.read(), mimetype="image/jpeg",
+                                headers={"Cache-Control": "private, max-age=300"})
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        img = str((request.get_json(silent=True) or {}).get("img", "") or "")
+        m = _re.match(r"data:image/(?:jpeg|jpg|png);base64,(.+)", img)
+        if not m:
+            return jsonify({"ok": False, "reason": "bad_image"}), 400
+        try:
+            raw = _b64.b64decode(m.group(1))
+        except Exception:
+            return jsonify({"ok": False, "reason": "bad_image"}), 400
+        if len(raw) > 400000:
+            return jsonify({"ok": False, "reason": "too_big"}), 400
+        pp = _last9(s.get("phone", ""))
+        if not pp:
+            return jsonify({"ok": False, "reason": "no_phone"}), 400
+        os.makedirs(_AV_DIR, exist_ok=True)
+        with open(os.path.join(_AV_DIR, pp + ".jpg"), "wb") as f:
+            f.write(raw)
+        return jsonify({"ok": True})
 
     @app.route("/v2/api/brief", methods=["GET"])
     def v2_api_brief():
