@@ -3443,7 +3443,12 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       <div class="ages" id="ages"></div>
       <div class="srch">
         <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input id="q" placeholder="רחוב, שכונה או בעל הנכס" oninput="render()">
+        <input id="q" placeholder="רחוב, שכונה או בעל הנכס" oninput="render();qClearBtn()">
+        <button id="qClear" onclick="el('q').value='';qClearBtn();render()" aria-label="ניקוי חיפוש"
+          style="display:none;width:26px;height:26px;border-radius:50%;background:#EBE8DD;border:none;flex-shrink:0;
+          align-items:center;justify-content:center;cursor:pointer;padding:0">
+          <svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
       </div>
     </div>
     <div id="list"></div>
@@ -3536,6 +3541,10 @@ function load(){
     if (c && c.r){ ROWS = c.r; BUCKETS = c.b || []; TOTAL = c.t || 0; MEETS = c.m || []; }
   }catch(e){}
 })();
+function qClearBtn(){
+  var b = el('qClear');
+  if (b) b.style.display = el('q').value ? 'flex' : 'none';
+}
 function fmtPrice(p){
   p = String(p || '').trim();
   if (!p) return '';
@@ -3750,6 +3759,7 @@ function saveSt(){
     var s = JSON.parse(localStorage.getItem('v2st:newborn') || 'null');
     if (s){
       AGE = (typeof s.a === 'number') ? s.a : -1; el('q').value = s.q || ''; _restY = s.y || 0;
+      qClearBtn();
     }
   }catch(e){}
 })();
