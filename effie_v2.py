@@ -6400,7 +6400,7 @@ function itemRow(m, i){
   var whenTx = late ? ((w.d.getDate()) + '/' + (w.d.getMonth() + 1) + (w.time ? ' ' + w.time : ''))
     : dd === 0 ? (w.time || 'היום') : dd === 1 ? ('מחר' + (w.time ? ' ' + w.time : ''))
     : w.d ? (('0' + w.d.getDate()).slice(-2) + '/' + ('0' + (w.d.getMonth() + 1)).slice(-2) + (w.time ? ' ' + w.time : '')) : '';
-  var sb = late ? ('באיחור · ' + (m.label || '') + (whenTx ? ' · ' + whenTx : ''))
+  var sb = late ? (['באיחור', m.label || '', whenTx, MULTI ? m.agent : ''].filter(Boolean).join(' · '))
     : ['נכס נולד', m.owner ? ('בעל הנכס: ' + m.owner) : '', MULTI ? m.agent : ''].filter(Boolean).join(' · ');
   var acts = '<div class="acts">' +
     (m.ophone ? '<button class="sq" style="background:#EAF0FA" onclick="location.href=\'tel:' + esc(m.ophone) + '\'" aria-label="חיוג">' +
