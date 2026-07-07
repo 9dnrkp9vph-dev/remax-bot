@@ -669,7 +669,8 @@ function loadData(){
     GET('/api/report?period=week').catch(function(){ return {}; }),
     GET('/api/my/buyers').catch(function(){ return {}; }),
     GET('/api/my/properties').catch(function(){ return {}; }),
-    GET('/api/signatures').catch(function(){ return {}; })
+    GET('/api/signatures').catch(function(){ return {}; }),
+    GET('/api/newborn/meetings').catch(function(){ return {}; })
   ]).then(function(rs){
     // גיוסים ב-7 הימים האחרונים — כל החתמת בעל נכס (בלעדיות או מוכר), בלי כפילויות
     var wk7 = Math.floor(Date.now() / 1000) - 7 * 86400;
@@ -689,7 +690,8 @@ function loadData(){
     M.excl = (sm.exclusives || []).length;   // נכסים שגויסו בבלעדיות בתקופת הדוח
     M.repLabel = rep.label || 'השבוע';
     M.listings = rep.listings || 0;
-    M.meets = rep.meetings || [];
+    // אותו סינון של מסך היומן — לדוח יש סקופ אחר למתאמת (כל המשרד) והבריף היה מציג יותר מדי
+    M.meets = ((rs[4] || {}).results) || rep.meetings || [];
     M.meetToday = 0; M.meetLate = 0;
     M.meets.forEach(function(m){
       var d = parseDMY(m.date);
