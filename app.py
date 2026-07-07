@@ -2534,7 +2534,15 @@ def _save_config(cfg):
     # במקום דריסת הבלוב כולו). הגיליון מתעדכן במקביל דרך ה-hook ב-Apps Script.
     if CONFIG_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
         try:
-            prev = _LAST_GOOD_CONFIG if isinstance(_LAST_GOOD_CONFIG, dict) else {}
+            prev = _LAST_GOOD_CONFIG if isinstance(_LAST_GOOD_CONFIG, dict) else None
+            if prev is None:
+                # שמירה ראשונה אחרי אתחול: בלי prev נכתבים *כל* המפתחות — אם הטעינה
+                # שביד הייתה ישנה (בזמן דפלוי) זה דורס שינויים טריים (כמו שחזור סוכן).
+                # לכן משווים מול קריאה טרייה מהמקור וכותבים רק מה שבאמת השתנה.
+                try:
+                    prev = _sbdb.fetch_config() or {}
+                except Exception:
+                    prev = {}
             changed = [k for k in cfg if _json.dumps(cfg.get(k), sort_keys=True, ensure_ascii=False)
                        != _json.dumps(prev.get(k), sort_keys=True, ensure_ascii=False)]
             for k in changed:
