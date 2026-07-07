@@ -4070,12 +4070,15 @@ function fmtPrice(p){
 
 var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''};
 
+var _loadSeq = 0;
 function load(q){
+  var seq = ++_loadSeq;   // שומר רצף: תשובה של חיפוש ישן שהגיעה באיחור לא דורסת את החדש
   return Promise.all([
     POST('/api/search/properties', {q: q || '', nosave: true}).catch(function(){ return {}; }),
     POST('/api/search/exclusives', {q: q || '', nosave: true}).catch(function(){ return {}; }),
     GET('/api/my/properties').catch(function(){ return {}; })
   ]).then(function(rs){
+    if (seq !== _loadSeq) return;   // כבר יצא חיפוש חדש יותר — מתעלמים מהתשובה הישנה
     OFFICE = (rs[0] && rs[0].results) || [];
     SUM.office = (rs[0] && rs[0].summary) || '';
     SHTAF = (rs[1] && rs[1].results) || [];
