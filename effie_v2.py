@@ -5883,8 +5883,8 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
-  body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column}
+  html,body{height:100%;overflow-x:hidden}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column;max-width:100vw}
   header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px}
   header .av{width:42px;height:42px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
       align-items:center;justify-content:center;font-size:16px;font-weight:700}
@@ -5948,10 +5948,13 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px}
   .btn-gold{background:#C29435;color:#fff;box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
-  .fld2{display:flex;flex-direction:column;gap:5px}
+  .fld2{display:flex;flex-direction:column;gap:5px;min-width:0}
   .fld2 span{font-size:11.5px;font-weight:700;color:#5B6472}
-  .fld2 input,.fld2 textarea{background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;
-      font-size:14px;font-family:inherit;outline:none;color:#1E3A5F;width:100%}
+  .fld2 input,.fld2 textarea,.fld2 select{background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;
+      font-size:14px;font-family:inherit;outline:none;color:#1E3A5F;width:100%;min-width:0;max-width:100%}
+  /* iOS: לשדה datetime-local יש רוחב מינימלי משלו שגורם לגלישה רוחבית — מנטרלים */
+  .fld2 input[type="datetime-local"]{-webkit-appearance:none;appearance:none;display:block;min-height:47px;text-align:right}
+  #sheet{overflow-x:hidden}
   .stSeg{display:flex;background:#EBE8DD;border-radius:12px;padding:4px;gap:4px}
   .stSeg div{flex:1;text-align:center;padding:8px 0;font-size:13px;font-weight:700;color:#5B6472;border-radius:9px;cursor:pointer}
   .stSeg div.on{color:#fff;background:#2E6BD6}

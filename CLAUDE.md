@@ -391,3 +391,8 @@
   עוז: הוא נמחק שוב גם בלי דפלוי — parity חשף שבלוב הגיליון נשאר ישן ב-removedAgents/agents ויש
   סנכרון גיליון→Supabase שמחזיר את הישן. תוקן ע"י יישור שני הצדדים (dev/config מלא) — parity ✅;
   גיבוי הבלוב ב-_save_config מפסיק להיבלע בשקט (log.error על כשל).
+- 2026-07-07: טופס פגישה חדשה נחתך באייפון (הכל מוסט שמאלה) — גלישה רוחבית: ל-input[type=datetime-local]
+  ב-iOS יש רוחב מינימלי משלו + שורת שם/טלפון בלי min-width:0, ו-iOS מזיז (pan) את כל התצוגה כולל
+  fixed. תוקן ב-V2_MEETS: overflow-x:hidden על html/body/#sheet, min-width:0 ל-fld2 ולשדות,
+  -webkit-appearance:none ל-datetime-local. אומת: אפס גלישה, הגיליון 375px בדיוק.
+- 2026-07-07: עוז שרד 5 דקות אחרי יישור שני הצדדים — אישוש שהשורש היה בלוב הגיליון הישן.
