@@ -2551,9 +2551,13 @@ def _save_config(cfg):
             _cache_put("app_config", cfg)
             _cache_clear("alias_key_map")
             _cache_clear("newborn_delays")
-            # שכפול לגיליון (best-effort) — גיבוי, לא חוסם את ההצלחה
-            try: _buyers_apps_post("setconfig", {"config": _json.dumps(cfg, ensure_ascii=False)})
-            except Exception: pass
+            # שכפול לגיליון — אם נכשל, הסנכרון גיליון→Supabase עלול להחזיר מצב ישן; חייבים לוג
+            try:
+                _bj = _buyers_apps_post("setconfig", {"config": _json.dumps(cfg, ensure_ascii=False)})
+                if not (_bj and _bj.get("ok")):
+                    log.error(f"config sheet backup failed (sync may resurrect stale state): {str(_bj)[:200]}")
+            except Exception as _be:
+                log.error(f"config sheet backup exception: {_be}")
             return True
         except Exception as _sbe:
             log.error(f"supabase config save failed — falling back to sheets: {_sbe}")
@@ -4871,7 +4875,8 @@ def _deals_save_all(items):
     except Exception as e:
         log.error(f"deals save error: {e}")
 def _deals_can_see(item, s):
-    if s.get("role") in ("admin", "coordinator"):
+    # מתאמת אינה רואה תהליכים/עסקאות של הסוכנים שלה (בקשת אייל 07/07) — רק את שלה, כמו סוכן
+    if s.get("role") == "admin":
         return True
     nm = _canon_key(s.get("name", ""))
     keys = {nm}
@@ -4911,7 +4916,7 @@ def api_deals():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     eff = s
-    if s["role"] in ("admin", "coordinator"):
+    if s["role"] == "admin":
         as_name = request.args.get("as", "").strip()
         if as_name:
             eff = {"role": "agent", "name": as_name}   # "צפה כסוכן" — רואים רק את התהליכים של אותו סוכן

@@ -2714,6 +2714,12 @@ function propCard(p, b, shtaf){
       '<svg width="13" height="13" viewBox="0 0 16 16" style="transition:transform .18s"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
     '</div>' +
     (desc ? '<div class="dx" id="' + did + '" style="display:none;margin-top:2px">' + esc(desc) + '</div>' : '') +
+    // שת"פ: קישור למודעה המקורית (נדל"ן וואן)
+    (shtaf && p.link ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener" style="display:flex;align-items:center;' +
+      'justify-content:center;gap:6px;background:#fff;border:1.5px solid #DCD6C8;border-radius:12px;padding:9px 0;' +
+      'font-size:12.5px;font-weight:700;color:#1E3A5F;text-decoration:none">' +
+      '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M6.5 9.5l6-6M9 2.5h4.5V7M13 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3.5" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      'צפייה במודעה בנדל"ן וואן</a>' : '') +
     '<div class="acts2">' +
     '<button class="a1" onclick=\'sendToBuyer(' + JSON.stringify(JSON.stringify({w: where, d: dt, pr: p.price || ''})) + ')\'>' +
     '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
