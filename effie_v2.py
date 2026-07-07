@@ -100,8 +100,8 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       כניסה עם קוד ב-SMS
     </button>
     <div id="smsBox">
-      <input id="ph" type="tel" inputmode="numeric" placeholder="מספר הטלפון שלך">
-      <input id="cd" type="tel" inputmode="numeric" placeholder="הקוד שקיבלת ב-SMS" style="display:none">
+      <input id="ph" type="tel" inputmode="numeric" autocomplete="tel" placeholder="מספר הטלפון שלך">
+      <input id="cd" type="tel" inputmode="numeric" autocomplete="one-time-code" placeholder="הקוד שקיבלת ב-SMS" style="display:none">
       <button class="btn btn-go" id="go" onclick="smsGo()">שלח קוד</button>
       <div id="err"></div>
     </div>
