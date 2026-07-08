@@ -308,6 +308,9 @@ nav .it.dk{display:none}   /* תהליכים+יומן — רק בסרגל הצד
   body:has(nav){padding-right:96px}
   body:has(nav) header, body:has(nav) main, body:has(nav) #impBar{max-width:640px}
   body:has(nav) main{padding-bottom:28px}
+  /* דסקטופ/טאבלט: החלון הוא הגולל. main אינו מיכל-גלילה (בלי overflow:auto+contain
+     שלוכד את הגלגלת ומונע גלילת חלון). מבטל את הכלל הגלובלי מ-V2_BOOST במסכים רחבים. */
+  body:has(nav) main{overflow:visible;overscroll-behavior:auto}
   nav{position:fixed;top:16px;bottom:16px;right:14px;left:auto;width:66px;max-width:none;margin:0;
       border:1px solid #E9E4D8;border-radius:20px;box-shadow:0 8px 26px rgba(30,58,95,.07);
       padding:14px 8px;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;gap:8px}
