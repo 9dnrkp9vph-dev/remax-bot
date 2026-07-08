@@ -6209,6 +6209,8 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;overflow-x:hidden}
+  /* דסקטופ: חזרה לגלילת חלון (המובייל נשאר עם נעילת iOS: main גולל) */
+  @media(min-width:768px){html,body{height:auto}body{min-height:100vh}main{overflow:visible}}
   body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column;max-width:100vw}
   header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px}
   header .av{width:42px;height:42px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
@@ -6610,6 +6612,8 @@ V2_ONBOARD_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{height:100%}
+  /* דסקטופ: חזרה לגלילת חלון (המובייל נשאר עם נעילת iOS: main גולל) */
+  @media(min-width:768px){html,body{height:auto}body{min-height:100vh}main{overflow:visible}}
   body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column}
   header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px}
   header .bk{width:42px;height:42px;border-radius:14px;background:#fff;border:1px solid #E9E4D8;display:flex;
