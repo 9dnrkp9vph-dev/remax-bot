@@ -4934,9 +4934,12 @@ function delDeal(i){
 
 /* ── טופס תהליך/עסקה (24a/27a) ── */
 function agentSel(id, val){
-  return '<select id="' + id + '"><option value="">—</option>' + AGENTS.map(function(a){
-    return '<option' + (a === val ? ' selected' : '') + '>' + esc(a) + '</option>';
-  }).join('') + '</select>';
+  // מלל חופשי עם השלמה אוטומטית מרשימת הסוכנים (datalist agentsDL מוזרק בטופס)
+  return '<input id="' + id + '" list="agentsDL" autocomplete="off" value="' + esc(val || '') + '" placeholder="הקלד או בחר סוכן">';
+}
+function agentsDatalist(){
+  return '<datalist id="agentsDL">' + AGENTS.map(function(a){
+    return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>';
 }
 function sideSel(id, val){
   return '<select id="' + id + '">' + SIDES.map(function(s){
@@ -4967,14 +4970,14 @@ function openForm(i, asDeal){
             : (isDeal && !it.deal) ? 'סגירת עסקה' : (isDeal ? 'עסקה — עריכה' : 'תהליך — עריכה');
   var s = el('sheet');
   s.innerHTML = '<div class="grip"></div><div class="body">' +
-    '<h3>' + title + (it.notes ? ' · ' + esc(it.notes) : '') + '</h3>' +
+    '<h3>' + title + (it.notes ? ' · ' + esc(it.notes) : '') + '</h3>' + agentsDatalist() +
     (isDeal ?
       '<div class="sec2"><div class="st">פרטי הסגירה</div>' +
       '<div class="frow">' +
       '<div class="fld"><span>מחיר מבוקש</span><input id="fPrice" inputmode="numeric" style="text-decoration:line-through;color:#9AA0AB" value="' + esc(it.price || '') + '"></div>' +
-      '<div class="fld"><span>מחיר מכירה *</span><input id="fSale" class="gold" inputmode="numeric" value="' + esc(it.sale_price || '') + '" oninput="calcCom()"></div></div>' +
+      '<div class="fld"><span>מחיר מכירה *</span><input id="fSale" class="gold" inputmode="numeric" value="' + esc(it.sale_price || it.price || '') + '" oninput="calcCom()"></div></div>' +
       '<div class="frow">' +
-      '<div class="fld"><span>תאריך סגירה *</span><input id="fDate" placeholder="dd/mm/yyyy" value="' + esc(it.close_date || '') + '"></div>' +
+      '<div class="fld"><span>תאריך סגירה</span><input id="fDate" placeholder="ריק = היום" value="' + esc(it.close_date || '') + '"></div>' +
       '<div class="fld"><span>כתובת *</span><input id="fAddr" value="' + esc(it.notes || '') + '"></div></div></div>'
     :
       '<div class="sec2"><div class="st">הנכס והמחיר</div>' +
@@ -4991,6 +4994,10 @@ function openForm(i, asDeal){
     '<div class="frow">' +
     '<div class="fld" style="flex:1.3"><span>סוכן 2 · אופציונלי</span>' + agentSel('fAg2', (it.agents || [])[1] || '') + '</div>' +
     '<div class="fld"><span>מייצג</span>' + sideSel('fSide2', it.side2 || 'קונה') + '</div></div>' +
+    (isDeal ? '' :
+      '<label class="offRow" style="display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 2px">' +
+      '<input type="checkbox" id="fOffer"' + (it.offer ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:#2E6BD6">' +
+      '<span style="font-size:13.5px;font-weight:700">הוגשה הצעה על הנכס</span></label>') +
     (isDeal ?
       '<div class="fld"><span>עמלה סוכן 1 (2% + מע"מ — עיפרון לעריכה ידנית)</span>' +
       '<div class="comRow"><input id="fCom" readonly value="' + esc(it.commission || '') + '">' +
@@ -5004,7 +5011,9 @@ function openForm(i, asDeal){
       '</button></div></div>' : '') +
     '</div>' +
     '<div class="sec2"><div class="st">עו"ד · אופציונלי</div>' +
-    '<div class="fld"><input id="fLaw" placeholder="שם עו&quot;ד / משרד" value="' + esc(it.lawyers || '') + '"></div></div>' +
+    '<div class="frow">' +
+    '<div class="fld"><span>עו"ד קונה</span><input id="fLaw" placeholder="שם / משרד" value="' + esc(it.lawyers || '') + '"></div>' +
+    '<div class="fld"><span>עו"ד מוכר</span><input id="fLaw2" placeholder="שם / משרד" value="' + esc(it.lawyers2 || '') + '"></div></div></div>' +
     '</div>' +
     '<div class="foot">' +
     '<button class="btnMain' + (isDeal ? ' gold' : '') + '" onclick="saveForm(' + (i === null ? 'null' : i) + ',' + isDeal + ')">' +
@@ -5022,6 +5031,7 @@ function openForm(i, asDeal){
       calcCom();
     };
     el('fAg2').addEventListener('change', _syncC2);
+    el('fAg2').addEventListener('input', _syncC2);
     _syncC2();
     if (!it.commission_manual) calcCom();
     else el('fCom').removeAttribute('readonly');
@@ -5039,6 +5049,8 @@ function saveForm(i, isDeal){
     side1: el('fSide1').value,
     side2: el('fAg2').value ? el('fSide2').value : '',
     lawyers: el('fLaw').value.trim(),
+    lawyers2: el('fLaw2') ? el('fLaw2').value.trim() : (it.lawyers2 || ''),
+    offer: (!isDeal && el('fOffer')) ? el('fOffer').checked : !!it.offer,
     price: el('fPrice') ? el('fPrice').value.trim() : (it.price || ''),
     deal: isDeal,
     sale_price: isDeal ? el('fSale').value.trim() : (it.sale_price || ''),
@@ -5049,8 +5061,8 @@ function saveForm(i, isDeal){
     commission2: isDeal ? (el('fAg2').value ? el('fCom2').value.trim() : '') : (it.commission2 || ''),
     commission2_manual: isDeal ? !!el('fCom2')._manual : !!it.commission2_manual
   };
-  if (isDeal && (!body.sale_price || !body.close_date)){
-    toast('מחיר מכירה ותאריך סגירה — חובה'); return;
+  if (isDeal && !body.sale_price){
+    toast('מחיר מכירה — חובה'); return;   // תאריך סגירה לא חובה (ריק = היום)
   }
   POST('/api/deals/save', body).then(function(j){
     if (!j.ok){ toast(j.reason || 'שגיאה בשמירה'); return; }
