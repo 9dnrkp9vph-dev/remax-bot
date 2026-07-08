@@ -484,3 +484,12 @@
   על html/body (בלי רבר-band ברמת המסמך), nav מקבל translateZ(0)+backface-visibility:hidden (שכבת GPU,
   בלי ריצוד; נשאר fixed — אומת), ו-main overscroll-behavior-y:contain (הבאונס נשאר בפנים, רקע קרם =
   אוברסקרול שקוף). אומת: html קרם, nav matrix, main contain, ניווט נשאר קבוע בגלילה, כניסה לא הושפעה.
+- 2026-07-08: **גלילה נשברה במובייל+אפליקציה אחרי מיזוג תיקון הריצודים** (דיווח אייל): תיקון
+  הריצודים (b8d7a61, צ'אט השיפורים) הוסיף `body:has(nav) main{-webkit-overflow-scrolling:touch}`
+  **גלובלית** — אבל ב-10 מ-12 הדפים main אינו הגולל (מודל min-height:100vh → **החלון** גולל).
+  ב-iOS התכונה יוצרת אזור גלילת-מומנטום על main שאין לו מה לגלול, לוכדת את המגע ומונעת גלילת חלון
+  ("אי אפשר לגלול"). ב-Chromium אין את התכונה → לא שוחזר בדסקטופ, רק ב-iOS (ווב+אפליקציה). תוקן:
+  הוסרה `-webkit-overflow-scrolling:touch` (מיותרת ב-iOS מודרני — מומנטום הוא ברירת מחדל). שאר תיקון
+  הריצודים נשמר (רקע קרם ל-html, overscroll-behavior:none, nav translateZ, overscroll-behavior-y:contain
+  ל-main). רגרסיה ב-Chromium: קונים=חלון גולל, מפגשים=main גולל — תקין. **אימות iOS דורש מכשיר.**
+  ⚠️ נוגע בבלוק של צ'אט השיפורים (V2_BOOST) — לתאם לפני מיזוג חוזר.

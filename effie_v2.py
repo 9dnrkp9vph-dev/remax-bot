@@ -240,7 +240,9 @@ V2_BOOST = r"""<style>
 html:has(nav){ background:#F2EFE7; overscroll-behavior:none; }
 body:has(nav){ overscroll-behavior:none; }
 body:has(nav) nav{ transform:translateZ(0); -webkit-backface-visibility:hidden; backface-visibility:hidden; }
-body:has(nav) main{ -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain; }
+/* לא כופים גלילת-מומנטום על main גלובלית: ב-10 מ-12 הדפים main אינו הגולל (החלון הוא),
+   וב-iOS זה יצר אזור מומנטום שלכד את המגע ומנע גלילת חלון. overscroll-behavior נשאר. */
+body:has(nav) main{ overscroll-behavior-y:contain; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
