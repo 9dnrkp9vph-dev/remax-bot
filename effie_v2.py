@@ -6227,7 +6227,8 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
     nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
   }
-  main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto;padding-bottom:124px}
+  /* main הוא הגולל כאן — גלילה מרוכבת ב-GPU כדי שהניווט הקבוע לא ירצד ב-iOS (בטוח: אין חלון להתחרות) */
+  main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto;padding-bottom:124px;-webkit-overflow-scrolling:touch}
   .hd2{display:flex;align-items:center;gap:10px}
   .hd2 .ic{width:36px;height:36px;border-radius:11px;background:#EAF0FA;display:flex;align-items:center;justify-content:center}
   .hd2 h1{font-size:19px;font-weight:800}
@@ -6625,7 +6626,7 @@ V2_ONBOARD_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
       align-items:center;justify-content:center;cursor:pointer}
   header .lg{height:44px;max-width:150px;object-fit:contain}
   @media (min-width:700px){ header,main{width:100%;max-width:600px;margin-left:auto;margin-right:auto} }
-  main{flex:1;padding:4px 16px 40px;display:flex;flex-direction:column;gap:13px;overflow:auto}
+  main{flex:1;padding:4px 16px 40px;display:flex;flex-direction:column;gap:13px;overflow:auto;-webkit-overflow-scrolling:touch}
   h1{font-size:19px;font-weight:800}
   .sub{font-size:12.5px;color:#8B8F99;line-height:1.6}
   .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 17px;
