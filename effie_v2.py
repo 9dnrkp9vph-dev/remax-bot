@@ -7134,7 +7134,7 @@ def register(app, G):
         v2o = cfg.get("v2_office") or {}
         gauth = set()
         try:
-            for rec in (cfg.get("gauth") or {}).values():
+            for rec in (G["_gauth_all"]() or {}).values():
                 p = _last9((rec or {}).get("phone", ""))
                 if p:
                     gauth.add(p)
