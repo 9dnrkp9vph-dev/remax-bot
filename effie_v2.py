@@ -4853,6 +4853,8 @@ var ITEMS = [], AGENTS = [], FILTER = 'open', MY = '';
 var SIDES = ['מוכר','קונה','מוכר וקונה','משכיר','שוכר'];
 var STAGES = ['ליווי ראשוני','משא ומתן','אצל עו"ד','לקראת חתימה'];
 var VAT = 0.18;
+function nfmt(v){ var d = String(v == null ? '' : v).replace(/[^0-9]/g, ''); return d ? Number(d).toLocaleString() : ''; }
+function nfix(el){ var p = el.selectionStart; el.value = nfmt(el.value); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} }
 
 function load(){
   return GET('/api/deals').then(function(j){
@@ -4974,8 +4976,8 @@ function openForm(i, asDeal){
     (isDeal ?
       '<div class="sec2"><div class="st">פרטי הסגירה</div>' +
       '<div class="frow">' +
-      '<div class="fld"><span>מחיר מבוקש</span><input id="fPrice" inputmode="numeric" style="text-decoration:line-through;color:#9AA0AB" value="' + esc(it.price || '') + '"></div>' +
-      '<div class="fld"><span>מחיר מכירה *</span><input id="fSale" class="gold" inputmode="numeric" value="' + esc(it.sale_price || it.price || '') + '" oninput="calcCom()"></div></div>' +
+      '<div class="fld"><span>מחיר מבוקש</span><input id="fPrice" inputmode="numeric" style="text-decoration:line-through;color:#9AA0AB" value="' + esc(nfmt(it.price)) + '" oninput="nfix(this)"></div>' +
+      '<div class="fld"><span>מחיר מכירה *</span><input id="fSale" class="gold" inputmode="numeric" value="' + esc(nfmt(it.sale_price || it.price || '')) + '" oninput="nfix(this);calcCom()"></div></div>' +
       '<div class="frow">' +
       '<div class="fld"><span>תאריך סגירה</span><input id="fDate" placeholder="ריק = היום" value="' + esc(it.close_date || '') + '"></div>' +
       '<div class="fld"><span>כתובת *</span><input id="fAddr" value="' + esc(it.notes || '') + '"></div></div></div>'
@@ -4983,7 +4985,7 @@ function openForm(i, asDeal){
       '<div class="sec2"><div class="st">הנכס והמחיר</div>' +
       '<div class="fld"><span>כתובת *</span><input id="fAddr" value="' + esc(it.notes || '') + '"></div>' +
       '<div class="frow">' +
-      '<div class="fld"><span>מחיר</span><input id="fPrice" inputmode="numeric" value="' + esc(it.price || '') + '"></div>' +
+      '<div class="fld"><span>מחיר</span><input id="fPrice" inputmode="numeric" value="' + esc(nfmt(it.price)) + '" oninput="nfix(this)"></div>' +
       '<div class="fld"><span>שלב בתהליך</span><select id="fStage">' + STAGES.map(function(st){
         return '<option' + (st === it.stage ? ' selected' : '') + '>' + esc(st) + '</option>';
       }).join('') + '</select></div></div></div>') +
@@ -4996,8 +4998,11 @@ function openForm(i, asDeal){
     '<div class="fld"><span>מייצג</span>' + sideSel('fSide2', it.side2 || 'קונה') + '</div></div>' +
     (isDeal ? '' :
       '<label class="offRow" style="display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 2px">' +
-      '<input type="checkbox" id="fOffer"' + (it.offer ? ' checked' : '') + ' style="width:20px;height:20px;accent-color:#2E6BD6">' +
-      '<span style="font-size:13.5px;font-weight:700">הוגשה הצעה על הנכס</span></label>') +
+      '<input type="checkbox" id="fOffer"' + (it.offer ? ' checked' : '') + ' onchange="el(\'offerWrap\').style.display=this.checked?\'flex\':\'none\'" style="width:20px;height:20px;accent-color:#2E6BD6">' +
+      '<span style="font-size:13.5px;font-weight:700">הוגשה הצעה על הנכס</span></label>' +
+      '<div class="frow" id="offerWrap" style="display:' + (it.offer ? 'flex' : 'none') + '">' +
+      '<div class="fld"><span>הצעת מוכר</span><input id="fOfferS" inputmode="numeric" value="' + esc(nfmt(it.offer_seller)) + '" oninput="nfix(this)"></div>' +
+      '<div class="fld"><span>הצעת קונה</span><input id="fOfferB" inputmode="numeric" value="' + esc(nfmt(it.offer_buyer)) + '" oninput="nfix(this)"></div></div>') +
     (isDeal ?
       '<div class="fld"><span>עמלה סוכן 1 (2% + מע"מ — עיפרון לעריכה ידנית)</span>' +
       '<div class="comRow"><input id="fCom" readonly value="' + esc(it.commission || '') + '">' +
@@ -5051,6 +5056,8 @@ function saveForm(i, isDeal){
     lawyers: el('fLaw').value.trim(),
     lawyers2: el('fLaw2') ? el('fLaw2').value.trim() : (it.lawyers2 || ''),
     offer: (!isDeal && el('fOffer')) ? el('fOffer').checked : !!it.offer,
+    offer_seller: (!isDeal && el('fOfferS')) ? el('fOfferS').value.trim() : (it.offer_seller || ''),
+    offer_buyer: (!isDeal && el('fOfferB')) ? el('fOfferB').value.trim() : (it.offer_buyer || ''),
     price: el('fPrice') ? el('fPrice').value.trim() : (it.price || ''),
     deal: isDeal,
     sale_price: isDeal ? el('fSale').value.trim() : (it.sale_price || ''),

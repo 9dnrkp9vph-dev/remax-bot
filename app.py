@@ -4985,6 +4985,8 @@ def api_deals_save():
             "lawyers": str(b.get("lawyers", "") or "").strip(),
             "lawyers2": str(b.get("lawyers2", "") or "").strip(),   # עו"ד מצד המוכר
             "offer": bool(b.get("offer")),                          # תהליך במצב "הצעה"
+            "offer_seller": str(b.get("offer_seller", "") or "").strip(),
+            "offer_buyer": str(b.get("offer_buyer", "") or "").strip(),
             "price": str(b.get("price", "") or "").strip(),
             "deal": bool(b.get("deal")),
             "sale_price": str(b.get("sale_price", "") or "").strip(),
