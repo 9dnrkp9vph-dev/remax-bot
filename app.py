@@ -4983,10 +4983,14 @@ def api_deals_save():
             "side1": str(b.get("side1", "") or "").strip(),
             "side2": str(b.get("side2", "") or "").strip(),
             "lawyers": str(b.get("lawyers", "") or "").strip(),
+            "lawyers2": str(b.get("lawyers2", "") or "").strip(),   # עו"ד מצד המוכר
+            "offer": bool(b.get("offer")),                          # תהליך במצב "הצעה"
             "price": str(b.get("price", "") or "").strip(),
             "deal": bool(b.get("deal")),
             "sale_price": str(b.get("sale_price", "") or "").strip(),
-            "close_date": str(b.get("close_date", "") or "").strip(),
+            # תאריך סגירה לא חובה — אם ריק בעסקה, ברירת מחדל = היום (רגע השמירה)
+            "close_date": (str(b.get("close_date", "") or "").strip()
+                           or (time.strftime("%d/%m/%Y") if b.get("deal") else "")),
             # שדות אפי (טופס 24a/27a): שלב בתהליך + עמלה (אוטומטית 2%+מע"מ או ידנית)
             "stage": str(b.get("stage", "") or "").strip(),
             "commission": str(b.get("commission", "") or "").strip(),
@@ -5363,7 +5367,7 @@ def api_report():
     # בחירת חודש ספציפי מתחילת השנה (month=1..12)
     sel_month = request.args.get("month", "").strip()
     end = now
-    label = {"week": "השבוע", "lastweek": "שבוע שעבר", "month": "החודש", "year": "השנה"}.get(period, "החודש")
+    label = {"day": "היום", "week": "השבוע", "lastweek": "שבוע שעבר", "month": "החודש", "year": "השנה"}.get(period, "החודש")
     if sel_month.isdigit() and 1 <= int(sel_month) <= 12:
         mo = int(sel_month)
         start = now.replace(month=mo, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -5371,6 +5375,8 @@ def api_report():
             nxt = start.replace(year=start.year + 1, month=1) if mo == 12 else start.replace(month=mo + 1)
             end = nxt - timedelta(days=1)
         label = f"{_HE_MONTHS[mo - 1]} {start.year}"
+    elif period == "day":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)   # מהיום ב-00:00
     elif period == "week":
         start = now - timedelta(days=(now.weekday() + 1) % 7)   # ראשון
     elif period == "lastweek":
