@@ -243,10 +243,21 @@ body:has(nav) nav{ transform:translateZ(0); -webkit-backface-visibility:hidden; 
 /* לא כופים גלילת-מומנטום על main גלובלית: ב-10 מ-12 הדפים main אינו הגולל (החלון הוא),
    וב-iOS זה יצר אזור מומנטום שלכד את המגע ומנע גלילת חלון. overscroll-behavior נשאר. */
 body:has(nav) main{ overscroll-behavior-y:contain; }
+/* iOS PWA standalone (\"הוסף למסך הבית\") בלבד — מזוהה ע\"י class .pwa על <html>:
+   שם גלילת המסמך מרצדת את הניווט הקבוע בבאונס. נועלים את הגוף ומעבירים את הגלילה ל-main
+   (כמו מסך היומן) — הגוף לא זז, הניווט לא מרצד. דפדפן רגיל/דסקטופ/אפליקציה לא מקבלים את הקלאס. */
+html.pwa, html.pwa body{ height:100%; }
+html.pwa body:has(nav){ overflow:hidden; }
+html.pwa body:has(nav) main{ overflow:auto; -webkit-overflow-scrolling:touch; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <script>
+(function(){
+  /* מסמנים אך ורק PWA standalone של iOS (הוסף למסך הבית ב-Safari) — navigator.standalone
+     הוא true רק שם; ב-Safari רגיל=false, בדסקטופ ובאפליקציית Capacitor=undefined. מוקדם, בלי הבהוב. */
+  try{ if (navigator.standalone === true) document.documentElement.classList.add('pwa'); }catch(e){}
+})();
 (function(){
   /* whoami מיידי מהמטמון (10 דק') — הדף לא מחכה לרשת; רענון רץ ברקע ומעדכן.
      טוקן שפג: הרענון ברקע מוחק את המטמון ומחזיר למסך הכניסה. */
