@@ -3142,9 +3142,41 @@ _goauth_pending = {}   # glink token -> {"email","name","refresh_token","exp"} �
 def _gauth_enabled():
     return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
 
+_GAUTH_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)),
+                           "v2_gauth.json")
+_gauth_lock = threading.Lock()
+_gauth_seeded = [False]
+
+def _gauth_disk_load():
+    try:
+        with open(_GAUTH_PATH, encoding="utf-8") as f:
+            m = json.load(f)
+        return m if isinstance(m, dict) else {}
+    except Exception:
+        return {}
+
+def _gauth_disk_save(m):
+    try:
+        with open(_GAUTH_PATH, "w", encoding="utf-8") as f:
+            json.dump(m, f, ensure_ascii=False)
+    except Exception as _e:
+        log.error(f"gauth disk save failed: {_e}")
+
 def _gauth_all():
-    m = _load_config().get("gauth")
-    return m if isinstance(m, dict) else {}
+    # קישורי גוגל בדיסק הקבוע — הסנכרון מהגיליון לא נוגע בהם. שחזור חד-פעמי מהקונפיג
+    # (מי שעדיין מקושר שם לא יאבד; אחרי השחזור המקור הבלעדי הוא הדיסק).
+    with _gauth_lock:
+        disk = _gauth_disk_load()
+        if not _gauth_seeded[0]:
+            _gauth_seeded[0] = True
+            legacy = _load_config().get("gauth")
+            if isinstance(legacy, dict) and legacy:
+                merged = dict(legacy)
+                merged.update(disk)   # הדיסק גובר על עותק ישן בקונפיג
+                if merged != disk:
+                    _gauth_disk_save(merged)
+                return merged
+        return disk
 
 def _gauth_email_for_phone(phone):
     phone = _last9(phone)
@@ -3154,24 +3186,22 @@ def _gauth_email_for_phone(phone):
     return ""
 
 def _gauth_link(email, phone, refresh_token=None, name=""):
-    """מקשר אימייל-גוגל ↔ טלפון-סוכן ושומר refresh_token לשימוש ביומן."""
+    """מקשר אימייל-גוגל ↔ טלפון-סוכן ושומר refresh_token לשימוש ביומן. בדיסק הקבוע."""
     email = (email or "").strip().lower()
     if not email:
         return
-    cfg = _load_config()
-    g = cfg.get("gauth")
-    if not isinstance(g, dict):
-        g = {}
-    rec = g.get(email) or {}
-    rec["phone"] = _last9(phone)
-    if name:
-        rec["name"] = name
-    if refresh_token:                 # גוגל מחזירה refresh_token רק בהסכמה הראשונה — לא לדרוס בריק
-        rec["refresh_token"] = refresh_token
-    rec["ts"] = int(time.time())
-    g[email] = rec
-    cfg["gauth"] = g
-    _save_config(cfg)
+    _gauth_all()   # מוודא שחזור מהקונפיג לפני כתיבה
+    with _gauth_lock:
+        g = _gauth_disk_load()
+        rec = g.get(email) or {}
+        rec["phone"] = _last9(phone)
+        if name:
+            rec["name"] = name
+        if refresh_token:             # גוגל מחזירה refresh_token רק בהסכמה הראשונה — לא לדרוס בריק
+            rec["refresh_token"] = refresh_token
+        rec["ts"] = int(time.time())
+        g[email] = rec
+        _gauth_disk_save(g)
 
 def _g_token_exchange(code):
     try:
