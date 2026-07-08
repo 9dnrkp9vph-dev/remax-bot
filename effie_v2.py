@@ -234,7 +234,15 @@ function bioSkip(){
 
 
 # ── שכבת מהירות (V2_BOOST): preconnect לפונטים, whoami מהמטמון, prefetch טאבים ──
-V2_BOOST = r"""<link rel="preconnect" href="https://fonts.googleapis.com">
+V2_BOOST = r"""<style>
+/* iOS (בעיקר \"הוסף למסך הבית\"/standalone): אוברסקרול שקוף — רקע קרם במקום פס לבן,
+   וביטול הריצודים של הניווט הקבוע מעל הגלילה הפנימית. חל רק על דפי הטאבים (:has(nav)). */
+html:has(nav){ background:#F2EFE7; overscroll-behavior:none; }
+body:has(nav){ overscroll-behavior:none; }
+body:has(nav) nav{ transform:translateZ(0); -webkit-backface-visibility:hidden; backface-visibility:hidden; }
+body:has(nav) main{ -webkit-overflow-scrolling:touch; overscroll-behavior-y:contain; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <script>
 (function(){

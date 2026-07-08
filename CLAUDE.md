@@ -442,3 +442,10 @@
 - 2026-07-08: הסנכרון דרס גם את מפתח הקונפיג v2_buyer_status (מוחק מפתחות שאינם בבלוב הגיליון) —
   סטטוסי הקונים הועברו ל**קובץ בדיסק הקבוע** (v2_buyer_status.json, כמו deals.json) עם lock —
   חסין לחלוטין לסנכרון. ה-API ללא שינוי חיצוני.
+- 2026-07-08: **ריצודים באוברסקרול (\"הוסף למסך הבית\"/standalone)** — השורש: הכותרת בזרימה,
+  main הוא הגולל הפנימי (overflow:auto) וה-nav position:fixed בלי הפרדת שכבה → iOS מרנדר מחדש את
+  הניווט הקבוע בכל פריים גלילה (ריצוד); ול-html אין רקע → פס לבן בבאונס. תוקן ב-V2_BOOST (חל על כל
+  דפי הטאבים, ממוקד ב-:has(nav) כדי לא לגעת בכניסה הנייבי): html:has(nav) רקע קרם + overscroll-behavior:none
+  על html/body (בלי רבר-band ברמת המסמך), nav מקבל translateZ(0)+backface-visibility:hidden (שכבת GPU,
+  בלי ריצוד; נשאר fixed — אומת), ו-main overscroll-behavior-y:contain (הבאונס נשאר בפנים, רקע קרם =
+  אוברסקרול שקוף). אומת: html קרם, nav matrix, main contain, ניווט נשאר קבוע בגלילה, כניסה לא הושפעה.
