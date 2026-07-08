@@ -65,6 +65,24 @@ def _quiet_set(on):
     except Exception:
         return False
 
+_QUIET_START = int(os.environ.get("QUIET_HOURS_START", "22") or 22)   # 22:00
+_QUIET_END   = int(os.environ.get("QUIET_HOURS_END", "8") or 8)       # 08:00
+def _quiet_hours():
+    """שעות שקט (ברירת מחדל 22:00–08:00, שעון ישראל): חוסם פוש ווואטסאפ אוטומטיים
+    מהמערכת. לא חל על SMS כניסה (קוד התחברות) ולא על פעולות שהמשתמש יזם."""
+    try:
+        from zoneinfo import ZoneInfo
+        import datetime as _dtq
+        h = _dtq.datetime.now(ZoneInfo("Asia/Jerusalem")).hour
+    except Exception:
+        import datetime as _dtq
+        h = (_dtq.datetime.utcnow().hour + 3) % 24   # קירוב לשעון ישראל
+    if _QUIET_START == _QUIET_END:
+        return False
+    if _QUIET_START < _QUIET_END:               # חלון באותו יום
+        return _QUIET_START <= h < _QUIET_END
+    return h >= _QUIET_START or h < _QUIET_END   # חלון שחוצה חצות (22→8)
+
 def send_push(title, body, external_id=OWNER_PUSH_ID):
     """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False.
     שומר אבחון מלא ב-_PUSH_LAST (סטטוס + תגובת OneSignal) לצורך /api/push/test."""
@@ -72,6 +90,9 @@ def send_push(title, body, external_id=OWNER_PUSH_ID):
     if _quiet_mode():   # מתג השתקה כללי (שבת/חג/תחזוקה) — env או כפתור בקונסולה
         _PUSH_LAST = {"ok": False, "reason": "QUIET_MODE"}
         log.info("QUIET_MODE — push suppressed")
+        return False
+    if _quiet_hours():   # שעות לילה (22:00–08:00) — לא מטרידים בפוש
+        _PUSH_LAST = {"ok": False, "reason": "QUIET_HOURS"}
         return False
     if not ONESIGNAL_REST_KEY:
         _PUSH_LAST = {"ok": False, "reason": "no_rest_key (משתנה הסביבה ONESIGNAL_REST_KEY לא מוגדר ב-Render)"}
@@ -128,6 +149,8 @@ def _wa_auto_on():
     בקשת אייל (2026-07-06), שוקל מעבר ל-API הרשמי. הפעלה מחדש: המתג "וואטסאפ
     אוטומטי" בניהול /v2/admin (config v2_policies.wa_auto). תשובות הבוט לפקודות
     ושליחת חוזים ע"י סוכן אינן מושפעות — הן "מבחירה"."""
+    if _quiet_hours():   # שעות לילה (22:00–08:00) — לא שולחים וואטסאפ אוטומטי
+        return False
     try:
         return bool((_load_config().get("v2_policies") or {}).get("wa_auto"))
     except Exception:
