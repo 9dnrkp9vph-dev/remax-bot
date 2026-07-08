@@ -5222,6 +5222,7 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
         <div class="scope" id="scope"></div>
       </div>
       <div class="segs" id="periods">
+        <div class="sg" data-p="day" onclick="setPeriod(this)">היום</div>
         <div class="sg" data-p="lastweek" onclick="setPeriod(this)">שבוע שעבר</div>
         <div class="sg on" data-p="week" onclick="setPeriod(this)">השבוע</div>
         <div class="sg" data-p="month" onclick="setPeriod(this)">החודש</div>
@@ -5254,6 +5255,10 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
     <div class="card" id="nbCard" style="display:none">
       <div class="secT" id="nbT">נכס נולד לפי ערים</div>
       <div id="nbList"></div>
+    </div>
+    <div class="card" id="meetsCard" style="display:none">
+      <div class="secT" id="meetsT">פגישות ופולו-אפ</div>
+      <div id="meetsList"></div>
     </div>
   </main>
 
@@ -5382,6 +5387,7 @@ function render(){
   renderLeaders();
   renderShtaf();
   renderNb();
+  renderMeets();
 }
 var LEADS = {gius: 'גיוס נכסים', konim: 'החתמת קונים', deals: 'עסקאות', calls: 'שיחות'};
 var REP_NAME = '';
@@ -5451,6 +5457,24 @@ function renderShtaf(){
     return (i ? '<div class="sep"></div>' : '') +
       '<div class="tRow' + (our ? ' our' : '') + '"><span class="n">' + esc(o.office) + '</span>' +
       '<span class="v">' + o.count + '</span></div>';
+  }).join('');
+}
+function renderMeets(){
+  var ms = (R.meetings || []).slice();
+  el('meetsCard').style.display = ms.length ? 'flex' : 'none';
+  if (!ms.length) return;
+  var nMeet = ms.filter(function(m){ return m.status === 'meeting'; }).length;
+  var nFu = ms.length - nMeet;
+  el('meetsT').textContent = 'פגישות ופולו-אפ · ' + ms.length +
+    ' (' + nMeet + ' פגישות · ' + nFu + ' פולו-אפ)';
+  ms.sort(function(a, b){ return String(a.date || '').localeCompare(String(b.date || '')); });
+  el('meetsList').innerHTML = ms.slice(0, 40).map(function(m, i){
+    var lbl = m.label || (m.status === 'meeting' ? 'פגישה' : 'פולו-אפ');
+    var when = String(m.date || '').replace('T', ' ');
+    return (i ? '<div class="sep"></div>' : '') +
+      '<div class="tRow"><span class="n">' + esc(lbl + ': ' + (m.addr || '')) +
+      (m.agent ? ' · ' + esc(m.agent) : '') + '</span>' +
+      '<span class="v" style="font-size:12px;white-space:nowrap">' + esc(when) + '</span></div>';
   }).join('');
 }
 function renderNb(){
