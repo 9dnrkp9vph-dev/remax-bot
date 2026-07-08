@@ -6749,8 +6749,14 @@ fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
 
 # אייקוני הכניסה (בקשת אייל 08/07): לוגו אפי כ-favicon ו-apple-touch-icon בלבד —
 # שאר ה-UI נשאר white-label עם לוגו המשרד.
+# + meta של PWA standalone: בלעדיהם "הוסף למסך הבית" ב-iOS פותח web-clip של ספארי עם שורת
+#   כתובת שמתקפלת בגלילה (מרצדת את הניווט הקבוע, בעיקר ברשימות ארוכות). עם apple-mobile-web-app-capable
+#   נפתח במסך מלא בלי שורת כתובת — אין קיפול, אין ריצוד. (דורש הוספה-מחדש למסך הבית אחרי דפלוי.)
 _V2_ICON_TAGS = ('<link rel="icon" type="image/png" sizes="64x64" href="/v2/icon-64.png">'
-                 '<link rel="apple-touch-icon" sizes="180x180" href="/v2/icon-180.png">')
+                 '<link rel="apple-touch-icon" sizes="180x180" href="/v2/icon-180.png">'
+                 '<meta name="apple-mobile-web-app-capable" content="yes">'
+                 '<meta name="mobile-web-app-capable" content="yes">'
+                 '<meta name="apple-mobile-web-app-status-bar-style" content="default">')
 
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
