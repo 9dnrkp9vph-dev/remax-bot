@@ -3904,13 +3904,10 @@ var _renderBase = render;
 var _restDeadline = Date.now() + 2500;   // חלון שחזור: 2.5ש' מהטעינה — מכסה cache-render + load()
 render = function(){
   _renderBase();
-  // מיישמים בכל render בתוך החלון (load עלול לרנדר מחדש ולאפס גלילה) — עד שהמשתמש גולל.
-  // אחרי החלון _restY מתעלם, כדי ששינוי פילטר/חיפוש לא יקפיץ למיקום ישן.
-  if (_restY && !_userScrolled && Date.now() < _restDeadline){
-    requestAnimationFrame(function(){
-      if (_restY && !_userScrolled) _scrTo(_restY);
-    });
-  }
+  // שחזור סינכרוני מיד אחרי בניית הרשימה (כמו המקור שעבד — הגדרת scroll מאלצת layout).
+  // מיושם בכל render בתוך החלון (load עלול לרנדר מחדש ולאפס) עד שהמשתמש גולל;
+  // אחרי החלון _restY מתעלם כדי ששינוי פילטר/חיפוש לא יקפיץ למיקום ישן.
+  if (_restY && !_userScrolled && Date.now() < _restDeadline) _scrTo(_restY);
 };
 (function(){
   function onScroll(){
