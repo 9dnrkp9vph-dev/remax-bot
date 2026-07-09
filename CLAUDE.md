@@ -566,3 +566,9 @@
   מיד, ופוש נכס נולד יוצא לכולם. אומת ביחידה: שתי הפונקציות מחזירות 0. הגדרות אישיות שמורות בקונפיג
   לא נמחקו אך **לא נאכפות** (מוצגות בקונסולה, מתעלמים מהן). **החזרה:** `NEWBORN_DELAYS_DISABLED=0`
   ב-Render env — בלי שינוי קוד. הערה: הדגל עוקף גם את בטיחות ה"כישלון→מוסתר" (מכוון — אין יותר הסתרה).
+- 2026-07-08: **גלילה תקועה בנכס נולד באנדרואיד** — אותו מלכוד כמו הדסקטופ, במגע: .pwa מזוהה רק
+  ב-iOS (navigator.standalone), אז אנדרואיד במסלול חלון-גולל אבל main{overscroll-behavior:contain}
+  לוכד את המגע (iOS Safari סלחני ולכן עבד שם). תוקן ב-V2_DESKTOP_CSS (הקוד שלי, בלי לגעת ב-V2_BOOST
+  של צ'אט הרינדור): html:not(.pwa) body:has(nav) main{overflow:visible;overscroll-behavior:auto} —
+  חל על כל הרוחבים ללא-PWA (אנדרואיד/ספארי/דסקטופ); גובר על V2_BOOST בספציפיות. iOS-PWA (html.pwa)
+  שומר main-scroll+contain (תיקון הריצוד). אומת: לא-PWA main=visible/auto, PWA main=auto/contain.
