@@ -4932,14 +4932,19 @@ def _is_deals_group_manager(s):
     """מתאמת שהוגדרה כ'מנהל קבוצה' — רואה גם תהליכים/עסקאות של הסוכנים שלה.
     מוגדר בקונפיג v2_deals_group_managers (רשימת שמות ו/או טלפונים). בקשת אייל 09/07."""
     try:
-        gm = _load_config().get("v2_deals_group_managers") or []
-        if not isinstance(gm, (list, tuple, set)):
-            return False
         want = set()
-        for x in gm:
-            x = str(x or "").strip()
+        # env — עמיד לחלוטין לסנכרון הגיליון (מומלץ לפרודקשן)
+        for x in (os.environ.get("DEALS_GROUP_MANAGERS", "") or "").split(","):
+            x = x.strip()
             if x:
                 want.add(_canon_key(x)); want.add(_last9(x))
+        # קונפיג — ניתן לניהול; שורד סנכרון דרך גיבוי הגיליון ב-_save_config
+        gm = _load_config().get("v2_deals_group_managers") or []
+        if isinstance(gm, (list, tuple, set)):
+            for x in gm:
+                x = str(x or "").strip()
+                if x:
+                    want.add(_canon_key(x)); want.add(_last9(x))
         want.discard("")
         return (_canon_key(s.get("name", "")) in want) or (_last9(s.get("phone", "")) in want)
     except Exception:
