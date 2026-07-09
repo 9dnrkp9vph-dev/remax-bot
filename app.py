@@ -4928,8 +4928,31 @@ def _deals_save_all(items):
             _j2.dump(items, f, ensure_ascii=False)
     except Exception as e:
         log.error(f"deals save error: {e}")
+def _is_deals_group_manager(s):
+    """מתאמת שהוגדרה כ'מנהל קבוצה' — רואה גם תהליכים/עסקאות של הסוכנים שלה.
+    מוגדר בקונפיג v2_deals_group_managers (רשימת שמות ו/או טלפונים). בקשת אייל 09/07."""
+    try:
+        want = set()
+        # env — עמיד לחלוטין לסנכרון הגיליון (מומלץ לפרודקשן)
+        for x in (os.environ.get("DEALS_GROUP_MANAGERS", "") or "").split(","):
+            x = x.strip()
+            if x:
+                want.add(_canon_key(x)); want.add(_last9(x))
+        # קונפיג — ניתן לניהול; שורד סנכרון דרך גיבוי הגיליון ב-_save_config
+        gm = _load_config().get("v2_deals_group_managers") or []
+        if isinstance(gm, (list, tuple, set)):
+            for x in gm:
+                x = str(x or "").strip()
+                if x:
+                    want.add(_canon_key(x)); want.add(_last9(x))
+        want.discard("")
+        return (_canon_key(s.get("name", "")) in want) or (_last9(s.get("phone", "")) in want)
+    except Exception:
+        return False
+
 def _deals_can_see(item, s):
-    # מתאמת אינה רואה תהליכים/עסקאות של הסוכנים שלה (בקשת אייל 07/07) — רק את שלה, כמו סוכן
+    # מתאמת רגילה אינה רואה תהליכים/עסקאות של הסוכנים שלה (בקשת אייל 07/07) — רק את שלה, כמו סוכן.
+    # חריג: "מנהל קבוצה" (v2_deals_group_managers) — רואה גם את של הסוכנים שלו (בקשת אייל 09/07).
     if s.get("role") == "admin":
         return True
     nm = _canon_key(s.get("name", ""))
@@ -4937,6 +4960,8 @@ def _deals_can_see(item, s):
     t = _team_for(s.get("name", ""))   # צוות (קונפיג teams) — חברי צוות רואים גם תהליכים ועסקאות זה של זה
     if t:
         keys |= t[1]
+    if s.get("role") == "coordinator" and _is_deals_group_manager(s):
+        keys |= set(_canon_key(a) for a in (s.get("agent_names") or []))
     keys.discard("")
     ags = [_canon_key(a) for a in (item.get("agents") or [])]
     return any(a in keys for a in ags) or (_canon_key(item.get("by", "")) in keys)
