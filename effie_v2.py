@@ -308,6 +308,9 @@ nav .it.dk{display:none}   /* תהליכים+יומן — רק בסרגל הצד
   body:has(nav){padding-right:96px}
   body:has(nav) header, body:has(nav) main, body:has(nav) #impBar{max-width:640px}
   body:has(nav) main{padding-bottom:28px}
+  /* דסקטופ/טאבלט: החלון הוא הגולל. main אינו מיכל-גלילה (בלי overflow:auto+contain
+     שלוכד את הגלגלת ומונע גלילת חלון). מבטל את הכלל הגלובלי מ-V2_BOOST במסכים רחבים. */
+  body:has(nav) main{overflow:visible;overscroll-behavior:auto}
   nav{position:fixed;top:16px;bottom:16px;right:14px;left:auto;width:66px;max-width:none;margin:0;
       border:1px solid #E9E4D8;border-radius:20px;box-shadow:0 8px 26px rgba(30,58,95,.07);
       padding:14px 8px;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;gap:8px}
@@ -3867,10 +3870,25 @@ function openMeetings(){
 
 /* זיכרון מצב הטאב — פילטר/חיפוש/גלילה נשמרים וחוזרים בכניסה הבאה */
 var _restY = 0;
+/* זיכרון גלילה מדויק — אגנוסטי לגולל (החלון או main, לפי הדף/רוחב).
+   נשבר בעבר כי נקרא main.scrollTop בזמן שהחלון הוא הגולל. */
+var _userScrolled = false, _restoring = false;
+function _scrEls(){ var m = document.querySelector('main'); return {win: (document.scrollingElement || document.documentElement), main: m}; }
+function _scrY(){
+  var e = _scrEls();
+  return Math.max(window.pageYOffset || 0, e.win ? e.win.scrollTop : 0, (e.main && e.main.scrollTop) || 0);
+}
+function _scrTo(y){
+  _restoring = true;
+  var e = _scrEls();
+  try{ window.scrollTo(0, y); }catch(x){}
+  if (e.win) e.win.scrollTop = y;
+  if (e.main && e.main.scrollHeight > e.main.clientHeight + 2) e.main.scrollTop = y;   // אם main הוא הגולל
+  setTimeout(function(){ _restoring = false; }, 80);
+}
 function saveSt(){
   try{
-    var m = document.querySelector('main');
-    localStorage.setItem('v2st:newborn', JSON.stringify({a:AGE, q:el('q').value, y:(m ? m.scrollTop : 0)}));
+    localStorage.setItem('v2st:newborn', JSON.stringify({a:AGE, q:el('q').value, y: Math.round(_scrY())}));
   }catch(e){}
 }
 (function(){
@@ -3883,21 +3901,26 @@ function saveSt(){
   }catch(e){}
 })();
 var _renderBase = render;
+var _restDeadline = Date.now() + 2500;   // חלון שחזור: 2.5ש' מהטעינה — מכסה cache-render + load()
 render = function(){
   _renderBase();
-  if (_restY){
-    var m = document.querySelector('main');
-    if (m){ m.scrollTop = _restY; if (m.scrollTop >= _restY - 4) _restY = 0; }
-  }
-  if (!_restY) saveSt();
+  // שחזור סינכרוני מיד אחרי בניית הרשימה (כמו המקור שעבד — הגדרת scroll מאלצת layout).
+  // מיושם בכל render בתוך החלון (load עלול לרנדר מחדש ולאפס) עד שהמשתמש גולל;
+  // אחרי החלון _restY מתעלם כדי ששינוי פילטר/חיפוש לא יקפיץ למיקום ישן.
+  if (_restY && !_userScrolled && Date.now() < _restDeadline) _scrTo(_restY);
 };
 (function(){
+  function onScroll(){
+    if (_restoring) return;             // גלילת-שחזור תכנותית — לא לספור כגלילת משתמש
+    _userScrolled = true; _restY = 0;
+    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 250);
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
   var m = document.querySelector('main');
-  if (m) m.addEventListener('scroll', function(){
-    if (window._svScrolled) _restY = 0; window._svScrolled = true;
-    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
-  }, {passive:true});
-  window.addEventListener('pagehide', function(){ if (!_restY) saveSt(); });
+  if (m) m.addEventListener('scroll', onScroll, {passive:true});
+  var flush = function(){ if (_userScrolled || !_restY) saveSt(); };
+  window.addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') flush(); });
 })();
 
 (function(){
@@ -4853,6 +4876,8 @@ var ITEMS = [], AGENTS = [], FILTER = 'open', MY = '';
 var SIDES = ['מוכר','קונה','מוכר וקונה','משכיר','שוכר'];
 var STAGES = ['ליווי ראשוני','משא ומתן','אצל עו"ד','לקראת חתימה'];
 var VAT = 0.18;
+function nfmt(v){ var d = String(v == null ? '' : v).replace(/[^0-9]/g, ''); return d ? Number(d).toLocaleString() : ''; }
+function nfix(el){ var p = el.selectionStart; el.value = nfmt(el.value); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} }
 
 function load(){
   return GET('/api/deals').then(function(j){
@@ -4934,9 +4959,12 @@ function delDeal(i){
 
 /* ── טופס תהליך/עסקה (24a/27a) ── */
 function agentSel(id, val){
-  return '<select id="' + id + '"><option value="">—</option>' + AGENTS.map(function(a){
-    return '<option' + (a === val ? ' selected' : '') + '>' + esc(a) + '</option>';
-  }).join('') + '</select>';
+  // מלל חופשי עם השלמה אוטומטית מרשימת הסוכנים (datalist agentsDL מוזרק בטופס)
+  return '<input id="' + id + '" list="agentsDL" autocomplete="off" value="' + esc(val || '') + '" placeholder="הקלד או בחר סוכן">';
+}
+function agentsDatalist(){
+  return '<datalist id="agentsDL">' + AGENTS.map(function(a){
+    return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>';
 }
 function sideSel(id, val){
   return '<select id="' + id + '">' + SIDES.map(function(s){
@@ -4967,20 +4995,20 @@ function openForm(i, asDeal){
             : (isDeal && !it.deal) ? 'סגירת עסקה' : (isDeal ? 'עסקה — עריכה' : 'תהליך — עריכה');
   var s = el('sheet');
   s.innerHTML = '<div class="grip"></div><div class="body">' +
-    '<h3>' + title + (it.notes ? ' · ' + esc(it.notes) : '') + '</h3>' +
+    '<h3>' + title + (it.notes ? ' · ' + esc(it.notes) : '') + '</h3>' + agentsDatalist() +
     (isDeal ?
       '<div class="sec2"><div class="st">פרטי הסגירה</div>' +
       '<div class="frow">' +
-      '<div class="fld"><span>מחיר מבוקש</span><input id="fPrice" inputmode="numeric" style="text-decoration:line-through;color:#9AA0AB" value="' + esc(it.price || '') + '"></div>' +
-      '<div class="fld"><span>מחיר מכירה *</span><input id="fSale" class="gold" inputmode="numeric" value="' + esc(it.sale_price || '') + '" oninput="calcCom()"></div></div>' +
+      '<div class="fld"><span>מחיר מבוקש</span><input id="fPrice" inputmode="numeric" style="text-decoration:line-through;color:#9AA0AB" value="' + esc(nfmt(it.price)) + '" oninput="nfix(this)"></div>' +
+      '<div class="fld"><span>מחיר מכירה *</span><input id="fSale" class="gold" inputmode="numeric" value="' + esc(nfmt(it.sale_price || it.price || '')) + '" oninput="nfix(this);calcCom()"></div></div>' +
       '<div class="frow">' +
-      '<div class="fld"><span>תאריך סגירה *</span><input id="fDate" placeholder="dd/mm/yyyy" value="' + esc(it.close_date || '') + '"></div>' +
+      '<div class="fld"><span>תאריך סגירה</span><input id="fDate" placeholder="ריק = היום" value="' + esc(it.close_date || '') + '"></div>' +
       '<div class="fld"><span>כתובת *</span><input id="fAddr" value="' + esc(it.notes || '') + '"></div></div></div>'
     :
       '<div class="sec2"><div class="st">הנכס והמחיר</div>' +
       '<div class="fld"><span>כתובת *</span><input id="fAddr" value="' + esc(it.notes || '') + '"></div>' +
       '<div class="frow">' +
-      '<div class="fld"><span>מחיר</span><input id="fPrice" inputmode="numeric" value="' + esc(it.price || '') + '"></div>' +
+      '<div class="fld"><span>מחיר</span><input id="fPrice" inputmode="numeric" value="' + esc(nfmt(it.price)) + '" oninput="nfix(this)"></div>' +
       '<div class="fld"><span>שלב בתהליך</span><select id="fStage">' + STAGES.map(function(st){
         return '<option' + (st === it.stage ? ' selected' : '') + '>' + esc(st) + '</option>';
       }).join('') + '</select></div></div></div>') +
@@ -4991,6 +5019,13 @@ function openForm(i, asDeal){
     '<div class="frow">' +
     '<div class="fld" style="flex:1.3"><span>סוכן 2 · אופציונלי</span>' + agentSel('fAg2', (it.agents || [])[1] || '') + '</div>' +
     '<div class="fld"><span>מייצג</span>' + sideSel('fSide2', it.side2 || 'קונה') + '</div></div>' +
+    (isDeal ? '' :
+      '<label class="offRow" style="display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 2px">' +
+      '<input type="checkbox" id="fOffer"' + (it.offer ? ' checked' : '') + ' onchange="el(\'offerWrap\').style.display=this.checked?\'flex\':\'none\'" style="width:20px;height:20px;accent-color:#2E6BD6">' +
+      '<span style="font-size:13.5px;font-weight:700">הוגשה הצעה על הנכס</span></label>' +
+      '<div class="frow" id="offerWrap" style="display:' + (it.offer ? 'flex' : 'none') + '">' +
+      '<div class="fld"><span>הצעת מוכר</span><input id="fOfferS" inputmode="numeric" value="' + esc(nfmt(it.offer_seller)) + '" oninput="nfix(this)"></div>' +
+      '<div class="fld"><span>הצעת קונה</span><input id="fOfferB" inputmode="numeric" value="' + esc(nfmt(it.offer_buyer)) + '" oninput="nfix(this)"></div></div>') +
     (isDeal ?
       '<div class="fld"><span>עמלה סוכן 1 (2% + מע"מ — עיפרון לעריכה ידנית)</span>' +
       '<div class="comRow"><input id="fCom" readonly value="' + esc(it.commission || '') + '">' +
@@ -5004,7 +5039,9 @@ function openForm(i, asDeal){
       '</button></div></div>' : '') +
     '</div>' +
     '<div class="sec2"><div class="st">עו"ד · אופציונלי</div>' +
-    '<div class="fld"><input id="fLaw" placeholder="שם עו&quot;ד / משרד" value="' + esc(it.lawyers || '') + '"></div></div>' +
+    '<div class="frow">' +
+    '<div class="fld"><span>עו"ד קונה</span><input id="fLaw" placeholder="שם / משרד" value="' + esc(it.lawyers || '') + '"></div>' +
+    '<div class="fld"><span>עו"ד מוכר</span><input id="fLaw2" placeholder="שם / משרד" value="' + esc(it.lawyers2 || '') + '"></div></div></div>' +
     '</div>' +
     '<div class="foot">' +
     '<button class="btnMain' + (isDeal ? ' gold' : '') + '" onclick="saveForm(' + (i === null ? 'null' : i) + ',' + isDeal + ')">' +
@@ -5022,6 +5059,7 @@ function openForm(i, asDeal){
       calcCom();
     };
     el('fAg2').addEventListener('change', _syncC2);
+    el('fAg2').addEventListener('input', _syncC2);
     _syncC2();
     if (!it.commission_manual) calcCom();
     else el('fCom').removeAttribute('readonly');
@@ -5039,6 +5077,10 @@ function saveForm(i, isDeal){
     side1: el('fSide1').value,
     side2: el('fAg2').value ? el('fSide2').value : '',
     lawyers: el('fLaw').value.trim(),
+    lawyers2: el('fLaw2') ? el('fLaw2').value.trim() : (it.lawyers2 || ''),
+    offer: (!isDeal && el('fOffer')) ? el('fOffer').checked : !!it.offer,
+    offer_seller: (!isDeal && el('fOfferS')) ? el('fOfferS').value.trim() : (it.offer_seller || ''),
+    offer_buyer: (!isDeal && el('fOfferB')) ? el('fOfferB').value.trim() : (it.offer_buyer || ''),
     price: el('fPrice') ? el('fPrice').value.trim() : (it.price || ''),
     deal: isDeal,
     sale_price: isDeal ? el('fSale').value.trim() : (it.sale_price || ''),
@@ -5049,8 +5091,8 @@ function saveForm(i, isDeal){
     commission2: isDeal ? (el('fAg2').value ? el('fCom2').value.trim() : '') : (it.commission2 || ''),
     commission2_manual: isDeal ? !!el('fCom2')._manual : !!it.commission2_manual
   };
-  if (isDeal && (!body.sale_price || !body.close_date)){
-    toast('מחיר מכירה ותאריך סגירה — חובה'); return;
+  if (isDeal && !body.sale_price){
+    toast('מחיר מכירה — חובה'); return;   // תאריך סגירה לא חובה (ריק = היום)
   }
   POST('/api/deals/save', body).then(function(j){
     if (!j.ok){ toast(j.reason || 'שגיאה בשמירה'); return; }
@@ -5210,6 +5252,7 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
         <div class="scope" id="scope"></div>
       </div>
       <div class="segs" id="periods">
+        <div class="sg" data-p="day" onclick="setPeriod(this)">היום</div>
         <div class="sg" data-p="lastweek" onclick="setPeriod(this)">שבוע שעבר</div>
         <div class="sg on" data-p="week" onclick="setPeriod(this)">השבוע</div>
         <div class="sg" data-p="month" onclick="setPeriod(this)">החודש</div>
@@ -5242,6 +5285,10 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
     <div class="card" id="nbCard" style="display:none">
       <div class="secT" id="nbT">נכס נולד לפי ערים</div>
       <div id="nbList"></div>
+    </div>
+    <div class="card" id="meetsCard" style="display:none">
+      <div class="secT" id="meetsT">פגישות ופולו-אפ</div>
+      <div id="meetsList"></div>
     </div>
   </main>
 
@@ -5370,6 +5417,7 @@ function render(){
   renderLeaders();
   renderShtaf();
   renderNb();
+  renderMeets();
 }
 var LEADS = {gius: 'גיוס נכסים', konim: 'החתמת קונים', deals: 'עסקאות', calls: 'שיחות'};
 var REP_NAME = '';
@@ -5439,6 +5487,24 @@ function renderShtaf(){
     return (i ? '<div class="sep"></div>' : '') +
       '<div class="tRow' + (our ? ' our' : '') + '"><span class="n">' + esc(o.office) + '</span>' +
       '<span class="v">' + o.count + '</span></div>';
+  }).join('');
+}
+function renderMeets(){
+  var ms = (R.meetings || []).slice();
+  el('meetsCard').style.display = ms.length ? 'flex' : 'none';
+  if (!ms.length) return;
+  var nMeet = ms.filter(function(m){ return m.status === 'meeting'; }).length;
+  var nFu = ms.length - nMeet;
+  el('meetsT').textContent = 'פגישות ופולו-אפ · ' + ms.length +
+    ' (' + nMeet + ' פגישות · ' + nFu + ' פולו-אפ)';
+  ms.sort(function(a, b){ return String(a.date || '').localeCompare(String(b.date || '')); });
+  el('meetsList').innerHTML = ms.slice(0, 40).map(function(m, i){
+    var lbl = m.label || (m.status === 'meeting' ? 'פגישה' : 'פולו-אפ');
+    var when = String(m.date || '').replace('T', ' ');
+    return (i ? '<div class="sep"></div>' : '') +
+      '<div class="tRow"><span class="n">' + esc(lbl + ': ' + (m.addr || '')) +
+      (m.agent ? ' · ' + esc(m.agent) : '') + '</span>' +
+      '<span class="v" style="font-size:12px;white-space:nowrap">' + esc(when) + '</span></div>';
   }).join('');
 }
 function renderNb(){
