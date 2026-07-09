@@ -5057,9 +5057,103 @@ _DEALS_SEED = [
     {"agents": ["רויטל", "צדוק"], "side1": "קונה", "side2": "מוכר", "price": "1250000", "notes": "ציזלינג 36"},
 ]
 try:
-    _SALES_SEED = _j2.load(open(_os2.path.join(_os2.path.dirname(__file__), "sales_seed_2026.json"), encoding="utf-8"))  # עסקאות 2026 מקובץ המעקב
+    _SALES_SEED = _j2.load(open(_os2.path.join(_os2.path.dirname(__file__), "sales_seed_2026.json"), encoding="utf-8"))  # עסקאות 2026 מקובץ המעקב (fallback לסנכרון החי)
 except Exception:
     _SALES_SEED = []
+
+# ── סנכרון חי של עסקאות מקובץ המעקב ב-Dropbox (בקשת אייל 09/07) ─────────────────
+# שם-קצר בקובץ → שם/שמות מלאים של הסוכן במערכת (צוות = כמה שמות). מיפוי מפורש = בלי ניחוש.
+_DROPBOX_AGENT_MAP = {
+    "נדב": ["נדב רייזר"], "אלעד": ["אלעד לוי"], "רויטל": ["רויטל גל"],
+    "ליאור": ["ליאור גרונפינקל"], "ליאור וקבלי": ["ליאור גרונפינקל", "מאור קבלי"],
+    "ענבר": ["ענבר אלון"], "ליקה": ["ליקה אוברוב"], "חי": ["חי אלבס"],
+    "אירנה": ["אירנה אוברוב"], "מתן": ["מתן הרשקו"], "עוז": ["עוז דנילוב"],
+    "עידן": ["עידן חליווה"], "רפי": ["רפי דה פיצוטו"], "יאיר": ["יאיר חנוכייב"],
+    "אלמוג": ["אלמוג וויל"], "לירון": ["לירון דהן"], "אבירן": ["אבירן"],
+    "רוי": ["רוי אזולאי"], "ירין": ["ירין לוי"],
+    "אלי ויהודית": ["אלי שמול", "יהודית שמול"], "אור צוקרמן": ["אור צוקרמן"],
+    "הרשקו וקובי": ["מתן הרשקו"],
+}
+_DEALS_XLSX_SHEET = os.environ.get("DEALS_XLSX_SHEET", "עסקאות 26")
+
+def _dropbox_direct(url):
+    """קישור שיתוף של Dropbox → הורדה ישירה (dl=1)."""
+    u = (url or "").strip()
+    if "dropbox.com" not in u:
+        return u
+    if "dl=0" in u:
+        return u.replace("dl=0", "dl=1")
+    if "dl=1" in u:
+        return u
+    return u + ("&dl=1" if "?" in u else "?dl=1")
+
+def _parse_deals_xlsx(raw_bytes, pwd):
+    """מפענח (אם מוצפן) וקורא את גיליון העסקאות. זיהוי עמודות לפי שם כותרת — עמיד לשינוי סדר.
+    מחזיר רשומות בפורמט seed (agents/side1/sale_price/close_date/notes), 2026 בלבד."""
+    import io as _io3
+    import msoffcrypto, openpyxl
+    buf = _io3.BytesIO(raw_bytes)
+    try:
+        of = msoffcrypto.OfficeFile(buf)
+        if of.is_encrypted():
+            of.load_key(password=pwd or "")
+            dec = _io3.BytesIO(); of.decrypt(dec); dec.seek(0); buf = dec
+        else:
+            buf.seek(0)
+    except Exception:
+        buf.seek(0)
+    wb = openpyxl.load_workbook(buf, read_only=True, data_only=True)
+    ws = wb[_DEALS_XLSX_SHEET] if _DEALS_XLSX_SHEET in wb.sheetnames else wb[wb.sheetnames[0]]
+    rit = ws.iter_rows(values_only=True)
+    header = next(rit, None) or []
+    def _nz(v): return re.sub(r"\s+", " ", str(v or "").strip())
+    def _col(*names):
+        for i, h in enumerate(header):
+            if _nz(h) in names:
+                return i
+        return None
+    ci_ag = _col("סוכן"); ci_sd = _col("קונה / מוכר", "קונה/מוכר")
+    ci_pr = _col("סכום העסקה"); ci_dt = _col("תאריך עסקה")
+    ci_ct = _col("עיר"); ci_st = _col("רחוב")
+    if ci_ag is None or ci_pr is None:
+        return []
+    def _g(r, i): return r[i] if (i is not None and i < len(r)) else None
+    out = []
+    for r in rit:
+        ag = _nz(_g(r, ci_ag)); amt = str(_g(r, ci_pr) or "").strip()
+        if not ag or not amt:
+            continue
+        dv = _g(r, ci_dt)
+        d = dv.strftime("%d/%m/%Y") if hasattr(dv, "strftime") else _nz(dv)
+        if not d.endswith("2026"):   # רק 2026 (בקשת אייל)
+            continue
+        agents = list(_DROPBOX_AGENT_MAP.get(ag, [ag]))
+        price = str(int(float(amt))) if amt.replace(".", "", 1).isdigit() else amt
+        notes = ", ".join([x for x in [_nz(_g(r, ci_st)), _nz(_g(r, ci_ct))] if x])
+        out.append({"agents": agents, "side1": _nz(_g(r, ci_sd)), "side2": "",
+                    "sale_price": price, "close_date": d, "notes": notes})
+    return out
+
+def _fetch_dropbox_deals():
+    """מושך את קובץ/קבצי העסקאות מ-Dropbox ומחזיר רשומות. כישלון (רשת/פענוח/מבנה) → None (נופלים
+    ל-seed הסטטי, שהוא תצלום אחרון של הקובץ). מוגדר ע"י env: DEALS_XLSX_URLS (מופרד בפסיקים), DEALS_XLSX_PWD."""
+    urls = [u.strip() for u in (os.environ.get("DEALS_XLSX_URLS", "") or "").split(",") if u.strip()]
+    if not urls:
+        return None
+    pwd = os.environ.get("DEALS_XLSX_PWD", "")
+    allrecs = []
+    for u in urls:
+        try:
+            resp = requests.get(_dropbox_direct(u), timeout=30)
+            if resp.status_code >= 300 or not resp.content:
+                log.error(f"dropbox deals fetch failed HTTP {resp.status_code}")
+                return None
+            allrecs.extend(_parse_deals_xlsx(resp.content, pwd))
+        except Exception as e:
+            log.error(f"dropbox deals error: {e}")
+            return None   # כישלון בקובץ כלשהו → fallback מלא (לא לאבד עסקאות של סוכן)
+    return allrecs
+
 @app.route("/api/deals/import", methods=["POST"])
 def api_deals_import():
     s = _web_auth()
@@ -5092,10 +5186,13 @@ def api_deals_import():
                     "src": "reminders", "by": s["name"], "created": time.strftime("%d/%m/%Y"), "ts": now - i,
                 })
                 added += 1
-        # עסקאות 2026 — רענון: מסירים ייבוא קודם ומכניסים מחדש (כדי לתקן תאריך הוספה וכו')
+        # עסקאות 2026 — מקור אמת: הקובץ החי מ-Dropbox (אם מוגדר/זמין), אחרת ה-seed הסטטי (תצלום אחרון).
+        # רענון מלא: מסירים ייבוא קודם של sales2026 ומכניסים מחדש את המצב הנוכחי של הקובץ.
         items = [it for it in items if it.get("src") != "sales2026"]
         _today = time.strftime("%d/%m/%Y")
-        for i, r in enumerate(_SALES_SEED):
+        _live = _fetch_dropbox_deals()
+        _sales = _live if _live is not None else _SALES_SEED
+        for i, r in enumerate(_sales):
             items.append({
                 "id": str(int(now * 1000)) + str(5000 + i),
                 "agents": [_map_agent(a) for a in (r.get("agents") or [])], "side1": r.get("side1", ""), "side2": r.get("side2", ""),
