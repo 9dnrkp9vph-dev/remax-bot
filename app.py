@@ -5103,7 +5103,16 @@ def _parse_deals_xlsx(raw_bytes, pwd):
     except Exception:
         buf.seek(0)
     wb = openpyxl.load_workbook(buf, read_only=True, data_only=True)
-    ws = wb[_DEALS_XLSX_SHEET] if _DEALS_XLSX_SHEET in wb.sheetnames else wb[wb.sheetnames[0]]
+    def _nz0(v): return re.sub(r"\s+", " ", str(v or "").strip())
+    # זיהוי גיליון העסקאות לפי כותרות (עמיד לשם שונה: "עסקאות 26" מול "עסקאות26")
+    ws = None
+    for _sn in wb.sheetnames:
+        _cand = wb[_sn]
+        _hset = set(_nz0(h) for h in (next(_cand.iter_rows(min_row=1, max_row=1, values_only=True), ()) or ()))
+        if "סוכן" in _hset and "סכום העסקה" in _hset:
+            ws = _cand; break
+    if ws is None:
+        ws = wb[_DEALS_XLSX_SHEET] if _DEALS_XLSX_SHEET in wb.sheetnames else wb[wb.sheetnames[0]]
     rit = ws.iter_rows(values_only=True)
     header = next(rit, None) or []
     def _nz(v): return re.sub(r"\s+", " ", str(v or "").strip())
@@ -5140,9 +5149,11 @@ def _fetch_dropbox_deals():
     urls = [u.strip() for u in (os.environ.get("DEALS_XLSX_URLS", "") or "").split(",") if u.strip()]
     if not urls:
         return None
-    pwd = os.environ.get("DEALS_XLSX_PWD", "")
+    # סיסמה לכל קובץ (מקבילי, מופרד בפסיקים). גיבוי לשם הישן היחיד DEALS_XLSX_PWD.
+    pwds = [p.strip() for p in (os.environ.get("DEALS_XLSX_PWDS", os.environ.get("DEALS_XLSX_PWD", "")) or "").split(",")]
     allrecs = []
-    for u in urls:
+    for i, u in enumerate(urls):
+        pwd = pwds[i] if i < len(pwds) else (pwds[-1] if pwds else "")
         try:
             resp = requests.get(_dropbox_direct(u), timeout=30)
             if resp.status_code >= 300 or not resp.content:
