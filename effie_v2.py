@@ -3870,10 +3870,25 @@ function openMeetings(){
 
 /* זיכרון מצב הטאב — פילטר/חיפוש/גלילה נשמרים וחוזרים בכניסה הבאה */
 var _restY = 0;
+/* זיכרון גלילה מדויק — אגנוסטי לגולל (החלון או main, לפי הדף/רוחב).
+   נשבר בעבר כי נקרא main.scrollTop בזמן שהחלון הוא הגולל. */
+var _userScrolled = false, _restoring = false;
+function _scrEls(){ var m = document.querySelector('main'); return {win: (document.scrollingElement || document.documentElement), main: m}; }
+function _scrY(){
+  var e = _scrEls();
+  return Math.max(window.pageYOffset || 0, e.win ? e.win.scrollTop : 0, (e.main && e.main.scrollTop) || 0);
+}
+function _scrTo(y){
+  _restoring = true;
+  var e = _scrEls();
+  try{ window.scrollTo(0, y); }catch(x){}
+  if (e.win) e.win.scrollTop = y;
+  if (e.main && e.main.scrollHeight > e.main.clientHeight + 2) e.main.scrollTop = y;   // אם main הוא הגולל
+  setTimeout(function(){ _restoring = false; }, 80);
+}
 function saveSt(){
   try{
-    var m = document.querySelector('main');
-    localStorage.setItem('v2st:newborn', JSON.stringify({a:AGE, q:el('q').value, y:(m ? m.scrollTop : 0)}));
+    localStorage.setItem('v2st:newborn', JSON.stringify({a:AGE, q:el('q').value, y: Math.round(_scrY())}));
   }catch(e){}
 }
 (function(){
@@ -3886,21 +3901,29 @@ function saveSt(){
   }catch(e){}
 })();
 var _renderBase = render;
+var _restDeadline = Date.now() + 2500;   // חלון שחזור: 2.5ש' מהטעינה — מכסה cache-render + load()
 render = function(){
   _renderBase();
-  if (_restY){
-    var m = document.querySelector('main');
-    if (m){ m.scrollTop = _restY; if (m.scrollTop >= _restY - 4) _restY = 0; }
+  // מיישמים בכל render בתוך החלון (load עלול לרנדר מחדש ולאפס גלילה) — עד שהמשתמש גולל.
+  // אחרי החלון _restY מתעלם, כדי ששינוי פילטר/חיפוש לא יקפיץ למיקום ישן.
+  if (_restY && !_userScrolled && Date.now() < _restDeadline){
+    requestAnimationFrame(function(){
+      if (_restY && !_userScrolled) _scrTo(_restY);
+    });
   }
-  if (!_restY) saveSt();
 };
 (function(){
+  function onScroll(){
+    if (_restoring) return;             // גלילת-שחזור תכנותית — לא לספור כגלילת משתמש
+    _userScrolled = true; _restY = 0;
+    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 250);
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
   var m = document.querySelector('main');
-  if (m) m.addEventListener('scroll', function(){
-    if (window._svScrolled) _restY = 0; window._svScrolled = true;
-    clearTimeout(window._svt); window._svt = setTimeout(saveSt, 300);
-  }, {passive:true});
-  window.addEventListener('pagehide', function(){ if (!_restY) saveSt(); });
+  if (m) m.addEventListener('scroll', onScroll, {passive:true});
+  var flush = function(){ if (_userScrolled || !_restY) saveSt(); };
+  window.addEventListener('pagehide', flush);
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') flush(); });
 })();
 
 (function(){
