@@ -2634,6 +2634,7 @@ _ALL_TABS = ["calls", "buyers", "sigs", "props", "excl", "newborn", "report", "a
 _DELAYED_ADMINS = {"אווה אזולאי": 60}          # שם → ימי השהיה לשיחות
 _DELAYED_ADMIN_PHONES = {"546612292": 60}      # טלפון (9 ספרות) → ימי השהיה (אמין יותר מהשם)
 def _delayed_admin_days(name=None, phone=None):
+    if NEWBORN_DELAYS_DISABLED: return 0   # השהיות מבוטלות — אף מנהל אינו מושהה
     if phone:
         d = _DELAYED_ADMIN_PHONES.get(_last9(phone))
         if d:
@@ -5750,6 +5751,9 @@ except Exception:
 NEWBORN_SHEET_TAB   = os.environ.get("NEWBORN_SHEET_TAB", "נכס נולד")
 NEWBORN_DELAYS_TAB  = os.environ.get("NEWBORN_DELAYS_TAB", "נכסנולד_הגדרות")
 NEWBORN_DEFAULT_DELAY = int(os.environ.get("NEWBORN_DEFAULT_DELAY", "0") or 0)
+# ביטול השהיות נכס נולד — כולם רואים הכל מיד, 0 ימים, בלי מוסתר ובלי מנהל-מושהה (בקשת אייל 09/07).
+# להחזרת מנגנון ההשהיות: NEWBORN_DELAYS_DISABLED=0 ב-Render env (בלי שינוי קוד).
+NEWBORN_DELAYS_DISABLED = os.environ.get("NEWBORN_DELAYS_DISABLED", "1") not in ("0", "false", "False", "no", "off", "")
 NEWBORN_WINDOW_DAYS   = int(os.environ.get("NEWBORN_WINDOW_DAYS", "400") or 400)
 NEWBORN_HIDDEN        = 10 ** 9   # ערך "מוסתר" — הסוכן לא רואה שום נכס
 _NB_HIDDEN_TOKENS = {"מוסתר", "מוסתרת", "הסתר", "לעולם", "אין", "לא", "-", "–", "—", "x", "X", "✗"}
@@ -5786,6 +5790,7 @@ def _fetch_newborn_delays():
     """הגנה קריטית: אם קריאת גיליון ההשהיות נכשלת, ברירת המחדל 'מוסתר' שבגיליון
     אובדת וכולם רואים הכול. לכן: כישלון → טוב-אחרון; אין טוב-אחרון → נועלים (מוסתר)."""
     global _LAST_GOOD_NB_DELAYS
+    if NEWBORN_DELAYS_DISABLED: return {"_default": 0}   # כולם 0 — בלי השהיות/מוסתר, מתעלם מגיליון/קונפיג
     c = _cache_get("newborn_delays", 600)
     if c is not None: return c
     d = {"_default": NEWBORN_DEFAULT_DELAY}
