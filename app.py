@@ -6917,8 +6917,13 @@ def api_calls_unhide():
 # ── (מצגת PDF ב-web הוסרה לבקשת המשתמש; פונקציות העזר נשארות לשימוש handler אחר) ──
 
 # ── Frontend ───────────────────────────────────────────────────────────────────
+# v1 מושבתת — /app מפנה לאפי (/v2). שסתום חירום: V1_REDIRECT=0 ב-Render מחזיר את v1 מיידית.
+V1_REDIRECT = (os.environ.get("V1_REDIRECT", "1") or "1").strip() != "0"
+
 @app.route("/app", methods=["GET"])
 def family_bot_app():
+    if V1_REDIRECT:                       # הכל עוברים לאפליקציה החדשה (הטוקן ב-localStorage משותף)
+        return redirect("/v2", code=302)
     resp = Response(FAMILY_BOT_HTML, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
