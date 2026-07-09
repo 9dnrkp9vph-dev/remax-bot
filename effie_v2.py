@@ -302,6 +302,10 @@ html.pwa body:has(nav) main{ overflow:auto; -webkit-overflow-scrolling:touch; }
 # מוזרק לכל דף ב-_page(); ממוקד ב-body:has(nav) כדי לא לגעת בדף הכניסה/טפסים.
 V2_DESKTOP_CSS = r"""<style>
 nav .it.dk{display:none}   /* תהליכים+יומן — רק בסרגל הצד (טאבלט/דסקטופ) */
+/* כשהחלון הוא הגולל (כל מה שאינו iOS-PWA: אנדרואיד, ספארי רגיל, דסקטופ) — main אינו מיכל-גלילה.
+   overscroll-behavior:contain על main לוכד את המגע באנדרואיד ומונע גלילת חלון (iOS Safari סלחני).
+   iOS-PWA (html.pwa) שומר על main-scroll ותיקון הריצוד — לא מושפע. */
+html:not(.pwa) body:has(nav) main{ overflow:visible; overscroll-behavior:auto; }
 /* טאבלט 768–1023: הסרגל מתכווץ לאייקונים (§13) */
 @media (min-width:768px){
   nav .it.dk{display:flex}
