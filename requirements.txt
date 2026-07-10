@@ -6,3 +6,5 @@ python-bidi==0.4.2
 Pillow==10.4.0
 numpy==1.26.4
 gunicorn==22.0.0
+openpyxl==3.1.5
+msoffcrypto-tool==5.4.2
