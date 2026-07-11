@@ -993,11 +993,10 @@ function renderCard(i){
         statCard(q(B.dealsYear), 'עסקאות', '#5FD08C')+
         statCard(q(B.exclAll), 'בלעדיות', '#E4C56B')+
         statCard(q(B.callsAll), 'שיחות נכנסו', '#fff')+
-        statCard(q(B.hotBuyers), 'קונים חמים', '#E4C56B')+
+        statCard(q(B.buyersTotal), 'קונים במערכת', '#E4C56B')+
       '</div>'+
       '<div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">'+
         (hpArr[0] ? hlRow(pinSvg, 'הנכס החם המוביל', esc(hpArr[0].title||'')) : '')+
-        (tA ? hlRow(usrSvg, 'הכי פעיל בנכסים חמים', esc(tA)+' · '+tN+' נכסים') : '')+
       '</div>'+
       '<div class="btns" style="margin-top:auto;align-items:center">'+
         '<button class="bMain" style="width:100%" onclick="'+(total()>1?'nextCard()':'closeStory()')+'">'+(total()>1?'המשך לנכסים החמים ←':'בוא נתחיל את היום')+'</button>'+
@@ -7343,9 +7342,10 @@ def register(app, G):
         import datetime as _dty
         _yr = _dty.date.today().year
         year_start = time.mktime(_dty.date(_yr, 1, 1).timetuple())   # מתחילת השנה
-        buyers_all = buyers_me = 0
+        buyers_all = buyers_me = buyers_total = 0
         try:
             for r in G["_fetch_manual_buyers"]():
+                buyers_total += 1   # סה"כ קונים במערכת (ללא סינון תאריך)
                 dt = str(r.get("date", "") or "")
                 m = _re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", dt)
                 if not m:
@@ -7439,6 +7439,7 @@ def register(app, G):
                         "exclMe": excl_me, "exclAll": excl_all,
                         "callsMe": calls_me, "callsAll": calls_all,
                         "callsAnsAll": calls_ans_all, "hotBuyers": hot_buyers,
+                        "buyersTotal": buyers_total,
                         "dealsYear": deals_year,
                         "hotProps": hot_props})
 
