@@ -988,12 +988,12 @@ function renderCard(i){
     b.innerHTML =
       '<div style="display:flex;flex-direction:column;gap:2px;margin-bottom:2px">'+
         '<div style="font-size:12px;font-weight:700;color:#E4C56B;letter-spacing:.12em">'+greetWord()+', '+esc(M.name)+'</div>'+
-        '<div style="font-size:21px;font-weight:800;color:#fff">הסיכום שלך להיום</div></div>'+
+        '<div style="font-size:21px;font-weight:800;color:#fff">המשרד מתחילת השנה</div></div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'+
+        statCard(q(B.dealsYear), 'עסקאות', '#5FD08C')+
+        statCard(q(B.exclAll), 'בלעדיות', '#E4C56B')+
         statCard(q(B.callsAll), 'שיחות נכנסו', '#fff')+
-        statCard(q(B.callsAnsAll), 'נענו', '#5FD08C')+
         statCard(q(B.hotBuyers), 'קונים חמים', '#E4C56B')+
-        statCard(q(sigsTot), 'חתימות', '#fff')+
       '</div>'+
       '<div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">'+
         (hpArr[0] ? hlRow(pinSvg, 'הנכס החם המוביל', esc(hpArr[0].title||'')) : '')+
@@ -7340,6 +7340,9 @@ def register(app, G):
         _canon = G["_canon_key"]
         me = _canon(s.get("name", ""))
         week_ago = time.time() - 7 * 86400
+        import datetime as _dty
+        _yr = _dty.date.today().year
+        year_start = time.mktime(_dty.date(_yr, 1, 1).timetuple())   # מתחילת השנה
         buyers_all = buyers_me = 0
         try:
             for r in G["_fetch_manual_buyers"]():
@@ -7364,7 +7367,7 @@ def register(app, G):
             my_phones = set(G["_last9"](x) for x in G["_phones_for_name"](s.get("name", "")))
             for c in G["web_fetch_raw"]("שיחות"):
                 e = G["_epoch_from_iso"](c.get("received_at", ""))
-                if not e or e < week_ago:
+                if not e or e < year_start:   # שיחות מתחילת השנה
                     continue
                 calls_all += 1
                 st = str(c.get("status", "") or "").upper()
@@ -7377,7 +7380,7 @@ def register(app, G):
         sigb_all = sigb_me = excl_all = excl_me = 0
         try:
             import datetime as _dt3
-            frm = (_dt3.date.today() - _dt3.timedelta(days=7)).strftime("%d/%m/%Y")
+            frm = _dt3.date(_dt3.date.today().year, 1, 1).strftime("%d/%m/%Y")   # מתחילת השנה
             to = _dt3.date.today().strftime("%d/%m/%Y")
             for g in G["get_signings"](frm, to):
                 lb = G["_deal_label"](g.get("deal_type", ""))
@@ -7388,6 +7391,18 @@ def register(app, G):
                 elif lb == "בלעדיות":
                     excl_all += 1
                     if mine: excl_me += 1
+        except Exception:
+            pass
+        # עסקאות שנסגרו מתחילת השנה (מוכר/קונה) — דרך _deals_load של app.py
+        deals_year = 0
+        try:
+            for it in (G["_deals_load"]() or []):
+                if not it.get("deal"):
+                    continue
+                cd = str(it.get("close_date", "") or "")
+                m = _re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", cd)
+                if m and int(m.group(3)) == _yr:
+                    deals_year += 1
         except Exception:
             pass
         # נכסים חמים כלל-משרדיים (כל הסוכנים) — כרטיסי הסטורי אחרי הסיכום
@@ -7424,6 +7439,7 @@ def register(app, G):
                         "exclMe": excl_me, "exclAll": excl_all,
                         "callsMe": calls_me, "callsAll": calls_all,
                         "callsAnsAll": calls_ans_all, "hotBuyers": hot_buyers,
+                        "dealsYear": deals_year,
                         "hotProps": hot_props})
 
     @app.route("/v2/api/admin/overview", methods=["GET"])
