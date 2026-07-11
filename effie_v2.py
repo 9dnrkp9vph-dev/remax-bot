@@ -969,34 +969,66 @@ function renderCard(i){
   el('storyDate').textContent = 'יום ' + HDAYS[new Date().getDay()] + ', ' + new Date().getDate() +
       ' ב' + HMON[new Date().getMonth()] + ' · ' + (i + 1) + ' מתוך ' + total();
   var b = el('storyBody'), q = function(v){ return M.ready ? v : '…'; };
+  var timeAgo = function(iso){ try{ var s=(Date.now()-new Date(iso).getTime())/1000;
+    if(s<3600) return 'לפני '+Math.max(1,Math.round(s/60))+' דק׳';
+    if(s<86400) return 'לפני '+Math.round(s/3600)+' שעות'; return 'לפני '+Math.round(s/86400)+' ימים'; }catch(e){ return ''; } };
+  var statCard = function(n,label,col){ return '<div style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:2px">'+
+    '<div style="font-size:30px;font-weight:800;color:'+col+'">'+n+'</div><div style="font-size:12.5px;color:rgba(255,255,255,.6)">'+label+'</div></div>'; };
+  var hlRow = function(icon,label,val){ return '<div style="display:flex;align-items:center;gap:11px;background:rgba(255,255,255,.06);border-radius:14px;padding:12px 14px">'+
+    '<div style="width:34px;height:34px;border-radius:10px;background:rgba(228,197,107,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+icon+'</div>'+
+    '<div style="flex:1;display:flex;flex-direction:column;gap:1px"><div style="font-size:11px;color:rgba(255,255,255,.5)">'+label+'</div>'+
+    '<div style="font-size:13.5px;font-weight:700;color:#fff">'+val+'</div></div></div>'; };
   if (i === 0){
+    var hpArr = B.hotProps || [];
+    var byA = {}; hpArr.forEach(function(x){ if(x.agent) byA[x.agent]=(byA[x.agent]||0)+1; });
+    var tA='', tN=0; for (var a in byA) if (byA[a]>tN){ tN=byA[a]; tA=a; }
+    var sigsTot = (B.sigBAll||0) + (B.exclAll||0);
+    var pinSvg = '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 14s-5-4.2-5-8a5 5 0 0 1 10 0c0 3.8-5 8-5 8z" fill="none" stroke="#E4C56B" stroke-width="1.5"></path><circle cx="8" cy="6" r="1.6" fill="none" stroke="#E4C56B" stroke-width="1.5"></circle></svg>';
+    var usrSvg = '<svg width="15" height="15" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#E4C56B" stroke-width="1.7"></circle><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#E4C56B" stroke-width="1.7" stroke-linecap="round"></path></svg>';
     b.innerHTML =
-      '<div class="ringWrap"><div><img src="/assets/logo" alt="" onerror="this.style.display=\'none\'"></div></div>' +
-      '<div style="text-align:center;display:flex;flex-direction:column;gap:6px">' +
-      '<div style="font-size:30px;font-weight:800">' + greetWord() + ', ' + esc(M.name) + '</div>' +
-      '<div style="font-size:13.5px;color:rgba(255,255,255,.55)">ככה נראה היום שלך</div></div>' +
-      '<div class="teasers">' +
-      '<div class="tz"><div class="n">' + q(B.buyersMe) + '</div><div class="l">קונים שלי</div><div class="of">המשרד · ' + q(B.buyersAll) + '</div></div>' +
-      '<div class="tz"><div class="n">' + q(B.sigBMe) + '</div><div class="l">חתימות קונים</div><div class="of">המשרד · ' + q(B.sigBAll) + '</div></div>' +
-      '<div class="tz"><div class="n">' + q(B.exclMe) + '</div><div class="l">בלעדיות</div><div class="of">המשרד · ' + q(B.exclAll) + '</div></div></div>' +
-      '<div class="btns" style="align-self:center;align-items:center">' +
-      '<button class="bMain" style="width:100%" onclick="nextCard()">בוא נתחיל ←</button>' +
-      '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
+      '<div style="display:flex;flex-direction:column;gap:2px;margin-bottom:2px">'+
+        '<div style="font-size:12px;font-weight:700;color:#E4C56B;letter-spacing:.12em">'+greetWord()+', '+esc(M.name)+'</div>'+
+        '<div style="font-size:21px;font-weight:800;color:#fff">הסיכום שלך להיום</div></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'+
+        statCard(q(B.callsAll), 'שיחות נכנסו', '#fff')+
+        statCard(q(B.callsAnsAll), 'נענו', '#5FD08C')+
+        statCard(q(B.hotBuyers), 'קונים חמים', '#E4C56B')+
+        statCard(q(sigsTot), 'חתימות', '#fff')+
+      '</div>'+
+      '<div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">'+
+        (hpArr[0] ? hlRow(pinSvg, 'הנכס החם המוביל', esc(hpArr[0].title||'')) : '')+
+        (tA ? hlRow(usrSvg, 'הכי פעיל בנכסים חמים', esc(tA)+' · '+tN+' נכסים') : '')+
+      '</div>'+
+      '<div class="btns" style="margin-top:auto;align-items:center">'+
+        '<button class="bMain" style="width:100%" onclick="'+(total()>1?'nextCard()':'closeStory()')+'">'+(total()>1?'המשך לנכסים החמים ←':'בוא נתחיל את היום')+'</button>'+
+        '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
   } else {
-    // כרטיסי הנכסים החמים הכלל-משרדיים (כרטיס 1 ואילך). מקור: hot_stories.
     var hp = (B.hotProps || [])[i - 1] || {};
     var isLast = (i >= total() - 1);
     var prNum = String(hp.price || '').replace(/[^0-9]/g, '');
     var prTxt = prNum ? '₪' + Number(prNum).toLocaleString() : esc(hp.price || '');
+    var wa = String(hp.agentPhone || '').replace(/^0/, ''); if (wa) wa = '972' + wa;
+    var ini = esc((String(hp.agent || '?').trim().charAt(0)) || '?');
     b.innerHTML =
-      '<div class="kicker">נכס חם' + (hp.agent ? ' · ' + esc(hp.agent) : '') + '</div>' +
-      '<div style="font-size:26px;font-weight:800;line-height:1.35">' + esc(hp.title || 'נכס') + '</div>' +
-      (hp.details ? '<div class="sub">' + esc(hp.details) + '</div>' : '') +
-      (prTxt ? '<div class="big"><div class="n" style="font-size:56px">' + prTxt + '</div></div>' : '') +
-      '<div class="btns">' +
-      '<button class="bMain" onclick="' + (isLast ? 'closeStory()' : 'nextCard()') + '">' +
-        (isLast ? 'בוא נתחיל את היום' : 'הנכס הבא ←') + '</button>' +
-      (isLast ? '' : '<button class="bSec" onclick="closeStory()">דלג לדשבורד</button>') +
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:2px">'+
+        '<div style="width:80px;height:80px;border-radius:50%;border:3px solid #E4C56B;padding:4px;box-sizing:border-box;animation:chickGlow 2.6s ease-out infinite">'+
+          '<div style="width:100%;height:100%;border-radius:50%;background:rgba(228,197,107,.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#E4C56B">'+ini+'</div></div>'+
+        '<div style="text-align:center"><div style="font-size:17px;font-weight:800;color:#fff">'+esc(hp.agent||'')+'</div>'+
+          '<div style="font-size:11.5px;font-weight:600;color:#E4C56B">משתפת נכס חם'+(hp.ts?' · '+timeAgo(hp.ts):'')+'</div></div></div>'+
+      '<div style="display:flex;justify-content:center;margin-top:2px"><div style="background:rgba(228,197,107,.16);border:1px solid rgba(228,197,107,.4);color:#E4C56B;border-radius:999px;padding:6px 15px;font-size:12px;font-weight:800">נכס חם</div></div>'+
+      '<div style="display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;margin-top:2px">'+
+        '<div style="font-size:22px;font-weight:800;color:#fff;line-height:1.25">'+esc(hp.title||'נכס')+'</div>'+
+        (hp.details?'<div style="font-size:13.5px;color:rgba(255,255,255,.72)">'+esc(hp.details)+'</div>':'')+
+        (hp.desc?'<div style="font-size:13px;color:rgba(255,255,255,.58);line-height:1.6;max-width:300px">'+esc(hp.desc)+'</div>':'')+
+        (prTxt?'<div style="font-size:30px;font-weight:800;color:#E4C56B;margin-top:6px">'+prTxt+'</div>':'')+
+      '</div>'+
+      '<div style="margin-top:auto;display:flex;flex-direction:column;gap:9px">'+
+        '<div style="display:flex;gap:10px">'+
+          '<button class="bMain" style="flex:1.5;margin:0" onclick="closeStory();location.href=\'/v2/props?mine=1\'">התאם לקונים שלי</button>'+
+          (wa?'<a href="https://wa.me/'+wa+'" style="width:52px;display:flex;align-items:center;justify-content:center;background:#1FAF5E;border-radius:14px;text-decoration:none"><svg width="20" height="20" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>':'')+
+        '</div>'+
+        (wa?'<a href="https://wa.me/'+wa+'" class="bSec" style="margin:0;text-decoration:none;display:block;text-align:center">שאל את '+esc(hp.agent||'הסוכן')+'</a>':'')+
+        '<button class="bSec" style="margin:0" onclick="'+(isLast?'closeStory()':'nextCard()')+'">'+(isLast?'בוא נתחיל את היום':'הנכס הבא ←')+'</button>'+
       '</div>';
   }
     STORY.timer = setTimeout(nextCard, STORY.DUR);
@@ -4135,7 +4167,7 @@ function toggleHot(i){
   if (on){ var c = 0; for (var k in HOT) if (HOT[k]) c++; if (c >= 2){ toast('אפשר לסמן עד 2 נכסים חמים — הסר אחד קודם'); return; } }
   HOT[hk] = on; if (!on) delete HOT[hk]; render();   // אופטימי
   var det = [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
-  POST('/v2/api/hot', {property_key: hk, on: on, title: [p.address, p.city].filter(Boolean).join(', '), details: det, price: String(p.price || '')}).then(function(j){
+  POST('/v2/api/hot', {property_key: hk, on: on, title: [p.address, p.city].filter(Boolean).join(', '), details: det, price: String(p.price || ''), description: String(p.desc || '')}).then(function(j){
     if (!j || !j.ok){ if (on) delete HOT[hk]; else HOT[hk] = true; render();
       toast(j && j.reason === 'limit' ? 'אפשר עד 2 נכסים חמים' : 'השמירה נכשלה'); return; }
     toast(on ? 'הנכס סומן כחם — יופיע בבריף' : 'הוסר מהבריף');
@@ -7185,7 +7217,8 @@ def register(app, G):
                                json={"office_id": _sb.SB_OFFICE_ID, "agent_phone": phone9,
                                      "agent_name": s.get("name", ""), "property_key": key,
                                      "title": (b.get("title") or "")[:200], "details": (b.get("details") or "")[:200],
-                                     "price": (b.get("price") or "")[:40], "active": True}, timeout=10)
+                                     "price": (b.get("price") or "")[:40],
+                                     "description": (b.get("description") or "")[:600], "active": True}, timeout=10)
             r.raise_for_status()
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "סימון נכס חם", key)
             return jsonify({"ok": True, "on": True})
@@ -7329,7 +7362,7 @@ def register(app, G):
                     buyers_me += 1
         except Exception:
             pass
-        calls_all = calls_me = 0
+        calls_all = calls_me = calls_ans_all = 0
         try:
             my_phones = set(G["_last9"](x) for x in G["_phones_for_name"](s.get("name", "")))
             for c in G["web_fetch_raw"]("שיחות"):
@@ -7337,6 +7370,9 @@ def register(app, G):
                 if not e or e < week_ago:
                     continue
                 calls_all += 1
+                st = str(c.get("status", "") or "").upper()
+                if "ANSWER" in st and "NOANSWER" not in st and "NO ANSWER" not in st:
+                    calls_ans_all += 1
                 if _canon(c.get("agent", "")) == me or G["_last9"](c.get("agent_phone", "")) in my_phones:
                     calls_me += 1
         except Exception:
@@ -7359,24 +7395,38 @@ def register(app, G):
             pass
         # נכסים חמים כלל-משרדיים (כל הסוכנים) — כרטיסי הסטורי אחרי הסיכום
         hot_props = []
+        hot_buyers = 0
         try:
             _sb = _sb_mod()
             if _sb:
                 rh = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories", headers=_sb._headers(),
                                    params={"office_id": "eq." + _sb.SB_OFFICE_ID, "active": "eq.true",
-                                           "select": "property_key,title,details,price,agent_name",
+                                           "select": "property_key,title,details,price,description,agent_name,agent_phone,created_at",
                                            "order": "created_at.desc"}, timeout=10)
                 rh.raise_for_status()
                 for r in (rh.json() or []):
                     hot_props.append({"key": r.get("property_key") or "", "title": r.get("title") or "",
                                       "details": r.get("details") or "", "price": r.get("price") or "",
-                                      "agent": r.get("agent_name") or ""})
+                                      "desc": r.get("description") or "", "agent": r.get("agent_name") or "",
+                                      "agentPhone": r.get("agent_phone") or "", "ts": r.get("created_at") or ""})
+                # קונים חמים (buyers.status=hot) — לסלייד הסיכום
+                try:
+                    rb = _requests.get(_sb.SUPABASE_URL + "/rest/v1/buyers",
+                                       headers={**_sb._headers(), "Prefer": "count=exact"},
+                                       params={"office_id": "eq." + _sb.SB_OFFICE_ID, "status": "eq.hot",
+                                               "select": "id"}, timeout=10)
+                    _cr = rb.headers.get("Content-Range", "")
+                    if "/" in _cr:
+                        hot_buyers = int(_cr.split("/")[-1])
+                except Exception:
+                    pass
         except Exception as e:
             if log: log.warning(f"effie brief hot: {e}")
         return jsonify({"ok": True, "buyersMe": buyers_me, "buyersAll": buyers_all,
                         "sigBMe": sigb_me, "sigBAll": sigb_all,
                         "exclMe": excl_me, "exclAll": excl_all,
                         "callsMe": calls_me, "callsAll": calls_all,
+                        "callsAnsAll": calls_ans_all, "hotBuyers": hot_buyers,
                         "hotProps": hot_props})
 
     @app.route("/v2/api/admin/overview", methods=["GET"])
