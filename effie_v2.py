@@ -648,7 +648,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
 
   <!-- ── בריף הבוקר — סטורי ── -->
   <div id="story">
-    <div class="bars"><i><b></b></i><i><b></b></i><i><b></b></i><i><b></b></i></div>
+    <div class="bars" id="storyBars"><i><b></b></i></div>
     <div class="shead">
       <div style="display:flex;align-items:center;gap:10px">
         <div class="lg"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
@@ -935,12 +935,18 @@ function closeStory(){
   try{ localStorage.setItem(seenKey(), todayStr()); }catch(e){}
   el('briefCta').textContent = 'צפה שוב';
 }
-function nextCard(){ (STORY.i < 3) ? go(STORY.i + 1) : closeStory(); }
+function total(){ return 1 + ((B.hotProps && B.hotProps.length) || 0); }   // סיכום + נכסים חמים
+function nextCard(){ (STORY.i < total() - 1) ? go(STORY.i + 1) : closeStory(); }
 function prevCard(){ if (STORY.i > 0) go(STORY.i - 1); }
 function go(i){ STORY.i = i; renderCard(i); }
 function setBars(i){
-  var bars = el('story').querySelectorAll('.bars i b');
-  for (var k = 0; k < 4; k++){
+  var T = total(), wrap = el('storyBars');
+  if (wrap.children.length !== T){
+    var hh = ''; for (var k = 0; k < T; k++) hh += '<i><b></b></i>';
+    wrap.innerHTML = hh;
+  }
+  var bars = wrap.querySelectorAll('i b');
+  for (var k = 0; k < T; k++){
     bars[k].style.transition = 'none';
     bars[k].style.width = (k < i) ? '100%' : '0';
   }
@@ -961,7 +967,7 @@ function renderCard(i){
   el('storyHint').textContent = 'הקש להמשך · החלק למטה לסגירה';
   setBars(i);
   el('storyDate').textContent = 'יום ' + HDAYS[new Date().getDay()] + ', ' + new Date().getDate() +
-      ' ב' + HMON[new Date().getMonth()] + ' · ' + (i + 1) + ' מתוך 4';
+      ' ב' + HMON[new Date().getMonth()] + ' · ' + (i + 1) + ' מתוך ' + total();
   var b = el('storyBody'), q = function(v){ return M.ready ? v : '…'; };
   if (i === 0){
     b.innerHTML =
@@ -976,63 +982,24 @@ function renderCard(i){
       '<div class="btns" style="align-self:center;align-items:center">' +
       '<button class="bMain" style="width:100%" onclick="nextCard()">בוא נתחיל ←</button>' +
       '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
-  } else if (i === 1){
-    // הפגישות והפולו-אפים של הסוכן — בלי השוואה מול המשרד
-    var mt = M.meets || [];
-    var parts = [];
-    if (M.meetToday) parts.push(M.meetToday + ' מתוכננות להיום');
-    if (M.meetLate) parts.push(M.meetLate + ' באיחור');
-    b.innerHTML = card('פגישות ופולו-אפ', q(mt.length),
-      'משימות<br>פתוחות',
-      mt.length ? ('סה"כ פגישות ופולו-אפים פתוחים: ' + mt.length + '.' +
-        (parts.length ? ' ' + parts.join(' · ') + '.' : ''))
-        : 'אין פגישות או פולו-אפים פתוחים — היומן שלך נקי.',
-      'ליומן שלי',
-      'closeStory();location.href=\'/v2/meets\'', 'הבא: חתימות (3/4)');
-  } else if (i === 2){
-    var ex = M.exclWeek || [];
-    if (ex.length){
-      // סיכום הבלעדיות של 7 הימים האחרונים — "נכסים חדשים גויסו השבוע"
-      var exRows = ex.slice(0, 4).map(function(g){
-        var t = (g.address || g.client || '') + (g.agent ? ' · ' + g.agent : '') +
-          ((g.type || '').indexOf('בלעדיות') >= 0 ? ' · בלעדיות' : '');
-        return '<div class="r"><i></i><span>' + esc(t) + '</span></div>';
-      }).join('');
-      if (ex.length > 4) exRows += '<div class="more">+ עוד ' + (ex.length - 4) + ' בלעדיות</div>';
-      b.innerHTML =
-        '<div class="kicker">גיוס · 7 ימים אחרונים</div>' +
-        '<div class="big"><div class="n">' + ex.length + '</div><div class="w">נכסים חדשים<br>גויסו השבוע</div></div>' +
-        '<div class="nbList">' + exRows + '</div>' +
-        '<div class="sub">' + (M.sigs ? 'סה"כ ' + M.sigs + ' חתימות השבוע — כולן במסך החתימות.' : '') + '</div>' +
-        '<div class="btns"><button class="bMain" onclick="closeStory();location.href=\'/v2/sigs\'">לחתימות</button>' +
-        '<button class="bSec" onclick="nextCard()">הבא: נכס נולד (4/4)</button></div>';
-    } else {
-      b.innerHTML = card('על הקו', q(M.sigs), 'חתימות<br>השבוע',
-        'השבוע עוד לא גויסו בלעדיות חדשות — כל החתמה דיגיטלית תופיע כאן ובמסך החתימות.',
-        'לחתימות', 'closeStory();location.href=\'/v2/sigs\'', 'הבא: נכס נולד (4/4)');
-    }
   } else {
-    var nn = (M.nbNew || []).length;
-    if (nn){
-      // הבלטה: כמה נכסים נולדו (יצאו למכירה) ביממה האחרונה — כולל כתובות
-      var rows = M.nbNew.slice(0, 4).map(function(x){
-        var t = (x.a || '') + (x.c ? (x.a ? ', ' : '') + x.c : '');
-        return '<div class="r"><i></i><span>' + esc(t || 'ללא כתובת') + '</span></div>';
-      }).join('');
-      if (nn > 4) rows += '<div class="more">+ עוד ' + (nn - 4) + ' חדשים</div>';
-      b.innerHTML =
-        '<div class="kicker">נכס נולד · יממה אחרונה</div>' +
-        '<div class="big"><div class="n">' + nn + '</div><div class="w">נכסים חדשים<br>יצאו למכירה</div></div>' +
-        '<div class="nbList">' + rows + '</div>' +
-        '<div class="sub">' + (M.nb >= 0 ? 'סה"כ ' + M.nb.toLocaleString() + ' נכסים בפול — מי שמתקשר ראשון, מגייס.' : '') + '</div>' +
-        '<div class="btns"><button class="bMain" onclick="closeStory()">בוא נתחיל את היום</button></div>';
-    } else {
-      b.innerHTML = card('נכס נולד', (M.nb >= 0 ? M.nb.toLocaleString() : '…'), 'נכסים<br>מחכים לגיוס',
-        'ביממה האחרונה לא נולדו נכסים חדשים — אבל הפול מלא. מי שמתקשר ראשון, מגייס.',
-        'בוא נתחיל את היום', 'closeStory()', '');
-    }
+    // כרטיסי הנכסים החמים הכלל-משרדיים (כרטיס 1 ואילך). מקור: hot_stories.
+    var hp = (B.hotProps || [])[i - 1] || {};
+    var isLast = (i >= total() - 1);
+    var prNum = String(hp.price || '').replace(/[^0-9]/g, '');
+    var prTxt = prNum ? '₪' + Number(prNum).toLocaleString() : esc(hp.price || '');
+    b.innerHTML =
+      '<div class="kicker">נכס חם' + (hp.agent ? ' · ' + esc(hp.agent) : '') + '</div>' +
+      '<div style="font-size:26px;font-weight:800;line-height:1.35">' + esc(hp.title || 'נכס') + '</div>' +
+      (hp.details ? '<div class="sub">' + esc(hp.details) + '</div>' : '') +
+      (prTxt ? '<div class="big"><div class="n" style="font-size:56px">' + prTxt + '</div></div>' : '') +
+      '<div class="btns">' +
+      '<button class="bMain" onclick="' + (isLast ? 'closeStory()' : 'nextCard()') + '">' +
+        (isLast ? 'בוא נתחיל את היום' : 'הנכס הבא ←') + '</button>' +
+      (isLast ? '' : '<button class="bSec" onclick="closeStory()">דלג לדשבורד</button>') +
+      '</div>';
   }
-  STORY.timer = setTimeout(nextCard, STORY.DUR);
+    STORY.timer = setTimeout(nextCard, STORY.DUR);
 }
 /* ניווט בהקשה: שמאל=הבא (RTL), ימין=הקודם; החלקה למטה=סגירה */
 function pauseStory(){
@@ -7390,10 +7357,27 @@ def register(app, G):
                     if mine: excl_me += 1
         except Exception:
             pass
+        # נכסים חמים כלל-משרדיים (כל הסוכנים) — כרטיסי הסטורי אחרי הסיכום
+        hot_props = []
+        try:
+            _sb = _sb_mod()
+            if _sb:
+                rh = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories", headers=_sb._headers(),
+                                   params={"office_id": "eq." + _sb.SB_OFFICE_ID, "active": "eq.true",
+                                           "select": "property_key,title,details,price,agent_name",
+                                           "order": "created_at.desc"}, timeout=10)
+                rh.raise_for_status()
+                for r in (rh.json() or []):
+                    hot_props.append({"key": r.get("property_key") or "", "title": r.get("title") or "",
+                                      "details": r.get("details") or "", "price": r.get("price") or "",
+                                      "agent": r.get("agent_name") or ""})
+        except Exception as e:
+            if log: log.warning(f"effie brief hot: {e}")
         return jsonify({"ok": True, "buyersMe": buyers_me, "buyersAll": buyers_all,
                         "sigBMe": sigb_me, "sigBAll": sigb_all,
                         "exclMe": excl_me, "exclAll": excl_all,
-                        "callsMe": calls_me, "callsAll": calls_all})
+                        "callsMe": calls_me, "callsAll": calls_all,
+                        "hotProps": hot_props})
 
     @app.route("/v2/api/admin/overview", methods=["GET"])
     def v2_api_admin_overview():
