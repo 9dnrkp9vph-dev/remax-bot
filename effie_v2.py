@@ -917,9 +917,8 @@ var B = {buyersMe:null, buyersAll:null, sigBMe:null, sigBAll:null, exclMe:null, 
 GET('/v2/api/brief').then(function(j){
   if (!j.ok) return;
   B = j;
-  var agn = {}; (B.hotProps || []).forEach(function(x){ if (x.agent) agn[x.agent] = 1; });
-  var na = Object.keys(agn).length;
-  var bt = el('briefTitle'); if (bt) bt.textContent = 'סטורי נכסים חמים' + (na ? ' · ' + na + ' סוכנים' : '');
+  var np = (B.hotProps || []).length;
+  var bt = el('briefTitle'); if (bt) bt.textContent = 'סטורי נכסים חמים' + (np ? ' · ' + np + (np === 1 ? ' נכס' : ' נכסים') : '');
   if (STORY.open && STORY.i === 0) renderCard(0);
 }).catch(function(){});
 function seenKey(){ return 'v2BriefSeen'; }
@@ -4078,7 +4077,11 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       </div>
       <div class="srch">
         <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input id="q" placeholder="דירת 4 חדרים בקרית ביאליק עד 2 מיליון" oninput="qChanged()">
+        <input id="q" placeholder="דירת 4 חדרים בקרית ביאליק עד 2 מיליון" oninput="qChanged();qClearBtn()">
+        <button id="qClear" onclick="el('q').value='';qClearBtn();qChanged()" aria-label="ניקוי חיפוש"
+          style="display:none;width:26px;height:26px;border-radius:50%;background:#EBE8DD;border:none;flex-shrink:0;align-items:center;justify-content:center;cursor:pointer;padding:0">
+          <svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
       </div>
       <div style="font-size:11.5px;color:#8B8F99" id="sumLine"></div>
     </div>
@@ -4286,6 +4289,7 @@ function qChanged(){
   if (MODE === 'mine'){ render(); return; }
   _qT = setTimeout(function(){ load(el('q').value.trim()); }, 500);
 }
+function qClearBtn(){ var b = el('qClear'); if (b) b.style.display = el('q').value ? 'flex' : 'none'; }
 function pStreetKey(s){
   var m = /([א-ת"'\.\- ]+?\s?\d+[א-ת]?)/.exec(String(s || ''));
   return (m ? m[1] : String(s || '')).replace(/[^א-ת0-9]/g, '');
@@ -4407,6 +4411,7 @@ function saveSt(){
 var _renderBase = render;
 render = function(){
   _renderBase();
+  qClearBtn();
   if (_restY){
     var m = document.querySelector('main');
     if (m){ m.scrollTop = _restY; if (m.scrollTop >= _restY - 4) _restY = 0; }
