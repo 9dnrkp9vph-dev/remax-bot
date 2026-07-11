@@ -1495,12 +1495,14 @@ def get_signings(frm="01/01/2020", to="31/12/2099"):
         allsig = web_fetch_raw("חתימות", frm, to)
     allsig = _recent_signs_merge(allsig)
     allsig = _recent_sign_dels_filter(allsig)
-    # שורות זהות לגמרי (אותו event_id + אותה חותמת זמן + אותו לקוח) = כפילות ודאית במקור — מסננים
+    # שורות זהות לגמרי = כפילות ודאית במקור — מסננים.
+    # חשוב: כולל deal_type — נכס אחד מייצר זוג חתימות (OWNER_EXCLUSIVE + OWNER_SALE)
+    # עם אותו event_id/לקוח ולעיתים אותה חותמת-זמן; בלי deal_type הבלעדיות נזרקת בטעות.
     _seen_exact = set()
     _dedup = []
     for g in allsig:
         _k = (str(g.get("event_id", "") or ""), str(g.get("received_at", "") or ""),
-              _canon_key(g.get("client_name", "")))
+              _canon_key(g.get("client_name", "")), str(g.get("deal_type", "") or ""))
         if _k in _seen_exact:
             continue
         _seen_exact.add(_k)
