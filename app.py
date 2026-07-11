@@ -1486,8 +1486,11 @@ def get_signings(frm="01/01/2020", to="31/12/2099"):
             try: return _dt.datetime.fromtimestamp(e).strftime("%d/%m/%Y")
             except Exception: return ""
         def _sig_key(g):
+            # כולל את תווית ההסכם המנורמלת (_deal_label מנרמל עברית-גיליון ואנגלית-אוטומטי
+            # לאותה תווית) — כך שבלעדיות ומכר של אותו נכס/יום נשמרות כשתי חתימות נפרדות,
+            # אבל אותה חתימה משני מקורות עדיין מזוהה ככפילות.
             return (_canon_key(g.get("agent", "")), _canon_key(g.get("client_name", "")),
-                    _sig_day(g.get("received_at", "")))
+                    _sig_day(g.get("received_at", "")), _deal_label(g.get("deal_type", "")))
         seen = set(_sig_key(g) for g in manual)
         extra = [g for g in auto if _sig_key(g) not in seen]
         allsig = manual + extra
