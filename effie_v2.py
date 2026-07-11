@@ -4160,6 +4160,21 @@ function fmtPrice(p){
 }
 
 var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''};
+var HOT = {};   // property_key → true עבור הנכסים החמים של הסוכן (עד 2)
+function toggleHot(i){
+  var p = el('list')._src[i]; if (!p) return;
+  var hk = String(p.id || p.address || ''); if (!hk) return;
+  var on = !HOT[hk];
+  if (on){ var c = 0; for (var k in HOT) if (HOT[k]) c++; if (c >= 2){ toast('אפשר לסמן עד 2 נכסים חמים — הסר אחד קודם'); return; } }
+  HOT[hk] = on; if (!on) delete HOT[hk]; render();   // אופטימי
+  var det = [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
+  POST('/v2/api/hot', {property_key: hk, on: on, title: [p.address, p.city].filter(Boolean).join(', '), details: det, price: String(p.price || '')}).then(function(j){
+    if (!j || !j.ok){ if (on) delete HOT[hk]; else HOT[hk] = true; render();
+      toast(j && j.reason === 'limit' ? 'אפשר עד 2 נכסים חמים' : 'השמירה נכשלה'); return; }
+    toast(on ? 'הנכס סומן כחם — יופיע בבריף' : 'הוסר מהבריף');
+  }).catch(function(){ if (on) delete HOT[hk]; else HOT[hk] = true; render(); toast('שגיאה'); });
+}
+function loadHot(){ GET('/v2/api/hot').then(function(j){ if (j && j.ok && j.keys){ HOT = {}; j.keys.forEach(function(k){ HOT[String(k)] = true; }); render(); } }).catch(function(){}); }
 
 var _loadSeq = 0;
 function load(q){
@@ -4179,6 +4194,7 @@ function load(q){
     if (!q) try{ localStorage.setItem('v2c:props', JSON.stringify(
       {o: OFFICE.slice(0, 80), so: SUM.office, s: SHTAF.slice(0, 60), ss: SUM.shtaf, m: MINE.slice(0, 60), mm: MINE_MULTI})); }catch(e){}
     render();
+    loadHot();   // טעינת הנכסים החמים של הסוכן (מצב הכפתורים)
   });
 }
 (function(){
@@ -4248,13 +4264,20 @@ function propCard(p, i){
         'עדכן מחיר</button>' +
         '<button class="tr" onclick="reqRemove(' + i + ')" aria-label="בקשת הסרת מודעה">' +
         '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>') : '');
+  // כפתור "נכס חם" — רק בנכסי הסוכן ("שלי"). סימון עד 2 → רצים בבריף הבוקר הכלל-משרדי.
+  var _hk = String(p.id || p.address || '');
+  var _hot = !!HOT[_hk];
+  var hotRow = isMine ? ('<div style="margin-top:8px"><button onclick="toggleHot(' + i + ')" ' +
+    'style="width:100%;padding:11px 0;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;' +
+    'cursor:pointer;border:' + (_hot ? 'none' : '1.5px solid #C29435') + ';background:' + (_hot ? '#C29435' : '#fff') +
+    ';color:' + (_hot ? '#fff' : '#C29435') + '">' + (_hot ? 'נכס חם · בבריף' : 'סמן כנכס חם') + '</button></div>') : '';
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
     '<div style="display:flex;align-items:center;justify-content:space-between">' +
     '<div class="pr">' + esc(fmtPrice(p.price)) + '</div>' +
     (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#B8902F') + '">' + p.score + '% התאמה</div>' : '') +
-    '</div>' + acts + '</div>';
+    '</div>' + acts + hotRow + '</div>';
 }
 function setMode(node){
   MODE = node.getAttribute('data-m');
@@ -7131,6 +7154,77 @@ def register(app, G):
         except Exception as e:
             if log: log.warning(f"effie ann del: {e}")
             return jsonify({"ok": False, "reason": "delete_failed"})
+
+    # ── נכסים חמים (hot_stories) — עד 2 לסוכן, רצים בבריף הבוקר הכלל-משרדי ──
+    @app.route("/v2/api/hot", methods=["GET"])
+    def v2_api_hot_get():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": True, "keys": []})
+        try:
+            r = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories", headers=_sb._headers(),
+                              params={"office_id": "eq." + _sb.SB_OFFICE_ID,
+                                      "agent_phone": "eq." + _last9(s.get("phone", "")),
+                                      "active": "eq.true", "select": "property_key"}, timeout=10)
+            r.raise_for_status()
+            keys = [row.get("property_key") for row in (r.json() or []) if row.get("property_key")]
+            return jsonify({"ok": True, "keys": keys})
+        except Exception as e:
+            if log: log.warning(f"effie hot get: {e}")
+            return jsonify({"ok": True, "keys": []})
+
+    @app.route("/v2/api/hot", methods=["POST"])
+    def v2_api_hot_post():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        b = request.get_json(silent=True) or {}
+        key = (b.get("property_key") or "").strip()
+        if not key:
+            return jsonify({"ok": False, "reason": "bad_key"}), 400
+        on = bool(b.get("on"))
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": False, "reason": "no_supabase"})
+        phone9 = _last9(s.get("phone", ""))
+        base = {"office_id": "eq." + _sb.SB_OFFICE_ID, "agent_phone": "eq." + phone9}
+        try:
+            if not on:
+                r = _requests.patch(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
+                                    headers={**_sb._headers(), "Content-Type": "application/json"},
+                                    params={**base, "property_key": "eq." + key},
+                                    json={"active": False}, timeout=10)
+                r.raise_for_status()
+                _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "הסרת נכס חם", key)
+                return jsonify({"ok": True, "on": False})
+            # הפעלה — אכיפת "עד 2" (סופרים active אחרים של אותו סוכן)
+            rc = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
+                               headers={**_sb._headers(), "Prefer": "count=exact"},
+                               params={**base, "active": "eq.true", "property_key": "neq." + key,
+                                       "select": "id"}, timeout=10)
+            cnt = 0
+            cr = rc.headers.get("Content-Range", "")
+            if "/" in cr:
+                try: cnt = int(cr.split("/")[-1])
+                except Exception: cnt = 0
+            if cnt >= 2:
+                return jsonify({"ok": False, "reason": "limit"})
+            r = _requests.post(_sb.SUPABASE_URL + "/rest/v1/hot_stories?on_conflict=office_id,agent_phone,property_key",
+                               headers={**_sb._headers(), "Content-Type": "application/json",
+                                        "Prefer": "resolution=merge-duplicates"},
+                               json={"office_id": _sb.SB_OFFICE_ID, "agent_phone": phone9,
+                                     "agent_name": s.get("name", ""), "property_key": key,
+                                     "title": (b.get("title") or "")[:200], "details": (b.get("details") or "")[:200],
+                                     "price": (b.get("price") or "")[:40], "active": True}, timeout=10)
+            r.raise_for_status()
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "סימון נכס חם", key)
+            return jsonify({"ok": True, "on": True})
+        except Exception as e:
+            if log: log.warning(f"effie hot post: {e}")
+            return jsonify({"ok": False, "reason": "write_failed"})
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
