@@ -587,8 +587,8 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="briefBar" onclick="openStory()">
       <div class="ic"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
       <div style="flex:1;display:flex;flex-direction:column;gap:1px">
-        <div class="t">בריף הבוקר · 4 כרטיסים</div>
-        <div class="s" id="briefSum">מתעדכן…</div>
+        <div class="t" id="briefTitle">סטורי נכסים חמים</div>
+        <div class="s" id="briefSum">הנכסים החמים של המשרד + הסיכום שלך</div>
       </div>
       <button class="cta" id="briefCta">צפה</button>
     </div>
@@ -874,10 +874,7 @@ function renderDash(){
   var open = M.meetLate + M.meetToday;
   el('dateTx').textContent = 'יום ' + HDAYS[new Date().getDay()] + ', ' + new Date().getDate() +
       ' ב' + HMON[new Date().getMonth()] + (open ? ' · ' + open + ' משימות פתוחות' : '');
-  el('briefSum').textContent = (M.buyersUn || M.buyersNew || M.buyersTot) + ' קונים · ' +
-      M.sigs + ' חתימות' +
-      ((M.nbNew && M.nbNew.length) ? ' · ' + M.nbNew.length + ' נולדו ביממה האחרונה'
-        : (M.nb >= 0 ? ' · ' + M.nb.toLocaleString() + ' נכסים' : ''));
+  // הבאנר מציג "סטורי נכסים חמים" (#33b) — הכותרת מתעדכנת עם מספר הסוכנים כשה-brief נטען.
   // מנהל: נכסי כל המשרד; סוכן: שלו. "בבלעדיות" הישן היה למעשה גיוסי התקופה — עכשיו מפורש
   if (M.role === 'admin') el('propsT').textContent = 'נכסי המשרד';
   el('propsSum').textContent = ((M.role === 'admin' && M.listings) ? M.listings : M.props) + ' פעילים' +
@@ -920,6 +917,9 @@ var B = {buyersMe:null, buyersAll:null, sigBMe:null, sigBAll:null, exclMe:null, 
 GET('/v2/api/brief').then(function(j){
   if (!j.ok) return;
   B = j;
+  var agn = {}; (B.hotProps || []).forEach(function(x){ if (x.agent) agn[x.agent] = 1; });
+  var na = Object.keys(agn).length;
+  var bt = el('briefTitle'); if (bt) bt.textContent = 'סטורי נכסים חמים' + (na ? ' · ' + na + ' סוכנים' : '');
   if (STORY.open && STORY.i === 0) renderCard(0);
 }).catch(function(){});
 function seenKey(){ return 'v2BriefSeen'; }
@@ -1023,10 +1023,7 @@ function renderCard(i){
         (prTxt?'<div style="font-size:30px;font-weight:800;color:#E4C56B;margin-top:6px">'+prTxt+'</div>':'')+
       '</div>'+
       '<div style="margin-top:auto;display:flex;flex-direction:column;gap:9px">'+
-        '<div style="display:flex;gap:10px">'+
-          '<button class="bMain" style="flex:1.5;margin:0" onclick="closeStory();location.href=\'/v2/props?mine=1\'">התאם לקונים שלי</button>'+
-          (wa?'<a href="https://wa.me/'+wa+'" style="width:52px;display:flex;align-items:center;justify-content:center;background:#1FAF5E;border-radius:14px;text-decoration:none"><svg width="20" height="20" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>':'')+
-        '</div>'+
+
         (wa?'<a href="https://wa.me/'+wa+'" class="bSec" style="margin:0;text-decoration:none;display:block;text-align:center">שאל את '+esc(hp.agent||'הסוכן')+'</a>':'')+
         '<button class="bSec" style="margin:0" onclick="'+(isLast?'closeStory()':'nextCard()')+'">'+(isLast?'בוא נתחיל את היום':'הנכס הבא ←')+'</button>'+
       '</div>';
