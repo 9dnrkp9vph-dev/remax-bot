@@ -652,7 +652,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="shead">
       <div style="display:flex;align-items:center;gap:10px">
         <div class="lg"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
-        <div><div class="t">בריף הבוקר</div><div class="s" id="storyDate"></div></div>
+        <div><div class="t">נכסים חמים</div><div class="s" id="storyDate"></div></div>
       </div>
       <button class="x" onclick="closeStory()" aria-label="סגירה">
         <svg width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="rgba(255,255,255,.6)" stroke-width="1.8" stroke-linecap="round"/></svg>
