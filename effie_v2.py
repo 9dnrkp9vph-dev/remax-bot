@@ -3378,7 +3378,11 @@ function render(){
       ? '<button class="a sec" onclick="window.open(\'' + esc(g.link) + '\',\'_blank\')">' +
         '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M3 2.5h7l3 3V13a.9.9 0 0 1-.9.9H3.9A.9.9 0 0 1 3 13z" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2.5v3h3" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
         'צפייה במסמך החתום</button>'
-      : '';
+      : ((!signed && g.eid && /[^0-9]/.test(String(g.eid)))
+        ? '<button class="a sec" onclick="window.open(location.origin + \'/s/\' + encodeURIComponent(g.eid), \'_blank\')">' +
+          '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M3 2.5h7l3 3V13a.9.9 0 0 1-.9.9H3.9A.9.9 0 0 1 3 13z" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2.5v3h3" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
+          'צפייה במסמך (טרם נחתם)</button>'
+        : '');
     // מחיקת חתימה דיגיטלית — מנהל בלבד (רק לרשומות מהאפליקציה, עם eid)
     var dl = (ROLE === 'admin' && g.eid)
       ? '<button class="a del" onclick="delSig(' + gi + ')" aria-label="מחיקת חתימה">' +
@@ -6423,8 +6427,7 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{overflow-x:hidden}
-  /* גלילה: נשען על המודל המשותף (V2_BOOST) — iOS-PWA=main גולל, שאר=חלון גולל. בלי height:100% כפוי שלוכד מגע. */
+  /* גלילה: נשען על V2_BOOST/V2_DESKTOP_CSS המשותפים — בדיוק כמו מסך הבית (בלי html,body{height/overflow} מקומי שמתנגש). */
   body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column;max-width:100vw}
   header{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 6px}
   header .av{width:42px;height:42px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
@@ -6436,7 +6439,7 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
     nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
   }
-  /* main הוא הגולל כאן — גלילה מרוכבת ב-GPU כדי שהניווט הקבוע לא ירצד ב-iOS (בטוח: אין חלון להתחרות) */
+  /* main גולל במובייל; בדסקטופ V2_DESKTOP_CSS הופך אותו ל-overflow:visible והחלון גולל — כמו מסך הבית. */
   main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto;padding-bottom:124px;-webkit-overflow-scrolling:touch}
   .hd2{display:flex;align-items:center;gap:10px}
   .hd2 .ic{width:36px;height:36px;border-radius:11px;background:#EAF0FA;display:flex;align-items:center;justify-content:center}
