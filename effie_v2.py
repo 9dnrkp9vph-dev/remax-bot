@@ -3379,7 +3379,7 @@ function render(){
         '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M3 2.5h7l3 3V13a.9.9 0 0 1-.9.9H3.9A.9.9 0 0 1 3 13z" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2.5v3h3" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
         'צפייה במסמך החתום</button>'
       : ((!signed && g.eid && /[^0-9]/.test(String(g.eid)))
-        ? '<button class="a sec" onclick="window.open(location.origin + \'/s/\' + encodeURIComponent(g.eid), \'_blank\')">' +
+        ? '<button class="a sec" onclick="window.open(\'' + esc(location.origin + '/s/' + encodeURIComponent(g.eid)) + '\',\'_blank\')">' +
           '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M3 2.5h7l3 3V13a.9.9 0 0 1-.9.9H3.9A.9.9 0 0 1 3 13z" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2.5v3h3" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
           'צפייה במסמך (טרם נחתם)</button>'
         : '');
