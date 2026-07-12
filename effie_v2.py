@@ -2209,12 +2209,26 @@ function showSummary(i){
     '<button class="btn btn-blue" onclick="closeSheet();addBuyer(' + i + ')">הוסף כקונה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
 }
+function abBudget(txt){   // חילוץ תקציב מהסיכום: "3.7 מיליון" / "3,700,000" — נזהר מ-מ"ר ומטלפונים
+  txt = String(txt || '');
+  var m = txt.match(/(\d+(?:\.\d+)?)\s*(?:מיליון|מליון)/);
+  if (m){ var n = Math.round(parseFloat(m[1]) * 1000000); if (n >= 100000) return n; }
+  var m2 = txt.match(/(\d{1,3}(?:,\d{3}){1,3})/);   // מחיר מפוסק — לא טלפון
+  if (m2){ var n2 = parseInt(m2[1].replace(/,/g, ''), 10); if (n2 >= 100000 && n2 <= 99000000) return n2; }
+  return '';
+}
 function addBuyer(i){
   var c = el('list')._src[i];
+  var _nm = BUYER_BY_PHONE[last9(c.tel || c.caller)] || '';   // כמו בכרטיס — עובד גם כש-c.tel ריק
+  if (!_nm && c.summary){   // fallback: חילוץ שם מהסיכום ("אייל מתקשר...")
+    var _sm = String(c.summary).match(/(?:^|[-•·]\s*)([א-ת][א-ת']+(?:\s[א-ת][א-ת']+)?)\s+(?:מתקשר|התקשר|מעוניינ|מחפש|פנה|ביקש|רוצה)/);
+    if (_sm) _nm = _sm[1].trim();
+  }
+  var _bd = abBudget(c.summary), _bdv = _bd ? Number(_bd).toLocaleString() : '';
   openSheet('<h3>הוסף כקונה</h3>' +
-    '<div class="fld"><span>שם</span><input id="abNm" placeholder="שם הקונה" value="' + esc(BUYER_BY_PHONE[last9(c.tel)] || '') + '"></div>' +
+    '<div class="fld"><span>שם</span><input id="abNm" placeholder="שם הקונה" value="' + esc(_nm) + '"></div>' +
     '<div class="fld"><span>טלפון</span><input id="abPh" type="tel" value="' + esc(c.caller || '') + '"></div>' +
-    '<div class="fld"><span>תקציב</span><input id="abBd" inputmode="numeric" placeholder="₪" oninput="var d=this.value.replace(/[^0-9]/g,\'\');this.value=d?Number(d).toLocaleString():\'\'"></div>' +
+    '<div class="fld"><span>תקציב</span><input id="abBd" inputmode="numeric" placeholder="₪" value="' + esc(_bdv) + '" oninput="var d=this.value.replace(/[^0-9]/g,\'\');this.value=d?Number(d).toLocaleString():\'\'"></div>' +
     '<div class="fld"><span>מה מחפש</span><textarea id="abSm" rows="3">' + esc(c.summary || '') + '</textarea></div>' +
     '<button class="btn btn-blue" onclick="saveBuyer()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
@@ -4217,13 +4231,7 @@ function load(q){
   }catch(e){}
 })();
 function render(){
-  el('cOffice').textContent = OFFICE.length;
-  el('cShtaf').textContent = SHTAF.length;
-  el('cMine').textContent = MINE.length;
-  var q = el('q').value.trim().toLowerCase();
-  var src, h = '';
-  if (MODE === 'office') src = OFFICE;
-  else if (MODE === 'shtaf') src = SHTAF.filter(function(s){   // נכס שקיים גם במשרד — מציגים רק את של המשרד
+  var shtafShown = SHTAF.filter(function(s){   // דדופ מול המשרד — נכס שקיים גם אצלנו מוצג רק ב"המשרד שלנו"
     var sk = pStreetKey(s.street || s.address), sp = pPriceNum(s.price);
     if (!sk) return true;
     return !OFFICE.some(function(o){
@@ -4231,6 +4239,13 @@ function render(){
       return ok && ok === sk && Math.abs(pPriceNum(o.price) - sp) <= 100000;
     });
   });
+  el('cOffice').textContent = OFFICE.length;
+  el('cShtaf').textContent = shtafShown.length;   // תואם למה שמוצג בפועל (אחרי הדדופ) — לא הגולמי
+  el('cMine').textContent = MINE.length;
+  var q = el('q').value.trim().toLowerCase();
+  var src, h = '';
+  if (MODE === 'office') src = OFFICE;
+  else if (MODE === 'shtaf') src = shtafShown;
   else src = MINE.filter(function(p){
     return !q || ((p.address || '') + ' ' + (p.city || '') + ' ' + (p.desc || '')).toLowerCase().indexOf(q) >= 0;
   });
