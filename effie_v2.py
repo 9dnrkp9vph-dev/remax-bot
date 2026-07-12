@@ -1288,6 +1288,14 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div id="unmList"></div>
     </div>
 
+    <!-- חברי צוות שנמחקו — שחזור (מפתח בלבד) -->
+    <div class="card" id="rmvCard" style="display:none">
+      <div class="cardTitle">חברי צוות שנמחקו</div>
+      <div style="font-size:12px;color:#8B8F99;line-height:1.5">מי שנמחק מוסתר מהספרייה וחסום מכניסה,
+        אבל הרשומות שלו (חתימות, שיחות) נשמרות. שחזור = הזמנה מחדש עם השם — הוא חוזר לספרייה ויכול להיכנס.</div>
+      <div id="rmvList"></div>
+    </div>
+
     <!-- הגדרות המשרד -->
     <div class="card">
       <div class="cardTitle">הגדרות המשרד</div>
@@ -1433,6 +1441,7 @@ function boot(){
         NB_DEFAULT = (rs[1] && rs[1].nbDefault) || 0;
         UNMATCHED = ((rs[1] && rs[1].unmatchedSignings) || []).map(function(u){ return {n: u.name, c: u.count, w: 'חתימות'}; })
           .concat(((rs[1] && rs[1].unmatchedListings) || []).map(function(u){ return {n: u.name, c: u.count, w: 'נכסים'}; }));
+        RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
         render();
       });
@@ -1466,6 +1475,25 @@ function render(){
   renderTeam();
   renderTeams();
   renderUnmatched();
+  renderRemoved();
+}
+var RMV = [];
+function renderRemoved(){
+  var card = el('rmvCard');
+  if (!card) return;
+  if (!RMV.length){ card.style.display = 'none'; return; }
+  card.style.display = 'flex';
+  el('rmvList').innerHTML = RMV.map(function(r, i){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid #F0EDE3">' +
+      '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.name) + '</div>' +
+      '<div style="font-size:11px;color:#8B8F99">' + (r.sigs ? r.sigs + ' חתימות במערכת' : 'ללא רשומות') + '</div></div>' +
+      '<button onclick="restoreMember(' + i + ')" style="padding:9px 16px;border:none;border-radius:11px;background:#2E6BD6;' +
+      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שחזר</button></div>';
+  }).join('');
+}
+function restoreMember(i){
+  var r = RMV[i]; if (!r) return;
+  openInvite(r.name);   // הזמנה מחדש עם השם מולא — מנקה מהחסומים ורושם מחדש (התיקון מהלילה)
 }
 var UNMATCHED = [];
 var SHOW_ALL = false;
@@ -1633,10 +1661,11 @@ function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.displ
   (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
 var SEL_ROLE = 'agent';
-function openInvite(){
+function openInvite(prefillName){
   SEL_ROLE = 'agent';
   openSheet(
-    '<h3>הזמן חבר צוות</h3>' +
+    '<h3>' + (prefillName ? 'שחזור חבר צוות' : 'הזמן חבר צוות') + '</h3>' +
+    (prefillName ? '<div style="font-size:12px;color:#8B8F99;line-height:1.5">הזן את הנייד שלו ושלח — הוא יחזור לספרייה, ייפתח לכניסה, וכל הרשומות הקיימות שלו יתאחדו אליו.</div>' : '') +
     '<div class="fld"><span>שם מלא</span><input id="invNm" placeholder="שם החבר החדש"></div>' +
     '<div class="fld"><span>נייד</span><input id="invPh" type="tel" inputmode="numeric" placeholder="05X-XXXXXXX"></div>' +
     '<div class="fld"><span>תפקיד</span><div class="segs">' +
@@ -1647,6 +1676,7 @@ function openInvite(){
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M2.5 3h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5V11H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
       'שלח הזמנה ב-SMS</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+  if (prefillName){ el('invNm').value = prefillName; el('invPh').focus(); }
 }
 function seg(val, label){
   return '<div class="seg' + (SEL_ROLE === val ? ' on' : '') + '" data-v="' + val +
