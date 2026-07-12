@@ -1417,6 +1417,7 @@ def fetch_signings_from_sheet():
                 "city": "",
                 "client_name": col(row, "שם לקוח"),
                 "commission_pct": col(row, "העמלה שנחתמה"),
+                "notes": col(row, "notes") or col(row, "הערות"),
             })
         _cache_put("signings_sheet", out)
         return out
@@ -3086,6 +3087,23 @@ def _log_activity(name, role, phone, action, detail=""):
     except Exception:
         pass
 
+def _mark_joined(phone):
+    """מסמן שסוכן נכנס בפועל (SMS או Google) — כדי שלא יישאר 'ממתין לכניסה ראשונה'.
+    כותב רק בכניסה הראשונה (אידמפוטנטי); בכניסות חוזרות אין כתיבה, אין מרוץ."""
+    p = _last9(phone)
+    if not p:
+        return
+    try:
+        cfg = _load_config()
+        joined = [x for x in (cfg.get("v2_joined") or []) if x]
+        if p in joined:
+            return
+        joined.append(p)
+        cfg["v2_joined"] = joined
+        _save_config(cfg)
+    except Exception:
+        pass
+
 # --- recent searches per user (phone -> {kind: [queries]}) ---
 _recent = {}
 def _push_recent(phone, kind, q):
@@ -3158,6 +3176,7 @@ def api_auth_verify():
         sess["agent_names"] = list(_cc[phone]["names"])
     _web_sessions[token] = sess
     _log_activity(name, sess["role"], phone, "כניסה")
+    _mark_joined(phone)   # יציאה מ"ממתין לכניסה ראשונה" גם בכניסת SMS
     return jsonify({"ok": True, "token": token, "role": role, "drole": drole, "name": name, "dev": sess.get("dev", False), "tabs": _tabs_for_role(drole)})
 
 # ── Google Sign-In (OAuth) + יומן Google ────────────────────────────────────────
@@ -4434,15 +4453,12 @@ def api_sign_send_remote():
             "signature": "", "signed_at": ""})
     except Exception:
         pass
-    # שליחה ב-SMS וב-WhatsApp
+    # שליחה אוטומטית ב-SMS בלבד. וואטסאפ = אופציה ידנית לסוכן (כפתור בצד הלקוח, נשלח מהוואטסאפ של הסוכן — לא אוטומטית מהשרת)
     msg = ("שלום %s,\nהתבקשת לחתום על מסמך מטעם RE/MAX Family (%s).\nלצפייה וחתימה:\n%s" % (client, agent, link))
-    sms_ok = False; wa_ok = False
+    sms_ok = False
     try: sms_ok = bool(web_send_sms(last9, msg))
     except Exception: sms_ok = False
-    try:
-        wa = _wa_phone(phone)
-        if wa: wa_ok = bool(send_text(wa, msg))
-    except Exception: wa_ok = False
+    wa_link = _wa_phone(phone)   # מספר wa.me לכפתור השיתוף הידני (בלי שליחה אוטומטית)
     if ok_any:
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
@@ -4450,7 +4466,7 @@ def api_sign_send_remote():
         # רק חתימת קונה (לא מוכר/בלעדיות) — גם אם עוד לא חתם — נכנסת ל"קונים שלי"
         if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
             _add_buyer_from_signing(agent, client, phone, address, "נשלחה חתימה")
-    return jsonify({"ok": ok_any, "sms": sms_ok, "wa": wa_ok, "phone": last9})
+    return jsonify({"ok": ok_any, "sms": sms_ok, "phone": last9, "link": link, "waPhone": wa_link})
 
 @app.route("/api/sign/complete", methods=["POST"])
 def api_sign_complete():
@@ -4864,6 +4880,7 @@ def api_history():
         "agent": (g.get("agent", "") or "").strip(),
         "ts": _excl_epoch(g.get("received_at", "")),
         "eid": str(g.get("event_id", "") or "").strip(),
+        "notes": (g.get("notes") or g.get("הערות") or "").strip(),
         "raw": str(g.get("received_at", "") or "").strip(),
     } for g in sigs[:500]]
     vphone = _vphone_for_name(eff["name"])
@@ -4912,6 +4929,7 @@ def api_signatures():
         "agent": (g.get("agent", "") or "").strip(),
         "ts": _excl_epoch(g.get("received_at", "")),
         "eid": str(g.get("event_id", "") or "").strip(),
+        "notes": (g.get("notes") or g.get("הערות") or "").strip(),
         "raw": str(g.get("received_at", "") or "").strip(),
     } for g in sigs[:500]]
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"], "signatures": sig_out})
