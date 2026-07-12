@@ -997,6 +997,18 @@ function renderCard(i){
       '<div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">'+
         (hpArr[0] ? hlRow(pinSvg, 'הנכס החם המוביל', esc(hpArr[0].title||'')) : '')+
       '</div>'+
+      // באנר הישג — דירוג המשרד ברשת רימקס ישראל מתחילת השנה (טקסט קבוע)
+      '<div style="margin-top:12px;background:linear-gradient(135deg,rgba(228,197,107,.14),rgba(228,197,107,.05));border:1px solid rgba(228,197,107,.35);border-radius:16px;padding:14px 15px">'+
+        '<div style="font-size:11px;font-weight:700;color:#E4C56B;letter-spacing:.06em;margin-bottom:10px">רימקס פמילי קריות · רשת רימקס ישראל</div>'+
+        '<div style="display:flex;align-items:center;gap:11px;margin-bottom:9px">'+
+          '<svg width="17" height="17" viewBox="0 0 16 16"><path d="M4.5 2h7v3a3.5 3.5 0 0 1-7 0V2z" fill="none" stroke="#E4C56B" stroke-width="1.2"/><path d="M4.5 3H2.8v1.2A2 2 0 0 0 4.8 6.2M11.5 3h1.7v1.2a2 2 0 0 1-2 2M6.5 9.7h3M5.7 13.2h4.6M8 9.7v3.5" fill="none" stroke="#E4C56B" stroke-width="1.2" stroke-linecap="round"/></svg>'+
+          '<div style="font-size:13.5px;color:#fff;line-height:1.35"><b style="color:#E4C56B">מקום 2</b> בעסקאות מתחילת השנה</div>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:11px">'+
+          '<svg width="17" height="17" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#E4C56B" stroke-width="1.2"/><path d="M8 4.4v7.2M6.2 6.2c0-1 .8-1.5 1.8-1.5s1.8.6 1.8 1.4c0 1.9-3.6 1-3.6 2.9 0 .9.8 1.5 1.8 1.5s1.8-.6 1.8-1.6" fill="none" stroke="#E4C56B" stroke-width="1.2" stroke-linecap="round"/></svg>'+
+          '<div style="font-size:13.5px;color:#fff;line-height:1.35"><b style="color:#E4C56B">מקום 4</b> בעמלות משרדים מתחילת השנה</div>'+
+        '</div>'+
+      '</div>'+
       '<div class="btns" style="margin-top:auto;align-items:center">'+
         '<button class="bMain" style="width:100%" onclick="'+(total()>1?'nextCard()':'closeStory()')+'">'+(total()>1?'המשך לנכסים החמים ←':'בוא נתחיל את היום')+'</button>'+
         '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
