@@ -3695,9 +3695,18 @@ def api_dev_people():
                        "phone": (_ce.get("phone", "") or (sorted(v["phones"])[0] if v["phones"] else "")),
                        "nbDelay": nb_val, "nbHidden": nb_hidden,
                        "suspended": bool(set(v["phones"]) & _susp)})
+    # חברי צוות שנמחקו — חוזרים עם מונה חתימות, לשחזור מהניהול. בלי זה סוכן שנמחק
+    # "נעלם" מכל הרשימות (ספרייה + לא-משויכים) למרות שכבר ביצע חתימות (בקשת אייל 13/07).
+    _sig_cnt = {}
+    for _nm in sig_names:
+        _k = _name_key(_nm)
+        if _k: _sig_cnt[_k] = _sig_cnt.get(_k, 0) + 1
+    removed_out = [{"name": _nm, "sigs": _sig_cnt.get(_name_key(_nm), 0)}
+                   for _nm in (str(x or "").strip() for x in (cfg.get("removedAgents") or [])) if _nm]
     return jsonify({"ok": True, "agents": agents, "nbDefault": _nb_def,
                     "unmatchedSignings": _scan(sig_names),
-                    "unmatchedListings": _scan(list_names)})
+                    "unmatchedListings": _scan(list_names),
+                    "removed": removed_out})
 
 @app.route("/api/dev/parity", methods=["GET"])
 def api_dev_parity():
