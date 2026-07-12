@@ -1279,6 +1279,13 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <div class="sep"></div>
+      <div class="setRow" id="propsUpRow" style="display:none" onclick="propsUpPick()">
+        <div class="setIc" style="background:#EAF0FA"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 10.5V2.5M5 5l3-3 3 3" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 10.5v2.7a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8v-2.7" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+        <div class="mid"><div class="nm">עדכון קובץ נכסים</div><div class="sb">העלה Excel — מיזוג אוטומטי (מחשב בלבד)</div></div>
+        <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <input type="file" id="propsUpFile" accept=".xlsx" style="display:none" onchange="propsUpGo(this.files&&this.files[0])">
+      <div class="sep"></div>
       <div class="setRow" onclick="openOffice()">
         <div class="setIc" style="background:#F6EEDB"><img id="miniLogo" src="/assets/logo" style="width:22px;height:22px;object-fit:contain" onerror="this.style.display='none'"></div>
         <div class="mid"><div class="nm">שם ולוגו המשרד</div><div class="sb" id="officeNameRow"></div></div>
@@ -1813,6 +1820,38 @@ function togglePolicy(key, node){
       (OV.office.vphone || 'לא הוגדר') + (on ? ' · תמלול פעיל' : ' · תמלול כבוי');
   });
 }
+
+/* עדכון קובץ נכסים — ווב/מחשב בלבד (לא באפליקציית Capacitor) */
+function propsUpPick(){ var i = el('propsUpFile'); if (i){ i.value = ''; i.click(); } }
+function propsUpGo(file){
+  if (!file) return;
+  toast('מנתח את הקובץ…');
+  var fd = new FormData(); fd.append('file', file);
+  fetch('/v2/api/props/upload', {method:'POST', headers:{'X-Auth-Token': TOK}, body: fd})
+    .then(function(r){ return r.json(); }).then(function(j){
+      if (!j.ok){ toast(j.detail || 'הקובץ לא תקין'); return; }
+      var s = j.summary; window._propsFile = file;
+      openSheet('<h3>עדכון נכסים — תצוגה מקדימה</h3>' +
+        '<div style="font-size:14px;line-height:1.9;color:#1E3A5F">' +
+        'נכסים כרגע: <b>' + s.current + '</b><br>בקובץ (פעילים): <b>' + s.uploaded + '</b><br>' +
+        'מתעדכנים: <b>' + s.updated + '</b> · חדשים: <b>' + s.new + '</b>' +
+        (s.skipped ? '<br>דולגו (חסר מספר מודעה/סוכן): <b>' + s.skipped + '</b>' : '') +
+        '<br>סה"כ אחרי העדכון: <b style="color:#2E6BD6;font-size:16px">' + s.final + '</b></div>' +
+        '<button style="width:100%;padding:13px;margin-top:14px;background:#2E6BD6;color:#fff;font-weight:800;border:0;border-radius:12px;font-family:inherit;font-size:15px;cursor:pointer" onclick="propsUpCommit()">אשר ועדכן</button>' +
+        '<button style="width:100%;padding:12px;margin-top:8px;background:#EFEBDD;color:#5B6472;font-weight:700;border:0;border-radius:12px;font-family:inherit;font-size:14px;cursor:pointer" onclick="closeSheet()">ביטול</button>');
+    }).catch(function(){ toast('שגיאת רשת'); });
+}
+function propsUpCommit(){
+  var file = window._propsFile; if (!file){ closeSheet(); return; }
+  toast('מעדכן…');
+  var fd = new FormData(); fd.append('file', file); fd.append('commit', '1');
+  fetch('/v2/api/props/upload', {method:'POST', headers:{'X-Auth-Token': TOK}, body: fd})
+    .then(function(r){ return r.json(); }).then(function(j){
+      closeSheet();
+      toast((j.ok && j.committed) ? ('עודכן! ' + (j.summary ? j.summary.final : '') + ' נכסים') : 'העדכון נכשל');
+    }).catch(function(){ closeSheet(); toast('שגיאת רשת'); });
+}
+try{ if (!window.Capacitor && window.innerWidth >= 700){ var _pur = el('propsUpRow'); if (_pur) _pur.style.display = 'flex'; } }catch(e){}
 
 boot();
 </script></body></html>'''
@@ -7602,6 +7641,86 @@ def register(app, G):
                     log.error(f"v2 invite sms: {e}")
             return jsonify({"ok": True, "sms": sent, "wa": wa})
         return jsonify({"ok": True, "wa": wa})
+
+    @app.route("/v2/api/props/upload", methods=["POST"])
+    def v2_api_props_upload():
+        """עדכון נכסי המשרד מקובץ (ניהול בלבד): מפרסר xlsx → מסנן פעילים → ממזג (רמת-דירה) →
+        תצוגה מקדימה; ב-commit=1 כותב ל-Supabase properties (מקור האמת)."""
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        f = request.files.get("file")
+        if not f:
+            return jsonify({"ok": False, "reason": "no_file"}), 400
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": False, "reason": "no_supabase"})
+        commit = (request.form.get("commit") == "1")
+        try:
+            import openpyxl as _oxl, io as _io, re as _re2
+            wb = _oxl.load_workbook(_io.BytesIO(f.read()), read_only=True, data_only=True)
+            allrows = list(wb.active.iter_rows(values_only=True))
+            if len(allrows) < 2:
+                return jsonify({"ok": False, "reason": "empty_file"})
+            hdr = [str(h or "").strip() for h in allrows[0]]
+            need = ["סטטוס", "עיר / ישוב", "כתובת", "מספר בית", "חדרים", "קומה", "מספר מודעה", "סוכן 1"]
+            missing = [k for k in need if k not in hdr]
+            if missing:
+                return jsonify({"ok": False, "reason": "bad_columns", "detail": "חסרות עמודות: " + ", ".join(missing)})
+            def _nm(x):
+                x = str(x or "").strip().replace("קריית", "קרית")
+                for ch in ('"', "'", "״", "″", "`"):
+                    x = x.replace(ch, "")
+                return _re2.sub(r"\s+", " ", x).strip()
+            def _nn(x):
+                x = _nm(x)
+                try:
+                    fl = float(x); return str(int(fl)) if fl == int(fl) else str(fl)
+                except Exception:
+                    return x
+            def _key(d):
+                return "|".join([_nm(d.get("עיר / ישוב")), _nm(d.get("כתובת")),
+                                 _nn(d.get("מספר בית")), _nn(d.get("חדרים")), _nn(d.get("קומה"))])
+            new_by = {}; skipped = 0
+            for r in allrows[1:]:
+                vals = ["" if v is None else str(v) for v in r]
+                vals += [""] * (len(hdr) - len(vals))
+                d = dict(zip(hdr, vals))
+                if _nm(d.get("סטטוס")) not in ("", "פעילה"):
+                    continue
+                if not str(d.get("מספר מודעה", "")).strip() or not str(d.get("סוכן 1", "")).strip():
+                    skipped += 1
+                    continue
+                if str(d.get("סוכן 1", "")).strip() == "אווה אזולאי":
+                    continue
+                d["_desc_ae"] = vals[30] if len(vals) > 30 else ""
+                new_by[_key(d)] = d
+            cur = _sb.fetch_properties_rows() or []
+            cur_active = [d for d in cur if _nm(d.get("סטטוס")) in ("", "פעילה")]
+            cur_keys = set(_key(d) for d in cur_active)
+            new_keys = set(new_by)
+            updated = len(new_keys & cur_keys)
+            kept = [d for d in cur_active if _key(d) not in new_keys]
+            merged = kept + list(new_by.values())
+            summary = {"current": len(cur_active), "uploaded": len(new_by),
+                       "updated": updated, "new": len(new_by) - updated,
+                       "skipped": skipped, "final": len(merged)}
+            if not commit:
+                return jsonify({"ok": True, "preview": True, "summary": summary})
+            okw, n = _sb.replace_properties(merged)
+            try:
+                _cc = G.get("_cache_clear")
+                if _cc:
+                    _cc("sheet_rows")
+            except Exception:
+                pass
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
+                          "עדכון נכסים מקובץ", str(summary["final"]) + " נכסים")
+            return jsonify({"ok": bool(okw), "committed": True, "summary": summary, "written": n})
+        except Exception as e:
+            if log:
+                log.warning("props upload: " + str(e))
+            return jsonify({"ok": False, "reason": "failed", "detail": str(e)[:200]})
 
     @app.route("/v2/api/admin/policy", methods=["POST"])
     def v2_api_admin_policy():
