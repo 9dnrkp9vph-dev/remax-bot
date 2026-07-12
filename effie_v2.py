@@ -6236,17 +6236,61 @@ function renderProps(){
       '<svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#C24040" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>';
   }).join('') || '<div style="font-size:12px;color:#8B8F99">עוד לא נבחר נכס</div>';
 }
+/* השלמה אוטומטית במלל חופשי — כל נכסי המשרד (בקשת אייל 13/07, החתמת מתעניין) */
+var ALLPROPS = null, NP_HITS = [];
+function loadAllProps(){
+  if (ALLPROPS !== null) return;
+  ALLPROPS = [];   // מסמן "בטעינה" — מונע קריאה כפולה
+  GET('/api/sign/properties?all=1').then(function(j){
+    ALLPROPS = (j && j.properties) || [];
+    npSuggest();   // אם הסוכן כבר התחיל להקליד — מרעננים את ההצעות
+  }).catch(function(){ ALLPROPS = []; });
+}
+function npNorm(s){ return String(s || '').toLowerCase().replace(/קריית/g, 'קרית'); }
+function npSuggest(){
+  var box = el('npSug'); if (!box) return;
+  var q = npNorm((el('npAddr') ? el('npAddr').value : '').trim());
+  if (q.length < 2){ box.innerHTML = ''; NP_HITS = []; return; }
+  var toks = q.split(/\s+/).filter(Boolean);
+  NP_HITS = (ALLPROPS || []).filter(function(p){
+    var t = npNorm(p.address);
+    return toks.every(function(w){ return t.indexOf(w) >= 0; });
+  }).slice(0, 6);
+  box.innerHTML = NP_HITS.map(function(p, i){
+    var hint = [p.type, p.rooms ? p.rooms + " חד'" : ''].filter(Boolean).join(' · ');
+    return '<div class="pick" onclick="npPick(' + i + ')">' +
+      '<span class="a">' + esc(p.address) +
+      (hint ? ' <span style="color:#8B8F99;font-size:11px">' + esc(hint) + '</span>' : '') + '</span>' +
+      '<span class="p">' + esc(p.price ? '₪' + p.price : '') + '</span></div>';
+  }).join('');
+}
+function npPick(i){
+  var p = NP_HITS[i]; if (!p) return;
+  el('npAddr').value = p.address || '';
+  if (p.price) el('npPrice').value = String(p.price);
+  el('npSug').innerHTML = ''; NP_HITS = [];
+}
 function addPropFree(){
   openSheet('<h3>הוספת נכס</h3>' +
-    '<div class="fld"><span>כתובת (רחוב, עיר) *</span><input id="npAddr"></div>' +
-    '<div class="fld"><span>מחיר מבוקש</span><input id="npPrice" inputmode="numeric"></div>' +
+    '<div class="fld"><span>כתובת (רחוב, עיר) *</span><input id="npAddr" autocomplete="off" oninput="npSuggest()"></div>' +
+    '<div id="npSug" style="display:flex;flex-direction:column;gap:6px"></div>' +
+    '<div class="fld"><span>מחיר מבוקש' + (KIND !== 'buyer' ? ' *' : '') + '</span>' +
+    '<input id="npPrice" inputmode="numeric" oninput="fmtPrice(this)"></div>' +
     '<button class="btnSec" style="background:#2E6BD6;color:#fff;border:0" onclick="addPropGo()">הוסף</button>' +
     '<button class="btnSec" onclick="closeSheet()">ביטול</button>');
+  if (KIND === 'buyer') loadAllProps();   // מתעניין: הצעות מכל מודעות המשרד
+}
+/* פסיקים חיים במחיר — "1550000" נהיה "1,550,000" תוך כדי הקלדה */
+function fmtPrice(inp){
+  var d = String(inp.value || '').replace(/[^0-9]/g, '');
+  inp.value = d.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 function addPropGo(){
   var a = el('npAddr').value.trim();
   if (!a){ toast('כתובת — חובה'); return; }
-  PROPS.push({addr: a, price: el('npPrice').value.trim()});
+  var pr = el('npPrice').value.trim();
+  if (KIND !== 'buyer' && !pr.replace(/\D/g, '')){ toast('מחיר מבוקש — חובה בהחתמת בעל נכס'); return; }
+  PROPS.push({addr: a, price: pr});
   closeSheet(); renderProps();
 }
 function pickProp(){
@@ -6368,6 +6412,10 @@ function submitSign(){
   var cnotes = el('cNotes') ? el('cNotes').value.trim() : '';
   if (!cname || !cphone){ toast('שם וטלפון — חובה'); return; }
   if (!PROPS.length){ toast('הוסף לפחות נכס אחד'); return; }
+  // בעל נכס: אין חתימה בלי מחיר מבוקש (גם לנכס שהגיע מ"הנכסים שלי"/prefill בלי מחיר)
+  if (KIND !== 'buyer' && PROPS.some(function(p){ return !String(p.price || '').replace(/\D/g, ''); })){
+    toast('מחיר מבוקש — חובה בהחתמת בעל נכס'); return;
+  }
   var picks = selectedDocs();
   if (!picks.length){ toast('בחר סוג עסקה'); return; }
   var exclRow = null, feeRow = null, mRow = null;
