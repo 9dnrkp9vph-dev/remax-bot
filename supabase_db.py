@@ -231,6 +231,37 @@ def replace_properties(raw_rows):
     return True, n
 
 
+def insert_ping(phone, name=""):
+    """פעימת נוכחות (heartbeat) לטבלת usage_pings — לחישוב זמן-פעיל אמיתי ביומן השימוש. best-effort."""
+    if not enabled():
+        return False
+    try:
+        r = requests.post(SUPABASE_URL + "/rest/v1/usage_pings",
+                          headers={**_headers(), "Content-Type": "application/json"},
+                          json={"office_id": SB_OFFICE_ID, "phone": str(phone or ""), "name": str(name or "")},
+                          timeout=8)
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def fetch_pings_today(iso_from):
+    """פעימות מ-iso_from ואילך → list של {phone, name, ts}."""
+    if not enabled():
+        return []
+    try:
+        r = requests.get(SUPABASE_URL + "/rest/v1/usage_pings",
+                         headers=_headers(),
+                         params={"office_id": "eq." + SB_OFFICE_ID, "ts": "gte." + iso_from,
+                                 "select": "phone,name,ts", "order": "ts.asc", "limit": "100000"},
+                         timeout=20)
+        r.raise_for_status()
+        return r.json() or []
+    except Exception:
+        return []
+
+
 def fetch_config():
     """הקונפיג המלא — dict מורכב משורות office_config (שורה לכל מפתח).
     זהה 1:1 לבלוב של getconfig; כתיבת מפתח אחד אינה נוגעת באחרים."""
