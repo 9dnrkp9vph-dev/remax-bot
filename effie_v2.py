@@ -3328,7 +3328,9 @@ function render(){
       '<div class="sb">' + esc(sub) + '</div></div>' + chip + '</div>' +
       '<div class="st ' + (signed ? 'signed' : 'wait') + '"><i></i>' +
       (signed ? 'נחתם' : 'ממתין לחתימה') + (g.time ? ' · ' + esc(g.time) : '') +
-      (signed && g.pct ? ' · עמלה ' + esc(String(g.pct)) + '%' : '') + '</div>' + acts + '</div>';
+      (signed && g.pct ? ' · עמלה ' + esc(String(g.pct)) + '%' : '') + '</div>' +
+      (g.notes ? '<div style="margin-top:8px;font-size:12.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:8px 11px;line-height:1.5">הערה: ' + esc(g.notes) + '</div>' : '') +
+      acts + '</div>';
   });
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#C29435" stroke-width="1.7" stroke-linejoin="round"/></svg></div>' +
@@ -4090,6 +4092,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div class="srch">
         <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input id="q" placeholder="דירת 4 חדרים בקרית ביאליק עד 2 מיליון" oninput="qChanged();qClearBtn()">
+        <svg id="qSpin" width="16" height="16" viewBox="0 0 16 16" style="display:none;flex-shrink:0"><circle cx="8" cy="8" r="6" fill="none" stroke="#D8DEE9" stroke-width="2"/><path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="#2E6BD6" stroke-width="2" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="0.7s" repeatCount="indefinite"/></path></svg>
         <button id="qClear" onclick="el('q').value='';qClearBtn();qChanged()" aria-label="ניקוי חיפוש"
           style="display:none;width:26px;height:26px;border-radius:50%;background:#EBE8DD;border:none;flex-shrink:0;align-items:center;justify-content:center;cursor:pointer;padding:0">
           <svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -4231,6 +4234,8 @@ function render(){
   else src = MINE.filter(function(p){
     return !q || ((p.address || '') + ' ' + (p.city || '') + ' ' + (p.desc || '')).toLowerCase().indexOf(q) >= 0;
   });
+  if (el('qSpin')) el('qSpin').style.display = 'none';
+  el('sumLine').style.color = ''; el('sumLine').style.fontWeight = '';
   el('sumLine').textContent = (MODE === 'office' ? SUM.office : MODE === 'shtaf' ? SUM.shtaf : '') || '';
   src.slice(0, 40).forEach(function(p, i){ h += propCard(p, i); });
   if (src.length > 40) h += '<div class="more">מוצגים 40 מתוך ' + src.length + ' — חדד את החיפוש</div>';
@@ -4299,6 +4304,8 @@ var _qT = null;
 function qChanged(){
   clearTimeout(_qT);
   if (MODE === 'mine'){ render(); return; }
+  if (el('qSpin')) el('qSpin').style.display = 'block';
+  if (el('sumLine')){ el('sumLine').textContent = 'מחפש…'; el('sumLine').style.color = '#2E6BD6'; el('sumLine').style.fontWeight = '700'; }
   _qT = setTimeout(function(){ load(el('q').value.trim()); }, 500);
 }
 function qClearBtn(){ var b = el('qClear'); if (b) b.style.display = el('q').value ? 'flex' : 'none'; }
@@ -5844,10 +5851,12 @@ function fmtMin(m){
   return m + ' דק\'';
 }
 function renderUsage(items){
+  var _d0 = new Date(); _d0.setHours(0, 0, 0, 0);
+  var _t0 = _d0.getTime() / 1000;   // 00:00 מקומי של היום — הספירה מתאפסת כל חצות
   var by = {};
   items.forEach(function(it){
     var n = (it.name || '').trim(), t = parseFloat(it.ts) || 0;
-    if (!n || !t) return;
+    if (!n || t < _t0) return;   // רק פעולות מהיום (00:00–23:59)
     (by[n] = by[n] || []).push(t);
   });
   var rows = [];
@@ -6023,9 +6032,13 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     </div>
 
     <div class="sec">
+      <div class="fld"><span>הערות (לא חובה)</span><textarea id="cNotes" rows="3" placeholder="הערות שיתווספו לתחתית ההסכם"></textarea></div>
+    </div>
+
+    <div class="sec">
       <span class="tt">אופן ההחתמה</span>
       <div class="radio on" id="rRemote" onclick="setMode('remote')">
-        <div class="dot"></div><span class="lb">שליחה לחתימה ב-SMS ו-WhatsApp</span></div>
+        <div class="dot"></div><span class="lb">שליחה לחתימה ב-SMS</span></div>
       <div class="radio" id="rLocal" onclick="setMode('local')">
         <div class="dot"></div><span class="lb">חתימה במקום (על המכשיר הזה)</span></div>
       <div class="hint" id="modeHint">הלקוח יקבל קישור, ימלא ת"ז ויחתום במכשירו. המסמך החתום יתווסף לשורת החתימה.</div>
@@ -6036,7 +6049,7 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     </div>
   </main>
 
-  <div class="cta"><button id="go" onclick="submitSign()">שלח לחתימה בוואטסאפ וב-SMS</button></div>
+  <div class="cta"><button id="go" onclick="submitSign()">שלח לחתימה ב-SMS</button></div>
   <div id="ovl" onclick="closeSheet()"></div>
   <div id="sheet"></div>
   <div id="toast"></div>
@@ -6063,8 +6076,10 @@ function toast(m){
 function openSheet(html){
   el('sheet').innerHTML = '<div class="grip"></div>' + html;
   el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden';
 }
-function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none'; }
+function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.documentElement.style.overflow = ''; document.body.style.overflow = ''; }
 
 var KIND = (location.search.indexOf('type=owner') >= 0 || location.search.indexOf('type=seller') >= 0) ? 'owner' : 'buyer';
 var AGENT = '', MODE = 'remote', PROPS = [], BUSY = false;
@@ -6179,7 +6194,7 @@ function setMode(m){
   el('modeHint').textContent = m === 'local'
     ? 'הלקוח מזין ת"ז וחותם באצבע על המסך — המסמך נשמר מיד עם קישור לצפייה.'
     : 'הלקוח יקבל קישור, ימלא ת"ז ויחתום במכשירו. המסמך החתום יתווסף לשורת החתימה.';
-  el('go').textContent = m === 'local' ? 'החתם עכשיו' : 'שלח לחתימה בוואטסאפ וב-SMS';
+  el('go').textContent = m === 'local' ? 'החתם עכשיו' : 'שלח לחתימה ב-SMS';
   if (m === 'local') initPad();
 }
 var padInit = false;
@@ -6246,6 +6261,7 @@ function selectedDocs(){
 function submitSign(){
   if (BUSY) return;
   var cname = el('cName').value.trim(), cphone = el('cPhone').value.trim(), cid = el('cId').value.trim();
+  var cnotes = el('cNotes') ? el('cNotes').value.trim() : '';
   if (!cname || !cphone){ toast('שם וטלפון — חובה'); return; }
   if (!PROPS.length){ toast('הוסף לפחות נכס אחד'); return; }
   var picks = selectedDocs();
@@ -6270,8 +6286,9 @@ function submitSign(){
     return GET('/api/sign/contract?type=' + pk[0]);
   })).then(function(cons){
     var docs = picks.map(function(pk, i){
-      return {deal_type: pk[1], title: (cons[i] && cons[i].title) || '',
-              body: fill((cons[i] && cons[i].body) || '', v)};
+      var _b = fill((cons[i] && cons[i].body) || '', v);
+      if (cnotes) _b = _b + '\n\n' + 'הערות: ' + cnotes;
+      return {deal_type: pk[1], title: (cons[i] && cons[i].title) || '', body: _b};
     });
     var addr = PROPS.map(function(p){ return p.addr; }).join(PROPS.length > 1 ? ' | ' : '');
     var header = 'פרטי הלקוח: ' + cname + (cid ? ' · ת"ז ' + cid : '') + ' · ' + cphone +
@@ -6285,12 +6302,26 @@ function submitSign(){
     };
     if (MODE === 'remote')
       return POST('/api/sign/send_remote', {docs: docs, client: cname, phone: cphone,
-        address: addr, notes: '', header: header}).then(function(j){
-          done(j, 'נשלח לחתימה' + (j.wa ? ' · וואטסאפ' : '') + (j.sms ? ' · SMS' : ''));
+        address: addr, notes: cnotes, header: header}).then(function(j){
+          BUSY = false; el('go').disabled = false;
+          if (!j.ok){ toast('שגיאה — נסה שוב'); return; }
+          var _lk = j.link || '', _wp = j.waPhone || '';
+          var _wmsg = 'שלום ' + cname + ',\nהתבקשת לחתום על מסמך מטעם RE/MAX Family.\nלצפייה וחתימה:\n' + _lk;
+          var _wurl = (_wp ? ('https://wa.me/' + _wp) : 'https://wa.me/') + '?text=' + encodeURIComponent(_wmsg);
+          var _sln = j.sms ? ('הקישור נשלח ל' + esc(cname) + ' ב-SMS.') : 'ה-SMS לא נשלח — שלח בוואטסאפ:';
+          if (el('go').parentNode) el('go').parentNode.style.display = 'none';
+          document.querySelector('main').innerHTML =
+            '<div class="sec" style="text-align:center">' +
+              '<div style="font-size:40px">📲</div>' +
+              '<div style="font-weight:800;font-size:18px;margin-top:6px">המסמך מוכן!</div>' +
+              '<div style="color:#5B6472;font-size:14px;line-height:1.6;margin:8px 0 14px">' + _sln + '<br>אפשר לשלוח ללקוח גם בוואטסאפ מהמספר שלך:</div>' +
+              (_lk ? '<a href="' + _wurl + '" target="_blank" rel="noopener" style="display:block;box-sizing:border-box;width:100%;padding:15px;background:#1FAF5E;color:#fff;font-weight:800;border-radius:14px;text-decoration:none">שלח ללקוח בוואטסאפ</a>' : '') +
+              '<button class="b sol" style="width:100%;margin-top:10px" onclick="location.href=\'/v2/sigs\'">לטאב חתימות</button>' +
+            '</div>';
         });
     var sig = el('pad').toDataURL('image/png');
     return POST('/api/sign/submit', {docs: docs, client: cname, cid: cid, phone: cphone,
-      address: addr, notes: '', signature: sig, header: header}).then(function(j){
+      address: addr, notes: cnotes, signature: sig, header: header}).then(function(j){
         done(j, 'נחתם ונשמר');
       });
   }).catch(function(){ BUSY = false; el('go').disabled = false; toast('שגיאה'); });
@@ -7478,6 +7509,10 @@ def register(app, G):
                     gauth.add(p)
         except Exception:
             pass
+        for _p in (cfg.get("v2_joined") or []):   # גם מי שנכנס ב-SMS (לא רק Google)
+            _pj = _last9(_p)
+            if _pj:
+                gauth.add(_pj)
         invites = [v for v in (cfg.get("v2_invites") or []) if isinstance(v, dict)]
         return jsonify({
             "ok": True,
