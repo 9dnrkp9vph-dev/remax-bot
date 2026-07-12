@@ -7653,21 +7653,29 @@ def register(app, G):
                 role = "agent"
             if not name:
                 return jsonify({"ok": False, "reason": "missing_name"}), 400
-            # רישום בקונפיג: ספריית הסוכנים + תפקיד (אותו מנגנון כמו הקונסולה הקיימת)
-            agents = cfg.setdefault("agents", [])
-            entry = next((a for a in agents if _last9(a.get("phone", "")) == phone), None)
-            if not entry:
-                agents.append({"name": name, "phone": phone, "aliases": []})
-            elif name and entry.get("name") != name:
-                entry["name"] = name
-            cfg.setdefault("roles", {})[phone] = role
-            if existing:
-                existing.update({"name": name, "role": role, "ts": int(time.time())})
-            else:
-                invites.append({"name": name, "phone": phone, "role": role, "ts": int(time.time())})
-            cfg["v2_invites"] = invites
-            if not _save_config(cfg):
-                return jsonify({"ok": False, "reason": "save_failed"})
+        # רישום בקונפיג: ספריית הסוכנים + תפקיד (אותו מנגנון כמו הקונסולה הקיימת).
+        # רץ גם ב"שלח שוב" — מתקן חבר שהוזמן, נמחק, והוזמן/נשלח שוב.
+        _name_key = G["_name_key"]
+        agents = cfg.setdefault("agents", [])
+        entry = next((a for a in agents if _last9(a.get("phone", "")) == phone), None)
+        if not entry:
+            agents.append({"name": name, "phone": phone, "aliases": []})
+        elif name and entry.get("name") != name:
+            entry["name"] = name
+        cfg.setdefault("roles", {})[phone] = role
+        # ⚠️ קריטי: סוכן שנמחק בעבר נשאר ב-removedAgents וחסום מכניסה ("המספר לא
+        # רשום במערכת") גם אחרי הזמנה חדשה. הזמנה = כוונת מנהל מפורשת להחזירו —
+        # מנקים מהרשימה, בדיוק כמו agent_add בקונסולה הקיימת.
+        cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or [])
+                                if _name_key(x) != _name_key(name)]
+        if existing:
+            existing.update({"name": name, "role": role, "ts": int(time.time())})
+        else:
+            invites.append({"name": name, "phone": phone, "role": role, "ts": int(time.time())})
+        cfg["v2_invites"] = invites
+        if not _save_config(cfg):
+            return jsonify({"ok": False, "reason": "save_failed"})
+        if not b.get("resend"):
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                           "הזמנת חבר צוות", f"{name} ({role})")
         host = (request.host or "").split(":")[0] or "remax-bot.onrender.com"
