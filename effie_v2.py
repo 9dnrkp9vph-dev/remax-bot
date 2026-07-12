@@ -7212,10 +7212,13 @@ def register(app, G):
                 r.raise_for_status()
                 _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "הסרת נכס חם", key)
                 return jsonify({"ok": True, "on": False})
-            # הפעלה — אכיפת "עד 1" (סופרים active אחרים של אותו סוכן)
+            # הפעלה — אכיפת "1 לסוכן" לפי שם הסוכן (לא טלפון — סוכן עם כמה טלפונים = אחד)
+            name = (s.get("name") or "").strip()
             rc = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
                                headers={**_sb._headers(), "Prefer": "count=exact"},
-                               params={**base, "active": "eq.true", "property_key": "neq." + key,
+                               params={"office_id": "eq." + _sb.SB_OFFICE_ID,
+                                       "agent_name": "eq." + name,
+                                       "active": "eq.true", "property_key": "neq." + key,
                                        "select": "id"}, timeout=10)
             cnt = 0
             cr = rc.headers.get("Content-Range", "")
