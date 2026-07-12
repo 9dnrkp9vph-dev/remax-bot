@@ -296,6 +296,15 @@ html.pwa body:has(nav) main{ overflow:auto; -webkit-overflow-scrolling:touch; }
   document.addEventListener('touchstart', warm, {passive: true, capture: true});
   document.addEventListener('mouseover', warm, {passive: true, capture: true});
 })();
+/* heartbeat — פעימת נוכחות ל-Supabase כל ~45 שנ' (יומן שימוש אמין; רץ בכל מסך /v2) */
+(function(){
+  function _ping(){ try{
+    if (document.visibilityState === 'hidden') return;
+    var t = null; try{ t = localStorage.getItem('fbTok'); }catch(e){}
+    if (t) fetch('/v2/api/ping', {method:'POST', headers:{'X-Auth-Token': t}, keepalive: true}).catch(function(){});
+  }catch(e){} }
+  setTimeout(_ping, 2000); setInterval(_ping, 45000);
+})();
 </script>"""
 
 # ── שכבת דסקטופ/טאבלט (עיצוב §13): סרגל צד מימין, תוכן רחב, בית בגריד ─────────
@@ -5902,7 +5911,10 @@ function load(){
       return;
     }
     var items = j.items || [];
-    renderUsage(j.today || items);   // דשבורד "זמן היום" — כל פעולות היום (ללא תקרת 300 שחתכה את הבוקר)
+    // דשבורד "זמן היום" — זמן פעיל אמיתי מפעימות (usage_pings); נפילה להערכה מיומן הפעולות אם אין פעימות עדיין
+    GET('/v2/api/usage_today').then(function(u){
+      if (!(u && u.ok && renderUsagePings(u.rows))) renderUsage(j.today || items);
+    }).catch(function(){ renderUsage(j.today || items); });
     el('list').innerHTML = items.slice(0, 120).map(function(it){
       var isLogin = (it.action || '').indexOf('כניסה') >= 0;
       return '<div class="row"><div class="av' + (isLogin ? ' login' : '') + '">' + esc((it.name || ' ')[0]) + '</div>' +
@@ -5916,6 +5928,23 @@ function load(){
 function fmtMin(m){
   if (m >= 60) return Math.floor(m / 60) + ' ש\'' + (m % 60 ? ' ' + (m % 60) + ' דק\'' : '');
   return m + ' דק\'';
+}
+function renderUsagePings(rows){
+  if (!rows || !rows.length) return false;   // אין פעימות עדיין → הקורא ייפול להערכה
+  rows.sort(function(a, b){ return b.min - a.min; });
+  var mx = rows[0].min || 1;
+  el('useDash').style.display = 'block';
+  el('useDash').innerHTML =
+    '<div style="font-size:14.5px;font-weight:800;padding:2px 2px 10px">זמן באפליקציה היום</div>' +
+    rows.slice(0, 40).map(function(r){
+      return '<div style="display:flex;align-items:center;gap:10px;padding:5px 2px">' +
+        '<div style="width:92px;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.name) + '</div>' +
+        '<div style="flex:1;height:9px;border-radius:999px;background:#F0EDE3;overflow:hidden">' +
+        '<div style="height:100%;width:' + Math.max(4, Math.round(r.min / mx * 100)) + '%;border-radius:999px;background:#2E6BD6"></div></div>' +
+        '<div style="font-size:11.5px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.min) + '</div></div>';
+    }).join('') +
+    '<div style="font-size:10.5px;color:#8B8F99;padding:8px 2px 2px">זמן פעיל אמיתי — נמדד לפי נוכחות באפליקציה (פעימה כל 45 שנ\')</div>';
+  return true;
 }
 function renderUsage(items){
   var _d0 = new Date(); _d0.setHours(0, 0, 0, 0);
@@ -7732,6 +7761,69 @@ def register(app, G):
             if log:
                 log.warning("props upload: " + str(e))
             return jsonify({"ok": False, "reason": "failed", "detail": str(e)[:200]})
+
+    @app.route("/v2/api/ping", methods=["POST"])
+    def v2_api_ping():
+        """פעימת נוכחות — נקראת מכל המסכים כל ~45 שנ'. כותבת ל-Supabase usage_pings (best-effort)."""
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False}), 401
+        _sb = _sb_mod()
+        if _sb:
+            try:   # כתיבה ברקע — ה-endpoint חוזר מיידית, לא תוקע את הבקשה
+                import threading as _th
+                _ph = _last9(s.get("phone", "")); _nm = s.get("name", "")
+                _th.Thread(target=lambda: _sb.insert_ping(_ph, _nm), daemon=True).start()
+            except Exception:
+                pass
+        return jsonify({"ok": True})
+
+    @app.route("/v2/api/usage_today", methods=["GET"])
+    def v2_api_usage_today():
+        """זמן-פעיל אמיתי לכל סוכן היום — מחושב מפעימות usage_pings (00:00 שעון ישראל). מנהל בלבד."""
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": True, "rows": []})
+        import datetime as _dt2
+        try:
+            from zoneinfo import ZoneInfo
+            _mid = _dt2.datetime.now(ZoneInfo("Asia/Jerusalem")).replace(hour=0, minute=0, second=0, microsecond=0)
+        except Exception:
+            _mid = _dt2.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        pings = _sb.fetch_pings_today(_mid.isoformat())
+        by = {}
+        for p in pings:
+            ph = str(p.get("phone", "") or "")
+            if not ph:
+                continue
+            d = by.setdefault(ph, {"name": "", "ts": []})
+            if p.get("name"):
+                d["name"] = p.get("name")
+            try:
+                ep = _dt2.datetime.fromisoformat(str(p.get("ts", "")).replace("Z", "+00:00")).timestamp()
+                d["ts"].append(ep)
+            except Exception:
+                pass
+        rows = []
+        for ph, d in by.items():
+            ts = sorted(d["ts"])
+            if not ts:
+                continue
+            mins = 0.0
+            start = prev = ts[0]
+            for i in range(1, len(ts) + 1):
+                if i == len(ts) or ts[i] - prev > 90:   # פער > 90 שנ' = סשן חדש
+                    mins += max((prev - start) / 60.0, 0.75)   # פעימה בודדת ≈ 45 שנ'
+                    if i < len(ts):
+                        start = ts[i]
+                if i < len(ts):
+                    prev = ts[i]
+            rows.append({"name": d["name"] or ph, "min": int(round(mins)), "pings": len(ts)})
+        rows.sort(key=lambda x: -x["min"])
+        return jsonify({"ok": True, "rows": rows})
 
     @app.route("/v2/api/admin/policy", methods=["POST"])
     def v2_api_admin_policy():
