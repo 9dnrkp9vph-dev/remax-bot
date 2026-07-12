@@ -5902,7 +5902,7 @@ function load(){
       return;
     }
     var items = j.items || [];
-    renderUsage(items);
+    renderUsage(j.today || items);   // דשבורד "זמן היום" — כל פעולות היום (ללא תקרת 300 שחתכה את הבוקר)
     el('list').innerHTML = items.slice(0, 120).map(function(it){
       var isLogin = (it.action || '').indexOf('כניסה') >= 0;
       return '<div class="row"><div class="av' + (isLogin ? ' login' : '') + '">' + esc((it.name || ' ')[0]) + '</div>' +
