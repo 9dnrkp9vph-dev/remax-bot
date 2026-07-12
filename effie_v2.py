@@ -4170,17 +4170,17 @@ function fmtPrice(p){
 }
 
 var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''};
-var HOT = {};   // property_key → true עבור הנכסים החמים של הסוכן (עד 2)
+var HOT = {};   // property_key → true עבור הנכס החם של הסוכן (אחד בלבד)
 function toggleHot(i){
   var p = el('list')._src[i]; if (!p) return;
   var hk = String(p.id || p.address || ''); if (!hk) return;
   var on = !HOT[hk];
-  if (on){ var c = 0; for (var k in HOT) if (HOT[k]) c++; if (c >= 2){ toast('אפשר לסמן עד 2 נכסים חמים — הסר אחד קודם'); return; } }
+  if (on){ var c = 0; for (var k in HOT) if (HOT[k]) c++; if (c >= 1){ toast('אפשר לסמן נכס חם אחד בלבד — הסר אותו קודם'); return; } }
   HOT[hk] = on; if (!on) delete HOT[hk]; render();   // אופטימי
   var det = [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
   POST('/v2/api/hot', {property_key: hk, on: on, title: [p.address, p.city].filter(Boolean).join(', '), details: det, price: String(p.price || ''), description: String(p.desc || '')}).then(function(j){
     if (!j || !j.ok){ if (on) delete HOT[hk]; else HOT[hk] = true; render();
-      toast(j && j.reason === 'limit' ? 'אפשר עד 2 נכסים חמים' : 'השמירה נכשלה'); return; }
+      toast(j && j.reason === 'limit' ? 'אפשר נכס חם אחד בלבד' : 'השמירה נכשלה'); return; }
     toast(on ? 'הנכס סומן כחם — יופיע בבריף' : 'הוסר מהבריף');
   }).catch(function(){ if (on) delete HOT[hk]; else HOT[hk] = true; render(); toast('שגיאה'); });
 }
@@ -7167,7 +7167,7 @@ def register(app, G):
             if log: log.warning(f"effie ann del: {e}")
             return jsonify({"ok": False, "reason": "delete_failed"})
 
-    # ── נכסים חמים (hot_stories) — עד 2 לסוכן, רצים בבריף הבוקר הכלל-משרדי ──
+    # ── נכסים חמים (hot_stories) — נכס חם אחד לסוכן, רץ בבריף הבוקר הכלל-משרדי ──
     @app.route("/v2/api/hot", methods=["GET"])
     def v2_api_hot_get():
         s = _web_auth()
@@ -7212,7 +7212,7 @@ def register(app, G):
                 r.raise_for_status()
                 _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "הסרת נכס חם", key)
                 return jsonify({"ok": True, "on": False})
-            # הפעלה — אכיפת "עד 2" (סופרים active אחרים של אותו סוכן)
+            # הפעלה — אכיפת "עד 1" (סופרים active אחרים של אותו סוכן)
             rc = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
                                headers={**_sb._headers(), "Prefer": "count=exact"},
                                params={**base, "active": "eq.true", "property_key": "neq." + key,
@@ -7222,7 +7222,7 @@ def register(app, G):
             if "/" in cr:
                 try: cnt = int(cr.split("/")[-1])
                 except Exception: cnt = 0
-            if cnt >= 2:
+            if cnt >= 1:
                 return jsonify({"ok": False, "reason": "limit"})
             r = _requests.post(_sb.SUPABASE_URL + "/rest/v1/hot_stories?on_conflict=office_id,agent_phone,property_key",
                                headers={**_sb._headers(), "Content-Type": "application/json",
