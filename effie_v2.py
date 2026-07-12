@@ -4254,8 +4254,8 @@ function propCard(p, i){
   // מתאמת/מנהל רואים את שם הסוכן של כל נכס; סוכן רגיל — "שלך"
   var whoRaw = isShtaf ? (p.office || 'משרד שותף')
     : (isMine ? ((MINE_MULTI && p.agent) ? p.agent : 'שלך') : (p.agent || ''));
-  var sameNet = isShtaf && whoRaw.indexOf('רימקס') >= 0;   // אותה רשת — הדגשה בנייבי (network מ-offices בהמשך)
-  var who = sameNet ? '<b>' + esc(whoRaw) + '</b>' : esc(whoRaw);
+  // שת"פ: מבליטים (נייבי מודגש) רק בלעדיות של רימקס פמילי עצמו (p.own מהשרת) — לא משרד אחר כולל רימקס SMART
+  var who = (isShtaf && p.own) ? '<b style="color:#1E3A5F">' + esc(whoRaw) + '</b>' : esc(whoRaw);
   var where = isShtaf ? [p.street || p.address, p.city].filter(Boolean).join(', ')
                       : [p.address, p.neighborhood, p.city].filter(Boolean).join(', ');
   var chip = isShtaf ? '<div class="chip shtaf">שת"פ</div>'
