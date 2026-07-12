@@ -2626,6 +2626,27 @@ def _alias_key_map():
     _cache_put("alias_key_map", m)
     return m
 
+def _alias_name_map():
+    """name_key(שם/כינוי) -> השם הקנוני המלא של הסוכן (בן → בן קדוש)."""
+    c = _cache_get("alias_name_map", 60)
+    if c is not None: return c
+    m = {}
+    for ag in (_load_config().get("agents") or []):
+        nm = (ag.get("name", "") or "").strip()
+        ck = _name_key(nm)
+        if not ck: continue
+        m[ck] = nm
+        for al in (ag.get("aliases") or []):
+            ak = _name_key(al)
+            if ak: m[ak] = nm
+    _cache_put("alias_name_map", m)
+    return m
+
+def _canon_agent_name(name):
+    """השם הקנוני המלא לתצוגה — ממפה כינוי (בן) לשם מלא (בן קדוש); אחרת מחזיר כמו שהוא."""
+    nm = (name or "").strip()
+    return _alias_name_map().get(_name_key(nm), nm) if nm else nm
+
 def _canon_key(name):
     """מפתח התאמה קנוני: name_key אחרי מיפוי כינויים (אם הוגדרו בקונפיג)."""
     k = _name_key(name)
@@ -5750,7 +5771,7 @@ def api_search_properties():
                 "floor": (row.get("קומה", "") or "").strip(),
                 "price": (row.get("מחיר", "") or "").strip(),
                 "date": (row.get("תאריך יצירה", "") or "").strip(),
-                "agent": ag,
+                "agent": _canon_agent_name(ag),
                 "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
                 "desc": (row.get("_desc_ae", "") or "").strip(),
             }
@@ -5838,7 +5859,7 @@ def api_my_properties():
                 "size": (r.get('מ"ר', "") or r.get("מ״ר", "") or "").strip(),
                 "floor": (r.get("קומה", "") or "").strip(),
                 "price": (r.get("מחיר", "") or "").strip(),
-                "agent": ag,
+                "agent": _canon_agent_name(ag),
                 "wa": _wa_phone(phones_map.get(ag, r.get("טלפון 1", ""))),
                 "desc": (r.get("_desc_ae", "") or "").strip(),
             })
@@ -5858,6 +5879,27 @@ def _fetch_pending_listings():
     _cache_put("pending_listings", ids)
     return ids
 
+# ניתוב בקשות עדכון/מחיקת נכס: סוכנים תחת מנהלים מסוימים → מייל ייעודי (בקשת אייל 12/07)
+_LISTING_REQ_ROUTED_MANAGERS = ("גיל קדם", "אוהד פלד")
+_LISTING_REQ_ROUTED_EMAIL = "ohadpeled7@gmail.com"
+
+def _secretary_for_agent(agent_name, agent_phone):
+    """סוכן המשויך למנהל 'גיל קדם' או 'אוהד פלד' → המייל של אוהד פלד; אחרת ברירת המחדל (מזכירה)."""
+    try:
+        aph = _last9(agent_phone or "")
+        ak = _canon_key(agent_name or "")
+        routed = {_canon_key(m) for m in _LISTING_REQ_ROUTED_MANAGERS}
+        for _cp, c in (_coordinators_all() or {}).items():
+            if _canon_key(c.get("name", "")) not in routed:
+                continue
+            if aph and aph in {_last9(p) for p in (c.get("agents") or set())}:
+                return _LISTING_REQ_ROUTED_EMAIL
+            if ak and ak in {_canon_key(n) for n in (c.get("names") or set())}:
+                return _LISTING_REQ_ROUTED_EMAIL
+    except Exception:
+        pass
+    return SECRETARY_EMAIL
+
 @app.route("/api/listing/request", methods=["POST"])
 def api_listing_request():
     s = _web_auth()
@@ -5868,9 +5910,12 @@ def api_listing_request():
     if kind not in ("remove", "price") or not lid:
         return jsonify({"ok": False, "reason": "bad_request"}), 400
     eff_name = s.get("name", "")
+    eff_phone = s.get("phone", "")
     if s["role"] in ("admin", "coordinator"):
         an = (body.get("as") or "").strip()
-        if an: eff_name = an
+        if an:
+            eff_name = an
+            eff_phone = ""   # לא הטלפון של המנהל — ננתב לפי שם הסוכן
     payload = {
         "listing_id": lid,
         "address": (body.get("address") or "").strip(),
@@ -5878,7 +5923,7 @@ def api_listing_request():
         "new_price": (body.get("new_price") or "").strip(),
         "agent": eff_name,
         "agent_phone": _last9(s.get("phone", "")),
-        "secretary": SECRETARY_EMAIL,
+        "secretary": _secretary_for_agent(eff_name, eff_phone),
     }
     j = _buyers_apps_post("requestchange", payload)
     if not j or not j.get("ok"):
