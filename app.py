@@ -5394,7 +5394,16 @@ def api_activity():
         if k in seen: continue
         seen.add(k); merged.append(it)
     merged.sort(key=lambda x: float(x.get("ts", 0) or 0), reverse=True)
-    return jsonify({"ok": True, "items": merged[:300]})
+    # יומן שימוש אמין: כל פעולות היום (00:00 שעון ישראל → עכשיו), בלי תקרת 300 שחתכה את הבוקר
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        _mid = _dt.datetime.now(ZoneInfo("Asia/Jerusalem")).replace(hour=0, minute=0, second=0, microsecond=0)
+    except Exception:
+        _mid = _dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    _t0 = _mid.timestamp()
+    today = [it for it in merged if float(it.get("ts", 0) or 0) >= _t0]
+    return jsonify({"ok": True, "items": merged[:300], "today": today})
 
 def _web_org_summary(frm, to, agent_name=None, agent_phones=None, agent_keys=None):
     from concurrent.futures import ThreadPoolExecutor
