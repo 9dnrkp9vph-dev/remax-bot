@@ -6383,9 +6383,13 @@ function submitSign(){
            fee: feeRow ? feeRow.val : '', months: mRow ? mRow.val : '',
            exfrom: exclRow ? exclRow.from : '', exto: exclRow ? exclRow.to : ''};
   BUSY = true; el('go').disabled = true;
+  /* פידבק מיידי — בלי זה השליחה נראית "תקועה" */
+  el('go').dataset.t = el('go').dataset.t || el('go').textContent;
+  el('go').textContent = 'מכין את ההסכם…';
   Promise.all(picks.map(function(pk){
     return GET('/api/sign/contract?type=' + pk[0]);
   })).then(function(cons){
+    el('go').textContent = MODE === 'remote' ? 'שולח ללקוח…' : 'שומר את החתימה…';
     var docs = picks.map(function(pk, i){
       var _b = fill((cons[i] && cons[i].body) || '', v);
       if (cnotes) _b = _b + '\n\n' + 'הערות: ' + cnotes;
@@ -6397,6 +6401,7 @@ function submitSign(){
       ' | נכס: ' + PROPS.map(function(p){ return p.addr + (p.price ? ' (₪' + p.price + ')' : ''); }).join(' | ');
     var done = function(j, txt){
       BUSY = false; el('go').disabled = false;
+      el('go').textContent = el('go').dataset.t || el('go').textContent;
       if (!j.ok){ toast('שגיאה — נסה שוב'); return; }
       toast(txt);
       setTimeout(function(){ location.href = '/v2/sigs'; }, 1200);
@@ -6405,6 +6410,7 @@ function submitSign(){
       return POST('/api/sign/send_remote', {docs: docs, client: cname, phone: cphone,
         address: addr, notes: cnotes, header: header}).then(function(j){
           BUSY = false; el('go').disabled = false;
+          el('go').textContent = el('go').dataset.t || el('go').textContent;
           if (!j.ok){ toast('שגיאה — נסה שוב'); return; }
           var _lk = j.link || '', _wp = j.waPhone || '';
           var _wmsg = 'שלום ' + cname + ',\nהתבקשת לחתום על מסמך מטעם RE/MAX Family.\nלצפייה וחתימה:\n' + _lk;
@@ -6425,7 +6431,11 @@ function submitSign(){
       address: addr, notes: cnotes, signature: sig, header: header}).then(function(j){
         done(j, 'נחתם ונשמר');
       });
-  }).catch(function(){ BUSY = false; el('go').disabled = false; toast('שגיאה'); });
+  }).catch(function(){
+    BUSY = false; el('go').disabled = false;
+    el('go').textContent = el('go').dataset.t || el('go').textContent;
+    toast('שגיאה');
+  });
 }
 (function(){
   el('pgT').textContent = KIND === 'buyer' ? 'החתמת מתעניין' : 'החתמת בעל נכס';
