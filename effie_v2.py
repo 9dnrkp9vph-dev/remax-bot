@@ -1510,20 +1510,11 @@ function renderUnmatched(){
       '<select id="unmSel' + i + '" style="max-width:130px;padding:9px 10px;border:1.5px solid #DCD6C8;border-radius:11px;' +
       'font-size:12.5px;font-family:inherit;background:#fff;color:#1E3A5F"><option value="">— שייך לסוכן —</option>' + opts + '</select>' +
       '<button onclick="assignAlias(' + i + ')" style="padding:9px 14px;border:none;border-radius:11px;background:#C29435;' +
-      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שייך</button>' +
-      '<button onclick="delUnmatched(' + i + ')" aria-label="מחיקת שם" style="width:38px;height:38px;border:none;' +
-      'border-radius:11px;background:#FBEDED;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">' +
-      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
+      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שייך</button></div>';
   }).join('');
 }
-function delUnmatched(i){
-  var u = UNMATCHED[i]; if (!u) return;
-  if (!confirm('למחוק את השם "' + u.n + '"? הוא לא יוצג יותר — לא בספרייה ולא ברשימה הזו.')) return;
-  POST('/api/dev/agent_delete', {name: u.n}).then(function(j){
-    if (!j.ok){ toast('שגיאה במחיקה'); return; }
-    toast('השם נמחק'); boot();
-  });
-}
+/* פח "מחיקת שם" הוסר (בקשת אייל 13/07) — הוא קרא ל-agent_delete והעלים את השם מכל
+   הרשומות (ככה "נעלם" סוכן בדיקה 4). הדרך היחידה לטפל בשם לא משויך: שיוך לסוכן. */
 function assignAlias(i){
   var u = UNMATCHED[i]; if (!u) return;
   var ag = el('unmSel' + i).value;
@@ -1744,8 +1735,6 @@ function openMember(i){
   var phDisp = p.phone ? '0' + p.phone.slice(0, 2) + '-' + p.phone.slice(2) : '—';
   openSheet(
     '<div style="display:flex;align-items:center;justify-content:space-between"><h3>' + esc(p.name) + '</h3>' +
-    (isDev ? '' : '<button class="trashBtn" onclick="delMember(' + i + ')" aria-label="מחיקת סוכן">' +
-      '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button>') +
     '</div>' +
     '<div class="fld"><span>טלפונים</span><div style="display:flex;gap:8px;align-items:stretch">' +
     '<div class="phChip" style="display:flex;align-items:center">אישי · ' + esc(phDisp) + '</div>' +
@@ -1823,22 +1812,8 @@ function saveMember(i){
   Promise.all(jobs).then(function(){ closeSheet(); toast('נשמר'); boot(); });
 }
 
-function delMember(i){
-  var p = el('teamList')._list[i];
-  openSheet('<h3>מחיקת ' + esc(p.name) + '</h3>' +
-    '<div style="font-size:13px;color:#5B6472;line-height:1.7">המחיקה מסירה את הסוכן מהצוות, מהצוותים ' +
-    'ומהשיוכים למתאמת, וחוסמת את הכניסה שלו למערכת. הנתונים ההיסטוריים (שיחות, חתימות, קונים) נשארים.</div>' +
-    '<button class="btn" style="background:#fff;color:#C24040;border:1.5px solid #C24040" onclick="delMemberGo(' + i + ')">' +
-    'מחק את ' + esc(p.name) + '</button>' +
-    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
-}
-function delMemberGo(i){
-  var p = el('teamList')._list[i];
-  POST('/api/dev/agent_delete', {name: p.name}).then(function(j){
-    if (!j.ok){ toast('שגיאה במחיקה'); return; }
-    closeSheet(); toast(p.name + ' הוסר מהמערכת'); boot();
-  });
-}
+/* מחיקת חבר צוות בוטלה (בקשת אייל 13/07) — סוכן עם רשומות לא נעלם.
+   ניתוק = השהיה (הטוגל בכרטיס): חוסם כניסה, שומר אותו בספרייה ואת כל הרשומות משויכות. */
 function openOffice(){
   openSheet(
     '<h3>פרטי המשרד</h3>' +
