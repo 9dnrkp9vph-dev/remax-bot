@@ -3404,6 +3404,8 @@ function render(){
       '<div class="st ' + (signed ? 'signed' : 'wait') + '"><i></i>' +
       (signed ? 'נחתם' : 'ממתין לחתימה') + (g.time ? ' · ' + esc(g.time) : '') +
       (signed && g.pct ? ' · עמלה ' + esc(String(g.pct)) + '%' : '') + '</div>' +
+      (g.avg ? '<div style="font-size:11px;color:#9AA0AB;margin-top:3px">ממוצע הנכסים שנצפו: ' +
+        esc(g.avg) + ' ₪' + (g.avg_n > 1 ? ' · ' + g.avg_n + ' נכסים' : '') + '</div>' : '') +
       (g.notes ? '<div style="margin-top:8px;font-size:12.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:8px 11px;line-height:1.5">הערה: ' + esc(g.notes) + '</div>' : '') +
       acts + '</div>';
   });
@@ -6347,10 +6349,13 @@ function selectedDocs(){
     else if (on.buy) picks.push(['buyer_buy', 'CLIENT_SALE']);
     else if (on.rent) picks.push(['buyer_rent', 'CLIENT_RENT']);
   } else {
-    if (on.excl) picks.push(['exclusive', 'OWNER_EXCLUSIVE']);
-    else if (on.sale && on.rent) picks.push(['seller_both', 'OWNER_SALE']);
+    /* בעל נכס: טופס מוכר תמיד; בלעדיות מתווספת כטופס שני — הלקוח חותם על זוג.
+       כמו בזרימה הישנה ב-app.py: keys=[sgResolveKey()]; if(exclOn)keys.push('exclusive') */
+    if (on.sale && on.rent) picks.push(['seller_both', 'OWNER_SALE']);
     else if (on.sale) picks.push(['seller_sell', 'OWNER_SALE']);
     else if (on.rent) picks.push(['seller_both', 'OWNER_RENT']);
+    else if (on.excl) picks.push(['seller_sell', 'OWNER_SALE']);   // רק בלעדיות סומנה — עדיין חותם גם על טופס מוכר
+    if (on.excl) picks.push(['exclusive', 'OWNER_EXCLUSIVE']);
   }
   return picks;
 }
