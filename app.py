@@ -4294,7 +4294,8 @@ def api_sign_submit():
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
         # רק חתימת קונה (לא מוכר/בלעדיות) נכנסת אוטומטית ל"קונים שלי" של הסוכן
         if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
-            _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית")
+            _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית",
+                                    deal_kind=("rent" if any("RENT" in str(d.get("deal_type", "")).upper() for d in docs) else "sale"))
         # פוש לכל המנהלים על חתימה חדשה + SMS לסוכן
         _notify_managers_signing("נחתם", client, agent, address)
         _sms_agent_signing(client, agent, address, link)
@@ -4308,8 +4309,122 @@ def _sign_now_iso():
     except Exception:
         return _dt.datetime.utcnow().isoformat()
 
-def _add_buyer_from_signing(agent, client, phone="", address="", origin="החתמה דיגיטלית"):
-    """כל מתעניין שחותם / שנשלחה לו חתימה — נכנס אוטומטית כקונה אצל הסוכן (אם עוד לא קיים)."""
+# ── זיהוי נכס מהחתמה בנכסי המשרד/שת"פ + ממוצע נצפים (בקשת אייל 13/07) ──────────
+def _sign_addr_key(s):
+    """מפתח השוואת כתובות: אותיות/ספרות בלבד — עמיד לפסיקים, גרשים, רווחים וקריית/קרית."""
+    return re.sub(r"[^א-ת0-9a-z]", "", str(s or "").lower().replace("קריית", "קרית"))
+
+def _office_prop_index():
+    """אינדקס מפתח-כתובת → שורת נכס מגיליון המשרד (fetch_sheet_rows כבר cached)."""
+    idx = {}
+    for r in fetch_sheet_rows():
+        street = (r.get("כתובת", "") or r.get("רחוב1", "") or r.get("רחוב", "") or "").strip()
+        house = (r.get("מספר בית", "") or r.get("מס בית", "") or r.get("מס' בית", "") or r.get("בית", "") or "").strip()
+        if street and house and house not in street.split():
+            street = (street + " " + house).strip()
+        if not street:
+            continue
+        city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()
+        idx.setdefault(_sign_addr_key(street + city), r)
+        idx.setdefault(_sign_addr_key(street), r)   # חתימות נשמרות לעיתים בלי עיר
+    return idx
+
+def _price_int(v):
+    d = re.sub(r"[^0-9]", "", str(v or ""))
+    return int(d) if d else 0
+
+def _office_prop_desc(r):
+    """תיאור נכס משרד לשדה 'מה מחפש' של הקונה — סוג · חדרים · מ"ר · קומה · שכונה · עיר · עד מחיר."""
+    size = (r.get('מ"ר', "") or r.get("מ״ר", "") or "").strip()
+    parts = [(r.get("סוג נכס", "") or "").strip(),
+             ((r.get("חדרים", "") or "").strip() + " חדרים") if (r.get("חדרים", "") or "").strip() else "",
+             (size + ' מ"ר') if size else "",
+             ("קומה " + (r.get("קומה", "") or "").strip()) if (r.get("קומה", "") or "").strip() else "",
+             (r.get("שכונה", "") or "").strip(),
+             (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()]
+    p = _price_int(r.get("מחיר", ""))
+    if p:
+        parts.append("עד {:,}".format(p))
+    return " · ".join([x for x in parts if x])
+
+def _sign_prop_lookup(address, city="", idx=None, excl=None):
+    """מזהה את נכס החתימה — קודם בנכסי המשרד, אחר-כך בשת"פ.
+    מחזיר {desc, price, src} או None. idx/excl ניתנים להעברה כדי לא לבנות מחדש בלולאה."""
+    addr = str(address or "").strip()
+    if not addr:
+        return None
+    if idx is None:
+        idx = _office_prop_index()
+    k_city = _sign_addr_key(addr + str(city or ""))
+    k = _sign_addr_key(addr)
+    r = idx.get(k_city) or idx.get(k)
+    if r:
+        return {"desc": _office_prop_desc(r), "price": _price_int(r.get("מחיר", "")), "src": "משרד"}
+    if len(k) < 6:   # כתובת קצרה מדי — התאמת-הכלה בשת"פ תיתן זיהויי שווא
+        return None
+    if excl is None:
+        excl = fetch_external_exclusives() or []
+    for r in excl:
+        ks = _sign_addr_key(r.get("street", ""))
+        if ks and (k in ks or ks in k):
+            desc = " · ".join([x for x in [
+                str(r.get("dest", "") or "").strip(),
+                str(r.get("desti", "") or "").strip()[:120]] if x])
+            p = _price_int(r.get("price", ""))
+            if p:
+                desc = (desc + " · " if desc else "") + "עד {:,}".format(p)
+            return {"desc": desc, "price": p, "src": 'שת"פ'}
+    return None
+
+def _client_view_prices(client, kind="sale", idx=None, excl=None, sigs=None):
+    """מחירי כל הנכסים שהלקוח חתם עליהם (טפסי מתעניין CLIENT_*), מופרד מכירה/שכירות
+    כדי שממוצע קנייה לא יתערבב בשכר-דירה. לפי זיהוי הכתובת בנכסי המשרד/שת"פ."""
+    ck = _canon_key(client)
+    if not ck:
+        return []
+    if sigs is None:
+        try:
+            sigs = get_signings()
+        except Exception:
+            return []
+    if idx is None:
+        idx = _office_prop_index()
+    prices = []
+    for g in sigs:
+        dt = str(g.get("deal_type", "")).upper()
+        if not dt.startswith("CLIENT"):
+            continue
+        if ("RENT" in dt) != (kind == "rent"):
+            continue
+        if _canon_key(g.get("client_name", "")) != ck:
+            continue
+        for part in str(g.get("address", "") or "").split("|"):
+            info = _sign_prop_lookup(part.strip(), g.get("city", ""), idx=idx, excl=excl)
+            if info and info.get("price"):
+                prices.append(info["price"])
+    return prices
+
+def _merge_buyer_search(r, desc, budget_txt=""):
+    """קונה קיים שחתם על נכס נוסף — מוסיף את תיאור הנכס ל'מה מחפש' (בלי לדרוס טקסט של הסוכן)."""
+    try:
+        if not desc or not r.get("row"):
+            return
+        old = str(r.get("search", "") or "").strip()
+        if _sign_addr_key(desc) and _sign_addr_key(desc) in _sign_addr_key(old):
+            return   # התיאור הזה כבר שם
+        up = {"row": str(r.get("row")), "search": ((old + " · " + desc).strip(" ·") if old else desc)[:480]}
+        if budget_txt:
+            up["budget"] = budget_txt   # ממוצע נצפים מעודכן — ייקלט אם ה-Apps Script תומך, יתעלם אחרת
+        j = _buyers_apps_post("updatebuyer", up)
+        if j and j.get("ok"):
+            _cache_clear("buyers")
+    except Exception:
+        pass
+
+def _add_buyer_from_signing(agent, client, phone="", address="", origin="החתמה דיגיטלית", deal_kind="sale"):
+    """כל מתעניין שחותם / שנשלחה לו חתימה — נכנס אוטומטית כקונה אצל הסוכן (אם עוד לא קיים).
+    אם הנכס מזוהה בנכסי המשרד/שת"פ — הקונה נכנס עם תיאור הנכס (search) ותקציב = ממוצע הנצפים;
+    ואם הקונה כבר קיים — התיאור החדש מתווסף ל'מה מחפש' שלו (להתאמות נוספות)."""
     try:
         agent = (agent or "").strip()
         client = (client or "").strip()
@@ -4319,7 +4434,25 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
         ps = list(_phones_for_name(agent))
         agent_phone = ps[0] if ps else ""
         ln = _last9(phone)
-        # מניעת כפילות — אם כבר קיים קונה לאותו סוכן עם אותו טלפון (או אותו שם כשאין טלפון)
+        # זיהוי הנכס/ים שנחתמו בנכסי המשרד/שת"פ — תיאור לקונה + ממוצע הנצפים כתקציב
+        info_desc, budget_txt = "", ""
+        try:
+            idx = _office_prop_index()
+            excl = fetch_external_exclusives() or []
+            infos = [x for x in (_sign_prop_lookup(a.strip(), idx=idx, excl=excl)
+                                 for a in str(address or "").split("|")) if x]
+            if infos:
+                info_desc = next((x["desc"] for x in infos if x.get("desc")), "")
+                vals = _client_view_prices(client, kind=deal_kind, idx=idx, excl=excl)
+                for p in [x["price"] for x in infos if x.get("price")]:
+                    if p not in vals:   # החתימה הנוכחית אולי טרם נחתה בגיליון — צירוף בלי כפל
+                        vals.append(p)
+                if vals:
+                    budget_txt = "{:,}".format(sum(vals) // len(vals))
+        except Exception:
+            pass
+        # מניעת כפילות — אם כבר קיים קונה לאותו סוכן עם אותו טלפון (או אותו שם כשאין טלפון);
+        # קונה קיים שחתם על נכס נוסף — מקבל את התיאור החדש ל"מה מחפש" (התאמות נוספות)
         try:
             rows = _fetch_manual_buyers()
             ak = _canon_key(agent)
@@ -4329,8 +4462,10 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
                 if not same_agent:
                     continue
                 if ln and _last9(r.get("phone", "")) == ln:
+                    _merge_buyer_search(r, info_desc, budget_txt)
                     return False
                 if (not ln) and client and _canon_key(r.get("name", "")) == _canon_key(client):
+                    _merge_buyer_search(r, info_desc, budget_txt)
                     return False
         except Exception:
             pass
@@ -4343,12 +4478,27 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
         summary = origin + ((" · " + address) if address else "")
         payload = {
             "date": now.strftime("%d/%m/%Y %H:%M"),
-            "name": client, "phone": phone, "budget": "", "summary": summary,
-            "agent": agent, "agent_phone": agent_phone,
+            "name": client, "phone": phone, "budget": budget_txt, "summary": summary,
+            "agent": agent, "agent_phone": agent_phone, "search": info_desc,
         }
         j = _buyers_apps_post("addbuyer", payload)
         if j and j.get("ok"):
             _cache_clear("buyers")
+            # addbuyer עשוי להתעלם מ-search (תלוי בגרסת ה-Apps Script) — מוודאים שהתיאור
+            # נכתב דרך updatebuyer (עמודה 'חיפוש' — מסלול מוכח). no-op אם כבר נקלט.
+            if info_desc:
+                try:
+                    ak2 = _canon_key(agent)
+                    for r in _fetch_manual_buyers():
+                        if _canon_key(r.get("agent", "")) != ak2 and not (
+                                agent_phone and _last9(r.get("agent_phone", "")) == _last9(agent_phone)):
+                            continue
+                        if (ln and _last9(r.get("phone", "")) == ln) or (
+                                (not ln) and client and _canon_key(r.get("name", "")) == _canon_key(client)):
+                            _merge_buyer_search(r, info_desc, budget_txt)
+                            break
+                except Exception:
+                    pass
             return True
     except Exception:
         pass
@@ -4494,7 +4644,8 @@ def api_sign_send_remote():
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שליחת חתימה מרחוק", (client + " · " + address).strip(" ·"))
         # רק חתימת קונה (לא מוכר/בלעדיות) — גם אם עוד לא חתם — נכנסת ל"קונים שלי"
         if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
-            _add_buyer_from_signing(agent, client, phone, address, "נשלחה חתימה")
+            _add_buyer_from_signing(agent, client, phone, address, "נשלחה חתימה",
+                                    deal_kind=("rent" if any("RENT" in str(d.get("deal_type", "")).upper() for d in docs) else "sale"))
     return jsonify({"ok": ok_any, "sms": sms_ok, "phone": last9, "link": link, "waPhone": wa_link})
 
 @app.route("/api/sign/complete", methods=["POST"])
@@ -4961,6 +5112,33 @@ def api_signatures():
         "notes": (g.get("notes") or g.get("הערות") or "").strip(),
         "raw": str(g.get("received_at", "") or "").strip(),
     } for g in sigs[:500]]
+    # ממוצע הנכסים שהלקוח חתם עליהם (טפסי מתעניין) — לפי זיהוי הכתובת בנכסי המשרד/שת"פ.
+    # מופרד מכירה/שכירות; מוצג באפור קטן על כרטיס החתימה (בקשת אייל 13/07).
+    try:
+        idx = _office_prop_index()
+        excl = fetch_external_exclusives() or []
+        by_client = {}   # (לקוח, מכירה/שכירות) → [מחירים]
+        for g in sigs[:500]:
+            dt = str(g.get("deal_type", "")).upper()
+            if not dt.startswith("CLIENT"):
+                continue
+            ck = (_canon_key(g.get("client_name", "")), "R" if "RENT" in dt else "S")
+            if not ck[0]:
+                continue
+            for part in str(g.get("address", "") or "").split("|"):
+                info = _sign_prop_lookup(part.strip(), g.get("city", ""), idx=idx, excl=excl)
+                if info and info.get("price"):
+                    by_client.setdefault(ck, []).append(info["price"])
+        for d, g in zip(sig_out, sigs[:500]):
+            dt = str(g.get("deal_type", "")).upper()
+            if not dt.startswith("CLIENT"):
+                continue
+            ps = by_client.get((_canon_key(g.get("client_name", "")), "R" if "RENT" in dt else "S")) or []
+            if ps:
+                d["avg"] = "{:,}".format(sum(ps) // len(ps))
+                d["avg_n"] = len(ps)
+    except Exception as _ae:
+        log.error(f"signatures avg error: {_ae}")
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"], "signatures": sig_out})
 
 # ── תהליכים ועסקאות (אחסון מקומי בדיסק — ללא Google) ───────────────────────────
