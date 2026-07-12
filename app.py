@@ -3157,7 +3157,7 @@ def api_auth_request():
         return jsonify({"ok": True})   # קוד קבוע — אין צורך ב-SMS, הקש את הקוד שלך
     if _is_suspended(phone):
         return jsonify({"ok": False, "reason": "suspended"})   # מושהה — לא שולחים SMS (חיסכון בטווילו)
-    code = f"{_secrets.randbelow(900000) + 100000}"
+    code = f"{_secrets.randbelow(9000) + 1000}"   # 4 ספרות (בקשת אייל 13/07) — מוגן ע"י תקרת 5 ניסיונות + תוקף 5 ד'
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
     _host = (request.host or "remax-bot.onrender.com").split(":")[0]
     _sms = f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)\n\n@{_host} #{code}"
@@ -3461,7 +3461,7 @@ def api_glink_request():
         return jsonify({"ok": True})   # קוד קבוע — אין SMS
     if _is_suspended(phone):
         return jsonify({"ok": False, "reason": "suspended"})
-    code = f"{_secrets.randbelow(900000) + 100000}"
+    code = f"{_secrets.randbelow(9000) + 1000}"   # 4 ספרות — כמו בכניסה הרגילה (בקשת אייל 13/07)
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
     _host = (request.host or "remax-bot.onrender.com").split(":")[0]
     _sms = f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)\n\n@{_host} #{code}"
@@ -4269,17 +4269,16 @@ def api_sign_submit():
     token = _secrets.token_urlsafe(12)
     base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
     link = base + "/s/" + token
-    ok_any = False
+    # ⚡ מהירות (בקשת אייל 13/07): סינכרוני רק שמירת המסמך החתום (חיוני); שורות
+    # הגיליון, הקונה, הפוש וה-SMS לסוכן — ברקע. _recent_signs_add שומר נראות מיידית.
+    recs = []
     for d in docs:
         _srec = {"event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
                  "client_name": client, "address": address, "city": city,
                  "commission_pct": link, "received_at": now_iso, "notes": notes}
-        j = _buyers_apps_post("addsigning", _srec)
-        if j and j.get("ok"):
-            ok_any = True
-            _recent_signs_add(_srec)   # נראות מיידית במסך החתימות
+        recs.append(_srec)
     doc_saved = False; doc_resp = ""
-    try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה)
+    try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה) — סינכרוני, זה המסמך החתום
         jd = _buyers_apps_post("savesigndoc", {
             "doc_token": token, "event_id": eid, "status": "signed",
             "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
@@ -4288,18 +4287,30 @@ def api_sign_submit():
         doc_resp = str(jd)[:200] if jd is not None else "None (אין תגובה)"
     except Exception as _e:
         doc_saved = False; doc_resp = "EXC: " + str(_e)[:160]
-    if ok_any:
-        _cache_clear("signings_sheet")
-        _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
-        _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
-        # רק חתימת קונה (לא מוכר/בלעדיות) נכנסת אוטומטית ל"קונים שלי" של הסוכן
-        if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
-            _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית",
-                                    deal_kind=("rent" if any("RENT" in str(d.get("deal_type", "")).upper() for d in docs) else "sale"))
-        # פוש לכל המנהלים על חתימה חדשה + SMS לסוכן
-        _notify_managers_signing("נחתם", client, agent, address)
-        _sms_agent_signing(client, agent, address, link)
-    return jsonify({"ok": ok_any, "event_id": eid, "link": link, "doc_saved": doc_saved, "doc_resp": doc_resp})
+    if doc_saved:
+        for _r in recs:
+            _recent_signs_add(_r)   # נראות מיידית במסך החתימות
+    s_name, s_role, s_phone = s.get("name", ""), s.get("role", ""), s.get("phone", "")
+    def _sign_submit_bg():
+        try:
+            for _r in recs:
+                _buyers_apps_post("addsigning", _r)
+            _cache_clear("signings_sheet")
+            _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+            _log_activity(s_name, s_role, s_phone, "החתמה דיגיטלית", (client + " · " + address).strip(" ·"))
+            # רק חתימת קונה (לא מוכר/בלעדיות) נכנסת אוטומטית ל"קונים שלי" של הסוכן
+            if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
+                _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית",
+                                        deal_kind=("rent" if any("RENT" in str(d.get("deal_type", "")).upper() for d in docs) else "sale"))
+            # פוש לכל המנהלים על חתימה חדשה + SMS לסוכן
+            _notify_managers_signing("נחתם", client, agent, address)
+            _sms_agent_signing(client, agent, address, link)
+        except Exception as _bge:
+            log.error(f"sign submit bg error: {_bge}")
+    if doc_saved:   # נכשל = הסוכן ינסה שוב — לא כותבים שורות שיוכפלו בניסיון הבא
+        import threading as _thr
+        _thr.Thread(target=_sign_submit_bg, daemon=True).start()
+    return jsonify({"ok": doc_saved, "event_id": eid, "link": link, "doc_saved": doc_saved, "doc_resp": doc_resp})
 
 def _sign_now_iso():
     import datetime as _dt
@@ -4614,39 +4625,54 @@ def api_sign_send_remote():
     token = _secrets.token_urlsafe(12)
     base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
     link = base + "/s/" + token
-    # שורת חתימה 'ממתינה' — event_id=token זמני, ללא קישור (commission_pct ריק) עד שהלקוח חותם
-    ok_any = False
+    # ⚡ מהירות (בקשת אייל 13/07): הסוכן חיכה 10-20 שניות ("האפליקציה תקועה") כי כל
+    # קריאות ה-Apps Script רצו סינכרונית. עכשיו: סינכרוני רק מה שחיוני לפני התשובה —
+    # שמירת המסמך (הקישור ב-SMS חייב לעבוד) + ה-SMS עצמו. שורות הגיליון, הקונה
+    # האוטומטי והיומן רצים ברקע; הנראות המיידית במסך החתימות נשמרת דרך _recent_signs_add.
+    recs = []
     for d in docs:
         _srec = {"event_id": token, "deal_type": d.get("deal_type", ""), "agent": agent,
                  "client_name": client, "address": address, "city": city,
                  "commission_pct": "", "received_at": now_iso, "notes": notes}
-        j = _buyers_apps_post("addsigning", _srec)
-        if j and j.get("ok"):
-            ok_any = True
-            _recent_signs_add(_srec)   # נראות מיידית ב"ממתין לחתימה" — עד שהסנכרון נוחת
-    # שמירת המסמך במצב 'pending' — ללא חתימה, ימתין שהלקוח יחתום
+        recs.append(_srec)
+    # שמירת המסמך במצב 'pending' — סינכרוני: הלקוח פותח את הקישור מיד עם קבלת ה-SMS
+    doc_saved = False
     try:
-        _buyers_apps_post("savesigndoc", {
+        jd = _buyers_apps_post("savesigndoc", {
             "doc_token": token, "event_id": token, "status": "pending",
             "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
             "signature": "", "signed_at": ""})
+        doc_saved = bool(jd and jd.get("ok"))
     except Exception:
-        pass
+        doc_saved = False
+    if not doc_saved:
+        # אין מסמך = הקישור שבור — לא שולחים SMS ומבקשים לנסות שוב (במקום לשלוח קישור מת)
+        return jsonify({"ok": False, "reason": "doc_save_failed"})
+    for _r in recs:
+        _recent_signs_add(_r)   # נראות מיידית ב"ממתין לחתימה" — עד שהכתיבה ברקע נוחתת
     # שליחה אוטומטית ב-SMS בלבד. וואטסאפ = אופציה ידנית לסוכן (כפתור בצד הלקוח, נשלח מהוואטסאפ של הסוכן — לא אוטומטית מהשרת)
     msg = ("שלום %s,\nהתבקשת לחתום על מסמך מטעם RE/MAX Family (%s).\nלצפייה וחתימה:\n%s" % (client, agent, link))
     sms_ok = False
     try: sms_ok = bool(web_send_sms(last9, msg))
     except Exception: sms_ok = False
     wa_link = _wa_phone(phone)   # מספר wa.me לכפתור השיתוף הידני (בלי שליחה אוטומטית)
-    if ok_any:
-        _cache_clear("signings_sheet")
-        _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
-        _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שליחת חתימה מרחוק", (client + " · " + address).strip(" ·"))
-        # רק חתימת קונה (לא מוכר/בלעדיות) — גם אם עוד לא חתם — נכנסת ל"קונים שלי"
-        if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
-            _add_buyer_from_signing(agent, client, phone, address, "נשלחה חתימה",
-                                    deal_kind=("rent" if any("RENT" in str(d.get("deal_type", "")).upper() for d in docs) else "sale"))
-    return jsonify({"ok": ok_any, "sms": sms_ok, "phone": last9, "link": link, "waPhone": wa_link})
+    s_name, s_role, s_phone = s.get("name", ""), s.get("role", ""), s.get("phone", "")
+    def _send_remote_bg():
+        try:
+            for _r in recs:
+                _buyers_apps_post("addsigning", _r)
+            _cache_clear("signings_sheet")
+            _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+            _log_activity(s_name, s_role, s_phone, "שליחת חתימה מרחוק", (client + " · " + address).strip(" ·"))
+            # רק חתימת קונה (לא מוכר/בלעדיות) — גם אם עוד לא חתם — נכנסת ל"קונים שלי"
+            if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
+                _add_buyer_from_signing(agent, client, phone, address, "נשלחה חתימה",
+                                        deal_kind=("rent" if any("RENT" in str(d.get("deal_type", "")).upper() for d in docs) else "sale"))
+        except Exception as _bge:
+            log.error(f"sign send_remote bg error: {_bge}")
+    import threading as _thr
+    _thr.Thread(target=_send_remote_bg, daemon=True).start()
+    return jsonify({"ok": True, "sms": sms_ok, "phone": last9, "link": link, "waPhone": wa_link})
 
 @app.route("/api/sign/complete", methods=["POST"])
 def api_sign_complete():
