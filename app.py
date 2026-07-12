@@ -3056,6 +3056,7 @@ def _web_auth():
             _web_sessions.pop(tok, None); return None
         if _is_suspended(s.get("phone", "")) and not _is_dev(s.get("phone", "")):
             return None   # סוכן מושהה — חסום (לא נועל את המפתח)
+        _mark_joined(s.get("phone", ""))   # יציאה מ"ממתין לכניסה ראשונה" גם ל-session קיים
         return _refresh_coordinator_scope(s)
     # נפילה לטוקן חתום (stateless) — שורד רסטארט של השרת, בלי לזרוק את המשתמש החוצה
     phone = _verify_token(tok)
@@ -3064,6 +3065,7 @@ def _web_auth():
             return None
         sess = _session_from_phone(phone)
         _web_sessions[tok] = sess
+        _mark_joined(phone)
         return _refresh_coordinator_scope(sess)
     return None
 
@@ -3087,22 +3089,28 @@ def _log_activity(name, role, phone, action, detail=""):
     except Exception:
         pass
 
+_joined_seen = set()   # short-circuit בתהליך — מונע עבודה חוזרת בכל בקשה מאומתת
 def _mark_joined(phone):
-    """מסמן שסוכן נכנס בפועל (SMS או Google) — כדי שלא יישאר 'ממתין לכניסה ראשונה'.
-    כותב רק בכניסה הראשונה (אידמפוטנטי); בכניסות חוזרות אין כתיבה, אין מרוץ."""
+    """מסמן שסוכן נכנס בפועל (SMS/Google/כל בקשה מאומתת) — כדי שלא יישאר 'ממתין לכניסה ראשונה'.
+    לא חוסם: הכתיבה רצה ב-thread; פעם ראשונה בלבד לכל טלפון (short-circuit דרך _joined_seen)."""
     p = _last9(phone)
-    if not p:
+    if not p or p in _joined_seen:
         return
+    _joined_seen.add(p)   # מיידי — כדי לא לשגר עוד thread לאותו טלפון
+    def _w():
+        try:
+            cfg = _load_config()
+            joined = [x for x in (cfg.get("v2_joined") or []) if x]
+            if p not in joined:
+                joined.append(p)
+                cfg["v2_joined"] = joined
+                _save_config(cfg)
+        except Exception:
+            _joined_seen.discard(p)   # כשל — לאפשר ניסיון חוזר בבקשה הבאה
     try:
-        cfg = _load_config()
-        joined = [x for x in (cfg.get("v2_joined") or []) if x]
-        if p in joined:
-            return
-        joined.append(p)
-        cfg["v2_joined"] = joined
-        _save_config(cfg)
+        _threading.Thread(target=_w, daemon=True).start()
     except Exception:
-        pass
+        _joined_seen.discard(p)
 
 # --- recent searches per user (phone -> {kind: [queries]}) ---
 _recent = {}
@@ -6690,6 +6698,7 @@ def api_search_exclusives():
                 "desc": str(r.get("desti", "") or "").strip(),
                 "price": str(r.get("price", "") or "").strip(),
                 "office": str(r.get("office", "") or "").strip(),
+                "own": _is_our_office(r.get("office", "")),   # בלעדיות חיצונית של רימקס פמילי עצמו → הבלטה בלקוח
                 "date": str(r.get("received_at", "") or "")[:10],
                 "link": str(r.get("link", "") or "").strip(),
                 "lat": round(_ll[0], 6) if _ll else None,
