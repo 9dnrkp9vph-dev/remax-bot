@@ -1576,7 +1576,10 @@ var TEAM_EDIT = -1;
 function editTeam(i){
   TEAM_EDIT = i;
   var members = (i >= 0 && TEAMS[i]) ? TEAMS[i] : [];
-  var opts = (el('teamList')._list || PEOPLE).filter(function(x){ return x.role !== 'developer'; });
+  /* תמיד הרשימה המלאה — el('teamList')._list חתוך ל-5 כשהמסך במצב ברירת מחדל,
+     וזה גרם ל"אי אפשר לגלול לשאר הסוכנים" בגיליון צוות חדש */
+  var opts = PEOPLE.filter(function(x){ return x.role !== 'developer'; })
+    .sort(function(a, b){ return a.name.localeCompare(b.name, 'he'); });
   var picks = opts.map(function(a){
     var on = members.indexOf(a.name) >= 0;
     return '<div class="chk' + (on ? ' on' : '') + '" data-n="' + esc(a.name) + '" onclick="this.classList.toggle(\'on\')">' +
