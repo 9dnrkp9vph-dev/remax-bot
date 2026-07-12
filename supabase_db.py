@@ -210,6 +210,27 @@ def fetch_properties_rows():
     return [rec["raw"] for rec in recs if isinstance(rec.get("raw"), dict)]
 
 
+def replace_properties(raw_rows):
+    """החלפה מלאה של נכסי המשרד: מוחק את שורות המשרד ומכניס raw_rows (list של dicts גולמיים,
+    כל אחד = כותרת→ערך + _desc_ae). מחזיר (ok, count). הגנה: לא מוחק אם הרשימה ריקה."""
+    if not enabled():
+        return False, 0
+    if not raw_rows:
+        return False, 0   # מניעת מחיקת כל הנכסים בטעות
+    hdr = {**_headers(), "Content-Type": "application/json"}
+    requests.delete(SUPABASE_URL + "/rest/v1/properties",
+                    headers=hdr, params={"office_id": "eq." + SB_OFFICE_ID}, timeout=60).raise_for_status()
+    recs = [{"office_id": SB_OFFICE_ID, "sheet_row": i + 2, "raw": raw}
+            for i, raw in enumerate(raw_rows)]
+    n = 0
+    for j in range(0, len(recs), 500):
+        chunk = recs[j:j + 500]
+        requests.post(SUPABASE_URL + "/rest/v1/properties",
+                      headers=hdr, json=chunk, timeout=90).raise_for_status()
+        n += len(chunk)
+    return True, n
+
+
 def fetch_config():
     """הקונפיג המלא — dict מורכב משורות office_config (שורה לכל מפתח).
     זהה 1:1 לבלוב של getconfig; כתיבת מפתח אחד אינה נוגעת באחרים."""
