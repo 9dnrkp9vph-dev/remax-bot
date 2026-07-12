@@ -6474,7 +6474,12 @@ function submitSign(){
               '<div style="font-weight:800;font-size:18px;margin-top:6px">המסמך מוכן!</div>' +
               '<div style="color:#5B6472;font-size:14px;line-height:1.6;margin:8px 0 14px">' + _sln + '<br>אפשר לשלוח ללקוח גם בוואטסאפ מהמספר שלך:</div>' +
               (_lk ? '<a href="' + _wurl + '" target="_blank" rel="noopener" style="display:block;box-sizing:border-box;width:100%;padding:15px;background:#1FAF5E;color:#fff;font-weight:800;border-radius:14px;text-decoration:none">שלח ללקוח בוואטסאפ</a>' : '') +
-              '<button class="b sol" style="width:100%;margin-top:10px" onclick="location.href=\'/v2/sigs\'">לטאב חתימות</button>' +
+              '<button style="width:100%;margin-top:10px;box-sizing:border-box;padding:15px;background:#fff;' +
+              'border:1.5px solid #1E3A5F;border-radius:14px;color:#1E3A5F;font-size:15px;font-weight:800;' +
+              'font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" ' +
+              'onclick="location.href=\'/v2/sigs\'">' +
+              '<svg width="15" height="15" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#1E3A5F" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
+              'לטאב החתימות — מעקב אחרי החתימה</button>' +
             '</div>';
         });
     var sig = el('pad').toDataURL('image/png');
