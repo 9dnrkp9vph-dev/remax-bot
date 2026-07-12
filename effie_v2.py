@@ -438,6 +438,13 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   #story{position:fixed;inset:0;z-index:60;background:linear-gradient(165deg,#0E1D33 0%,#1E3A5F 55%,#2C4C77 100%);
       color:#fff;display:none;flex-direction:column;
       padding:calc(env(safe-area-inset-top,0px) + 20px) 22px calc(env(safe-area-inset-bottom,0px) + 22px)}
+  /* חצי ניווט לסטורי — דסקטופ בלבד (מוסתרים במובייל; שם מנווטים בהקשה/החלקה) */
+  #story .stArrow{display:none;position:fixed;top:50%;transform:translateY(-50%);width:54px;height:54px;border-radius:50%;
+      background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);align-items:center;justify-content:center;cursor:pointer;z-index:62}
+  #story .stArrow:hover{background:rgba(255,255,255,.22)}
+  #story .stArrowR{right:34px}
+  #story .stArrowL{left:34px}
+  @media(min-width:768px){#story .stArrow{display:flex}}
   #story .bars{display:flex;gap:6px;padding-bottom:16px}
   #story .bars i{flex:1;height:3.5px;border-radius:999px;background:rgba(255,255,255,.25);overflow:hidden;display:block}
   #story .bars i b{display:block;height:100%;width:0;background:#E4C56B;border-radius:999px}
@@ -663,6 +670,8 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       <div class="load" id="storyLoad"><i></i><span>האפליקציה נטענת ברקע — שיחות · קונים · חתימות · נכס נולד</span></div>
       <div class="hint" id="storyHint">הקש להמשך · החלק למטה לסגירה</div>
     </div>
+    <button class="stArrow stArrowR" onclick="event.stopPropagation();prevCard()" aria-label="הקודם"><svg width="12" height="19" viewBox="0 0 12 19"><path d="M2 1l8 8.5L2 18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button class="stArrow stArrowL" onclick="event.stopPropagation();nextCard()" aria-label="הבא"><svg width="12" height="19" viewBox="0 0 12 19"><path d="M10 1L2 9.5 10 18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>
   <div id="ovl" onclick="closeSheet()" style="position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:60"></div>
   <div id="meSheet" style="position:fixed;left:0;right:0;bottom:0;z-index:61;background:#F7F5EE;border-radius:28px 28px 0 0;
@@ -6414,11 +6423,10 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%;overflow-x:hidden}
-  /* דסקטופ: חזרה לגלילת חלון (המובייל נשאר עם נעילת iOS: main גולל) */
-  @media(min-width:768px){html,body{height:auto}body{min-height:100vh}main{overflow:visible}}
+  html,body{overflow-x:hidden}
+  /* גלילה: נשען על המודל המשותף (V2_BOOST) — iOS-PWA=main גולל, שאר=חלון גולל. בלי height:100% כפוי שלוכד מגע. */
   body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column;max-width:100vw}
-  header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px}
+  header{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 6px}
   header .av{width:42px;height:42px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
       align-items:center;justify-content:center;font-size:16px;font-weight:700}
   header .lg{height:44px;max-width:150px;object-fit:contain}
@@ -6822,7 +6830,7 @@ V2_ONBOARD_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   /* דסקטופ: חזרה לגלילת חלון (המובייל נשאר עם נעילת iOS: main גולל) */
   @media(min-width:768px){html,body{height:auto}body{min-height:100vh}main{overflow:visible}}
   body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column}
-  header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px}
+  header{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 6px}
   header .bk{width:42px;height:42px;border-radius:14px;background:#fff;border:1px solid #E9E4D8;display:flex;
       align-items:center;justify-content:center;cursor:pointer}
   header .lg{height:44px;max-width:150px;object-fit:contain}
