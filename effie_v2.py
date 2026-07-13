@@ -3841,11 +3841,12 @@ function nbCard(r, i){
       (st.date ? ' · ' + st.date.replace('T', ' ') : '') + (st.agent ? ' · ' + st.agent : '')) + '</div>' : '';
   var notes = (r.unotes && r.unotes.length)
     ? '<div class="notes">' + esc(r.unotes[r.unotes.length - 1].name + ': ' + r.unotes[r.unotes.length - 1].text) + '</div>' : '';
-  // כבר בבלעדיות RE/MAX Family — כמו בישנה (מקור: גיליון הבלעדויות, שדה r.famexcl מהשרת)
+  // כבר בבלעדיות/טיפול RE/MAX Family — מקורות: בלעדויות/נכסי המשרד/חתימות בלעדיות.
+  // r.famexcl מהשרת; r.famexclAgent = שם הסוכן שבבלעדיות (אם ידוע).
   var fam = r.famexcl
     ? '<div style="display:inline-flex;align-items:center;gap:5px;background:#FBEDED;color:#C24040;' +
       'border:1px solid #F0B8B8;font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px">' +
-      '🔴 כבר בבלעדיות RE/MAX Family</div>'
+      '🔴 כבר בבלעדיות RE/MAX Family' + (r.famexclAgent ? ' · ' + esc(r.famexclAgent) : '') + '</div>'
     : '';
   return '<div class="nb">' +
     '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
