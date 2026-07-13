@@ -6806,17 +6806,19 @@ def api_newborn_status():
     if status in ("meeting", "followup") and date:
         rec["cal"] = _nb_cal_create(rec, date, _gauth_email_for_phone(s.get("phone", "")))
         cal_ok = bool(rec["cal"])
-    # שמירה בקונפיג
-    cfg = _load_config()
-    m = cfg.get("nbStatus")
-    if not isinstance(m, dict): m = {}
-    # "מי תיאם" — נשמר מהיוצר; בעריכה נשמר המקורי (לא נדרס למי שערך אחרון). בקשת אייל 13/07.
-    _prev = m.get(skey) or {}
-    rec["by"] = _prev.get("by") or s.get("name", "")
-    rec["by_phone"] = _prev.get("by_phone") or _last9(s.get("phone", ""))
-    m[skey] = rec
-    cfg["nbStatus"] = m
-    if not _save_config(cfg):   # שמירה נכשלה — לא מדווחים הצלחה כוזבת
+    # שמירה בקונפיג — RMW בטוח (נעילה + קריאה טרייה + כתיבה durable). בלי זה כמה
+    # פגישות ברצף (או _mark_joined ברקע בכניסה) דרסו זו את זו והפגישות "נעלמו". אייל 13/07.
+    def _mut(cfg):
+        m = cfg.get("nbStatus")
+        if not isinstance(m, dict): m = {}
+        # "מי תיאם" — נשמר מהיוצר; בעריכה נשמר המקורי (לא נדרס למי שערך אחרון).
+        _prev = m.get(skey) or {}
+        rec["by"] = _prev.get("by") or s.get("name", "")
+        rec["by_phone"] = _prev.get("by_phone") or _last9(s.get("phone", ""))
+        m[skey] = rec
+        cfg["nbStatus"] = m
+    ok, _ = _config_mutate(_mut)
+    if not ok:   # שמירה נכשלה — לא מדווחים הצלחה כוזבת
         return jsonify({"ok": False, "reason": "save_failed"})
     _NB_RESULT_VER[0] += 1
     # יומן פעילות: מי עשה = המתאם בפועל (המשתמש), לא סוכן היעד; היעד נכנס לפירוט
@@ -6836,16 +6838,16 @@ def api_newborn_note():
     text = (d.get("text", "") or "").strip()[:500]
     if not key or not text:
         return jsonify({"ok": False, "reason": "bad_input"}), 400
-    cfg = _load_config()
-    m = cfg.get("nbNotes")
-    if not isinstance(m, dict): m = {}
-    lst = m.get(key)
-    if not isinstance(lst, list): lst = []
-    lst.append({"name": s.get("name", ""), "by": _last9(s.get("phone", "")),
-                "text": text, "ts": int(time.time())})
-    m[key] = lst
-    cfg["nbNotes"] = m
-    _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח — הערה לא תיעלם בגלל כתיבה מתחרה
+        m = cfg.get("nbNotes")
+        if not isinstance(m, dict): m = {}
+        lst = m.get(key)
+        if not isinstance(lst, list): lst = []
+        lst.append({"name": s.get("name", ""), "by": _last9(s.get("phone", "")),
+                    "text": text, "ts": int(time.time())})
+        m[key] = lst
+        cfg["nbNotes"] = m
+    _config_mutate(_mut)
     _NB_RESULT_VER[0] += 1
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                   "הערה נכס נולד", (addr or key) + " · " + text[:60])
@@ -6861,18 +6863,20 @@ def api_newborn_note_delete():
     ts = int(d.get("ts", 0) or 0)
     if not key or not ts:
         return jsonify({"ok": False, "reason": "bad_input"}), 400
-    cfg = _load_config()
-    m = cfg.get("nbNotes")
-    if not isinstance(m, dict): m = {}
-    lst = m.get(key)
-    if not isinstance(lst, list):
-        return jsonify({"ok": True, "notes": []})
     my9 = _last9(s.get("phone", ""))
     is_mgr = (s["role"] == "admin") or _is_dev(s.get("phone", ""))
-    lst = [x for x in lst if not (int(x.get("ts", 0) or 0) == ts and (is_mgr or x.get("by") == my9))]
-    m[key] = lst
-    cfg["nbNotes"] = m
-    _save_config(cfg)
+    _found = [False]
+    def _mut(cfg):   # RMW בטוח
+        m = cfg.get("nbNotes")
+        if not isinstance(m, dict): return
+        lst = m.get(key)
+        if not isinstance(lst, list): return
+        _found[0] = True
+        m[key] = [x for x in lst if not (int(x.get("ts", 0) or 0) == ts and (is_mgr or x.get("by") == my9))]
+        cfg["nbNotes"] = m
+    _config_mutate(_mut)
+    if not _found[0]:
+        return jsonify({"ok": True, "notes": []})
     _NB_RESULT_VER[0] += 1
     return jsonify({"ok": True, "notes": _nb_notes_for(key, my9, is_mgr)})
 
@@ -6945,9 +6949,12 @@ def api_newborn_status_delete():
     for ev in (rec.get("cal") or []):   # מחיקה מהיומן
         try: gcal_delete_event(ev.get("email", ""), ev.get("id", ""))
         except Exception: pass
-    m.pop(skey, None)
-    cfg["nbStatus"] = m
-    _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח — לא לדרוס פגישות אחרות שנכתבו בו-זמנית
+        mm = cfg.get("nbStatus")
+        if isinstance(mm, dict):
+            mm.pop(skey, None)
+            cfg["nbStatus"] = mm
+    _config_mutate(_mut)
     _NB_RESULT_VER[0] += 1
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
     return jsonify({"ok": True})
@@ -6999,9 +7006,12 @@ def api_newborn_status_edit():
             except Exception: pass
         rec["cal"] = _nb_cal_create(rec, rec.get("date", ""), _gauth_email_for_phone(s.get("phone", "")))
     rec["ts"] = int(time.time())
-    m[skey] = rec
-    cfg["nbStatus"] = m
-    _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח — כותב רק את skey הזה, לא דורס פגישות אחרות בו-זמנית
+        mm = cfg.get("nbStatus")
+        if not isinstance(mm, dict): mm = {}
+        mm[skey] = rec
+        cfg["nbStatus"] = mm
+    _config_mutate(_mut)
     _NB_RESULT_VER[0] += 1
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עריכת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
     return jsonify({"ok": True, "calendar": bool(rec.get("cal"))})
