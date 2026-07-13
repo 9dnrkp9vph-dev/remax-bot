@@ -1,0 +1,28 @@
+# Keep-alive ל-Render (חינמי) — מונע cold start של 30-60 שניות.
+# Render מרדים את השירות אחרי ~15 דקות בלי תנועה; פינג כל 5 דקות משאיר אותו ער.
+#
+# רץ בשעות הפעילות בלבד (03:00-21:59 UTC = 06:00-24:00 שעון ישראל בקיץ,
+# 05:00-23:00 בחורף) — חוסך שעות instance חינמיות בלילה, כשממילא אין שימוש.
+# היעד: / — עונה מחרוזת סטטית, בלי Apps Script ובלי DB. עלות אפס לשרת.
+#
+# הערה: cron של GitHub Actions לעיתים מתעכב בכמה דקות — מספיק טוב לחלון של 15 דקות.
+# אם יתגלו הירדמויות בכל זאת: UptimeRobot/cron-job.org (חינמי, מדויק יותר).
+name: keepalive
+
+on:
+  schedule:
+    - cron: '*/5 3-21 * * *'
+  workflow_dispatch: {}   # הפעלה ידנית מה-Actions tab לבדיקה
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Render
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 https://remax-bot.onrender.com/ || echo "000")
+          echo "ping → HTTP $code"
+          # גם תשובת שגיאה מעירה את השירות — לא מפילים את ה-job על קוד לא-200
