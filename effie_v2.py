@@ -6770,9 +6770,10 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     </div>
 
     <div class="segs">
-      <div class="sg on" data-f="today" onclick="setFilter(this)">היום</div>
-      <div class="sg" data-f="week" onclick="setFilter(this)">השבוע</div>
-      <div class="sg" data-f="all" onclick="setFilter(this)">הכל</div>
+      <div class="sg on" data-f="all" onclick="setFilter(this)">הכל</div>
+      <div class="sg" data-f="before" onclick="setFilter(this)">לפני פגישה</div>
+      <div class="sg" data-f="after" onclick="setFilter(this)">אחרי פגישה</div>
+      <div class="sg" data-f="done" onclick="setFilter(this)">בוצע</div>
     </div>
 
     <div class="sync"><i></i><span>כל פגישה שנקבעת נרשמת גם ביומן Google של הסוכן</span></div>
@@ -6830,8 +6831,9 @@ function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.displ
   document.body.style.overflow = '';
   (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
-var MEETS = [], FILTER = 'today', MULTI = false;
-try{ FILTER = localStorage.getItem('v2st:meets') || 'today'; }catch(e){}
+var MEETS = [], FILTER = 'all', MULTI = false;
+try{ FILTER = localStorage.getItem('v2st:meets') || 'all'; }catch(e){}
+if (['all','before','after','done'].indexOf(FILTER) < 0) FILTER = 'all';   // מיגרציה מפילטרים ישנים
 
 /* תאריכי הפגישות מגיעים בכמה צורות: yyyy-mm-dd / dd/mm/yyyy, עם או בלי שעה, בכל סדר */
 function parseWhen(s){
@@ -6882,26 +6884,43 @@ function itemRow(m, i){
       '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
     '<button class="sq" style="background:#F5F3EC" onclick="editMeet(' + i + ')" aria-label="עריכה">' +
       '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#5B6472" stroke-width="1.6" stroke-linejoin="round"/></svg></button>' +
-    '<button class="sq" style="background:#E7F7EE" onclick="doneMeet(' + i + ')" aria-label="בוצע">' +
-      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
-  return '<div class="mt">' +
-    '<div class="tile" style="background:' + (late ? '#fff' : meet ? '#EAF0FA' : '#F6EEDB') + '">' +
-    (late ? LATE_SVG : meet ? CAL_SVG : FU_SVG) + '</div>' +
-    '<div style="flex:1;min-width:0"><div class="tt">' + esc((m.label || (meet ? 'פגישה' : 'פולו-אפ')) + ': ' + (m.addr || '')) + '</div>' +
+    (m.done
+      ? '<button class="sq" style="background:#F0EDE3" onclick="undoneMeet(' + i + ')" aria-label="החזר לפעיל">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 8a4 4 0 1 1 1.2 2.8M4 8V5M4 8h3" fill="none" stroke="#8B8F99" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
+      : '<button class="sq" style="background:#E7F7EE" onclick="doneMeet(' + i + ')" aria-label="בוצע">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>') +
+    '</div>';
+  // תגית לפני/אחרי פגישה — צ'יפ קטן על הפולו-אפ
+  var tagChip = (!meet && m.tag)
+    ? '<span style="display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;margin-inline-start:6px;' +
+      (m.tag === 'before' ? 'background:#EAF0FA;color:#2E6BD6">לפני פגישה' : 'background:#F6EEDB;color:#B8902F">אחרי פגישה') + '</span>'
+    : '';
+  return '<div class="mt"' + (m.done ? ' style="opacity:.72"' : '') + '>' +
+    '<div class="tile" style="background:' + (m.done ? '#EFF6F0' : late ? '#fff' : meet ? '#EAF0FA' : '#F6EEDB') + '">' +
+    (m.done ? '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : late ? LATE_SVG : meet ? CAL_SVG : FU_SVG) + '</div>' +
+    '<div style="flex:1;min-width:0"><div class="tt">' + esc((m.label || (meet ? 'פגישה' : 'פולו-אפ')) + ': ' + (m.addr || '')) + tagChip + '</div>' +
     '<div class="sb">' + esc(sb) + '</div>' + acts + '</div>' +
     (whenTx && !late ? '<div class="when" style="' + (meet ? 'color:#2E6BD6;background:#EAF0FA' : 'color:#B8902F;background:#F6EEDB') + '">' + esc(whenTx) + '</div>' : '') +
     '</div>';
 }
 function render(){
-  var withD = MEETS.map(function(m, i){
-    var w = parseWhen(m.date);
-    return {m: m, i: i, d: w.d, dd: w.d ? dayDiff(w.d) : 99};
+  // סינון לפי קטגוריה: בוצע (done) / לפני פגישה / אחרי פגישה / הכל (הפעילים)
+  var pool = MEETS.filter(function(m){
+    if (FILTER === 'done') return m.done;
+    if (m.done) return false;                       // 'בוצע' מוסתר מהתצוגות הפעילות
+    if (FILTER === 'before') return m.tag === 'before';
+    if (FILTER === 'after') return m.tag === 'after';
+    return true;                                    // הכל (פעילים)
   });
-  var late = withD.filter(function(x){ return x.d && x.dd < 0; });
-  var rest = withD.filter(function(x){ return !(x.d && x.dd < 0); });
-  if (FILTER === 'today') rest = rest.filter(function(x){ return x.dd === 0; });
-  else if (FILTER === 'week') rest = rest.filter(function(x){ return x.dd <= 7; });
-  rest.sort(function(a, b){ return (a.d || 0) - (b.d || 0); });
+  var withD = pool.map(function(m) {
+    var idx = MEETS.indexOf(m);
+    var w = parseWhen(m.date);
+    return {m: m, i: idx, d: w.d, dd: w.d ? dayDiff(w.d) : 99};
+  });
+  var isDone = FILTER === 'done';
+  var late = isDone ? [] : withD.filter(function(x){ return x.d && x.dd < 0; });
+  var rest = isDone ? withD : withD.filter(function(x){ return !(x.d && x.dd < 0); });
+  rest.sort(function(a, b){ return isDone ? (b.d || 0) - (a.d || 0) : (a.d || 0) - (b.d || 0); });
   el('cnt').textContent = late.length + rest.length;
   var h = '';
   if (late.length){
@@ -6913,7 +6932,7 @@ function render(){
   }
   el('list').innerHTML = h ||
     '<div class="empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#C29435" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' +
-    '<div class="t">' + (FILTER === 'today' ? 'אין פגישות להיום' : 'הכל מטופל') + '</div>' +
+    '<div class="t">' + (FILTER === 'done' ? 'עוד לא סומן דבר כבוצע' : FILTER === 'before' ? 'אין פולו-אפ "לפני פגישה"' : FILTER === 'after' ? 'אין פולו-אפ "אחרי פגישה"' : 'הכל מטופל') + '</div>' +
     '<div class="s">פגישה או פולו-אפ נקבעים מכרטיס נכס במסך נכס נולד — ויופיעו כאן וביומן</div></div>';
 }
 function setFilter(node){
@@ -6957,6 +6976,9 @@ function newMeet(){
     '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
     '<div class="stSeg"><div id="nmMeet" class="on" onclick="nmType(\'meeting\')">פגישה</div>' +
     '<div id="nmFu" onclick="nmType(\'followup\')">פולו-אפ</div></div>' +
+    '<div class="fld2" id="nmTagRow" style="display:none"><span>תגית פולו-אפ</span>' +
+    '<div class="stSeg"><div id="nmTagB" class="on" onclick="nmTag(\'before\')">לפני פגישה</div>' +
+    '<div id="nmTagA" onclick="nmTag(\'after\')">אחרי פגישה</div></div></div>' +
     '<div class="fld2"><span>כתובת / נושא *</span><input id="nmAddr" placeholder="למשל: יקינטון 18, קרית ביאליק"></div>' +
     '<div style="display:flex;gap:8px">' +
     '<div class="fld2" style="flex:1"><span>שם (אופציונלי)</span><input id="nmOwner" placeholder="בעל הנכס / הלקוח"></div>' +
@@ -6970,11 +6992,18 @@ function newMeet(){
     '<button class="btn btn-gold" onclick="saveNewMeet()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
   el('sheet')._nst = 'meeting';
+  el('sheet')._ntag = 'before';
 }
 function nmType(st){
   el('sheet')._nst = st;
   el('nmMeet').classList.toggle('on', st === 'meeting');
   el('nmFu').classList.toggle('on', st === 'followup');
+  var r = el('nmTagRow'); if (r) r.style.display = (st === 'followup') ? 'flex' : 'none';   // תגית רק לפולו-אפ
+}
+function nmTag(t){
+  el('sheet')._ntag = t;
+  el('nmTagB').classList.toggle('on', t === 'before');
+  el('nmTagA').classList.toggle('on', t === 'after');
 }
 function saveNewMeet(){
   var addr = el('nmAddr').value.trim(), dt = dtJoin('nmDtD', 'nmDtT');
@@ -6985,6 +7014,7 @@ function saveNewMeet(){
     phone: el('nmPhone').value.trim(), owner: el('nmOwner').value.trim(),
     status: el('sheet')._nst || 'meeting', date: dt,
     agent: (el('nmAg') && el('nmAg').value) || '',
+    tag: (el('sheet')._nst === 'followup') ? (el('sheet')._ntag || '') : '',
     note: el('nmNote').value.trim()
   }).then(function(j){
     if (!j.ok){ toast('שגיאה בשמירה'); return; }
@@ -7009,6 +7039,9 @@ function editMeet(i){
     '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
     '<div class="stSeg"><div id="emMeet" class="' + (meet ? 'on' : '') + '" onclick="emType(this,\'meeting\')">פגישה</div>' +
     '<div id="emFu" class="' + (meet ? '' : 'on') + '" onclick="emType(this,\'followup\')">פולו-אפ</div></div>' +
+    '<div class="fld2" id="emTagRow" style="display:' + (meet ? 'none' : 'flex') + '"><span>תגית פולו-אפ</span>' +
+    '<div class="stSeg"><div id="emTagB" class="' + (m.tag !== 'after' ? 'on' : '') + '" onclick="emTag(\'before\')">לפני פגישה</div>' +
+    '<div id="emTagA" class="' + (m.tag === 'after' ? 'on' : '') + '" onclick="emTag(\'after\')">אחרי פגישה</div></div></div>' +
     '<div class="fld2"><span>מועד</span><div style="display:flex;gap:8px">' +
     '<input id="emDtD" type="date" style="flex:1.2" value="' + dVal + '">' +
     '<select id="emDtT" style="flex:1">' + dt15Opts(tVal) + '</select></div></div>' +
@@ -7017,32 +7050,46 @@ function editMeet(i){
     '<button class="btn btn-gold" onclick="saveMeet(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
   el('sheet')._st = m.status;
+  el('sheet')._etag = (m.tag === 'after') ? 'after' : 'before';
 }
 function emType(node, st){
   el('sheet')._st = st;
   el('emMeet').classList.toggle('on', st === 'meeting');
   el('emFu').classList.toggle('on', st === 'followup');
+  var r = el('emTagRow'); if (r) r.style.display = (st === 'followup') ? 'flex' : 'none';
+}
+function emTag(t){
+  el('sheet')._etag = t;
+  el('emTagB').classList.toggle('on', t === 'before');
+  el('emTagA').classList.toggle('on', t === 'after');
 }
 function saveMeet(i){
   var m = MEETS[i]; if (!m) return;
   var dt = dtJoin('emDtD', 'emDtT');
   if (!dt){ toast('בחר מועד'); return; }
   POST('/api/newborn/status/edit', {skey: m.skey || '', date: dt,
-    status: el('sheet')._st || m.status, note: el('emNote').value.trim()}).then(function(j){
+    status: el('sheet')._st || m.status, note: el('emNote').value.trim(),
+    tag: (el('sheet')._st === 'followup') ? (el('sheet')._etag || '') : ''}).then(function(j){
     if (!j.ok){ toast(j.reason === 'forbidden' ? 'אין הרשאה לעריכה' : 'שגיאה בשמירה'); return; }
     closeSheet(); toast('עודכן' + (j.calendar === false ? '' : ' + היומן')); load();
   });
 }
 function doneMeet(i){
   var m = MEETS[i]; if (!m) return;
-  if (!confirm('לסמן כבוצע? ' + (m.label || '') + ' — ' + (m.addr || '') + ' יוסר מהרשימה ומהיומן.')) return;
-  POST('/api/newborn/status/delete', {skey: m.skey || ''}).then(function(j){
+  POST('/api/newborn/status/done', {skey: m.skey || '', done: true}).then(function(j){
+    if (!j.ok){ toast(j.reason === 'forbidden' ? 'אין הרשאה' : 'שגיאה'); return; }
+    toast('סומן כבוצע · עבר לקטגוריית "בוצע"'); load();
+  });
+}
+function undoneMeet(i){   // החזרה מ'בוצע' לפעיל
+  var m = MEETS[i]; if (!m) return;
+  POST('/api/newborn/status/done', {skey: m.skey || '', done: false}).then(function(j){
     if (!j.ok){ toast('שגיאה'); return; }
-    toast('סומן כבוצע'); load();
+    toast('הוחזר לפעילים'); load();
   });
 }
 function load(){
-  return GET('/api/newborn/meetings').then(function(j){
+  return GET('/api/newborn/meetings?done=1').then(function(j){   // כולל 'בוצע' לקטגוריה
     MEETS = (j && j.results) || [];
     try{ localStorage.setItem('v2c:meets', JSON.stringify(MEETS.slice(0, 100))); }catch(e){}
     render();
