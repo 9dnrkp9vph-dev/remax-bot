@@ -3030,8 +3030,11 @@ def _config_agent_phones():
     return out
 
 def _removed_agent_keys():
-    """name_key של סוכנים שנמחקו בקונסולה — לא מופיעים בספרייה ולא יכולים להתחבר."""
-    return set(_name_key(n) for n in (_load_config().get("removedAgents") or []) if _name_key(n))
+    """name_key של סוכנים שנמחקו — לא מופיעים בספרייה ולא יכולים להתחבר.
+    כולל גם purgedAgents (נמחקו לצמיתות — לא מוצגים אף לשחזור)."""
+    cfg = _load_config()
+    names = list(cfg.get("removedAgents") or []) + list(cfg.get("purgedAgents") or [])
+    return set(_name_key(n) for n in names if _name_key(n))
 
 def web_role_for(last9):
     if last9 in set(_last9(a) for a in ADMIN_PHONES): return "admin"
@@ -3845,9 +3848,9 @@ def api_dev_agent_add():
         if (body.get("phone") or "").strip():  ent["phone"]  = _last9(body["phone"])
         if (body.get("vphone") or "").strip(): ent["vphone"] = body["vphone"].strip()
         agents.append(ent)
-    # אם הסוכן היה מסומן כמחוק — להחזיר אותו
-    rem = [x for x in (cfg.get("removedAgents") or []) if _name_key(x) != _name_key(name)]
-    cfg["removedAgents"] = rem
+    # אם הסוכן היה מסומן כמחוק (רגיל או לצמיתות) — להחזיר אותו
+    cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or []) if _name_key(x) != _name_key(name)]
+    cfg["purgedAgents"] = [x for x in (cfg.get("purgedAgents") or []) if _name_key(x) != _name_key(name)]
     ok = _save_config(cfg)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "הוספת סוכן", name)
     return jsonify({"ok": ok})
@@ -3894,13 +3897,9 @@ def api_dev_agent_delete():
     s = _web_auth()
     if not s or not _is_dev(s.get("phone", "")):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
-    # ⛔ מחיקת חברי צוות בוטלה (בקשת אייל 13/07) — סוכן עם רשומות (חתימות/שיחות) "נעלם"
-    # מכל הרשימות. ניתוק = השהיה (/api/dev/suspend). ה-UI הוסר; החסימה כאן עוצרת גם
-    # קליינטים ישנים שנשארו פתוחים. שחזור שמות שכבר נמחקו — דרך "חברי צוות שנמחקו".
-    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
-                  "ניסיון מחיקת סוכן (חסום)", ((request.get_json(silent=True) or {}).get("name") or "").strip())
-    return jsonify({"ok": False, "reason": "deletion_disabled",
-                    "message": "מחיקת חברי צוות בוטלה — השתמש בהשהיה"}), 403
+    # מחיקה = בחירה מפורשת של בעל המשרד בלבד (בקשת אייל 13/07): הכפתור חי רק בכרטיס
+    # החבר (עם אישור דו-שלבי) — לא בפח של "שמות לא משויכים" (שם נמחק בטעות סוכן בדיקה 4).
+    # השם שנמחק נכנס לרשימת "חברי צוות שנמחקו" בניהול — ממנה משחזרים או מוחקים לצמיתות.
     name = ((request.get_json(silent=True) or {}).get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "reason": "missing"}), 400
@@ -3932,6 +3931,27 @@ def api_dev_agent_delete():
     cfg["removedAgents"] = rem
     ok = _save_config(cfg)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת סוכן", name)
+    return jsonify({"ok": ok})
+
+@app.route("/api/dev/agent_purge", methods=["POST"])
+def api_dev_agent_purge():
+    """מחיקה לצמיתות מרשימת המחוקים: השם נשאר חסום ומוסתר (purgedAgents) אך לא מוצג
+    יותר לשחזור. הרשומות ההיסטוריות בגיליון נשארות. הזמנה מחדש מפורשת עדיין משחררת."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    name = ((request.get_json(silent=True) or {}).get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "reason": "missing"}), 400
+    nk = _name_key(name)
+    cfg = _load_config()
+    cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or []) if _name_key(x) != nk]
+    pg = cfg.get("purgedAgents") or []
+    if not any(_name_key(x) == nk for x in pg):
+        pg.append(name)
+    cfg["purgedAgents"] = pg
+    ok = _save_config(cfg)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת סוכן לצמיתות", name)
     return jsonify({"ok": ok})
 
 @app.route("/api/dev/role", methods=["POST"])
@@ -7937,7 +7957,7 @@ function renderDevPeople(r){DEVDATA=r;DEVAGENTS=r.agents||[];
         '<div style="flex:1;min-width:0"><div style="'+lbl+'">תפקיד</div><select id="rl'+i+'" class="chip" style="width:100%;box-sizing:border-box" onchange="devSetRole('+i+')">'+roleOpts(a.role)+'</select></div>'+
       '</div>'+
       '<label class=muted style="display:flex;gap:6px;align-items:center;margin-top:10px;font-size:13px"><input type=checkbox id="hd'+i+'" '+(a.nbHidden?"checked":"")+'>מוסתר מ״נכס נולד״ (לא רואה כלום)</label>'+
-      '<div style="display:flex;gap:8px;margin-top:12px;align-items:center"><button class="btn-gold" style="flex:1;min-width:0" onclick="devSaveAgent('+i+')">💾 שמור</button><button class="btn-ghost" style="flex:0 0 auto;width:auto;'+(a.suspended?"color:#fff;background:#c0392b;border-color:#c0392b":"color:#b9770a;border-color:#e8c98a")+'" onclick="devSuspend('+i+')">'+(a.suspended?"▶ שחרר":"⏸ השהה")+'</button></div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;align-items:center"><button class="btn-gold" style="flex:1;min-width:0" onclick="devSaveAgent('+i+')">💾 שמור</button><button class="btn-ghost" style="flex:0 0 auto;width:auto;'+(a.suspended?"color:#fff;background:#c0392b;border-color:#c0392b":"color:#b9770a;border-color:#e8c98a")+'" onclick="devSuspend('+i+')">'+(a.suspended?"▶ שחרר":"⏸ השהה")+'</button><button class="btn-ghost" style="flex:0 0 auto;width:auto;color:#c0392b;border-color:#e7b4ad" onclick="devDelAgent('+i+')">🗑 מחק</button></div>'+
     '</div>';}
   var cards="";DEVAGENTS.forEach(function(a,i){var show=flt?(String(a.name).indexOf(flt)>=0):(DEVALL||i<NSHOW);if(show)cards+=devCard(a,i);});
   if(flt&&!cards)cards='<div class=muted style="padding:8px 0">לא נמצא סוכן בשם זה.</div>';
@@ -7950,7 +7970,7 @@ function devAssign(nameEnc,selId){var sel=$(selId);var agent=sel?sel.value:"";if
 function devNewAgent(nameEnc){var name=decodeURIComponent(nameEnc);if(!confirm("ליצור סוכן חדש בשם: "+name+"?"))return;devPost("/api/dev/agent_add",{name:name});}
 function devAddAgent(){var el=$("newag");var name=el?el.value.trim():"";if(!name){alert("הקלד שם סוכן");return;}devPost("/api/dev/agent_add",{name:name});}
 function devSaveAgent(i){var a=DEVAGENTS[i];if(!a)return;var hid=$("hd"+i).checked;var nb=$("nb"+i).value.trim();devPost("/api/dev/agent_update",{name:a.name,phone:$("pp"+i).value.trim(),vphone:$("vp"+i).value.trim(),newbornDelay:(hid?"hidden":nb)});}
-/* devDelAgent הוסר — מחיקת סוכנים בוטלה (בקשת אייל 13/07); ניתוק = השהיה */
+function devDelAgent(i){var a=DEVAGENTS[i];if(!a)return;if(!confirm("למחוק את הסוכן '"+a.name+"'?\\nהוא יוסר מהספרייה ומהשיוכים וייחסם מכניסה.\\nיופיע ב\"חברי צוות שנמחקו\" בניהול אפי — לשחזור או מחיקה לצמיתות."))return;devPost("/api/dev/agent_delete",{name:a.name});}
 function devSuspend(i){var a=DEVAGENTS[i];if(!a)return;var ph=(a.phone||(a.phones&&a.phones[0])||"").trim();if(!ph){alert("אין מספר טלפון לסוכן — לא ניתן להשהות");return;}var sus=!a.suspended;
   if(!confirm(sus?("להשהות את "+a.name+"?\\nהוא לא יוכל להיכנס (SMS/מייל) — מונע תשלום בטווילו."):("לשחרר את "+a.name+" מהשהיה?")))return;
   api("/api/dev/suspend",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:ph,suspend:sus})}).then(function(r){if(r&&r.ok){loadDevPeople();}else{alert("נכשל"+(r&&r.reason?" ("+r.reason+")":""));}}).catch(function(){alert("שגיאה");});}
