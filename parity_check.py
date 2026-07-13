@@ -93,13 +93,15 @@ def check_raw_tab(type_he, fetch_fn, emoji):
         problems += 1
         print(f"⚠️ {type_he} עודפות במסלול Supabase: {len(extra)} — {extra[:3]}")
 
+    # חותמות מטא שנכתבות בכל צד בנפרד (הפרש שניות) — לא הבדל נתונים אמיתי, מתעלמים
+    _IGNORE_FIELDS = {"updated_at", "created_at", "synced_at", "_sync_ts"}
     diff_fields = 0
     example = None
     for k in sheet_by:
         if k not in sb_by:
             continue
         a, b = sheet_by[k], sb_by[k]
-        for f in set(a.keys()) | set(b.keys()):
+        for f in (set(a.keys()) | set(b.keys())) - _IGNORE_FIELDS:
             va = str(a.get(f, "") or "").strip()
             vb = str(b.get(f, "") or "").strip()
             if va != vb:
@@ -234,41 +236,57 @@ def main():
         _r.raise_for_status()
         _data = _r.json().get("values", [])
         _hdr = _data[0] if _data else []
-        props_sheet = []
-        for _row in _data[1:]:
+        _EXCL_AG = set()   # אין מוחרגים — זהה ל-_fetch_sheet_rows_raw ב-app.py (אווה שוחררה)
+        def _excluded(r):
+            return ((r.get("סוכן 1", "") or "").strip() in _EXCL_AG
+                    or (r.get("סוכן 2", "") or "").strip() in _EXCL_AG)
+        # ⚠️ חייבים לפתח לפי sheet_row (לא לפי מיקום ברשימה): הסינון של סוכן מוחרג
+        # מזיז את המיקומים ומייצר "אי-התאמות" שווא. הגיליון: sheet_row = index+2 (כותרת=1).
+        props_sheet_by = {}
+        for _i, _row in enumerate(_data[1:]):
             _pad = _row + [""] * (len(_hdr) - len(_row))
             _d = dict(zip(_hdr, _pad))
             if len(_pad) > 30:
                 _d["_desc_ae"] = str(_pad[30] or "").strip()
-            props_sheet.append(_d)
-        _EXCL_AG = {"אווה אזולאי"}   # זהה ל-_fetch_sheet_rows_raw ב-app.py
-        props_sheet = [r for r in props_sheet
-                       if (r.get("סוכן 1", "") or "").strip() not in _EXCL_AG
-                       and (r.get("סוכן 2", "") or "").strip() not in _EXCL_AG]
-        props_sb = supabase_db.fetch_properties_rows()
-        print(f"🏢 נכסים — גיליון: {len(props_sheet)} · Supabase: {len(props_sb)}")
+            if _excluded(_d):
+                continue
+            props_sheet_by[_i + 2] = _d
+        # Supabase — עם sheet_row (fetch_properties_rows זורק אותו), אותו סינון
+        props_sb_by = {}
+        for _rec in supabase_db._get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"}):
+            _raw = _rec.get("raw")
+            if not isinstance(_raw, dict) or _excluded(_raw):
+                continue
+            props_sb_by[_rec.get("sheet_row")] = _raw
+        print(f"🏢 נכסים — גיליון: {len(props_sheet_by)} · Supabase: {len(props_sb_by)}")
+        _miss = [k for k in props_sheet_by if k not in props_sb_by]
+        _extra = [k for k in props_sb_by if k not in props_sheet_by]
         p_diffs = 0
         p_example = None
-        if len(props_sheet) != len(props_sb):
-            p_diffs += abs(len(props_sheet) - len(props_sb))
-        for i2, a in enumerate(props_sheet):
-            b = props_sb[i2] if i2 < len(props_sb) else {}
+        if _miss:
+            p_diffs += len(_miss)
+            print(f"❌ נכסים בגיליון שחסרים ב-Supabase: {len(_miss)} — שורות {_miss[:5]}")
+        if _extra:
+            p_diffs += len(_extra)
+            print(f"⚠️ נכסים ב-Supabase שאינם בגיליון: {len(_extra)} — שורות {_extra[:5]}")
+        for k in props_sheet_by:
+            if k not in props_sb_by:
+                continue
+            a, b = props_sheet_by[k], props_sb_by[k]
             for f in set(a.keys()) | set(b.keys()):
                 va = str(a.get(f, "") or "").strip()
                 vb = str(b.get(f, "") or "").strip()
                 if va != vb:
                     p_diffs += 1
                     if p_example is None:
-                        p_example = (i2 + 2, f, va[:60], vb[:60])
+                        p_example = (k, f, va[:60], vb[:60])
         if p_diffs:
             problems += 1
-            print(f"❌ אי-התאמות בנכסים: {p_diffs}")
             if p_example:
-                print(f"   לדוגמה: שורה {p_example[0]} · שדה '{p_example[1]}':")
-                print(f"   גיליון:  '{p_example[2]}'")
-                print(f"   Supabase: '{p_example[3]}'")
+                print(f"   דוגמת אי-התאמת שדה: שורה {p_example[0]} · '{p_example[1]}': "
+                      f"גיליון='{p_example[2]}' · Supabase='{p_example[3]}'")
         else:
-            print("✅ הנכסים זהים שורה-שורה ושדה-שדה")
+            print("✅ הנכסים זהים (לפי מפתח שורה) שדה-שדה")
 
     # ── קונפיג (הבלוב מול השורות) ──
     import json as _j
