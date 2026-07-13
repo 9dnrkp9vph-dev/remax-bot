@@ -8094,8 +8094,7 @@ def register(app, G):
                 if not str(d.get("מספר מודעה", "")).strip() or not str(d.get("סוכן 1", "")).strip():
                     skipped += 1
                     continue
-                if str(d.get("סוכן 1", "")).strip() == "אווה אזולאי":
-                    continue
+                # אווה אזולאי שוחררה — נכללת כסוכנת רגילה (בקשת אייל 13/07)
                 d["_desc_ae"] = vals[30] if len(vals) > 30 else ""
                 new_by[_key(d)] = d
             cur = _sb.fetch_properties_rows() or []
