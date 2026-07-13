@@ -3841,9 +3841,15 @@ function nbCard(r, i){
       (st.date ? ' · ' + st.date.replace('T', ' ') : '') + (st.agent ? ' · ' + st.agent : '')) + '</div>' : '';
   var notes = (r.unotes && r.unotes.length)
     ? '<div class="notes">' + esc(r.unotes[r.unotes.length - 1].name + ': ' + r.unotes[r.unotes.length - 1].text) + '</div>' : '';
+  // כבר בבלעדיות RE/MAX Family — כמו בישנה (מקור: גיליון הבלעדויות, שדה r.famexcl מהשרת)
+  var fam = r.famexcl
+    ? '<div style="display:inline-flex;align-items:center;gap:5px;background:#FBEDED;color:#C24040;' +
+      'border:1px solid #F0B8B8;font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px">' +
+      '🔴 כבר בבלעדיות RE/MAX Family</div>'
+    : '';
   return '<div class="nb">' +
     '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
-    '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div></div>' + chip + '</div>' +
+    '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' + fam + '</div>' + chip + '</div>' +
     '<div style="display:flex;align-items:center;justify-content:space-between">' +
     '<div class="pr">' + esc(fmtPrice(r.price)) + '</div>' +
     '<div style="font-size:11.5px;color:#8B8F99">' + esc(r.date || '') + '</div></div>' +
