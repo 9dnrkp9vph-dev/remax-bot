@@ -3764,16 +3764,17 @@ def api_dev_suspend():
     ph = _last9(b.get("phone", ""))
     if not ph:
         return jsonify({"ok": False, "reason": "bad_phone"})
-    cfg = _load_config()
-    susp = set(_last9(p) for p in (cfg.get("suspended") or []) if p)
-    if b.get("suspend"):
-        susp.add(ph)
-    else:
-        susp.discard(ph)
-    cfg["suspended"] = sorted(susp)
-    if not _save_config(cfg):
+    _res = {}
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        susp = set(_last9(p) for p in (cfg.get("suspended") or []) if p)
+        if b.get("suspend"): susp.add(ph)
+        else: susp.discard(ph)
+        cfg["suspended"] = sorted(susp)
+        _res["on"] = ph in susp
+    ok, _ = _config_mutate(_mut)
+    if not ok:
         return jsonify({"ok": False, "reason": "save_failed"})
-    return jsonify({"ok": True, "suspended": ph in susp})
+    return jsonify({"ok": True, "suspended": _res.get("on", False)})
 
 @app.route("/api/dev/quiet", methods=["GET", "POST"])
 def api_dev_quiet():
@@ -3844,16 +3845,16 @@ def api_dev_alias():
     agent = (body.get("agent") or "").strip()
     if not alias or not agent:
         return jsonify({"ok": False, "reason": "missing"}), 400
-    cfg = _load_config()
-    agents = cfg.setdefault("agents", [])
-    entry = next((a for a in agents if _name_key(a.get("name", "")) == _name_key(agent)), None)
-    if not entry:
-        entry = {"name": agent, "aliases": []}
-        agents.append(entry)
-    al = entry.setdefault("aliases", [])
-    if alias not in al:
-        al.append(alias)
-    ok = _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        agents = cfg.setdefault("agents", [])
+        entry = next((a for a in agents if _name_key(a.get("name", "")) == _name_key(agent)), None)
+        if not entry:
+            entry = {"name": agent, "aliases": []}
+            agents.append(entry)
+        al = entry.setdefault("aliases", [])
+        if alias not in al:
+            al.append(alias)
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שיוך כינוי שם", agent + " ← " + alias)
     return jsonify({"ok": ok})
 
@@ -3867,17 +3868,17 @@ def api_dev_agent_add():
     name = (body.get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "reason": "missing"}), 400
-    cfg = _load_config()
-    agents = cfg.setdefault("agents", [])
-    if not any(_name_key(a.get("name", "")) == _name_key(name) for a in agents):
-        ent = {"name": name, "aliases": []}
-        if (body.get("phone") or "").strip():  ent["phone"]  = _last9(body["phone"])
-        if (body.get("vphone") or "").strip(): ent["vphone"] = body["vphone"].strip()
-        agents.append(ent)
-    # אם הסוכן היה מסומן כמחוק (רגיל או לצמיתות) — להחזיר אותו
-    cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or []) if _name_key(x) != _name_key(name)]
-    cfg["purgedAgents"] = [x for x in (cfg.get("purgedAgents") or []) if _name_key(x) != _name_key(name)]
-    ok = _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        agents = cfg.setdefault("agents", [])
+        if not any(_name_key(a.get("name", "")) == _name_key(name) for a in agents):
+            ent = {"name": name, "aliases": []}
+            if (body.get("phone") or "").strip():  ent["phone"]  = _last9(body["phone"])
+            if (body.get("vphone") or "").strip(): ent["vphone"] = body["vphone"].strip()
+            agents.append(ent)
+        # אם הסוכן היה מסומן כמחוק (רגיל או לצמיתות) — להחזיר אותו
+        cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or []) if _name_key(x) != _name_key(name)]
+        cfg["purgedAgents"] = [x for x in (cfg.get("purgedAgents") or []) if _name_key(x) != _name_key(name)]
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "הוספת סוכן", name)
     return jsonify({"ok": ok})
 
@@ -3891,28 +3892,28 @@ def api_dev_agent_update():
     name = (body.get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "reason": "missing"}), 400
-    cfg = _load_config()
-    agents = cfg.setdefault("agents", [])
-    entry = next((a for a in agents if _name_key(a.get("name", "")) == _name_key(name)), None)
-    if not entry:
-        entry = {"name": name, "aliases": []}
-        agents.append(entry)
-    if "vphone" in body:
-        vp = (body.get("vphone") or "").strip()
-        if vp: entry["vphone"] = vp
-        else: entry.pop("vphone", None)
-    if "phone" in body:
-        ph = _last9(body.get("phone") or "")
-        if ph: entry["phone"] = ph
-        else: entry.pop("phone", None)
-    if "newbornDelay" in body:
-        nd = body.get("newbornDelay")
-        if nd in ("", None): entry.pop("newbornDelay", None)
-        elif str(nd) in ("hidden", "מוסתר", "-1"): entry["newbornDelay"] = "hidden"
-        else:
-            try: entry["newbornDelay"] = int(nd)
-            except Exception: pass
-    ok = _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        agents = cfg.setdefault("agents", [])
+        entry = next((a for a in agents if _name_key(a.get("name", "")) == _name_key(name)), None)
+        if not entry:
+            entry = {"name": name, "aliases": []}
+            agents.append(entry)
+        if "vphone" in body:
+            vp = (body.get("vphone") or "").strip()
+            if vp: entry["vphone"] = vp
+            else: entry.pop("vphone", None)
+        if "phone" in body:
+            ph = _last9(body.get("phone") or "")
+            if ph: entry["phone"] = ph
+            else: entry.pop("phone", None)
+        if "newbornDelay" in body:
+            nd = body.get("newbornDelay")
+            if nd in ("", None): entry.pop("newbornDelay", None)
+            elif str(nd) in ("hidden", "מוסתר", "-1"): entry["newbornDelay"] = "hidden"
+            else:
+                try: entry["newbornDelay"] = int(nd)
+                except Exception: pass
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון סוכן", name)
     return jsonify({"ok": ok})
 
@@ -3931,31 +3932,31 @@ def api_dev_agent_delete():
         return jsonify({"ok": False, "reason": "missing"}), 400
     nk = _name_key(name); ck = _canon_key(name)
     phs = set(_phones_for_name(name))
-    cfg = _load_config()
-    cfg["agents"] = [a for a in (cfg.get("agents") or [])
-                     if _name_key(a.get("name", "")) != nk]
-    roles = cfg.get("roles") or {}
-    for ph in list(roles.keys()):
-        if _last9(ph) in phs: roles.pop(ph, None)
-    cfg["roles"] = roles
-    new_teams = []
-    for grp in (cfg.get("teams") or []):
-        if not isinstance(grp, list): continue
-        members = [m for m in grp if _canon_key(m) != ck]
-        if len(members) >= 2: new_teams.append(members)
-    cfg["teams"] = new_teams
-    new_co = []
-    for it in (cfg.get("coordinators") or []):
-        if not isinstance(it, dict): continue
-        if _canon_key(it.get("coordinator", "")) == ck: continue
-        ags = [a for a in (it.get("agents") or []) if _canon_key(a) != ck]
-        if ags: new_co.append({"coordinator": it.get("coordinator"), "agents": ags})
-    cfg["coordinators"] = new_co
-    rem = cfg.get("removedAgents") or []
-    if not any(_name_key(x) == nk for x in rem):
-        rem.append(name)
-    cfg["removedAgents"] = rem
-    ok = _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        cfg["agents"] = [a for a in (cfg.get("agents") or [])
+                         if _name_key(a.get("name", "")) != nk]
+        roles = cfg.get("roles") or {}
+        for ph in list(roles.keys()):
+            if _last9(ph) in phs: roles.pop(ph, None)
+        cfg["roles"] = roles
+        new_teams = []
+        for grp in (cfg.get("teams") or []):
+            if not isinstance(grp, list): continue
+            members = [m for m in grp if _canon_key(m) != ck]
+            if len(members) >= 2: new_teams.append(members)
+        cfg["teams"] = new_teams
+        new_co = []
+        for it in (cfg.get("coordinators") or []):
+            if not isinstance(it, dict): continue
+            if _canon_key(it.get("coordinator", "")) == ck: continue
+            ags = [a for a in (it.get("agents") or []) if _canon_key(a) != ck]
+            if ags: new_co.append({"coordinator": it.get("coordinator"), "agents": ags})
+        cfg["coordinators"] = new_co
+        rem = cfg.get("removedAgents") or []
+        if not any(_name_key(x) == nk for x in rem):
+            rem.append(name)
+        cfg["removedAgents"] = rem
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת סוכן", name)
     return jsonify({"ok": ok})
 
@@ -3970,13 +3971,13 @@ def api_dev_agent_purge():
     if not name:
         return jsonify({"ok": False, "reason": "missing"}), 400
     nk = _name_key(name)
-    cfg = _load_config()
-    cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or []) if _name_key(x) != nk]
-    pg = cfg.get("purgedAgents") or []
-    if not any(_name_key(x) == nk for x in pg):
-        pg.append(name)
-    cfg["purgedAgents"] = pg
-    ok = _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or []) if _name_key(x) != nk]
+        pg = cfg.get("purgedAgents") or []
+        if not any(_name_key(x) == nk for x in pg):
+            pg.append(name)
+        cfg["purgedAgents"] = pg
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת סוכן לצמיתות", name)
     return jsonify({"ok": ok})
 
@@ -3991,13 +3992,13 @@ def api_dev_role():
     role = (body.get("role") or "").strip()
     if not phone:
         return jsonify({"ok": False, "reason": "missing"}), 400
-    cfg = _load_config()
-    roles = cfg.setdefault("roles", {})
-    if role in _ROLE_SCOPE:
-        roles[phone] = role
-    else:
-        roles.pop(phone, None)
-    ok = _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        roles = cfg.setdefault("roles", {})
+        if role in _ROLE_SCOPE:
+            roles[phone] = role
+        else:
+            roles.pop(phone, None)
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שיוך תפקיד", role + " ← " + phone)
     return jsonify({"ok": ok})
 
