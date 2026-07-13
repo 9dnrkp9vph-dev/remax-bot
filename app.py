@@ -6846,9 +6846,13 @@ def api_newborn_status():
         return jsonify({"ok": False, "reason": "no_date"}), 400
     # מפתח לפי סוכן+נכס — כך שכל סוכן רואה את הסטטוס שלו והסתרת "לא ניתן לגיוס" היא אישית
     skey = _canon_key(nm) + "::" + key
+    # תגית פולו-אפ: 'before' (לפני פגישה) / 'after' (אחרי פגישה) / '' (כללי). בקשת אייל 13/07.
+    _tag = (d.get("tag", "") or "").strip()
+    if _tag not in ("before", "after"):
+        _tag = ""
     rec = {"status": status, "addr": addr, "agent": nm, "pkey": key, "ts": int(time.time()),
            "owner": owner_name, "price": price, "ophone": owner_phone,
-           "note": str(d.get("note", "") or "")[:1000],
+           "note": str(d.get("note", "") or "")[:1000], "tag": _tag,
            "date": (date if status in ("meeting", "followup") else ""), "cal": []}
     # אירוע יומן לפגישה/פולואפ (שומרים מזהי אירוע למחיקה/עריכה עתידית)
     cal_ok = False
@@ -6946,18 +6950,23 @@ def api_newborn_meetings():
         allowed.add(_canon_key(s.get("name", "")))
     elif s["role"] != "admin":
         allowed = {_canon_key(s.get("name", ""))}
+    _inc_done = request.args.get("done") == "1"   # מסך היומן מבקש גם 'בוצע'; הבית לא
     out = []
     for k, st in (_nb_statuses() or {}).items():
         if st.get("status") not in ("meeting", "followup"):
             continue
         if allowed is not None and _canon_key(st.get("agent", "")) not in allowed:
             continue
+        if st.get("done") and not _inc_done:
+            continue   # 'בוצע' — לא מוצג בתצוגות הפעילות (בית/דורש טיפול)
         _oph = (st.get("ophone", "") or "").strip()
         _dig = "".join(ch for ch in _oph if ch.isdigit())
         _wa = ("" if not _dig else (_dig if _dig.startswith("972") else "972" + _dig.lstrip("0")))
         out.append({"status": st.get("status"), "label": _NB_STATUS_LABELS.get(st.get("status"), ""),
                     "date": st.get("date", ""), "agent": st.get("agent", ""),
                     "by": st.get("by", ""),   # מי תיאם את הפגישה/פולו-אפ (המתאם/מנהל שיצר)
+                    "tag": st.get("tag", ""),   # 'before'/'after'/'' — קטגוריית פולו-אפ
+                    "done": bool(st.get("done")),   # 'בוצע' (אחרי לחיצת וי)
                     "addr": st.get("addr", ""), "skey": k,
                     "ophone": _oph, "wa": _wa, "owner": st.get("owner", ""), "note": st.get("note", "")})
     out.sort(key=lambda x: str(x.get("date", "")))
@@ -7046,6 +7055,9 @@ def api_newborn_status_edit():
         cal_changed = True
     if note_in is not None:
         rec["note"] = str(note_in)[:1000]
+    if "tag" in d:   # עדכון תגית לפני/אחרי פגישה
+        _t = (d.get("tag", "") or "").strip()
+        rec["tag"] = _t if _t in ("before", "after") else ""
     if new_date and new_date != rec.get("date", ""):
         rec["date"] = new_date
         cal_changed = True
@@ -7064,6 +7076,52 @@ def api_newborn_status_edit():
     _NB_RESULT_VER[0] += 1
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עריכת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
     return jsonify({"ok": True, "calendar": bool(rec.get("cal"))})
+
+@app.route("/api/newborn/status/done", methods=["POST"])
+def api_newborn_status_done():
+    """סימון פגישה/פולו-אפ כ'בוצע' (במקום מחיקה) — עובר לקטגוריית 'בוצע', נשמר.
+    אפשר גם להחזיר (done=false). מסיר את אירוע היומן כשמסמנים בוצע. בקשת אייל 13/07."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    d = request.get_json(silent=True) or {}
+    skey = (d.get("skey", "") or "").strip()
+    done = bool(d.get("done", True))
+    if not skey:
+        return jsonify({"ok": False, "reason": "no_key"}), 400
+    m = (_load_config().get("nbStatus") or {})
+    rec = m.get(skey)
+    if not rec:
+        return jsonify({"ok": False, "reason": "not_found"}), 404
+    # הרשאה: סוכן את שלו; מתאמת את הסוכנים שלה; מנהל הכל (זהה למחיקה/עריכה)
+    if s["role"] != "admin":
+        allowed = {_canon_key(s.get("name", ""))}
+        if s["role"] == "coordinator":
+            cc = _coordinators_all().get(_last9(s.get("phone", "")))
+            if cc:
+                allowed |= set(_canon_key(n) for n in (cc.get("names") or set()))
+                for ph in (cc.get("agents") or set()):
+                    nm = web_phone_name_map().get(_last9(ph)) or web_contacts_phone_name().get(_last9(ph))
+                    if nm: allowed.add(_canon_key(nm))
+        if _canon_key(rec.get("agent", "")) not in allowed:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+    if done:   # בסימון בוצע — מסירים את אירוע היומן (העבר, אין צורך בתזכורת)
+        for ev in (rec.get("cal") or []):
+            try: gcal_delete_event(ev.get("email", ""), ev.get("id", ""))
+            except Exception: pass
+    def _mut(cfg):   # RMW בטוח — כותב רק את skey הזה
+        mm = cfg.get("nbStatus")
+        if not isinstance(mm, dict): return
+        r = mm.get(skey)
+        if not r: return
+        r["done"] = done
+        r["done_at"] = _sign_now_iso() if done else ""
+        if done: r["cal"] = []
+        cfg["nbStatus"] = mm
+    _config_mutate(_mut)
+    _NB_RESULT_VER[0] += 1
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
+                  ("סימון בוצע" if done else "החזרה מבוצע") + " · פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
+    return jsonify({"ok": True, "done": done})
 
 # ── Exclusivity search ─────────────────────────────────────────────────────────
 def _web_num(v):
