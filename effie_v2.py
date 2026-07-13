@@ -1488,12 +1488,23 @@ function renderRemoved(){
       '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.name) + '</div>' +
       '<div style="font-size:11px;color:#8B8F99">' + (r.sigs ? r.sigs + ' חתימות במערכת' : 'ללא רשומות') + '</div></div>' +
       '<button onclick="restoreMember(' + i + ')" style="padding:9px 16px;border:none;border-radius:11px;background:#2E6BD6;' +
-      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שחזר</button></div>';
+      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שחזר</button>' +
+      '<button onclick="purgeMember(' + i + ')" style="padding:9px 12px;border:1.5px solid #C24040;border-radius:11px;background:#fff;' +
+      'color:#C24040;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">מחק לצמיתות</button></div>';
   }).join('');
 }
 function restoreMember(i){
   var r = RMV[i]; if (!r) return;
   openInvite(r.name);   // הזמנה מחדש עם השם מולא — מנקה מהחסומים ורושם מחדש (התיקון מהלילה)
+}
+function purgeMember(i){
+  var r = RMV[i]; if (!r) return;
+  if (!confirm('למחוק את "' + r.name + '" לצמיתות?\nהוא לא יופיע יותר ברשימת השחזור ויישאר חסום.' +
+      (r.sigs ? '\n(' + r.sigs + ' רשומות החתימה שלו בגיליון נשארות)' : ''))) return;
+  POST('/api/dev/agent_purge', {name: r.name}).then(function(j){
+    if (!j.ok){ toast('שגיאה במחיקה'); return; }
+    toast('נמחק לצמיתות'); boot();
+  });
 }
 var UNMATCHED = [];
 var SHOW_ALL = false;
@@ -1735,6 +1746,8 @@ function openMember(i){
   var phDisp = p.phone ? '0' + p.phone.slice(0, 2) + '-' + p.phone.slice(2) : '—';
   openSheet(
     '<div style="display:flex;align-items:center;justify-content:space-between"><h3>' + esc(p.name) + '</h3>' +
+    (isDev ? '' : '<button class="trashBtn" onclick="delMember(' + i + ')" aria-label="מחיקת סוכן">' +
+      '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button>') +
     '</div>' +
     '<div class="fld"><span>טלפונים</span><div style="display:flex;gap:8px;align-items:stretch">' +
     '<div class="phChip" style="display:flex;align-items:center">אישי · ' + esc(phDisp) + '</div>' +
@@ -1812,8 +1825,25 @@ function saveMember(i){
   Promise.all(jobs).then(function(){ closeSheet(); toast('נשמר'); boot(); });
 }
 
-/* מחיקת חבר צוות בוטלה (בקשת אייל 13/07) — סוכן עם רשומות לא נעלם.
-   ניתוק = השהיה (הטוגל בכרטיס): חוסם כניסה, שומר אותו בספרייה ואת כל הרשומות משויכות. */
+/* מחיקה = בחירה מפורשת מכרטיס החבר בלבד (אישור דו-שלבי). השם עובר ל"חברי צוות
+   שנמחקו" — משם משחזרים או מוחקים לצמיתות. אין פח ב"שמות לא משויכים" (נמחק שם בטעות). */
+function delMember(i){
+  var p = el('teamList')._list[i];
+  openSheet('<h3>מחיקת ' + esc(p.name) + '</h3>' +
+    '<div style="font-size:13px;color:#5B6472;line-height:1.7">המחיקה מסירה את הסוכן מהצוות, מהצוותים ' +
+    'ומהשיוכים למתאמת, וחוסמת את הכניסה שלו למערכת. הנתונים ההיסטוריים (שיחות, חתימות, קונים) נשארים, ' +
+    'והוא יופיע ב"חברי צוות שנמחקו" — משם אפשר לשחזר אותו או למחוק לצמיתות.</div>' +
+    '<button class="btn" style="background:#fff;color:#C24040;border:1.5px solid #C24040" onclick="delMemberGo(' + i + ')">' +
+    'מחק את ' + esc(p.name) + '</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function delMemberGo(i){
+  var p = el('teamList')._list[i];
+  POST('/api/dev/agent_delete', {name: p.name}).then(function(j){
+    if (!j.ok){ toast('שגיאה במחיקה'); return; }
+    closeSheet(); toast(p.name + ' הוסר — ניתן לשחזר מ"חברי צוות שנמחקו"'); boot();
+  });
+}
 function openOffice(){
   openSheet(
     '<h3>פרטי המשרד</h3>' +
@@ -7734,11 +7764,13 @@ def register(app, G):
         elif name and entry.get("name") != name:
             entry["name"] = name
         cfg.setdefault("roles", {})[phone] = role
-        # ⚠️ קריטי: סוכן שנמחק בעבר נשאר ב-removedAgents וחסום מכניסה ("המספר לא
-        # רשום במערכת") גם אחרי הזמנה חדשה. הזמנה = כוונת מנהל מפורשת להחזירו —
-        # מנקים מהרשימה, בדיוק כמו agent_add בקונסולה הקיימת.
+        # ⚠️ קריטי: סוכן שנמחק בעבר נשאר ב-removedAgents/purgedAgents וחסום מכניסה
+        # ("המספר לא רשום במערכת") גם אחרי הזמנה חדשה. הזמנה = כוונת מנהל מפורשת
+        # להחזירו — מנקים משתי הרשימות, בדיוק כמו agent_add בקונסולה הקיימת.
         cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or [])
                                 if _name_key(x) != _name_key(name)]
+        cfg["purgedAgents"] = [x for x in (cfg.get("purgedAgents") or [])
+                               if _name_key(x) != _name_key(name)]
         if existing:
             existing.update({"name": name, "role": role, "ts": int(time.time())})
         else:
