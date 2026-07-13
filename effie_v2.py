@@ -5243,7 +5243,9 @@ function openForm(i, asDeal){
     '</div>' +
     '<div class="foot">' +
     '<button class="btnMain' + (isDeal ? ' gold' : '') + '" onclick="saveForm(' + (i === null ? 'null' : i) + ',' + isDeal + ')">' +
-    (isDeal ? 'סגור עסקה' : 'שמירה') + '</button>' +
+    ((isDeal && !it.deal) ? 'סגור עסקה' : 'שמירה') + '</button>' +
+    // החזרת עסקה שנסגרה בטעות חזרה לתהליך פתוח (עריכת עסקה קיימת בלבד). בקשת אייל 14/07.
+    ((i !== null && it.deal) ? '<button class="btnSec" style="color:#C24040;border-color:#E7B4AD" onclick="revertDeal(' + i + ')">↩ החזר לתהליך פתוח</button>' : '') +
     '<button class="btnSec" onclick="closeSheet()">ביטול</button></div>';
   s.style.display = 'flex'; el('ovl').style.display = 'block';
   document.body.style.overflow = 'hidden';
@@ -5262,6 +5264,23 @@ function openForm(i, asDeal){
     if (!it.commission_manual) calcCom();
     else el('fCom').removeAttribute('readonly');
   }
+}
+function revertDeal(i){
+  var it = el('list')._src[i]; if (!it) return;
+  if (!confirm('להחזיר את "' + (it.notes || 'העסקה') + '" לתהליך פתוח? הסגירה תבוטל ושדות העסקה (מחיר מכירה, עמלה, תאריך) יימחקו.')) return;
+  POST('/api/deals/save', {
+    id: it.id || '', agents: it.agents || [], notes: it.notes || '',
+    side1: it.side1 || '', side2: it.side2 || '',
+    lawyers: it.lawyers || '', lawyers2: it.lawyers2 || '',
+    offer: !!it.offer, offer_seller: it.offer_seller || '', offer_buyer: it.offer_buyer || '',
+    price: it.price || it.sale_price || '',   // שומר מחיר מבוקש
+    deal: false, stage: it.stage || '',
+    sale_price: '', close_date: '', commission: '', commission_manual: false,
+    commission2: '', commission2_manual: false
+  }).then(function(j){
+    if (!j.ok){ toast(j.reason === 'forbidden' ? 'אין הרשאה' : (j.reason || 'שגיאה')); return; }
+    closeSheet(); toast('העסקה הוחזרה לתהליך פתוח'); load();
+  });
 }
 function saveForm(i, isDeal){
   var it = (i === null) ? {} : el('list')._src[i];
