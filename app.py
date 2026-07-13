@@ -4030,9 +4030,8 @@ def api_dev_teams():
     s = _web_auth()
     if not s or not _is_dev(s.get("phone", "")):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
-    cfg = _load_config()
     if request.method == "GET":
-        return jsonify({"ok": True, "teams": cfg.get("teams") or []})
+        return jsonify({"ok": True, "teams": _load_config().get("teams") or []})
     body = request.get_json(silent=True) or {}
     teams = body.get("teams")
     if not isinstance(teams, list):
@@ -4045,8 +4044,9 @@ def api_dev_teams():
                 m = str(m).strip()
                 if m and m not in members: members.append(m)
             if len(members) >= 2: clean.append(members)
-    cfg["teams"] = clean
-    ok = _save_config(cfg)
+    # RMW בטוח — צוות "נמחק אחרי כמה דקות" כי _mark_joined ברקע דרס את הכתיבה
+    def _mut(cfg): cfg["teams"] = clean
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון צוותים", str(len(clean)))
     return jsonify({"ok": ok})
 
@@ -4057,9 +4057,8 @@ def api_dev_coordinators():
     s = _web_auth()
     if not s or not _is_dev(s.get("phone", "")):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
-    cfg = _load_config()
     if request.method == "GET":
-        cc = cfg.get("coordinators")
+        cc = _load_config().get("coordinators")
         out = cc if isinstance(cc, list) else []
         return jsonify({"ok": True, "coordinators": out})
     body = request.get_json(silent=True) or {}
@@ -4077,8 +4076,8 @@ def api_dev_coordinators():
             if a and a != cname and a not in agents: agents.append(a)
         if agents:
             clean.append({"coordinator": cname, "agents": agents})
-    cfg["coordinators"] = clean
-    ok = _save_config(cfg)
+    def _mut(cfg): cfg["coordinators"] = clean   # RMW בטוח (נגד דריסת רקע)
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון מתאמות", str(len(clean)))
     return jsonify({"ok": ok})
 
