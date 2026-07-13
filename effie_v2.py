@@ -8051,14 +8051,16 @@ def register(app, G):
         key = (b.get("key") or "").strip()
         if key not in _POLICY_DEFAULTS:
             return jsonify({"ok": False, "reason": "bad_key"}), 400
-        cfg = _load_config()
-        pol = cfg.setdefault("v2_policies", {})
-        pol[key] = bool(b.get("on"))
-        if not _save_config(cfg):
+        _val = [False]
+        def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+            pol = cfg.setdefault("v2_policies", {})
+            pol[key] = bool(b.get("on")); _val[0] = pol[key]
+        ok, _ = _config_mutate(_mut)
+        if not ok:
             return jsonify({"ok": False, "reason": "save_failed"})
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
-                      "עדכון מדיניות", f"{_POLICY_LABELS.get(key, key)}: {'פעיל' if pol[key] else 'כבוי'}")
-        return jsonify({"ok": True, "policies": _policies(cfg)})
+                      "עדכון מדיניות", f"{_POLICY_LABELS.get(key, key)}: {'פעיל' if _val[0] else 'כבוי'}")
+        return jsonify({"ok": True, "policies": _policies(_load_config())})
 
     @app.route("/v2/api/admin/office", methods=["POST"])
     def v2_api_admin_office():
@@ -8070,15 +8072,16 @@ def register(app, G):
         b = request.get_json(silent=True) or {}
         name = (b.get("name") or "").strip()
         vphone = (b.get("vphone") or "").strip()
-        cfg = _load_config()
-        v2o = cfg.setdefault("v2_office", {})
-        if name:
-            v2o["name"] = name
-        v2o["vphone"] = vphone
-        for _lk in ("instagram", "madlan"):   # קישורי המשרד (white-label — פר-משרד)
-            if _lk in b:
-                v2o[_lk] = (b.get(_lk) or "").strip()
-        if not _save_config(cfg):
+        def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+            v2o = cfg.setdefault("v2_office", {})
+            if name:
+                v2o["name"] = name
+            v2o["vphone"] = vphone
+            for _lk in ("instagram", "madlan"):   # קישורי המשרד (white-label — פר-משרד)
+                if _lk in b:
+                    v2o[_lk] = (b.get(_lk) or "").strip()
+        ok, _ = _config_mutate(_mut)
+        if not ok:
             return jsonify({"ok": False, "reason": "save_failed"})
         if name:
             try:
