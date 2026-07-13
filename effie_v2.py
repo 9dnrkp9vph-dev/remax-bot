@@ -1362,6 +1362,12 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div class="swRow"><div><div class="lb">וואטסאפ אוטומטי מהמערכת</div><div class="sb">התראות שיחה/חתימה לקבוצות ולסוכנים — מושהה עד מעבר ל-API רשמי</div></div>
         <div class="tg" id="tgWaAuto" onclick="togglePolicy('wa_auto', this)"></div></div>
     </div>
+
+    <div class="card setRow" style="cursor:pointer" onclick="location.href='/v2/dev'">
+      <div class="setIc" style="background:#EAF0FA"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M6 4L2 8l4 4M10 4l4 4-4 4" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="mid"><div class="nm">כלי מפתח</div><div class="sb">מקורות · חיבור · SMS · parity · הרשאות · נוסחי הסכמים</div></div>
+      <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
   </main>
 
   <div id="blocked">
@@ -7193,6 +7199,122 @@ _V2_ICON_TAGS = ('<link rel="icon" type="image/png" sizes="64x64" href="/v2/icon
                  '<meta name="mobile-web-app-capable" content="yes">'
                  '<meta name="apple-mobile-web-app-status-bar-style" content="default">')
 
+# ── כלי מפתח (/v2/dev) — עוטף את 8 ה-API של הקונסולה הישנה: מקורות · חיבור · SMS ·
+#    parity · השתקה · ברירת מחדל נכס נולד · הרשאות טאבים · נוסחי הסכמים. מפתח בלבד. ──
+V2_DEV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>כלי מפתח</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;color:#1E3A5F;padding:0 0 40px}
+  header{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top,0px) + 12px) 18px 12px}
+  .back{width:40px;height:40px;border-radius:13px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+        display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;flex-shrink:0}
+  h1{font-size:18px;font-weight:800}
+  main{padding:4px 16px;display:flex;flex-direction:column;gap:12px;max-width:640px;margin:0 auto}
+  .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 16px}
+  .card h2{font-size:15px;font-weight:800;margin-bottom:4px}
+  .card .sb{font-size:11.5px;color:#8B8F99;line-height:1.5;margin-bottom:10px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input,select,textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:9px 12px;
+        font-size:13px;font-family:inherit;color:#1E3A5F;outline:none}
+  textarea{width:100%;min-height:120px;line-height:1.55;resize:vertical}
+  .btn{background:#2E6BD6;color:#fff;border:none;border-radius:11px;padding:10px 16px;font-size:13px;
+        font-weight:700;font-family:inherit;cursor:pointer}
+  .btn.gold{background:#C29435}.btn.sec{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
+  .out{margin-top:10px;background:#F7F5EE;border-radius:12px;padding:11px 13px;font-size:12px;
+        line-height:1.6;white-space:pre-wrap;word-break:break-word;display:none}
+  .out.show{display:block}
+  .tag{display:inline-block;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;margin:2px 3px 0 0}
+  .tag.sb{background:#E7F1FF;color:#2E6BD6}.tag.sh{background:#F6EEDB;color:#B8902F}
+  .tg{width:46px;height:27px;border-radius:999px;background:#D8D3C6;position:relative;cursor:pointer;flex-shrink:0;transition:.15s}
+  .tg.on{background:#1FAF5E}.tg i{position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:.15s}
+  .tg.on i{right:22px}
+  .chk{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:6px 10px;
+        border:1.5px solid #DCD6C8;border-radius:10px;cursor:pointer;margin:3px 4px 0 0;background:#fff}
+  .chk.on{border-color:#2E6BD6;background:#EAF0FA;color:#2E6BD6;font-weight:800}
+</style></head><body>
+  <header>
+    <button class="back" onclick="location.href='/v2/admin'" aria-label="חזרה">
+      <svg width="20" height="20" viewBox="0 0 22 22"><path d="M13 5l-6 6 6 6" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <h1>כלי מפתח</h1>
+  </header>
+  <main id="main"></main>
+<script>
+var TOK=null; try{TOK=localStorage.getItem('fbTok');}catch(e){}
+if(!TOK) location.replace('/v2');
+function el(id){return document.getElementById(id);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function GET(u){return fetch(u,{headers:{'X-Auth-Token':TOK}}).then(function(r){return r.json();});}
+function POST(u,d){return fetch(u,{method:'POST',headers:{'X-Auth-Token':TOK,'Content-Type':'application/json'},body:JSON.stringify(d||{})}).then(function(r){return r.json();});}
+function show(id,txt){var o=el(id);o.textContent=txt;o.classList.add('show');}
+
+var MAIN = [
+  '<div class="card"><h2>מצב מקורות נתונים</h2><div class="sb">אילו מודולים קוראים מ-Supabase ואילו מהגיליון.</div>'+
+    '<button class="btn sec" onclick="loadSources()">רענן</button><div class="out" id="oSrc"></div></div>',
+  '<div class="card"><h2>בדיקת חיבור (Apps Script)</h2><div class="sb">בודק getconfig/setconfig — שמירה וקריאה מול הגיליון.</div>'+
+    '<button class="btn" onclick="runDiag()">הרץ בדיקה</button><div class="out" id="oDiag"></div></div>',
+  '<div class="card"><h2>בדיקת ספק SMS</h2><div class="sb">שולח בדיקה דרך sms.deals ומחזיר IP יוצא, טוקן ושולח.</div>'+
+    '<div class="row"><input id="smsPh" placeholder="טלפון (ריק=שלך)" inputmode="numeric" style="flex:1;min-width:0"><button class="btn" onclick="runSms()">בדוק</button></div><div class="out" id="oSms"></div></div>',
+  '<div class="card"><h2>Parity — גיליון ↔ Supabase</h2><div class="sb">משווה את הנתונים בין המקורות ומחזיר דוח.</div>'+
+    '<button class="btn" onclick="runParity()">הרץ parity</button><div class="out" id="oPar"></div></div>',
+  '<div class="card"><h2>השתקת התראות</h2><div class="sb">מכבה וואטסאפ+פוש מהמערכת (env גובר).</div>'+
+    '<div class="row"><div class="tg" id="qTg" onclick="toggleQuiet()"><i></i></div><span id="qLbl" style="font-size:13px;font-weight:700">—</span></div></div>',
+  '<div class="card"><h2>ברירת מחדל · ימי נכס נולד</h2><div class="sb">ימים לכל סוכן ללא הגדרה אישית.</div>'+
+    '<div class="row"><input id="nbDef" type="number" style="width:90px" placeholder="ימים"><button class="btn gold" onclick="saveNbDef()">שמור</button></div><div class="out" id="oNb"></div></div>',
+  '<div class="card"><h2>הרשאות טאבים לפי תפקיד</h2><div class="sb">אילו טאבים כל תפקיד רואה.</div>'+
+    '<div class="row"><select id="rpRole" onchange="rpShow()"></select></div><div id="rpTabs" style="margin-top:8px"></div>'+
+    '<button class="btn" style="margin-top:10px" onclick="saveRp()">שמור תפקיד</button><div class="out" id="oRp"></div></div>',
+  '<div class="card"><h2>נוסחי הסכמים</h2><div class="sb">עריכת נוסח לכל סוג הסכם (משתנים: SALE_FEE / RENT_FEE / EXCLUSIVE_FROM...).</div>'+
+    '<div class="row"><select id="cType" onchange="cShow()"></select></div>'+
+    '<textarea id="cBody" style="margin-top:8px"></textarea>'+
+    '<button class="btn" style="margin-top:8px" onclick="saveContract()">שמור נוסח</button><div class="out" id="oC"></div></div>'
+].join('');
+
+function loadSources(){GET('/api/dev/sources').then(function(j){
+  if(!j.ok){show('oSrc','שגיאה');return;}
+  var t=Object.keys(j.flags).map(function(k){var sb=j.flags[k]==='supabase';return '<span class="tag '+(sb?'sb':'sh')+'">'+esc(k)+': '+(sb?'Supabase':'גיליון')+'</span>';}).join('');
+  show('oSrc', j.count+' על Supabase'+(j.all_on_supabase?' · הכל ✓':'')); el('oSrc').innerHTML=t+'<div style="margin-top:6px;color:#8B8F99">'+esc(j.count)+' על Supabase</div>';
+});}
+function runDiag(){show('oDiag','בודק…');GET('/api/dev/diag').then(function(j){
+  show('oDiag',(j.msg||'')+'\n\ngetconfig: '+(j.getconfig_ok?'✓':'✗')+' · כתיבה: '+(j.write_ok?'✓':'✗')+' · קריאה חוזרת: '+(j.readback_ok?'✓':'✗'));});}
+function runSms(){show('oSms','שולח…');POST('/api/dev/smstest',{phone:el('smsPh').value.trim()}).then(function(j){
+  show('oSms','ספק: '+j.provider+'\nיעד: '+j.dest+'\nשולח: '+(j.sender||'—')+(j.sender_set?'':' (לא מוגדר)')+'\nטוקן: '+(j.token_set?j.token_preview+' ('+j.token_len+')':'לא מוגדר')+'\nIP יוצא: '+((j.outbound_ips||[]).join(', ')||'?')+(j.reason?'\n\n⚠️ '+j.reason:'')+(j.sent!==undefined?'\nנשלח: '+(j.sent?'✓':'✗'):''));});}
+function runParity(){show('oPar','מריץ… (עד דקה)');GET('/api/dev/parity').then(function(j){
+  show('oPar',(j.green?'✅ תואם':'⚠️ פערים')+'\n\n'+(j.report||j.error||''));});}
+
+var QON=false;
+function loadQuiet(){GET('/api/dev/quiet').then(function(j){QON=!!j.on;el('qTg').classList.toggle('on',QON);el('qLbl').textContent=(QON?'מושתק':'פעיל')+(j.env?' · env גובר':'');});}
+function toggleQuiet(){POST('/api/dev/quiet',{on:!QON}).then(function(j){QON=!!j.on;el('qTg').classList.toggle('on',QON);el('qLbl').textContent=(QON?'מושתק':'פעיל')+(j.env?' · env גובר':'');});}
+
+function loadNbDef(){GET('/api/dev/people').then(function(j){if(j&&j.ok)el('nbDef').value=(j.nbDefault!=null?j.nbDefault:'');});}
+function saveNbDef(){POST('/api/dev/newborn_default',{days:el('nbDef').value.trim()}).then(function(j){show('oNb',j.ok?'נשמר ✓':'שגיאה');});}
+
+var RP={};var RP_ALL=[];
+function loadRp(){GET('/api/dev/roleperms').then(function(j){if(!j.ok)return;RP=j.perms||{};RP_ALL=j.allTabs||[];
+  el('rpRole').innerHTML=Object.keys(RP).map(function(r){return '<option value="'+esc(r)+'">'+esc(r)+'</option>';}).join('');rpShow();});}
+function rpShow(){var role=el('rpRole').value;var on=RP[role]||[];
+  el('rpTabs').innerHTML=RP_ALL.map(function(t){return '<span class="chk'+(on.indexOf(t)>=0?' on':'')+'" data-t="'+esc(t)+'" onclick="this.classList.toggle(\'on\')">'+esc(t)+'</span>';}).join('');}
+function saveRp(){var role=el('rpRole').value;var tabs=[];var ch=el('rpTabs').children;for(var i=0;i<ch.length;i++)if(ch[i].classList.contains('on'))tabs.push(ch[i].getAttribute('data-t'));
+  POST('/api/dev/roleperms',{role:role,tabs:tabs}).then(function(j){show('oRp',j.ok?'נשמר ✓':'שגיאה');if(j.ok)RP[role]=tabs;});}
+
+var CTR={};
+function loadContract(){GET('/api/dev/contract').then(function(j){if(!j.ok)return;CTR=j.contracts||{};
+  el('cType').innerHTML=Object.keys(j.types||{}).map(function(k){return '<option value="'+esc(k)+'">'+esc(j.types[k])+'</option>';}).join('');cShow();});}
+function cShow(){el('cBody').value=CTR[el('cType').value]||'';}
+function saveContract(){var t=el('cType').value;POST('/api/dev/contract',{type:t,body:el('cBody').value}).then(function(j){show('oC',j.ok?'נשמר ✓':'שגיאה');if(j.ok)CTR[t]=el('cBody').value;});}
+
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if(!j.ok){location.replace('/v2');return;}
+    if(!j.dev){document.body.innerHTML='<div style="padding:60px 24px;text-align:center;color:#8B8F99;font-weight:700">כלי מפתח — למפתח בלבד</div>';return;}
+    el('main').innerHTML=MAIN;
+    loadSources();loadQuiet();loadNbDef();loadRp();loadContract();
+  }).catch(function(){location.replace('/v2');});
+})();
+</script></body></html>'''
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -7341,6 +7463,10 @@ def register(app, G):
     @app.route("/v2/admin", methods=["GET"])
     def v2_admin():
         return _page(V2_ADMIN_HTML)
+
+    @app.route("/v2/dev", methods=["GET"])
+    def v2_dev():
+        return _page(V2_DEV_HTML)
 
     @app.route("/v2/calls", methods=["GET"])
     def v2_calls():
