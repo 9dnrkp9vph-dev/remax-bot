@@ -1369,10 +1369,13 @@ def _fetch_sheet_rows_raw() -> list:
             if len(row_padded) > 30:
                 d["_desc_ae"] = str(row_padded[30] or "").strip()
             rows.append(d)
-        EXCLUDED_AGENTS = {"אווה אזולאי"}
-        rows = [r for r in rows
-                if (r.get("סוכן 1","") or "").strip() not in EXCLUDED_AGENTS
-                and (r.get("סוכן 2","") or "").strip() not in EXCLUDED_AGENTS]
+        # אין סוכנים מוחרגים — אווה אזולאי שוחררה להתנהג כסוכנת רגילה (בקשת אייל 13/07).
+        # להחרגה עתידית: להוסיף שמות ל-EXCLUDED_AGENTS.
+        EXCLUDED_AGENTS = set()
+        if EXCLUDED_AGENTS:
+            rows = [r for r in rows
+                    if (r.get("סוכן 1","") or "").strip() not in EXCLUDED_AGENTS
+                    and (r.get("סוכן 2","") or "").strip() not in EXCLUDED_AGENTS]
         return rows
     except Exception as e:
         log.error(f"Fetch sheet error: {e}")
@@ -2677,9 +2680,10 @@ _ROLE_SCOPE = {"developer": "admin", "manager": "admin", "accountant": "admin",
                "secretary": "admin", "coordinator": "coordinator", "agent": "agent"}
 _ALL_TABS = ["calls", "buyers", "sigs", "props", "excl", "newborn", "report", "activity"]
 
-# מנהלים עם השהיית צפייה בשיחות (לפי שם) — רואים הכל מיד, אבל שיחות רק אחרי X ימים, ו"נכס נולד" לא מיידי
-_DELAYED_ADMINS = {"אווה אזולאי": 60}          # שם → ימי השהיה לשיחות
-_DELAYED_ADMIN_PHONES = {"546612292": 60}      # טלפון (9 ספרות) → ימי השהיה (אמין יותר מהשם)
+# מנהלים עם השהיית צפייה בשיחות (לפי שם) — רואים הכל מיד, אבל שיחות רק אחרי X ימים, ו"נכס נולד" לא מיידי.
+# ריק — אווה אזולאי שוחררה להתנהג כסוכנת רגילה (בקשת אייל 13/07). להחזרת מנהל-מושהה: להוסיף שם/טלפון.
+_DELAYED_ADMINS = {}          # שם → ימי השהיה לשיחות
+_DELAYED_ADMIN_PHONES = {}    # טלפון (9 ספרות) → ימי השהיה (אמין יותר מהשם)
 def _delayed_admin_days(name=None, phone=None):
     if NEWBORN_DELAYS_DISABLED: return 0   # השהיות מבוטלות — אף מנהל אינו מושהה
     if phone:
