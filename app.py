@@ -2415,9 +2415,9 @@ ADMIN_PHONES = _DEFAULT_ADMIN_PHONES + [p.strip() for p in os.environ.get("ADMIN
 
 # קודי כניסה קבועים שעוקפים את ה-SMS (Twilio) — { 9 ספרות אחרונות של הטלפון: קוד }
 # לשימוש אישי בלבד. מי שמכניס מספר+קוד תואמים נכנס בלי SMS.
-_BYPASS_LOGINS = {
-    "505709865": "280884",   # אייל שמול — קוד קבוע, בלי SMS
-}
+# קוד כניסה קבוע בוטל (בקשת אייל 13/07) — כולם נכנסים עם קוד SMS. אייל מזוהה כ-admin
+# דרך DEV_PHONES ב-web_role_for, כך שאין נעילה. להוסיף חזרה: {"<last9>": "<code>"}.
+_BYPASS_LOGINS = {}
 
 # --- in-memory OTP + sessions ---
 _otp_store = {}     # last9 -> {"code","exp","tries"}
@@ -2601,6 +2601,26 @@ def _save_config(cfg):
         return ok
     except Exception:
         return False
+
+# ── שינוי קונפיג בטוח (RMW) — מונע דריסת סוכן מוזמן ──────────────────────────────
+# הבאג: כל שינוי לרשימת האנשים עשה _load_config()→שינוי→_save_config() בלי נעילה,
+# ו-_mark_joined רץ ב-thread רקע בכל כניסה ועושה בדיוק את זה. סוכן שהוזמן נדרס כש-
+# thread רקע קרא קונפיג-רגע-לפני ושמר אותו בחזרה. תיקון: נעילה גלובלית + קריאה
+# טרייה מהמקור בתוך הנעילה + מוטציה על עותק (כדי שה-diff של _save_config במצב
+# Supabase יזהה שינוי ויכתוב לדיסק — מוטציה במקום על אותו object נבלעה).
+_cfg_mut_lock = _threading.Lock()
+def _config_mutate(fn):
+    """RMW אטומי של הקונפיג. fn(cfg) משנה את cfg במקום (ויכול להחזיר ערך).
+    מחזיר (ok, ערך-שהוחזר-מ-fn). שתי כתיבות בו-זמנית מסתדרות בתור, כל אחת רואה
+    את תוצאת קודמתה."""
+    import copy as _copy
+    with _cfg_mut_lock:
+        _cache_clear("app_config")          # כפה קריאה טרייה מהמקור (לא מהקאש)
+        base = _load_config()               # base נשמר כ-_LAST_GOOD_CONFIG (טרי)
+        cfg = _copy.deepcopy(base)          # מוטציה על עותק → ה-diff יזהה שינוי אמיתי
+        res = fn(cfg)
+        ok = _save_config(cfg)
+        return ok, res
 
 def _suspended_set():
     """קבוצת טלפונים (9 ספרות) של סוכנים מושהים — חוסם SMS וכניסה (חיסכון בטווילו)."""
@@ -3037,6 +3057,7 @@ def _removed_agent_keys():
     return set(_name_key(n) for n in names if _name_key(n))
 
 def web_role_for(last9):
+    if _last9(last9) in DEV_PHONES: return "admin"   # מפתח/בעלים — תמיד admin (רשת ביטחון לכניסה)
     if last9 in set(_last9(a) for a in ADMIN_PHONES): return "admin"
     if last9 in _coordinators_all(): return "coordinator"
     nm = (web_contacts_phone_name().get(last9) or web_phone_name_map().get(last9)
@@ -3123,12 +3144,17 @@ def _mark_joined(phone):
     _joined_seen.add(p)   # מיידי — כדי לא לשגר עוד thread לאותו טלפון
     def _w():
         try:
-            cfg = _load_config()
-            joined = [x for x in (cfg.get("v2_joined") or []) if x]
-            if p not in joined:
+            # RMW בטוח: לא לדרוס סוכן שהוזמן בו-זמנית (thread רקע קרא קונפיג ישן ושמר)
+            def _mut(cfg):
+                joined = [x for x in (cfg.get("v2_joined") or []) if x]
+                if p in joined:
+                    return False   # כבר מסומן — לא צריך לכתוב
                 joined.append(p)
                 cfg["v2_joined"] = joined
-                _save_config(cfg)
+                return True
+            ok, changed = _config_mutate(_mut)
+            if not (ok or changed is False):
+                _joined_seen.discard(p)   # כתיבה נכשלה — לאפשר ניסיון חוזר
         except Exception:
             _joined_seen.discard(p)   # כשל — לאפשר ניסיון חוזר בבקשה הבאה
     try:
@@ -5962,6 +5988,37 @@ def api_report():
             meetings.sort(key=lambda x: str(x.get("date", "")))
         except Exception:
             meetings = []
+        # חתך מנהל: פגישות בלבד (בלי פולו-אפ) של כל המשרד, מקובצות לפי מי שתיאם
+        # (המתאם ב-'by' — נופל לסוכן ברשומות ישנות). מספרים + נכסים לפירוט בלחיצה.
+        # רק בדוח מלא (מנהל/כל המשרד); מסונן לפי תאריך הפגישה בתוך התקופה. בקשת אייל 13/07.
+        meet_mgr = []
+        if s["role"] == "admin" and not eff_name:   # דוח מנהל מלא בלבד (לא דרך "as", לא מתאמת)
+            try:
+                _grp = {}
+                for _st in (_nb_statuses() or {}).values():
+                    if _st.get("status") != "meeting":   # פגישות בלבד
+                        continue
+                    _md = None
+                    _mm = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", str(_st.get("date", "") or ""))
+                    if _mm:
+                        try:
+                            from datetime import date as _date
+                            _md = _date(int(_mm.group(1)), int(_mm.group(2)), int(_mm.group(3)))
+                        except Exception:
+                            _md = None
+                    if _md is not None and not (start.date() <= _md <= end.date()):
+                        continue   # פגישה מחוץ לתקופה (רשומה בלי תאריך תקין — נכללת)
+                    _who = (str(_st.get("by", "") or "").strip()
+                            or str(_st.get("agent", "") or "").strip() or "—")
+                    g = _grp.setdefault(_who, {"by": _who, "count": 0, "items": []})
+                    g["count"] += 1
+                    g["items"].append({"addr": _st.get("addr", ""), "date": _st.get("date", ""),
+                                       "agent": _st.get("agent", "")})
+                for g in _grp.values():
+                    g["items"].sort(key=lambda x: str(x.get("date", "")))
+                meet_mgr = sorted(_grp.values(), key=lambda x: -x["count"])
+            except Exception:
+                meet_mgr = []
         # 5 המובילים בעסקאות (מהמאגר המקומי) — לפי מספר צדדים, עסקאות שנסגרו בתקופה
         top_deals = []
         try:
@@ -5989,7 +6046,8 @@ def api_report():
                  "insights": insights, "summary": sm, "listings": listings_total,
                  "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices,
                  "top_deals": top_deals,
-                 "nbCities": nb_cities, "nbTotal": nb_total, "meetings": meetings, "wa_text": wa}
+                 "nbCities": nb_cities, "nbTotal": nb_total, "meetings": meetings,
+                 "meetMgr": meet_mgr, "meetMgrTotal": sum(g["count"] for g in meet_mgr), "wa_text": wa}
         _cache_put(_rk, _resp)
         return jsonify(_resp)
     except Exception as e:
@@ -6752,13 +6810,19 @@ def api_newborn_status():
     cfg = _load_config()
     m = cfg.get("nbStatus")
     if not isinstance(m, dict): m = {}
+    # "מי תיאם" — נשמר מהיוצר; בעריכה נשמר המקורי (לא נדרס למי שערך אחרון). בקשת אייל 13/07.
+    _prev = m.get(skey) or {}
+    rec["by"] = _prev.get("by") or s.get("name", "")
+    rec["by_phone"] = _prev.get("by_phone") or _last9(s.get("phone", ""))
     m[skey] = rec
     cfg["nbStatus"] = m
     if not _save_config(cfg):   # שמירה נכשלה — לא מדווחים הצלחה כוזבת
         return jsonify({"ok": False, "reason": "save_failed"})
     _NB_RESULT_VER[0] += 1
-    _log_activity(nm, s["role"], s.get("phone", ""), "סטטוס נכס נולד",
-                  (_NB_STATUS_LABELS.get(status, status) + " · " + (addr or key))[:80])
+    # יומן פעילות: מי עשה = המתאם בפועל (המשתמש), לא סוכן היעד; היעד נכנס לפירוט
+    _tgt = (" · לסוכן " + nm) if _canon_key(nm) != _canon_key(s.get("name", "")) else ""
+    _log_activity(s.get("name", ""), s["role"], s.get("phone", ""), "סטטוס נכס נולד",
+                  (_NB_STATUS_LABELS.get(status, status) + " · " + (addr or key) + _tgt)[:100])
     return jsonify({"ok": True, "calendar": cal_ok, "status": status, "date": date})
 
 @app.route("/api/newborn/note", methods=["POST"])
@@ -6840,6 +6904,7 @@ def api_newborn_meetings():
         _wa = ("" if not _dig else (_dig if _dig.startswith("972") else "972" + _dig.lstrip("0")))
         out.append({"status": st.get("status"), "label": _NB_STATUS_LABELS.get(st.get("status"), ""),
                     "date": st.get("date", ""), "agent": st.get("agent", ""),
+                    "by": st.get("by", ""),   # מי תיאם את הפגישה/פולו-אפ (המתאם/מנהל שיצר)
                     "addr": st.get("addr", ""), "skey": k,
                     "ophone": _oph, "wa": _wa, "owner": st.get("owner", ""), "note": st.get("note", "")})
     out.sort(key=lambda x: str(x.get("date", "")))
