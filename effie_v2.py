@@ -3599,8 +3599,9 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .stLine{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#8B8F99}
   .stLine i{width:6px;height:6px;border-radius:50%;background:#C29435;display:block;flex-shrink:0}
   .notes{font-size:11.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
-  .more{display:flex;align-items:center;justify-content:center;padding:12px 0;font-size:13px;font-weight:700;
-      color:#2E6BD6;cursor:pointer}
+  .more{display:flex;align-items:center;justify-content:center;padding:13px 0;font-size:13px;font-weight:700;
+      color:#2E6BD6;cursor:pointer;width:100%;background:#fff;border:1.5px solid #DCE6F5;border-radius:14px;
+      font-family:inherit}
   .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
@@ -3670,7 +3671,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       <div class="ages" id="ages"></div>
       <div class="srch">
         <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input id="q" placeholder="רחוב, שכונה או בעל הנכס" oninput="render();qClearBtn()">
+        <input id="q" placeholder="רחוב, שכונה או בעל הנכס" oninput="NB_SHOWN=40;render();qClearBtn()">
         <button id="qClear" onclick="el('q').value='';qClearBtn();render()" aria-label="ניקוי חיפוש"
           style="display:none;width:26px;height:26px;border-radius:50%;background:#EBE8DD;border:none;flex-shrink:0;
           align-items:center;justify-content:center;cursor:pointer;padding:0">
@@ -3804,10 +3805,12 @@ function render(){
     return true;
   });
   var h = '';
-  src.slice(0, 30).forEach(function(r, i){
+  src.slice(0, NB_SHOWN).forEach(function(r, i){
     try{ h += nbCard(r, i); }catch(e){}   // שורה בעייתית לא מפילה את המסך
   });
-  if (src.length > 30) h += '<div class="more">מוצגים 30 מתוך ' + src.length + ' — חדד עם חיפוש או ותק</div>';
+  if (src.length > NB_SHOWN)
+    h += '<button class="more" onclick="nbMore()">הצג עוד ' + Math.min(40, src.length - NB_SHOWN) +
+         ' · מוצגים ' + NB_SHOWN + ' מתוך ' + src.length + '</button>';
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="30" height="27" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg></div>' +
     '<div class="t">אין נכסים להצגה</div><div class="s">נסה ותק אחר או חיפוש שונה — מודעות חדשות עולות כל היום</div></div>';
@@ -3852,7 +3855,9 @@ function nbCard(r, i){
     '<button class="s" onclick="noteSheet(' + i + ')">הערה</button></div>' +
     stLine + notes + '</div>';
 }
-function setAge(i){ AGE = (AGE === i) ? -1 : i; render(); }
+var NB_SHOWN = 40;   // כמה כרטיסים מוצגים; "הצג עוד" מגדיל. מתאפס בשינוי ותק/חיפוש.
+function nbMore(){ NB_SHOWN += 40; render(); }
+function setAge(i){ AGE = (AGE === i) ? -1 : i; NB_SHOWN = 40; render(); }
 function markContact(i){
   var r = el('list')._src[i];
   POST('/api/newborn/contact', {key: r.key, addr: r.address}).catch(function(){});
@@ -4045,6 +4050,11 @@ render = function(){
   window.addEventListener('scroll', onScroll, {passive:true});
   var m = document.querySelector('main');
   if (m) m.addEventListener('scroll', onScroll, {passive:true});
+  // כוונת גלילה מפורשת של המשתמש מבטלת שחזור מיידית (לא דרך _restoring) — מתקן את
+  // "הגלילה לא יורדת": load() הרשתי רינדר מחדש בתוך חלון השחזור וחטף את הגלילה בחזרה.
+  ['wheel', 'touchmove', 'keydown'].forEach(function(ev){
+    window.addEventListener(ev, function(){ _userScrolled = true; _restY = 0; }, {passive:true});
+  });
   var flush = function(){ if (_userScrolled || !_restY) saveSt(); };
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') flush(); });
@@ -5448,6 +5458,11 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
       <div class="secT" id="nbT">נכס נולד לפי ערים</div>
       <div id="nbList"></div>
     </div>
+    <div class="card" id="meetMgrCard" style="display:none">
+      <div class="secT" id="meetMgrT">פגישות שתואמו · לפי מתאם</div>
+      <div style="font-size:11.5px;color:#8B8F99;line-height:1.5;margin:-4px 0 4px">פגישות בלבד (בלי פולו-אפ) — לפי מי שתיאם במערכת. הקש שם לראות את הנכסים.</div>
+      <div id="meetMgrList"></div>
+    </div>
     <div class="card" id="meetsCard" style="display:none">
       <div class="secT" id="meetsT">פגישות ופולו-אפ</div>
       <div id="meetsList"></div>
@@ -5579,7 +5594,31 @@ function render(){
   renderLeaders();
   renderShtaf();
   renderNb();
+  renderMeetMgr();
   renderMeets();
+}
+// חתך מנהל: פגישות שתואמו לפי מי שתיאם (מספרים + נכסים בלחיצה). בקשת אייל 13/07.
+var MM_OPEN = {};
+function renderMeetMgr(){
+  var mm = (R.meetMgr || []);
+  el('meetMgrCard').style.display = mm.length ? 'flex' : 'none';
+  if (!mm.length) return;
+  el('meetMgrT').textContent = 'פגישות שתואמו · לפי מתאם · ' + (R.meetMgrTotal || 0);
+  el('meetMgrList').innerHTML = mm.map(function(row, i){
+    var open = !!MM_OPEN[row.by];
+    var items = open ? ('<div style="margin:4px 0 2px;padding-inline-start:6px">' +
+      (row.items || []).map(function(it){
+        var when = String(it.date || '').replace('T', ' ');
+        return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;font-size:12px;color:#5B6472;border-top:1px solid #F2EFE7">' +
+          '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(it.addr || '—') +
+          (it.agent && it.agent !== row.by ? ' · לסוכן ' + esc(it.agent) : '') + '</span>' +
+          '<span style="white-space:nowrap;color:#8B8F99">' + esc(when) + '</span></div>';
+      }).join('') + '</div>') : '';
+    return (i ? '<div class="sep"></div>' : '') +
+      '<div class="tRow" style="cursor:pointer" onclick="MM_OPEN[' + JSON.stringify(row.by) + ']=!MM_OPEN[' + JSON.stringify(row.by) + '];renderMeetMgr()">' +
+      '<span class="n">' + (open ? '▾ ' : '▸ ') + esc(row.by || '—') + '</span>' +
+      '<span class="v">' + row.count + '</span></div>' + items;
+  }).join('');
 }
 var LEADS = {gius: 'גיוס נכסים', konim: 'החתמת קונים', deals: 'עסקאות', calls: 'שיחות'};
 var REP_NAME = '';
@@ -6747,6 +6786,13 @@ var CAL_SVG = '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3"
 var FU_SVG = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 6.5a5 5 0 0 1 9-2M13 9.5a5 5 0 0 1-9 2" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.5v3h-3M4 14.5v-3h3" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var LATE_SVG = '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 6.5a5 5 0 0 1 9-2M13 9.5a5 5 0 0 1-9 2" fill="none" stroke="#C24040" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.5v3h-3M4 14.5v-3h3" fill="none" stroke="#C24040" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+// מי תיאם ולמי תואמה: כשמתאם≠סוכן היעד (מתאמת/מנהל תיאמו לסוכן) → מציגים שניהם.
+// אחרת (סוכן תיאם לעצמו) → שם הסוכן רק בתצוגת מנהל/מתאמת (MULTI), כמו קודם.
+function whoLine(m){
+  var byDiff = m.by && m.agent && String(m.by).trim() !== String(m.agent).trim();
+  if (byDiff) return 'תיאם: ' + m.by + ' · לסוכן: ' + m.agent;
+  return MULTI ? m.agent : '';
+}
 function itemRow(m, i){
   var meet = m.status === 'meeting';
   var w = parseWhen(m.date);
@@ -6755,8 +6801,9 @@ function itemRow(m, i){
   var whenTx = late ? ((w.d.getDate()) + '/' + (w.d.getMonth() + 1) + (w.time ? ' ' + w.time : ''))
     : dd === 0 ? (w.time || 'היום') : dd === 1 ? ('מחר' + (w.time ? ' ' + w.time : ''))
     : w.d ? (('0' + w.d.getDate()).slice(-2) + '/' + ('0' + (w.d.getMonth() + 1)).slice(-2) + (w.time ? ' ' + w.time : '')) : '';
-  var sb = late ? (['באיחור', m.label || '', whenTx, MULTI ? m.agent : ''].filter(Boolean).join(' · '))
-    : ['נכס נולד', m.owner ? ('בעל הנכס: ' + m.owner) : '', MULTI ? m.agent : ''].filter(Boolean).join(' · ');
+  var who = whoLine(m);
+  var sb = late ? (['באיחור', m.label || '', whenTx, who].filter(Boolean).join(' · '))
+    : ['נכס נולד', m.owner ? ('בעל הנכס: ' + m.owner) : '', who].filter(Boolean).join(' · ');
   var acts = '<div class="acts">' +
     (m.ophone ? '<button class="sq" style="background:#EAF0FA" onclick="location.href=\'tel:' + esc(m.ophone) + '\'" aria-label="חיוג">' +
       '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7" stroke-linejoin="round"/></svg></button>' : '') +
@@ -7104,6 +7151,7 @@ def register(app, G):
     _is_dev       = G["_is_dev"]
     _load_config  = G["_load_config"]
     _save_config  = G["_save_config"]
+    _config_mutate = G["_config_mutate"]   # RMW בטוח (נעילה+קריאה טרייה) — נגד דריסת הזמנות
     _log_activity = G["_log_activity"]
     log           = G.get("log")
 
@@ -7740,49 +7788,57 @@ def register(app, G):
         phone = _last9(b.get("phone", ""))
         if not phone:
             return jsonify({"ok": False, "reason": "bad_phone"}), 400
-        cfg = _load_config()
-        invites = [v for v in (cfg.get("v2_invites") or []) if isinstance(v, dict)]
-        existing = next((v for v in invites if v.get("phone") == phone), None)
-        if b.get("resend"):
-            if not existing:
-                return jsonify({"ok": False, "reason": "not_invited"}), 404
-            name, role = existing.get("name", ""), existing.get("role", "agent")
-        else:
-            name = (b.get("name") or "").strip()
-            role = (b.get("role") or "agent").strip()
-            if role not in ("agent", "coordinator", "manager"):
-                role = "agent"
-            if not name:
-                return jsonify({"ok": False, "reason": "missing_name"}), 400
-        # רישום בקונפיג: ספריית הסוכנים + תפקיד (אותו מנגנון כמו הקונסולה הקיימת).
-        # רץ גם ב"שלח שוב" — מתקן חבר שהוזמן, נמחק, והוזמן/נשלח שוב.
         _name_key = G["_name_key"]
-        agents = cfg.setdefault("agents", [])
-        entry = next((a for a in agents if _last9(a.get("phone", "")) == phone), None)
-        if not entry:
-            agents.append({"name": name, "phone": phone, "aliases": []})
-        elif name and entry.get("name") != name:
-            entry["name"] = name
-        cfg.setdefault("roles", {})[phone] = role
-        # ⚠️ קריטי: סוכן שנמחק בעבר נשאר ב-removedAgents/purgedAgents וחסום מכניסה
-        # ("המספר לא רשום במערכת") גם אחרי הזמנה חדשה. הזמנה = כוונת מנהל מפורשת
-        # להחזירו — מנקים משתי הרשימות, בדיוק כמו agent_add בקונסולה הקיימת.
-        cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or [])
-                                if _name_key(x) != _name_key(name)]
-        cfg["purgedAgents"] = [x for x in (cfg.get("purgedAgents") or [])
-                               if _name_key(x) != _name_key(name)]
-        if existing:
-            existing.update({"name": name, "role": role, "ts": int(time.time())})
-        else:
-            invites.append({"name": name, "phone": phone, "role": role, "ts": int(time.time())})
-        cfg["v2_invites"] = invites
-        if not _save_config(cfg):
+        resend = bool(b.get("resend"))
+        in_name = (b.get("name") or "").strip()
+        in_role = (b.get("role") or "agent").strip()
+        if in_role not in ("agent", "coordinator", "manager"):
+            in_role = "agent"
+        # RMW בטוח (נעילה + קריאה טרייה) — כדי ש-_mark_joined ברקע לא ידרוס את ההזמנה.
+        result = {}
+        def _mut(cfg):
+            invites = [v for v in (cfg.get("v2_invites") or []) if isinstance(v, dict)]
+            existing = next((v for v in invites if v.get("phone") == phone), None)
+            if resend:
+                if not existing:
+                    result["err"] = ("not_invited", 404); return
+                nm, rl = existing.get("name", ""), existing.get("role", "agent")
+            else:
+                nm, rl = in_name, in_role
+                if not nm:
+                    result["err"] = ("missing_name", 400); return
+            # רישום בקונפיג: ספריית הסוכנים + תפקיד (אותו מנגנון כמו הקונסולה הקיימת).
+            agents = cfg.setdefault("agents", [])
+            entry = next((a for a in agents if _last9(a.get("phone", "")) == phone), None)
+            if not entry:
+                agents.append({"name": nm, "phone": phone, "aliases": []})
+            elif nm and entry.get("name") != nm:
+                entry["name"] = nm
+            cfg.setdefault("roles", {})[phone] = rl
+            # סוכן שנמחק בעבר נשאר ב-removedAgents/purgedAgents וחסום — הזמנה = כוונה
+            # מפורשת להחזירו, מנקים משתי הרשימות (כמו agent_add בקונסולה הישנה).
+            cfg["removedAgents"] = [x for x in (cfg.get("removedAgents") or [])
+                                    if _name_key(x) != _name_key(nm)]
+            cfg["purgedAgents"] = [x for x in (cfg.get("purgedAgents") or [])
+                                   if _name_key(x) != _name_key(nm)]
+            if existing:
+                existing.update({"name": nm, "role": rl, "ts": int(time.time())})
+            else:
+                invites.append({"name": nm, "phone": phone, "role": rl, "ts": int(time.time())})
+            cfg["v2_invites"] = invites
+            result["name"], result["role"] = nm, rl
+        ok, _ = _config_mutate(_mut)
+        if result.get("err"):
+            reason, code = result["err"]
+            return jsonify({"ok": False, "reason": reason}), code
+        if not ok:
             return jsonify({"ok": False, "reason": "save_failed"})
-        if not b.get("resend"):
+        name, role = result["name"], result["role"]
+        if not resend:
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                           "הזמנת חבר צוות", f"{name} ({role})")
         host = (request.host or "").split(":")[0] or "remax-bot.onrender.com"
-        office = _office_name(cfg)
+        office = _office_name(_load_config())
         msg = (f"היי {name}, הוזמנת להצטרף למערכת של {office}.\n"
                f"נכנסים כאן עם חשבון Google או קוד ב-SMS:\nhttps://{host}/v2")
         wa = "https://wa.me/972" + phone + "?text=" + _quote(msg)
