@@ -5078,6 +5078,13 @@ function load(){
     if (c && c.i){ ITEMS = c.i; AGENTS = c.a || []; }
   }catch(e){}
 })();
+// תאריך סגירה DD/MM/YYYY → מספר בר-השוואה (למיון "נסגרו"); ריק → 0
+function dealClosedKey(it){
+  var m = /(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})/.exec(String(it.close_date || ''));
+  if (!m) return 0;
+  var y = +m[3]; if (y < 100) y += 2000;
+  return y * 10000 + (+m[2]) * 100 + (+m[1]);
+}
 function render(){
   var q = el('q').value.trim().toLowerCase();
   var src = ITEMS.filter(function(it){
@@ -5086,6 +5093,12 @@ function render(){
     if (q && ((it.notes || '') + ' ' + (it.agents || []).join(' ') + ' ' + (it.lawyers || ''))
         .toLowerCase().indexOf(q) < 0) return false;
     return true;
+  });
+  // חדש למעלה: טאב "נסגרו" לפי תאריך הסגירה (עסקה שנסגרה היום עולה למעלה גם אם
+  // התהליך ישן); שאר הטאבים לפי זמן היצירה (ts). בקשת אייל 13/07.
+  src.sort(function(a, b){
+    if (FILTER === 'closed') { var d = dealClosedKey(b) - dealClosedKey(a); if (d) return d; }
+    return (b.ts || 0) - (a.ts || 0);
   });
   el('cnt').textContent = src.length;
   var h = '';
