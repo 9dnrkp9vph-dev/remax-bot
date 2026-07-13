@@ -4008,7 +4008,6 @@ def api_dev_roleperms():
     s = _web_auth()
     if not s or not _is_dev(s.get("phone", "")):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
-    cfg = _load_config()
     if request.method == "GET":
         out = {}
         for r in _ROLE_SCOPE:
@@ -4019,9 +4018,9 @@ def api_dev_roleperms():
     tabs = body.get("tabs")
     if role not in _ROLE_SCOPE or not isinstance(tabs, list):
         return jsonify({"ok": False, "reason": "bad"}), 400
-    rp = cfg.setdefault("rolePerms", {})
-    rp[role] = {"tabs": [t for t in tabs if t in _ALL_TABS]}
-    ok = _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        cfg.setdefault("rolePerms", {})[role] = {"tabs": [t for t in tabs if t in _ALL_TABS]}
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון הרשאות תפקיד", role)
     return jsonify({"ok": ok})
 
@@ -4206,7 +4205,6 @@ def api_dev_contract():
     s = _web_auth()
     if not s or not _is_dev(s.get("phone", "")):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
-    cfg = _load_config()
     if request.method == "GET":
         eff = {t: _contract_text(t) for t in _CONTRACT_TYPES}
         return jsonify({"ok": True, "types": _CONTRACT_TYPES, "contracts": eff})
@@ -4215,9 +4213,9 @@ def api_dev_contract():
     text = body.get("body")
     if ctype not in _CONTRACT_TYPES or not isinstance(text, str):
         return jsonify({"ok": False, "reason": "bad"}), 400
-    contracts = cfg.setdefault("contracts", {})
-    contracts[ctype] = text
-    ok = _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        cfg.setdefault("contracts", {})[ctype] = text
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון נוסח הסכם", _CONTRACT_TYPES.get(ctype, ctype))
     return jsonify({"ok": ok})
 
@@ -4994,13 +4992,13 @@ def api_dev_nb_default():
         return jsonify({"ok": False, "reason": "forbidden"}), 403
     body = request.get_json(silent=True) or {}
     v = body.get("days")
-    cfg = _load_config()
-    if v in ("", None):
-        cfg.pop("newbornDefaultDelay", None)
-    else:
-        try: cfg["newbornDefaultDelay"] = int(v)
+    if v not in ("", None):
+        try: v = int(v)
         except Exception: return jsonify({"ok": False, "reason": "bad"}), 400
-    ok = _save_config(cfg)
+    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
+        if v in ("", None): cfg.pop("newbornDefaultDelay", None)
+        else: cfg["newbornDefaultDelay"] = v
+    ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "ברירת מחדל נכס נולד", str(v))
     return jsonify({"ok": ok})
 
