@@ -6596,30 +6596,75 @@ def _addr_tokens(*parts):
     return nums, words
 
 def _famexcl_addr_list():
-    """רשימת כתובות בבלעדיות RE/MAX Family (לסימון ב'נכס נולד'). כל פריט: (nums, words)."""
-    out = []
+    """כתובות שכבר בבלעדיות/טיפול RE/MAX Family — לסימון ב'נכס נולד', עם שם הסוכן.
+    שלושה מקורות (בקשת אייל 13/07): בלעדויות חיצוניות (שת"פ — רק שלנו),
+    נכסי המשרד (יד2, כל מודעה פעילה) וחתימות בלעדיות (OWNER_EXCLUSIVE).
+    מוחזר כאינדקס לפי מספר-בית: {num: [(nums, words, agent), ...]} — כדי שההצלבה
+    בנכס נולד תהיה מהירה (השוואה רק מול כתובות שחולקות מספר בית). cache 300ש'
+    (המקורות כבר cached — הבנייה כאן היא רק טוקניזציה, פעם ב-5 דקות)."""
+    c = _cache_get("famexcl_index", 300)
+    if c is not None:
+        return c
+    idx = {}
+    def _add(addr_parts, agent):
+        nums, words = _addr_tokens(*addr_parts)
+        if not nums or not words:
+            return
+        ent = (nums, words, (agent or "").strip())
+        for n in nums:
+            idx.setdefault(n, []).append(ent)
+    # 1) בלעדויות חיצוניות — רק של רימקס פמילי (אין שדה סוכן אמין → ריק)
     try:
         for r in (fetch_external_exclusives() or []):
             if _is_our_office(r.get("office", "")):
-                nums, words = _addr_tokens(r.get("street", ""))
-                if nums and words:
-                    out.append((nums, words))
+                _add((r.get("street", ""),), "")
     except Exception:
         pass
-    return out
+    # 2) נכסי המשרד (יד2) — כל מודעה פעילה; הסוכן = "סוכן 1"
+    try:
+        for r in fetch_sheet_rows():
+            if (r.get("סטטוס", "") or "").strip() not in ("", "פעילה"):
+                continue
+            street = (r.get("כתובת", "") or r.get("רחוב1", "") or r.get("רחוב", "") or "").strip()
+            house = (r.get("מספר בית", "") or r.get("מס בית", "") or r.get("מס' בית", "") or r.get("בית", "") or "").strip()
+            city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()
+            _add((street, house, city), _canon_agent_name((r.get("סוכן 1", "") or "").strip()))
+    except Exception:
+        pass
+    # 3) חתימות בלעדיות (OWNER_EXCLUSIVE) — הסוכן = agent
+    try:
+        for g in get_signings():
+            if "OWNER_EXCLUSIVE" not in str(g.get("deal_type", "")).upper():
+                continue
+            _add((g.get("address", ""), g.get("city", "")), _canon_agent_name((g.get("agent", "") or "").strip()))
+    except Exception:
+        pass
+    _cache_put("famexcl_index", idx)
+    return idx
 
-def _is_famexcl(addr, city, fam_list):
-    """האם הכתובת כבר בבלעדיות RE/MAX Family — שמרני: כל אסימוני הנכס (מספר+רחוב+עיר) חייבים להופיע בבלעדיות."""
-    if not fam_list:
-        return False
+def _is_famexcl(addr, city, fam_idx):
+    """מחזיר את שם הסוכן שבבלעדיות אם הכתובת כבר בטיפול RE/MAX Family, אחרת None.
+    שמרני: כל אסימוני הנכס (מספר+רחוב+עיר) חייבים להופיע בכתובת שבמקור.
+    בודק רק מול כתובות שחולקות מספר בית (דרך האינדקס) — מהיר גם עם אלפי נכסים."""
+    if not fam_idx:
+        return None
     nb_nums, nb_words = _addr_tokens(addr, city)
     if not nb_nums or not nb_words:
-        return False
+        return None
     need = nb_nums | nb_words
-    for ex_nums, ex_words in fam_list:
-        if need <= (ex_nums | ex_words):
-            return True
-    return False
+    seen = set()
+    best = None
+    for n in nb_nums:
+        for ex_nums, ex_words, agent in fam_idx.get(n, ()):
+            _id = id(ex_words)
+            if _id in seen:
+                continue
+            seen.add(_id)
+            if need <= (ex_nums | ex_words):
+                if agent:
+                    return agent       # התאמה עם שם סוכן — עדיפה
+                best = ""               # התאמה בלי שם (בלעדיות חיצונית) — שומרים כגיבוי
+    return best
 
 _NB_RESULT_VER = [0]   # מעלים בכל שינוי (סטטוס/הערה/פנייה) כדי לבטל את מטמון התוצאה לכל הסקופים
 _NB_BUCKETS = [(0, 30), (30, 60), (60, 90), (90, 120), (120, 150), (150, 180), (180, 10**9)]   # דליי ותק לפי חודשים — חייב להתאים ל-NB_AGE_BUCKETS בפרונט
@@ -6703,6 +6748,7 @@ def api_newborn():
             _k = _nb_key(r)
             _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
             ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
+            _famv = _is_famexcl(_addr, city, fam_list)   # שם הסוכן שבבלעדיות / '' / None
             out.append({
                 "released": True,
                 "own": own,
@@ -6722,7 +6768,8 @@ def api_newborn():
                 "stat": _vstat or None,
                 "unotes": _nb_notes_for(_k, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", "")))),
                 "ageDays": ad,
-                "famexcl": _is_famexcl(_addr, city, fam_list),
+                "famexcl": (_famv is not None),
+                "famexclAgent": (_famv or ""),
             })
         _res = {"ok": True, "count": len(out), "released": len(out), "delay": delay,
                 "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts)}
