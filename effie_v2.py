@@ -6105,6 +6105,8 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .dRow input{width:56px;text-align:center;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;
       padding:8px 0;font-size:14px;font-weight:800;color:#1E3A5F;font-family:inherit;outline:none}
   .dRow .un{font-size:12px;font-weight:600;color:#8B8F99}
+  .dRow .unSel{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;padding:7px 6px;
+      font-size:12px;font-weight:700;color:#5B6472;font-family:inherit;text-align:center}
   .moChip{border:1.5px solid #DCD6C8;background:#fff;color:#5B6472;border-radius:999px;padding:5px 11px;
       font-size:12px;font-weight:700;font-family:inherit;cursor:pointer}
   .moChip.on{background:#C29435;border-color:#C29435;color:#fff}
@@ -6188,7 +6190,8 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <svg width="13" height="13" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
         <span class="tt">פרטי הלקוח</span></div>
       <div class="preChip" id="preChip" style="display:none"><b id="preTx"></b><i>הועבר מהמסך הקודם</i></div>
-      <div class="fld"><span>שם מלא *</span><input id="cName"></div>
+      <div class="fld"><span>שם מלא *</span><input id="cName" autocomplete="off" onfocus="loadClients()" oninput="clSuggest()"></div>
+      <div id="clSug" style="display:flex;flex-direction:column;gap:6px"></div>
       <div class="fld"><span>טלפון *</span><input id="cPhone" type="tel" inputmode="numeric"></div>
       <div class="fld"><span>תעודת זהות <span id="idReq" style="color:#C24040;display:none">*</span></span>
         <input id="cId" inputmode="numeric" oninput="checkId()">
@@ -6259,10 +6262,10 @@ function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.displ
 var KIND = (location.search.indexOf('type=owner') >= 0 || location.search.indexOf('type=seller') >= 0) ? 'owner' : 'buyer';
 var AGENT = '', MODE = 'remote', PROPS = [], BUSY = false;
 var DEALS_DEF = KIND === 'buyer'
-  ? [{k: 'buy', lb: 'קניה — עמלה', on: true, val: '2', un: '%'},
-     {k: 'rent', lb: 'שכירות — עמלה', on: false, val: '1', un: 'חודשים'}]
-  : [{k: 'sale', lb: 'מכירה — עמלה', on: true, val: '2', un: '%'},
-     {k: 'rent', lb: 'השכרה — עמלה', on: false, val: '1', un: 'חודשים'},
+  ? [{k: 'buy', lb: 'קניה — עמלה', on: true, val: '2', un: '%', units: ['%', '₪']},
+     {k: 'rent', lb: 'שכירות — עמלה', on: false, val: '1', un: 'חודשים', units: ['חודשים', '₪']}]
+  : [{k: 'sale', lb: 'מכירה — עמלה', on: true, val: '2', un: '%', units: ['%', '₪']},
+     {k: 'rent', lb: 'השכרה — עמלה', on: false, val: '1', un: 'חודשים', units: ['חודשים', '₪']},
      {k: 'excl', lb: 'בלעדיות — תקופה', on: true, val: '', un: '', from: '', to: '', mo: 6}];
 
 function dstr(d){
@@ -6294,8 +6297,10 @@ function renderDeals(){
         '<div style="display:flex;gap:6px">' +
         '<input style="width:88px" placeholder="מ- 07/07/26" value="' + esc(d.from) + '" onchange="DEALS_DEF[' + i + '].from=this.value;DEALS_DEF[' + i + '].mo=0">' +
         '<input style="width:88px" placeholder="עד 07/01/27" value="' + esc(d.to) + '" onchange="DEALS_DEF[' + i + '].to=this.value;DEALS_DEF[' + i + '].mo=0"></div></div>'
-      : '<div class="in"><input inputmode="decimal" value="' + esc(d.val) + '" onchange="DEALS_DEF[' + i + '].val=this.value">' +
-        '<span class="un">' + d.un + '</span></div>';
+      : '<div class="in"><input inputmode="decimal" style="width:' + (d.un === '₪' ? '76px' : '56px') + '" value="' + esc(d.val) + '" onchange="DEALS_DEF[' + i + '].val=this.value">' +
+        (d.units ? '<select class="unSel" onchange="DEALS_DEF[' + i + '].un=this.value;renderDeals()">' +
+           d.units.map(function(u){ return '<option' + (u === d.un ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select>'
+         : '<span class="un">' + d.un + '</span>') + '</div>';
     return '<div class="dRow' + (d.on ? ' on' : ' off') + '" style="' + (i ? 'margin-top:9px' : '') + '">' +
       '<div class="r" onclick="DEALS_DEF[' + i + '].on=!DEALS_DEF[' + i + '].on;renderDeals()">' +
       '<div class="cb"><svg width="12" height="10" viewBox="0 0 12 10"><path d="M1.5 5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>' +
@@ -6309,6 +6314,45 @@ function renderProps(){
       '<button class="x" onclick="PROPS.splice(' + i + ',1);renderProps()">' +
       '<svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#C24040" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>';
   }).join('') || '<div style="font-size:12px;color:#8B8F99">עוד לא נבחר נכס</div>';
+}
+/* לקוחות שמורים — מהחתמות/קונים קודמים של הסוכן (פר-סוכן, מ-/api/my/buyers).
+   הקלדת שם מציעה שם+טלפון; בחירה ממלאת. בקשת אייל 13/07 (ניתוב מ-React ל-v2 החי). */
+var ALLCLIENTS = null, CL_HITS = [];
+function loadClients(){
+  if (ALLCLIENTS !== null) return;
+  ALLCLIENTS = [];   // מסמן "בטעינה"
+  GET('/api/my/buyers').then(function(j){
+    var seen = {}, out = [];
+    ((j && j.results) || []).forEach(function(b){
+      var nm = String(b.name || '').trim(); if (!nm) return;
+      var ph = String(b.phone || '').trim();
+      var key = ph || nm; if (seen[key]) return; seen[key] = 1;
+      out.push({name: nm, phone: ph});
+    });
+    ALLCLIENTS = out;
+    clSuggest();
+  }).catch(function(){ ALLCLIENTS = []; });
+}
+function clSuggest(){
+  var box = el('clSug'); if (!box) return;
+  var q = String(el('cName').value || '').trim();
+  if (q.length < 2){ box.innerHTML = ''; CL_HITS = []; return; }
+  CL_HITS = (ALLCLIENTS || []).filter(function(c){
+    return c.name.indexOf(q) >= 0 || (c.phone || '').indexOf(q) >= 0;
+  }).slice(0, 6);
+  box.innerHTML = CL_HITS.length
+    ? ('<div style="font-size:11px;font-weight:700;color:#8B8F99">לקוחות שמורים</div>' +
+       CL_HITS.map(function(c, i){
+         return '<div class="pick" onclick="clPick(' + i + ')"><span class="a">' + esc(c.name) + '</span>' +
+           '<span class="p">' + esc(c.phone || '') + '</span></div>';
+       }).join(''))
+    : '';
+}
+function clPick(i){
+  var c = CL_HITS[i]; if (!c) return;
+  el('cName').value = c.name;
+  if (c.phone) el('cPhone').value = c.phone;
+  el('clSug').innerHTML = ''; CL_HITS = [];
 }
 /* השלמה אוטומטית במלל חופשי — כל נכסי המשרד (בקשת אייל 13/07, החתמת מתעניין) */
 var ALLPROPS = null, NP_HITS = [];
@@ -6448,8 +6492,8 @@ function fill(body, v){
   var addr = PROPS.map(function(p){ return p.addr; }).join(', ');
   var price = PROPS.map(function(p){ return p.price; }).filter(Boolean).join(' / ');
   var map = {
-    'SALE_FEE': v.fee ? v.fee + '%' : '____',
-    'RENT_FEE': v.months ? v.months + ' חודשי שכירות' : '____',
+    'SALE_FEE': v.fee ? (v.feeUnit === '₪' ? '₪' + v.fee : v.fee + '%') : '____',
+    'RENT_FEE': v.months ? (v.rentUnit === '₪' ? '₪' + v.months : v.months + ' חודשי שכירות') : '____',
     'EXCLUSIVE_FROM': v.exfrom || '____', 'EXCLUSIVE_TO': v.exto || '____',
     'CON_REF_ID': '____', 'CON_REF_DATE': todayStr(),
     '{תאריך}': todayStr(), '{שם_הסוכן}': AGENT, '{שם_הלקוח}': v.cname,
@@ -6505,7 +6549,8 @@ function submitSign(){
     if (!el('pad').dataset.signed){ toast('חסרה חתימה על המסך'); return; }
   }
   var v = {cname: cname, cphone: cphone, cid: cid,
-           fee: feeRow ? feeRow.val : '', months: mRow ? mRow.val : '',
+           fee: feeRow ? feeRow.val : '', feeUnit: feeRow ? feeRow.un : '%',
+           months: mRow ? mRow.val : '', rentUnit: mRow ? mRow.un : 'חודשים',
            exfrom: exclRow ? exclRow.from : '', exto: exclRow ? exclRow.to : ''};
   BUSY = true; el('go').disabled = true;
   /* פידבק מיידי — בלי זה השליחה נראית "תקועה" */
