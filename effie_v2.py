@@ -7377,11 +7377,17 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   html,body{height:100%;overflow:hidden;cursor:none}
   body{font-family:'Heebo',sans-serif;background:radial-gradient(120% 120% at 50% 0%, #23446B 0%, #0E1D33 62%);
        color:#fff;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
-  header{display:flex;align-items:center;justify-content:space-between;padding:28px 46px 0}
-  /* לוגו לבן ובולט על הרקע הכהה: brightness(0) הופך הכל לשחור, invert(1) הופך ללבן */
-  header img{height:84px;object-fit:contain;
+  header{display:flex;align-items:center;justify-content:space-between;padding:26px 46px 0}
+  /* מיתוג אפי בכותרת (בקשת אייל 15/07): לוגו האוריגמי + השם */
+  .brand{display:flex;align-items:center;gap:18px}
+  .brand svg{height:66px;width:auto;filter:drop-shadow(0 4px 14px rgba(0,0,0,.4))}
+  .brand .bn{font-size:42px;font-weight:900;line-height:1;color:#fff;letter-spacing:-.01em}
+  .brand .bs{font-size:16px;font-weight:600;color:#E4C56B;margin-top:5px}
+  .left{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+  /* לוגו המשרד לבן ובולט: brightness(0) הופך הכל לשחור, invert(1) הופך ללבן */
+  .left img{height:56px;object-fit:contain;
        filter:brightness(0) invert(1) drop-shadow(0 4px 18px rgba(0,0,0,.45))}
-  .clock{font-size:26px;font-weight:700;color:rgba(255,255,255,.85);font-variant-numeric:tabular-nums}
+  .clock{font-size:20px;font-weight:700;color:rgba(255,255,255,.75);font-variant-numeric:tabular-nums}
   .bars{display:flex;gap:7px;padding:20px 46px 0}
   .bars i{flex:1;height:5px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden;display:block}
   .bars i b{display:block;height:100%;width:0;background:#E4C56B;border-radius:999px}
@@ -7423,8 +7429,21 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   footer{position:fixed;bottom:22px;left:0;right:0;text-align:center;font-size:14px;color:rgba(255,255,255,.35)}
 </style></head><body>
   <header>
-    <div class="clock" id="clock"></div>
-    <img src="/assets/logo" alt="" onerror="this.style.display='none'">
+    <div class="brand">
+      <svg viewBox="0 0 118 106" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"></path>
+        <path d="M58 8L20 44h38z" fill="#C29435"></path>
+        <path d="M58 8l38 36H58z" fill="#EED9A0"></path>
+        <path d="M58 44L34 98h24z" fill="#D8AC4E"></path>
+        <path d="M20 44l-14 8 14 6z" fill="#fff"></path>
+        <circle cx="40" cy="34" r="4.2" fill="#1E3A5F"></circle>
+      </svg>
+      <div><div class="bn">אפי</div><div class="bs">נכסים חמים · רימקס פמילי</div></div>
+    </div>
+    <div class="left">
+      <img src="/assets/logo" alt="" onerror="this.style.display='none'">
+      <div class="clock" id="clock"></div>
+    </div>
   </header>
   <div class="bars" id="bars"></div>
   <main><div class="card" id="card"></div></main>
@@ -7449,7 +7468,17 @@ function tick(){
 tick(); setInterval(tick, 15000);
 
 var B = null, IDX = 0, TIMER = null;
-var DUR_SUM = 14000, DUR_HOT = 10000;   // קצב טלוויזיה — איטי מהטלפון
+/* [TV-TEMPO] סיבוב מלא = 5 דקות קבוע (בקשת אייל 15/07): הזמן מתחלק בין הכרטיסים —
+   כל נכס חם שנוסף מאיץ את כולם, וכשיש מעט הם רצים לאט יותר. הסיכום ארוך פי 1.4.
+   גבולות שפיות: 5ש' רצפה (קריאוּת) · 60ש' תקרה (שלא ייראה קפוא). */
+var LOOP_MS = 300000, SUM_W = 1.4;
+function durFor(pl, it){
+  var sums = 0, hots = 0;
+  for (var k = 0; k < pl.length; k++){ if (pl[k].t === 'sum') sums++; else hots++; }
+  var unit = LOOP_MS / ((sums * SUM_W + hots) || 1);
+  var d = (it.t === 'sum' ? SUM_W : 1) * unit;
+  return Math.max(5000, Math.min(60000, Math.round(d)));
+}
 var GROUP = 6;   // כרטיס נתוני-המשרד חוזר כל 6 נכסים — מקבל זמן מסך קבוע גם כשהרשימה גדלה
 function q(v){ return (v == null || v === '' || isNaN(Number(v))) ? '…' : v; }
 
@@ -7461,7 +7490,8 @@ function playlist(){
   var out = [];
   for (var g = 0; g < hp.length; g += GROUP){
     out.push({t: 'sum'});
-    for (var k = g; k < Math.min(g + GROUP, hp.length); k++) out.push({t: 'hot', hp: hp[k]});
+    for (var k = g; k < Math.min(g + GROUP, hp.length); k++)
+      out.push({t: 'hot', hp: hp[k], n: k + 1, of: hp.length});   // מיקום גלובלי — "נכס X מתוך Y"
   }
   return out;
 }
@@ -7509,7 +7539,9 @@ function render(i){
       '</div>' +
       '<div class="rank"><div class="t">רשת רימקס ישראל</div>' +
         '<div class="r">🏆 <b>מקום 2</b> בעסקאות מתחילת השנה</div>' +
-        '<div class="r">🥇 <b>מקום 4</b> בעמלות משרדים</div></div>';
+        '<div class="r">🥇 <b>מקום 4</b> בעמלות משרדים</div></div>' +
+      (((B.hotProps || []).length) ? '<div style="text-align:center;font-size:17px;color:rgba(255,255,255,.55)">' +
+        (B.hotProps.length) + ' נכסים חמים בסבב ←</div>' : '');
   } else {
     var hp = it.hp || {};
     var prNum = String(hp.price || '').replace(/[^0-9]/g, '');
@@ -7520,7 +7552,7 @@ function render(i){
         '<div class="agentBox">' +
           '<div class="ava"><div>' + ini + '</div></div>' +
           '<div><div class="nm">' + esc(hp.agent || '') + '</div><div class="sb">נכס חם בבריף</div></div>' +
-          '<div class="chipHot">נכס חם</div>' +
+          '<div class="chipHot">נכס ' + it.n + ' מתוך ' + it.of + '</div>' +
         '</div>' +
         '<div class="hotBody">' +
           '<div class="ttl">' + esc(hp.title || 'נכס') + '</div>' +
