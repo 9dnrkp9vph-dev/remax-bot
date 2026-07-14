@@ -3766,17 +3766,22 @@ var ROWS = [], BUCKETS = [], TOTAL = 0, AGE = -1, MGR = false, MEETS = [];
 var BUCKET_RANGES = [[0,30],[30,60],[60,90],[90,120],[120,150],[150,180],[180,99999]];
 var ST_LABEL = {meeting:'פגישה', followup:'פולו-אפ', not_interested:'לא מעוניין'};
 
+var NB_ETAG = '';   // [PERF-3] טביעת-אצבע מהשרת — רענון של כל דקה בלי שינוי = תשובה זעירה
 function load(){
   return Promise.all([
-    GET('/api/newborn').catch(function(){ return {}; }),
+    GET('/api/newborn' + (NB_ETAG ? '?etag=' + encodeURIComponent(NB_ETAG) : '')).catch(function(){ return {}; }),
     GET('/api/newborn/meetings').catch(function(){ return {}; })
   ]).then(function(rs){
-    ROWS = (rs[0] && rs[0].results) || [];
-    BUCKETS = (rs[0] && rs[0].bucketCounts) || [];
-    TOTAL = (rs[0] && rs[0].total) || ROWS.length;
+    var nb = rs[0] || {};
+    if (nb.etag) NB_ETAG = nb.etag;
     MEETS = (rs[1] && (rs[1].results || rs[1].meetings)) || [];
-    try{ localStorage.setItem('v2c:nb', JSON.stringify(
-      {r: ROWS.slice(0, 150), b: BUCKETS, t: TOTAL, m: MEETS.slice(0, 40)})); }catch(e){}
+    if (!nb.unchanged){   // שינוי אמיתי — מעדכנים רשימה ו-cache מקומי
+      ROWS = nb.results || [];
+      BUCKETS = nb.bucketCounts || [];
+      TOTAL = nb.total || ROWS.length;
+      try{ localStorage.setItem('v2c:nb', JSON.stringify(
+        {r: ROWS.slice(0, 150), b: BUCKETS, t: TOTAL, m: MEETS.slice(0, 40)})); }catch(e){}
+    }
     render();
   });
 }
