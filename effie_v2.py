@@ -7381,17 +7381,20 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   html,body{height:100%;overflow:hidden;cursor:none}
   body{font-family:'Heebo',sans-serif;background:radial-gradient(120% 120% at 50% 0%, #23446B 0%, #0E1D33 62%);
        color:#fff;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
-  header{display:flex;align-items:center;justify-content:space-between;padding:26px 46px 0}
-  /* מיתוג אפי בכותרת (בקשת אייל 15/07): לוגו האוריגמי + השם */
-  .brand{display:flex;align-items:center;gap:18px}
+  header{display:flex;align-items:center;padding:26px 46px 0}
+  /* מיתוג אפי בכותרת (בקשת אייל 15/07): לוגו האוריגמי + השם. brand/left שווי-רוחב → המרכז ממורכז באמת */
+  .brand{flex:1 1 0;display:flex;align-items:center;gap:18px}
   .brand svg{height:66px;width:auto;filter:drop-shadow(0 4px 14px rgba(0,0,0,.4))}
   .brand .bn{font-size:42px;font-weight:900;line-height:1;color:#fff;letter-spacing:-.01em}
   .brand .bs{font-size:16px;font-weight:600;color:#E4C56B;margin-top:5px}
-  .left{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+  /* מרכז הכותרת: יום+שעה + תאריך עברי (בקשת אייל 15/07) */
+  .mid{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center}
+  .clock{font-size:27px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums}
+  .hdate{font-size:16.5px;font-weight:600;color:#E4C56B}
+  .left{flex:1 1 0;display:flex;justify-content:flex-end;align-items:center}
   /* לוגו המשרד לבן ובולט: brightness(0) הופך הכל לשחור, invert(1) הופך ללבן */
-  .left img{height:56px;object-fit:contain;
+  .left img{height:84px;object-fit:contain;
        filter:brightness(0) invert(1) drop-shadow(0 4px 18px rgba(0,0,0,.45))}
-  .clock{font-size:20px;font-weight:700;color:rgba(255,255,255,.75);font-variant-numeric:tabular-nums}
   .bars{display:flex;gap:7px;padding:20px 46px 0}
   .bars i{flex:1;height:5px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden;display:block}
   .bars i b{display:block;height:100%;width:0;background:#E4C56B;border-radius:999px}
@@ -7445,9 +7448,12 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       </svg>
       <div><div class="bn">אפי</div><div class="bs">נכסים חמים · רימקס פמילי</div></div>
     </div>
+    <div class="mid">
+      <div class="clock" id="clock"></div>
+      <div class="hdate" id="hdate"></div>
+    </div>
     <div class="left">
       <img src="/assets/logo" alt="" onerror="this.style.display='none'">
-      <div class="clock" id="clock"></div>
     </div>
   </header>
   <div class="bars" id="bars"></div>
@@ -7469,6 +7475,31 @@ function tick(){
   var d = new Date();
   el('clock').textContent = 'יום ' + HDAYS[d.getDay()] + ' · ' +
     ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  try{ el('hdate').textContent = hebDate(d); }catch(e){}
+}
+/* תאריך עברי: הלוח (יום/חודש/שנה) מ-Intl המובנה; הגימטריה (א׳ באב תשפ״ו) שלנו —
+   ה-ICU של חלק מהדפדפנים מחזיר ספרות (1 באב 5786), אז לא סומכים עליו. */
+function gem(n){
+  var ones = ['','א','ב','ג','ד','ה','ו','ז','ח','ט'];
+  var tens = ['','י','כ','ל','מ','נ','ס','ע','פ','צ'];
+  var hund = ['','ק','ר','ש','ת','תק','תר','תש','תת','תתק'];
+  var s = hund[Math.floor(n / 100)], t = n % 100;
+  if (t === 15) s += 'טו'; else if (t === 16) s += 'טז';   // לא כותבים יה/יו
+  else s += tens[Math.floor(t / 10)] + ones[t % 10];
+  if (!s) return '';
+  return s.length === 1 ? s + '׳' : s.slice(0, -1) + '״' + s.slice(-1);
+}
+function hebDate(d){
+  var parts = new Intl.DateTimeFormat('he-u-ca-hebrew',
+    {day: 'numeric', month: 'long', year: 'numeric'}).formatToParts(d);
+  var day = 0, mon = '', yr = 0;
+  parts.forEach(function(p){
+    if (p.type === 'day') day = +p.value;
+    if (p.type === 'month') mon = p.value;
+    if (p.type === 'year') yr = +p.value;
+  });
+  if (!day || !mon || !yr) return '';
+  return gem(day) + ' ב' + mon + ' ' + gem(yr % 1000);
 }
 tick(); setInterval(tick, 15000);
 
