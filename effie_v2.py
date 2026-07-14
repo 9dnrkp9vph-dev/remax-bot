@@ -260,6 +260,11 @@ input, textarea, select{ font-size:16px !important; }
 @media (hover: none){
   button:active, [onclick]:active{ opacity:.72; transition:opacity .06s; }
 }
+
+/* ── [UX-FIX-5] טבעת פוקוס למקלדת — הדפים מכבים outline (21 מקומות) בלי חלופה.
+   :focus-visible = מקלדת בלבד: נגיעות בטלפון לא מציגות טבעת, Tab בדסקטופ כן.
+   להסרה: למחוק את הבלוק הזה בלבד. */
+:focus-visible{ outline:2px solid #2E6BD6 !important; outline-offset:2px; border-radius:4px; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -268,6 +273,14 @@ input, textarea, select{ font-size:16px !important; }
   /* מסמנים אך ורק PWA standalone של iOS (הוסף למסך הבית ב-Safari) — navigator.standalone
      הוא true רק שם; ב-Safari רגיל=false, בדסקטופ ובאפליקציית Capacitor=undefined. מוקדם, בלי הבהוב. */
   try{ if (navigator.standalone === true) document.documentElement.classList.add('pwa'); }catch(e){}
+})();
+(function(){
+  /* [UX-FIX-6] טוסטים נגישים — קורא-מסך מקריא את ההודעה (#toast קיים בכל דף טאבים).
+     aria-live=polite לא גונב פוקוס. להסרה: למחוק את הבלוק הזה בלבד. */
+  document.addEventListener('DOMContentLoaded', function(){
+    var t = document.getElementById('toast');
+    if (t){ t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite'); }
+  });
 })();
 (function(){
   /* whoami מיידי מהמטמון (10 דק') — הדף לא מחכה לרשת; רענון רץ ברקע ומעדכן.
@@ -7383,7 +7396,9 @@ function loadSources(){GET('/api/dev/sources').then(function(j){
   show('oSrc', j.count+' על Supabase'+(j.all_on_supabase?' · הכל ✓':'')); el('oSrc').innerHTML=t+'<div style="margin-top:6px;color:#6B7280">'+esc(j.count)+' על Supabase</div>';
 });}
 function runDiag(){show('oDiag','בודק…');GET('/api/dev/diag').then(function(j){
-  show('oDiag',(j.msg||'')+'\n\ngetconfig: '+(j.getconfig_ok?'✓':'✗')+' · כתיבה: '+(j.write_ok?'✓':'✗')+' · קריאה חוזרת: '+(j.readback_ok?'✓':'✗'));});}
+  show('oDiag',(j.msg||'')+'\n\ngetconfig: '+(j.getconfig_ok?'✓':'✗')+' · כתיבה: '+(j.write_ok?'✓':'✗')+' · קריאה חוזרת: '+(j.readback_ok?'✓':'✗')+
+    (j.config_kb!=null?'\nגודל קונפיג: '+j.config_kb+'KB · פגישות/סטטוסים: '+(j.nbStatus_n||0)+' · הערות: '+(j.nbNotes_n||0)+
+    (j.config_kb>300?'\n⚠️ הקונפיג גדול — הגיע הזמן לארכב nbStatus ישנים':''):''));});}
 function runSms(){show('oSms','שולח…');POST('/api/dev/smstest',{phone:el('smsPh').value.trim()}).then(function(j){
   show('oSms','ספק: '+j.provider+'\nיעד: '+j.dest+'\nשולח: '+(j.sender||'—')+(j.sender_set?'':' (לא מוגדר)')+'\nטוקן: '+(j.token_set?j.token_preview+' ('+j.token_len+')':'לא מוגדר')+'\nIP יוצא: '+((j.outbound_ips||[]).join(', ')||'?')+(j.reason?'\n\n⚠️ '+j.reason:'')+(j.sent!==undefined?'\nנשלח: '+(j.sent?'✓':'✗'):''));});}
 function runParity(){show('oPar','מריץ… (עד דקה)');GET('/api/dev/parity').then(function(j){
