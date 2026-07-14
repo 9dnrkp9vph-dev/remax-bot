@@ -5059,9 +5059,18 @@ def api_dev_diag():
         msg = "❌ setconfig לא כותב — ודא שפרסת גרסה חדשה ושלגיליון יש הרשאת כתיבה."
     else:
         msg = "⚠️ מצב לא ידוע."
+    # [PERF-4 מדידה] גודל בלוב הקונפיג + הרכבו — לדעת מתי ארכוב nbStatus נהיה נחוץ
+    _cfg_stats = {}
+    try:
+        _cfg = _load_config()
+        _cfg_stats = {"config_kb": round(len(_json.dumps(_cfg, ensure_ascii=False)) / 1024, 1),
+                      "nbStatus_n": len(_cfg.get("nbStatus") or {}),
+                      "nbNotes_n": sum(len(v) for v in (_cfg.get("nbNotes") or {}).values() if isinstance(v, list))}
+    except Exception:
+        pass
     return jsonify({"ok": True, "msg": msg, "url_set": bool(APPS_SCRIPT_URL),
                     "getconfig_ok": getok, "write_ok": bool(wrote), "readback_ok": readback,
-                    "raw": str(raw_get)[:200]})
+                    "raw": str(raw_get)[:200], **_cfg_stats})
 
 # ── History (calls + signatures) ───────────────────────────────────────────────
 def _call_uid(c):
