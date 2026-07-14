@@ -6713,10 +6713,15 @@ def api_newborn():
             try: return int(str(request.args.get(nm) or ((request.get_json(silent=True) or {}).get(nm)) or "").strip())
             except Exception: return None
         min_days = _intp("minDays"); max_days = _intp("maxDays")
+        # [PERF-3] etag: הקליינט שולח את טביעת-האצבע של התוצאה הקודמת; אם אין שינוי —
+        # מוחזרת תשובה זעירה (unchanged) במקום מאות KB. חוסך דאטה/סוללה ברענון של כל דקה.
+        _etag_in = (request.args.get("etag", "") or ((request.get_json(silent=True) or {}).get("etag", "")) or "").strip()
         # מטמון תוצאה לפי סקופ — פתיחה חוזרת של הטאב מיידית (מתבטל בכל שינוי דרך _NB_RESULT_VER)
         _nbkey = "nbres:%d:%s:%s:%s:%s:%s" % (_NB_RESULT_VER[0], _last9(s.get("phone", "")), as_name, q, min_days, max_days)
         _nbc = _cache_get(_nbkey, _src_ttl(NEWBORN_SOURCE, 90, 12))
         if _nbc is not None:
+            if _etag_in and _etag_in == _nbc.get("etag"):
+                return jsonify({"ok": True, "unchanged": True, "etag": _etag_in})
             return jsonify(_nbc)
         # מנהל מושהה (כמו אווה אזולאי) אינו רואה "נכס נולד" מיד — נכנס למסלול ההשהיה הרגיל
         _dphone = "" if as_name else s.get("phone", "")
@@ -6799,8 +6804,14 @@ def api_newborn():
             })
         _res = {"ok": True, "count": len(out), "released": len(out), "delay": delay,
                 "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts)}
+        # [PERF-3] טביעת-אצבע לתוצאה — מחושבת פעם אחת בבנייה (לא פר-בקשה)
+        import zlib as _zl
+        _res["etag"] = format(_zl.crc32(_json.dumps(
+            [out, bucket_counts], ensure_ascii=False, sort_keys=True).encode("utf-8")) & 0xffffffff, "08x")
         if rows:   # אין לקבע במטמון תוצאה שנבנתה מקריאה ריקה/כושלת
             _cache_put(_nbkey, _res)
+        if _etag_in and _etag_in == _res["etag"]:
+            return jsonify({"ok": True, "unchanged": True, "etag": _etag_in})
         return jsonify(_res)
     except Exception as e:
         log.error(f"newborn error: {e}", exc_info=True)
