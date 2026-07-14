@@ -4390,7 +4390,10 @@ def _sign_addr_key(s):
     return re.sub(r"[^א-ת0-9a-z]", "", str(s or "").lower().replace("קריית", "קרית"))
 
 def _office_prop_index():
-    """אינדקס מפתח-כתובת → שורת נכס מגיליון המשרד (fetch_sheet_rows כבר cached)."""
+    """אינדקס מפתח-כתובת → שורת נכס מגיליון המשרד. cache 60ש' — נבנה פעם, לא פר-בקשה."""
+    c = _cache_get("sign_office_idx", 60)
+    if c is not None:
+        return c
     idx = {}
     for r in fetch_sheet_rows():
         street = (r.get("כתובת", "") or r.get("רחוב1", "") or r.get("רחוב", "") or "").strip()
@@ -4402,7 +4405,23 @@ def _office_prop_index():
         city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()
         idx.setdefault(_sign_addr_key(street + city), r)
         idx.setdefault(_sign_addr_key(street), r)   # חתימות נשמרות לעיתים בלי עיר
+    _cache_put("sign_office_idx", idx)
     return idx
+
+def _excl_key_list():
+    """שת"פ עם מפתח-כתובת מחושב מראש: [(key, row)]. cache 300ש' (כמו מקור השת"פ).
+    ⚡ ביצועים: בלי זה _sign_prop_lookup טיקנן את כל השת"פ מחדש בכל קריאה —
+    ~200K הפעלות regex לבקשת /api/signatures אחת (סעיף 2 בדוח הביצועים 14/07)."""
+    c = _cache_get("excl_key_list", 300)
+    if c is not None:
+        return c
+    out = []
+    for r in (fetch_external_exclusives() or []):
+        ks = _sign_addr_key(r.get("street", ""))
+        if ks:
+            out.append((ks, r))
+    _cache_put("excl_key_list", out)
+    return out
 
 def _price_int(v):
     d = re.sub(r"[^0-9]", "", str(v or ""))
@@ -4437,11 +4456,9 @@ def _sign_prop_lookup(address, city="", idx=None, excl=None):
         return {"desc": _office_prop_desc(r), "price": _price_int(r.get("מחיר", "")), "src": "משרד"}
     if len(k) < 6:   # כתובת קצרה מדי — התאמת-הכלה בשת"פ תיתן זיהויי שווא
         return None
-    if excl is None:
-        excl = fetch_external_exclusives() or []
-    for r in excl:
-        ks = _sign_addr_key(r.get("street", ""))
-        if ks and (k in ks or ks in k):
+    # שת"פ — מהרשימה המטוקננת-מראש (cache); הפרמטר excl נשמר לתאימות אך אינו נדרש עוד
+    for ks, r in _excl_key_list():
+        if (k in ks or ks in k):
             desc = " · ".join([x for x in [
                 str(r.get("dest", "") or "").strip(),
                 str(r.get("desti", "") or "").strip()[:120]] if x])
@@ -5204,21 +5221,26 @@ def api_signatures():
     } for g in sigs[:500]]
     # ממוצע הנכסים שהלקוח חתם עליהם (טפסי מתעניין) — לפי זיהוי הכתובת בנכסי המשרד/שת"פ.
     # מופרד מכירה/שכירות; מוצג באפור קטן על כרטיס החתימה (בקשת אייל 13/07).
+    # ⚡ המפה נשמרת ב-cache פר-סקופ ל-120ש' — הבית ומסך החתימות קוראים לכאן בכל
+    # ביקור, ובלי ה-cache החישוב רץ מחדש על כל בקשה (סעיף 2 בדוח הביצועים 14/07).
     try:
-        idx = _office_prop_index()
-        excl = fetch_external_exclusives() or []
-        by_client = {}   # (לקוח, מכירה/שכירות) → [מחירים]
-        for g in sigs[:500]:
-            dt = str(g.get("deal_type", "")).upper()
-            if not dt.startswith("CLIENT"):
-                continue
-            ck = (_canon_key(g.get("client_name", "")), "R" if "RENT" in dt else "S")
-            if not ck[0]:
-                continue
-            for part in str(g.get("address", "") or "").split("|"):
-                info = _sign_prop_lookup(part.strip(), g.get("city", ""), idx=idx, excl=excl)
-                if info and info.get("price"):
-                    by_client.setdefault(ck, []).append(info["price"])
+        _avgkey = "sigavg:%s:%s" % (eff["role"], _canon_key(eff.get("name", "")))
+        by_client = _cache_get(_avgkey, 120)
+        if by_client is None:
+            idx = _office_prop_index()
+            by_client = {}   # (לקוח, מכירה/שכירות) → [מחירים]
+            for g in sigs[:500]:
+                dt = str(g.get("deal_type", "")).upper()
+                if not dt.startswith("CLIENT"):
+                    continue
+                ck = (_canon_key(g.get("client_name", "")), "R" if "RENT" in dt else "S")
+                if not ck[0]:
+                    continue
+                for part in str(g.get("address", "") or "").split("|"):
+                    info = _sign_prop_lookup(part.strip(), g.get("city", ""), idx=idx)
+                    if info and info.get("price"):
+                        by_client.setdefault(ck, []).append(info["price"])
+            _cache_put(_avgkey, by_client)
         for d, g in zip(sig_out, sigs[:500]):
             dt = str(g.get("deal_type", "")).upper()
             if not dt.startswith("CLIENT"):
