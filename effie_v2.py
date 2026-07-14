@@ -7365,6 +7365,170 @@ _V2_ICON_TAGS = ('<link rel="icon" type="image/png" sizes="64x64" href="/v2/icon
 
 # ── כלי מפתח (/v2/dev) — עוטף את 8 ה-API של הקונסולה הישנה: מקורות · חיבור · SMS ·
 #    parity · השתקה · ברירת מחדל נכס נולד · הרשאות טאבים · נוסחי הסכמים. מפתח בלבד. ──
+# ── מסך טלוויזיה למשרד (/v2/tv) — הסטורי בלופ אינסופי, לשיקוף מסך ─────────────
+# בכוונה לא עובר דרך _page(): בלי heartbeat (שלא יזהם את יומן השימוש), בלי prefetch.
+# עומס שרת זניח: רענון דאטה כל 5 דק' + רענון-עצמי של הדף כל 6 שעות (טאב שרץ כל היום).
+V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>נכסים חמים · מסך משרד</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;cursor:none}
+  body{font-family:'Heebo',sans-serif;background:radial-gradient(120% 120% at 50% 0%, #23446B 0%, #0E1D33 62%);
+       color:#fff;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+  header{display:flex;align-items:center;justify-content:space-between;padding:28px 46px 0}
+  header img{height:52px;object-fit:contain;filter:drop-shadow(0 2px 10px rgba(0,0,0,.35))}
+  .clock{font-size:26px;font-weight:700;color:rgba(255,255,255,.85);font-variant-numeric:tabular-nums}
+  .bars{display:flex;gap:7px;padding:20px 46px 0}
+  .bars i{flex:1;height:5px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden;display:block}
+  .bars i b{display:block;height:100%;width:0;background:#E4C56B;border-radius:999px}
+  main{flex:1;display:flex;align-items:center;justify-content:center;padding:20px 46px 40px;min-height:0}
+  .card{width:100%;max-width:1060px;display:flex;flex-direction:column;gap:26px;align-items:stretch}
+  .fade{animation:fadeIn .45s ease-out}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion: reduce){.fade{animation:none}}
+  .greet{font-size:20px;font-weight:700;color:#E4C56B;letter-spacing:.14em}
+  .h1{font-size:44px;font-weight:800;line-height:1.15}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+  .stat{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:24px;
+        padding:26px 24px;display:flex;flex-direction:column;gap:4px}
+  .stat .n{font-size:56px;font-weight:800;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:18px;color:rgba(255,255,255,.62)}
+  .rank{background:linear-gradient(135deg,rgba(228,197,107,.15),rgba(228,197,107,.05));
+        border:1px solid rgba(228,197,107,.35);border-radius:22px;padding:22px 26px;display:flex;gap:44px;align-items:center}
+  .rank .t{font-size:17px;font-weight:700;color:#E4C56B;letter-spacing:.05em}
+  .rank .r{font-size:20px;color:#fff}
+  .rank .r b{color:#E4C56B}
+  /* כרטיס נכס חם — פריסה רוחבית לטלוויזיה */
+  .hot{display:grid;grid-template-columns:300px 1fr;gap:44px;align-items:center}
+  .agentBox{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+  .ava{width:150px;height:150px;border-radius:50%;border:4px solid #E4C56B;padding:7px;box-sizing:border-box}
+  .ava div{width:100%;height:100%;border-radius:50%;background:rgba(228,197,107,.15);display:flex;
+        align-items:center;justify-content:center;font-size:52px;font-weight:800;color:#E4C56B}
+  .agentBox .nm{font-size:26px;font-weight:800}
+  .agentBox .sb{font-size:16px;font-weight:600;color:#E4C56B}
+  .chipHot{display:inline-block;background:rgba(228,197,107,.16);border:1.5px solid rgba(228,197,107,.4);
+        color:#E4C56B;border-radius:999px;padding:8px 22px;font-size:17px;font-weight:800}
+  .hotBody{display:flex;flex-direction:column;gap:14px}
+  .hotBody .ttl{font-size:46px;font-weight:800;line-height:1.2}
+  .hotBody .det{font-size:22px;color:rgba(255,255,255,.72)}
+  .hotBody .dsc{font-size:19px;color:rgba(255,255,255,.58);line-height:1.6;max-width:640px}
+  .hotBody .pr{font-size:58px;font-weight:800;color:#E4C56B;font-variant-numeric:tabular-nums}
+  .empty{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+  .empty .t{font-size:34px;font-weight:800}
+  .empty .s{font-size:19px;color:rgba(255,255,255,.6)}
+  footer{position:fixed;bottom:22px;left:0;right:0;text-align:center;font-size:14px;color:rgba(255,255,255,.35)}
+</style></head><body>
+  <header>
+    <div class="clock" id="clock"></div>
+    <img src="/assets/logo" alt="" onerror="this.style.display='none'">
+  </header>
+  <div class="bars" id="bars"></div>
+  <main><div class="card" id="card"></div></main>
+  <footer id="foot"></footer>
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+var HDAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+function tick(){
+  var d = new Date();
+  el('clock').textContent = 'יום ' + HDAYS[d.getDay()] + ' · ' +
+    ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+tick(); setInterval(tick, 15000);
+
+var B = null, IDX = 0, TIMER = null;
+var DUR_SUM = 14000, DUR_HOT = 10000;   // קצב טלוויזיה — איטי מהטלפון
+function total(){ return 1 + ((B && B.hotProps) || []).length; }
+function q(v){ return (v == null || v === '' || isNaN(Number(v))) ? '…' : v; }
+
+function setBars(i){
+  var n = total(), h = '';
+  for (var k = 0; k < n; k++) h += '<i><b style="width:' + (k < i ? '100%' : '0') + '"></b></i>';
+  el('bars').innerHTML = h;
+  requestAnimationFrame(function(){
+    var b = el('bars').querySelectorAll('i b')[i];
+    if (b){ b.style.transition = 'width ' + (i === 0 ? DUR_SUM : DUR_HOT) + 'ms linear'; b.style.width = '100%'; }
+  });
+}
+function statCard(n, label, col){
+  return '<div class="stat"><div class="n" style="color:' + col + '">' + n + '</div><div class="l">' + label + '</div></div>';
+}
+function render(i){
+  var c = el('card');
+  c.classList.remove('fade'); void c.offsetWidth;   // ריסטרט אנימציית הכניסה
+  c.classList.add('fade');
+  setBars(i);
+  if (!B){
+    c.innerHTML = '<div class="empty"><div class="t">טוען…</div></div>';
+    return;
+  }
+  if (i === 0){
+    c.innerHTML =
+      '<div><div class="greet">רימקס פמילי · המשרד מתחילת השנה</div></div>' +
+      '<div class="grid">' +
+        statCard(q(B.dealsYear), 'עסקאות', '#5FD08C') +
+        statCard(q(B.exclAll), 'בלעדיות', '#E4C56B') +
+        statCard(q(B.callsAll), 'שיחות נכנסו', '#fff') +
+        statCard(q(B.buyersTotal), 'קונים במערכת', '#E4C56B') +
+      '</div>' +
+      '<div class="rank"><div class="t">רשת רימקס ישראל</div>' +
+        '<div class="r">🏆 <b>מקום 2</b> בעסקאות מתחילת השנה</div>' +
+        '<div class="r">🥇 <b>מקום 4</b> בעמלות משרדים</div></div>';
+  } else {
+    var hp = (B.hotProps || [])[i - 1] || {};
+    var prNum = String(hp.price || '').replace(/[^0-9]/g, '');
+    var prTxt = prNum ? '₪' + Number(prNum).toLocaleString() : esc(hp.price || '');
+    var ini = esc((String(hp.agent || '?').trim().charAt(0)) || '?');
+    c.innerHTML =
+      '<div class="hot">' +
+        '<div class="agentBox">' +
+          '<div class="ava"><div>' + ini + '</div></div>' +
+          '<div><div class="nm">' + esc(hp.agent || '') + '</div><div class="sb">נכס חם בבריף</div></div>' +
+          '<div class="chipHot">נכס חם</div>' +
+        '</div>' +
+        '<div class="hotBody">' +
+          '<div class="ttl">' + esc(hp.title || 'נכס') + '</div>' +
+          (hp.details ? '<div class="det">' + esc(hp.details) + '</div>' : '') +
+          (hp.desc ? '<div class="dsc">' + esc(hp.desc) + '</div>' : '') +
+          (prTxt ? '<div class="pr">' + prTxt + '</div>' : '') +
+        '</div>' +
+      '</div>';
+  }
+  clearTimeout(TIMER);
+  TIMER = setTimeout(function(){
+    IDX = (IDX + 1) % total();   // לופ אינסופי
+    render(IDX);
+  }, i === 0 ? DUR_SUM : DUR_HOT);
+}
+function load(){
+  GET('/v2/api/brief').then(function(j){
+    if (!j || !j.ok){
+      if (j && j.auth === false) location.replace('/v2');
+      return;
+    }
+    var hadCards = total();
+    B = j;
+    el('foot').textContent = 'נכסים חמים · מתעדכן אוטומטית';
+    if (IDX >= total()) IDX = 0;
+    if (hadCards !== total()) setBars(IDX);
+  }).catch(function(){});
+}
+load();
+render(0);
+setInterval(load, 300000);                       // דאטה טרי כל 5 דקות — עומס זניח
+setTimeout(function(){ location.reload(); }, 6 * 3600 * 1000);   // ריענון עצמי נגד דליפות
+</script></body></html>'''
+
 V2_DEV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>כלי מפתח</title>
@@ -7633,6 +7797,13 @@ def register(app, G):
     @app.route("/v2/dev", methods=["GET"])
     def v2_dev():
         return _page(V2_DEV_HTML)
+
+    @app.route("/v2/tv", methods=["GET"])
+    def v2_tv():
+        # בכוונה בלי _page(): בלי heartbeat (יומן שימוש נקי) ובלי שכבות boost — מסך שילוט
+        resp = Response(V2_TV_HTML, mimetype="text/html")
+        resp.headers["Cache-Control"] = "private, max-age=300"
+        return resp
 
     @app.route("/v2/calls", methods=["GET"])
     def v2_calls():
