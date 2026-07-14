@@ -36,7 +36,7 @@ EFFIE_LOGO_SVG = (
 
 # ── דף הכניסה (עיצוב 25c, מצב white-label) ──────────────────────────────────
 V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>כניסה</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -249,6 +249,17 @@ body:has(nav) main{ overscroll-behavior-y:contain; }
 html.pwa, html.pwa body{ height:100%; }
 html.pwa body:has(nav){ overflow:hidden; }
 html.pwa body:has(nav) main{ overflow:auto; -webkit-overflow-scrolling:touch; }
+
+/* ── [UX-FIX-1] שדות קלט 16px — מבטל את הזום האוטומטי של iOS בכניסה לשדה ──────
+   iOS מזמזם פנימה על כל שדה עם פונט קטן מ-16px. גובר על ה-14/13.5px של הדפים.
+   ביקורת ui-ux-pro-max 14/07. להסרה: למחוק את הבלוק הזה בלבד. */
+input, textarea, select{ font-size:16px !important; }
+
+/* ── [UX-FIX-4] פידבק לחיצה במגע — כפתור "מגיב" ללחיצה (opacity, בלי הזזת layout) ──
+   מכשירי מגע בלבד (hover:none) — הדסקטופ לא מושפע. להסרה: למחוק את הבלוק הזה בלבד. */
+@media (hover: none){
+  button:active, [onclick]:active{ opacity:.72; transition:opacity .06s; }
+}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -359,7 +370,7 @@ html:not(.pwa) body:has(nav) main{ overflow:visible; overscroll-behavior:auto; }
 
 # ── מסך הבית (עיצוב 14a) + בריף הבוקר (עיצוב 13a — סטורי 4 כרטיסים) ─────────
 V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>בית</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -1155,7 +1166,7 @@ el('story').addEventListener('touchmove', function(e){
 
 # ── מסך הניהול (עיצוב 31a + מתגי מדיניות מסעיף 9ג) ──────────────────────────
 V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ניהול</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -1921,7 +1932,7 @@ boot();
 
 # ── מסך השיחות (עיצוב 15a) — משפך, פילטרים, סיכום חכם, הוסף כקונה, מוסתרות ──
 V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>שיחות</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -2421,7 +2432,7 @@ render = function(){
 
 # ── מסך הקונים (עיצוב 16a) + התאמת נכסים (16b) ──────────────────────────────
 V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>קונים</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -3205,7 +3216,7 @@ render = function(){
 
 # ── מסך החתימות (עיצוב 17a) — רשימה, פילטרים, צפייה במסמך; הטפסים בסשן הבא ──
 V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>חתימות</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -3530,7 +3541,7 @@ render = function(){
 
 # ── מסך נכס נולד (עיצוב 19a) — מונה חי, צ'יפי ותק, בעל הנכס, סטטוסים, פגישות ──
 V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>נכס נולד</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -4100,7 +4111,7 @@ render = function(){
 
 # ── טאב הנכסים המאוחד (עיצוב 20a) — משרד / שת"פ / שלי + קונים מתאימים ──────
 V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>נכסים</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -4606,7 +4617,7 @@ render = function(){
 
 # ── מפת הנכסים (עיצוב 21a) — Leaflet, קלאסטרים נייבי, פיני מחיר, כרטיס צף ──
 V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>מפה</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -4852,7 +4863,7 @@ function focusDense(){
 
 # ── תהליכים ועסקאות (עיצוב 22a + טפסים 24a/27a) — על /api/deals הקיים ────────
 V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>תהליכים ועסקאות</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -5372,7 +5383,7 @@ render = function(){
 
 # ── דוחות (עיצוב 30a) — KPI, מובילים, שת"פ, נכס נולד לפי ערים, ייצוא ─────────
 V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>דוחות</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -5790,7 +5801,7 @@ function copyTxt(){
 
 # ── עדכונים למשרד (31b) — Supabase announcements + אישורי קריאה ─────────────
 V2_UPDATES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>עדכונים למשרד</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -5968,7 +5979,7 @@ function delAnn(id){
 
 # ── יומן שימוש — דשבורד כניסות ופעולות (9ו, למנהל) ──────────────────────────
 V2_ACTIVITY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>יומן שימוש</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -6119,7 +6130,7 @@ function renderUsage(items){
 
 # ── טופס החתמה (18a/18b) — מתעניין/בעל נכס: מרחוק (SMS+וואטסאפ) או במקום ──
 V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>החתמה</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -6695,7 +6706,7 @@ function submitSign(){
 
 # ── פגישות ופולו-אפ (עיצוב 21a) — על /api/newborn/meetings הקיים ────────────────
 V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>פגישות ופולו-אפ</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -7152,7 +7163,7 @@ function load(){
 
 # ── חיבור משרד חדש (עתידי) — צ'קליסט המקורות המלא, עם סטטוס חי למשרד הנוכחי ─────
 V2_ONBOARD_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>חיבור משרד חדש</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -7290,7 +7301,7 @@ _V2_ICON_TAGS = ('<link rel="icon" type="image/png" sizes="64x64" href="/v2/icon
 # ── כלי מפתח (/v2/dev) — עוטף את 8 ה-API של הקונסולה הישנה: מקורות · חיבור · SMS ·
 #    parity · השתקה · ברירת מחדל נכס נולד · הרשאות טאבים · נוסחי הסכמים. מפתח בלבד. ──
 V2_DEV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>כלי מפתח</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
