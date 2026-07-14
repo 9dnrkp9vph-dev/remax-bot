@@ -7508,7 +7508,7 @@ function setBars(pl, i){
   el('bars').innerHTML = h;
   requestAnimationFrame(function(){
     var b = el('bars').querySelectorAll('i b')[bi.pos];
-    if (b){ b.style.transition = 'width ' + (pl[i].t === 'sum' ? DUR_SUM : DUR_HOT) + 'ms linear'; b.style.width = '100%'; }
+    if (b){ b.style.transition = 'width ' + durFor(pl, pl[i]) + 'ms linear'; b.style.width = '100%'; }
   });
 }
 function statCard(n, label, col){
@@ -7566,7 +7566,7 @@ function render(i){
   TIMER = setTimeout(function(){
     IDX = (IDX + 1) % playlist().length;   // לופ אינסופי; רשימה שגדלה נקלטת בסיבוב הבא
     render(IDX);
-  }, it.t === 'sum' ? DUR_SUM : DUR_HOT);
+  }, durFor(pl, it));
 }
 function load(){
   GET('/v2/api/brief').then(function(j){
