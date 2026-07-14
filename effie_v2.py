@@ -193,10 +193,10 @@ function bioLock(){
       'fill="none" stroke="#1E3A5F" stroke-width="1.8"/><path d="M8 10V7.5a4 4 0 018 0V10" fill="none" stroke="#1E3A5F" ' +
       'stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="15" r="1.6" fill="#1E3A5F"/></svg>' +
     '<div style="font-size:19px;font-weight:800;color:#1E3A5F;margin-bottom:4px">האפליקציה נעולה</div>' +
-    '<div style="font-size:13.5px;color:#8B8F99;margin-bottom:24px">אמת את זהותך כדי להיכנס</div>' +
+    '<div style="font-size:13.5px;color:#6B7280;margin-bottom:24px">אמת את זהותך כדי להיכנס</div>' +
     '<button id="biobtn" onclick="bioGo()" style="width:100%;max-width:320px;padding:15px;background:#2E6BD6;color:#fff;' +
       'border:none;border-radius:14px;font-size:15.5px;font-weight:800;font-family:inherit">כניסה עם Face ID</button>' +
-    '<button onclick="bioSkip()" style="margin-top:14px;background:none;border:none;color:#8B8F99;font-size:13.5px;' +
+    '<button onclick="bioSkip()" style="margin-top:14px;background:none;border:none;color:#6B7280;font-size:13.5px;' +
       'font-family:inherit;text-decoration:underline">כניסה עם מספר טלפון</button>';
   document.body.appendChild(d);
 }
@@ -389,12 +389,12 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
   main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto}
   .greet .g{font-size:24px;font-weight:800}
-  .greet .d{font-size:13.5px;color:#8B8F99}
+  .greet .d{font-size:13.5px;color:#6B7280}
   .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
   .stat{background:#fff;border-radius:18px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:13px 8px;
       display:flex;flex-direction:column;align-items:center;gap:2px}
   .stat .n{font-size:25px;font-weight:800;font-variant-numeric:tabular-nums}
-  .stat .l{font-size:12px;font-weight:600;color:#8B8F99}
+  .stat .l{font-size:12px;font-weight:600;color:#6B7280}
   .briefBar{background:linear-gradient(120deg,#0E1D33,#1E3A5F 70%,#2C4C77);border-radius:20px;padding:14px 16px;
       display:flex;align-items:center;gap:12px;box-shadow:0 8px 20px rgba(30,58,95,.25);cursor:pointer}
   .briefBar .ic{width:40px;height:40px;border-radius:13px;background:rgba(228,197,107,.15);
@@ -410,17 +410,18 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .qa .a .l{font-size:14px;font-weight:700}
   .qa .blue{background:#2E6BD6;box-shadow:0 6px 16px rgba(46,107,214,.25)}
   .qa .gold{background:#C29435;box-shadow:0 6px 16px rgba(194,148,53,.25)}
-  .qa .blue .l,.qa .gold .l{color:#fff}
+  .qa .blue .l{color:#fff}
+  .qa .gold .l{color:#231700}
   .qa .blue .ic,.qa .gold .ic{background:rgba(255,255,255,.18)}
   .qa .lite{background:#fff;border:1.5px solid #E9E4D8}
-  .qaBadge{display:none;position:absolute;top:-7px;left:-4px;background:#C29435;color:#fff;font-size:11px;
+  .qaBadge{display:none;position:absolute;top:-7px;left:-4px;background:#C29435;color:#231700;font-size:11px;
       font-weight:800;min-width:20px;height:20px;border-radius:999px;padding:0 6px;align-items:center;
       justify-content:center;box-shadow:0 2px 6px rgba(194,148,53,.35)}
   .strip{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
       display:flex;align-items:center;gap:12px}
   .strip .ic{width:38px;height:38px;border-radius:12px;background:#EAF0FA;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .strip .t{font-size:14.5px;font-weight:800}
-  .strip .s{font-size:11.5px;color:#8B8F99}
+  .strip .s{font-size:11.5px;color:#6B7280}
   .strip .cta{display:flex;align-items:center;gap:7px;background:#EAF0FA;color:#2E6BD6;border-radius:11px;
       padding:9px 15px;font-size:12.5px;font-weight:800;white-space:nowrap;border:0;cursor:pointer;font-family:inherit}
   .care{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
@@ -431,25 +432,25 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .care .row{display:flex;align-items:center;gap:11px;min-height:40px}
   .care .row .ic{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .care .row .t{font-size:13.5px;font-weight:700}
-  .care .row .s{font-size:12px;color:#8B8F99}
+  .care .row .s{font-size:12px;color:#6B7280}
   .care .row .mid{flex:1;min-width:0}
   .care .row .mid div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .chip{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;flex-shrink:0}
-  .chip.today{color:#B8902F;background:#F6EEDB}
+  .chip.today{color:#7A5E1C;background:#F6EEDB}
   .chip.late{color:#C24040;background:#FBEDED}
   .chip.soon{color:#5B6472;background:#F0EDE3}
   .sep{height:1px;background:#F0EDE3}
   .careEmpty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 0 6px;text-align:center}
   .careEmpty .ic{width:56px;height:56px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .careEmpty .t{font-size:13.5px;font-weight:700}
-  .careEmpty .s{font-size:12px;color:#8B8F99}
+  .careEmpty .s{font-size:12px;color:#6B7280}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
-      font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
+      font-weight:600;color:#6E7683;cursor:pointer;position:relative}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
-  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#fff;font-size:10px;font-weight:800;
+  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#231700;font-size:10px;font-weight:800;
       padding:1px 8px;border-radius:999px;display:none}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
       font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
@@ -528,11 +529,11 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   main{padding-bottom:124px}
 </style></head><body>
 
-  <div id="impBar" style="display:none;position:sticky;top:0;z-index:75;background:#C29435;color:#fff;
+  <div id="impBar" style="display:none;position:sticky;top:0;z-index:75;background:#C29435;color:#231700;
        padding:calc(env(safe-area-inset-top,0px) + 8px) 14px 8px;align-items:center;justify-content:center;gap:10px;
        font-size:12.5px;font-weight:700">
     <span id="impTx"></span>
-    <button onclick="impBack()" style="background:#fff;color:#B8902F;border:0;border-radius:999px;
+    <button onclick="impBack()" style="background:#fff;color:#7A5E1C;border:0;border-radius:999px;
         padding:5px 12px;font-size:11.5px;font-weight:800;font-family:inherit;cursor:pointer">חזרה למנהל</button>
   </div>
 
@@ -552,7 +553,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div style="display:flex;align-items:center;gap:11px;padding-bottom:14px">
       <div class="avatar"><div class="c" id="menuAv"></div><div class="dot"></div></div>
       <div><div style="font-size:15.5px;font-weight:800" id="menuNm"></div>
-           <div style="font-size:11.5px;color:#8B8F99" id="menuRole"></div></div>
+           <div style="font-size:11.5px;color:#6B7280" id="menuRole"></div></div>
     </div>
     <div style="height:1px;background:#F0EDE3;margin-bottom:8px"></div>
     <a id="menuAdmin" href="/v2/admin" style="display:none;align-items:center;gap:11px;padding:12px 4px;
@@ -608,7 +609,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="stats">
       <div class="stat"><div class="n" style="color:#1E3A5F" id="stCalls">—</div><div class="l">שיחות השבוע</div></div>
       <div class="stat"><div class="n" style="color:#1FAF5E" id="stSigs">—</div><div class="l">גויסו השבוע</div></div>
-      <div class="stat"><div class="n" style="color:#B8902F" id="stBuyers">—</div><div class="l">קונים חדשים</div></div>
+      <div class="stat"><div class="n" style="color:#7A5E1C" id="stBuyers">—</div><div class="l">קונים חדשים</div></div>
     </div>
 
     <div class="briefBar" onclick="openStory()">
@@ -626,7 +627,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="l">הוסף קונה</div>
       </div>
       <div class="a gold" onclick="location.href='/v2/sigs'">
-        <div class="ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
+        <div class="ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#231700" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
         <div class="l">חתימות</div>
       </div>
       <div class="a lite" onclick="location.href='/v2/props'">
@@ -634,7 +635,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="l">חיפוש נכס</div>
       </div>
       <div class="a lite" style="position:relative" onclick="location.href='/v2/deals'">
-        <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#B8902F" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+        <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#7A5E1C" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#7A5E1C" stroke-width="1.6" stroke-linecap="round"/></svg></div>
         <div class="l">תהליכים</div>
         <div class="qaBadge" id="dealsBadge"></div>
       </div>
@@ -649,7 +650,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         </div>
       </div>
       <div class="strip" style="flex:1;min-width:0;cursor:pointer" onclick="location.href='/v2/meets'">
-        <div class="ic" style="background:#F6EEDB"><svg width="17" height="17" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#B8902F" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+        <div class="ic" style="background:#F6EEDB"><svg width="17" height="17" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#7A5E1C" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#7A5E1C" stroke-width="1.6" stroke-linecap="round"/></svg></div>
         <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
           <div class="t">יומן</div>
           <div class="s" id="meetsSum" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">פגישות ופולו-אפ</div>
@@ -664,13 +665,13 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   </main>
 
   <nav>
-    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
-    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg></div>בית</div>
-    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><div class="badge" id="nbBadge"></div><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <!-- ── בריף הבוקר — סטורי ── -->
@@ -765,7 +766,7 @@ function openMe(){
     '<img id="meAv" src="' + avUrl + '" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">' +
     '<span style="position:absolute">' + esc((ME.name || ' ')[0]) + '</span></div>' +
     '<div><div style="font-size:16.5px;font-weight:800">' + esc(ME.name) + '</div>' +
-    '<div style="font-size:12.5px;color:#8B8F99">' + esc(ME.role) + (ME.phone ? ' · 0' + esc(ME.phone) : '') + '</div></div></div>' +
+    '<div style="font-size:12.5px;color:#6B7280">' + esc(ME.role) + (ME.phone ? ' · 0' + esc(ME.phone) : '') + '</div></div></div>' +
     '<input type="file" id="meFile" accept="image/*" style="display:none" onchange="meUpload(this)">' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" onclick="el(\'meFile\').click()">החלפת תמונת פרופיל</button>' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" ' +
@@ -1178,7 +1179,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
        display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
   header .mid{display:flex;flex-direction:column;align-items:center}
   header .t{font-size:17px;font-weight:800}
-  header .s{font-size:11px;color:#8B8F99}
+  header .s{font-size:11px;color:#6B7280}
   main{flex:1;overflow:auto;padding:2px 16px 14px;display:flex;flex-direction:column;gap:12px}
   .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 16px;
         display:flex;flex-direction:column;gap:11px}
@@ -1194,10 +1195,10 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       font-size:14px;font-weight:700;flex-shrink:0}
   .member .mid{flex:1;display:flex;flex-direction:column;min-width:0}
   .member .nm{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .member .sb{font-size:11.5px;color:#8B8F99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .member .sb{font-size:11.5px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .roleChip{display:flex;align-items:center;gap:7px;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:700;flex-shrink:0}
   .role-agent{background:#F5F3EC;border:1px solid #E9E4D8;color:#1E3A5F}
-  .role-coordinator{background:#F6EEDB;border:1px solid #E4C56B;color:#B8902F}
+  .role-coordinator{background:#F6EEDB;border:1px solid #E4C56B;color:#7A5E1C}
   .role-manager{background:#EAF0FA;border:1px solid #BFD2F0;color:#2E6BD6}
   .role-dev{background:#1E3A5F;border:1px solid #1E3A5F;color:#fff}
   .resend{font-size:11.5px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:5px 11px;border-radius:999px;
@@ -1206,14 +1207,14 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .setIc{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .setRow .mid{flex:1;display:flex;flex-direction:column;min-width:0}
   .setRow .nm{font-size:13.5px;font-weight:700}
-  .setRow .sb{font-size:11.5px;color:#8B8F99}
+  .setRow .sb{font-size:11.5px;color:#6B7280}
   .tg{width:34px;height:20px;border-radius:999px;background:#DCD6C8;position:relative;flex-shrink:0;transition:background .15s;cursor:pointer}
   .tg::after{content:'';position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
   .tg.on{background:#1FAF5E}
   .tg.on::after{transform:translateX(-14px)}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;font-weight:600;color:#9AA0AB}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;font-weight:600;color:#6E7683}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
             box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   /* bottom sheet */
@@ -1238,14 +1239,14 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
        font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px}
   .btn-blue{background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25)}
-  .btn-green{background:#1FAF5E;color:#fff;box-shadow:0 4px 12px rgba(31,175,94,.25)}
+  .btn-green{background:#157A43;color:#fff;box-shadow:0 4px 12px rgba(31,175,94,.25)}
   .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
   .swRow{display:flex;align-items:center;justify-content:space-between;min-height:44px}
   .swRow .lb{font-size:13.5px;font-weight:700}
-  .swRow .sb{font-size:11.5px;color:#8B8F99}
+  .swRow .sb{font-size:11.5px;color:#6B7280}
   .phChip{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;padding:7px 11px;
       font-size:12px;font-weight:700;color:#1E3A5F;white-space:nowrap}
-  .phChip.gold{background:#F6EEDB;border-color:#E4C56B;color:#B8902F}
+  .phChip.gold{background:#F6EEDB;border-color:#E4C56B;color:#7A5E1C}
   .trashBtn{width:42px;height:42px;border-radius:11px;background:#FBEDED;border:0;cursor:pointer;
       display:flex;align-items:center;justify-content:center;flex-shrink:0}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
@@ -1284,7 +1285,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         </button>
       </div>
       <div style="display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:14px;padding:0 14px">
-        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input id="teamQ" placeholder="חיפוש סוכן לפי שם או טלפון" oninput="renderTeam()"
           style="flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;color:#1E3A5F;padding:11px 0">
       </div>
@@ -1294,7 +1295,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <!-- שמות לא משויכים — מניעת כפילויות איות (מפתח בלבד) -->
     <div class="card" id="unmCard" style="display:none">
       <div class="cardTitle">שמות לא משויכים · מניעת כפילויות</div>
-      <div style="font-size:12px;color:#8B8F99;line-height:1.5">שמות שמופיעים בחתימות או בנכסים ולא מזוהים
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">שמות שמופיעים בחתימות או בנכסים ולא מזוהים
         לאף חבר צוות — שיוך לסוכן הופך אותם לכינוי שלו, וכל הנתונים (חתימות, השהיות, התראות) מתאחדים.</div>
       <div id="unmList"></div>
     </div>
@@ -1302,7 +1303,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <!-- חברי צוות שנמחקו — שחזור (מפתח בלבד) -->
     <div class="card" id="rmvCard" style="display:none">
       <div class="cardTitle">חברי צוות שנמחקו</div>
-      <div style="font-size:12px;color:#8B8F99;line-height:1.5">מי שנמחק מוסתר מהספרייה וחסום מכניסה,
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">מי שנמחק מוסתר מהספרייה וחסום מכניסה,
         אבל הרשומות שלו (חתימות, שיחות) נשמרות. שחזור = הזמנה מחדש עם השם — הוא חוזר לספרייה ויכול להיכנס.</div>
       <div id="rmvList"></div>
     </div>
@@ -1313,20 +1314,20 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div class="setRow" onclick="location.href='/v2/onboard'">
         <div class="setIc" style="background:#EAF0FA"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
         <div class="mid"><div class="nm">חיבור משרד חדש</div><div class="sb">צ'קליסט המקורות המלא — עתידי</div></div>
-        <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#6E7683" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <div class="sep"></div>
       <div class="setRow" id="propsUpRow" style="display:none" onclick="propsUpPick()">
         <div class="setIc" style="background:#EAF0FA"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 10.5V2.5M5 5l3-3 3 3" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 10.5v2.7a.8.8 0 0 0 .8.8h8.4a.8.8 0 0 0 .8-.8v-2.7" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg></div>
         <div class="mid"><div class="nm">עדכון קובץ נכסים</div><div class="sb">העלה Excel — מיזוג אוטומטי (מחשב בלבד)</div></div>
-        <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#6E7683" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <input type="file" id="propsUpFile" accept=".xlsx" style="display:none" onchange="propsUpGo(this.files&&this.files[0])">
       <div class="sep"></div>
       <div class="setRow" onclick="openOffice()">
         <div class="setIc" style="background:#F6EEDB"><img id="miniLogo" src="/assets/logo" style="width:22px;height:22px;object-fit:contain" onerror="this.style.display='none'"></div>
         <div class="mid"><div class="nm">שם ולוגו המשרד</div><div class="sb" id="officeNameRow"></div></div>
-        <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#6E7683" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <div class="sep"></div>
       <div class="setRow" style="cursor:default">
@@ -1341,7 +1342,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       </div>
       <div class="sep"></div>
       <div class="setRow" style="cursor:default">
-        <div class="setIc" style="background:#F6EEDB"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+        <div class="setIc" style="background:#F6EEDB"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#7A5E1C" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
         <div class="mid"><div class="nm">שת"פ — שיתוף נכסים</div><div class="sb">שיתוף נכסים הדדי עם משרדים שותפים</div></div>
         <div class="tg" id="tgShtaf" onclick="togglePolicy('shtaf_sharing', this)"></div>
       </div>
@@ -1356,7 +1357,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
           צוות חדש
         </button>
       </div>
-      <div style="font-size:11.5px;color:#8B8F99;line-height:1.5">חברי צוות רואים הכל אחד של השני —
+      <div style="font-size:11.5px;color:#6B7280;line-height:1.5">חברי צוות רואים הכל אחד של השני —
         שיחות, קונים, חתימות, נכסים, תהליכים ועסקאות.</div>
       <div id="teamsList"></div>
     </div>
@@ -1377,7 +1378,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="card setRow" style="cursor:pointer" onclick="location.href='/v2/dev'">
       <div class="setIc" style="background:#EAF0FA"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M6 4L2 8l4 4M10 4l4 4-4 4" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="mid"><div class="nm">כלי מפתח</div><div class="sb">מקורות · חיבור · SMS · parity · הרשאות · נוסחי הסכמים</div></div>
-      <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#6E7683" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
   </main>
 
@@ -1389,13 +1390,13 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   </div>
 
   <nav>
-    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
-    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
-    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
-    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -1503,7 +1504,7 @@ function renderRemoved(){
   el('rmvList').innerHTML = RMV.map(function(r, i){
     return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid #F0EDE3">' +
       '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.name) + '</div>' +
-      '<div style="font-size:11px;color:#8B8F99">' + (r.sigs ? r.sigs + ' חתימות במערכת' : 'ללא רשומות') + '</div></div>' +
+      '<div style="font-size:11px;color:#6B7280">' + (r.sigs ? r.sigs + ' חתימות במערכת' : 'ללא רשומות') + '</div></div>' +
       '<button onclick="restoreMember(' + i + ')" style="padding:9px 16px;border:none;border-radius:11px;background:#2E6BD6;' +
       'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שחזר</button>' +
       '<button onclick="purgeMember(' + i + ')" style="padding:9px 12px;border:1.5px solid #C24040;border-radius:11px;background:#fff;' +
@@ -1534,11 +1535,11 @@ function renderUnmatched(){
   el('unmList').innerHTML = UNMATCHED.map(function(u, i){
     return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid #F0EDE3">' +
       '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(u.n) + '</div>' +
-      '<div style="font-size:11px;color:#8B8F99">' + u.c + ' רשומות · ' + u.w + '</div></div>' +
+      '<div style="font-size:11px;color:#6B7280">' + u.c + ' רשומות · ' + u.w + '</div></div>' +
       '<select id="unmSel' + i + '" style="max-width:130px;padding:9px 10px;border:1.5px solid #DCD6C8;border-radius:11px;' +
       'font-size:12.5px;font-family:inherit;background:#fff;color:#1E3A5F"><option value="">— שייך לסוכן —</option>' + opts + '</select>' +
       '<button onclick="assignAlias(' + i + ')" style="padding:9px 14px;border:none;border-radius:11px;background:#C29435;' +
-      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שייך</button></div>';
+      'color:#231700;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שייך</button></div>';
   }).join('');
 }
 /* פח "מחיקת שם" הוסר (בקשת אייל 13/07) — הוא קרא ל-agent_delete והעלים את השם מכל
@@ -1600,7 +1601,7 @@ function renderTeam(){
       'color:#2E6BD6;padding:12px 0 4px;cursor:pointer">הצג את כל ' + full + ' חברי הצוות</div>';
   else if (!tq && SHOW_ALL && full > 5)
     html += '<div onclick="SHOW_ALL=false;renderTeam()" style="text-align:center;font-size:12.5px;font-weight:800;' +
-      'color:#8B8F99;padding:12px 0 4px;cursor:pointer">הצג פחות</div>';
+      'color:#6B7280;padding:12px 0 4px;cursor:pointer">הצג פחות</div>';
   el('teamList').innerHTML = html;
   el('teamList')._list = list;
 }
@@ -1614,10 +1615,10 @@ function renderTeams(){
       '<div class="setIc" style="background:#EAF0FA"><svg width="16" height="16" viewBox="0 0 22 22"><circle cx="8" cy="8" r="3" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><circle cx="15" cy="9.5" r="2.4" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M3 18c.6-2.8 2.6-4.3 5-4.3s4.4 1.5 5 4.3M13.5 14.2c1.9.3 3.3 1.5 3.8 3.8" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg></div>' +
       '<div class="mid"><div class="nm">צוות ' + (i + 1) + ' · ' + t.length + ' חברים</div>' +
       '<div class="sb">' + esc(t.join(' · ')) + '</div></div>' +
-      '<svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#9AA0AB" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+      '<svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#6E7683" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
   });
   el('teamsList').innerHTML = h ||
-    '<div style="font-size:12px;color:#8B8F99;padding:4px 0">אין צוותים עדיין. צוות מחבר סוכנים שרואים הכל אחד של השני.</div>';
+    '<div style="font-size:12px;color:#6B7280;padding:4px 0">אין צוותים עדיין. צוות מחבר סוכנים שרואים הכל אחד של השני.</div>';
 }
 var TEAM_EDIT = -1;
 function editTeam(i){
@@ -1639,7 +1640,7 @@ function editTeam(i){
     (i >= 0 ? '<button class="trashBtn" onclick="delTeam()" aria-label="מחיקת צוות">' +
       '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button>' : '') +
     '</div>' +
-    '<div style="font-size:12px;color:#8B8F99;line-height:1.5">חברי הצוות רואים הכל אחד של השני — שיחות, קונים, חתימות, נכסים, תהליכים ועסקאות. סוכן יכול להיות בכמה צוותים.</div>' +
+    '<div style="font-size:12px;color:#6B7280;line-height:1.5">חברי הצוות רואים הכל אחד של השני — שיחות, קונים, חתימות, נכסים, תהליכים ועסקאות. סוכן יכול להיות בכמה צוותים.</div>' +
     '<div class="fld"><span>חברי הצוות</span><div id="teamPick">' + picks + '</div></div>' +
     '<button class="btn btn-blue" onclick="saveTeam()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
@@ -1684,12 +1685,12 @@ function openInvite(prefillName){
   SEL_ROLE = 'agent';
   openSheet(
     '<h3>' + (prefillName ? 'שחזור חבר צוות' : 'הזמן חבר צוות') + '</h3>' +
-    (prefillName ? '<div style="font-size:12px;color:#8B8F99;line-height:1.5">הזן את הנייד שלו ושלח — הוא יחזור לספרייה, ייפתח לכניסה, וכל הרשומות הקיימות שלו יתאחדו אליו.</div>' : '') +
+    (prefillName ? '<div style="font-size:12px;color:#6B7280;line-height:1.5">הזן את הנייד שלו ושלח — הוא יחזור לספרייה, ייפתח לכניסה, וכל הרשומות הקיימות שלו יתאחדו אליו.</div>' : '') +
     '<div class="fld"><span>שם מלא</span><input id="invNm" placeholder="שם החבר החדש"></div>' +
     '<div class="fld"><span>נייד</span><input id="invPh" type="tel" inputmode="numeric" placeholder="05X-XXXXXXX"></div>' +
     '<div class="fld"><span>תפקיד</span><div class="segs">' +
       seg('agent', 'סוכן') + seg('coordinator', 'מתאמת') + seg('manager', 'מנהל') + '</div></div>' +
-    '<div style="font-size:11.5px;color:#8B8F99;line-height:1.5">ההזמנה נשלחת ב-SMS עם קישור כניסה. ' +
+    '<div style="font-size:11.5px;color:#6B7280;line-height:1.5">ההזמנה נשלחת ב-SMS עם קישור כניסה. ' +
       'ההצטרפות למשרד היא בהזמנה בלבד — אין הרשמה פתוחה.</div>' +
     '<button class="btn btn-green" onclick="sendInvite(\'sms\')">' +
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M2.5 3h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5V11H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
@@ -1770,9 +1771,9 @@ function openMember(i){
     '<div class="phChip" style="display:flex;align-items:center">אישי · ' + esc(phDisp) + '</div>' +
     '<input id="memVp" value="' + esc(p.vphone || '') + '" placeholder="מספר וירטואלי" type="tel" ' +
     'style="flex:1;min-width:0;background:#F6EEDB;border:1px solid #E4C56B;border-radius:10px;' +
-    'padding:7px 11px;font-size:12px;font-weight:700;color:#B8902F;font-family:inherit;outline:none"></div></div>' +
+    'padding:7px 11px;font-size:12px;font-weight:700;color:#7A5E1C;font-family:inherit;outline:none"></div></div>' +
     (isDev
-      ? '<div style="font-size:13px;font-weight:700;color:#B8902F">בעל המשרד — התפקיד קבוע</div>'
+      ? '<div style="font-size:13px;font-weight:700;color:#7A5E1C">בעל המשרד — התפקיד קבוע</div>'
       : '<div class="fld"><span>תפקיד</span><div class="segs">' +
         seg('agent', 'סוכן') + seg('coordinator', 'מתאמת') + seg('manager', 'מנהל') + '</div></div>') +
     agentsHtml +
@@ -1781,7 +1782,7 @@ function openMember(i){
       nbSeg('default', 'ברירת מחדל · ' + NB_DEFAULT + ' ימים') + nbSeg('custom', 'מותאם') + nbSeg('hidden', 'מוסתר') +
       '</div><input id="nbDays" type="number" min="0" inputmode="numeric" placeholder="ימים מרגע הפרסום" value="' +
       (SEL_NB === 'custom' ? esc(p.nbDelay) : '') + '" style="display:' + (SEL_NB === 'custom' ? 'block' : 'none') + '">' +
-      '<div style="font-size:11px;color:#8B8F99;margin-top:4px">0 = רואה מיד · מוסתר = לא רואה נכס נולד בכלל</div></div>') +
+      '<div style="font-size:11px;color:#6B7280;margin-top:4px">0 = רואה מיד · מוסתר = לא רואה נכס נולד בכלל</div></div>') +
     (isDev ? '' :
       '<div class="swRow"><div><div class="lb">השהיה</div><div class="sb">מושהה לא רואה נתונים ולא נכנס</div></div>' +
       '<div class="tg' + (p.suspended ? ' on' : '') + '" id="tgSusp" onclick="this.classList.toggle(\'on\')"></div></div>') +
@@ -1870,7 +1871,7 @@ function openOffice(){
     '<div class="fld"><span>עמוד המשרד במדלן</span><input id="offMd" dir="ltr" type="url" value="' + esc(OV.office.madlan || '') + '" placeholder="https://www.madlan.co.il/..."></div>' +
     '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E9E4D8;border-radius:13px;padding:10px 13px">' +
       '<img src="/assets/logo" style="width:34px;height:34px;object-fit:contain" onerror="this.style.display=\'none\'">' +
-      '<div style="font-size:11.5px;color:#8B8F99;line-height:1.5">הלוגו מוצג מ-offices.settings.logo_url — החלפה דרך מנהל המערכת. הקישורים מוצגים לצוות בתפריט הצד.</div></div>' +
+      '<div style="font-size:11.5px;color:#6B7280;line-height:1.5">הלוגו מוצג מ-offices.settings.logo_url — החלפה דרך מנהל המערכת. הקישורים מוצגים לצוות בתפריט הצד.</div></div>' +
     '<button class="btn btn-blue" onclick="saveOffice()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
@@ -1965,12 +1966,12 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .funnel{display:flex;align-items:center;gap:0;background:#F7F5EE;border-radius:14px;padding:11px 8px}
   .funnel .st{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px}
   .funnel .st .n{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
-  .funnel .st .l{font-size:10.5px;font-weight:600;color:#8B8F99}
+  .funnel .st .l{font-size:10.5px;font-weight:600;color:#6B7280}
   .vp{display:flex;align-items:center;justify-content:space-between;background:#F5F3EC;border:1px solid #E9E4D8;
       border-radius:13px;padding:10px 14px;cursor:pointer}
   .vp .r{display:flex;align-items:center;gap:8px}
   .vp .num{font-size:14px;font-weight:700;letter-spacing:.03em}
-  .vp .sub{font-size:11px;color:#8B8F99}
+  .vp .sub{font-size:11px;color:#6B7280}
   .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
   .segs .sg{flex:1;text-align:center;padding:7px 0;font-size:12.5px;font-weight:700;color:#5B6472;
       border-radius:10px;cursor:pointer}
@@ -1981,23 +1982,23 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .call .tile{width:40px;height:40px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .call .mid{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
   .call .num{font-size:16px;font-weight:800;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .call .sub{font-size:12px;color:#8B8F99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .call .sub{font-size:12px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
   .chip.hot{color:#1FAF5E;background:#E7F7EE}
   .chip.back{color:#C24040;background:#FBEDED}
   .ai{background:#F7F5EE;border-radius:13px;padding:10px 13px;display:flex;flex-direction:column;gap:4px;cursor:pointer}
-  .ai .t{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:#B8902F;letter-spacing:.05em}
+  .ai .t{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:#7A5E1C;letter-spacing:.05em}
   .ai .x{font-size:12.5px;color:#5B6472;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .acts{display:flex;gap:9px;align-items:center}
   .acts .main{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:12px;
       padding:10px 0;font-size:13px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:40px}
   .acts .blue{background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25)}
-  .acts .green{background:#1FAF5E;color:#fff;box-shadow:0 4px 12px rgba(31,175,94,.25)}
+  .acts .green{background:#157A43;color:#fff;box-shadow:0 4px 12px rgba(31,175,94,.25)}
   .acts .sec{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
   .acts .sq{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;
       flex-shrink:0;border:0;cursor:pointer}
   .hiddenBar{display:flex;align-items:center;justify-content:center;gap:8px;padding:2px 0 6px;
-      font-size:13px;font-weight:700;color:#8B8F99}
+      font-size:13px;font-weight:700;color:#6B7280}
   .hiddenBar b{color:#2E6BD6;cursor:pointer;font-weight:700}
   .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
@@ -2006,7 +2007,7 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
-      font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
+      font-weight:600;color:#6E7683;cursor:pointer;position:relative}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
@@ -2060,11 +2061,11 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <svg width="13" height="11" viewBox="0 0 14 12"><path d="M11 2L4 6l7 4" fill="none" stroke="#C9CDD4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <div class="st"><div class="n" style="color:#1FAF5E" id="fAns">—</div><div class="l">נענו</div></div>
         <svg width="13" height="11" viewBox="0 0 14 12"><path d="M11 2L4 6l7 4" fill="none" stroke="#C9CDD4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <div class="st"><div class="n" style="color:#B8902F" id="fBuy">—</div><div class="l">הפכו לקונים</div></div>
+        <div class="st"><div class="n" style="color:#7A5E1C" id="fBuy">—</div><div class="l">הפכו לקונים</div></div>
       </div>
       <div class="vp" onclick="copyVp()" id="vpRow" style="display:none">
         <div class="r">
-          <svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#B8902F" stroke-width="1.7" stroke-linejoin="round"/></svg>
+          <svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#7A5E1C" stroke-width="1.7" stroke-linejoin="round"/></svg>
           <span class="num" id="vpNum"></span>
           <span class="sub">· המספר הווירטואלי</span>
         </div>
@@ -2080,19 +2081,19 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 
     <div id="list"><div class="card empty"><div class="s" style="padding:10px 0">טוען שיחות…</div></div></div>
     <div class="hiddenBar" id="hiddenBar" style="display:none">
-      <svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 2l12 12M6.7 6.8a2 2 0 0 0 2.6 2.6M4.4 4.5C3 5.4 2 6.6 1.5 8c1 2.8 3.5 4.5 6.5 4.5 1.1 0 2.1-.2 3-.6M7 3.6c.3 0 .7-.1 1-.1 3 0 5.5 1.7 6.5 4.5-.3.9-.8 1.7-1.5 2.4" fill="none" stroke="#8B8F99" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 2l12 12M6.7 6.8a2 2 0 0 0 2.6 2.6M4.4 4.5C3 5.4 2 6.6 1.5 8c1 2.8 3.5 4.5 6.5 4.5 1.1 0 2.1-.2 3-.6M7 3.6c.3 0 .7-.1 1-.1 3 0 5.5 1.7 6.5 4.5-.3.9-.8 1.7-1.5 2.4" fill="none" stroke="#6B7280" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span id="hiddenN"></span><b id="hiddenGo" onclick="toggleHidden()">הצג</b>
     </div>
   </main>
 
   <nav>
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg></div>שיחות</div>
-    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
-    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
-    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -2315,7 +2316,7 @@ function openWa(i){
 function showSummary(i){
   var c = el('list')._src[i];
   openSheet('<h3>סיכום חכם</h3>' +
-    '<div style="font-size:12px;color:#8B8F99">' + esc((c.caller || '') + ' · ' + (c.time || '')) + '</div>' +
+    '<div style="font-size:12px;color:#6B7280">' + esc((c.caller || '') + ' · ' + (c.time || '')) + '</div>' +
     '<div style="background:#fff;border-radius:13px;padding:13px 15px;font-size:13.5px;color:#1E3A5F;line-height:1.7">' + esc(c.summary) + '</div>' +
     (c.clientDetails ? '<div style="background:#F6EEDB;border-radius:13px;padding:13px 15px;font-size:13px;color:#5B6472;line-height:1.7">' + esc(c.clientDetails) + '</div>' : '') +
     '<button class="btn btn-blue" onclick="closeSheet();addBuyer(' + i + ')">הוסף כקונה</button>' +
@@ -2474,13 +2475,13 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .buyer.hot{border-color:#C29435}
   .buyer .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .buyer .nm{font-size:16.5px;font-weight:800;display:flex;align-items:center;gap:7px}
-  .buyer .tag{font-size:10.5px;font-weight:800;color:#fff;background:#C29435;padding:2px 8px;border-radius:999px}
-  .buyer .sb{font-size:12px;color:#8B8F99}
-  .buyer .bdg{font-size:11.5px;font-weight:700;color:#B8902F;background:#F6EEDB;padding:3px 9px;
+  .buyer .tag{font-size:10.5px;font-weight:800;color:#231700;background:#C29435;padding:2px 8px;border-radius:999px}
+  .buyer .sb{font-size:12px;color:#6B7280}
+  .buyer .bdg{font-size:11.5px;font-weight:700;color:#7A5E1C;background:#F6EEDB;padding:3px 9px;
       border-radius:999px;white-space:nowrap;cursor:pointer}
-  .buyer .req{font-size:11px;color:#8B8F99;text-align:left}
+  .buyer .req{font-size:11px;color:#6B7280;text-align:left}
   .ai{background:#F7F5EE;border-radius:13px;padding:10px 13px;display:flex;flex-direction:column;gap:4px}
-  .ai .t{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:#B8902F;letter-spacing:.05em}
+  .ai .t{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:#7A5E1C;letter-spacing:.05em}
   .ai .x{font-size:12.5px;color:#5B6472;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .acts{display:flex;gap:9px;align-items:center}
   .acts .main{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:12px;
@@ -2495,7 +2496,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
-      font-weight:600;color:#9AA0AB;cursor:pointer}
+      font-weight:600;color:#6E7683;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
@@ -2516,13 +2517,13 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .stChoice{display:flex;align-items:center;gap:9px;padding:12px 4px;font-size:14px;font-weight:700;cursor:pointer;min-height:44px}
   .stChoice .d{width:9px;height:9px;border-radius:50%}
   /* תוצאות התאמה */
-  .grpTitle{font-size:13px;font-weight:800;color:#B8902F;letter-spacing:.05em;padding:2px 2px 0}
+  .grpTitle{font-size:13px;font-weight:800;color:#7A5E1C;letter-spacing:.05em;padding:2px 2px 0}
   .prop{background:#fff;border-radius:18px;box-shadow:0 4px 14px rgba(30,58,95,.05);padding:13px 15px;
       display:flex;flex-direction:column;gap:8px;flex-shrink:0}
   .prop.shtaf{background:#F7F5EE;border:1.5px dashed #DCD6C8;box-shadow:none}
   .prop .r1{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .prop .ad{font-size:14.5px;font-weight:800}
-  .prop .dt{font-size:11.5px;color:#8B8F99;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .prop .dt{font-size:11.5px;color:#6B7280;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .prop .pr{font-size:15px;font-weight:800;white-space:nowrap}
   .prop .dxBtn{width:30px;height:30px;border-radius:9px;background:#F5F3EC;border:none;padding:0;
       display:flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center;cursor:pointer}
@@ -2532,15 +2533,15 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .prop.shtaf .dx{background:#F1EDE0}
   .score{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
   .score.hi{color:#157A43;background:#E7F7EE}
-  .score.md{color:#B8902F;background:#F6EEDB}
+  .score.md{color:#7A5E1C;background:#F6EEDB}
   .prop .acts2{display:flex;gap:8px}
   .prop .sel{flex:0 0 40px;width:40px;border-radius:12px;border:1.5px solid #DCD6C8;background:#fff;color:#C9C4B6;
       display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:40px}
-  .prop .sel.on{background:#1FAF5E;border-color:#1FAF5E;color:#fff}
-  .prop .a1{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#1FAF5E;color:#fff;
+  .prop .sel.on{background:#157A43;border-color:#157A43;color:#fff}
+  .prop .a1{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#157A43;color:#fff;
       border-radius:11px;padding:9px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
       box-shadow:0 4px 12px rgba(31,175,94,.25)}
-  .prop .a2{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#C29435;color:#fff;
+  .prop .a2{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#C29435;color:#231700;
       border-radius:11px;padding:9px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
       box-shadow:0 4px 12px rgba(194,148,53,.25)}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
@@ -2577,7 +2578,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
       </div>
       <div class="srchRow">
         <div class="srch">
-          <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
           <input id="q" placeholder="שם, טלפון או חיפוש חופשי (Enter לחיפוש חכם)" oninput="qChanged()"
                  onkeydown="if(event.key==='Enter')smartSearch()">
         </div>
@@ -2597,13 +2598,13 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   </main>
 
   <nav>
-    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg></div>קונים</div>
-    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
-    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -2675,7 +2676,7 @@ function smartSearch(){
 function renderSmart(){
   el('cnt').textContent = SMART.length;
   var h = '<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px 10px">' +
-    '<div style="font-size:13px;font-weight:800;color:#B8902F">חיפוש חכם · מהשיחות שנענו</div>' +
+    '<div style="font-size:13px;font-weight:800;color:#7A5E1C">חיפוש חכם · מהשיחות שנענו</div>' +
     '<div style="font-size:12.5px;font-weight:700;color:#2E6BD6;cursor:pointer" onclick="SMART=null;el(\'q\').value=\'\';render()">נקה חיפוש</div></div>';
   SMART.slice(0, 15).forEach(function(b, i){
     h += '<div class="buyer">' +
@@ -2773,7 +2774,7 @@ function render(){
       '<svg width="13" height="13" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
       'התאם</button>' +
       '<button class="sq" style="background:' + (hot ? '#C29435' : '#F6EEDB') + '" onclick="toggleHot(' + i + ')" aria-label="קונה חם">' +
-      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1.5c.4 2.2-.8 3.2-1.8 4.4C5 7.3 4.3 8.6 4.5 10.3c.3 2.3 2 3.9 3.7 4.2-.8-.9-1-2-.5-3 .4-.8 1.1-1.3 1.4-2.2 1 .8 1.7 2 1.5 3.3-.1.7-.4 1.3-.9 1.8 2-.5 3.6-2.2 3.8-4.5.2-3.2-2.3-4.6-3.1-6.9-.3-.6-.4-1.1-.4-1.5z" fill="' + (hot ? '#fff' : 'none') + '" stroke="' + (hot ? '#fff' : '#B8902F') + '" stroke-width="1.3" stroke-linejoin="round"/></svg></button>' +
+      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1.5c.4 2.2-.8 3.2-1.8 4.4C5 7.3 4.3 8.6 4.5 10.3c.3 2.3 2 3.9 3.7 4.2-.8-.9-1-2-.5-3 .4-.8 1.1-1.3 1.4-2.2 1 .8 1.7 2 1.5 3.3-.1.7-.4 1.3-.9 1.8 2-.5 3.6-2.2 3.8-4.5.2-3.2-2.3-4.6-3.1-6.9-.3-.6-.4-1.1-.4-1.5z" fill="' + (hot ? '#fff' : 'none') + '" stroke="' + (hot ? '#fff' : '#7A5E1C') + '" stroke-width="1.3" stroke-linejoin="round"/></svg></button>' +
       '<button class="sq" style="background:#F5F3EC" onclick="openEdit(' + i + ')" aria-label="עריכה">' +
       '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#5B6472" stroke-width="1.5" stroke-linejoin="round"/></svg></button>' +
       '<button class="sq" style="background:#E7F7EE" onclick="window.open(\'https://wa.me/' + esc(b.wa || '') + '\',\'_blank\')">' +
@@ -2803,7 +2804,7 @@ function pickStatus(i){
   var opts = ['active','hot','frozen','closed'].map(function(st){
     return '<div class="stChoice" onclick="setStatusIdx(' + i + ',\'' + st + '\')">' +
       '<div class="d" style="background:' + ST_COLOR[st] + '"></div>' + ST_LABEL[st] +
-      (st === cur ? ' <span style="color:#8B8F99;font-size:11px">· נוכחי</span>' : '') + '</div>';
+      (st === cur ? ' <span style="color:#6B7280;font-size:11px">· נוכחי</span>' : '') + '</div>';
   }).join('<div style="height:1px;background:#F0EDE3"></div>');
   openSheet('<h3>' + esc(b.name || 'קונה') + ' — סטטוס</h3>' + opts +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
@@ -2832,7 +2833,7 @@ function openEdit(i){
     '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button></div>' +
     '<div style="display:flex;gap:8px;align-items:flex-end">' +
     '<div class="fld" style="flex:1"><span>טלפון הקונה</span><input id="edPhone" type="tel" value="' + esc(b.phone || '') + '"></div>' +
-    (b.budget ? '<div style="background:#F6EEDB;border:1px solid #E4C56B;border-radius:10px;padding:10px 11px;font-size:12px;font-weight:700;color:#B8902F;white-space:nowrap">' + esc(b.budget) + '</div>' : '') +
+    (b.budget ? '<div style="background:#F6EEDB;border:1px solid #E4C56B;border-radius:10px;padding:10px 11px;font-size:12px;font-weight:700;color:#7A5E1C;white-space:nowrap">' + esc(b.budget) + '</div>' : '') +
     '</div>' +
     '<div class="fld"><span>סטטוס</span><div style="display:flex;gap:8px" id="edSt">' +
     ['active','hot','frozen','closed'].map(function(st){
@@ -2842,7 +2843,7 @@ function openEdit(i){
         ST_LABEL[st] + '</div>';
     }).join('') + '</div></div>' +
     '<div class="fld"><span>מה מחפש (דרישות) — זה הטקסט שמופיע בכרטיס ומשמש את ההתאמה</span><textarea id="edSearch" rows="3" placeholder="לדוגמה: 4 חדרים בקריות עד 1.5M, קומה נמוכה, מעלית">' + esc(b.search || '') + '</textarea></div>' +
-    '<div style="font-size:11px;color:#8B8F99;line-height:1.5">שם ותקציב נערכים בינתיים בגיליון — ייפתחו לעריכה מלאה עם המעבר ל-Supabase.</div>' +
+    '<div style="font-size:11px;color:#6B7280;line-height:1.5">שם ותקציב נערכים בינתיים בגיליון — ייפתחו לעריכה מלאה עם המעבר ל-Supabase.</div>' +
     '<button class="btn btn-blue" onclick="saveEdit(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
   el('sheet')._st = cur;
@@ -2964,14 +2965,14 @@ function matchProps(i){
   openSheet('<div style="display:flex;align-items:flex-start;gap:10px;position:sticky;top:-12px;z-index:2;' +
     'background:#F7F5EE;margin:0 -18px;padding:10px 18px 8px;box-shadow:0 8px 14px -10px rgba(30,58,95,.22)">' +
     '<div style="flex:1"><h3 style="margin:0">התאמת נכסים · ' + esc(b.name || '') + '</h3>' +
-    '<div style="font-size:12px;color:#8B8F99;margin-top:3px">מחפש: ' + esc(mq.q || '—') + '</div>' +
-    (mq.hasNeeds ? '' : '<div style="font-size:11.5px;color:#B8902F;font-weight:700;margin-top:2px">אין דרישות לקונה — ההתאמה לפי תקציב בלבד. הוסף "מה מחפש" בעריכת הקונה לדיוק</div>') +
+    '<div style="font-size:12px;color:#6B7280;margin-top:3px">מחפש: ' + esc(mq.q || '—') + '</div>' +
+    (mq.hasNeeds ? '' : '<div style="font-size:11.5px;color:#7A5E1C;font-weight:700;margin-top:2px">אין דרישות לקונה — ההתאמה לפי תקציב בלבד. הוסף "מה מחפש" בעריכת הקונה לדיוק</div>') +
     '</div>' +
     '<button onclick="closeSheet()" aria-label="סגירה" style="width:36px;height:36px;border-radius:50%;background:#F5F3EC;' +
     'border:none;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer">' +
     '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
     '<div id="mRes" style="display:flex;flex-direction:column;gap:10px">' +
-    '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:20px 0">מחפש התאמות…</div></div>' +
+    '<div style="text-align:center;color:#6B7280;font-size:13px;padding:20px 0">מחפש התאמות…</div></div>' +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
   Promise.all([
     POST('/api/search/properties', {q: mq.q, nosave: true}).catch(function(){ return {}; }),
@@ -3109,15 +3110,15 @@ function renderMatches(b, office, shtaf){
     sS.slice(0, 15).forEach(function(p){ h += propCard(p, b, true); });
   }
   if (oW.length || sW.length){
-    h += '<div class="grpTitle" style="color:#8B8F99">התאמות נוספות · ' + (oW.length + sW.length) + '</div>';
+    h += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + (oW.length + sW.length) + '</div>';
     oW.slice(0, 15).forEach(function(p){ h += propCard(p, b, false); });
     sW.slice(0, 10).forEach(function(p){ h += propCard(p, b, true); });
   }
   el('mRes').innerHTML = (h ||
-    '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:16px 0">' +
+    '<div style="text-align:center;color:#6B7280;font-size:13px;padding:16px 0">' +
     'לא נמצאו התאמות — נסה לעדכן את הדרישות של הקונה</div>') +
     '<div id="selBar" style="display:none;position:sticky;bottom:0;padding:8px 0">' +
-    '<button class="btn" style="background:#1FAF5E;color:#fff;box-shadow:0 4px 14px rgba(31,175,94,.3)" ' +
+    '<button class="btn" style="background:#157A43;color:#fff;box-shadow:0 4px 14px rgba(31,175,94,.3)" ' +
     'onclick="sendSelected()"><span id="selN"></span></button></div>';
   updateSelBar();
 }
@@ -3245,7 +3246,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     .live i{animation:pulseDot 2s infinite}
   }
   .ctaRow{display:flex;gap:10px}
-  .ctaRow .b1{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#C29435;color:#fff;
+  .ctaRow .b1{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#C29435;color:#231700;
       border-radius:14px;padding:13px 0;font-size:14px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
       box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .ctaRow .b2{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#fff;color:#1E3A5F;
@@ -3258,7 +3259,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       display:flex;flex-direction:column;gap:10px;margin-bottom:13px}
   .sig .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .sig .ad{font-size:15.5px;font-weight:700}
-  .sig .sb{font-size:12px;color:#8B8F99}
+  .sig .sb{font-size:12px;color:#6B7280}
   .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
   .chip.owner{color:#C24040;background:#FBEDED}
   .chip.buyer{color:#2E6BD6;background:#EAF0FA}
@@ -3266,7 +3267,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .st{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
   .st i{width:7px;height:7px;border-radius:50%;display:block;flex-shrink:0}
   .st.signed{color:#1FAF5E}.st.signed i{background:#1FAF5E}
-  .st.wait{color:#B8902F}.st.wait i{background:#C29435}
+  .st.wait{color:#7A5E1C}.st.wait i{background:#C29435}
   .acts{display:flex;gap:9px;align-items:center}
   .acts .a{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;
       padding:10px 0;font-size:13px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:40px}
@@ -3279,7 +3280,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
-      font-weight:600;color:#9AA0AB;cursor:pointer}
+      font-weight:600;color:#6E7683;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
@@ -3290,7 +3291,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   #sheet h3{font-size:19px;font-weight:800}
   .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
       font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px}
-  .btn-gold{background:#C29435;color:#fff;box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .btn-gold{background:#C29435;color:#231700;box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
       font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
@@ -3316,7 +3317,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="card">
       <div class="hd">
         <div class="tt">
-          <div class="ic"><svg width="16" height="16" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#B8902F" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
+          <div class="ic"><svg width="16" height="16" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#7A5E1C" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
           <h1>חתימות</h1>
         </div>
         <div class="live"><i></i><span id="weekN">—</span></div>
@@ -3338,13 +3339,13 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   </main>
 
   <nav>
-    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
-    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
-    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg></div>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -3459,7 +3460,7 @@ function render(){
       '<div class="st ' + (signed ? 'signed' : 'wait') + '"><i></i>' +
       (signed ? 'נחתם' : 'ממתין לחתימה') + (g.time ? ' · ' + esc(g.time) : '') +
       (signed && g.pct ? ' · עמלה ' + esc(String(g.pct)) + '%' : '') + '</div>' +
-      (g.avg ? '<div style="font-size:11px;color:#9AA0AB;margin-top:3px">ממוצע הנכסים שנצפו: ' +
+      (g.avg ? '<div style="font-size:11px;color:#6E7683;margin-top:3px">ממוצע הנכסים שנצפו: ' +
         esc(g.avg) + ' ₪' + (g.avg_n > 1 ? ' · ' + g.avg_n + ' נכסים' : '') + '</div>' : '') +
       (g.notes ? '<div style="margin-top:8px;font-size:12.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:8px 11px;line-height:1.5">הערה: ' + esc(g.notes) + '</div>' : '') +
       acts + '</div>';
@@ -3571,17 +3572,17 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .meetChip{display:flex;align-items:center;gap:6px;background:#EAF0FA;color:#2E6BD6;border-radius:999px;
       padding:5px 12px;font-size:12px;font-weight:700;border:0;cursor:pointer;font-family:inherit;align-self:flex-start}
   .ageHead{display:flex;align-items:center;justify-content:space-between}
-  .ageHead .l{font-size:11.5px;font-weight:700;color:#8B8F99}
-  .ageHead .r{font-size:11.5px;font-weight:700;color:#B8902F}
+  .ageHead .l{font-size:11.5px;font-weight:700;color:#6B7280}
+  .ageHead .r{font-size:11.5px;font-weight:700;color:#7A5E1C}
   .ages{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;
       mask-image:linear-gradient(to left, black 88%, transparent)}
   .ages::-webkit-scrollbar{display:none}
   .age{display:flex;flex-direction:column;align-items:center;background:#fff;border:1.5px solid #E9E4D8;
       border-radius:12px;padding:7px 14px;flex-shrink:0;cursor:pointer}
   .age .t{font-size:12.5px;font-weight:700;color:#1E3A5F}
-  .age .n{font-size:10.5px;font-weight:600;color:#9AA0AB}
+  .age .n{font-size:10.5px;font-weight:600;color:#6E7683}
   .age.on{background:#C29435;border-color:#C29435;box-shadow:0 4px 12px rgba(194,148,53,.25)}
-  .age.on .t,.age.on .n{color:#fff}
+  .age.on .t,.age.on .n{color:#231700}
   .srch{display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;
       border-radius:13px;padding:0 14px}
   .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
@@ -3590,15 +3591,15 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       display:flex;flex-direction:column;gap:9px;margin-bottom:12px}
   .nb .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .nb .ad{font-size:16px;font-weight:700;line-height:1.3}
-  .nb .dt{font-size:12.5px;color:#8B8F99}
+  .nb .dt{font-size:12.5px;color:#6B7280}
   .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
-  .chip.new{color:#B8902F;background:#F6EEDB}
-  .chip.age{color:#8B8F99;background:#F0EDE3}
+  .chip.new{color:#7A5E1C;background:#F6EEDB}
+  .chip.age{color:#6B7280;background:#F0EDE3}
   .nb .pr{font-size:21px;font-weight:800}
   .owner{display:flex;align-items:center;gap:10px;background:#F7F5EE;border-radius:12px;padding:9px 12px}
   .owner .ic{width:30px;height:30px;border-radius:50%;background:#EAF0FA;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .owner .nm{font-size:13.5px;font-weight:800}
-  .owner .sb{font-size:10.5px;color:#8B8F99}
+  .owner .sb{font-size:10.5px;color:#6B7280}
   .oActs{display:flex;gap:8px}
   .oActs .a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:11px;
       padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;text-decoration:none}
@@ -3611,9 +3612,9 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .stActs .s{display:flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #DCD6C8;
       border-radius:11px;padding:9px 0;font-size:11px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit}
   .stActs .s.red{color:#C24040}
-  .stActs .s.on{background:#C29435;border-color:#C29435;color:#fff;box-shadow:0 3px 10px rgba(194,148,53,.25)}
+  .stActs .s.on{background:#C29435;border-color:#C29435;color:#231700;box-shadow:0 3px 10px rgba(194,148,53,.25)}
   .stActs .s.red.on{background:#C24040;border-color:#C24040;color:#fff;box-shadow:0 3px 10px rgba(194,64,64,.25)}
-  .stLine{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#8B8F99}
+  .stLine{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#6B7280}
   .stLine i{width:6px;height:6px;border-radius:50%;background:#C29435;display:block;flex-shrink:0}
   .notes{font-size:11.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
   .more{display:flex;align-items:center;justify-content:center;padding:13px 0;font-size:13px;font-weight:700;
@@ -3626,10 +3627,10 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
-      font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
+      font-weight:600;color:#6E7683;cursor:pointer;position:relative}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
-  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#fff;font-size:10px;font-weight:800;
+  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#231700;font-size:10px;font-weight:800;
       padding:1px 8px;border-radius:999px;display:none}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
   #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
@@ -3643,13 +3644,13 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;resize:vertical}
   .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
       font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px}
-  .btn-gold{background:#C29435;color:#fff;box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .btn-gold{background:#C29435;color:#231700;box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .btn-blue{background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25)}
   .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
   .mRow{display:flex;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:11px 13px}
   .mRow .mid{flex:1;min-width:0}
   .mRow .t{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mRow .s{font-size:11.5px;color:#8B8F99}
+  .mRow .s{font-size:11.5px;color:#6B7280}
   .mRow .sq{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;
       flex-shrink:0;border:0;cursor:pointer;text-decoration:none}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
@@ -3687,7 +3688,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       <div class="ageHead"><span class="l">ותק בפרסום · גלול לצדדים</span><span class="r" id="ageSum"></span></div>
       <div class="ages" id="ages"></div>
       <div class="srch">
-        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input id="q" placeholder="רחוב, שכונה או בעל הנכס" oninput="NB_SHOWN=40;render();qClearBtn()">
         <button id="qClear" onclick="el('q').value='';qClearBtn();render()" aria-label="ניקוי חיפוש"
           style="display:none;width:26px;height:26px;border-radius:50%;background:#EBE8DD;border:none;flex-shrink:0;
@@ -3700,13 +3701,13 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   </main>
 
   <nav>
-    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
-    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
-    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
-    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" style="color:#1E3A5F;font-weight:700"><div class="home"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#fff"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg></div>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -3875,7 +3876,7 @@ function nbCard(r, i){
     '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' + fam + '</div>' + chip + '</div>' +
     '<div style="display:flex;align-items:center;justify-content:space-between">' +
     '<div class="pr">' + esc(fmtPrice(r.price)) + '</div>' +
-    '<div style="font-size:11.5px;color:#8B8F99">' + esc(r.date || '') + '</div></div>' +
+    '<div style="font-size:11.5px;color:#6B7280">' + esc(r.date || '') + '</div></div>' +
     owner + contacted +
     '<div class="stActs">' +
     '<button class="s' + (st && st.status === 'meeting' ? ' on' : '') + '" onclick="stDate(' + i + ',\'meeting\')">פגישה</button>' +
@@ -3950,7 +3951,7 @@ function stDate(i, status){
       '</select></div>'
     : '';
   openSheet('<h3>' + (status === 'meeting' ? 'קביעת פגישה' : 'קביעת פולו-אפ') + '</h3>' +
-    '<div style="font-size:12px;color:#8B8F99">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
+    '<div style="font-size:12px;color:#6B7280">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
     agSel +
     '<div class="fld"><span>מועד</span><div style="display:flex;gap:8px">' +
     '<input id="stDtD" type="date" style="flex:1.2;min-width:0;-webkit-appearance:none;appearance:none;display:block;min-height:44px;text-align:right">' +
@@ -3960,7 +3961,7 @@ function stDate(i, status){
     '<div class="fld"><span>הערה</span><textarea id="stNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)" ' +
     'style="background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:14px;' +
     'font-family:inherit;outline:none;color:#1E3A5F;width:100%;resize:vertical"></textarea></div>' +
-    '<div style="font-size:11.5px;color:#8B8F99">נשמר גם ביומן Google שלך (אם מחובר)</div>' +
+    '<div style="font-size:11.5px;color:#6B7280">נשמר גם ביומן Google שלך (אם מחובר)</div>' +
     '<button class="btn btn-gold" onclick="stSave(' + i + ',\'' + status + '\')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
@@ -4025,7 +4026,7 @@ function openMeetings(){
       '</div>';
   }).join('');
   openSheet('<h3>פגישות ופולו-אפ · ' + MEETS.length + '</h3>' +
-    (h || '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:16px 0">אין פגישות או פולו-אפים פתוחים</div>') +
+    (h || '<div style="text-align:center;color:#6B7280;font-size:13px;padding:16px 0">אין פגישות או פולו-אפים פתוחים</div>') +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
 }
 
@@ -4142,7 +4143,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       padding:6px 13px;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
   .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
   .segs .sg{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 0;
-      font-size:13px;font-weight:600;color:#8B8F99;border-radius:10px;cursor:pointer;white-space:nowrap}
+      font-size:13px;font-weight:600;color:#6B7280;border-radius:10px;cursor:pointer;white-space:nowrap}
   .segs .sg b{font-size:11px;font-weight:700}
   .segs .sg.on{color:#fff;font-weight:700;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
   .segs .sg.on b{background:rgba(255,255,255,.22);padding:1px 8px;border-radius:999px;font-weight:800}
@@ -4157,13 +4158,13 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .prop .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .prop .ad{font-size:15.5px;font-weight:700}
   .prop.shtaf .ad{color:#3D5273}
-  .prop .dt{font-size:12.5px;color:#8B8F99}
+  .prop .dt{font-size:12.5px;color:#6B7280}
   .prop .dt b{color:#1E3A5F}
   .chip{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
   .chip.office{color:#2E6BD6;background:#EAF0FA}
-  .chip.shtaf{color:#8B8F99;background:#EBE8DD}
-  .chip.mine{color:#B8902F;background:#F6EEDB}
-  .chip.pend{color:#B8902F;background:#F6EEDB;border:1px dashed #C29435}
+  .chip.shtaf{color:#6B7280;background:#EBE8DD}
+  .chip.mine{color:#7A5E1C;background:#F6EEDB}
+  .chip.pend{color:#7A5E1C;background:#F6EEDB;border:1px dashed #C29435}
   .reqRow{display:flex;gap:8px;margin-top:8px}
   .reqRow .rq{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;
       padding:10px 0;font-size:12.5px;font-weight:700;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F;
@@ -4187,7 +4188,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
-      font-weight:600;color:#9AA0AB;cursor:pointer}
+      font-weight:600;color:#6E7683;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
@@ -4244,7 +4245,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <div class="sg" data-m="mine" onclick="setMode(this)">שלי <b id="cMine"></b></div>
       </div>
       <div class="srch">
-        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input id="q" placeholder="דירת 4 חדרים בקרית ביאליק עד 2 מיליון" oninput="qChanged();qClearBtn()">
         <svg id="qSpin" width="16" height="16" viewBox="0 0 16 16" style="display:none;flex-shrink:0"><circle cx="8" cy="8" r="6" fill="none" stroke="#D8DEE9" stroke-width="2"/><path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="#2E6BD6" stroke-width="2" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="0.7s" repeatCount="indefinite"/></path></svg>
         <button id="qClear" onclick="el('q').value='';qClearBtn();qChanged()" aria-label="ניקוי חיפוש"
@@ -4252,19 +4253,19 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
           <svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <div style="font-size:11.5px;color:#8B8F99" id="sumLine"></div>
+      <div style="font-size:11.5px;color:#6B7280" id="sumLine"></div>
     </div>
     <div id="list"></div>
   </main>
 
   <nav>
-    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
-    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
-    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
-    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -4446,7 +4447,7 @@ function propCard(p, i){
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
     '<div style="display:flex;align-items:center;justify-content:space-between">' +
     '<div class="pr">' + esc(fmtPrice(p.price)) + '</div>' +
-    (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#B8902F') + '">' + p.score + '% התאמה</div>' : '') +
+    (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' + acts + hotRow + '</div>';
 }
 function setMode(node){
@@ -4479,9 +4480,9 @@ function propText(p){
 function matchBuyers(i){
   var p = el('list')._src[i];
   openSheet('<h3>קונים מתאימים</h3>' +
-    '<div style="font-size:12px;color:#8B8F99">' + esc([p.address || p.street, p.city].filter(Boolean).join(', ')) + '</div>' +
+    '<div style="font-size:12px;color:#6B7280">' + esc([p.address || p.street, p.city].filter(Boolean).join(', ')) + '</div>' +
     '<div id="bRes" style="display:flex;flex-direction:column;gap:10px">' +
-    '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:16px 0">מחפש בקונים השמורים…</div></div>' +
+    '<div style="text-align:center;color:#6B7280;font-size:13px;padding:16px 0">מחפש בקונים השמורים…</div></div>' +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
   // חיפוש בקונים השמורים בלבד (לא בשיחות) — בהיקף של המשתמש (סוכן=שלו)
   GET('/api/my/buyers').then(function(j){
@@ -4509,7 +4510,7 @@ function matchBuyers(i){
         (b.tel ? '<a class="tel" href="tel:' + esc(b.tel) + '">חייג</a>' : '') + '</div></div>';
     }).join('');
     el('bRes').innerHTML = h ||
-      '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:12px 0">אין קונים שמורים שמתאימים לנכס הזה</div>';
+      '<div style="text-align:center;color:#6B7280;font-size:13px;padding:12px 0">אין קונים שמורים שמתאימים לנכס הזה</div>';
   }).catch(function(){});
 }
 function propDetails(i){
@@ -4520,7 +4521,7 @@ function propDetails(i){
          p.agent].filter(Boolean).join(' · ')) + '</div>' +
     '<div style="font-size:22px;font-weight:800">' + esc(fmtPrice(p.price)) + '</div>' +
     (p.desc ? '<div style="background:#fff;border-radius:13px;padding:13px 15px;font-size:13px;color:#5B6472;line-height:1.7">' + esc(p.desc) + '</div>' : '') +
-    (p.wa ? '<a class="btn" style="background:#1FAF5E;color:#fff;text-decoration:none;box-shadow:0 4px 12px rgba(31,175,94,.25)" target="_blank" rel="noopener" href="https://wa.me/' + esc(p.wa) + '">וואטסאפ לסוכן המטפל</a>' : '') +
+    (p.wa ? '<a class="btn" style="background:#157A43;color:#fff;text-decoration:none;box-shadow:0 4px 12px rgba(31,175,94,.25)" target="_blank" rel="noopener" href="https://wa.me/' + esc(p.wa) + '">וואטסאפ לסוכן המטפל</a>' : '') +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
 }
 
@@ -4528,7 +4529,7 @@ function propDetails(i){
 function reqPrice(i){
   var p = el('list')._src[i]; if (!p) return;
   openSheet('<h3>עדכון מחיר</h3>' +
-    '<div style="font-size:12.5px;color:#8B8F99">' + esc([p.address, p.city].filter(Boolean).join(', ')) +
+    '<div style="font-size:12.5px;color:#6B7280">' + esc([p.address, p.city].filter(Boolean).join(', ')) +
     ' · מחיר נוכחי: ' + esc(fmtPrice(p.price)) + '</div>' +
     '<input id="npr" type="text" inputmode="numeric" placeholder="המחיר החדש" style="width:100%;padding:13px 14px;' +
     'border:1.5px solid #DCD6C8;border-radius:13px;font-size:15px;font-family:inherit;outline:none;background:#fff">' +
@@ -4664,14 +4665,14 @@ V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
       display:none;flex-direction:column;gap:8px}
   #propCard .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   #propCard .ad{font-size:15.5px;font-weight:800}
-  #propCard .dt{font-size:12.5px;color:#8B8F99}
+  #propCard .dt{font-size:12.5px;color:#6B7280}
   #propCard .x{width:30px;height:30px;border-radius:50%;background:#F5F3EC;display:flex;align-items:center;
       justify-content:center;border:0;cursor:pointer;flex-shrink:0}
   .feats{display:flex;gap:6px;flex-wrap:wrap}
   .feat{font-size:11px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:3px 9px;border-radius:999px}
   #propCard .pr{display:flex;align-items:baseline;gap:8px}
   #propCard .pr b{font-size:20px;font-weight:800}
-  #propCard .pr span{font-size:11.5px;color:#8B8F99}
+  #propCard .pr span{font-size:11.5px;color:#6B7280}
   #propCard .cta{display:flex;align-items:center;justify-content:center;background:#2E6BD6;color:#fff;
       border-radius:12px;padding:11px 0;font-size:13.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
       box-shadow:0 4px 12px rgba(46,107,214,.25)}
@@ -4690,7 +4691,7 @@ V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
         <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div class="srch">
-        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input id="q" placeholder="רחוב או עיר" oninput="qChanged()">
       </div>
     </div>
@@ -4890,7 +4891,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .hd .tt{display:flex;align-items:center;gap:10px}
   .hd .ic{width:36px;height:36px;border-radius:11px;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .hd h1{font-size:21px;font-weight:800}
-  .cnt{font-size:13px;font-weight:700;color:#B8902F;background:#F6EEDB;padding:4px 11px;border-radius:999px}
+  .cnt{font-size:13px;font-weight:700;color:#7A5E1C;background:#F6EEDB;padding:4px 11px;border-radius:999px}
   .ctaRow{display:flex;gap:10px}
   .ctaRow .b1{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#2E6BD6;color:#fff;
       border-radius:14px;padding:13px 0;font-size:14px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
@@ -4910,15 +4911,15 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .deal.closed{border-color:#1FAF5E}
   .deal .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .deal .ad{font-size:15.5px;font-weight:700}
-  .deal .sb{font-size:12.5px;color:#8B8F99}
+  .deal .sb{font-size:12.5px;color:#6B7280}
   .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
-  .chip.stage{color:#B8902F;background:#F6EEDB}
+  .chip.stage{color:#7A5E1C;background:#F6EEDB}
   .chip.open{color:#2E6BD6;background:#EAF0FA}
   .chip.closed{color:#1FAF5E;background:#E7F7EE}
   .deal .pr{font-size:20px;font-weight:800}
-  .deal .pr s{color:#9AA0AB;font-weight:600;font-size:14px;margin-right:8px}
+  .deal .pr s{color:#6E7683;font-weight:600;font-size:14px;margin-right:8px}
   .deal .acts{display:flex;gap:8px;align-items:center}
-  .deal .gold{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#C29435;color:#fff;
+  .deal .gold{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#C29435;color:#231700;
       border-radius:11px;padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
       box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .deal .sec{flex:1;display:flex;align-items:center;justify-content:center;background:#fff;color:#1E3A5F;
@@ -4932,7 +4933,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;
       padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
-      font-weight:600;color:#9AA0AB;cursor:pointer}
+      font-weight:600;color:#6E7683;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
@@ -4945,13 +4946,13 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   #sheet h3{font-size:19px;font-weight:800}
   .sec2{background:#fff;border-radius:18px;box-shadow:0 4px 14px rgba(30,58,95,.05);padding:14px 16px;
       display:flex;flex-direction:column;gap:11px}
-  .sec2 .st{font-size:12px;font-weight:800;color:#B8902F;letter-spacing:.06em}
+  .sec2 .st{font-size:12px;font-weight:800;color:#7A5E1C;letter-spacing:.06em}
   .fld{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}
   .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
   .fld input,.fld select{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:10px 13px;
       font-size:13.5px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;
       appearance:none;-webkit-appearance:none}
-  .fld input.gold{background:#F6EEDB;border-color:#E4C56B;color:#B8902F;font-size:15px;font-weight:800}
+  .fld input.gold{background:#F6EEDB;border-color:#E4C56B;color:#7A5E1C;font-size:15px;font-weight:800}
   .frow{display:flex;gap:9px}
   .btnMain{flex:1.6;display:flex;align-items:center;justify-content:center;background:#2E6BD6;color:#fff;
       border-radius:13px;padding:13px 0;font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
@@ -4984,9 +4985,9 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="card">
       <div class="hd">
         <div class="tt">
-          <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#B8902F" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#7A5E1C" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#7A5E1C" stroke-width="1.6" stroke-linecap="round"/></svg></div>
           <h1>תהליכים ועסקאות</h1>
-          <span style="font-size:11px;font-weight:700;color:#8B8F99;align-self:flex-start;margin-top:2px">בס"ד</span>
+          <span style="font-size:11px;font-weight:700;color:#6B7280;align-self:flex-start;margin-top:2px">בס"ד</span>
         </div>
         <div class="cnt" id="cnt">—</div>
       </div>
@@ -4998,7 +4999,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <button class="b2" onclick="openForm(null, true)">+ עסקה</button>
       </div>
       <div class="srch">
-        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input id="q" placeholder="כתובת, סוכן או עו&quot;ד" oninput="render()">
       </div>
       <div class="segs" id="filters">
@@ -5011,13 +5012,13 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   </main>
 
   <nav>
-    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
-    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
-    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
-    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -5144,7 +5145,7 @@ function dealCard(it, i){
   var acts = it.deal
     ? '<div class="acts"><button class="sec" onclick="openForm(' + i + ', true)">עריכה</button>' + trashBtn(i) + '</div>'
     : '<div class="acts"><button class="gold" onclick="openForm(' + i + ', true)">' +
-      '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg>' +
+      '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#231700" stroke-width="1.7" stroke-linejoin="round"/></svg>' +
       'נמכר ← עסקה</button>' +
       '<button class="sec" onclick="openForm(' + i + ', false)">עריכה</button>' + trashBtn(i) + '</div>';
   return '<div class="deal' + (it.deal ? ' closed' : '') + '">' +
@@ -5213,7 +5214,7 @@ function openForm(i, asDeal){
     (isDeal ?
       '<div class="sec2"><div class="st">פרטי הסגירה</div>' +
       '<div class="frow">' +
-      '<div class="fld"><span>מחיר מבוקש</span><input id="fPrice" inputmode="numeric" style="text-decoration:line-through;color:#9AA0AB" value="' + esc(nfmt(it.price)) + '" oninput="nfix(this)"></div>' +
+      '<div class="fld"><span>מחיר מבוקש</span><input id="fPrice" inputmode="numeric" style="text-decoration:line-through;color:#6E7683" value="' + esc(nfmt(it.price)) + '" oninput="nfix(this)"></div>' +
       '<div class="fld"><span>מחיר מכירה *</span><input id="fSale" class="gold" inputmode="numeric" value="' + esc(nfmt(it.sale_price || it.price || '')) + '" oninput="nfix(this);calcCom()"></div></div>' +
       '<div class="frow">' +
       '<div class="fld"><span>תאריך סגירה</span><input id="fDate" placeholder="ריק = היום" value="' + esc(it.close_date || '') + '"></div>' +
@@ -5244,12 +5245,12 @@ function openForm(i, asDeal){
       '<div class="fld"><span>עמלה סוכן 1 (2% + מע"מ — עיפרון לעריכה ידנית)</span>' +
       '<div class="comRow"><input id="fCom" readonly value="' + esc(it.commission || '') + '">' +
       '<button class="pencil" onclick="comEdit(\'fCom\')">' +
-      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
+      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#7A5E1C" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
       '</button></div></div>' +
       '<div class="fld" id="com2Wrap" style="display:none"><span>עמלה סוכן 2</span>' +
       '<div class="comRow"><input id="fCom2" readonly value="' + esc(it.commission2 || '') + '">' +
       '<button class="pencil" onclick="comEdit(\'fCom2\')">' +
-      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
+      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#7A5E1C" stroke-width="1.6" stroke-linejoin="round"/></svg>' +
       '</button></div></div>' : '') +
     '</div>' +
     '<div class="sec2"><div class="st">עו"ד · אופציונלי</div>' +
@@ -5410,7 +5411,7 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .hd .tt{display:flex;align-items:center;gap:10px}
   .hd .ic{width:36px;height:36px;border-radius:11px;background:#EAF0FA;display:flex;align-items:center;justify-content:center}
   .hd h1{font-size:21px;font-weight:800}
-  .scope{font-size:12px;color:#8B8F99}
+  .scope{font-size:12px;color:#6B7280}
   .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
   .segs .sg{flex:1;text-align:center;padding:7px 0;font-size:12px;font-weight:700;color:#5B6472;
       border-radius:10px;cursor:pointer;white-space:nowrap}
@@ -5418,18 +5419,18 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
   .kpi{background:#F7F5EE;border-radius:14px;padding:11px 6px;display:flex;flex-direction:column;align-items:center;gap:1px}
   .kpi .n{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
-  .kpi .l{font-size:10px;font-weight:600;color:#8B8F99;text-align:center}
-  .kpi .s{font-size:9.5px;color:#B8902F;font-weight:700}
+  .kpi .l{font-size:10px;font-weight:600;color:#6B7280;text-align:center}
+  .kpi .s{font-size:9.5px;color:#7A5E1C;font-weight:700}
   .secT{font-size:15.5px;font-weight:800}
   .chips{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
   .chips::-webkit-scrollbar{display:none}
   .lchip{flex-shrink:0;background:#F5F3EC;border:1.5px solid #E9E4D8;border-radius:999px;padding:7px 14px;
       font-size:12px;font-weight:700;color:#5B6472;cursor:pointer;font-family:inherit}
-  .lchip.on{background:#C29435;border-color:#C29435;color:#fff;box-shadow:0 3px 10px rgba(194,148,53,.25)}
+  .lchip.on{background:#C29435;border-color:#C29435;color:#231700;box-shadow:0 3px 10px rgba(194,148,53,.25)}
   .leadRow{display:flex;align-items:center;gap:11px;min-height:40px}
   .leadRow .rank{width:26px;height:26px;border-radius:50%;background:#F0EDE3;color:#5B6472;display:flex;
       align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
-  .leadRow.first .rank{background:#C29435;color:#fff}
+  .leadRow.first .rank{background:#C29435;color:#231700}
   .leadRow .nm{flex:1;font-size:13.5px;font-weight:700;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .leadRow .val{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
   .bar{height:6px;border-radius:999px;background:#F0EDE3;overflow:hidden;margin:2px 37px 6px 0}
@@ -5440,18 +5441,18 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .tRow{display:flex;align-items:center;justify-content:space-between;padding:7px 2px;font-size:13px}
   .tRow .n{font-weight:700}
   .tRow .v{font-weight:800;font-variant-numeric:tabular-nums}
-  .tRow.our .n{color:#B8902F}
+  .tRow.our .n{color:#7A5E1C}
   .sep{height:1px;background:#F0EDE3}
   .exports{display:flex;gap:9px}
   .exports .e{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:12px;
       padding:11px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
-  .exports .wa{background:#1FAF5E;color:#fff;box-shadow:0 4px 12px rgba(31,175,94,.25)}
+  .exports .wa{background:#157A43;color:#fff;box-shadow:0 4px 12px rgba(31,175,94,.25)}
   .exports .pdf{background:#1E3A5F;color:#fff;box-shadow:0 4px 12px rgba(30,58,95,.25)}
   .exports .cp{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;
       padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
-      font-weight:600;color:#9AA0AB;cursor:pointer}
+      font-weight:600;color:#6E7683;cursor:pointer}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
       font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
       pointer-events:none;z-index:80;white-space:nowrap}
@@ -5521,7 +5522,7 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
     </div>
     <div class="card" id="meetMgrCard" style="display:none">
       <div class="secT" id="meetMgrT">פגישות שתואמו · לפי מתאם</div>
-      <div style="font-size:11.5px;color:#8B8F99;line-height:1.5;margin:-4px 0 4px">פגישות בלבד (בלי פולו-אפ) — לפי מי שתיאם במערכת. הקש שם לראות את הנכסים.</div>
+      <div style="font-size:11.5px;color:#6B7280;line-height:1.5;margin:-4px 0 4px">פגישות בלבד (בלי פולו-אפ) — לפי מי שתיאם במערכת. הקש שם לראות את הנכסים.</div>
       <div id="meetMgrList"></div>
     </div>
     <div class="card" id="meetsCard" style="display:none">
@@ -5531,13 +5532,13 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   </main>
 
   <nav>
-    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
-    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
-    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
-    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
   <div id="toast"></div>
 
@@ -5619,7 +5620,7 @@ function dealsInRange(){
   });
 }
 function load(){
-  el('kpis').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#8B8F99;font-size:12.5px;padding:14px 0">טוען את הדוח…</div>';
+  el('kpis').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#6B7280;font-size:12.5px;padding:14px 0">טוען את הדוח…</div>';
   return Promise.all([
     GET('/api/report?period=' + PERIOD + (PERIOD === 'month' && MONTH ? '&month=' + MONTH : ''))
       .catch(function(){ return {}; }),
@@ -5635,7 +5636,7 @@ function kpi(n, l, sub, color){
     '<div class="l">' + l + '</div>' + (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
 }
 function render(){
-  if (!R || !R.ok){ el('kpis').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#8B8F99;font-size:12.5px;padding:14px 0">שגיאה בטעינת הדוח</div>'; return; }
+  if (!R || !R.ok){ el('kpis').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#6B7280;font-size:12.5px;padding:14px 0">שגיאה בטעינת הדוח</div>'; return; }
   var sm = R.summary || {}, c = sm.calls || {}, g = sm.sigs || {};
   el('scope').textContent = (R.label || '') + ' · ' + (R.scope || '');
   var dr = dealsInRange();
@@ -5643,10 +5644,10 @@ function render(){
     kpi(c.total || 0, 'שיחות') +
     kpi(c.answered || 0, 'נענו', (c.rate || 0) + '%', '#1FAF5E') +
     kpi(g.total || 0, 'חתימות') +
-    kpi(g.bladiut || 0, 'בלעדיות', '', '#B8902F') +
+    kpi(g.bladiut || 0, 'בלעדיות', '', '#7A5E1C') +
     kpi(dr.length, 'עסקאות בתקופה', '', '#1FAF5E') +
     kpi((R.meetings || []).length, 'פגישות ופולו-אפ') +
-    kpi(DEALS.filter(function(d){ return !d.deal; }).length, 'תהליכים פתוחים', 'לרגע זה', '#B8902F') +
+    kpi(DEALS.filter(function(d){ return !d.deal; }).length, 'תהליכים פתוחים', 'לרגע זה', '#7A5E1C') +
     kpi(DEALS.filter(function(d){
       if (!d.deal) return false;
       var cd = parseDMY(d.close_date);
@@ -5673,7 +5674,7 @@ function renderMeetMgr(){
         return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;font-size:12px;color:#5B6472;border-top:1px solid #F2EFE7">' +
           '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(it.addr || '—') +
           (it.agent && it.agent !== row.by ? ' · לסוכן ' + esc(it.agent) : '') + '</span>' +
-          '<span style="white-space:nowrap;color:#8B8F99">' + esc(when) + '</span></div>';
+          '<span style="white-space:nowrap;color:#6B7280">' + esc(when) + '</span></div>';
       }).join('') + '</div>') : '';
     return (i ? '<div class="sep"></div>' : '') +
       '<div class="tRow" style="cursor:pointer" onclick="MM_OPEN[' + JSON.stringify(row.by) + ']=!MM_OPEN[' + JSON.stringify(row.by) + '];renderMeetMgr()">' +
@@ -5712,16 +5713,16 @@ function renderLeaders(){
       r = pos > 0 ? {pos: pos, of: (R.top_deals || []).length} : null;
     }
     if (r && r.pos) rankLine = '<div style="background:#F6EEDB;border:1px solid #E4C56B;border-radius:12px;' +
-      'padding:9px 13px;font-size:13px;font-weight:800;color:#B8902F;margin-bottom:4px">' +
+      'padding:9px 13px;font-size:13px;font-weight:800;color:#7A5E1C;margin-bottom:4px">' +
       'הדירוג שלך: מקום ' + r.pos + (r.of ? ' מתוך ' + r.of : '') + '</div>';
   }
   el('leadList').innerHTML = rankLine + (shown.map(function(d, i){
     var mine = !IS_MGR && REP_NAME && d.n === REP_NAME;
-    return '<div class="leadRow' + (i === 0 ? ' first' : '') + '"' + (mine ? ' style="color:#B8902F"' : '') + '>' +
+    return '<div class="leadRow' + (i === 0 ? ' first' : '') + '"' + (mine ? ' style="color:#7A5E1C"' : '') + '>' +
       '<div class="rank">' + (i + 1) + '</div><div class="nm"' + (mine ? ' style="font-weight:800"' : '') + '>' + esc(d.n) + (mine ? ' · אתה' : '') + '</div>' +
       (IS_MGR ? '<div class="val">' + d.v + '</div>' : '') + '</div>' +
       (IS_MGR && i === 0 && max ? '<div class="bar"><i style="width:' + Math.round(d.v / max * 100) + '%"></i></div>' : '');
-  }).join('') || '<div style="font-size:12px;color:#8B8F99;padding:6px 0">אין נתונים בתקופה</div>');
+  }).join('') || '<div style="font-size:12px;color:#6B7280;padding:6px 0">אין נתונים בתקופה</div>');
   el('leadMore').style.display = data.length > 3 ? 'block' : 'none';
   el('leadMore').textContent = LEAD_ALL ? 'הצג פחות' : 'כל 10 המובילים';
   // פילוח עסקאות לפי צד — מתחת לצ'יפ עסקאות
@@ -5825,8 +5826,8 @@ V2_UPDATES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .hd .av{width:34px;height:34px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
       align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
   .hd .nm{font-size:13px;font-weight:800}
-  .hd .sb{font-size:11px;color:#8B8F99}
-  .pin{margin-right:auto;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#B8902F}
+  .hd .sb{font-size:11px;color:#6B7280}
+  .pin{margin-right:auto;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#7A5E1C}
   .body{font-size:13.5px;line-height:1.7;color:#1E3A5F;white-space:pre-wrap}
   .foot{display:flex;align-items:center;gap:8px}
   .ok{display:flex;align-items:center;justify-content:center;gap:6px;background:#2E6BD6;color:#fff;
@@ -6010,9 +6011,9 @@ V2_ACTIVITY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta char
   .row .av.login{background:#E7F7EE;color:#1FAF5E}
   .row .mid{flex:1;min-width:0}
   .row .a{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .row .d{font-size:11.5px;color:#8B8F99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .row .tm{font-size:11.5px;font-weight:700;color:#8B8F99;flex-shrink:0;font-variant-numeric:tabular-nums}
-  .empty{text-align:center;color:#8B8F99;font-size:13px;padding:24px 0}
+  .row .d{font-size:11.5px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .tm{font-size:11.5px;font-weight:700;color:#6B7280;flex-shrink:0;font-variant-numeric:tabular-nums}
+  .empty{text-align:center;color:#6B7280;font-size:13px;padding:24px 0}
   @media (min-width:700px){ header,main{width:100%;max-width:600px;margin-left:auto;margin-right:auto} }
 </style></head><body>
   <header>
@@ -6083,7 +6084,7 @@ function renderUsagePings(rows){
         '<div style="height:100%;width:' + Math.max(4, Math.round(r.min / mx * 100)) + '%;border-radius:999px;background:#2E6BD6"></div></div>' +
         '<div style="font-size:11.5px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.min) + '</div></div>';
     }).join('') +
-    '<div style="font-size:10.5px;color:#8B8F99;padding:8px 2px 2px">זמן פעיל אמיתי — נמדד לפי נוכחות באפליקציה (פעימה כל 45 שנ\')</div>';
+    '<div style="font-size:10.5px;color:#6B7280;padding:8px 2px 2px">זמן פעיל אמיתי — נמדד לפי נוכחות באפליקציה (פעימה כל 45 שנ\')</div>';
   return true;
 }
 function renderUsage(items){
@@ -6121,7 +6122,7 @@ function renderUsage(items){
         '<div style="height:100%;width:' + Math.max(4, Math.round(r.m / mx * 100)) + '%;border-radius:999px;background:#2E6BD6"></div></div>' +
         '<div style="font-size:11.5px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.m) + ' · ' + r.c + ' פעולות</div></div>';
     }).join('') +
-    '<div style="font-size:10.5px;color:#8B8F99;padding:8px 2px 2px">הערכה לפי יומן הפעילות — פעולות ברצף נספרות כסשן אחד</div>';
+    '<div style="font-size:10.5px;color:#6B7280;padding:8px 2px 2px">הערכה לפי יומן הפעילות — פעולות ברצף נספרות כסשן אחד</div>';
 }
 (function(){
   GET('/api/auth/whoami').then(function(j){
@@ -6147,14 +6148,14 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
   header .mid{display:flex;flex-direction:column;align-items:center}
   header .t{font-size:17px;font-weight:800}
-  header .s{font-size:11px;color:#8B8F99}
+  header .s{font-size:11px;color:#6B7280}
   main{flex:1;padding:0 16px 130px;display:flex;flex-direction:column;gap:11px;overflow:auto}
   .sec{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 16px;
       display:flex;flex-direction:column;gap:11px}
   .sec .hd{display:flex;align-items:center;gap:8px}
   .sec .ic{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .sec .tt{font-size:14px;font-weight:800}
-  .sec .note{font-size:11px;color:#8B8F99;margin-right:auto}
+  .sec .note{font-size:11px;color:#6B7280;margin-right:auto}
   .dRow{display:flex;align-items:center;justify-content:space-between;gap:8px}
   .dRow.off{opacity:.55}
   .dRow .r{display:flex;align-items:center;gap:9px;cursor:pointer}
@@ -6165,12 +6166,12 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .dRow .in{display:flex;align-items:center;gap:6px}
   .dRow input{width:56px;text-align:center;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;
       padding:8px 0;font-size:14px;font-weight:800;color:#1E3A5F;font-family:inherit;outline:none}
-  .dRow .un{font-size:12px;font-weight:600;color:#8B8F99}
+  .dRow .un{font-size:12px;font-weight:600;color:#6B7280}
   .dRow .unSel{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;padding:7px 6px;
       font-size:12px;font-weight:700;color:#5B6472;font-family:inherit;text-align:center}
   .moChip{border:1.5px solid #DCD6C8;background:#fff;color:#5B6472;border-radius:999px;padding:5px 11px;
       font-size:12px;font-weight:700;font-family:inherit;cursor:pointer}
-  .moChip.on{background:#C29435;border-color:#C29435;color:#fff}
+  .moChip.on{background:#C29435;border-color:#C29435;color:#231700}
   .fld{display:flex;flex-direction:column;gap:5px}
   .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
   .fld input{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:12px;padding:11px 13px;
@@ -6183,7 +6184,7 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .propRow{background:#F7F5EE;border-radius:12px;padding:10px 13px;display:flex;align-items:center;gap:8px}
   .propRow .mid2{flex:1;min-width:0}
   .propRow .a{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .propRow .p{font-size:11.5px;color:#8B8F99}
+  .propRow .p{font-size:11.5px;color:#6B7280}
   .propRow .x{width:28px;height:28px;border-radius:50%;background:#FBEDED;border:0;cursor:pointer;
       display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .pBtns{display:flex;gap:8px}
@@ -6205,7 +6206,7 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 18px);
       background:linear-gradient(to top, #F2EFE7 75%, transparent)}
   .cta button{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:#C29435;
-      color:#fff;border-radius:15px;padding:15px 0;font-size:15.5px;font-weight:800;border:0;cursor:pointer;
+      color:#231700;border-radius:15px;padding:15px 0;font-size:15.5px;font-weight:800;border:0;cursor:pointer;
       font-family:inherit;box-shadow:0 8px 22px rgba(194,148,53,.32)}
   .cta button:disabled{opacity:.6}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:50}
@@ -6217,7 +6218,7 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .pick{background:#fff;border-radius:13px;padding:11px 13px;display:flex;align-items:center;
       justify-content:space-between;gap:8px;cursor:pointer}
   .pick .a{font-size:13px;font-weight:700}
-  .pick .p{font-size:11.5px;color:#8B8F99}
+  .pick .p{font-size:11.5px;color:#6B7280}
   .btnSec{display:flex;align-items:center;justify-content:center;background:#fff;color:#5B6472;
       border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 0;font-size:14px;font-weight:700;
       cursor:pointer;font-family:inherit}
@@ -6241,7 +6242,7 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   <main>
     <div class="sec" id="secDeal">
       <div class="hd"><div class="ic" style="background:#F6EEDB">
-        <svg width="13" height="13" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+        <svg width="13" height="13" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#7A5E1C" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
         <span class="tt">סוג עסקה ועמלה</span></div>
       <div id="dealRows"></div>
     </div>
@@ -6261,7 +6262,7 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
 
     <div class="sec">
       <div class="hd"><div class="ic" style="background:#F6EEDB">
-        <svg width="13" height="13" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#B8902F" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+        <svg width="13" height="13" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#7A5E1C" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
         <span class="tt">פרטי הנכס</span><span class="note" id="propNote">אפשר יותר מנכס אחד</span></div>
       <div id="propList"></div>
       <div class="pBtns">
@@ -6374,7 +6375,7 @@ function renderProps(){
       (p.price ? '<div class="p">₪' + esc(p.price) + '</div>' : '') + '</div>' +
       '<button class="x" onclick="PROPS.splice(' + i + ',1);renderProps()">' +
       '<svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#C24040" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>';
-  }).join('') || '<div style="font-size:12px;color:#8B8F99">עוד לא נבחר נכס</div>';
+  }).join('') || '<div style="font-size:12px;color:#6B7280">עוד לא נבחר נכס</div>';
 }
 /* לקוחות שמורים — מהחתמות/קונים קודמים של הסוכן (פר-סוכן, מ-/api/my/buyers).
    הקלדת שם מציעה שם+טלפון; בחירה ממלאת. בקשת אייל 13/07 (ניתוב מ-React ל-v2 החי). */
@@ -6402,7 +6403,7 @@ function clSuggest(){
     return c.name.indexOf(q) >= 0 || (c.phone || '').indexOf(q) >= 0;
   }).slice(0, 6);
   box.innerHTML = CL_HITS.length
-    ? ('<div style="font-size:11px;font-weight:700;color:#8B8F99">לקוחות שמורים</div>' +
+    ? ('<div style="font-size:11px;font-weight:700;color:#6B7280">לקוחות שמורים</div>' +
        CL_HITS.map(function(c, i){
          return '<div class="pick" onclick="clPick(' + i + ')"><span class="a">' + esc(c.name) + '</span>' +
            '<span class="p">' + esc(c.phone || '') + '</span></div>';
@@ -6439,7 +6440,7 @@ function npSuggest(){
     var hint = [p.type, p.rooms ? p.rooms + " חד'" : ''].filter(Boolean).join(' · ');
     return '<div class="pick" onclick="npPick(' + i + ')">' +
       '<span class="a">' + esc(p.address) +
-      (hint ? ' <span style="color:#8B8F99;font-size:11px">' + esc(hint) + '</span>' : '') + '</span>' +
+      (hint ? ' <span style="color:#6B7280;font-size:11px">' + esc(hint) + '</span>' : '') + '</span>' +
       '<span class="p">' + esc(p.price ? '₪' + p.price : '') + '</span></div>';
   }).join('');
 }
@@ -6474,7 +6475,7 @@ function addPropGo(){
 }
 function pickProp(){
   openSheet('<h3>הנכסים שלי</h3><div id="pkList" style="display:flex;flex-direction:column;gap:8px">' +
-    '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:12px 0">טוען…</div></div>' +
+    '<div style="text-align:center;color:#6B7280;font-size:13px;padding:12px 0">טוען…</div></div>' +
     '<button class="btnSec" onclick="closeSheet()">ביטול</button>');
   GET('/api/sign/properties').then(function(j){
     var rows = (j && (j.properties || j.items || j.results)) || [];
@@ -6483,7 +6484,7 @@ function pickProp(){
       var price = String(p.price || '');
       return '<div class="pick" onclick=\'pickGo(' + JSON.stringify(JSON.stringify({a: addr, p: price})) + ')\'>' +
         '<span class="a">' + esc(addr) + '</span><span class="p">' + esc(price ? '₪' + price : '') + '</span></div>';
-    }).join('') || '<div style="text-align:center;color:#8B8F99;font-size:13px;padding:10px 0">אין מודעות משויכות אליך — הוסף נכס ידנית</div>';
+    }).join('') || '<div style="text-align:center;color:#6B7280;font-size:13px;padding:10px 0">אין מודעות משויכות אליך — הוסף נכס ידנית</div>';
   }).catch(function(){});
 }
 function pickGo(js){
@@ -6662,7 +6663,7 @@ function submitSign(){
               '<div style="font-size:40px">📲</div>' +
               '<div style="font-weight:800;font-size:18px;margin-top:6px">המסמך מוכן!</div>' +
               '<div style="color:#5B6472;font-size:14px;line-height:1.6;margin:8px 0 14px">' + _sln + '<br>אפשר לשלוח ללקוח גם בוואטסאפ מהמספר שלך:</div>' +
-              (_lk ? '<a href="' + _wurl + '" target="_blank" rel="noopener" style="display:block;box-sizing:border-box;width:100%;padding:15px;background:#1FAF5E;color:#fff;font-weight:800;border-radius:14px;text-decoration:none">שלח ללקוח בוואטסאפ</a>' : '') +
+              (_lk ? '<a href="' + _wurl + '" target="_blank" rel="noopener" style="display:block;box-sizing:border-box;width:100%;padding:15px;background:#157A43;color:#fff;font-weight:800;border-radius:14px;text-decoration:none">שלח ללקוח בוואטסאפ</a>' : '') +
               '<button style="width:100%;margin-top:10px;box-sizing:border-box;padding:15px;background:#fff;' +
               'border:1.5px solid #1E3A5F;border-radius:14px;color:#1E3A5F;font-size:15px;font-weight:800;' +
               'font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" ' +
@@ -6739,13 +6740,13 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .sg.on{color:#fff;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
   .sync{display:flex;align-items:center;gap:7px}
   .sync i{width:7px;height:7px;border-radius:50%;background:#1FAF5E;display:block}
-  .sync span{font-size:11.5px;font-weight:600;color:#8B8F99}
+  .sync span{font-size:11.5px;font-weight:600;color:#6B7280}
   .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:6px 15px;display:flex;flex-direction:column}
   .mt{display:flex;align-items:center;gap:11px;padding:11px 0}
   .mt + .mt{border-top:1px solid #F0EDE3}
   .mt .tile{width:40px;height:40px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .mt .tt{font-size:14px;font-weight:700;line-height:1.3}
-  .mt .sb{font-size:12px;color:#8B8F99;margin-top:1px}
+  .mt .sb{font-size:12px;color:#6B7280;margin-top:1px}
   .mt .when{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
   .mt .acts{display:flex;gap:6px;margin-top:6px}
   .mt .sq{width:32px;height:32px;border-radius:10px;border:none;display:flex;align-items:center;justify-content:center;
@@ -6754,22 +6755,22 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .late .mt + .mt{border-top:1px solid rgba(194,64,64,.12)}
   .late .tile{background:#fff}
   .late .sb{color:#C24040;font-weight:700}
-  .grpT{font-size:13px;font-weight:800;color:#B8902F;letter-spacing:.05em;padding:2px 2px 0}
+  .grpT{font-size:13px;font-weight:800;color:#7A5E1C;letter-spacing:.05em;padding:2px 2px 0}
   .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px;
       background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
-  .empty .s{font-size:12.5px;color:#8B8F99;line-height:1.5;max-width:280px}
+  .empty .s{font-size:12.5px;color:#6B7280;line-height:1.5;max-width:280px}
   .addB{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);left:18px;z-index:35;width:52px;height:52px;
       border-radius:50%;background:#2E6BD6;border:none;box-shadow:0 8px 20px rgba(46,107,214,.35);display:flex;
       align-items:center;justify-content:center;cursor:pointer}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
   nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
-      font-weight:600;color:#9AA0AB;cursor:pointer;position:relative}
+      font-weight:600;color:#6E7683;cursor:pointer;position:relative}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
-  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#fff;font-size:10px;font-weight:800;
+  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#231700;font-size:10px;font-weight:800;
       padding:1px 8px;border-radius:999px;display:none}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
   #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
@@ -6780,7 +6781,7 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   @media (min-width:700px){ #sheet{max-width:600px;margin-left:auto;margin-right:auto} }
   .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
       font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px}
-  .btn-gold{background:#C29435;color:#fff;box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  .btn-gold{background:#C29435;color:#231700;box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
   .fld2{display:flex;flex-direction:column;gap:5px;min-width:0}
   .fld2 span{font-size:11.5px;font-weight:700;color:#5B6472}
@@ -6830,13 +6831,13 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   </button>
 
   <nav>
-    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
-    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#9AA0AB" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
-    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
-    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#9AA0AB" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
     <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
-    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
-    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#9AA0AB" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#9AA0AB" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
+    <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
+    <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
   </nav>
 
   <div id="ovl" onclick="closeSheet()"></div>
@@ -6900,7 +6901,7 @@ function dayDiff(d){
 }
 
 var CAL_SVG = '<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg>';
-var FU_SVG = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 6.5a5 5 0 0 1 9-2M13 9.5a5 5 0 0 1-9 2" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.5v3h-3M4 14.5v-3h3" fill="none" stroke="#B8902F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var FU_SVG = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 6.5a5 5 0 0 1 9-2M13 9.5a5 5 0 0 1-9 2" fill="none" stroke="#7A5E1C" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.5v3h-3M4 14.5v-3h3" fill="none" stroke="#7A5E1C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var LATE_SVG = '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 6.5a5 5 0 0 1 9-2M13 9.5a5 5 0 0 1-9 2" fill="none" stroke="#C24040" stroke-width="1.6" stroke-linecap="round"/><path d="M12 1.5v3h-3M4 14.5v-3h3" fill="none" stroke="#C24040" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 // מי תיאם ולמי תואמה: כשמתאם≠סוכן היעד (מתאמת/מנהל תיאמו לסוכן) → מציגים שניהם.
@@ -6930,21 +6931,21 @@ function itemRow(m, i){
       '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#5B6472" stroke-width="1.6" stroke-linejoin="round"/></svg></button>' +
     (m.done
       ? '<button class="sq" style="background:#F0EDE3" onclick="undoneMeet(' + i + ')" aria-label="החזר לפעיל">' +
-        '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 8a4 4 0 1 1 1.2 2.8M4 8V5M4 8h3" fill="none" stroke="#8B8F99" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
+        '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 8a4 4 0 1 1 1.2 2.8M4 8V5M4 8h3" fill="none" stroke="#6B7280" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
       : '<button class="sq" style="background:#E7F7EE" onclick="doneMeet(' + i + ')" aria-label="בוצע">' +
         '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>') +
     '</div>';
   // תגית לפני/אחרי פגישה — צ'יפ קטן על הפולו-אפ
   var tagChip = (!meet && m.tag)
     ? '<span style="display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;margin-inline-start:6px;' +
-      (m.tag === 'before' ? 'background:#EAF0FA;color:#2E6BD6">לפני פגישה' : 'background:#F6EEDB;color:#B8902F">אחרי פגישה') + '</span>'
+      (m.tag === 'before' ? 'background:#EAF0FA;color:#2E6BD6">לפני פגישה' : 'background:#F6EEDB;color:#7A5E1C">אחרי פגישה') + '</span>'
     : '';
   return '<div class="mt"' + (m.done ? ' style="opacity:.72"' : '') + '>' +
     '<div class="tile" style="background:' + (m.done ? '#EFF6F0' : late ? '#fff' : meet ? '#EAF0FA' : '#F6EEDB') + '">' +
     (m.done ? '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : late ? LATE_SVG : meet ? CAL_SVG : FU_SVG) + '</div>' +
     '<div style="flex:1;min-width:0"><div class="tt">' + esc((m.label || (meet ? 'פגישה' : 'פולו-אפ')) + ': ' + (m.addr || '')) + tagChip + '</div>' +
     '<div class="sb">' + esc(sb) + '</div>' + acts + '</div>' +
-    (whenTx && !late ? '<div class="when" style="' + (meet ? 'color:#2E6BD6;background:#EAF0FA' : 'color:#B8902F;background:#F6EEDB') + '">' + esc(whenTx) + '</div>' : '') +
+    (whenTx && !late ? '<div class="when" style="' + (meet ? 'color:#2E6BD6;background:#EAF0FA' : 'color:#7A5E1C;background:#F6EEDB') + '">' + esc(whenTx) + '</div>' : '') +
     '</div>';
 }
 function render(){
@@ -7032,7 +7033,7 @@ function newMeet(){
     '<input id="nmDtD" type="date" style="flex:1.2">' +
     '<select id="nmDtT" style="flex:1">' + dt15Opts(dtNextQ()) + '</select></div></div>' +
     '<div class="fld2"><span>הערה</span><textarea id="nmNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)"></textarea></div>' +
-    '<div style="font-size:11.5px;color:#8B8F99">נשמר גם ביומן Google (אם מחובר)</div>' +
+    '<div style="font-size:11.5px;color:#6B7280">נשמר גם ביומן Google (אם מחובר)</div>' +
     '<button class="btn btn-gold" onclick="saveNewMeet()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
   el('sheet')._nst = 'meeting';
@@ -7090,7 +7091,7 @@ function editMeet(i){
     '<input id="emDtD" type="date" style="flex:1.2" value="' + dVal + '">' +
     '<select id="emDtT" style="flex:1">' + dt15Opts(tVal) + '</select></div></div>' +
     '<div class="fld2"><span>הערה</span><textarea id="emNote" rows="3" placeholder="הערה לפגישה (אופציונלי)">' + esc(m.note || '') + '</textarea></div>' +
-    '<div style="font-size:11.5px;color:#8B8F99">שינוי מועד מעדכן גם את האירוע ביומן Google</div>' +
+    '<div style="font-size:11.5px;color:#6B7280">שינוי מועד מעדכן גם את האירוע ביומן Google</div>' +
     '<button class="btn btn-gold" onclick="saveMeet(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
   el('sheet')._st = m.status;
@@ -7184,7 +7185,7 @@ V2_ONBOARD_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   @media (min-width:700px){ header,main{width:100%;max-width:600px;margin-left:auto;margin-right:auto} }
   main{flex:1;padding:4px 16px 40px;display:flex;flex-direction:column;gap:13px;overflow:auto;-webkit-overflow-scrolling:touch}
   h1{font-size:19px;font-weight:800}
-  .sub{font-size:12.5px;color:#8B8F99;line-height:1.6}
+  .sub{font-size:12.5px;color:#6B7280;line-height:1.6}
   .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 17px;
       display:flex;flex-direction:column;gap:2px}
   .card .tt{font-size:14.5px;font-weight:800;padding-bottom:6px}
@@ -7194,7 +7195,7 @@ V2_ONBOARD_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .dot.no{background:#C24040}
   .dot.info{background:#C29435}
   .row .nm{font-size:13.5px;font-weight:700}
-  .row .ds{font-size:11.5px;color:#8B8F99;line-height:1.55;margin-top:1px}
+  .row .ds{font-size:11.5px;color:#6B7280;line-height:1.55;margin-top:1px}
   .steps{background:#1E3A5F;border-radius:20px;padding:16px 18px;color:#fff;display:flex;flex-direction:column;gap:9px}
   .steps .tt{font-size:14.5px;font-weight:800;color:#E4C56B}
   .steps .st{display:flex;gap:10px;font-size:12.5px;line-height:1.55}
@@ -7319,7 +7320,7 @@ V2_DEV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
   main{padding:4px 16px;display:flex;flex-direction:column;gap:12px;max-width:640px;margin:0 auto}
   .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 16px}
   .card h2{font-size:15px;font-weight:800;margin-bottom:4px}
-  .card .sb{font-size:11.5px;color:#8B8F99;line-height:1.5;margin-bottom:10px}
+  .card .sb{font-size:11.5px;color:#6B7280;line-height:1.5;margin-bottom:10px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   input,select,textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:9px 12px;
         font-size:13px;font-family:inherit;color:#1E3A5F;outline:none}
@@ -7331,7 +7332,7 @@ V2_DEV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
         line-height:1.6;white-space:pre-wrap;word-break:break-word;display:none}
   .out.show{display:block}
   .tag{display:inline-block;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;margin:2px 3px 0 0}
-  .tag.sb{background:#E7F1FF;color:#2E6BD6}.tag.sh{background:#F6EEDB;color:#B8902F}
+  .tag.sb{background:#E7F1FF;color:#2E6BD6}.tag.sh{background:#F6EEDB;color:#7A5E1C}
   .tg{width:46px;height:27px;border-radius:999px;background:#D8D3C6;position:relative;cursor:pointer;flex-shrink:0;transition:.15s}
   .tg.on{background:#1FAF5E}.tg i{position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:.15s}
   .tg.on i{right:22px}
@@ -7379,7 +7380,7 @@ var MAIN = [
 function loadSources(){GET('/api/dev/sources').then(function(j){
   if(!j.ok){show('oSrc','שגיאה');return;}
   var t=Object.keys(j.flags).map(function(k){var sb=j.flags[k]==='supabase';return '<span class="tag '+(sb?'sb':'sh')+'">'+esc(k)+': '+(sb?'Supabase':'גיליון')+'</span>';}).join('');
-  show('oSrc', j.count+' על Supabase'+(j.all_on_supabase?' · הכל ✓':'')); el('oSrc').innerHTML=t+'<div style="margin-top:6px;color:#8B8F99">'+esc(j.count)+' על Supabase</div>';
+  show('oSrc', j.count+' על Supabase'+(j.all_on_supabase?' · הכל ✓':'')); el('oSrc').innerHTML=t+'<div style="margin-top:6px;color:#6B7280">'+esc(j.count)+' על Supabase</div>';
 });}
 function runDiag(){show('oDiag','בודק…');GET('/api/dev/diag').then(function(j){
   show('oDiag',(j.msg||'')+'\n\ngetconfig: '+(j.getconfig_ok?'✓':'✗')+' · כתיבה: '+(j.write_ok?'✓':'✗')+' · קריאה חוזרת: '+(j.readback_ok?'✓':'✗'));});}
@@ -7412,7 +7413,7 @@ function saveContract(){var t=el('cType').value;POST('/api/dev/contract',{type:t
 (function(){
   GET('/api/auth/whoami').then(function(j){
     if(!j.ok){location.replace('/v2');return;}
-    if(!j.dev){document.body.innerHTML='<div style="padding:60px 24px;text-align:center;color:#8B8F99;font-weight:700">כלי מפתח — למפתח בלבד</div>';return;}
+    if(!j.dev){document.body.innerHTML='<div style="padding:60px 24px;text-align:center;color:#6B7280;font-weight:700">כלי מפתח — למפתח בלבד</div>';return;}
     el('main').innerHTML=MAIN;
     loadSources();loadQuiet();loadNbDef();loadRp();loadContract();
   }).catch(function(){location.replace('/v2');});
