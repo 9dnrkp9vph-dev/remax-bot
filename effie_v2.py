@@ -7450,16 +7450,35 @@ tick(); setInterval(tick, 15000);
 
 var B = null, IDX = 0, TIMER = null;
 var DUR_SUM = 14000, DUR_HOT = 10000;   // קצב טלוויזיה — איטי מהטלפון
-function total(){ return 1 + ((B && B.hotProps) || []).length; }
+var GROUP = 6;   // כרטיס נתוני-המשרד חוזר כל 6 נכסים — מקבל זמן מסך קבוע גם כשהרשימה גדלה
 function q(v){ return (v == null || v === '' || isNaN(Number(v))) ? '…' : v; }
 
-function setBars(i){
-  var n = total(), h = '';
-  for (var k = 0; k < n; k++) h += '<i><b style="width:' + (k < i ? '100%' : '0') + '"></b></i>';
+/* פלייליסט בבלוקים: [סיכום, עד 6 נכסים, סיכום, 6 הבאים, ...] — בנוי לגדילה
+   (עוד סוכנים = עוד נכסים חמים; הסיכום תמיד מוצג, פסי ההתקדמות פר-בלוק). */
+function playlist(){
+  var hp = (B && B.hotProps) || [];
+  if (!hp.length) return [{t: 'sum'}];
+  var out = [];
+  for (var g = 0; g < hp.length; g += GROUP){
+    out.push({t: 'sum'});
+    for (var k = g; k < Math.min(g + GROUP, hp.length); k++) out.push({t: 'hot', hp: hp[k]});
+  }
+  return out;
+}
+function blockInfo(pl, i){   // גבולות הבלוק הנוכחי (מהסיכום האחרון עד הסיכום הבא)
+  var start = i;
+  while (start > 0 && pl[start].t !== 'sum') start--;
+  var end = start + 1;
+  while (end < pl.length && pl[end].t !== 'sum') end++;
+  return {pos: i - start, len: end - start};
+}
+function setBars(pl, i){
+  var bi = blockInfo(pl, i), h = '';
+  for (var k = 0; k < bi.len; k++) h += '<i><b style="width:' + (k < bi.pos ? '100%' : '0') + '"></b></i>';
   el('bars').innerHTML = h;
   requestAnimationFrame(function(){
-    var b = el('bars').querySelectorAll('i b')[i];
-    if (b){ b.style.transition = 'width ' + (i === 0 ? DUR_SUM : DUR_HOT) + 'ms linear'; b.style.width = '100%'; }
+    var b = el('bars').querySelectorAll('i b')[bi.pos];
+    if (b){ b.style.transition = 'width ' + (pl[i].t === 'sum' ? DUR_SUM : DUR_HOT) + 'ms linear'; b.style.width = '100%'; }
   });
 }
 function statCard(n, label, col){
