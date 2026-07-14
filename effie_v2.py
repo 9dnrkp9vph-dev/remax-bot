@@ -8205,6 +8205,21 @@ def register(app, G):
         pp = _last9(s.get("phone", ""))
         if not pp:
             return jsonify({"ok": False, "reason": "no_phone"}), 400
+        # הקטנה בשרת (לא סומכים על הקליינט): ריבוע ממורכז 256px, JPEG q82 → ~15-25KB לקובץ
+        try:
+            from PIL import Image as _PImg
+            import io as _io
+            im = _PImg.open(_io.BytesIO(raw)).convert("RGB")
+            side = min(im.size)
+            l, t = (im.width - side) // 2, (im.height - side) // 2
+            im = im.crop((l, t, l + side, t + side))
+            if side > 256:
+                im = im.resize((256, 256), _PImg.LANCZOS)
+            buf = _io.BytesIO()
+            im.save(buf, "JPEG", quality=82, optimize=True)
+            raw = buf.getvalue()
+        except Exception:
+            return jsonify({"ok": False, "reason": "bad_image"}), 400
         os.makedirs(_AV_DIR, exist_ok=True)
         with open(os.path.join(_AV_DIR, pp + ".jpg"), "wb") as f:
             f.write(raw)
