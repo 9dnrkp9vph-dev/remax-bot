@@ -7488,14 +7488,17 @@ function render(i){
   var c = el('card');
   c.classList.remove('fade'); void c.offsetWidth;   // ריסטרט אנימציית הכניסה
   c.classList.add('fade');
-  setBars(i);
   if (!B){
     c.innerHTML = '<div class="empty"><div class="t">טוען…</div></div>';
     clearTimeout(TIMER);
     TIMER = setTimeout(function(){ render(IDX); }, 1500);   // ניסיון חוזר — לא נתקעים על "טוען"
     return;
   }
-  if (i === 0){
+  var pl = playlist();
+  if (i >= pl.length){ i = 0; IDX = 0; }
+  setBars(pl, i);
+  var it = pl[i];
+  if (it.t === 'sum'){
     c.innerHTML =
       '<div><div class="greet">רימקס פמילי · המשרד מתחילת השנה</div></div>' +
       '<div class="grid">' +
@@ -7508,7 +7511,7 @@ function render(i){
         '<div class="r">🏆 <b>מקום 2</b> בעסקאות מתחילת השנה</div>' +
         '<div class="r">🥇 <b>מקום 4</b> בעמלות משרדים</div></div>';
   } else {
-    var hp = (B.hotProps || [])[i - 1] || {};
+    var hp = it.hp || {};
     var prNum = String(hp.price || '').replace(/[^0-9]/g, '');
     var prTxt = prNum ? '₪' + Number(prNum).toLocaleString() : esc(hp.price || '');
     var ini = esc((String(hp.agent || '?').trim().charAt(0)) || '?');
@@ -7529,9 +7532,9 @@ function render(i){
   }
   clearTimeout(TIMER);
   TIMER = setTimeout(function(){
-    IDX = (IDX + 1) % total();   // לופ אינסופי
+    IDX = (IDX + 1) % playlist().length;   // לופ אינסופי; רשימה שגדלה נקלטת בסיבוב הבא
     render(IDX);
-  }, i === 0 ? DUR_SUM : DUR_HOT);
+  }, it.t === 'sum' ? DUR_SUM : DUR_HOT);
 }
 function load(){
   GET('/v2/api/brief').then(function(j){
@@ -7542,7 +7545,7 @@ function load(){
     var first = (B === null);
     B = j;
     el('foot').textContent = 'נכסים חמים · מתעדכן אוטומטית';
-    if (IDX >= total()) IDX = 0;
+    if (IDX >= playlist().length) IDX = 0;
     if (first) render(IDX);   // הדאטה הראשון הגיע — מציירים מיד (היה נתקע על "טוען")
   }).catch(function(){});
 }
