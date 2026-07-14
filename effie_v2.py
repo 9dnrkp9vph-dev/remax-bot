@@ -7378,7 +7378,9 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   body{font-family:'Heebo',sans-serif;background:radial-gradient(120% 120% at 50% 0%, #23446B 0%, #0E1D33 62%);
        color:#fff;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
   header{display:flex;align-items:center;justify-content:space-between;padding:28px 46px 0}
-  header img{height:52px;object-fit:contain;filter:drop-shadow(0 2px 10px rgba(0,0,0,.35))}
+  /* לוגו לבן ובולט על הרקע הכהה: brightness(0) הופך הכל לשחור, invert(1) הופך ללבן */
+  header img{height:84px;object-fit:contain;
+       filter:brightness(0) invert(1) drop-shadow(0 4px 18px rgba(0,0,0,.45))}
   .clock{font-size:26px;font-weight:700;color:rgba(255,255,255,.85);font-variant-numeric:tabular-nums}
   .bars{display:flex;gap:7px;padding:20px 46px 0}
   .bars i{flex:1;height:5px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden;display:block}
@@ -7470,6 +7472,8 @@ function render(i){
   setBars(i);
   if (!B){
     c.innerHTML = '<div class="empty"><div class="t">טוען…</div></div>';
+    clearTimeout(TIMER);
+    TIMER = setTimeout(function(){ render(IDX); }, 1500);   // ניסיון חוזר — לא נתקעים על "טוען"
     return;
   }
   if (i === 0){
@@ -7516,11 +7520,11 @@ function load(){
       if (j && j.auth === false) location.replace('/v2');
       return;
     }
-    var hadCards = total();
+    var first = (B === null);
     B = j;
     el('foot').textContent = 'נכסים חמים · מתעדכן אוטומטית';
     if (IDX >= total()) IDX = 0;
-    if (hadCards !== total()) setBars(IDX);
+    if (first) render(IDX);   // הדאטה הראשון הגיע — מציירים מיד (היה נתקע על "טוען")
   }).catch(function(){});
 }
 load();
