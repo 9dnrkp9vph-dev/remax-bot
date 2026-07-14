@@ -6065,10 +6065,8 @@ function load(){
       return;
     }
     var items = j.items || [];
-    // דשבורד "זמן היום" — זמן פעיל אמיתי מפעימות (usage_pings); נפילה להערכה מיומן הפעולות אם אין פעימות עדיין
-    GET('/v2/api/usage_today').then(function(u){
-      if (!(u && u.ok && renderUsagePings(u.rows))) renderUsage(j.today || items);
-    }).catch(function(){ renderUsage(j.today || items); });
+    // דשבורד זמן-שימוש — זמן פעיל אמיתי מפעימות (usage_pings); נפילה להערכה מיומן הפעולות אם אין פעימות עדיין
+    loadUsage(j.today || items);
     el('list').innerHTML = items.slice(0, 120).map(function(it){
       var isLogin = (it.action || '').indexOf('כניסה') >= 0;
       return '<div class="row"><div class="av' + (isLogin ? ' login' : '') + '">' + esc((it.name || ' ')[0]) + '</div>' +
@@ -6083,21 +6081,50 @@ function fmtMin(m){
   if (m >= 60) return Math.floor(m / 60) + ' ש\'' + (m % 60 ? ' ' + (m % 60) + ' דק\'' : '');
   return m + ' דק\'';
 }
+/* טווח הדשבורד: 'today' = מהחצות · 'week' = 7 ימים אחרונים בלי שישי-שבת (בקשת אייל 14/07) */
+var USAGE_MODE = 'today';
+try{ USAGE_MODE = localStorage.getItem('v2st:usage') || 'today'; }catch(e){}
+var _usageFallback = [];
+function loadUsage(fallbackItems){
+  if (fallbackItems) _usageFallback = fallbackItems;
+  var qp = USAGE_MODE === 'week' ? '?days=7&noweekend=1' : '';
+  GET('/v2/api/usage_today' + qp).then(function(u){
+    if (!(u && u.ok && renderUsagePings(u.rows))) renderUsage(_usageFallback);
+  }).catch(function(){ renderUsage(_usageFallback); });
+}
+function setUsageMode(m){
+  USAGE_MODE = m;
+  try{ localStorage.setItem('v2st:usage', m); }catch(e){}
+  loadUsage();
+}
+function usageChips(){
+  function c(m, lb){
+    return '<button onclick="setUsageMode(\'' + m + '\')" style="border-radius:999px;padding:5px 12px;font-size:11.5px;' +
+      'font-weight:700;font-family:inherit;cursor:pointer;border:1.5px solid ' +
+      (USAGE_MODE === m ? '#2E6BD6;background:#EAF0FA;color:#2E6BD6' : '#DCD6C8;background:#fff;color:#5B6472') + '">' + lb + '</button>';
+  }
+  return '<div style="display:flex;gap:6px">' + c('today', 'היום') + c('week', "7 ימים · א'-ה'") + '</div>';
+}
 function renderUsagePings(rows){
   if (!rows || !rows.length) return false;   // אין פעימות עדיין → הקורא ייפול להערכה
   rows.sort(function(a, b){ return b.min - a.min; });
   var mx = rows[0].min || 1;
+  var week = USAGE_MODE === 'week';
   el('useDash').style.display = 'block';
   el('useDash').innerHTML =
-    '<div style="font-size:14.5px;font-weight:800;padding:2px 2px 10px">זמן באפליקציה היום</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 2px 10px">' +
+    '<div style="font-size:14.5px;font-weight:800">' + (week ? "זמן באפליקציה · 7 ימים (בלי שישי-שבת)" : 'זמן באפליקציה היום') + '</div>' +
+    usageChips() + '</div>' +
     rows.slice(0, 40).map(function(r){
       return '<div style="display:flex;align-items:center;gap:10px;padding:5px 2px">' +
         '<div style="width:92px;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.name) + '</div>' +
         '<div style="flex:1;height:9px;border-radius:999px;background:#F0EDE3;overflow:hidden">' +
         '<div style="height:100%;width:' + Math.max(4, Math.round(r.min / mx * 100)) + '%;border-radius:999px;background:#2E6BD6"></div></div>' +
-        '<div style="font-size:11.5px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.min) + '</div></div>';
+        '<div style="font-size:11.5px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.min) +
+        (week && r.days ? ' · ' + r.days + ' ימים' : '') + '</div></div>';
     }).join('') +
-    '<div style="font-size:10.5px;color:#6B7280;padding:8px 2px 2px">זמן פעיל אמיתי — נמדד לפי נוכחות באפליקציה (פעימה כל 45 שנ\')</div>';
+    '<div style="font-size:10.5px;color:#6B7280;padding:8px 2px 2px">זמן פעיל אמיתי — נמדד לפי נוכחות באפליקציה (פעימה כל 45 שנ\')' +
+    (week ? ' · ממוצע יומי = הזמן חלקי מספר הימים' : '') + '</div>';
   return true;
 }
 function renderUsage(items){
@@ -8249,33 +8276,45 @@ def register(app, G):
 
     @app.route("/v2/api/usage_today", methods=["GET"])
     def v2_api_usage_today():
-        """זמן-פעיל אמיתי לכל סוכן היום — מחושב מפעימות usage_pings (00:00 שעון ישראל). מנהל בלבד."""
+        """זמן-פעיל אמיתי לכל סוכן — מפעימות usage_pings. מנהל בלבד.
+        ברירת מחדל: היום (00:00 שעון ישראל). ?days=7 → 7 הימים האחרונים;
+        ?noweekend=1 → בלי שישי-שבת (בקשת אייל 14/07). מחזיר גם days=ימי-פעילות פר סוכן."""
         s = _dev_guard()
         if not s:
             return jsonify({"ok": False, "reason": "forbidden"}), 403
         _sb = _sb_mod()
         if not _sb:
             return jsonify({"ok": True, "rows": []})
+        try:
+            n_days = max(1, min(31, int(request.args.get("days", "1"))))
+        except Exception:
+            n_days = 1
+        no_weekend = request.args.get("noweekend") == "1"
         import datetime as _dt2
         try:
             from zoneinfo import ZoneInfo
-            _mid = _dt2.datetime.now(ZoneInfo("Asia/Jerusalem")).replace(hour=0, minute=0, second=0, microsecond=0)
+            _tz = ZoneInfo("Asia/Jerusalem")
         except Exception:
-            _mid = _dt2.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        pings = _sb.fetch_pings_today(_mid.isoformat())
+            _tz = _dt2.timezone(_dt2.timedelta(hours=3))
+        _mid = _dt2.datetime.now(_tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        _from = _mid - _dt2.timedelta(days=n_days - 1)
+        pings = _sb.fetch_pings_today(_from.isoformat())
         by = {}
         for p in pings:
             ph = str(p.get("phone", "") or "")
             if not ph:
                 continue
-            d = by.setdefault(ph, {"name": "", "ts": []})
+            try:
+                dt = _dt2.datetime.fromisoformat(str(p.get("ts", "")).replace("Z", "+00:00")).astimezone(_tz)
+            except Exception:
+                continue
+            if no_weekend and dt.weekday() in (4, 5):   # שישי=4, שבת=5
+                continue
+            d = by.setdefault(ph, {"name": "", "ts": [], "days": set()})
             if p.get("name"):
                 d["name"] = p.get("name")
-            try:
-                ep = _dt2.datetime.fromisoformat(str(p.get("ts", "")).replace("Z", "+00:00")).timestamp()
-                d["ts"].append(ep)
-            except Exception:
-                pass
+            d["ts"].append(dt.timestamp())
+            d["days"].add(dt.date().isoformat())
         rows = []
         for ph, d in by.items():
             ts = sorted(d["ts"])
@@ -8290,7 +8329,8 @@ def register(app, G):
                         start = ts[i]
                 if i < len(ts):
                     prev = ts[i]
-            rows.append({"name": d["name"] or ph, "min": int(round(mins)), "pings": len(ts)})
+            rows.append({"name": d["name"] or ph, "min": int(round(mins)),
+                         "pings": len(ts), "days": len(d["days"])})
         rows.sort(key=lambda x: -x["min"])
         return jsonify({"ok": True, "rows": rows})
 
