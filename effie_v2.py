@@ -836,6 +836,11 @@ function greetWord(){
   var h = new Date().getHours();
   return (h < 5) ? 'לילה טוב' : (h < 12) ? 'בוקר טוב' : (h < 18) ? 'צהריים טובים' : 'ערב טוב';
 }
+/* [ENTRY-4] פנייה אישית — שם פרטי בלבד בברכה ("בוקר טוב, אייל" במקום השם המלא) */
+function firstName(n){
+  n = String(n || '').trim();
+  return n.split(/\s+/)[0] || n;
+}
 function todayStr(){
   var d = new Date();
   return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
@@ -957,11 +962,22 @@ function renderDash(){
 /* ── הסטורי ── */
 var STORY = {open:false, i:0, timer:null, DUR:6000};
 var B = {buyersMe:null, buyersAll:null, sigBMe:null, sigBAll:null, exclMe:null, exclAll:null};
-GET('/v2/api/brief').then(function(j){
-  if (!j.ok) return;
-  B = j;
+/* [ENTRY-2] מספרי אתמול מיד (stale-while-revalidate): הבריף נפתח "מלא" מהקאש
+   המקומי, והמספרים הטריים מחליפים ברקע — במקום "…" של 6-8 שניות. */
+try{
+  var _bc = JSON.parse(localStorage.getItem('v2c:brief') || 'null');
+  if (_bc && _bc.ok){ B = _bc; B._cached = true; }
+}catch(e){}
+function briefTitleSync(){
   var np = (B.hotProps || []).length;
   var bt = el('briefTitle'); if (bt) bt.textContent = 'סטורי נכסים חמים' + (np ? ' · ' + np + (np === 1 ? ' נכס' : ' נכסים') : '');
+}
+briefTitleSync();
+GET('/v2/api/brief').then(function(j){
+  if (!j.ok) return;
+  B = j; B._loaded = true;
+  try{ localStorage.setItem('v2c:brief', JSON.stringify(j)); }catch(e){}
+  briefTitleSync();
   if (STORY.open && STORY.i === 0) renderCard(0);
 }).catch(function(){});
 function seenKey(){ return 'v2BriefSeen'; }
@@ -1008,9 +1024,12 @@ function renderCard(i){
   STORY.paused = false;
   el('storyHint').textContent = 'הקש להמשך · החלק למטה לסגירה';
   setBars(i);
+  // [ENTRY-5] מונה הכרטיסים מוצג רק כשמספרם ידוע — בלי הקפיצה "1 מתוך 1"→"1 מתוך 18"
   el('storyDate').textContent = 'יום ' + HDAYS[new Date().getDay()] + ', ' + new Date().getDate() +
-      ' ב' + HMON[new Date().getMonth()] + ' · ' + (i + 1) + ' מתוך ' + total();
-  var b = el('storyBody'), q = function(v){ return M.ready ? v : '…'; };
+      ' ב' + HMON[new Date().getMonth()] +
+      ((B._loaded || B._cached) ? ' · ' + (i + 1) + ' מתוך ' + total() : '');
+  // [ENTRY-1] מונה מציג "…" עד שיש מספר אמיתי — בלי null/undefined על המסך
+  var b = el('storyBody'), q = function(v){ return (v == null || v === '' || isNaN(Number(v))) ? '…' : v; };
   var timeAgo = function(iso){ try{ var s=(Date.now()-new Date(iso).getTime())/1000;
     if(s<3600) return 'לפני '+Math.max(1,Math.round(s/60))+' דק׳';
     if(s<86400) return 'לפני '+Math.round(s/3600)+' שעות'; return 'לפני '+Math.round(s/86400)+' ימים'; }catch(e){ return ''; } };
@@ -1029,7 +1048,7 @@ function renderCard(i){
     var usrSvg = '<svg width="15" height="15" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#E4C56B" stroke-width="1.7"></circle><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#E4C56B" stroke-width="1.7" stroke-linecap="round"></path></svg>';
     b.innerHTML =
       '<div style="display:flex;flex-direction:column;gap:2px;margin-bottom:2px">'+
-        '<div style="font-size:12px;font-weight:700;color:#E4C56B;letter-spacing:.12em">'+greetWord()+', '+esc(M.name)+'</div>'+
+        '<div style="font-size:12px;font-weight:700;color:#E4C56B;letter-spacing:.12em">'+greetWord()+', '+esc(firstName(M.name))+'</div>'+
         '<div style="font-size:21px;font-weight:800;color:#fff">המשרד מתחילת השנה</div></div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'+
         statCard(q(B.dealsYear), 'עסקאות', '#5FD08C')+
@@ -1131,7 +1150,7 @@ el('story').addEventListener('touchmove', function(e){
     ME = {phone: j.phone || '', name: j.name || '',
           role: j.dev ? 'בעל המשרד' : (j.role === 'admin') ? 'מנהל' : (j.role === 'coordinator') ? 'מתאמת' : 'סוכן'};
     setHeaderAvatar();
-    el('greetTx').textContent = greetWord() + ', ' + M.name;
+    el('greetTx').textContent = greetWord() + ', ' + firstName(M.name);
     el('avatarTx').textContent = M.name ? M.name.trim()[0] : '';
     el('menuAv').textContent = el('avatarTx').textContent;
     el('menuNm').textContent = M.name;
