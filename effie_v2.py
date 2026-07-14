@@ -6611,9 +6611,18 @@ function submitSign(){
       return {deal_type: pk[1], title: (cons[i] && cons[i].title) || '', body: _b};
     });
     var addr = PROPS.map(function(p){ return p.addr; }).join(PROPS.length > 1 ? ' | ' : '');
-    var header = 'פרטי הלקוח: ' + cname + (cid ? ' · ת"ז ' + cid : '') + ' · ' + cphone +
-      ' | סוכן: ' + AGENT + ' · ' + todayStr() +
-      ' | נכס: ' + PROPS.map(function(p){ return p.addr + (p.price ? ' (₪' + p.price + ')' : ''); }).join(' | ');
+    /* ⚠️ הפורמט חייב להיות זהה ל-sgBuildHeader של הקונסולה הישנה — העמוד הציבורי
+       (/s/<token>) מפרק את הכותרת לפי שורות (תאריך:/לקוח:/נכס:) ובונה ממנה את
+       טבלת "פרטי הנכס" ושורת הלקוח. הפורמט הישן של v2 (שורה אחת עם |) גרם
+       להסכם בלי פרטי הנכס (תקלת אייל 14/07). */
+    var propsLine = PROPS.length > 1
+      ? 'נכסים:\n' + PROPS.map(function(p, k){
+          return '  ' + (k + 1) + '. ' + p.addr + (p.price ? ' — ' + p.price + ' ₪' : '');
+        }).join('\n')
+      : 'נכס: ' + (PROPS[0].addr || '—') + (PROPS[0].price ? ' · מחיר מבוקש: ' + PROPS[0].price + ' ₪' : '');
+    var header = 'תאריך: ' + todayStr() + ' · המתווך/הסוכן: ' + AGENT + '\n' +
+      'לקוח: ' + cname + (cphone ? " · טל' " + cphone : '') + (cid ? ' · ת״ז ' + cid : '') + '\n' +
+      propsLine;
     var done = function(j, txt){
       BUSY = false; el('go').disabled = false;
       el('go').textContent = el('go').dataset.t || el('go').textContent;
