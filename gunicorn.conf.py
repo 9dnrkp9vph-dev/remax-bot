@@ -13,7 +13,10 @@ keepalive = 5
 
 # מודל threading במקום sync - שמאפשר עיבוד מקבילי תקין
 worker_class = "gthread"
-threads = 4
+# [PERF-5] 4→8: העבודה כמעט כולה I/O (Apps Script/Supabase). ב-4 threads בקשה כבדה
+# אחת (דוח/parity) חסמה את המשרד. ה-caches גלובליים (משותפים) — לא מכפיל זיכרון.
+# להחזרה: threads = 4.
+threads = 8
 workers = 1  # worker אחד עם כמה threads - מתאים לחינמי של Render
 
 # לוגים מפורטים
