@@ -797,8 +797,8 @@ function meUpload(inp){
   img.onload = function(){
     var c = document.createElement('canvas');
     var s = Math.min(img.width, img.height);
-    c.width = 144; c.height = 144;
-    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 144, 144);
+    c.width = 256; c.height = 256;   // 256 — חד גם על עיגול ה-TV (150px), עדיין ~20KB
+    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 256, 256);
     var data = c.toDataURL('image/jpeg', 0.82);
     POST('/v2/api/avatar', {img: data}).then(function(j){
       if (!j.ok){ toast('שגיאה בשמירת התמונה'); return; }
@@ -1081,10 +1081,14 @@ function renderCard(i){
     var prTxt = prNum ? '₪' + Number(prNum).toLocaleString() : esc(hp.price || '');
     var wa = String(hp.agentPhone || '').replace(/^0/, ''); if (wa) wa = '972' + wa;
     var ini = esc((String(hp.agent || '?').trim().charAt(0)) || '?');
+    /* תמונת הפרופיל של הסוכן (אם העלה) על טבעת הסטורי; אין תמונה → 404 → נשארת האות */
+    var avp = String(hp.agentPhone || '').replace(/\D/g, '');
+    var avImg = avp ? '<img src="/v2/api/avatar?p='+avp+'" onerror="this.remove()" alt="" '+
+      'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%">' : '';
     b.innerHTML =
       '<div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:2px">'+
         '<div style="width:80px;height:80px;border-radius:50%;border:3px solid #E4C56B;padding:4px;box-sizing:border-box;animation:chickGlow 2.6s ease-out infinite">'+
-          '<div style="width:100%;height:100%;border-radius:50%;background:rgba(228,197,107,.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#E4C56B">'+ini+'</div></div>'+
+          '<div style="position:relative;overflow:hidden;width:100%;height:100%;border-radius:50%;background:rgba(228,197,107,.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#E4C56B">'+ini+avImg+'</div></div>'+
         '<div style="text-align:center"><div style="font-size:17px;font-weight:800;color:#fff">'+esc(hp.agent||'')+'</div>'+
           '<div style="font-size:11.5px;font-weight:600;color:#E4C56B">משתפת נכס חם'+(hp.ts?' · '+timeAgo(hp.ts):'')+'</div></div></div>'+
       '<div style="display:flex;justify-content:center;margin-top:2px"><div style="background:rgba(228,197,107,.16);border:1px solid rgba(228,197,107,.4);color:#E4C56B;border-radius:999px;padding:6px 15px;font-size:12px;font-weight:800">נכס חם</div></div>'+
@@ -7412,8 +7416,9 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .hot{display:grid;grid-template-columns:300px 1fr;gap:44px;align-items:center}
   .agentBox{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
   .ava{width:150px;height:150px;border-radius:50%;border:4px solid #E4C56B;padding:7px;box-sizing:border-box}
-  .ava div{width:100%;height:100%;border-radius:50%;background:rgba(228,197,107,.15);display:flex;
+  .ava div{position:relative;overflow:hidden;width:100%;height:100%;border-radius:50%;background:rgba(228,197,107,.15);display:flex;
         align-items:center;justify-content:center;font-size:52px;font-weight:800;color:#E4C56B}
+  .ava img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}
   .agentBox .nm{font-size:26px;font-weight:800}
   .agentBox .sb{font-size:16px;font-weight:600;color:#E4C56B}
   .chipHot{display:inline-block;background:rgba(228,197,107,.16);border:1.5px solid rgba(228,197,107,.4);
@@ -7547,10 +7552,13 @@ function render(i){
     var prNum = String(hp.price || '').replace(/[^0-9]/g, '');
     var prTxt = prNum ? '₪' + Number(prNum).toLocaleString() : esc(hp.price || '');
     var ini = esc((String(hp.agent || '?').trim().charAt(0)) || '?');
+    /* תמונת הפרופיל של הסוכן (אם העלה); אין → 404 → נשארת האות */
+    var avp = String(hp.agentPhone || '').replace(/\D/g, '');
+    var avImg = avp ? '<img src="/v2/api/avatar?p=' + avp + '" onerror="this.remove()" alt="">' : '';
     c.innerHTML =
       '<div class="hot">' +
         '<div class="agentBox">' +
-          '<div class="ava"><div>' + ini + '</div></div>' +
+          '<div class="ava"><div>' + ini + avImg + '</div></div>' +
           '<div><div class="nm">' + esc(hp.agent || '') + '</div><div class="sb">נכס חם בבריף</div></div>' +
           '<div class="chipHot">נכס ' + it.n + ' מתוך ' + it.of + '</div>' +
         '</div>' +
