@@ -60,6 +60,8 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
        font-size:15.5px;font-weight:800;border:0;width:100%;cursor:pointer;font-family:inherit;min-height:50px}
   .btn-g{background:#fff;color:#1E3A5F;box-shadow:0 10px 28px rgba(0,0,0,.25)}
   .btn-sms{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:14.5px;font-weight:700}
+  /* Sign in with Apple (Guideline 4.8) — מוצג רק באפליקציית iOS, כשהפלאגין קיים על הגשר */
+  .btn-apple{background:#000;color:#fff;box-shadow:0 10px 28px rgba(0,0,0,.35);display:none}
   .cap{font-size:12px;color:rgba(255,255,255,.5);line-height:1.6}
   .or{display:flex;align-items:center;gap:10px;margin:2px 0}
   .or i{flex:1;height:1px;background:rgba(255,255,255,.15)}
@@ -89,6 +91,10 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   <div class="sub">מסכם שיחות, מגייס נכסים ומחתים דיגיטלית — כדי שאתה תסגור עסקאות.</div>
 
   <div class="stack">
+    <button class="btn btn-apple" id="appleBtn" onclick="appleGo()">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M16.365 12.44c-.02-2.04 1.666-3.02 1.742-3.068-.95-1.387-2.428-1.578-2.953-1.6-1.257-.127-2.454.74-3.092.74-.637 0-1.622-.722-2.666-.702-1.372.02-2.637.797-3.343 2.025-1.425 2.47-.364 6.13 1.024 8.135.678.982 1.487 2.084 2.55 2.044 1.023-.04 1.41-.66 2.646-.66 1.237 0 1.585.66 2.667.64 1.1-.02 1.797-1 2.47-1.984.777-1.137 1.097-2.238 1.117-2.295-.024-.011-2.142-.822-2.162-3.275zM14.3 5.98c.564-.683.944-1.633.84-2.58-.812.033-1.795.54-2.377 1.222-.522.605-.979 1.572-.856 2.5.905.07 1.83-.46 2.393-1.142z"/></svg>
+      המשך עם Apple
+    </button>
     <button class="btn btn-g" onclick="location.href='/auth/google/login?' + (window.Capacitor ? 'native=1' : 'next=v2')">
       <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.6 9.2c0-.6-.1-1.2-.2-1.8H9v3.4h4.8a4.1 4.1 0 0 1-1.8 2.7v2.2h2.9c1.7-1.6 2.7-3.9 2.7-6.5z" fill="#4285F4"/><path d="M9 18c2.4 0 4.5-.8 6-2.2l-2.9-2.2c-.8.5-1.9.9-3.1.9-2.4 0-4.4-1.6-5.1-3.8H.9v2.3A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.9 10.7a5.4 5.4 0 0 1 0-3.4V5H.9a9 9 0 0 0 0 8l3-2.3z" fill="#FBBC05"/><path d="M9 3.6c1.3 0 2.5.5 3.4 1.3l2.6-2.6A9 9 0 0 0 .9 5l3 2.3C4.6 5.1 6.6 3.6 9 3.6z" fill="#EA4335"/></svg>
       המשך עם Google
@@ -100,6 +106,7 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       כניסה עם קוד ב-SMS
     </button>
     <div id="smsBox">
+      <div class="cap" id="alinkCap" style="display:none">קישור חד-פעמי של חשבון ה-Apple — הזן את מספר הטלפון שלך במערכת לאימות</div>
       <input id="ph" type="tel" inputmode="numeric" autocomplete="tel" placeholder="מספר הטלפון שלך">
       <input id="cd" type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="4" placeholder="הקוד שקיבלת ב-SMS" style="display:none" oninput="cdAuto()">
       <button class="btn btn-go" id="go" onclick="smsGo()">שלח קוד</button>
@@ -126,11 +133,25 @@ var REASONS = {unknown:'המספר לא רשום במערכת — הצטרפות
                expired:'הקוד פג תוקף — שלח קוד חדש', wrong:'קוד שגוי, נסה שוב',
                too_many:'יותר מדי ניסיונות — שלח קוד חדש', bad_phone:'מספר לא תקין'};
 function fail(reason){ el('err').textContent = REASONS[reason] || 'שגיאה, נסה שוב'; }
+function finishLogin(p, ph){
+  try{
+    localStorage.setItem('fbTok', p.token);
+    localStorage.removeItem('v2who');
+    localStorage.setItem('fbRole', p.role || '');
+    localStorage.setItem('fbDrole', p.drole || '');
+    localStorage.setItem('fbName', p.name || '');
+    localStorage.setItem('fbDev', p.dev ? '1' : '0');
+    localStorage.setItem('fbPhone', p.phone || ph || '');
+    localStorage.setItem('fbTabs', JSON.stringify(p.tabs || null));
+  }catch(e){}
+  location.replace('/v2/home');
+}
 /* הקשה על הצעת הקוד של iOS (מעל המקלדת) ממלאת 4 ספרות בבת אחת — נכנסים אוטומטית */
 function cdAuto(){
   if (stage === 1 && el('cd').value.replace(/\D/g, '').length === 4) smsGo();
 }
 var smsBusy = false;
+var ALINK = null;   // קישור Apple-ID חדש לטלפון: כשמוגדר, ה-SMS box משרת את זרימת הקישור
 function smsGo(){
   if (smsBusy) return;
   smsBusy = true;
@@ -138,28 +159,47 @@ function smsGo(){
   el('err').textContent = '';
   var ph = el('ph').value.replace(/\D/g, '');
   if (stage === 0){
-    px('/api/auth/request', {phone: ph}).then(function(j){
+    px(ALINK ? '/api/auth/alink_request' : '/api/auth/request', {phone: ph, alink: ALINK}).then(function(j){
       if (!j.ok){ fail(j.reason); return; }
       stage = 1; el('cd').style.display = 'block'; el('go').textContent = 'כניסה'; el('cd').focus();
     });
   } else {
     var cd = el('cd').value.replace(/\D/g, '');
-    px('/api/auth/verify', {phone: ph, code: cd}).then(function(p){
+    px(ALINK ? '/api/auth/alink_verify' : '/api/auth/verify', {phone: ph, code: cd, alink: ALINK}).then(function(p){
       if (!p.ok){ fail(p.reason); return; }
-      try{
-        localStorage.setItem('fbTok', p.token);
-        localStorage.removeItem('v2who');
-        localStorage.setItem('fbRole', p.role || '');
-        localStorage.setItem('fbDrole', p.drole || '');
-        localStorage.setItem('fbName', p.name || '');
-        localStorage.setItem('fbDev', p.dev ? '1' : '0');
-        localStorage.setItem('fbPhone', ph);
-        localStorage.setItem('fbTabs', JSON.stringify(p.tabs || null));
-      }catch(e){}
-      location.replace('/v2/home');
+      finishLogin(p, ph);
     });
   }
 }
+/* ── Sign in with Apple (Guideline 4.8) — דרך הפלאגין הנייטיבי בלבד ── */
+function appleGo(){
+  el('err').textContent = '';
+  var P = (window.Capacitor && Capacitor.Plugins) ? Capacitor.Plugins.SignInWithApple : null;
+  if (!P) return;
+  P.authorize({clientId: 'com.remaxfamily.familybot', scopes: 'name email'}).then(function(r){
+    var res = (r && r.response) || {};
+    var nm = ((res.givenName || '') + ' ' + (res.familyName || '')).trim();
+    px('/api/auth/apple', {token: res.identityToken || '', name: nm}).then(function(j){
+      if (!j.ok){ fail(j.reason); return; }
+      if (j.token){ finishLogin(j); return; }
+      if (j.link){   // Apple ID שטרם קושר — אימות טלפון חד-פעמי
+        ALINK = j.link; stage = 0;
+        el('smsBox').style.display = 'flex';
+        el('alinkCap').style.display = 'block';
+        el('go').textContent = 'שלח קוד';
+        el('ph').focus();
+      }
+    });
+  }).catch(function(){});   // ביטול על-ידי המשתמש — בלי שגיאה
+}
+(function(){   // חשיפת הכפתור רק כשהפלאגין באמת קיים (build 12+ של האפליקציה)
+  try{
+    if (window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'ios'
+        && Capacitor.Plugins && Capacitor.Plugins.SignInWithApple){
+      el('appleBtn').style.display = 'flex';
+    }
+  }catch(e){}
+})();
 // מיתוג: שם המשרד מהשרת (offices.name) — לעולם לא hardcoded
 fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
   document.title = o.name || 'כניסה';
