@@ -3529,6 +3529,126 @@ def api_glink_verify():
     token, payload = _g_mint(phone, "כניסה עם Google (קישור ראשון)")
     return jsonify({"ok": True, "native": bool(pend.get("native")), **payload})
 
+# ── Sign in with Apple (App Store Guideline 4.8) ────────────────────────────────
+# הקליינט הנייטיבי (Capacitor) מקבל identityToken מהמכשיר ושולח לכאן. השרת מאמת את
+# ה-JWT מול המפתחות הציבוריים של אפל (JWKS), וממפה apple-sub ↔ טלפון-סוכן — קישור
+# חד-פעמי באימות SMS, בדיוק כמו קישור Google. אין OAuth-דפדפן ואין סוד שרת.
+APPLE_BUNDLE_ID = (os.environ.get("APPLE_BUNDLE_ID") or "com.remaxfamily.familybot").strip()
+_APPLE_PATH = os.path.join(os.path.dirname(_GAUTH_PATH), "apple_auth.json")
+_apple_lock = threading.Lock()
+_appleauth_pending = {}   # alink -> {"sub","email","name","exp"} — Apple ID שטרם קושר לטלפון
+
+def _apple_links_all():
+    with _apple_lock:
+        try:
+            with open(_APPLE_PATH, encoding="utf-8") as f:
+                m = json.load(f)
+            return m if isinstance(m, dict) else {}
+        except Exception:
+            return {}
+
+def _apple_link(sub, phone, email="", name=""):
+    """מקשר Apple-ID (sub) ↔ טלפון-סוכן. בדיסק הקבוע, כמו קישורי Google."""
+    with _apple_lock:
+        try:
+            with open(_APPLE_PATH, encoding="utf-8") as f:
+                m = json.load(f)
+            if not isinstance(m, dict): m = {}
+        except Exception:
+            m = {}
+        m[str(sub)] = {"phone": _last9(phone), "email": (email or "").strip().lower(),
+                       "name": name or "", "ts": int(time.time())}
+        try:
+            with open(_APPLE_PATH, "w", encoding="utf-8") as f:
+                json.dump(m, f, ensure_ascii=False)
+        except Exception as _e:
+            log.warning(f"apple link save failed: {_e}")
+
+_apple_jwks = [None]
+def _apple_verify_token(id_token):
+    """אימות identityToken: חתימת RS256 מול JWKS של אפל + iss/aud/exp. מחזיר payload או None."""
+    try:
+        import jwt as _pyjwt
+        from jwt import PyJWKClient as _PyJWKClient
+    except Exception:
+        log.error("apple auth: PyJWT not installed (add PyJWT[crypto] to requirements)")
+        return None
+    try:
+        if _apple_jwks[0] is None:
+            _apple_jwks[0] = _PyJWKClient("https://appleid.apple.com/auth/keys", cache_keys=True)
+        key = _apple_jwks[0].get_signing_key_from_jwt(id_token)
+        return _pyjwt.decode(id_token, key.key, algorithms=["RS256"],
+                             audience=APPLE_BUNDLE_ID, issuer="https://appleid.apple.com")
+    except Exception as _e:
+        log.warning(f"apple auth: token verify failed: {_e}")
+        return None
+
+@app.route("/api/auth/apple", methods=["POST"])
+def api_auth_apple():
+    b = request.get_json(silent=True) or {}
+    payload = _apple_verify_token(str(b.get("token") or ""))
+    if not payload or not payload.get("sub"):
+        return jsonify({"ok": False, "reason": "bad_token"})
+    sub = str(payload["sub"])
+    email = (payload.get("email") or "").strip().lower()
+    name = str(b.get("name") or "").strip()   # השם מגיע מהמכשיר רק בהרשאה הראשונה
+    rec = _apple_links_all().get(sub)
+    if rec and rec.get("phone"):
+        if _is_suspended(rec["phone"]):
+            return jsonify({"ok": False, "reason": "suspended"})
+        token, out = _g_mint(rec["phone"], "כניסה עם Apple")
+        return jsonify({"ok": True, **out})
+    # Apple ID שטרם קושר → אימות טלפון חד-פעמי (מקביל לקישור Google)
+    alink = _secrets.token_urlsafe(18)
+    _appleauth_pending[alink] = {"sub": sub, "email": email, "name": name,
+                                 "exp": time.time() + 900}
+    return jsonify({"ok": True, "link": alink, "email": email})
+
+@app.route("/api/auth/alink_request", methods=["POST"])
+def api_alink_request():
+    b = request.get_json(silent=True) or {}
+    alink = b.get("alink", ""); phone = _last9(b.get("phone", ""))
+    pend = _appleauth_pending.get(alink)
+    if not pend or pend["exp"] < time.time():
+        return jsonify({"ok": False, "reason": "expired"})
+    if not phone:
+        return jsonify({"ok": False, "reason": "bad_phone"})
+    if not web_role_for(phone) and phone not in _BYPASS_LOGINS:
+        return jsonify({"ok": False, "reason": "unknown"})
+    if phone in _BYPASS_LOGINS:
+        return jsonify({"ok": True})   # חשבון ביקורת — קוד קבוע, אין SMS
+    if _is_suspended(phone):
+        return jsonify({"ok": False, "reason": "suspended"})
+    code = f"{_secrets.randbelow(9000) + 1000}"
+    _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
+    _sms = f"קוד הכניסה שלך לאפי: {code}\nEffie code: {code}\n(תקף לחמש דקות)"
+    if not web_send_sms(phone, _sms):
+        return jsonify({"ok": False, "reason": "sms_failed"})
+    return jsonify({"ok": True})
+
+@app.route("/api/auth/alink_verify", methods=["POST"])
+def api_alink_verify():
+    b = request.get_json(silent=True) or {}
+    alink = b.get("alink", ""); phone = _last9(b.get("phone", "")); code = str(b.get("code", "")).strip()
+    pend = _appleauth_pending.get(alink)
+    if not pend or pend["exp"] < time.time():
+        return jsonify({"ok": False, "reason": "expired"})
+    if phone in _BYPASS_LOGINS and code == _BYPASS_LOGINS[phone]:
+        pass
+    else:
+        rec = _otp_store.get(phone)
+        if not rec or rec["exp"] < time.time():
+            return jsonify({"ok": False, "reason": "expired"})
+        if rec["tries"] >= 5:
+            _otp_store.pop(phone, None); return jsonify({"ok": False, "reason": "too_many"})
+        if code != rec["code"]:
+            rec["tries"] += 1; return jsonify({"ok": False, "reason": "wrong"})
+        _otp_store.pop(phone, None)
+    _apple_link(pend["sub"], phone, pend.get("email", ""), pend.get("name", ""))
+    _appleauth_pending.pop(alink, None)
+    token, out = _g_mint(phone, "כניסה עם Apple (קישור ראשון)")
+    return jsonify({"ok": True, **out})
+
 @app.route("/api/auth/whoami", methods=["GET", "POST"])
 def api_auth_whoami():
     """החזרת תפקיד/שם/טאבים מהטוקן — ל-hydration אחרי כניסת Google ב-deep-link (טוקן בלבד)."""
