@@ -3192,8 +3192,9 @@ def api_auth_request():
         return jsonify({"ok": False, "reason": "suspended"})   # מושהה — לא שולחים SMS (חיסכון בטווילו)
     code = f"{_secrets.randbelow(9000) + 1000}"   # 4 ספרות (בקשת אייל 13/07) — מוגן ע"י תקרת 5 ניסיונות + תוקף 5 ד'
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
-    _host = (request.host or "remax-bot.onrender.com").split(":")[0]
-    _sms = f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)\n\n@{_host} #{code}"
+    # בלי שורת @domain #code: קוד קשור-לדומיין מדוכא ע"י iOS בתוך האפליקציה העטופה
+    # (WKWebView בלי Associated Domains) — קוד חופשי מוצע מעל המקלדת בכל מקום. (15/07)
+    _sms = f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)"
     if not web_send_sms(phone, _sms):
         return jsonify({"ok": False, "reason": "sms_failed"})
     return jsonify({"ok": True})
@@ -3496,8 +3497,9 @@ def api_glink_request():
         return jsonify({"ok": False, "reason": "suspended"})
     code = f"{_secrets.randbelow(9000) + 1000}"   # 4 ספרות — כמו בכניסה הרגילה (בקשת אייל 13/07)
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
-    _host = (request.host or "remax-bot.onrender.com").split(":")[0]
-    _sms = f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)\n\n@{_host} #{code}"
+    # בלי שורת @domain #code: קוד קשור-לדומיין מדוכא ע"י iOS בתוך האפליקציה העטופה
+    # (WKWebView בלי Associated Domains) — קוד חופשי מוצע מעל המקלדת בכל מקום. (15/07)
+    _sms = f"קוד הכניסה שלך ל-Family Bot: {code} (תקף ל-5 דקות)"
     if not web_send_sms(phone, _sms):
         return jsonify({"ok": False, "reason": "sms_failed"})
     return jsonify({"ok": True})
