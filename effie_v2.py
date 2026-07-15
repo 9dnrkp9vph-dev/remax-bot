@@ -915,7 +915,8 @@ function loadData(){
     GET('/api/my/buyers').catch(function(){ return {}; }),
     GET('/api/my/properties').catch(function(){ return {}; }),
     GET('/api/signatures').catch(function(){ return {}; }),
-    GET('/api/newborn/meetings').catch(function(){ return {}; })
+    GET('/api/newborn/meetings').catch(function(){ return {}; }),
+    GET('/v2/api/sign/drafts').catch(function(){ return {}; })
   ]).then(function(rs){
     // גיוסים ב-7 הימים האחרונים — כל החתמת בעל נכס (בלעדיות או מוכר), בלי כפילויות
     var wk7 = Math.floor(Date.now() / 1000) - 7 * 86400;
@@ -937,6 +938,7 @@ function loadData(){
     M.listings = rep.listings || 0;
     // אותו סינון של מסך היומן — לדוח יש סקופ אחר למתאמת (כל המשרד) והבריף היה מציג יותר מדי
     M.meets = ((rs[4] || {}).results) || rep.meetings || [];
+    M.drafts = ((rs[5] || {}).drafts) || [];   // טיוטות החתמה — נכנסות ל"דורש טיפול"
     var _ms = el('meetsSum');
     if (_ms) _ms.textContent = M.meets.length ? (M.meets.length + ' פגישות ופולו-אפ פתוחים') : 'אין משימות פתוחות';
     M.meetToday = 0; M.meetLate = 0;
@@ -990,13 +992,21 @@ function renderDash(){
                ord: dd < 0 ? -1000 + dd : dd,   // באיחור קודם, אחר כך לפי קרבה
                meeting: m.status === 'meeting'});
   });
+  (M.drafts || []).forEach(function(d, di){   // טיוטות החתמה — משימות פתוחות בלי תאריך
+    care.push({t: 'טיוטא להחתמה: ' + (d.client || ''),
+               s: 'חתימות · ' + (d.addr || (d.kind === 'buyer' ? 'מתעניין' : 'בעל נכס')),
+               chip: 'soon', chipTx: 'טיוטא', ord: 2.5, draft: di});
+  });
   care.sort(function(a, b){ return a.ord - b.ord; });
   var h = '';
   care.slice(0, 4).forEach(function(c, i){
+    var isDraft = c.draft !== undefined;
     h += (i ? '<div class="sep"></div>' : '') +
-      '<div class="row">' +
-      '<div class="ic" style="background:' + (c.meeting ? '#EAF0FA' : '#E7F7EE') + '">' +
-      (c.meeting
+      '<div class="row"' + (isDraft ? ' onclick="goDraft(' + c.draft + ')" style="cursor:pointer"' : '') + '>' +
+      '<div class="ic" style="background:' + (isDraft ? '#F6EEDB' : c.meeting ? '#EAF0FA' : '#E7F7EE') + '">' +
+      (isDraft
+        ? '<svg width="14" height="14" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+        : c.meeting
         ? '<svg width="14" height="14" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg>'
         : '<svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#1FAF5E" stroke-width="1.8" stroke-linejoin="round"/></svg>') +
       '</div><div class="mid"><div class="t">' + esc(c.t) + '</div><div class="s">' + esc(c.s) + '</div></div>' +
@@ -1005,6 +1015,11 @@ function renderDash(){
   el('careList').innerHTML = h ||
     '<div class="careEmpty"><div class="ic"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#C29435" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' +
     '<div class="t">הכל מטופל</div><div class="s">אין פולו-אפים או פגישות שממתינים לך</div></div>';
+}
+function goDraft(di){   // המשך טיוטא מ"דורש טיפול" — ישר לטופס ההחתמה
+  var d = (M.drafts || [])[di]; if (!d) return;
+  try{ localStorage.setItem('v2signDraft', JSON.stringify(d)); }catch(e){}
+  location.href = '/v2/sign?type=' + (d.kind === 'buyer' ? 'buyer' : 'owner');
 }
 
 /* ── הסטורי ── */
@@ -3126,10 +3141,20 @@ function propCard(p, b, shtaf){
     'החתם מתעניין</button></div></div>';
 }
 var CUR_BUYER = null;
+/* טלפון הקונה לטופס ההחתמה — נפילה אחורה phone→tel→wa (קונים ישנים בלי תצוגה מפורמטת) */
+function buyerPhone(){
+  var b = CUR_BUYER || {};
+  if (b.phone) return b.phone;
+  var d = String(b.tel || b.wa || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.indexOf('972') === 0) d = d.slice(3);
+  if (d.charAt(0) !== '0') d = '0' + d;
+  return d;
+}
 function signBuyer(js){
   var p = JSON.parse(js);
   try{ localStorage.setItem('v2signPre', JSON.stringify({
-    client: (CUR_BUYER && CUR_BUYER.name) || '', phone: (CUR_BUYER && CUR_BUYER.phone) || '',
+    client: (CUR_BUYER && CUR_BUYER.name) || '', phone: buyerPhone(),
     addr: p.w || '', price: p.pr || ''})); }catch(e){}
   location.href = '/v2/sign?type=buyer';
 }
@@ -3238,7 +3263,7 @@ function signSelected(){
     return {addr: w, price: p.price || ''};
   });
   try{ localStorage.setItem('v2signPre', JSON.stringify({
-    client: (CUR_BUYER && CUR_BUYER.name) || '', phone: (CUR_BUYER && CUR_BUYER.phone) || '',
+    client: (CUR_BUYER && CUR_BUYER.name) || '', phone: buyerPhone(),
     props: props})); }catch(e){}
   location.href = '/v2/sign?type=buyer';
 }
@@ -7212,11 +7237,16 @@ function render(){
   var late = isDone ? [] : withD.filter(function(x){ return x.d && x.dd < 0; });
   var rest = isDone ? withD : withD.filter(function(x){ return !(x.d && x.dd < 0); });
   rest.sort(function(a, b){ return isDone ? (b.d || 0) - (a.d || 0) : (a.d || 0) - (b.d || 0); });
-  el('cnt').textContent = late.length + rest.length;
+  var nDrafts = FILTER === 'all' ? DRAFTS.length : 0;
+  el('cnt').textContent = late.length + rest.length + nDrafts;
   var h = '';
   if (late.length){
     h += '<div class="late" style="margin-bottom:13px">' +
       late.map(function(x){ return itemRow(x.m, x.i); }).join('') + '</div>';
+  }
+  if (nDrafts){   // טיוטות החתמה — אחרי הבאיחור, לפני הפגישות המתוזמנות
+    h += '<div class="card" style="margin-bottom:13px">' +
+      DRAFTS.map(function(d, di){ return draftRow(d, di); }).join('') + '</div>';
   }
   if (rest.length){
     h += '<div class="card">' + rest.map(function(x){ return itemRow(x.m, x.i); }).join('') + '</div>';
@@ -7379,12 +7409,30 @@ function undoneMeet(i){   // החזרה מ'בוצע' לפעיל
     toast('הוחזר לפעילים'); load();
   });
 }
+var DRAFTS = [];   // טיוטות החתמה — מוצגות תחת "הכל"
 function load(){
-  return GET('/api/newborn/meetings?done=1').then(function(j){   // כולל 'בוצע' לקטגוריה
-    MEETS = (j && j.results) || [];
+  return Promise.all([
+    GET('/api/newborn/meetings?done=1').catch(function(){ return {}; }),   // כולל 'בוצע' לקטגוריה
+    GET('/v2/api/sign/drafts').catch(function(){ return {}; })
+  ]).then(function(rs){
+    MEETS = (rs[0] && rs[0].results) || [];
+    DRAFTS = (rs[1] && rs[1].drafts) || [];
     try{ localStorage.setItem('v2c:meets', JSON.stringify(MEETS.slice(0, 100))); }catch(e){}
     render();
   }).catch(function(){});
+}
+function draftRow(d, di){
+  return '<div class="mt" onclick="goDraft(' + di + ')" style="cursor:pointer">' +
+    '<div class="tile" style="background:#F6EEDB">' +
+    '<svg width="16" height="16" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linejoin="round"/></svg></div>' +
+    '<div style="flex:1"><div class="tt">טיוטא להחתמה · ' + esc(d.client || '') + '</div>' +
+    '<div class="sb">' + esc([d.addr, d.kind === 'buyer' ? 'מתעניין' : 'בעל נכס'].filter(Boolean).join(' · ')) + '</div></div>' +
+    '<div style="font-size:11.5px;font-weight:700;color:#7A5E1C;background:#F6EEDB;padding:3px 10px;border-radius:999px;flex-shrink:0">טיוטא</div></div>';
+}
+function goDraft(di){
+  var d = DRAFTS[di]; if (!d) return;
+  try{ localStorage.setItem('v2signDraft', JSON.stringify(d)); }catch(e){}
+  location.href = '/v2/sign?type=' + (d.kind === 'buyer' ? 'buyer' : 'owner');
 }
 (function(){
   try{
