@@ -101,7 +101,7 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     </button>
     <div id="smsBox">
       <input id="ph" type="tel" inputmode="numeric" autocomplete="tel" placeholder="מספר הטלפון שלך">
-      <input id="cd" type="tel" inputmode="numeric" autocomplete="one-time-code" placeholder="הקוד שקיבלת ב-SMS" style="display:none">
+      <input id="cd" type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="4" placeholder="הקוד שקיבלת ב-SMS" style="display:none" oninput="cdAuto()">
       <button class="btn btn-go" id="go" onclick="smsGo()">שלח קוד</button>
       <div id="err"></div>
     </div>
@@ -126,7 +126,15 @@ var REASONS = {unknown:'המספר לא רשום במערכת — הצטרפות
                expired:'הקוד פג תוקף — שלח קוד חדש', wrong:'קוד שגוי, נסה שוב',
                too_many:'יותר מדי ניסיונות — שלח קוד חדש', bad_phone:'מספר לא תקין'};
 function fail(reason){ el('err').textContent = REASONS[reason] || 'שגיאה, נסה שוב'; }
+/* הקשה על הצעת הקוד של iOS (מעל המקלדת) ממלאת 4 ספרות בבת אחת — נכנסים אוטומטית */
+function cdAuto(){
+  if (stage === 1 && el('cd').value.replace(/\D/g, '').length === 4) smsGo();
+}
+var smsBusy = false;
 function smsGo(){
+  if (smsBusy) return;
+  smsBusy = true;
+  setTimeout(function(){ smsBusy = false; }, 1500);
   el('err').textContent = '';
   var ph = el('ph').value.replace(/\D/g, '');
   if (stage === 0){
