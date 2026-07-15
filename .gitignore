@@ -5,3 +5,5 @@ map-geocache.json
 node_modules/
 package-lock.json
 package.json
+v2_gauth.json
+apple_auth.json
