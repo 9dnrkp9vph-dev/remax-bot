@@ -7468,10 +7468,16 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   <main><div class="card" id="card"></div></main>
   <footer id="foot"></footer>
 <script>
+/* מצב קיוסק: /v2/tv?k=<TV_KEY> עובד בלי כניסה — לטלוויזיית המשרד */
+var KEY = null;
+try{ var _m = location.search.match(/[?&]k=([^&]+)/); if (_m) KEY = decodeURIComponent(_m[1]); }catch(e){}
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
-if (!TOK) location.replace('/v2');
-function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+if (!TOK && !KEY) location.replace('/v2');
+function GET(u){
+  if (KEY) u += (u.indexOf('?') > -1 ? '&' : '?') + 'k=' + encodeURIComponent(KEY);
+  return fetch(u, {headers: TOK ? {'X-Auth-Token': TOK} : {}}).then(function(r){ return r.json(); });
+}
 function el(id){ return document.getElementById(id); }
 function esc(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -7763,6 +7769,14 @@ def register(app, G):
     _config_mutate = G["_config_mutate"]   # RMW בטוח (נעילה+קריאה טרייה) — נגד דריסת הזמנות
     _log_activity = G["_log_activity"]
     log           = G.get("log")
+
+    # מפתח קיוסק לטלוויזיית המשרד: /v2/tv?k=<TV_KEY> בלי כניסה (Render env). ריק = כבוי.
+    _TV_KEY = (os.environ.get("TV_KEY") or "").strip()
+
+    def _tv_key_ok():
+        import hmac as _hmac
+        k = (request.args.get("k") or "").strip()
+        return bool(_TV_KEY) and bool(k) and _hmac.compare_digest(k, _TV_KEY)
 
     _POLICY_DEFAULTS = {"transcribe": True, "shtaf_sharing": True, "share_buyers": False,
                         "require_followup": False, "who_contacted_admins_only": True,
@@ -8268,6 +8282,9 @@ def register(app, G):
     def v2_api_brief():
         """מספרי הבריף (7 ימים): קונים / חתימות קונים / בלעדיות — של הסוכן ושל כל המשרד."""
         s = _web_auth()
+        if not s and _tv_key_ok():
+            # מצב קיוסק (טלוויזיית המשרד): צופה כלל-משרדי לקריאה בלבד — בלי "שלי"
+            s = {"name": "", "role": "viewer"}
         if not s:
             return jsonify({"ok": False, "auth": False}), 401
         _canon = G["_canon_key"]
