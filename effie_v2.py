@@ -3202,8 +3202,12 @@ function renderMatches(b, office, shtaf){
     '<div style="text-align:center;color:#6B7280;font-size:13px;padding:16px 0">' +
     'לא נמצאו התאמות — נסה לעדכן את הדרישות של הקונה</div>') +
     '<div id="selBar" style="display:none;position:sticky;bottom:0;padding:8px 0">' +
-    '<button class="btn" style="background:#157A43;color:#fff;box-shadow:0 4px 14px rgba(31,175,94,.3)" ' +
-    'onclick="sendSelected()"><span id="selN"></span></button></div>';
+    '<div style="display:flex;gap:8px">' +
+    '<button class="btn" style="flex:1;background:#157A43;color:#fff;box-shadow:0 4px 14px rgba(31,175,94,.3)" ' +
+    'onclick="sendSelected()"><span id="selN"></span></button>' +
+    '<button class="btn" style="flex:1;background:#C29435;color:#231700;box-shadow:0 4px 14px rgba(194,148,53,.3)" ' +
+    'onclick="signSelected()"><span id="selSigN"></span></button>' +
+    '</div></div>';
   updateSelBar();
 }
 function toggleSel(mi){
@@ -3219,7 +3223,24 @@ function updateSelBar(){
   var bar = el('selBar');
   if (!bar) return;
   bar.style.display = n ? 'block' : 'none';
-  if (n) el('selN').textContent = 'שלח ' + n + ' נכסים לקונה בוואטסאפ';
+  if (n){
+    el('selN').textContent = n === 1 ? 'שלח נכס בוואטסאפ' : 'שלח ' + n + ' בוואטסאפ';
+    el('selSigN').textContent = n === 1 ? 'החתם על הנכס' : 'החתם על ' + n + ' נכסים';
+  }
+}
+/* החתמה על כל הנכסים המסומנים — פותח את טופס ההחתמה עם הקונה + הנכסים */
+function signSelected(){
+  var ks = Object.keys(MSEL);
+  if (!ks.length) return;
+  var props = ks.map(function(k){
+    var it = MITEMS[k], p = it.p;
+    var w = [(p.address || p.street), p.neighborhood, p.city].filter(Boolean).join(', ');
+    return {addr: w, price: p.price || ''};
+  });
+  try{ localStorage.setItem('v2signPre', JSON.stringify({
+    client: (CUR_BUYER && CUR_BUYER.name) || '', phone: (CUR_BUYER && CUR_BUYER.phone) || '',
+    props: props})); }catch(e){}
+  location.href = '/v2/sign?type=buyer';
 }
 function waToBuyer(msg){
   // וואטסאפ ללקוח — גם כשאין מספר שמור נפתח וואטסאפ עם ההודעה לבחירת איש קשר
@@ -3492,14 +3513,52 @@ function weekStart(){
   d.setDate(d.getDate() - d.getDay());
   return d.getTime() / 1000;
 }
+var DRAFTS = [];   // טיוטות "הכנה לחתימה" — מוצגות תחת "הכל"
 function load(){
-  return GET('/api/signatures').then(function(j){
+  return Promise.all([
+    GET('/api/signatures').catch(function(){ return {}; }),
+    GET('/v2/api/sign/drafts').catch(function(){ return {}; })
+  ]).then(function(rs){
+    var j = rs[0] || {};
     SIGS = (j && j.signatures) || [];
     MULTI = (j && j.role) !== 'agent';
     ROLE = (j && j.role) || '';
+    DRAFTS = (rs[1] && rs[1].drafts) || [];
     try{ localStorage.setItem('v2c:sigs', JSON.stringify({g: SIGS.slice(0, 150), m: MULTI, r: ROLE})); }catch(e){}
     render();
   }).catch(function(){});
+}
+function draftCard(d, di){
+  var kd = d.kind === 'buyer' ? 'מתעניין' : 'בעל נכס';
+  var dt = d.ts ? new Date(d.ts * 1000) : null;
+  var when = dt ? ('0' + dt.getDate()).slice(-2) + '/' + ('0' + (dt.getMonth() + 1)).slice(-2) : '';
+  var sub = [d.client, MULTI ? d.agent : '', kd].filter(Boolean).join(' · ');
+  return '<div class="sig">' +
+    '<div class="top"><div><div class="ad">' + esc(d.addr || d.client || '') + '</div>' +
+    '<div class="sb">' + esc(sub) + '</div></div>' +
+    '<div class="chip" style="background:#F6EEDB;color:#7A5E1C">טיוטא</div></div>' +
+    '<div class="st wait"><i></i>הכנה לחתימה — טרם נשלח' + (when ? ' · ' + when : '') + '</div>' +
+    '<div class="acts">' +
+    '<button class="a" style="background:#C29435;color:#231700;border:0" onclick="contDraft(' + di + ')">' +
+    '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#231700" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
+    'המשך לחתימה</button>' +
+    '<button class="a del" onclick="delDraft(' + di + ')" aria-label="מחיקת טיוטא">' +
+    '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+    '</div></div>';
+}
+function contDraft(di){
+  var d = DRAFTS[di]; if (!d) return;
+  try{ localStorage.setItem('v2signDraft', JSON.stringify(d)); }catch(e){}
+  location.href = '/v2/sign?type=' + (d.kind === 'buyer' ? 'buyer' : 'owner');
+}
+function delDraft(di){
+  var d = DRAFTS[di]; if (!d) return;
+  if (!confirm('למחוק את הטיוטא של ' + (d.client || 'הלקוח') + '?')) return;
+  POST('/v2/api/sign/draft_delete', {id: d.id}).then(function(j){
+    if (!j.ok){ toast('שגיאה'); return; }
+    toast('הטיוטא נמחקה');
+    load();
+  });
 }
 (function(){
   try{
@@ -3515,6 +3574,9 @@ function render(){
     return kindOf(g) === FILTER;
   });
   var h = '';
+  if (FILTER === 'all' && DRAFTS.length){   // טיוטות — למעלה, תחת "הכל" בלבד
+    DRAFTS.forEach(function(d, di){ h += draftCard(d, di); });
+  }
   var shown = src.slice(0, 100);
   shown.forEach(function(g, gi){
     var k = kindOf(g);
@@ -6392,6 +6454,8 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="dot"></div><span class="lb">שליחה לחתימה ב-SMS</span></div>
       <div class="radio" id="rLocal" onclick="setMode('local')">
         <div class="dot"></div><span class="lb">חתימה במקום (על המכשיר הזה)</span></div>
+      <div class="radio" id="rDraft" onclick="setMode('draft')">
+        <div class="dot"></div><span class="lb">טיוטא — הכנה לחתימה</span></div>
       <div class="hint" id="modeHint">הלקוח יקבל קישור, ימלא ת"ז ויחתום במכשירו. המסמך החתום יתווסף לשורת החתימה.</div>
       <div id="padWrap">
         <canvas id="pad"></canvas>
@@ -6434,6 +6498,12 @@ function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.displ
 
 var KIND = (location.search.indexOf('type=owner') >= 0 || location.search.indexOf('type=seller') >= 0) ? 'owner' : 'buyer';
 var AGENT = '', MODE = 'remote', PROPS = [], BUSY = false;
+var DRAFT_ID = null;   // טופס שנפתח מטיוטא — יימחק מהטיוטות אחרי חתימה/שליחה אמיתית
+function clearDraft(){
+  if (!DRAFT_ID) return;
+  POST('/v2/api/sign/draft_delete', {id: DRAFT_ID}).catch(function(){});
+  DRAFT_ID = null;
+}
 var DEALS_DEF = KIND === 'buyer'
   ? [{k: 'buy', lb: 'קניה — עמלה', on: true, val: '2', un: '%', units: ['%', '₪']},
      {k: 'rent', lb: 'שכירות — עמלה', on: false, val: '1', un: 'חודשים', units: ['חודשים', '₪']}]
@@ -6625,12 +6695,15 @@ function setMode(m){
   MODE = m;
   el('rRemote').classList.toggle('on', m === 'remote');
   el('rLocal').classList.toggle('on', m === 'local');
+  el('rDraft').classList.toggle('on', m === 'draft');
   el('padWrap').style.display = m === 'local' ? 'flex' : 'none';
   el('idReq').style.display = m === 'local' ? 'inline' : 'none';
   el('modeHint').textContent = m === 'local'
     ? 'הלקוח מזין ת"ז וחותם באצבע על המסך — המסמך נשמר מיד עם קישור לצפייה.'
+    : m === 'draft'
+    ? 'הטופס נשמר כטיוטא בטאב החתימות (תחת "הכל") — בלי שליחה ללקוח. ממשיכים לחתימה מתי שתרצו.'
     : 'הלקוח יקבל קישור, ימלא ת"ז ויחתום במכשירו. המסמך החתום יתווסף לשורת החתימה.';
-  el('go').textContent = m === 'local' ? 'החתם עכשיו' : 'שלח לחתימה ב-SMS';
+  el('go').textContent = m === 'local' ? 'החתם עכשיו' : m === 'draft' ? 'שמור טיוטא' : 'שלח לחתימה ב-SMS';
   if (m === 'local') initPad();
 }
 var padInit = false;
@@ -6701,6 +6774,29 @@ function submitSign(){
   if (BUSY) return;
   var cname = el('cName').value.trim(), cphone = el('cPhone').value.trim(), cid = el('cId').value.trim();
   var cnotes = el('cNotes') ? el('cNotes').value.trim() : '';
+  if (MODE === 'draft'){   // טיוטא: שומר את מצב הטופס כמו-שהוא — רק שם חובה
+    if (!cname){ toast('שם הלקוח — חובה לטיוטא'); return; }
+    var deals = DEALS_DEF.map(function(d){
+      return {k: d.k, on: !!d.on, val: d.val || '', un: d.un || '', from: d.from || '', to: d.to || ''};
+    });
+    BUSY = true; el('go').disabled = true;
+    el('go').dataset.t = el('go').dataset.t || el('go').textContent;
+    el('go').textContent = 'שומר טיוטא…';
+    POST('/v2/api/sign/draft', {id: DRAFT_ID,
+      draft: {kind: KIND, client: cname, phone: cphone, cid: cid, notes: cnotes,
+              props: PROPS, deals: deals}}).then(function(j){
+      BUSY = false; el('go').disabled = false;
+      el('go').textContent = el('go').dataset.t;
+      if (!j.ok){ toast('שגיאה — נסה שוב'); return; }
+      toast('הטיוטא נשמרה בטאב החתימות');
+      setTimeout(function(){ location.href = '/v2/sigs'; }, 1000);
+    }).catch(function(){
+      BUSY = false; el('go').disabled = false;
+      el('go').textContent = el('go').dataset.t;
+      toast('שגיאה');
+    });
+    return;
+  }
   if (!cname || !cphone){ toast('שם וטלפון — חובה'); return; }
   if (!PROPS.length){ toast('הוסף לפחות נכס אחד'); return; }
   // בעל נכס: אין חתימה בלי מחיר מבוקש (גם לנכס שהגיע מ"הנכסים שלי"/prefill בלי מחיר)
@@ -6755,6 +6851,7 @@ function submitSign(){
       BUSY = false; el('go').disabled = false;
       el('go').textContent = el('go').dataset.t || el('go').textContent;
       if (!j.ok){ toast('שגיאה — נסה שוב'); return; }
+      clearDraft();   // נחתם — הטיוטא סיימה את תפקידה
       toast(txt);
       setTimeout(function(){ location.href = '/v2/sigs'; }, 1200);
     };
@@ -6764,6 +6861,7 @@ function submitSign(){
           BUSY = false; el('go').disabled = false;
           el('go').textContent = el('go').dataset.t || el('go').textContent;
           if (!j.ok){ toast('שגיאה — נסה שוב'); return; }
+          clearDraft();   // נשלח ללקוח — הטיוטא סיימה את תפקידה
           var _lk = j.link || '', _wp = j.waPhone || '';
           var _wmsg = 'שלום ' + cname + ',\nהתבקשת לחתום על מסמך מטעם RE/MAX Family.\nלצפייה וחתימה:\n' + _lk;
           var _wurl = (_wp ? ('https://wa.me/' + _wp) : 'https://wa.me/') + '?text=' + encodeURIComponent(_wmsg);
@@ -6808,11 +6906,48 @@ function submitSign(){
     if (pre){
       if (pre.client) el('cName').value = pre.client;
       if (pre.phone) el('cPhone').value = pre.phone;
-      if (pre.addr){ PROPS.push({addr: pre.addr, price: pre.price || ''}); renderProps(); }
+      if (pre.props && pre.props.length){   // בחירה מרובה מהתאמות — כמה נכסים בבת אחת
+        pre.props.forEach(function(pp){ if (pp && pp.addr) PROPS.push({addr: pp.addr, price: pp.price || ''}); });
+        renderProps();
+      } else if (pre.addr){ PROPS.push({addr: pre.addr, price: pre.price || ''}); renderProps(); }
       if (pre.client){
         el('preTx').textContent = pre.client + (pre.phone ? ' · ' + pre.phone : '');
         el('preChip').style.display = 'flex';
         el('pgS').textContent = pre.client;
+      }
+    }
+  }catch(e){}
+  try{   // המשך טיוטא ממסך החתימות — שחזור מלא של הטופס
+    var dr = JSON.parse(localStorage.getItem('v2signDraft') || 'null');
+    localStorage.removeItem('v2signDraft');
+    if (dr && dr.draft){
+      DRAFT_ID = dr.id || null;
+      var d = dr.draft;
+      if (d.client) el('cName').value = d.client;
+      if (d.phone) el('cPhone').value = d.phone;
+      if (d.cid) el('cId').value = d.cid;
+      if (d.notes && el('cNotes')) el('cNotes').value = d.notes;
+      if (d.props && d.props.length){
+        PROPS = d.props.map(function(p){ return {addr: p.addr || '', price: p.price || ''}; });
+        renderProps();
+      }
+      if (d.deals && d.deals.length){
+        d.deals.forEach(function(sd){
+          DEALS_DEF.forEach(function(dd){
+            if (dd.k !== sd.k) return;
+            dd.on = !!sd.on;
+            if (sd.val) dd.val = sd.val;
+            if (sd.un) dd.un = sd.un;
+            if (sd.from) dd.from = sd.from;
+            if (sd.to) dd.to = sd.to;
+          });
+        });
+        renderDeals();
+      }
+      if (d.client){
+        el('preTx').textContent = 'טיוטא: ' + d.client + (d.phone ? ' · ' + d.phone : '');
+        el('preChip').style.display = 'flex';
+        el('pgS').textContent = d.client;
       }
     }
   }catch(e){}
@@ -8197,6 +8332,59 @@ def register(app, G):
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
+
+    # ── טיוטות טפסי החתמה ("טיוטא — הכנה לחתימה") — נשמרות בקונפיג, פר-סוכן ──────
+    @app.route("/v2/api/sign/draft", methods=["POST"])
+    def v2_api_sign_draft_save():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        b = request.get_json(silent=True) or {}
+        d = b.get("draft") or {}
+        if not isinstance(d, dict) or not str(d.get("client") or "").strip():
+            return jsonify({"ok": False, "reason": "bad_draft"})
+        did = str(b.get("id") or "") or os.urandom(6).hex()
+        rec = {"id": did, "ts": int(time.time()), "agent": s.get("name", ""),
+               "phone": _last9(s.get("phone", "")),
+               "kind": "buyer" if d.get("kind") == "buyer" else "owner",
+               "client": str(d.get("client") or "")[:80],
+               "addr": " | ".join([str(p.get("addr") or "") for p in (d.get("props") or []) if isinstance(p, dict)])[:200],
+               "draft": d}
+        def _mut(cfg):
+            lst = [x for x in (cfg.get("v2_sign_drafts") or []) if x.get("id") != did]   # עדכון טיוטא קיימת
+            lst.insert(0, rec)
+            del lst[100:]   # תקרה כלל-משרדית — לא מנפחים את הקונפיג
+            cfg["v2_sign_drafts"] = lst
+        ok, _ = _config_mutate(_mut)
+        return jsonify({"ok": bool(ok), "id": did})
+
+    @app.route("/v2/api/sign/drafts", methods=["GET"])
+    def v2_api_sign_drafts():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        lst = _load_config().get("v2_sign_drafts") or []
+        me = _last9(s.get("phone", ""))
+        if s.get("role") != "admin":   # סוכן/מתאמת — רק הטיוטות שלו
+            lst = [d for d in lst if d.get("phone") == me]
+        return jsonify({"ok": True, "drafts": lst})
+
+    @app.route("/v2/api/sign/draft_delete", methods=["POST"])
+    def v2_api_sign_draft_delete():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        did = str((request.get_json(silent=True) or {}).get("id") or "")
+        if not did:
+            return jsonify({"ok": False, "reason": "no_id"})
+        me = _last9(s.get("phone", ""))
+        is_admin = s.get("role") == "admin"
+        def _mut(cfg):
+            lst = cfg.get("v2_sign_drafts") or []
+            cfg["v2_sign_drafts"] = [d for d in lst
+                                     if not (d.get("id") == did and (is_admin or d.get("phone") == me))]
+        ok, _ = _config_mutate(_mut)
+        return jsonify({"ok": bool(ok)})
 
     @app.route("/v2/api/buyers/statuses", methods=["GET"])
     def v2_api_buyers_statuses():
