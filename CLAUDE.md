@@ -29,12 +29,12 @@
 
 ## 🔧 כללי עבודה בריפו (חובה — נלמדו בדם)
 - **הקובץ הקנוני:** `/Users/eyal/Documents/GitHub/remax-bot/app.py`. יש עותקים ישנים במקומות אחרים — **תמיד נתיב מוחלט**, לעולם לא נתיב יחסי (ה-cwd מתאפס בין פקודות).
-- אימות אחרי כל שינוי: `python3 -c "import ast; ast.parse(open('<נתיב מלא>/app.py').read())"` + חילוץ ה-JS מ-FAMILY_BOT_HTML ו-`node --check` + יבוא מודול אמיתי (דורש env דמה: MAYTAPI_TOKEN/MAYTAPI_PHONE_ID/MAYTAPI_PRODUCT_ID/CLAUDE_API_KEY).
+- אימות אחרי כל שינוי: `python3 -c "import ast; ast.parse(open('<נתיב מלא>/app.py').read())"` + חילוץ JS מבלוקי HTML שהשתנו (ב-effie_v2.py) ו-`node --check` + יבוא מודול אמיתי (דורש env דמה: MAYTAPI_TOKEN/MAYTAPI_PHONE_ID/MAYTAPI_PRODUCT_ID/CLAUDE_API_KEY).
 - **סודות ב-Render env / Script Properties בלבד** — לעולם לא בקוד או ב-git. קובצי קוד עם טוקנים (קוד.gs המלא) — scratchpad בלבד, לא בריפו.
 - לא לגעת ב-MOBILE-PATCH (fbAutoLogin/fbDoBio/fbShowLock) ולא ב-whatsapp:// של הסוכן.
 - דגלי מקור נתונים (Render env): NEWBORN/CALLS/SIGNATURES/BUYERS/EXCL/PROPS/CONFIG_SOURCE = sheets|supabase. הגיליון עדיין מקור אמת לכתיבות (דרך Apps Script, עם כתיבה כפולה + סנכרון-השלמה כל דקה/30ד').
 - דפלוי: Eyal בלבד (GitHub Desktop → Render Manual Deploy). פריסות Apps Script: 2-3 דקות הבהוב אחרי — רק בשעות שקטות.
-- האפליקציה הנוכחית (FAMILY_BOT_HTML) משרתת סוכנים בפרודקשן — **אסור לשבור אותה** במהלך בניית אפי.
+- האפליקציה המשרתת סוכנים בפרודקשן היא `/v2` (effie_v2.py) — **אסור לשבור אותה**. (v1/FAMILY_BOT_HTML נמחקה סופית 15/07/2026.)
 
 ## 📓 יומן החלטות (להוסיף כל החלטה חדשה מיד)
 - 2026-07-05: סשן 0 בוצע — handoff ב-docs/handoff/, קובץ העיצוב נקרא effie-design.dc.html.
@@ -598,3 +598,4 @@
   עסקאות/תהליכים של הסוכנים שלה בלבד (לא כל המשרד). שיחות/קונים/חתימות/נכס-נולד כבר עבדו למתאמת
   (scope). אומת ביחידה: רגילה=False, מנהל-קבוצה=True לסוכן שלו/False לזר. אוהד הוגדר ברשימה בפרוד
   (dev/config). ניהול עתידי: להוסיף/להסיר שמות מ-v2_deals_group_managers (או UI checkbox בהמשך).
+- 2026-07-15: **v1 נמחקה סופית** (אישור אייל, אחרי soak של /v2 + /v2/dev): `FAMILY_BOT_HTML` (1,781 שורות) ודגל `V1_REDIRECT` הוסרו מ-app.py. **ראוט `/app` נשאר** כ-redirect קבוע 302→/v2 (אייקוני מסך-בית של סוכנים מצביעים עליו). אפס שינוי ב-/api/ ובנתונים. אומת: ast.parse ✓, יבוא מודול מלא (121 ראוטים) ✓, GET /app→302 /v2 ✓. שחזור אם אי-פעם יידרש: git history (הקומיט שלפני המחיקה).
