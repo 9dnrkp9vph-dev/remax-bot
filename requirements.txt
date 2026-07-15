@@ -8,3 +8,4 @@ numpy==1.26.4
 gunicorn==22.0.0
 openpyxl==3.1.5
 msoffcrypto-tool==5.4.2
+PyJWT[crypto]==2.9.0
