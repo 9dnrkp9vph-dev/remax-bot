@@ -7623,41 +7623,77 @@ _PRIVACY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>אפי — מדיניות פרטיות</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;800&display=swap" rel="stylesheet">
-<style>
-body{margin:0;background:#F2EFE7;font-family:'Heebo',sans-serif;color:#1E3A5F;line-height:1.75}
-.wrap{max-width:720px;margin:0 auto;padding:32px 20px 64px}
-h1{font-weight:800;font-size:26px;margin:0 0 4px}
-.sub{color:#6B7280;font-size:14px;margin-bottom:28px}
-h2{font-weight:600;font-size:18px;margin:28px 0 6px}
-p,li{font-size:15px;margin:6px 0}
-.card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:24px 26px;margin-top:18px}
-a{color:#2E6BD6}
-</style></head><body><div class="wrap">
-<h1>מדיניות פרטיות — אפי</h1>
-<div class="sub">Effie — Privacy Policy · עדכון אחרון: יולי 2026</div>
-<div class="card">
-<p>אפי היא מערכת ניהול (CRM) פנימית למשרדי תיווך נדל"ן. השימוש בה מיועד לצוות המשרד בלבד, בהזמנת מנהל — אין הרשמה פתוחה לציבור.</p>
-<h2>איזה מידע נאסף</h2>
-<ul>
-<li><b>פרטי משתמש:</b> שם, מספר טלפון ותמונת פרופיל (אם הועלתה) — לצורך זיהוי והתחברות.</li>
-<li><b>מידע עסקי:</b> נכסים, לקוחות, שיחות, פגישות, מסמכי החתמה ופעילות במערכת — מידע שהמשרד מזין במסגרת עבודתו.</li>
-<li><b>נתוני שימוש:</b> זמני התחברות ופעילות בסיסית, לצורך תפעול ואבטחה.</li>
-</ul>
-<h2>איך המידע משמש</h2>
-<p>המידע משמש אך ורק לתפעול המערכת עבור המשרד: ניהול לקוחות ונכסים, תיאום פגישות, החתמת מסמכים והתראות. המידע אינו נמכר ואינו מועבר לגורמים שלישיים למטרות שיווק.</p>
-<h2>ספקי משנה</h2>
-<ul>
-<li>אחסון ותשתית: שרתי ענן מאובטחים (Render, Supabase).</li>
-<li>שליחת SMS (קוד התחברות וקישורי חתימה): ספק הודעות ישראלי.</li>
-<li>התחברות עם Google (רשות): מקבלים שם וכתובת אימייל בלבד.</li>
-</ul>
-<h2>אבטחה ושמירת מידע</h2>
-<p>הגישה למידע מוגנת בהתחברות מאומתת, מוצפנת בתעבורה (HTTPS), ומוגבלת לפי תפקיד המשתמש במשרד. המידע נשמר כל עוד המשרד פעיל במערכת.</p>
-<h2>מחיקת מידע ופניות</h2>
-<p>בקשה לעיון, תיקון או מחיקה של מידע אישי — דרך מנהל המשרד או בפנייה אלינו: <a href="mailto:eyalshmul@gmail.com">eyalshmul@gmail.com</a>.</p>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;800&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#F2EFE7}</style>
+</head><body>
+<div dir="rtl" style="max-width:760px; margin:0 auto; padding:56px 28px 80px; color:#1E3A5F; font-family:'Heebo',sans-serif; line-height:1.75;">
+
+  <div style="display:flex; align-items:center; gap:14px; padding-bottom:22px; border-bottom:1px solid #DCD6C8; margin-bottom:30px;">
+    <svg width="44" height="40" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"></path><path d="M58 8L20 44h38z" fill="#C29435"></path><path d="M58 8l38 36H58z" fill="#EED9A0"></path><path d="M58 44L34 98h24z" fill="#D8AC4E"></path><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"></path><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"></circle></svg>
+    <div style="display:flex; flex-direction:column; gap:2px;">
+      <div style="font-size:26px; font-weight:800;">מדיניות פרטיות</div>
+      <div style="font-size:14px; color:#8B8F99;">אפי · אפליקציה לניהול נדל״ן · עדכון אחרון: יולי 2026</div>
+    </div>
+  </div>
+
+  
+
+  <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">1. מי אנחנו</h2>
+  <p style="margin:0; font-size:15.5px; color:#3D5273;">האפליקציה מופעלת על ידי פמילי נדל״ן והשקעות בע״מ, ח.פ. 515506293 ("אנחנו"), ומיועדת לסוכני ועובדי משרדי תיווך. ההצטרפות מתבצעת כיום בהזמנת מנהל המשרד; ככל שתתאפשר בעתיד הרשמה עצמאית של משרדים, יחולו עליה הוראות מדיניות זו.</p>
+
+  <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">2. איזה מידע אנחנו אוספים</h2>
+  <ul style="margin:0; padding-right:22px; font-size:15.5px; color:#3D5273;">
+    <li><b>פרטי משתמש:</b> שם, טלפון, כתובת מייל וחשבון Google (לצורך התחברות וסנכרון יומן).</li>
+    <li><b>שיחות טלפון:</b> שיחות המתבצעות דרך המספר הווירטואלי של המשרד מוקלטות, מתומללות ומסוכמות באמצעות בינה מלאכותית — לצורך תיעוד לידים ושירות לקוחות.</li>
+    <li><b>פרטי לקוחות ולידים:</b> שמות, מספרי טלפון, דרישות חיפוש והיסטוריית התקשרות שהוזנו על ידי המשתמשים.</li>
+    <li><b>נכסים:</b> פרטי נכסים, כתובות ופרטי בעלי נכסים ממקורות פומביים ומהזנה ידנית.</li>
+    <li><b>מסמכים חתומים:</b> הסכמי תיווך שנחתמו דיגיטלית.</li>
+    <li><b>מיקום:</b> בעת שימוש במפה בלבד, ובאישורך — להצגת "המיקום שלי".</li>
+    <li><b>נתוני שימוש:</b> פעולות באפליקציה (יומן פעילות פנימי למנהל המשרד).</li>
+  </ul>
+
+  <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">3. הקלטת שיחות והסכמה</h2>
+  <p style="margin:0; font-size:15.5px; color:#3D5273;">הקלטת ותמלול שיחות מתבצעים רק בקווי המשרד הייעודיים. באחריות המשרד ליידע את המתקשרים על ההקלטה בהתאם לדין החל. המשתמש באפליקציה מאשר זאת בעת ההצטרפות.</p>
+
+  <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">4. איך המידע משמש אותנו</h2>
+  <ul style="margin:0; padding-right:22px; font-size:15.5px; color:#3D5273;">
+    <li>ניהול לידים, קונים, נכסים, פגישות וחתימות של המשרד.</li>
+    <li>הפקת סיכומי שיחות, התאמות נכסים ותקצירים באמצעות בינה מלאכותית.</li>
+    <li>סנכרון פגישות עם יומן Google של המשתמש.</li>
+    <li>דוחות פנימיים למנהל המשרד.</li>
+  </ul>
+  <p style="margin:8px 0 0; font-size:15.5px; color:#3D5273;"><b>אנחנו לא מוכרים מידע אישי ולא מעבירים אותו לגורמים שלישיים למטרות שיווק.</b></p>
+
+  <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">5. ספקי משנה</h2>
+  <ul style="margin:0; padding-right:22px; font-size:15.5px; color:#3D5273;">
+    <li><b>Supabase</b> — אחסון נתונים מאובטח (בסיס נתונים, קבצים, הרשאות).</li>
+    <li><b>Google</b> — התחברות וסנכרון יומן (בכפוף למדיניות Google API Services).</li>
+    <li><b>ספקי טלפוניה ותמלול</b> — הקלטה ותמלול שיחות בקווי המשרד.</li>
+    <li><b>Anthropic (Claude)</b> — עיבוד סיכומים חכמים. התוכן אינו משמש לאימון מודלים.</li>
+  </ul>
+
+  <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">6. אבטחה והפרדת נתונים</h2>
+  <p style="margin:0; font-size:15.5px; color:#3D5273;">המידע מוצפן בתעבורה ובמנוחה. הרשאות מבוססות-תפקיד (סוכן / מתאמת / מנהל) והפרדה מלאה בין משרדים באמצעות Row Level Security. הגישה לנתוני המשרד מוגבלת לחברי אותו משרד בלבד.</p>
+
+  <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">7. שמירת מידע</h2>
+  <p style="margin:0; font-size:15.5px; color:#3D5273;">המידע נשמר כל עוד חשבון המשרד פעיל, או עד לבקשת מחיקה. הקלטות שיחות נשמרות לתקופה מוגבלת הנדרשת לתפעול השוטף ולאחר מכן נמחקות.</p>
+
+  <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">8. הזכויות שלך ומחיקת חשבון</h2>
+  <ul style="margin:0; padding-right:22px; font-size:15.5px; color:#3D5273;">
+    <li>עיון, תיקון ומחיקה של מידע אישי — בפנייה אלינו או דרך מנהל המשרד.</li>
+    <li><b>מחיקת חשבון:</b> בפנייה למנהל המשרד או אלינו בפרטי הקשר שבסעיף 9 — המחיקה תבוצע בתוך 30 יום. המחיקה מסירה את פרטי המשתמש והרשאותיו; נתוני המשרד העסקיים נשמרים באחריות המשרד.</li>
+    <li>ניתוק סנכרון יומן Google — בכל עת מהגדרות החשבון.</li>
+  </ul>
+
+  <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">9. יצירת קשר</h2>
+  <p style="margin:0; font-size:15.5px; color:#3D5273;">לשאלות בנושא פרטיות: eyalshmul@gmail.com · 050-5709865 · יגאל בשן 2, קרית ביאליק. נשיב תוך 30 יום.</p>
+
+  <div style="margin-top:36px; padding-top:18px; border-top:1px solid #DCD6C8; font-size:13px; color:#8B8F99;">
+    מסמך זה עשוי להתעדכן מעת לעת; הודעה על שינוי מהותי תוצג באפליקציה.
+  </div>
 </div>
-</div></body></html>'''
+</body></html>'''
 
 @app.route("/privacy", methods=["GET"])
 def privacy_page():
