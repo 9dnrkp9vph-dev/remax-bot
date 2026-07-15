@@ -3194,7 +3194,7 @@ def api_auth_request():
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
     # נוסח שהמפענח של iOS מזהה כקוד אימות (מציע מעל המקלדת): שורה עברית נקייה
     # בלי לטינית בין "קוד" למספר, שורה אנגלית בתבנית code: — ובלי ספרות מתחרות ("חמש" במילים).
-    _sms = f"קוד הכניסה שלך: {code}\nFamily Bot code: {code}\n(תקף לחמש דקות)"
+    _sms = f"קוד הכניסה שלך לאפי: {code}\nEffie code: {code}\n(תקף לחמש דקות)"
     if not web_send_sms(phone, _sms):
         return jsonify({"ok": False, "reason": "sms_failed"})
     return jsonify({"ok": True})
@@ -3499,7 +3499,7 @@ def api_glink_request():
     _otp_store[phone] = {"code": code, "exp": time.time() + _OTP_TTL, "tries": 0}
     # נוסח שהמפענח של iOS מזהה כקוד אימות (מציע מעל המקלדת): שורה עברית נקייה
     # בלי לטינית בין "קוד" למספר, שורה אנגלית בתבנית code: — ובלי ספרות מתחרות ("חמש" במילים).
-    _sms = f"קוד הכניסה שלך: {code}\nFamily Bot code: {code}\n(תקף לחמש דקות)"
+    _sms = f"קוד הכניסה שלך לאפי: {code}\nEffie code: {code}\n(תקף לחמש דקות)"
     if not web_send_sms(phone, _sms):
         return jsonify({"ok": False, "reason": "sms_failed"})
     return jsonify({"ok": True})
