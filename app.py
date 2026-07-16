@@ -5060,7 +5060,21 @@ def public_sign_doc(token):
              ".sig{margin-top:20px;border-top:1px solid var(--line);padding-top:14px;font-size:14px;font-weight:600}"
              ".sig img{max-width:260px;height:auto}"
              ".pb{display:block;width:100%;max-width:820px;margin:18px auto 6px;padding:16px;background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;border:none;border-radius:14px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 8px 20px rgba(187,138,44,.28)}"
-             "@media print{.pb,.signbox{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:100%;border:none}}"
+             ".agentrow{display:flex;align-items:center;gap:12px}"
+             ".avwrap{width:56px;height:56px;border-radius:50%;border:2.5px solid var(--gold);padding:2px;flex:0 0 auto;box-sizing:border-box}"
+             ".avwrap img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}"
+             ".stickybar{position:fixed;left:0;right:0;bottom:0;padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 12px);"
+             "background:linear-gradient(180deg,rgba(246,245,242,0),rgba(246,245,242,.94) 38%);z-index:5}"
+             ".stickybar .pb{margin:0 auto;box-shadow:0 10px 26px rgba(187,138,44,.4)}"
+             ".greet{font-size:19px;font-weight:800;margin:4px 0 2px}"
+             ".greet2{font-size:13.5px;color:#67707e;font-weight:600;margin-bottom:14px}"
+             ".agree{display:flex;align-items:flex-start;gap:9px;margin:16px 0 4px;font-size:13.5px;font-weight:600;color:#46505f;line-height:1.55}"
+             ".agree input{width:19px;height:19px;margin-top:1px;accent-color:#bb8a2c;flex:0 0 auto}"
+             ".backlink{display:block;text-align:center;margin-top:12px;background:none;border:none;color:#67707e;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:underline;width:100%}"
+             ".efoot{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:600}"
+             ".efoot a{color:var(--muted)}"
+             "#step2{display:none}"
+             "@media print{.pb,.signbox,.stickybar,.efoot,.backlink{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:100%;border:none}}"
              "</style></head><body><div class=page>")
     _p = _parse_sign_header(header)
     _docnum = "%05d" % ((sum(ord(c) for c in token) * 7) % 90000 + 10000)
@@ -5086,31 +5100,54 @@ def public_sign_doc(token):
     _alic = (_ainfo.get("license", "") or "").strip()
     _agent_box = ""
     if _p["agent"]:
-        _agent_box = ("<div class=agentbox><div class=an>" + _h.escape(_p["agent"]) + "</div>" +
+        # תמונת הסוכן מהאפליקציה (כמו בסטורי) — טבעת זהב; אם אין תמונה, העיגול נעלם
+        _avraw = "".join(ch for ch in str(_ainfo.get("phone", "")) if ch.isdigit())[-9:]
+        _av = (("<div class=avwrap><img src='/v2/api/avatar?p=" + _avraw +
+                "' alt='' onerror=\"this.parentNode.style.display='none'\"></div>") if _avraw else "")
+        _agent_box = ("<div class=agentrow>" + _av +
+            "<div class=agentbox><div class=an>" + _h.escape(_p["agent"]) + "</div>" +
             (("<div class=al>רישיון תיווך מס׳: " + _h.escape(_alic) + "</div>") if _alic else "") +
             (("<div class=al>טלפון: " + _h.escape(_aphone) + "</div>") if _aphone else "") +
-            "<div class=al>RE/MAX Family</div></div>")
+            "<div class=al>RE/MAX Family</div></div></div>")
     _logobar = "<div class=logobar>" + _agent_box + "<img src='/assets/logo?v=3' alt='RE/MAX Family'></div>"
+    _efoot = ("<div class=efoot>"
+              "<svg width='16' height='14' viewBox='0 0 118 106'><path d='M58 8L20 44l14 54h48l14-54z' fill='#E4C56B'/><path d='M20 44l-14 8 14 6z' fill='#1E3A5F'/><circle cx='40' cy='34' r='4.2' fill='#1E3A5F'/></svg>"
+              "מופעל על ידי אפי · <a href='/sign-terms' target='_blank' rel='noopener'>תנאי שימוש ופרטיות</a></div>")
     meta_html = (_logobar +
         "<div class=docnum>הסכם מס׳ " + _docnum + "</div>" +
         (("<div class=cline>" + " · ".join(_cparts) + "</div>") if _cparts else "") +
         _ptbl)
     if status == "pending":
-        _form = (docs_html +
-                 "<div class=signbox><div class=signlbl>תעודת זהות</div>"
+        _greet = ("<div class=greet>שלום" + ((" " + _h.escape(_p["client"])) if _p["client"] else "") + ",</div>"
+                  "<div class=greet2>קראת את ההסכם — נשאר רק לאמת זהות ולחתום. לוקח פחות מדקה.</div>")
+        _form = ("<div id=step1>" + docs_html +
+                 "<div style='height:66px'></div></div>"   # מרווח לכפתור הצף
+                 "<div id=step2><div class=signbox style='border-top:none;margin-top:4px;padding-top:0'>" +
+                 _greet +
+                 "<div class=signlbl>תעודת זהות</div>"
                  "<input id=cid class=signinp type=text inputmode=numeric maxlength=9 name=sg_tz autocomplete=off autocorrect=off data-form-type=other data-lpignore=true placeholder='9 ספרות' oninput='chkId()'>"
                  "<div id=idmsg></div>"
-                 "<div class=signlbl style='margin-top:14px'>✍️ חתימה</div>"
+                 "<div class=signlbl style='margin-top:14px'>✍️ חתימה באצבע, בתוך המסגרת</div>"
                  "<canvas id=pad class=signpad></canvas>"
-                 "<div style='text-align:left'><button class=clrbtn onclick='clrPad()'>נקה</button></div>"
+                 "<div style='text-align:left'><button class=clrbtn onclick='clrPad()'>נקה וחתום מחדש</button></div>"
+                 "<label class=agree><input id=agree type=checkbox> קראתי את ההסכם ואני מסכים/ה "
+                 "<a href='/sign-terms' target='_blank' rel='noopener'>לתנאי השימוש והפרטיות</a> של מערכת החתימה</label>"
                  "<button id=sbtn class=pb onclick='doSign()'>✅ אשר וחתום</button>"
-                 "<div style='text-align:center;color:#888;font-size:12px;margin-bottom:20px'>בלחיצה אני מאשר/ת את תוכן המסמך וחותם/ת עליו</div>"
-                 "</div></div>")
+                 "<button class=backlink onclick='backToDoc()'>חזרה לקריאת ההסכם</button>"
+                 "</div></div>" + _efoot + "</div>"
+                 "<div class=stickybar id=contBar><button class=pb onclick='showSign()'>המשך לחתימה ›</button></div>")
         _js = ("<script>var TOKEN=" + _json.dumps(token) + ";"
+               "function showSign(){document.getElementById('step1').style.display='none';"
+               "document.getElementById('contBar').style.display='none';"
+               "document.getElementById('step2').style.display='block';"
+               "szPad();window.scrollTo(0,0);}"
+               "function backToDoc(){document.getElementById('step2').style.display='none';"
+               "document.getElementById('step1').style.display='block';"
+               "document.getElementById('contBar').style.display='block';window.scrollTo(0,0);}"
                "function validIL(v){v=String(v).replace(/\\D/g,'');if(v.length>9)return false;while(v.length<9)v='0'+v;var s=0;for(var i=0;i<9;i++){var n=parseInt(v[i],10)*((i%2)+1);if(n>9)n-=9;s+=n;}return s%10===0;}"
                "function chkId(){var v=document.getElementById('cid').value;var m=document.getElementById('idmsg');if(!v){m.textContent='';return;}if(validIL(v)){m.textContent='✓ תקין';m.style.color='#1a8a4a';}else{m.textContent='✗ ת״ז לא תקינה';m.style.color='#c0392b';}}"
                "var cv=document.getElementById('pad'),cx=cv.getContext('2d'),drawing=false,signed=false;"
-               "function szPad(){var r=cv.getBoundingClientRect();cv.width=r.width;cv.height=180;cx.lineWidth=2.5;cx.lineCap='round';cx.lineJoin='round';cx.strokeStyle='#0D1B2A';}"
+               "function szPad(){var r=cv.getBoundingClientRect();if(r.width<10)return;cv.width=r.width;cv.height=180;cx.lineWidth=2.5;cx.lineCap='round';cx.lineJoin='round';cx.strokeStyle='#0D1B2A';}"
                "szPad();"
                "function pos(e){var r=cv.getBoundingClientRect();var t=(e.touches&&e.touches[0])?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top};}"
                "function dn(e){drawing=true;var p=pos(e);cx.beginPath();cx.moveTo(p.x,p.y);if(e.cancelable)e.preventDefault();}"
@@ -5120,12 +5157,13 @@ def public_sign_doc(token):
                "cv.addEventListener('touchstart',dn,{passive:false});cv.addEventListener('touchmove',mv,{passive:false});cv.addEventListener('touchend',up);"
                "function clrPad(){cx.clearRect(0,0,cv.width,cv.height);signed=false;}"
                "function doSign(){var id=(document.getElementById('cid').value||'').replace(/\\D/g,'');if(!id){alert('נא להזין תעודת זהות');return;}if(!validIL(id)){alert('תעודת הזהות אינה תקינה');return;}if(!signed){alert('נא לחתום בתיבת החתימה');return;}"
+               "if(!document.getElementById('agree').checked){alert('נא לאשר את תנאי השימוש והפרטיות');return;}"
                "var tw=440,th=Math.round(tw*cv.height/cv.width);var c=document.createElement('canvas');c.width=tw;c.height=th;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,tw,th);x.drawImage(cv,0,0,tw,th);var sig=c.toDataURL('image/jpeg',0.55);"
                "var b=document.getElementById('sbtn');b.disabled=true;b.textContent='שומר…';"
                "fetch('/api/sign/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,cid:id,signature:sig})}).then(function(r){return r.json();}).then(function(r){if(r&&r.ok){location.reload();}else{b.disabled=false;b.textContent='✅ אשר וחתום';alert('שמירה נכשלה: '+((r&&r.reason)||'שגיאה'));}}).catch(function(){b.disabled=false;b.textContent='✅ אשר וחתום';alert('שגיאת רשת');});}"
                "</script>")
         return _head + meta_html + _form + _js + "</body></html>"
-    _tail = (docs_html + sig_html + "</div>"
+    _tail = (docs_html + sig_html + _efoot + "</div>"
              "<button class=pb onclick='window.print()'>שמור / הדפס PDF</button></body></html>")
     return _head + meta_html + _tail
 
@@ -7818,6 +7856,76 @@ _PRIVACY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 @app.route("/privacy", methods=["GET"])
 def privacy_page():
     resp = Response(_PRIVACY_HTML, mimetype="text/html")
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+# ── תנאי שימוש ופרטיות לחותמים (העמוד הציבורי /s/<token> מקשר לכאן) ─────────────
+# נכתב בניסוח מקורי של אפי — לא העתקה של פלטפורמות אחרות.
+_SIGN_TERMS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>אפי — תנאי שימוש ופרטיות לחותמים</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F2EFE7;font-family:'Heebo',sans-serif;color:#1E3A5F;line-height:1.75}
+.wrap{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+h1{font-weight:800;font-size:24px;margin:0}
+.sub{color:#6B7280;font-size:14px;margin-bottom:24px}
+h2{font-weight:600;font-size:17px;margin:26px 0 6px}
+p,li{font-size:14.5px;margin:6px 0}
+.card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:24px 26px;margin-top:16px}
+ol{padding-inline-start:20px}
+a{color:#2E6BD6}
+.ft{color:#6B7280;font-size:12px;text-align:center;margin-top:22px}
+</style></head><body><div class="wrap">
+<div class="brand">
+<svg width="30" height="27" viewBox="0 0 118 106" aria-hidden="true"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>
+<h1>תנאי שימוש ופרטיות — חתימה דיגיטלית</h1>
+</div>
+<div class="sub">אפי (Effie) · עדכון אחרון: יולי 2026</div>
+<div class="card">
+<h2>1. מה העמוד הזה</h2>
+<p>הגעת לכאן מקישור חתימה שנשלח אליך על-ידי משרד תיווך. אפי היא מערכת דיגיטלית המשמשת את המשרד לניהול, שליחה והחתמה של מסמכים. אפי היא כלי טכנולוגי בלבד: ההסכם עצמו נכרת בינך לבין משרד התיווך, ואפי אינה צד לו, אינה מנסחת אותו ואינה אחראית לתוכנו.</p>
+<h2>2. החתימה שלך</h2>
+<ol>
+<li>חתימה בעמוד זה — לרבות הזנת תעודת זהות וחתימה על גבי המסך — מהווה חתימה מחייבת על ההסכם המוצג, כדין חתימה בכתב יד.</li>
+<li>לפני החתימה באחריותך לקרוא את ההסכם במלואו. שאלות על תוכנו יש להפנות למתווך ששלח אותו.</li>
+<li>חל איסור לשנות, להעתיק באופן מטעה, לשבש או לזייף מסמך שנשלח אליך. פעולות כאלה עלולות להוות עבירה על החוק.</li>
+</ol>
+<h2>3. תיעוד ואימות</h2>
+<p>לצורך תוקף החתימה ואבטחת התהליך, המערכת מתעדת את מועד החתימה, פרטי הזיהוי שהוזנו, תמונת החתימה ונתוני גישה טכניים (כגון כתובת IP וסוג דפדפן). תיעוד זה נשמר כראיה לתקינות ההליך.</p>
+<h2>4. פרטיות</h2>
+<ol>
+<li><b>מה נאסף:</b> שם, מספר זהות, טלפון, תמונת החתימה ונתוני הגישה הטכניים שלעיל — בלבד.</li>
+<li><b>למה:</b> זיהויך, השלמת ההחתמה, ותיעוד ההליך עבור הצדדים להסכם.</li>
+<li><b>למי מועבר:</b> למשרד התיווך שהזמין את ההחתמה. מעבר לכך לא מועבר מידע לגורם שלישי, אלא אם נדרש על פי דין.</li>
+<li>העמוד משתמש באמצעים טכניים תפעוליים בלבד — אין עוגיות פרסום ואין מעקב שיווקי.</li>
+</ol>
+<h2>5. עותק ההסכם</h2>
+<p>עם השלמת החתימה, ההסכם החתום נשמר אצל משרד התיווך, ובעמוד זה זמין כפתור "שמור / הדפס PDF". מומלץ לשמור עותק מיד. לקבלת עותק בשלב מאוחר יותר יש לפנות למשרד התיווך — המערכת אינה שירות ארכיון עבור החותם.</p>
+<h2>6. הצגה חלקית של פרטי נכס</h2>
+<p>ייתכן שחלק מפרטי הנכס (למשל כתובת מלאה) יוצגו באופן חלקי עד להשלמת החתימה, לפי שיקול דעת המתווך. האחריות להצגה זו היא של המתווך, ולא תעמוד לחותם טענה כלפי המערכת בגין כך.</p>
+<h2>7. פניות והליכים משפטיים</h2>
+<ol>
+<li>כל פנייה הנוגעת להסכם — עותקים, בירורים או השגות — תופנה למשרד התיווך. המערכת אינה מעניקה ייעוץ משפטי.</li>
+<li>המערכת אינה צד להסכם. צד שידרוש בכל זאת מנציגי המערכת מעורבות בהליך משפטי בין הצדדים — לרבות מתן עדות, מסירת תיעוד או היערכות לכך — יישא במלוא העלויות הכרוכות בכך, ובכלל זה השתתפות בסך 10,000 ₪ בתוספת מע"מ בגין זמן, היערכות וליווי מקצועי.</li>
+</ol>
+<h2>8. אחריות</h2>
+<p>אחריות המערכת מוגבלת לתקינות הטכנית של תהליך החתימה. המערכת אינה אחראית לתוכן ההסכמים, לנכונות הנתונים שהוזנו על-ידי הצדדים, או לכל נזק שמקורו ביחסים שבין החותם לבין משרד התיווך.</p>
+<h2>9. דין וסמכות שיפוט</h2>
+<p>על השימוש בעמוד זה יחול דין מדינת ישראל. סמכות השיפוט הבלעדית נתונה לבתי המשפט המוסמכים במחוז חיפה.</p>
+<h2>10. עדכון התנאים</h2>
+<p>תנאים אלה עשויים להתעדכן מעת לעת; הנוסח המחייב הוא זה המפורסם בעמוד זה במועד החתימה.</p>
+<h2>11. הסכמה</h2>
+<p>סימון תיבת ההסכמה ולחיצה על "אשר וחתום" מהווים אישור שקראת, הבנת והסכמת לתנאים אלה.</p>
+<p style="margin-top:14px">שאלות בנושא פרטיות: <a href="mailto:eyalshmul@gmail.com">eyalshmul@gmail.com</a></p>
+</div>
+<div class="ft">אפי · מערכת ניהול והחתמה דיגיטלית לנדל"ן</div>
+</div></body></html>'''
+
+@app.route("/sign-terms", methods=["GET"])
+def sign_terms_page():
+    resp = Response(_SIGN_TERMS_HTML, mimetype="text/html")
     resp.headers["Cache-Control"] = "public, max-age=3600"
     return resp
 
