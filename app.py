@@ -1491,11 +1491,30 @@ def _recent_signs_merge(rows):
                 _canon_key(r.get("client_name", "") or ""),
                 str(r.get("deal_type", "") or ""))
 
+    # מפת "נחתם מהגשר" — לשדרוג שורות אמת שעדיין 'ממתין' אך כבר נחתמו בפועל
+    # (הגשר סומן ע"י _recent_signs_mark_signed; בלי זה המיזוג היה מעדיף את שורת
+    #  האמת הממתינה וזורק את הגשר החתום → 'ממתין למרות שחתם', תיקון 16/07).
+    signed_link = {}
+    for (t, r) in keep:
+        _lk = str(r.get("commission_pct", "") or "")
+        if _lk:
+            signed_link[_stablekey(r)] = _lk
+            signed_link[_tokkey(r)] = _lk
+
+    out = []
+    for r in rows:
+        if not str(r.get("commission_pct", "") or ""):   # שורת אמת ממתינה
+            _lk = signed_link.get(_stablekey(r)) or signed_link.get(_tokkey(r))
+            if _lk:
+                r = dict(r)
+                r["commission_pct"] = _lk                 # שדרוג ל'נחתם'
+        out.append(r)
+
     seen_tok = set(_tokkey(r) for r in rows)
     seen_stable = set(_stablekey(r) for r in rows)
     extra = [r for (t, r) in keep
              if _tokkey(r) not in seen_tok and _stablekey(r) not in seen_stable]
-    return (rows + extra) if extra else rows
+    return out + extra
 
 def get_signings(frm="01/01/2020", to="31/12/2099"):
     """חתימות לתקופה. אם יש טאב מלא (ייצוא מהקרם) — הוא הבסיס המדויק, ומוסיפים מהמקור
