@@ -968,6 +968,8 @@ function openMe(){
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" ' +
     'onclick="location.href=\'/auth/google/login?\' + (window.Capacitor ? \'native=1\' : \'next=v2\')">' +
     'סנכרון יומן Google (גם אחרי כניסה ב-SMS)</button>' +
+    ((window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'ios')
+      ? '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#8B5E10;border:1.5px solid #DCD6C8" onclick="meAppleUnlink()">נתק חשבון Apple (לבדיקה מחדש)</button>' : '') +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#EFEBDD;color:#5B6472;border:0" onclick="closeSheet()">סגירה</button>');
   // תמונה קיימת מכסה את האות
   var im = el('meAv');
@@ -975,6 +977,11 @@ function openMe(){
   GET('/v2/api/me/license').then(function(j){
     if (j && j.ok && el('meLic')) el('meLic').value = j.license || '';
   }).catch(function(){});
+}
+function meAppleUnlink(){
+  POST('/v2/api/me/apple_unlink', {}).then(function(j){
+    toast(j && j.ok ? 'החשבון נותק — ההתחברות הבאה עם Apple תתחיל מחדש' : 'שגיאה');
+  }).catch(function(){ toast('שגיאה'); });
 }
 function saveLic(){
   var v = (el('meLic').value || '').replace(/\D/g, '');
