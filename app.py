@@ -3574,6 +3574,23 @@ def _apple_links_all():
         except Exception:
             return {}
 
+def _apple_unlink_sub(sub):
+    """מסיר קישור Apple-ID בודד (לבדיקה חוזרת של מסלול המשתמש-החדש)."""
+    with _apple_lock:
+        try:
+            with open(_APPLE_PATH, encoding="utf-8") as f:
+                m = json.load(f)
+            if not isinstance(m, dict): return
+        except Exception:
+            return
+        if str(sub) in m:
+            m.pop(str(sub), None)
+            try:
+                with open(_APPLE_PATH, "w", encoding="utf-8") as f:
+                    json.dump(m, f, ensure_ascii=False)
+            except Exception:
+                pass
+
 def _apple_link(sub, phone, email="", name=""):
     """מקשר Apple-ID (sub) ↔ טלפון-סוכן. בדיסק הקבוע, כמו קישורי Google."""
     with _apple_lock:

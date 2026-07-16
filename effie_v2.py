@@ -441,6 +441,8 @@ function v2Me(){
     '<input type="file" id="v2meFile" accept="image/*" style="display:none" onchange="v2MeUpload(this)">' +
     '<button class="v2meBtn" onclick="document.getElementById(\'v2meFile\').click()">החלפת תמונת פרופיל</button>' +
     '<button class="v2meBtn" onclick="location.href=\'/auth/google/login?\' + (window.Capacitor ? \'native=1\' : \'next=v2\')">סנכרון יומן Google</button>' +
+    ((window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'ios')
+      ? '<button class="v2meBtn" style="color:#8B5E10" onclick="v2MeAppleUnlink()">נתק חשבון Apple (לבדיקה מחדש)</button>' : '') +
     '</div>';
   document.body.appendChild(w);
   fetch('/v2/api/me/license', {headers: {'X-Auth-Token': tok}}).then(function(r){ return r.json(); }).then(function(j){
@@ -455,6 +457,13 @@ function v2meToast(msg){
   }
   t.textContent = msg; t.style.opacity = '1';
   clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+function v2MeAppleUnlink(){
+  var tok = null; try{ tok = localStorage.getItem('fbTok'); }catch(e){}
+  fetch('/v2/api/me/apple_unlink', {method: 'POST', headers: {'X-Auth-Token': tok}})
+    .then(function(r){ return r.json(); }).then(function(j){
+      v2meToast(j && j.ok ? 'החשבון נותק — ההתחברות הבאה עם Apple תתחיל מחדש' : 'שגיאה');
+    }).catch(function(){ v2meToast('שגיאה'); });
 }
 function v2MeSaveLic(){
   var tok = null; try{ tok = localStorage.getItem('fbTok'); }catch(e){}
@@ -8536,6 +8545,26 @@ def register(app, G):
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
 
     # ── מספר רישיון תיווך — הסוכן מזין באזור האישי; מופיע על טפסי החתימה ─────────
+    @app.route("/v2/api/me/apple_unlink", methods=["POST"])
+    def v2_api_me_apple_unlink():
+        """ניתוק קישור Apple של המשתמש — כדי לבדוק מחדש את מסלול המשתמש-החדש
+        (Apple→אימות טלפון). מסיר את כל ה-subs שממופים לטלפון של המשתמש."""
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        me = _last9(s.get("phone", ""))
+        removed = 0
+        try:
+            links = G["_apple_links_all"]()
+            for sub, rec in list(links.items()):
+                if _last9(rec.get("phone", "")) == me:
+                    G["_apple_unlink_sub"](sub)
+                    removed += 1
+        except Exception as e:
+            if log: log.warning(f"apple unlink failed: {e}")
+            return jsonify({"ok": False})
+        return jsonify({"ok": True, "removed": removed})
+
     @app.route("/v2/api/me/license", methods=["GET", "POST"])
     def v2_api_me_license():
         s = _web_auth()
