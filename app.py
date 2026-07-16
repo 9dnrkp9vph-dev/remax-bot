@@ -5110,6 +5110,12 @@ def public_sign_doc(token):
         except Exception: _ainfo = {}
     _aphone = _fmt_vphone(_ainfo.get("phone", "")) if _ainfo.get("phone") else ""
     _alic = (_ainfo.get("license", "") or "").strip()
+    try:   # רישיון שהסוכן הזין באזור האישי גובר על עמודת הגיליון
+        _lic_own = (_load_config().get("v2_licenses") or {}).get(_last9(_ainfo.get("phone", "")), "")
+        if _lic_own:
+            _alic = str(_lic_own)
+    except Exception:
+        pass
     _agent_box = ""
     if _p["agent"]:
         # תמונת הסוכן מהאפליקציה (כמו בסטורי) — טבעת זהב; בלי תמונה: האות הראשונה על נייבי
