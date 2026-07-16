@@ -4918,29 +4918,35 @@ def api_sign_complete():
         upd_ok = bool(ju and ju.get("ok"))
     except Exception:
         upd_ok = False
-    # הוספת הקישור לשורת החתימה הקיימת + עדכון event_id ל-ת״ז
-    try:
-        _buyers_apps_post("updatesigning", {"doc_token": token, "commission_pct": link, "event_id": cid})
-    except Exception:
-        pass
-    _cache_clear("signings_sheet")
-    _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
-    # פוש לכל המנהלים — הלקוח השלים חתימה מרחוק (חתום)
-    try:
-        _ag = _cl = _addr = ""
-        for _ln in header.split("\n"):
-            _ln = _ln.strip()
-            if "הסוכן:" in _ln:
-                _ag = _ln.split("הסוכן:", 1)[1].strip()
-            elif _ln.startswith("לקוח"):
-                _cl = re.split(r"\s*·\s*", _ln.split(":", 1)[-1].strip())[0].strip() if ":" in _ln else _ln[4:].strip()
-            elif _ln.startswith("נכס"):
-                _addr = re.split(r"\s*·\s*", _ln.split(":", 1)[-1].strip())[0].strip()
-        _notify_managers_signing("נחתם", _cl, _ag, _addr)
-        _sms_agent_signing(_cl, _ag, _addr, link)
-        _wa_signing(_cl, _ag, _addr, link)
-    except Exception:
-        pass
+    # השאר — שורת חתימה, קאש והתראות — ברקע: הלקוח מקבל אישור מיד אחרי שמירת המסמך
+    # (אותו דפוס כמו האצת send_remote — הסינכרוני הוא רק מה שקובע הצלחה/כישלון).
+    def _post_sign_bg():
+        try:
+            _buyers_apps_post("updatesigning", {"doc_token": token, "commission_pct": link, "event_id": cid})
+        except Exception:
+            pass
+        _cache_clear("signings_sheet")
+        _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+        try:
+            _ag = _cl = _addr = ""
+            for _ln in header.split("\n"):
+                _ln = _ln.strip()
+                if "הסוכן:" in _ln:
+                    _ag = _ln.split("הסוכן:", 1)[1].strip()
+                elif _ln.startswith("לקוח"):
+                    _cl = re.split(r"\s*·\s*", _ln.split(":", 1)[-1].strip())[0].strip() if ":" in _ln else _ln[4:].strip()
+                elif _ln.startswith("נכס"):
+                    _addr = re.split(r"\s*·\s*", _ln.split(":", 1)[-1].strip())[0].strip()
+            _notify_managers_signing("נחתם", _cl, _ag, _addr)
+            _sms_agent_signing(_cl, _ag, _addr, link)
+            _wa_signing(_cl, _ag, _addr, link)
+        except Exception:
+            pass
+    if upd_ok:
+        try:
+            _threading.Thread(target=_post_sign_bg, daemon=True).start()
+        except Exception:
+            _post_sign_bg()   # נפילה חזרה לסינכרוני — שלא יאבדו התראות
     return jsonify({"ok": upd_ok, "link": link})
 
 @app.route("/api/sign/share", methods=["POST"])
@@ -5062,7 +5068,13 @@ def public_sign_doc(token):
              ".pb{display:block;width:100%;max-width:820px;margin:18px auto 6px;padding:16px;background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;border:none;border-radius:14px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 8px 20px rgba(187,138,44,.28)}"
              ".agentrow{display:flex;align-items:center;gap:12px}"
              ".avwrap{width:56px;height:56px;border-radius:50%;border:2.5px solid var(--gold);padding:2px;flex:0 0 auto;box-sizing:border-box}"
-             ".avwrap img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}"
+             ".avin{position:relative;width:100%;height:100%;border-radius:50%;background:#15263b;display:flex;align-items:center;justify-content:center;overflow:hidden}"
+             ".avin span{color:#fff;font-size:21px;font-weight:800;line-height:1}"
+             ".avin img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}"
+             ".okcard{text-align:center;padding:14px 0 4px}"
+             ".okcard .big{font-size:44px}"
+             ".okcard h2{font-size:20px;font-weight:800;margin:8px 0 4px}"
+             ".okcard p{font-size:14px;color:#67707e;font-weight:600;margin:0 0 16px;line-height:1.6}"
              ".stickybar{position:fixed;left:0;right:0;bottom:0;padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 12px);"
              "background:linear-gradient(180deg,rgba(246,245,242,0),rgba(246,245,242,.94) 38%);z-index:5}"
              ".stickybar .pb{margin:0 auto;box-shadow:0 10px 26px rgba(187,138,44,.4)}"
@@ -5100,10 +5112,12 @@ def public_sign_doc(token):
     _alic = (_ainfo.get("license", "") or "").strip()
     _agent_box = ""
     if _p["agent"]:
-        # תמונת הסוכן מהאפליקציה (כמו בסטורי) — טבעת זהב; אם אין תמונה, העיגול נעלם
+        # תמונת הסוכן מהאפליקציה (כמו בסטורי) — טבעת זהב; בלי תמונה: האות הראשונה על נייבי
         _avraw = "".join(ch for ch in str(_ainfo.get("phone", "")) if ch.isdigit())[-9:]
-        _av = (("<div class=avwrap><img src='/v2/api/avatar?p=" + _avraw +
-                "' alt='' onerror=\"this.parentNode.style.display='none'\"></div>") if _avraw else "")
+        _aletter = _h.escape(_p["agent"].strip()[:1]) if _p["agent"].strip() else ""
+        _av = ("<div class=avwrap><div class=avin><span>" + _aletter + "</span>" +
+               (("<img src='/v2/api/avatar?p=" + _avraw + "' alt='' onerror='this.remove()'>") if _avraw else "") +
+               "</div></div>")
         _agent_box = ("<div class=agentrow>" + _av +
             "<div class=agentbox><div class=an>" + _h.escape(_p["agent"]) + "</div>" +
             (("<div class=al>רישיון תיווך מס׳: " + _h.escape(_alic) + "</div>") if _alic else "") +
@@ -5160,7 +5174,9 @@ def public_sign_doc(token):
                "if(!document.getElementById('agree').checked){alert('נא לאשר את תנאי השימוש והפרטיות');return;}"
                "var tw=440,th=Math.round(tw*cv.height/cv.width);var c=document.createElement('canvas');c.width=tw;c.height=th;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,tw,th);x.drawImage(cv,0,0,tw,th);var sig=c.toDataURL('image/jpeg',0.55);"
                "var b=document.getElementById('sbtn');b.disabled=true;b.textContent='שומר…';"
-               "fetch('/api/sign/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,cid:id,signature:sig})}).then(function(r){return r.json();}).then(function(r){if(r&&r.ok){location.reload();}else{b.disabled=false;b.textContent='✅ אשר וחתום';alert('שמירה נכשלה: '+((r&&r.reason)||'שגיאה'));}}).catch(function(){b.disabled=false;b.textContent='✅ אשר וחתום';alert('שגיאת רשת');});}"
+               "fetch('/api/sign/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,cid:id,signature:sig})}).then(function(r){return r.json();}).then(function(r){if(r&&r.ok){"
+               "document.getElementById('step2').innerHTML='<div class=okcard><div class=big>🎉</div><h2>ההסכם נחתם ונשמר</h2><p>עותק חתום נשמר אצל המתווך.<br>מומלץ לשמור עותק גם אצלך.</p><button class=pb onclick=\"location.reload()\">צפייה במסמך החתום · שמירת PDF</button></div>';"
+               "window.scrollTo(0,0);}else{b.disabled=false;b.textContent='✅ אשר וחתום';alert('שמירה נכשלה: '+((r&&r.reason)||'שגיאה'));}}).catch(function(){b.disabled=false;b.textContent='✅ אשר וחתום';alert('שגיאת רשת');});}"
                "</script>")
         return _head + meta_html + _form + _js + "</body></html>"
     _tail = (docs_html + sig_html + _efoot + "</div>"
