@@ -828,6 +828,12 @@ function openMe(){
     '<span style="position:absolute">' + esc((ME.name || ' ')[0]) + '</span></div>' +
     '<div><div style="font-size:16.5px;font-weight:800">' + esc(ME.name) + '</div>' +
     '<div style="font-size:12.5px;color:#6B7280">' + esc(ME.role) + (ME.phone ? ' · 0' + esc(ME.phone) : '') + '</div></div></div>' +
+    '<div><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:6px">מספר רישיון תיווך · מופיע על טפסי החתימה</div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<input id="meLic" type="text" inputmode="numeric" maxlength="10" placeholder="מספר הרישיון שלך" ' +
+    'style="flex:1;min-width:0;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;outline:none">' +
+    '<button onclick="saveLic()" style="flex-shrink:0;padding:0 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">שמירה</button>' +
+    '</div></div>' +
     '<input type="file" id="meFile" accept="image/*" style="display:none" onchange="meUpload(this)">' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" onclick="el(\'meFile\').click()">החלפת תמונת פרופיל</button>' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" ' +
@@ -837,6 +843,16 @@ function openMe(){
   // תמונה קיימת מכסה את האות
   var im = el('meAv');
   if (im) im.onload = function(){ var sp = im.parentNode.querySelector('span'); if (sp) sp.style.display = 'none'; };
+  GET('/v2/api/me/license').then(function(j){
+    if (j && j.ok && el('meLic')) el('meLic').value = j.license || '';
+  }).catch(function(){});
+}
+function saveLic(){
+  var v = (el('meLic').value || '').replace(/\D/g, '');
+  POST('/v2/api/me/license', {license: v}).then(function(j){
+    if (!j.ok){ toast('שגיאה בשמירה'); return; }
+    toast(v ? 'הרישיון נשמר — יופיע על טפסי החתימה' : 'מספר הרישיון נמחק');
+  });
 }
 function meUpload(inp){
   var f = inp.files && inp.files[0];
@@ -8398,6 +8414,33 @@ def register(app, G):
 
     # ── סטטוס קונה (buyers.status — העמודה מהמיגרציה; כתיבה דרך השרת בלבד) ──
     _BUYER_STATUSES = ("active", "hot", "frozen", "closed")
+
+    # ── מספר רישיון תיווך — הסוכן מזין באזור האישי; מופיע על טפסי החתימה ─────────
+    @app.route("/v2/api/me/license", methods=["GET", "POST"])
+    def v2_api_me_license():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        me = _last9(s.get("phone", ""))
+        if request.method == "GET":
+            lic = str((_load_config().get("v2_licenses") or {}).get(me, "") or "")
+            if not lic:   # נפילה אחורה לגיליון אנשי הקשר (עמודת הרישיון הישנה)
+                try:
+                    info = G["fetch_agents_full"]().get(G["_norm_name"](s.get("name", ""))) or {}
+                    lic = str(info.get("license") or "")
+                except Exception:
+                    lic = ""
+            return jsonify({"ok": True, "license": lic})
+        lic = "".join(ch for ch in str((request.get_json(silent=True) or {}).get("license", "")) if ch.isdigit())[:10]
+        def _mut(cfg):
+            m = cfg.get("v2_licenses") or {}
+            if lic:
+                m[me] = lic
+            else:
+                m.pop(me, None)   # שדה ריק = מחיקה
+            cfg["v2_licenses"] = m
+        ok, _ = _config_mutate(_mut)
+        return jsonify({"ok": bool(ok), "license": lic})
 
     # ── טיוטות טפסי החתמה ("טיוטא — הכנה לחתימה") — נשמרות בקונפיג, פר-סוכן ──────
     @app.route("/v2/api/sign/draft", methods=["POST"])
