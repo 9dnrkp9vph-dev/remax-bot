@@ -4843,9 +4843,12 @@ def api_sign_send_remote():
         token2 = _secrets.token_urlsafe(12)
         _num1 = "%05d" % ((sum(ord(c) for c in token) * 7) % 90000 + 10000)   # אותה נוסחת מספר של עמוד הצפייה
         _d2 = dict(docs[_excl_i])
-        _b2, _nsub = re.subn(r"(מספר|מס['׳]?)\s*_{2,}", "\\g<1> " + _num1, str(_d2.get("body", "")), count=1)
+        # כל המופעים של "מספר ____" (המבוא + סעיף 5), עמיד לתווי כיווניות נסתרים ולקו מקוף/מפריד
+        _b2, _nsub = re.subn(r"(מספר|מס['׳]?)[\s‎‏‪-‮]*[_–—־]{2,}",
+                             "\\g<1> " + _num1, str(_d2.get("body", "")))
         if _nsub:
             _d2["body"] = _b2
+            log.info(f"sign split: seller number injected into {_nsub} blank(s) in exclusivity body")
         else:
             log.warning("sign split: exclusivity number blank not found in contract body — number shown in title only")
         _d2["title"] = str(_d2.get("title", "")).strip() + " · להסכם מס' " + _num1
