@@ -131,8 +131,11 @@ var REASONS = {unknown:'המספר לא רשום במערכת — הצטרפות
                suspended:'המשתמש מושהה — פנה למנהל המשרד',
                sms_failed:'שליחת ה-SMS נכשלה, נסה שוב בעוד רגע',
                expired:'הקוד פג תוקף — שלח קוד חדש', wrong:'קוד שגוי, נסה שוב',
-               too_many:'יותר מדי ניסיונות — שלח קוד חדש', bad_phone:'מספר לא תקין'};
-function fail(reason){ el('err').textContent = REASONS[reason] || 'שגיאה, נסה שוב'; }
+               too_many:'יותר מדי ניסיונות — שלח קוד חדש', bad_phone:'מספר לא תקין',
+               net:'תקלת רשת — נסה שוב', apple_unavailable:'התחברות Apple זמינה רק באפליקציה',
+               apple_no_token:'לא התקבל אישור מ-Apple — נסה שוב', apple_server:'שגיאת אימות מול Apple — נסה שוב',
+               apple_failed:'ההתחברות עם Apple נכשלה — נסה שוב', bad_token:'שגיאת אימות מול Apple — נסה שוב'};
+function fail(reason){ el('err').style.color = '#F0B9B9'; el('err').textContent = REASONS[reason] || 'שגיאה, נסה שוב'; }
 function finishLogin(p, ph){
   try{
     localStorage.setItem('fbTok', p.token);
@@ -175,22 +178,34 @@ function smsGo(){
 function appleGo(){
   el('err').textContent = '';
   var P = (window.Capacitor && Capacitor.Plugins) ? Capacitor.Plugins.SignInWithApple : null;
-  if (!P) return;
+  if (!P){ fail('apple_unavailable'); return; }
+  var btn = el('appleBtn');
+  btn.disabled = true;
   P.authorize({clientId: 'com.remaxfamily.familybot', scopes: 'name email'}).then(function(r){
+    btn.disabled = false;
     var res = (r && r.response) || {};
+    if (!res.identityToken){ fail('apple_no_token'); return; }
     var nm = ((res.givenName || '') + ' ' + (res.familyName || '')).trim();
-    px('/api/auth/apple', {token: res.identityToken || '', name: nm}).then(function(j){
-      if (!j.ok){ fail(j.reason); return; }
+    px('/api/auth/apple', {token: res.identityToken, name: nm}).then(function(j){
+      if (!j || !j.ok){ fail((j && j.reason) || 'apple_server'); return; }
       if (j.token){ finishLogin(j); return; }
-      if (j.link){   // Apple ID שטרם קושר — אימות טלפון חד-פעמי
+      if (j.link){   // Apple ID שטרם קושר לסוכן — אימות טלפון חד-פעמי (בהזמנת מנהל)
         ALINK = j.link; stage = 0;
         el('smsBox').style.display = 'flex';
         el('alinkCap').style.display = 'block';
         el('go').textContent = 'שלח קוד';
+        el('err').textContent = 'התחברת עם Apple — הזן את מספר הטלפון שלך במערכת כדי להשלים כניסה';
+        el('err').style.color = '#7CA9F2';
+        el('smsBox').scrollIntoView({behavior: 'smooth', block: 'center'});
         el('ph').focus();
-      }
-    });
-  }).catch(function(){});   // ביטול על-ידי המשתמש — בלי שגיאה
+      } else { fail('apple_server'); }
+    }).catch(function(){ fail('net'); });   // כשל רשת/שרת — כבר לא שקט
+  }).catch(function(e){
+    btn.disabled = false;
+    // 1001 = המשתמש ביטל את חלון Apple — בלי שגיאה; כל שאר הקודים = הצגת הודעה
+    var code = String((e && (e.code || e.errorCode || e.message)) || '');
+    if (code.indexOf('1001') < 0 && code.toLowerCase().indexOf('cancel') < 0) fail('apple_failed');
+  });
 }
 (function(){   // חשיפת הכפתור רק כשהפלאגין באמת קיים (build 12+ של האפליקציה)
   try{
