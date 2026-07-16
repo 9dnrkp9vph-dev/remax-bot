@@ -3619,12 +3619,19 @@ function render(){
           '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M3 2.5h7l3 3V13a.9.9 0 0 1-.9.9H3.9A.9.9 0 0 1 3 13z" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2.5v3h3" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
           'צפייה במסמך (טרם נחתם)</button>'
         : '');
+    // שליחה ללקוח בוואטסאפ — קישור חתימה לממתינה, ההסכם החתום לחתומה
+    var hasLink = signed ? !!g.link : !!(g.eid && /[^0-9]/.test(String(g.eid)));
+    var snd = hasLink
+      ? '<button class="a" style="background:#157A43;border-color:#157A43;color:#fff" onclick="sendSig(' + gi + ')">' +
+        '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        (signed ? 'שלח ללקוח' : 'תזכורת ללקוח') + '</button>'
+      : '';
     // מחיקת חתימה דיגיטלית — מנהל בלבד (רק לרשומות מהאפליקציה, עם eid)
     var dl = (ROLE === 'admin' && g.eid)
       ? '<button class="a del" onclick="delSig(' + gi + ')" aria-label="מחיקת חתימה">' +
         '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
       : '';
-    var acts = (vw || dl) ? '<div class="acts">' + vw + dl + '</div>' : '';
+    var acts = (snd || vw || dl) ? '<div class="acts">' + snd + vw + dl + '</div>' : '';
     h += '<div class="sig">' +
       '<div class="top"><div><div class="ad">' + esc(g.address || g.client || '') + '</div>' +
       '<div class="sb">' + esc(sub) + '</div></div>' + chip + '</div>' +
@@ -3641,6 +3648,17 @@ function render(){
     '<div class="t">אין חתימות להצגה</div>' +
     '<div class="s">כל החתמה דיגיטלית — בעל נכס או מתעניין — תופיע כאן עם המסמך החתום</div></div>';
   el('list')._shown = shown;
+}
+function sendSig(i){
+  var g = (el('list')._shown || [])[i]; if (!g) return;
+  var signed = !!(g.link || g.pct);
+  var link = signed ? (g.link || '') : (location.origin + '/s/' + encodeURIComponent(g.eid || ''));
+  if (!link) return;
+  var msg = signed
+    ? 'שלום ' + (g.client || '') + ',\nמצורף קישור לצפייה בהסכם החתום מטעם RE/MAX Family:\n' + link
+    : 'שלום ' + (g.client || '') + ',\nתזכורת — ממתין לחתימתך על מסמך מטעם RE/MAX Family.\nלצפייה וחתימה:\n' + link;
+  // אין טלפון בשורות החתימה — וואטסאפ נפתח עם ההודעה לבחירת איש הקשר
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
 }
 function delSig(i){
   var g = (el('list')._shown || [])[i]; if (!g) return;
