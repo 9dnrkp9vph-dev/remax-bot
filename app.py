@@ -1435,16 +1435,18 @@ def _recent_signs_add(rec):
         pass
 def _recent_signs_mark_signed(token, link, cid):
     """הלקוח חתם — מסמן את רשומת הנראות-המיידית כ'נחתם' מיד (link + event_id=ת״ז),
-    בלי להמתין לסנכרון גיליון→Supabase. gunicorn=thread יחיד → הזיכרון משותף לכל
+    בלי להמתין לסנכרון גיליון→Supabase. gunicorn=worker יחיד → הזיכרון משותף לכל
     הבקשות, כך שהסוכן רואה 'נחתם' תכף ומיד. (תיקון 'ממתין למרות שחתם', 16/07)"""
-    with _RECENT_SIGNS_LOCK:
-        for i, (t, r) in enumerate(_RECENT_SIGNS):
+    try:
+        for i, (t, r) in enumerate(list(_RECENT_SIGNS)):
             if str(r.get("event_id", "") or "") == str(token):
                 r = dict(r)
                 r["commission_pct"] = link
                 if cid:
                     r["event_id"] = cid
                 _RECENT_SIGNS[i] = (time.time(), r)   # רענון ה-ts כדי שלא יפוג לפני שהאמת נוחתת
+    except Exception:
+        pass
 
 _RECENT_SIGN_DELS = []   # (ts, eid, received, client_canon) — הסתרה מיידית של חתימות שנמחקו
 def _recent_sign_del_add(eid, received, client):
@@ -4978,6 +4980,8 @@ def api_sign_complete():
         upd_ok = bool(ju and ju.get("ok"))
     except Exception:
         upd_ok = False
+    # נראות מיידית: מסמנים את גשר הנראות כ'נחתם' עכשיו — הסוכן לא ממתין לסנכרון המקור
+    _recent_signs_mark_signed(token, link, cid)
     # השאר — שורת חתימה, קאש והתראות — ברקע: הלקוח מקבל אישור מיד אחרי שמירת המסמך
     # (אותו דפוס כמו האצת send_remote — הסינכרוני הוא רק מה שקובע הצלחה/כישלון).
     def _post_sign_bg():
