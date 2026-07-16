@@ -313,6 +313,18 @@ input, textarea, select{ font-size:16px !important; }
    :focus-visible = מקלדת בלבד: נגיעות בטלפון לא מציגות טבעת, Tab בדסקטופ כן.
    להסרה: למחוק את הבלוק הזה בלבד. */
 :focus-visible{ outline:2px solid #2E6BD6 !important; outline-offset:2px; border-radius:4px; }
+
+/* ── האזור האישי הגלובלי (v2Me) — נפתח מעיגול הפרופיל בכל מסך ── */
+.v2meOvl{position:fixed;inset:0;background:rgba(14,22,36,.45);z-index:400}
+.v2mePanel{position:fixed;left:0;right:0;bottom:0;z-index:401;background:#F7F5EE;border-radius:24px 24px 0 0;
+    padding:10px 18px calc(env(safe-area-inset-bottom,0px) + 18px);display:flex;flex-direction:column;gap:14px;
+    max-width:600px;margin:0 auto;box-shadow:0 -12px 40px rgba(30,58,95,.18);font-family:'Heebo',sans-serif;color:#1E3A5F}
+.v2meGrip{width:44px;height:5px;border-radius:3px;background:#D9D3C5;margin:2px auto 0}
+.v2meBtn{display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;
+    font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
+#v2meToast{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);left:50%;transform:translateX(-50%);
+    background:#1E3A5F;color:#fff;font-size:13.5px;font-weight:700;padding:11px 20px;border-radius:14px;z-index:402;
+    opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;font-family:'Heebo',sans-serif}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -376,6 +388,99 @@ input, textarea, select{ font-size:16px !important; }
     if (t) fetch('/v2/api/ping', {method:'POST', headers:{'X-Auth-Token': t}, keepalive: true}).catch(function(){});
   }catch(e){} }
   setTimeout(_ping, 2000); setInterval(_ping, 45000);
+})();
+/* אזור אישי גלובלי — נפתח מעיגול הפרופיל בכל מסך (לא רק בבית): תמונה, רישיון, יומן */
+function v2Me(){
+  var tok = null, name = '', role = '', phone = '';
+  try{
+    tok = localStorage.getItem('fbTok');
+    name = localStorage.getItem('fbName') || '';
+    role = localStorage.getItem('fbRole') || '';
+    phone = (localStorage.getItem('fbPhone') || '').replace(/\D/g, '').slice(-9);
+  }catch(e){}
+  if (!tok){ location.href = '/v2'; return; }
+  var roleTx = role === 'admin' ? 'מנהל' : role === 'coordinator' ? 'מתאמת' : 'סוכן';
+  var old = document.getElementById('v2meWrap');
+  if (old){ old.remove(); return; }
+  var w = document.createElement('div');
+  w.id = 'v2meWrap';
+  w.innerHTML =
+    '<div class="v2meOvl" onclick="document.getElementById(\'v2meWrap\').remove()"></div>' +
+    '<div class="v2mePanel">' +
+    '<div class="v2meGrip"></div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<h3 style="margin:0;font-size:18px;font-weight:800">אזור אישי</h3>' +
+    '<button onclick="document.getElementById(\'v2meWrap\').remove()" aria-label="סגירה" style="width:36px;height:36px;border-radius:50%;background:#EFEBDD;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer">' +
+    '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
+    '<div style="display:flex;align-items:center;gap:14px">' +
+    '<div style="position:relative;width:72px;height:72px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;overflow:hidden;flex-shrink:0">' +
+    '<span style="position:absolute">' + (name || ' ').charAt(0) + '</span>' +
+    (phone ? '<img id="v2meAv" src="/v2/api/avatar?p=' + phone + '&t=' + Date.now() + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove()">' : '') +
+    '</div>' +
+    '<div><div style="font-size:16.5px;font-weight:800">' + name.replace(/</g, '&lt;') + '</div>' +
+    '<div style="font-size:12.5px;color:#6B7280">' + roleTx + (phone ? ' · 0' + phone : '') + '</div></div></div>' +
+    '<div><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:6px">מספר רישיון תיווך · מופיע על טפסי החתימה</div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<input id="v2meLic" type="text" inputmode="numeric" maxlength="10" placeholder="מספר הרישיון שלך" style="flex:1;min-width:0;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;outline:none">' +
+    '<button onclick="v2MeSaveLic()" style="flex-shrink:0;padding:0 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">שמירה</button></div></div>' +
+    '<input type="file" id="v2meFile" accept="image/*" style="display:none" onchange="v2MeUpload(this)">' +
+    '<button class="v2meBtn" onclick="document.getElementById(\'v2meFile\').click()">החלפת תמונת פרופיל</button>' +
+    '<button class="v2meBtn" onclick="location.href=\'/auth/google/login?\' + (window.Capacitor ? \'native=1\' : \'next=v2\')">סנכרון יומן Google</button>' +
+    '</div>';
+  document.body.appendChild(w);
+  fetch('/v2/api/me/license', {headers: {'X-Auth-Token': tok}}).then(function(r){ return r.json(); }).then(function(j){
+    var f = document.getElementById('v2meLic');
+    if (j && j.ok && f) f.value = j.license || '';
+  }).catch(function(){});
+}
+function v2meToast(msg){
+  var t = document.getElementById('v2meToast');
+  if (!t){
+    t = document.createElement('div'); t.id = 'v2meToast'; document.body.appendChild(t);
+  }
+  t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+function v2MeSaveLic(){
+  var tok = null; try{ tok = localStorage.getItem('fbTok'); }catch(e){}
+  var v = (document.getElementById('v2meLic').value || '').replace(/\D/g, '');
+  fetch('/v2/api/me/license', {method: 'POST', headers: {'X-Auth-Token': tok, 'Content-Type': 'application/json'},
+    body: JSON.stringify({license: v})}).then(function(r){ return r.json(); }).then(function(j){
+    v2meToast(j && j.ok ? (v ? 'הרישיון נשמר — יופיע על טפסי החתימה' : 'מספר הרישיון נמחק') : 'שגיאה בשמירה');
+  }).catch(function(){ v2meToast('שגיאה'); });
+}
+function v2MeUpload(inp){
+  var f = inp.files && inp.files[0];
+  if (!f) return;
+  var tok = null; try{ tok = localStorage.getItem('fbTok'); }catch(e){}
+  var img = new Image();
+  img.onload = function(){
+    var c = document.createElement('canvas');
+    var s = Math.min(img.width, img.height);
+    c.width = 256; c.height = 256;
+    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 256, 256);
+    fetch('/v2/api/avatar', {method: 'POST', headers: {'X-Auth-Token': tok, 'Content-Type': 'application/json'},
+      body: JSON.stringify({img: c.toDataURL('image/jpeg', 0.82)})}).then(function(r){ return r.json(); }).then(function(j){
+      if (!j.ok){ v2meToast('שגיאה בשמירת התמונה'); return; }
+      v2meToast('התמונה נשמרה');
+      var wrap = document.getElementById('v2meWrap');
+      if (wrap){ wrap.remove(); v2Me(); }
+    }).catch(function(){ v2meToast('שגיאה'); });
+  };
+  img.src = URL.createObjectURL(f);
+}
+/* חיווט: עיגול הפרופיל שבכותרת כל מסך פותח את האזור האישי (הבית שומר על שלו) */
+(function(){
+  function wire(){
+    var av = document.querySelector('header .av');
+    if (av && !av.getAttribute('onclick') && !av._v2me){
+      av._v2me = true;
+      av.style.cursor = 'pointer';
+      av.addEventListener('click', v2Me);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
+  else wire();
 })();
 </script>"""
 
