@@ -1433,6 +1433,19 @@ def _recent_signs_add(rec):
         _RECENT_SIGNS.append((time.time(), dict(rec)))
     except Exception:
         pass
+def _recent_signs_mark_signed(token, link, cid):
+    """הלקוח חתם — מסמן את רשומת הנראות-המיידית כ'נחתם' מיד (link + event_id=ת״ז),
+    בלי להמתין לסנכרון גיליון→Supabase. gunicorn=thread יחיד → הזיכרון משותף לכל
+    הבקשות, כך שהסוכן רואה 'נחתם' תכף ומיד. (תיקון 'ממתין למרות שחתם', 16/07)"""
+    with _RECENT_SIGNS_LOCK:
+        for i, (t, r) in enumerate(_RECENT_SIGNS):
+            if str(r.get("event_id", "") or "") == str(token):
+                r = dict(r)
+                r["commission_pct"] = link
+                if cid:
+                    r["event_id"] = cid
+                _RECENT_SIGNS[i] = (time.time(), r)   # רענון ה-ts כדי שלא יפוג לפני שהאמת נוחתת
+
 _RECENT_SIGN_DELS = []   # (ts, eid, received, client_canon) — הסתרה מיידית של חתימות שנמחקו
 def _recent_sign_del_add(eid, received, client):
     try:
