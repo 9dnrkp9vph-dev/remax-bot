@@ -3750,6 +3750,24 @@ function render(){
     if (FILTER === 'all') return true;
     return kindOf(g) === FILTER;
   });
+  /* הגנה כפולה מפני כפילות (גשר-הנראות מול השורה האמיתית): מקבצים לפי לקוח+כתובת+סוג,
+     ואם יש גם נחתם וגם ממתין לאותו מפתח — משאירים רק את הנחתם. חתימות עצמאיות
+     אמיתיות (סטטוס זהה) נשארות כולן. */
+  (function(){
+    var by = {};
+    src.forEach(function(g){
+      var key = [(g.client || '').trim(), (g.address || '').trim(), kindOf(g)].join('|');
+      (by[key] = by[key] || []).push(g);
+    });
+    src = src.filter(function(g){
+      var key = [(g.client || '').trim(), (g.address || '').trim(), kindOf(g)].join('|');
+      var grp = by[key];
+      if (grp.length < 2) return true;
+      var hasSigned = grp.some(function(x){ return !!(x.link || x.pct); });
+      if (!hasSigned) return true;                 // כולם ממתינים — משאירים
+      return !!(g.link || g.pct);                  // יש נחתם בקבוצה — משאירים רק נחתמים
+    });
+  })();
   var h = '';
   if (FILTER === 'all' && DRAFTS.length){   // טיוטות — למעלה, תחת "הכל" בלבד
     DRAFTS.forEach(function(d, di){ h += draftCard(d, di); });
