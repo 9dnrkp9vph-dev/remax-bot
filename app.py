@@ -1458,16 +1458,28 @@ def _recent_sign_dels_filter(rows):
     return [r for r in rows if not _gone(r)]
 
 def _recent_signs_merge(rows):
-    """מוסיף חתימות טריות (עד 15 דק') שעוד לא הגיעו מהמקור — דדופ לפי event_id+deal_type,
-    כך שברגע שהסנכרון נוחת הרשומה מהמקור גוברת ואין כפילות."""
+    """מוסיף חתימות טריות (עד 15 דק') שעוד לא הגיעו מהמקור. דדופ יציב: גם לפי
+    event_id+deal_type וגם לפי סוכן+לקוח+deal_type — כי כשהלקוח חותם, event_id של
+    השורה משתנה מהטוקן ל-ת״ז, ודדופ לפי טוקן בלבד היה משאיר רשומת 'ממתין' יתומה
+    ליד ה'נחתם' (כפילות שאייל ראה 16/07)."""
     now = time.time()
     keep = [(t, r) for (t, r) in _RECENT_SIGNS if now - t < 900]
     _RECENT_SIGNS[:] = keep
     if not keep:
         return rows
-    seen = set((str(r.get("event_id", "") or ""), str(r.get("deal_type", "") or "")) for r in rows)
+
+    def _tokkey(r):
+        return (str(r.get("event_id", "") or ""), str(r.get("deal_type", "") or ""))
+
+    def _stablekey(r):
+        return (_canon_key(r.get("agent", "") or ""),
+                _canon_key(r.get("client_name", "") or ""),
+                str(r.get("deal_type", "") or ""))
+
+    seen_tok = set(_tokkey(r) for r in rows)
+    seen_stable = set(_stablekey(r) for r in rows)
     extra = [r for (t, r) in keep
-             if (str(r.get("event_id", "") or ""), str(r.get("deal_type", "") or "")) not in seen]
+             if _tokkey(r) not in seen_tok and _stablekey(r) not in seen_stable]
     return (rows + extra) if extra else rows
 
 def get_signings(frm="01/01/2020", to="31/12/2099"):
@@ -4861,7 +4873,7 @@ def api_sign_send_remote():
     recs = []
     for d in docs:
         _ev = token2 if (token2 and "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()) else token
-        _srec = {"event_id": _ev, "deal_type": d.get("deal_type", ""), "agent": agent,
+        _srec = {"event_id": _ev, "doc_token": _ev, "deal_type": d.get("deal_type", ""), "agent": agent,
                  "client_name": client, "address": address, "city": city,
                  "commission_pct": "", "received_at": now_iso, "notes": notes}
         recs.append(_srec)
