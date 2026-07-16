@@ -4834,22 +4834,54 @@ def api_sign_send_remote():
     # קריאות ה-Apps Script רצו סינכרונית. עכשיו: סינכרוני רק מה שחיוני לפני התשובה —
     # שמירת המסמך (הקישור ב-SMS חייב לעבוד) + ה-SMS עצמו. שורות הגיליון, הקונה
     # האוטומטי והיומן רצים ברקע; הנראות המיידית במסך החתימות נשמרת דרך _recent_signs_add.
+    # בלעדיות = הסכם נפרד (דרישה משפטית, 16/07): המוכר נחתם ראשון; לבלעדיות טוקן,
+    # מספר הסכם וחתימה משלה; ומספר הסכם המוכר נשתל בשורת "מספר ___" שבגוף הבלעדיות.
+    token2 = ""
+    _excl_i = next((i for i, d in enumerate(docs)
+                    if "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()), None)
+    if _excl_i is not None and len(docs) >= 2:
+        token2 = _secrets.token_urlsafe(12)
+        _num1 = "%05d" % ((sum(ord(c) for c in token) * 7) % 90000 + 10000)   # אותה נוסחת מספר של עמוד הצפייה
+        _d2 = dict(docs[_excl_i])
+        _b2, _nsub = re.subn(r"(מספר|מס['׳]?)\s*_{2,}", "\\g<1> " + _num1, str(_d2.get("body", "")), count=1)
+        if _nsub:
+            _d2["body"] = _b2
+        else:
+            log.warning("sign split: exclusivity number blank not found in contract body — number shown in title only")
+        _d2["title"] = str(_d2.get("title", "")).strip() + " · להסכם מס' " + _num1
+        docs1 = [dict(d) for i, d in enumerate(docs) if i != _excl_i]
+        docs1[0]["next_token"] = token2
+        docs1[0]["next_title"] = str(docs[_excl_i].get("title", "")).strip() or "הסכם בלעדיות"
+        docs2 = [_d2]
+    else:
+        docs1, docs2 = list(docs), None
     recs = []
     for d in docs:
-        _srec = {"event_id": token, "deal_type": d.get("deal_type", ""), "agent": agent,
+        _ev = token2 if (token2 and "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()) else token
+        _srec = {"event_id": _ev, "deal_type": d.get("deal_type", ""), "agent": agent,
                  "client_name": client, "address": address, "city": city,
                  "commission_pct": "", "received_at": now_iso, "notes": notes}
         recs.append(_srec)
-    # שמירת המסמך במצב 'pending' — סינכרוני: הלקוח פותח את הקישור מיד עם קבלת ה-SMS
+    # שמירת המסמכים במצב 'pending' — סינכרוני: הקישור ב-SMS חייב לעבוד, וגם הסכם ההמשך
     doc_saved = False
     try:
         jd = _buyers_apps_post("savesigndoc", {
             "doc_token": token, "event_id": token, "status": "pending",
-            "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
+            "header": header, "docs": _json.dumps(docs1, ensure_ascii=False),
             "signature": "", "signed_at": ""})
         doc_saved = bool(jd and jd.get("ok"))
     except Exception:
         doc_saved = False
+    if doc_saved and docs2 is not None:
+        try:
+            jd2 = _buyers_apps_post("savesigndoc", {
+                "doc_token": token2, "event_id": token2, "status": "pending",
+                "header": header, "docs": _json.dumps(docs2, ensure_ascii=False),
+                "signature": "", "signed_at": ""})
+            if not (jd2 and jd2.get("ok")):
+                doc_saved = False
+        except Exception:
+            doc_saved = False
     if not doc_saved:
         # אין מסמך = הקישור שבור — לא שולחים SMS ומבקשים לנסות שוב (במקום לשלוח קישור מת)
         return jsonify({"ok": False, "reason": "doc_save_failed"})
@@ -4925,6 +4957,32 @@ def api_sign_complete():
             _buyers_apps_post("updatesigning", {"doc_token": token, "commission_pct": link, "event_id": cid})
         except Exception:
             pass
+        # כשמקור החתימות הוא Supabase — עדכון ישיר של השורה (הקישור=נחתם), אחרת הסטטוס
+        # באפליקציה מחכה לסנכרון הגיליון→Supabase ו"ממתין לחתימה" נשאר תקוע דקות ארוכות.
+        try:
+            if SIGNATURES_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+                from urllib.parse import quote as _q2
+                rows = []
+                _flt = ""
+                for _key in ("doc_token", "token"):   # שם המפתח בשורת הגיליון
+                    _flt = "raw->>" + _key + "=eq." + _q2(token, safe="")
+                    _rr = requests.get(_sbdb.SUPABASE_URL + "/rest/v1/signatures?" + _flt + "&select=raw",
+                                       headers=_sbdb._headers(), timeout=12)
+                    rows = _rr.json() if _rr.status_code == 200 else []
+                    if isinstance(rows, list) and rows:
+                        break
+                if isinstance(rows, list) and rows:
+                    _raw0 = rows[0].get("raw") or {}
+                    _raw0["commission_pct"] = link
+                    if cid:
+                        _raw0["event_id"] = cid
+                    requests.patch(_sbdb.SUPABASE_URL + "/rest/v1/signatures?" + _flt,
+                                   headers={**_sbdb._headers(), "Prefer": "return=minimal"},
+                                   json={"raw": _raw0}, timeout=12)
+                else:
+                    log.warning(f"sign complete: signatures row not found in supabase for token")
+        except Exception as _e:
+            log.warning(f"sign complete: supabase link update failed: {_e}")
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
         try:
@@ -5030,6 +5088,15 @@ def public_sign_doc(token):
     docs_html = "".join(
         "<div class=doc><h2>%s</h2><div class=body>%s</div></div>" % (
             _h.escape(str(d.get("title", ""))), _h.escape(str(d.get("body", "")))) for d in docs)
+    # הסכם המשך (בלעדיות): מוצג כ"חתימה ממתינה" מתחת להסכם המוכר, ונפתח אחרי חתימתו
+    _next_tok = str((docs[0].get("next_token") if docs else "") or "")
+    _next_title = str((docs[0].get("next_title") if docs else "") or "")
+    if _next_tok and status == "pending":
+        docs_html += ("<div style='display:flex;align-items:center;gap:11px;background:#faf8f4;border:1.5px dashed var(--gold);"
+                      "border-radius:14px;padding:13px 15px;margin-top:4px'>"
+                      "<div style='width:10px;height:10px;border-radius:50%;background:var(--gold);flex:0 0 auto'></div>"
+                      "<div><div style='font-weight:800;font-size:14px'>" + _h.escape(_next_title or "הסכם בלעדיות") + " · חתימה ממתינה</div>"
+                      "<div style='font-size:12.5px;color:#67707e;font-weight:600'>ייפתח לחתימה מיד לאחר חתימת ההסכם הזה</div></div></div>")
     sig_html = ("<div class=sig><div>חתימת הלקוח:</div><img src='" + signature + "' alt='חתימה'></div>") if signature else ""
     _head = ("<!DOCTYPE html><html dir=rtl lang=he><head><meta charset=utf-8>"
              "<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -5118,8 +5185,28 @@ def public_sign_doc(token):
         pass
     _agent_box = ""
     if _p["agent"]:
-        # תמונת הסוכן מהאפליקציה (כמו בסטורי) — טבעת זהב; בלי תמונה: האות הראשונה על נייבי
-        _avraw = "".join(ch for ch in str(_ainfo.get("phone", "")) if ch.isdigit())[-9:]
+        # תמונת הסוכן מהאפליקציה (כמו בסטורי) — טבעת זהב; בלי תמונה: האות הראשונה על נייבי.
+        # הטלפון נפתר מכל מספרי הסוכן הידועים (מפת החברים+אנשי קשר+קונפיג) — ונבחר
+        # דווקא המספר שיש לו תמונה שמורה בדיסק, לא סתם הראשון.
+        _avraw = ""
+        try:
+            _av_dir = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)), "v2_avatars")
+            _cands = []
+            try:
+                _cands = [c for c in (_last9(x) for x in (_phones_for_name(_p["agent"]) or set())) if c]
+            except Exception:
+                pass
+            _ai9 = "".join(ch for ch in str(_ainfo.get("phone", "")) if ch.isdigit())[-9:]
+            if _ai9 and _ai9 not in _cands:
+                _cands.append(_ai9)
+            for _c in _cands:
+                if os.path.exists(os.path.join(_av_dir, _c + ".jpg")):
+                    _avraw = _c
+                    break
+            if not _avraw and _cands:
+                _avraw = _cands[0]
+        except Exception:
+            _avraw = ""
         _aletter = _h.escape(_p["agent"].strip()[:1]) if _p["agent"].strip() else ""
         _av = ("<div class=avwrap><div class=avin><span>" + _aletter + "</span>" +
                (("<img src='/v2/api/avatar?p=" + _avraw + "' alt='' onerror='this.remove()'>") if _avraw else "") +
@@ -5156,7 +5243,7 @@ def public_sign_doc(token):
                  "<button class=backlink onclick='backToDoc()'>חזרה לקריאת ההסכם</button>"
                  "</div></div>" + _efoot + "</div>"
                  "<div class=stickybar id=contBar><button class=pb onclick='showSign()'>המשך לחתימה ›</button></div>")
-        _js = ("<script>var TOKEN=" + _json.dumps(token) + ";"
+        _js = ("<script>var TOKEN=" + _json.dumps(token) + ",NEXT=" + _json.dumps(_next_tok) + ",NEXTT=" + _json.dumps(_next_title) + ";"
                "function showSign(){document.getElementById('step1').style.display='none';"
                "document.getElementById('contBar').style.display='none';"
                "document.getElementById('step2').style.display='block';"
@@ -5181,7 +5268,10 @@ def public_sign_doc(token):
                "var tw=440,th=Math.round(tw*cv.height/cv.width);var c=document.createElement('canvas');c.width=tw;c.height=th;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,tw,th);x.drawImage(cv,0,0,tw,th);var sig=c.toDataURL('image/jpeg',0.55);"
                "var b=document.getElementById('sbtn');b.disabled=true;b.textContent='שומר…';"
                "fetch('/api/sign/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,cid:id,signature:sig})}).then(function(r){return r.json();}).then(function(r){if(r&&r.ok){"
-               "document.getElementById('step2').innerHTML='<div class=okcard><div class=big>🎉</div><h2>ההסכם נחתם ונשמר</h2><p>עותק חתום נשמר אצל המתווך.<br>מומלץ לשמור עותק גם אצלך.</p><button class=pb onclick=\"location.reload()\">צפייה במסמך החתום · שמירת PDF</button></div>';"
+               "var okh = NEXT"
+               "? '<div class=okcard><div class=big>✅</div><h2>ההסכם הראשון נחתם</h2><p>נותר הסכם אחד לחתימה: '+(NEXTT||'הסכם הבלעדיות')+'.</p><button class=pb onclick=\"location.href=\\'/s/\\'+encodeURIComponent(NEXT)\">המשך לחתימת '+(NEXTT||'הסכם הבלעדיות')+' ›</button></div>'"
+               ": '<div class=okcard><div class=big>🎉</div><h2>ההסכם נחתם ונשמר</h2><p>עותק חתום נשמר אצל המתווך.<br>מומלץ לשמור עותק גם אצלך.</p><button class=pb onclick=\"location.reload()\">צפייה במסמך החתום · שמירת PDF</button></div>';"
+               "document.getElementById('step2').innerHTML=okh;"
                "window.scrollTo(0,0);}else{b.disabled=false;b.textContent='✅ אשר וחתום';alert('שמירה נכשלה: '+((r&&r.reason)||'שגיאה'));}}).catch(function(){b.disabled=false;b.textContent='✅ אשר וחתום';alert('שגיאת רשת');});}"
                "</script>")
         return _head + meta_html + _form + _js + "</body></html>"
