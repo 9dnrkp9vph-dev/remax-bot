@@ -3399,8 +3399,8 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .st.signed{color:#1FAF5E}.st.signed i{background:#1FAF5E}
   .st.wait{color:#7A5E1C}.st.wait i{background:#C29435}
   .acts{display:flex;gap:9px;align-items:center}
-  .acts .a{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;
-      padding:10px 0;font-size:13px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:40px}
+  .acts .a{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:12px;
+      padding:10px 4px;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:40px;white-space:nowrap}
   .acts .sec{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
   .acts .del{flex:0 0 42px;width:42px;background:#FBEDED}
   .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
@@ -3613,11 +3613,11 @@ function render(){
     var vw = (signed && g.link)
       ? '<button class="a sec" onclick="window.open(\'' + esc(g.link) + '\',\'_blank\')">' +
         '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M3 2.5h7l3 3V13a.9.9 0 0 1-.9.9H3.9A.9.9 0 0 1 3 13z" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2.5v3h3" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
-        'צפייה במסמך החתום</button>'
+        'המסמך החתום</button>'
       : ((!signed && g.eid && /[^0-9]/.test(String(g.eid)))
         ? '<button class="a sec" onclick="window.open(\'' + esc(location.origin + '/s/' + encodeURIComponent(g.eid)) + '\',\'_blank\')">' +
           '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M3 2.5h7l3 3V13a.9.9 0 0 1-.9.9H3.9A.9.9 0 0 1 3 13z" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2.5v3h3" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
-          'צפייה במסמך (טרם נחתם)</button>'
+          'צפייה במסמך</button>'
         : '');
     // שליחה ללקוח בוואטסאפ — קישור חתימה לממתינה, ההסכם החתום לחתומה
     var hasLink = signed ? !!g.link : !!(g.eid && /[^0-9]/.test(String(g.eid)));
