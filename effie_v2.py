@@ -9199,6 +9199,32 @@ def register(app, G):
             if log: log.error(f"v2 matches error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
+    @app.route("/v2/api/matches/mark", methods=["POST"])
+    def v2_api_matches_mark():
+        """סימון התאמה: sent (נשלח ללקוח) / hidden (לא רלוונטי) / clear."""
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        body = request.get_json(silent=True) or {}
+        mk = str(body.get("key", "") or "").strip()[:120]
+        act = str(body.get("act", "") or "").strip()
+        if not mk or act not in ("sent", "hidden", "clear"):
+            return jsonify({"ok": False, "reason": "bad_req"}), 400
+        def _mut(cfg):
+            d = cfg.setdefault("v2_matches", {})
+            now = time.time()
+            for k in [k for k, v in list(d.items())
+                      if now - (v.get("ts") or 0) > 90 * 86400]:
+                d.pop(k, None)   # גיזום 90 יום — הבלוב לא תופח לנצח
+            if act == "clear":
+                d.pop(mk, None)
+            else:
+                d[mk] = {"s": act, "ts": now, "by": _last9(s.get("phone", ""))}
+        ok, _ = _config_mutate(_mut)
+        if ok and act == "sent":
+            _log_activity(s["name"], s["role"], s["phone"], "שליחת התאמה לקונה", mk[:60])
+        return jsonify({"ok": bool(ok)})
+
     @app.route("/v2/api/admin/overview", methods=["GET"])
     def v2_api_admin_overview():
         s = _dev_guard()
