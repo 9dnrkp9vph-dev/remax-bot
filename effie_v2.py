@@ -4950,10 +4950,14 @@ function sendPrice(i){
 }
 function reqRemove(i){
   var p = el('list')._src[i]; if (!p) return;
-  if (!confirm('לשלוח בקשה למזכירה להסיר את המודעה?\n' + [p.address, p.city].filter(Boolean).join(', '))) return;
+  if (!confirm('להסיר את המודעה? הנכס יירד מיד מהאפליקציה ובקשה תישלח למזכירה.\n' + [p.address, p.city].filter(Boolean).join(', '))) return;
   POST('/api/listing/request', {kind:'remove', id: p.id, address: p.address || ''}).then(function(j){
     if (!j.ok){ toast('השליחה נכשלה'); return; }
-    toast('הבקשה נשלחה למזכירה'); load(el('q').value.trim());
+    // ירידה מיידית — מסירים מהרשימה המקומית (המספר בטאב "שלי" יורד), ואז רענון מהשרת
+    try{ MINE = (MINE || []).filter(function(x){ return String(x.id||'') !== String(p.id||''); }); }catch(e){}
+    render();
+    toast('הנכס הוסר · הבקשה נשלחה למזכירה');
+    load(el('q').value.trim());
   });
 }
 function doneListing(i){

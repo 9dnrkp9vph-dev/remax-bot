@@ -6542,10 +6542,13 @@ def api_my_properties():
         mine = [r for r in rows if _row_owned(r, keys, phones)]
         phones_map = fetch_agents_phones()
         pending = _fetch_pending_listings()
+        removed = _removed_listing_ids()   # נכסים שהסוכן ביקש להסיר — יורדים מיד מהתצוגה והספירה
         out = []
         for r in mine:
             ag = (r.get("סוכן 1", "") or "").strip()
             lid = (r.get("מספר מודעה", "") or "").strip()
+            if lid and lid in removed:      # ממתין להסרה בגיליון — כבר לא מוצג/נספר
+                continue
             out.append({
                 "id": lid,
                 # מתאמת/מנהל יכולים לעדכן מחיר/להסיר מודעה של הסוכנים שלהם (התוצאות כבר מסוננות להיקף שלהם)
@@ -6578,6 +6581,31 @@ def _fetch_pending_listings():
     ids = set(str(x).strip() for x in (j.get("ids", []) if (j and j.get("ok")) else []))
     _cache_put("pending_listings", ids)
     return ids
+
+def _removed_listing_ids():
+    """מזהי מודעות שסוכן ביקש להסיר — נסתרים מ'הנכסים שלי' ומהספירה מיד, עד שהמזכירה
+    מסירה מהגיליון (ואז נעלמים ממילא). נשמר בקונפיג (durable), נגזם אחרי 90 יום."""
+    try:
+        m = _load_config().get("v2_removed_listings") or {}
+        return set(str(k) for k in m.keys())
+    except Exception:
+        return set()
+
+def _mark_listing_removed(lid):
+    lid = str(lid or "").strip()
+    if not lid:
+        return
+    _now = int(time.time())
+    def _mut(cfg):
+        m = cfg.get("v2_removed_listings") or {}
+        m[lid] = _now
+        # גיזום ישנים (>90 יום) — כבר הוסרו מהגיליון מזמן
+        cutoff = _now - 90 * 86400
+        cfg["v2_removed_listings"] = {k: v for k, v in m.items() if (v or 0) >= cutoff}
+    try:
+        _config_mutate(_mut)
+    except Exception as _e:
+        log.warning(f"mark listing removed failed: {_e}")
 
 # ניתוב בקשות עדכון/מחיקת נכס: סוכנים תחת מנהלים מסוימים → מייל ייעודי (בקשת אייל 12/07)
 _LISTING_REQ_ROUTED_MANAGERS = ("גיל קדם", "אוהד פלד")
@@ -6629,6 +6657,9 @@ def api_listing_request():
     if not j or not j.get("ok"):
         return jsonify({"ok": False, "reason": (j or {}).get("error", "fail")}), 502
     _cache_clear("pending_listings")
+    if kind == "remove":   # הסרה — הנכס יורד מיד מהתצוגה והספירה (המייל למזכירה כבר יצא)
+        _mark_listing_removed(lid)
+        _cache_clear("my_properties")
     _log_activity(s["name"], s["role"], s["phone"], ("בקשת הסרת מודעה" if kind == "remove" else "בקשת עדכון מחיר"), lid)
     return jsonify({"ok": True})
 
