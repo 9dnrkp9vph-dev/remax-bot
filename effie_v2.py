@@ -7908,14 +7908,16 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
     .hotBody .dsc{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;
       font-size:15px;line-height:1.55;max-width:100%;padding:0 6px;text-align:center}
     main{padding-bottom:84px}
-    header{flex-wrap:wrap;justify-content:center;text-align:center;padding:16px 16px 0;gap:8px}
-    .brand{flex:1 1 100%;justify-content:center;gap:12px}
-    .brand svg{height:44px}
-    .brand .bn{font-size:28px}
-    .brand .bs{font-size:12px}
-    .mid,.left{flex:1 1 auto}
-    .left{justify-content:center}
-    .bars{padding:12px 16px 0;gap:5px}
+    /* כותרת מובייל קומפקטית — שורה אחת: אפי + לוגו אוריגמי + לוגו המשרד. בלי שעון/תאריך. */
+    header{flex-wrap:nowrap;justify-content:center;align-items:center;text-align:center;padding:9px 14px 2px;gap:12px}
+    .brand{flex:0 0 auto;justify-content:center;gap:8px}
+    .brand svg{height:28px}
+    .brand .bn{font-size:19px}
+    .brand .bs{display:none}
+    .mid{display:none}
+    .left{flex:0 0 auto;justify-content:center}
+    .left img{height:30px}
+    .bars{padding:8px 16px 0;gap:5px}
     main{padding:14px 16px 30px;align-items:flex-start}
     .card{gap:16px}
     .h1{font-size:26px;text-align:center}
