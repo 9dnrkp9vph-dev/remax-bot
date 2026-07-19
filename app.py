@@ -7557,8 +7557,10 @@ def api_search_exclusives():
         parsed["rooms"]      = _web_num(parsed.get("rooms"))
         rows = _dedupe_exclusives(fetch_external_exclusives())
         if not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords") or parsed.get("property_type")):
+            # "כל הבלעדיות" (בלי חיפוש) — כל השת"פ, כמו שהמשרד מציג את כל 471 (בלי
+            # חיתוך ל-30 שהסתיר נכסים; תיקון "רק 27 בשת\"פ", 19/07). ממויין מהחדש לישן.
             rows = sorted(rows, key=lambda r: _excl_epoch(r.get("received_at", "")), reverse=True)
-            matches = [(1, r) for r in rows[:30]]
+            matches = [(1, r) for r in rows]
         else:
             scored = [(score_exclusivity_match(r, parsed), r) for r in rows]
             scored = [(sc, r) for sc, r in scored if sc > 0]
