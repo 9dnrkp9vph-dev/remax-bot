@@ -3084,7 +3084,7 @@ function openEdit(i){
     '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 4h11M6.5 2h3M5.5 4v9a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V4M6.8 6.5v5M9.2 6.5v5" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button></div>' +
     '<div style="display:flex;gap:8px;align-items:flex-end">' +
     '<div class="fld" style="flex:1"><span>טלפון הקונה</span><input id="edPhone" type="tel" value="' + esc(b.phone || '') + '"></div>' +
-    (b.budget ? '<div style="background:#F6EEDB;border:1px solid #E4C56B;border-radius:10px;padding:10px 11px;font-size:12px;font-weight:700;color:#7A5E1C;white-space:nowrap">' + esc(b.budget) + '</div>' : '') +
+    '<div class="fld" style="flex:1"><span>תקציב</span><input id="edBudget" type="text" inputmode="numeric" placeholder="עד ₪" value="' + esc(b.budget || '') + '" oninput="fmtBudget(this)"></div>' +
     '</div>' +
     '<div class="fld"><span>סטטוס</span><div style="display:flex;gap:8px" id="edSt">' +
     ['active','hot','frozen','closed'].map(function(st){
@@ -3094,7 +3094,7 @@ function openEdit(i){
         ST_LABEL[st] + '</div>';
     }).join('') + '</div></div>' +
     '<div class="fld"><span>מה מחפש (דרישות) — זה הטקסט שמופיע בכרטיס ומשמש את ההתאמה</span><textarea id="edSearch" rows="3" placeholder="לדוגמה: 4 חדרים בקריות עד 1.5M, קומה נמוכה, מעלית">' + esc(b.search || '') + '</textarea></div>' +
-    '<div style="font-size:11px;color:#6B7280;line-height:1.5">שם ותקציב נערכים בינתיים בגיליון — ייפתחו לעריכה מלאה עם המעבר ל-Supabase.</div>' +
+    '<div style="font-size:11px;color:#6B7280;line-height:1.5">שם הקונה נערך בינתיים בגיליון.</div>' +
     '<button class="btn btn-blue" onclick="saveEdit(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
   el('sheet')._st = cur;
@@ -3108,13 +3108,20 @@ function pickEdSt(node){
       (on ? 'background:#2E6BD6;color:#fff' : 'background:#F5F3EC;border:1px solid #E9E4D8;color:#5B6472');
   }
 }
+function fmtBudget(inp){
+  var d = (inp.value || '').replace(/[^\d]/g, '');
+  inp.value = d ? Number(d).toLocaleString('en-US') : '';
+}
 function saveEdit(i){
   var b = el('list')._src[i];
   var jobs = [];
   var q = el('edSearch').value.trim();
-  if (q !== (b.search || ''))
-    jobs.push(POST('/api/buyers/update', {row: b.row, search: q, phone: (el('edPhone') && el('edPhone').value.trim()) || ''}).then(function(j){
-      if (j.ok) b.search = q;
+  var bd = (el('edBudget') ? el('edBudget').value.trim() : '');
+  var phoneVal = (el('edPhone') && el('edPhone').value.trim()) || '';
+  // שינוי בדרישות / טלפון / תקציב — עדכון אחד לגיליון
+  if (q !== (b.search || '') || bd !== (b.budget || '') || phoneVal !== (b.phone || ''))
+    jobs.push(POST('/api/buyers/update', {row: b.row, search: q, phone: phoneVal, budget: bd}).then(function(j){
+      if (j.ok){ b.search = q; b.budget = bd; if (phoneVal) b.phone = phoneVal; }
       return j;
     }));
   var st = el('sheet')._st;

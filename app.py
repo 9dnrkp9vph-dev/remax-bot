@@ -4739,23 +4739,33 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
         except Exception:
             pass
         # מניעת כפילות — אם כבר קיים קונה לאותו סוכן עם אותו טלפון (או אותו שם כשאין טלפון);
-        # קונה קיים שחתם על נכס נוסף — מקבל את התיאור החדש ל"מה מחפש" (התאמות נוספות)
-        try:
-            rows = _fetch_manual_buyers()
-            ak = _canon_key(agent)
-            for r in rows:
-                same_agent = (_canon_key(r.get("agent", "")) == ak) or (
-                    agent_phone and _last9(r.get("agent_phone", "")) == _last9(agent_phone))
-                if not same_agent:
-                    continue
-                if ln and _last9(r.get("phone", "")) == ln:
-                    _merge_buyer_search(r, info_desc, budget_txt)
-                    return False
-                if (not ln) and client and _canon_key(r.get("name", "")) == _canon_key(client):
-                    _merge_buyer_search(r, info_desc, budget_txt)
-                    return False
-        except Exception:
-            pass
+        # קונה קיים שחתם על נכס נוסף — מקבל את התיאור החדש ל"מה מחפש" (התאמות נוספות).
+        # קריטי: אם קריאת הקונים נכשלת — לא יוצרים חדש (למנוע כפילות מדיווח אייל 19/07),
+        # אלא מוותרים על ההוספה האוטומטית הפעם. קאש נקי + ניסיון חוזר לצמצם race/תקלה.
+        _dedup_ok = False
+        for _attempt in range(2):
+            try:
+                if _attempt:
+                    _cache_clear("buyers")
+                rows = _fetch_manual_buyers()
+                _dedup_ok = True
+                ak = _canon_key(agent)
+                ck = _canon_key(client)
+                for r in rows:
+                    same_agent = (_canon_key(r.get("agent", "")) == ak) or (
+                        agent_phone and _last9(r.get("agent_phone", "")) == _last9(agent_phone))
+                    if not same_agent:
+                        continue
+                    # התאמה לפי טלפון או לפי שם (טלפון בפורמט שונה לא יוצר כפיל)
+                    if (ln and _last9(r.get("phone", "")) == ln) or (ck and _canon_key(r.get("name", "")) == ck):
+                        _merge_buyer_search(r, info_desc, budget_txt)
+                        return False
+                break
+            except Exception:
+                _dedup_ok = False
+        if not _dedup_ok:
+            log.warning("add_buyer_from_signing: buyers read failed — skipping auto-add to avoid duplicate")
+            return False
         from datetime import datetime, timezone, timedelta
         try:
             from zoneinfo import ZoneInfo
@@ -7856,6 +7866,8 @@ def api_buyers_update():
     _up = {"row": row, "search": search}
     if (body.get("phone") or "").strip():   # עריכת טלפון הקונה (אם ה-Apps Script תומך בשדה)
         _up["phone"] = str(body.get("phone")).strip()
+    if body.get("budget") is not None:      # עריכת תקציב הקונה (עמודה 'תקציב')
+        _up["budget"] = str(body.get("budget")).strip()
     j = _buyers_apps_post("updatebuyer", _up)
     if not j or not j.get("ok"):
         return jsonify({"ok": False, "reason": (j or {}).get("error", "update_failed")}), 502
