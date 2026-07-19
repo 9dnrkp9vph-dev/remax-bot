@@ -1512,8 +1512,16 @@ def _recent_signs_merge(rows):
 
     seen_tok = set(_tokkey(r) for r in rows)
     seen_stable = set(_stablekey(r) for r in rows)
-    extra = [r for (t, r) in keep
-             if _tokkey(r) not in seen_tok and _stablekey(r) not in seen_stable]
+    # דדופ גם בין רשומות הגשר עצמן (stablekey) — שליחה כפולה/פיצול שיצרו שתי
+    # רשומות לאותו סוכן+לקוח+deal_type לא יופיעו פעמיים (כפילות בלעדיות, 19/07).
+    extra = []
+    added_stable = set()
+    for (t, r) in keep:
+        sk = _stablekey(r)
+        if _tokkey(r) in seen_tok or sk in seen_stable or sk in added_stable:
+            continue
+        added_stable.add(sk)
+        extra.append(r)
     return out + extra
 
 def get_signings(frm="01/01/2020", to="31/12/2099"):

@@ -3759,13 +3759,18 @@ function render(){
       var key = [(g.client || '').trim(), (g.address || '').trim(), kindOf(g)].join('|');
       (by[key] = by[key] || []).push(g);
     });
+    // לכל מפתח (לקוח+כתובת+סוג) — שומרים נציג אחד בלבד: נחתם אם קיים, אחרת הראשון.
+    // כך מתמוטטת כל כפילות — נחתם+ממתין וגם ממתין+ממתין (שליחה כפולה/גשר+אמת).
+    var kept = {};
     src = src.filter(function(g){
       var key = [(g.client || '').trim(), (g.address || '').trim(), kindOf(g)].join('|');
       var grp = by[key];
       if (grp.length < 2) return true;
-      var hasSigned = grp.some(function(x){ return !!(x.link || x.pct); });
-      if (!hasSigned) return true;                 // כולם ממתינים — משאירים
-      return !!(g.link || g.pct);                  // יש נחתם בקבוצה — משאירים רק נחתמים
+      var signed = grp.filter(function(x){ return !!(x.link || x.pct); });
+      var winner = signed.length ? signed[0] : grp[0];   // נחתם גובר; אחרת הראשון
+      if (kept[key]) return false;                        // כבר השארנו נציג
+      if (g === winner){ kept[key] = 1; return true; }
+      return false;
     });
   })();
   var h = '';
