@@ -7903,8 +7903,9 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .empty .t{font-size:34px;font-weight:800}
   .empty .s{font-size:19px;color:rgba(255,255,255,.6)}
   footer{position:fixed;bottom:22px;left:0;right:0;text-align:center;font-size:14px;color:rgba(255,255,255,.35)}
-  /* חצי ניווט — מוסתרים בטלוויזיה (עכבר נסתר), מופיעים במסך מגע */
+  /* חצי ניווט + כפתור כניסה — מוסתרים בטלוויזיה, מופיעים במסך מגע בלבד */
   .tvNav{display:none}
+  .tvEnter{display:none}
   /* ── פורטרייט/מסך צר (אייפון) — אותו מסך TV, מסודר לגובה במקום רוחב ── */
   @media (max-width:820px){
     html,body{cursor:auto}
@@ -7912,9 +7913,13 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       border-radius:50%;border:1.5px solid rgba(228,197,107,.5);background:rgba(14,29,41,.85);color:#E4C56B;
       font-size:30px;line-height:1;align-items:center;justify-content:center;cursor:pointer;z-index:30;font-family:inherit}
     .tvPrev{right:18px} .tvNext{left:18px}
+    .tvEnter{display:flex;position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);left:50%;transform:translateX(-50%);
+      align-items:center;justify-content:center;z-index:30;background:#E4C56B;color:#231700;font-weight:800;font-size:14px;
+      font-family:inherit;text-decoration:none;padding:12px 22px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.35);white-space:nowrap}
     .hotBody .dsc{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;
       font-size:15px;line-height:1.55;max-width:100%;padding:0 6px;text-align:center}
-    main{padding-bottom:84px}
+    main{padding-bottom:96px}
+    footer{display:none}   /* הכפתור "כניסה לאפליקציה" תופס את מרכז התחתית במקום שורת הפוטר */
     /* כותרת מובייל קומפקטית — שורה אחת: אפי + לוגו אוריגמי + לוגו המשרד. בלי שעון/תאריך. */
     header{flex-wrap:nowrap;justify-content:center;align-items:center;text-align:center;padding:9px 14px 2px;gap:12px}
     .brand{flex:0 0 auto;justify-content:center;gap:8px}
@@ -7968,6 +7973,7 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   <main><div class="card" id="card"></div></main>
   <button class="tvNav tvPrev" onclick="goto(-1)" aria-label="הקודם">›</button>
   <button class="tvNav tvNext" onclick="goto(1)" aria-label="הבא">‹</button>
+  <a class="tvEnter" href="/v2">כניסה לאפליקציה</a>
   <footer id="foot"></footer>
 <script>
 /* מצב קיוסק: /v2/tv?k=<TV_KEY> עובד בלי כניסה — לטלוויזיית המשרד */
@@ -8133,7 +8139,7 @@ function goto(delta){
 (function(){
   // הקשה: חצי ימין (RTL) = אחורה, חצי שמאל = קדימה
   document.addEventListener('click', function(e){
-    if (e.target.closest && e.target.closest('.tvNav')) return;   // כפתורי החצים מטפלים בעצמם
+    if (e.target.closest && e.target.closest('.tvNav, .tvEnter')) return;   // חצים/כניסה מטפלים בעצמם
     goto(e.clientX > window.innerWidth / 2 ? -1 : 1);
   });
 })();
