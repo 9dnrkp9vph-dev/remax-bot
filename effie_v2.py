@@ -8278,6 +8278,35 @@ function saveContract(){var t=el('cType').value;POST('/api/dev/contract',{type:t
 })();
 </script></body></html>'''
 
+
+# ── התאמות היום (בטא): ניקוד קונה↔נכס — טהור, לבדיקה עצמאית ─────────────────
+def match_score(buyer_text, budget, price, city, hood, rooms):
+    """ניקוד התאמה בין קונה (טקסט "מה מחפש"+summary, תקציב) לנכס.
+    מחזיר (score, reasons). תנאי סף: אות "אזור" (עיר או שכונה בטקסט הקונה)
+    + לפחות אות נוסף (תקציב/חדרים). תקציב נמוך מ-85% מהמחיר — פסילה קשיחה."""
+    tx = str(buyer_text or "").replace("קריית", "קרית")
+    score, reasons = 0, []
+    budget = int(budget or 0); price = int(price or 0)
+    if budget and price:
+        if budget < price * 0.85:
+            return 0, []          # מעל היכולת של הקונה — לא מציעים
+        score += 2; reasons.append("תקציב מתאים")
+    area = False
+    c = str(city or "").replace("קריית", "קרית").strip()
+    if c and c in tx:
+        score += 2; reasons.append("אזור"); area = True
+    h = str(hood or "").strip()
+    if not area and len(h) >= 2 and h in tx:
+        score += 2; reasons.append("שכונה"); area = True
+    r = str(rooms or "").strip()
+    if r.endswith(".0"): r = r[:-2]
+    if r and _re.search("(^|[^0-9.])" + _re.escape(r) + r"\s*חד", tx):
+        score += 1; reasons.append("חדרים")
+    if not area or len(reasons) < 2:
+        return 0, []
+    return score, reasons
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
