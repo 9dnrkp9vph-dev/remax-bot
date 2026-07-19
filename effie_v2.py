@@ -9054,6 +9054,151 @@ def register(app, G):
                         "dealsYear": deals_year,
                         "hotProps": hot_props})
 
+    # ── התאמות היום (בטא): קונים בהיקף המשתמש × (נכס נולד שנחשף · משרד · שת"פ) ──
+    def _matches_props(eff_name, s, as_name):
+        """רשימת נכסים אחודה להצלבה — הכול מה-cache הקיים, אפס fetch חדש."""
+        now = time.time(); props = []
+        try:
+            for r in G["fetch_sheet_rows"]():
+                addr = (str(r.get("כתובת", "") or "").strip() + " " +
+                        str(r.get("מספר בית", "") or "").strip()).strip()
+                props.append({"src": "office",
+                              "key": "of:" + (str(r.get("מספר מודעה", "") or "").strip() or addr),
+                              "city": str(r.get("עיר / ישוב", "") or "").strip(),
+                              "hood": str(r.get("שכונה", "") or "").strip(),
+                              "address": addr,
+                              "rooms": str(r.get("חדרים", "") or "").strip(),
+                              "price": G["parse_price"](r.get("מחיר", "")) or 0,
+                              "price_txt": str(r.get("מחיר", "") or "").strip(),
+                              "desc": "", "agent": str(r.get("סוכן 1", "") or "").strip()})
+        except Exception as e:
+            if log: log.warning(f"v2 matches office: {e}")
+        try:
+            for r in G["_dedupe_exclusives"](G["fetch_external_exclusives"]()):
+                st_ = str(r.get("street", "") or "").strip()
+                city = st_.split(",")[-1].strip() if "," in st_ else ""
+                dtxt = (str(r.get("dest", "") or "") + " " + str(r.get("desti", "") or "")).strip()
+                mrx = _re.search(r"(\d(?:\.\d)?)\s*חד", dtxt)
+                props.append({"src": "shtaf", "key": "ex:" + st_,
+                              "city": city, "hood": "", "address": st_,
+                              "rooms": (mrx.group(1) if mrx else ""),
+                              "price": G["parse_price"](r.get("price", "")) or 0,
+                              "price_txt": str(r.get("price", "") or "").strip(),
+                              "desc": dtxt[:140], "agent": str(r.get("office", "") or "").strip()})
+        except Exception as e:
+            if log: log.warning(f"v2 matches shtaf: {e}")
+        try:
+            eff_norm = G["_norm_name"](eff_name)
+            delays = G["_fetch_newborn_delays"]()
+            _eck = "c:" + G["_canon_key"](eff_name)
+            _dphone = "" if as_name else s.get("phone", "")
+            admin_all = (s["role"] == "admin" and not as_name
+                         and not G["_delayed_admin_days"](eff_name, _dphone))
+            delay = 0 if admin_all else int(delays.get(eff_norm, delays.get(_eck, delays.get("_default", 0))))
+            _da = G["_delayed_admin_days"](eff_name, _dphone)
+            if _da and not admin_all and not ((eff_norm in delays) or (_eck in delays)):
+                delay = _da
+            if delay < G["NEWBORN_HIDDEN"]:
+                for r in G["fetch_newborn"]():
+                    created = G["_newborn_created_epoch"](r)
+                    if not created:
+                        continue
+                    if (now - created) / 86400 > 45:   # להתאמות — נכסים טריים בלבד
+                        continue
+                    lister = str(r.get("משתמש", "") or r.get("סוכן 1", "") or "").strip()
+                    own = bool(eff_norm) and G["_norm_name"](lister) == eff_norm
+                    if not (admin_all or own or now >= created + delay * 86400):
+                        continue   # טרם נחשף לסוכן — לא דולף דרך ההתאמות
+                    desc = str(r.get("תיאור נכס", "") or "").strip()
+                    mrx = _re.search(r"(\d(?:\.\d)?)\s*חד", desc)
+                    props.append({"src": "nb", "key": "nb:" + G["_nb_key"](r),
+                                  "city": str(r.get("עיר", "") or r.get("עיר / ישוב", "") or "").strip(),
+                                  "hood": str(r.get("שכונה", "") or "").strip(),
+                                  "address": str(r.get("רחוב1", "") or r.get("רחוב", "") or "").strip(),
+                                  "rooms": (mrx.group(1) if mrx else ""),
+                                  "price": G["parse_price"](r.get("מחיר", "")) or 0,
+                                  "price_txt": G["_newborn_price"](r.get("מחיר", "")),
+                                  "desc": desc[:140], "agent": lister})
+        except Exception as e:
+            if log: log.warning(f"v2 matches newborn: {e}")
+        return props
+
+    def _matches_build(buyers, eff_name, s, as_name):
+        props = _matches_props(eff_name, s, as_name)
+        out = []
+        for b in buyers:
+            btx = (str(b.get("search", "") or "") + " " + str(b.get("summary", "") or "")).strip()
+            bud = int(_re.sub(r"[^0-9]", "", str(b.get("budget", "") or "")) or 0)
+            if not btx:
+                continue   # בלי "מה מחפש" אין ממה להתאים
+            bl9 = _last9(b.get("phone", ""))
+            bm = []
+            for p in props:
+                sc, why = match_score(btx, bud, p["price"], p["city"], p["hood"], p["rooms"])
+                if sc:
+                    bm.append((sc, why, p))
+            bm.sort(key=lambda x: -x[0])
+            for sc, why, p in bm[:3]:   # עד 3 נכסים לקונה — בלי הצפה
+                out.append({"key": bl9 + "|" + p["key"], "score": sc, "why": why,
+                            "buyer": {"name": str(b.get("name", "") or "").strip(),
+                                      "phone": str(b.get("phone", "") or "").strip(),
+                                      "wa": G["_wa_phone"](b.get("phone", "")),
+                                      "budget": str(b.get("budget", "") or "").strip()},
+                            "prop": {k: p[k] for k in ("src", "address", "city", "hood",
+                                                       "rooms", "price_txt", "desc", "agent")}})
+        out.sort(key=lambda m: -m["score"])
+        return out[:60]
+
+    @app.route("/v2/api/matches", methods=["GET"])
+    def v2_api_matches():
+        """התאמות היום (בטא) — סנאפשוט יומי עצל: נבנה בפתיחה הראשונה של היום
+        (מפתח ה-cache כולל את התאריך, שעון ישראל), מוגש מהזיכרון עד חצות."""
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        try:
+            _canon = G["_canon_key"]
+            as_name = ""
+            if s["role"] in ("admin", "coordinator"):
+                as_name = (request.args.get("as", "") or "").strip()
+            eff_name = as_name or s.get("name", "")
+            rows = G["_fetch_manual_buyers"]()
+            if s["role"] == "admin" and not as_name:
+                mine, scope = rows, "admin"
+            else:
+                eff_phones = set(G["_phones_for_name"](eff_name))
+                if not as_name and s.get("phone"):
+                    eff_phones.add(_last9(s["phone"]))
+                role = "agent" if as_name else s["role"]
+                keys, phones, _m = G["_scope_keys_phones"](
+                    role, eff_name, eff_phones,
+                    None if as_name else s.get("agents"),
+                    None if as_name else s.get("agent_names"))
+                mine = [r for r in rows if (_canon(r.get("agent", "")) in keys)
+                        or (_last9(r.get("agent_phone", "")) in phones)]
+                scope = "|".join(sorted(keys)) or _canon(eff_name)
+            import datetime as _dmm
+            from zoneinfo import ZoneInfo as _ZI
+            today = _dmm.datetime.now(_ZI("Asia/Jerusalem")).strftime("%Y-%m-%d")
+            ck = "v2match:" + today + ":" + scope
+            snap = G["_cache_get"](ck, 86400)
+            if snap is None:
+                snap = _matches_build(mine, eff_name, s, as_name)
+                G["_cache_put"](ck, snap)
+            state = (_load_config().get("v2_matches") or {})
+            results = []
+            for m in snap:
+                st = state.get(m["key"]) or {}
+                if st.get("s") == "hidden":
+                    continue
+                mm = dict(m); mm["sent"] = (st.get("s") == "sent")
+                results.append(mm)
+            return jsonify({"ok": True, "date": today, "office": _office_name(),
+                            "me": s.get("name", ""), "count": len(results), "results": results})
+        except Exception as e:
+            if log: log.error(f"v2 matches error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
     @app.route("/v2/api/admin/overview", methods=["GET"])
     def v2_api_admin_overview():
         s = _dev_guard()
