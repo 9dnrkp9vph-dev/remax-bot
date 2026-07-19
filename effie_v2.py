@@ -7879,6 +7879,34 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .empty .t{font-size:34px;font-weight:800}
   .empty .s{font-size:19px;color:rgba(255,255,255,.6)}
   footer{position:fixed;bottom:22px;left:0;right:0;text-align:center;font-size:14px;color:rgba(255,255,255,.35)}
+  /* ── פורטרייט/מסך צר (אייפון) — אותו מסך TV, מסודר לגובה במקום רוחב ── */
+  @media (max-width:820px){
+    header{flex-wrap:wrap;justify-content:center;text-align:center;padding:16px 16px 0;gap:8px}
+    .brand{flex:1 1 100%;justify-content:center;gap:12px}
+    .brand svg{height:44px}
+    .brand .bn{font-size:28px}
+    .brand .bs{font-size:12px}
+    .mid,.left{flex:1 1 auto}
+    .left{justify-content:center}
+    .bars{padding:12px 16px 0;gap:5px}
+    main{padding:14px 16px 30px;align-items:flex-start}
+    .card{gap:16px}
+    .h1{font-size:26px;text-align:center}
+    .grid{grid-template-columns:repeat(2,1fr);gap:12px}
+    .stat{padding:16px 14px}
+    .stat .n{font-size:38px}
+    .stat .l{font-size:14px}
+    .lead{flex-direction:column;gap:6px;padding:16px;text-align:center}
+    .hot{grid-template-columns:1fr;gap:18px;justify-items:center;text-align:center}
+    .agentBox{flex-direction:row;gap:12px}
+    .ava{width:96px;height:96px}
+    .ava div{font-size:34px}
+    .hotBody{align-items:center;gap:10px}
+    .hotBody .ttl{font-size:26px;text-align:center}
+    .hotBody .pr{font-size:36px}
+    .empty .t{font-size:24px}
+    .empty .s{font-size:15px}
+  }
 </style></head><body>
   <header>
     <div class="brand">
