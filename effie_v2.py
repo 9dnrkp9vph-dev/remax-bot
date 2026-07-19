@@ -7896,8 +7896,18 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .empty .t{font-size:34px;font-weight:800}
   .empty .s{font-size:19px;color:rgba(255,255,255,.6)}
   footer{position:fixed;bottom:22px;left:0;right:0;text-align:center;font-size:14px;color:rgba(255,255,255,.35)}
+  /* חצי ניווט — מוסתרים בטלוויזיה (עכבר נסתר), מופיעים במסך מגע */
+  .tvNav{display:none}
   /* ── פורטרייט/מסך צר (אייפון) — אותו מסך TV, מסודר לגובה במקום רוחב ── */
   @media (max-width:820px){
+    html,body{cursor:auto}
+    .tvNav{display:flex;position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);width:52px;height:52px;
+      border-radius:50%;border:1.5px solid rgba(228,197,107,.5);background:rgba(14,29,41,.85);color:#E4C56B;
+      font-size:30px;line-height:1;align-items:center;justify-content:center;cursor:pointer;z-index:30;font-family:inherit}
+    .tvPrev{right:18px} .tvNext{left:18px}
+    .hotBody .dsc{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;
+      font-size:15px;line-height:1.55;max-width:100%;padding:0 6px;text-align:center}
+    main{padding-bottom:84px}
     header{flex-wrap:wrap;justify-content:center;text-align:center;padding:16px 16px 0;gap:8px}
     .brand{flex:1 1 100%;justify-content:center;gap:12px}
     .brand svg{height:44px}
@@ -7947,6 +7957,8 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   </header>
   <div class="bars" id="bars"></div>
   <main><div class="card" id="card"></div></main>
+  <button class="tvNav tvPrev" onclick="goto(-1)" aria-label="הקודם">›</button>
+  <button class="tvNav tvNext" onclick="goto(1)" aria-label="הבא">‹</button>
   <footer id="foot"></footer>
 <script>
 /* מצב קיוסק: /v2/tv?k=<TV_KEY> עובד בלי כניסה — לטלוויזיית המשרד */
@@ -8102,6 +8114,20 @@ function render(i){
     render(IDX);
   }, durFor(pl, it));
 }
+/* ניווט ידני (מובייל) — הקשה/חץ מדלגים קדימה/אחורה, מאפסים את הטיימר */
+function goto(delta){
+  var n = playlist().length; if (!n) return;
+  clearTimeout(TIMER);
+  IDX = (IDX + delta + n) % n;
+  render(IDX);
+}
+(function(){
+  // הקשה: חצי ימין (RTL) = אחורה, חצי שמאל = קדימה
+  document.addEventListener('click', function(e){
+    if (e.target.closest && e.target.closest('.tvNav')) return;   // כפתורי החצים מטפלים בעצמם
+    goto(e.clientX > window.innerWidth / 2 ? -1 : 1);
+  });
+})();
 function load(){
   GET('/v2/api/brief').then(function(j){
     if (!j || !j.ok){
