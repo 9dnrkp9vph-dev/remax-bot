@@ -4783,6 +4783,21 @@ function render(){
     '<div class="s">' + (MODE === 'mine' ? 'נכסים שמשויכים אליך בגיליון המשרד יופיעו כאן' : 'נסה ניסוח אחר — החיפוש מבין תקציב, חדרים ואזור') + '</div></div>';
   el('list')._src = src;
 }
+function propDate(p){
+  // תאריך כניסת הנכס — משרד: "תאריך יצירה"; שת"פ: received_at (ISO). תצוגה: DD/MM/YYYY + זמן יחסי.
+  var raw = String((p && p.date) || '').trim();
+  if (!raw) return '';
+  var d = null, m;
+  if ((m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/))) d = new Date(+m[1], +m[2] - 1, +m[3]);
+  else if ((m = raw.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/))) d = new Date(+m[3], +m[2] - 1, +m[1]);
+  if (!d || isNaN(d)) return 'נכנס: ' + raw;
+  var dd = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+  var days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  var rel = days < 0 ? '' : days === 0 ? 'היום' : days === 1 ? 'אתמול'
+    : days < 30 ? 'לפני ' + days + ' ימים' : days < 60 ? 'לפני חודש'
+    : 'לפני ' + Math.floor(days / 30) + ' חודשים';
+  return 'נכנס: ' + dd + (rel ? ' · ' + rel : '');
+}
 function propCard(p, i){
   var isShtaf = MODE === 'shtaf';
   var isMine = MODE === 'mine';
@@ -4832,7 +4847,9 @@ function propCard(p, i){
     '<div style="display:flex;align-items:center;justify-content:space-between">' +
     '<div class="pr">' + esc(fmtPrice(p.price)) + '</div>' +
     (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
-    '</div>' + acts + hotRow + '</div>';
+    '</div>' +
+    (propDate(p) ? '<div style="font-size:11.5px;color:#8B8F99;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
+    acts + hotRow + '</div>';
 }
 function setMode(node){
   MODE = node.getAttribute('data-m');
