@@ -9159,10 +9159,15 @@ def register(app, G):
         _mid = _dt2.datetime.now(_tz).replace(hour=0, minute=0, second=0, microsecond=0)
         _from = _mid - _dt2.timedelta(days=n_days - 1)
         pings = _sb.fetch_pings_today(_from.isoformat())
+        _ckey = G["_canon_key"]
         by = {}
         for p in pings:
             ph = str(p.get("phone", "") or "")
-            if not ph:
+            nm = str(p.get("name", "") or "").strip()
+            # איחוד לפי שם הסוכן (canon) — סוכן עם כמה טלפונים (רגיל+וירטואלי) נספר
+            # פעם אחת, לא שורה לכל מספר (תיקון "יאיר/מנהל פעמיים", 19/07). בלי שם — לפי טלפון.
+            gk = ("n:" + _ckey(nm)) if nm else ("p:" + ph)
+            if not gk or gk in ("n:", "p:"):
                 continue
             try:
                 dt = _dt2.datetime.fromisoformat(str(p.get("ts", "")).replace("Z", "+00:00")).astimezone(_tz)
@@ -9170,9 +9175,9 @@ def register(app, G):
                 continue
             if no_weekend and dt.weekday() in (4, 5):   # שישי=4, שבת=5
                 continue
-            d = by.setdefault(ph, {"name": "", "ts": [], "days": set()})
-            if p.get("name"):
-                d["name"] = p.get("name")
+            d = by.setdefault(gk, {"name": "", "ts": [], "days": set()})
+            if nm:
+                d["name"] = nm
             d["ts"].append(dt.timestamp())
             d["days"].add(dt.date().isoformat())
         rows = []
