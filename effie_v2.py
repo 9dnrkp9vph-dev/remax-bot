@@ -4701,7 +4701,18 @@ function toggleHot(i){
     toast(on ? 'הנכס סומן כחם — יופיע בבריף' : 'הוסר מהבריף');
   }).catch(function(){ if (on) delete HOT[hk]; else HOT[hk] = true; render(); toast('שגיאה'); });
 }
-function loadHot(){ GET('/v2/api/hot').then(function(j){ if (j && j.ok && j.keys){ HOT = {}; j.keys.forEach(function(k){ HOT[String(k)] = true; }); render(); } }).catch(function(){}); }
+var HOT_BY = {};   // property_key → שם הסוכן שסימן (לתצוגת מנהל: "נכס חם · שם")
+function loadHot(tries){
+  // מנהל/מתאמת רואים את הנכסים של כל הסוכנים ב"שלי" → טוענים את הנכסים החמים הכלל-משרדיים
+  GET('/v2/api/hot' + (MINE_MULTI ? '?all=1' : '')).then(function(j){
+    if (j && j.ok){
+      HOT = {}; HOT_BY = {};
+      (j.keys || []).forEach(function(k){ HOT[String(k)] = true; });
+      var by = j.byAgent || {}; for (var k in by) HOT_BY[String(k)] = by[k];
+      render();
+    } else if ((tries || 0) < 2){ setTimeout(function(){ loadHot((tries || 0) + 1); }, 1500); }
+  }).catch(function(){ if ((tries || 0) < 2) setTimeout(function(){ loadHot((tries || 0) + 1); }, 1500); });
+}
 
 var _loadSeq = 0;
 function load(q){
@@ -4797,10 +4808,12 @@ function propCard(p, i){
   // כפתור "נכס חם" — רק בנכסי הסוכן ("שלי"). סימון עד 2 → רצים בבריף הבוקר הכלל-משרדי.
   var _hk = String(p.id || p.address || '');
   var _hot = !!HOT[_hk];
+  var _hotAg = _hot ? (HOT_BY[_hk] || '') : '';   // בתצוגת מנהל — שם הסוכן שסימן
+  var _lbl = _hot ? ('נכס חם · בבריף' + (MINE_MULTI && _hotAg ? ' (' + _hotAg + ')' : '')) : 'סמן כנכס חם';
   var hotRow = isMine ? ('<div style="margin-top:8px"><button onclick="toggleHot(' + i + ')" ' +
     'style="width:100%;padding:11px 0;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;' +
     'cursor:pointer;border:' + (_hot ? 'none' : '1.5px solid #C29435') + ';background:' + (_hot ? '#C29435' : '#fff') +
-    ';color:' + (_hot ? '#fff' : '#C29435') + '">' + (_hot ? 'נכס חם · בבריף' : 'סמן כנכס חם') + '</button></div>') : '';
+    ';color:' + (_hot ? '#fff' : '#C29435') + '">' + _lbl + '</button></div>') : '';
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
@@ -8500,17 +8513,26 @@ def register(app, G):
         _sb = _sb_mod()
         if not _sb:
             return jsonify({"ok": True, "keys": []})
+        # all=1 (מנהל/מתאמת): כל הנכסים החמים במשרד — כדי שהכפתורים בתצוגת "שלי"
+        # הרב-סוכנית ידלקו גם לנכסים שסוכנים אחרים סימנו (תיקון 19/07). אחרת רק שלי.
+        want_all = request.args.get("all") == "1" and s.get("role") in ("admin", "coordinator")
+        params = {"office_id": "eq." + _sb.SB_OFFICE_ID, "active": "eq.true",
+                  "select": "property_key,agent_name"}
+        if not want_all:
+            params["agent_phone"] = "eq." + _last9(s.get("phone", ""))
         try:
             r = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories", headers=_sb._headers(),
-                              params={"office_id": "eq." + _sb.SB_OFFICE_ID,
-                                      "agent_phone": "eq." + _last9(s.get("phone", "")),
-                                      "active": "eq.true", "select": "property_key"}, timeout=10)
+                              params=params, timeout=10)
             r.raise_for_status()
-            keys = [row.get("property_key") for row in (r.json() or []) if row.get("property_key")]
-            return jsonify({"ok": True, "keys": keys})
+            rows = r.json() or []
+            keys = [row.get("property_key") for row in rows if row.get("property_key")]
+            # מפת key→סוכן — להצגת שם הסוכן על כפתור של נכס חם שאינו שלי (בתצוגת מנהל)
+            by = {row.get("property_key"): (row.get("agent_name") or "")
+                  for row in rows if row.get("property_key")}
+            return jsonify({"ok": True, "keys": keys, "byAgent": by})
         except Exception as e:
             if log: log.warning(f"effie hot get: {e}")
-            return jsonify({"ok": True, "keys": []})
+            return jsonify({"ok": True, "keys": [], "byAgent": {}})
 
     @app.route("/v2/api/hot", methods=["POST"])
     def v2_api_hot_post():
