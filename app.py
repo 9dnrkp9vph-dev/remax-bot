@@ -6457,6 +6457,8 @@ def api_search_properties():
         _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכסים", q or "(כל הנכסים)")
         if q and not (request.get_json(silent=True) or {}).get("nosave"):
             _push_recent(s["phone"], "props", q)
+        _scan_price_changes()
+        _pc_map = _price_changed_map()   # נכסים שהמחיר שלהם השתנה ב-7 ימים — תג לכולם
         phones = fetch_agents_phones()
 
         def _row_out(row, score=None):
@@ -6470,6 +6472,7 @@ def api_search_properties():
                 "size": (row.get('מ"ר', "") or row.get("מ״ר", "") or "").strip(),
                 "floor": (row.get("קומה", "") or "").strip(),
                 "price": (row.get("מחיר", "") or "").strip(),
+                "priceChanged": _prop_price_key(row) in _pc_map,   # תג "עדכון מחיר" (לכולם)
                 "date": (row.get("תאריך יצירה", "") or "").strip(),
                 "agent": _canon_agent_name(ag),
                 "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
@@ -6543,6 +6546,8 @@ def api_my_properties():
         phones_map = fetch_agents_phones()
         pending = _fetch_pending_listings()
         removed = _removed_listing_ids()   # נכסים שהסוכן ביקש להסיר — יורדים מיד מהתצוגה והספירה
+        _scan_price_changes()
+        _pc_map = _price_changed_map()      # תג "עדכון מחיר" (7 ימים, לכולם)
         out = []
         for r in mine:
             ag = (r.get("סוכן 1", "") or "").strip()
@@ -6562,6 +6567,7 @@ def api_my_properties():
                 "size": (r.get('מ"ר', "") or r.get("מ״ר", "") or "").strip(),
                 "floor": (r.get("קומה", "") or "").strip(),
                 "price": (r.get("מחיר", "") or "").strip(),
+                "priceChanged": _prop_price_key(r) in _pc_map,
                 "agent": _canon_agent_name(ag),
                 "wa": _wa_phone(phones_map.get(ag, r.get("טלפון 1", ""))),
                 "desc": (r.get("_desc_ae", "") or "").strip(),
@@ -6590,6 +6596,63 @@ def _removed_listing_ids():
         return set(str(k) for k in m.keys())
     except Exception:
         return set()
+
+def _prop_price_key(row):
+    """מפתח יציב לזיהוי נכס לאורך העלאות — מספר מודעה, ובלעדיו כתובת+עיר מנורמלים."""
+    lid = str(row.get("מספר מודעה", "") or "").strip()
+    if lid:
+        return "L:" + lid
+    a = re.sub(r"\s+", " ", (str(row.get("כתובת", "")) + " " + str(row.get("מספר בית", "")) +
+                             " " + str(row.get("עיר / ישוב", ""))).strip()).lower()
+    return ("A:" + a) if a else ""
+
+def _price_digits(p):
+    return re.sub(r"\D", "", str(p or ""))
+
+_PRICE_SCAN = {"ts": 0.0}
+def _scan_price_changes():
+    """משווה מחירי נכסים נוכחיים לסנאפשוט הקודם (בקונפיג); מחיר שהשתנה → רושם חותמת זמן.
+    Throttle 120ש' (עומס זניח); כתיבה durable רק כשמשהו באמת השתנה. תג 'עדכון מחיר' 7 ימים."""
+    now = time.time()
+    if now - _PRICE_SCAN["ts"] < 120:
+        return
+    _PRICE_SCAN["ts"] = now
+    try:
+        rows = fetch_sheet_rows()
+    except Exception:
+        return
+    cur = {}
+    for r in rows:
+        k = _prop_price_key(r); pn = _price_digits(r.get("מחיר", ""))
+        if k and pn:
+            cur[k] = pn
+    if not cur:
+        return
+    def _mut(cfg):
+        snap = dict(cfg.get("v2_price_snap") or {})
+        changes = dict(cfg.get("v2_price_changes") or {})
+        for k, pn in cur.items():
+            old = snap.get(k)
+            if old is not None and old != pn:   # מחיר השתנה (לא מופע ראשון) → תג
+                changes[k] = int(now)
+            snap[k] = pn
+        cutoff = int(now) - 7 * 86400
+        changes = {k: v for k, v in changes.items() if (v or 0) >= cutoff}   # גיזום >7 יום
+        cfg["v2_price_snap"] = snap
+        cfg["v2_price_changes"] = changes
+    try:
+        _config_mutate(_mut)
+    except Exception as _e:
+        log.warning(f"price scan failed: {_e}")
+
+def _price_changed_map():
+    """{key: ts} של נכסים שהמחיר שלהם השתנה ב-7 הימים האחרונים."""
+    try:
+        now = time.time()
+        m = _load_config().get("v2_price_changes") or {}
+        return {k: v for k, v in m.items() if (now - (v or 0)) < 7 * 86400}
+    except Exception:
+        return {}
 
 def _mark_listing_removed(lid):
     lid = str(lid or "").strip()

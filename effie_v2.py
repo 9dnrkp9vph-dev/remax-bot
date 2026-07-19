@@ -4844,8 +4844,11 @@ function propCard(p, i){
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
-    '<div style="display:flex;align-items:center;justify-content:space-between">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
+    '<div style="display:flex;align-items:center;gap:8px">' +
     '<div class="pr">' + esc(fmtPrice(p.price)) + '</div>' +
+    (p.priceChanged ? '<span style="font-size:11px;font-weight:800;color:#231700;background:#E4C56B;border-radius:999px;padding:3px 10px;white-space:nowrap">עדכון מחיר</span>' : '') +
+    '</div>' +
     (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' +
     (propDate(p) ? '<div style="font-size:11.5px;color:#8B8F99;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
