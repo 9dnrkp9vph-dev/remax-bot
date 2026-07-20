@@ -1319,7 +1319,7 @@ function renderCard(i){
       '</div>'+
       '<div style="margin-top:auto;display:flex;flex-direction:column;gap:9px">'+
 
-        (wa?'<a href="https://wa.me/'+wa+'" class="bSec" style="margin:0;text-decoration:none;display:block;text-align:center">שאל את '+esc(hp.agent||'הסוכן')+'</a>':'')+
+        (wa?'<a href="https://wa.me/'+wa+'?text='+encodeURIComponent('היי '+(String(hp.agent||'').trim().split(/\s+/)[0]||'')+', ראיתי בסטורי את הנכס החם'+(hp.title?' — '+hp.title:'')+'. אשמח לפרטים')+'" class="bSec" style="margin:0;text-decoration:none;display:block;text-align:center">שאל את '+esc(hp.agent||'הסוכן')+'</a>':'')+
         '<button class="bSec" style="margin:0" onclick="'+(isLast?'closeStory()':'nextCard()')+'">'+(isLast?'בוא נתחיל את היום':'הנכס הבא ←')+'</button>'+
       '</div>';
   }
