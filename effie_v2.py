@@ -8480,6 +8480,61 @@ function saveContract(){var t=el('cType').value;POST('/api/dev/contract',{type:t
 })();
 </script></body></html>'''
 
+
+# ── הנהלת חשבונות: עזרי נרמול לקליטת חשבוניות (טהורים — לבדיקה עצמאית) ──────
+_INV_TYPES = ['חשבונית מס קבלה', 'חשבונית מס זיכוי', 'חשבונית מס', 'קבלה', 'חשבונית']
+
+def inv_norm_type(s):
+    """נרמול "סוג מסמך" — עמיד לקטיעות ולסדר מילים הפוך בייצוא/אוטומציה של Fireberry."""
+    t = ' '.join(str(s or '').replace('-', ' ').split())
+    if not t:
+        return 'אחר'
+    toks = set(t.split())
+    if {'מס', 'חשבונית'} <= toks:
+        if 'קבלה' in toks: return 'חשבונית מס קבלה'
+        if 'זיכוי' in toks: return 'חשבונית מס זיכוי'
+        return 'חשבונית מס'
+    j = ''.join(t.split())
+    for full in _INV_TYPES:
+        fj = ''.join(full.split())
+        if fj in j or (len(j) >= 5 and fj.endswith(j)):
+            return full
+    return 'אחר'
+
+def inv_parse_dt(s):
+    """תאריך → ISO (שעון ישראל). תומך: "20.7.2026 18:02", "20/07/2026 18:02",
+    "18:02 20/07/2026", ISO. לא פריס → None (הקולט נופל ל"עכשיו")."""
+    t = str(s or '').strip()
+    if not t:
+        return None
+    m = _re.match(r'(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})', t)
+    if m:
+        return '%s-%s-%sT%s:%s:00+03:00' % m.groups()
+    hm = ''
+    mt = _re.search(r'(\d{1,2}):(\d{2})', t)
+    if mt:
+        hm = mt.group(0)
+        t = (t[:mt.start()] + t[mt.end():]).strip()
+    m = _re.match(r'(\d{1,2})[./](\d{1,2})[./](\d{4})$', t.strip())
+    if not m:
+        return None
+    d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not (1 <= d <= 31 and 1 <= mo <= 12):
+        return None
+    h, mi = (int(x) for x in hm.split(':')) if hm else (0, 0)
+    if h > 23 or mi > 59:
+        return None
+    return '%04d-%02d-%02dT%02d:%02d:00+03:00' % (y, mo, d, h, mi)
+
+def inv_phone9(s):
+    d = _re.sub(r'\D', '', str(s or ''))
+    return d[-9:] if len(d) >= 8 else ''
+
+def inv_name_key(s):
+    t = _re.sub(r'["\'׳״]', '', str(s or ''))
+    return ' '.join(sorted(t.split()))
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -9339,6 +9394,59 @@ def register(app, G):
         _log_activity(s["name"], s.get("role", ""), s.get("phone", ""), "שליחת חשבונית בוואטסאפ",
                       (str(b.get("num", "") or "") + " " + str(b.get("client", "") or ""))[:60].strip())
         return jsonify({"ok": True})
+
+    # קליטת חשבונית חדשה מאוטומציית Fireberry ("קריאה לכתובת אינטרנט" על יצירת
+    # רשומת מקבלי-מסמכים). אימות במפתח סודי (env INVOICES_INGEST_KEY) — לא בסשן.
+    _INGEST_KEY = (os.environ.get("INVOICES_INGEST_KEY") or "").strip()
+
+    @app.route("/v2/api/invoices/ingest", methods=["POST"])
+    def v2_api_invoices_ingest():
+        import hmac as _hmac
+        k = (request.headers.get("X-Ingest-Key", "") or request.args.get("k", "") or "").strip()
+        if not _INGEST_KEY or not k or not _hmac.compare_digest(k, _INGEST_KEY):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        try:
+            b = request.get_json(silent=True) or {}
+            def f(*names):
+                for n in names:
+                    v = b.get(n)
+                    if v is not None and str(v).strip() not in ("", "-"):
+                        return str(v).strip()
+                return ""
+            nm = f("name", "שם")
+            if not nm:
+                return jsonify({"ok": False, "reason": "no_name"})
+            phone = f("phone", "טלפון")
+            raw_dt = f("created", "נוצר בתאריך", "date")
+            created = inv_parse_dt(raw_dt)
+            if not created:
+                import datetime as _di
+                from zoneinfo import ZoneInfo as _ZIi
+                created = _di.datetime.now(_ZIi("Asia/Jerusalem")).strftime("%Y-%m-%dT%H:%M:00+03:00")
+            link = f("link", "קישור למסמך")
+            if link and not link.startswith("http"):
+                link = "https://" + link
+            num = f("doc_num", "מספר מסמך")
+            amount = f("amount", "סכום במסמך")
+            import hashlib as _hl
+            base = "|".join([nm, phone, num, raw_dt or created, amount, link])
+            row = {"client_name": nm, "name_key": inv_name_key(nm),
+                   "phone": phone, "phone9": inv_phone9(phone),
+                   "doc_type": inv_norm_type(f("doc_type", "סוג מסמך")),
+                   "doc_num": num, "charge_line": f("charge_line", "שורת חיוב"),
+                   "created_at": created, "source": f("source", "מקור המסמך"),
+                   "link": link, "amount": amount,
+                   "row_hash": _hl.sha1(base.encode("utf-8")).hexdigest()}
+            sb = G.get("_sbdb")
+            if not (sb and sb.enabled()):
+                return jsonify({"ok": False, "reason": "no_supabase"}), 500
+            sb.insert_invoice_row(row)
+            _log_activity("Fireberry", "system", "", "חשבונית חדשה מפיירברי",
+                          (nm + " " + amount)[:60].strip())
+            return jsonify({"ok": True})
+        except Exception as e:
+            if log: log.error(f"v2 invoices ingest error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
     @app.route("/v2/api/admin/overview", methods=["GET"])
     def v2_api_admin_overview():

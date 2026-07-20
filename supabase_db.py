@@ -203,6 +203,16 @@ def fetch_excl_rows():
     return _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")
 
 
+def insert_invoice_row(row):
+    """הוספת חשבונית בודדת (קליטה מ-Fireberry). כפילות row_hash נבלעת בשקט."""
+    r = requests.post(SUPABASE_URL + "/rest/v1/invoices",
+                      headers={**_headers(), "Prefer": "resolution=ignore-duplicates"},
+                      params={"on_conflict": "row_hash"},
+                      json=[{**row, "office_id": SB_OFFICE_ID}], timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
 def fetch_invoices_rows(q="", limit=400):
     """חשבוניות (הנהלת חשבונות). בלי q — האחרונות; עם q — חיפוש שם (name_key
     ממוין-טוקנים, ilike לכל טוקן ב-OR) או טלפון (ספרות → phone9)."""
