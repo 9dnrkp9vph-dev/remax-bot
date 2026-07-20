@@ -9025,6 +9025,115 @@ def register(app, G):
                         "dealsYear": deals_year,
                         "hotProps": hot_props})
 
+    # ── הנהלת חשבונות: חשבוניות (Supabase) + איתור לקוח→סוכן ────────────────
+    _INV_ROLES = ("accountant", "manager", "developer")
+
+    def _inv_guard():
+        s = _web_auth()
+        if not s or (s.get("drole") or "") not in _INV_ROLES:
+            return None
+        return s
+
+    def _inv_client_scan(qname):
+        """הצלבת שם לקוח מול קונים/חתימות/עסקאות. מחזיר (agents:[{name,source}], signings)."""
+        toks = [t for t in str(qname or "").split() if t]
+        def hit(nm):
+            nm = str(nm or "")
+            return bool(toks) and all(t in nm for t in toks)
+        agents, seen, signings = [], set(), []
+        def add(name, source):
+            name = str(name or "").strip()
+            if name and (name, source) not in seen:
+                seen.add((name, source)); agents.append({"name": name, "source": source})
+        try:
+            for b in G["_fetch_manual_buyers"]():
+                if hit(b.get("name", "")): add(b.get("agent", ""), "קונים")
+        except Exception:
+            pass
+        try:
+            for g in G["get_signings"]():
+                if hit(g.get("client_name", "")):
+                    add(g.get("agent", ""), "חתימות")
+                    signings.append({
+                        "time": (G["_fmt_il_dt"](g.get("received_at", ""))
+                                 or str(g.get("received_at", "") or "").strip()),
+                        "type": G["_deal_label"](g.get("deal_type", "")),
+                        "address": ", ".join(x for x in [g.get("address", ""), g.get("city", "")] if x),
+                        "agent": str(g.get("agent", "") or "").strip(),
+                        "ts": G["_excl_epoch"](g.get("received_at", "")) or 0})
+        except Exception:
+            pass
+        try:
+            for d in G["_deals_load"]():
+                if hit(d.get("side1", "")) or hit(d.get("side2", "")):
+                    for a in (d.get("agents") or []):
+                        add(a, "עסקאות")
+        except Exception:
+            pass
+        signings.sort(key=lambda x: -(x.get("ts") or 0))
+        for x in signings:
+            x.pop("ts", None)
+        return agents, signings[:20]
+
+    def _inv_fmt(r):
+        dt = str(r.get("created_at") or "")
+        date = (dt[8:10] + "/" + dt[5:7] + "/" + dt[:4]) if len(dt) >= 10 else ""
+        return {"date": date, "type": r.get("doc_type", ""), "num": r.get("doc_num", ""),
+                "line": r.get("charge_line", ""), "amount": r.get("amount", ""),
+                "link": r.get("link", "")}
+
+    @app.route("/v2/api/invoices", methods=["GET"])
+    def v2_api_invoices():
+        s = _inv_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        try:
+            q = (request.args.get("q", "") or "").strip()
+            sb = G.get("_sbdb")
+            rows = sb.fetch_invoices_rows(q=q, limit=400) if (sb and sb.enabled()) else []
+            if not q:
+                recent = []
+                for r in rows[:50]:
+                    it = _inv_fmt(r)
+                    it.update({"client": r.get("client_name", ""), "phone": r.get("phone", ""),
+                               "wa": G["_wa_phone"](r.get("phone", ""))})
+                    recent.append(it)
+                return jsonify({"ok": True, "office": _office_name(),
+                                "recent": recent, "results": []})
+            groups = {}
+            for r in rows:   # קיבוץ לפי לקוח (name_key+phone9)
+                k = (r.get("name_key", ""), r.get("phone9", ""))
+                g = groups.setdefault(k, {"client": r.get("client_name", ""),
+                                          "phone": r.get("phone", ""),
+                                          "wa": G["_wa_phone"](r.get("phone", "")),
+                                          "invoices": []})
+                g["invoices"].append(_inv_fmt(r))
+            out = []
+            for g in groups.values():
+                agents, signings = _inv_client_scan(g["client"])
+                g["agents"] = agents; g["signings"] = signings
+                out.append(g)
+            if not out:
+                # לקוח בלי חשבוניות אבל קיים בקונים/חתימות/עסקאות — עדיין מציגים
+                agents, signings = _inv_client_scan(q)
+                if agents or signings:
+                    out = [{"client": q, "phone": "", "wa": "", "invoices": [],
+                            "agents": agents, "signings": signings}]
+            return jsonify({"ok": True, "office": _office_name(), "recent": [], "results": out})
+        except Exception as e:
+            if log: log.error(f"v2 invoices error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    @app.route("/v2/api/invoices/sent", methods=["POST"])
+    def v2_api_invoices_sent():
+        s = _inv_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        _log_activity(s["name"], s.get("role", ""), s.get("phone", ""), "שליחת חשבונית בוואטסאפ",
+                      (str(b.get("num", "") or "") + " " + str(b.get("client", "") or ""))[:60].strip())
+        return jsonify({"ok": True})
+
     @app.route("/v2/api/admin/overview", methods=["GET"])
     def v2_api_admin_overview():
         s = _dev_guard()

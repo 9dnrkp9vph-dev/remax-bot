@@ -203,6 +203,28 @@ def fetch_excl_rows():
     return _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")
 
 
+def fetch_invoices_rows(q="", limit=400):
+    """חשבוניות (הנהלת חשבונות). בלי q — האחרונות; עם q — חיפוש שם (name_key
+    ממוין-טוקנים, ilike לכל טוקן ב-OR) או טלפון (ספרות → phone9)."""
+    sel = ("client_name,name_key,phone,phone9,doc_type,doc_num,charge_line,"
+           "created_at,source,link,amount")
+    params = {"select": sel, "office_id": "eq." + SB_OFFICE_ID,
+              "order": "created_at.desc.nullslast", "limit": str(int(limit))}
+    q = str(q or "").strip()
+    if q:
+        digits = "".join(ch for ch in q if ch.isdigit())
+        ors = ["name_key.ilike.*%s*" % t.replace(",", "").replace("(", "").replace(")", "")
+               for t in q.split() if not t.isdigit()]
+        if digits and len(digits) >= 4:
+            ors.append("phone9.like.*%s*" % digits[-9:])
+        if ors:
+            params["or"] = "(" + ",".join(ors) + ")"
+    r = requests.get(SUPABASE_URL + "/rest/v1/invoices", headers=_headers(),
+                     params=params, timeout=_TIMEOUT)
+    r.raise_for_status()
+    return r.json() or []
+
+
 def fetch_properties_rows():
     """'נכסים במשרד' — זהה 1:1 ל-fetch_sheet_rows (dict לפי כותרות + _desc_ae),
     לפי סדר השורות בגיליון."""
