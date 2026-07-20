@@ -754,10 +754,6 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M4 14V9a7 7 0 0 1 14 0v5l1.5 2.5H2.5z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 18.5a2 2 0 0 0 4 0" fill="none" stroke="#1E3A5F" stroke-width="1.7"/></svg>
       עדכונים למשרד</a>
-    <a href="/v2/matches" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
-       color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
-      <svg width="18" height="18" viewBox="0 0 22 22"><path d="M11 18.5s-6.5-4.5-6.5-9A4 4 0 0 1 11 6a4 4 0 0 1 6.5 3.5c0 4.5-6.5 9-6.5 9z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
-      התאמות היום<span style="font-size:10px;font-weight:800;color:#7A5E1C;background:#F6EEDB;border-radius:999px;padding:2px 8px;margin-inline-start:2px">בטא</span></a>
     <a id="menuActivity" href="/v2/activity" style="display:none;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M11 6.5V11l3 2" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -866,7 +862,6 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="it" onclick="location.href='/v2/newborn'"><div class="badge" id="nbBadge"></div><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
     <div class="it dk" onclick="location.href='/v2/deals'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>תהליכים ועסקאות</div>
     <div class="it dk" onclick="location.href='/v2/meets'"><svg width="21" height="21" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#6E7683" stroke-width="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#6E7683" stroke-width="1.5" stroke-linecap="round"/></svg>יומן ופולו-אפ</div>
-    <div class="it dk" onclick="location.href='/v2/matches'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M11 18.5s-6.5-4.5-6.5-9A4 4 0 0 1 11 6a4 4 0 0 1 6.5 3.5c0 4.5-6.5 9-6.5 9z" fill="none" stroke="#6E7683" stroke-width="1.6" stroke-linejoin="round"/></svg>התאמות היום</div>
   </nav>
 
   <!-- ── בריף הבוקר — סטורי ── -->
@@ -6397,143 +6392,6 @@ function delAnn(id){
 </script></body></html>'''
 
 # ── יומן שימוש — דשבורד כניסות ופעולות (9ו, למנהל) ──────────────────────────
-V2_MATCHES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>התאמות היום</title>
-<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
-       display:flex;flex-direction:column;color:#1E3A5F}
-  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 6px;display:flex;align-items:center;justify-content:space-between}
-  .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
-      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
-  .t{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px}
-  .beta{font-size:10px;font-weight:800;color:#7A5E1C;background:#F6EEDB;border-radius:999px;padding:3px 10px}
-  .sub{padding:0 18px 10px;font-size:12px;color:#6B7280;font-weight:600;text-align:center}
-  main{flex:1;padding:4px 16px 30px;display:flex;flex-direction:column;gap:12px;overflow:auto}
-  .mc{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 16px;
-      display:flex;flex-direction:column;gap:8px}
-  .mc .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-  .mc .bn{font-size:14.5px;font-weight:800}
-  .chip{font-size:10.5px;font-weight:800;border-radius:999px;padding:4px 11px;white-space:nowrap;flex-shrink:0}
-  .chip.nb{background:#F6EEDB;color:#7A5E1C}
-  .chip.of{background:#EAF0FA;color:#1E3A5F}
-  .chip.sh{background:#F0EDE3;color:#5B6472}
-  .ad{font-size:13.5px;font-weight:700}
-  .ln{font-size:12.5px;color:#5B6472;font-weight:600}
-  .ds{font-size:12px;color:#6B7280;line-height:1.6}
-  .why{font-size:12px;font-weight:800;color:#157A43}
-  .acts{display:flex;gap:8px;margin-top:2px}
-  .wa{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:#157A43;color:#fff;
-      border-radius:12px;min-height:44px;font-size:13.5px;font-weight:800;border:0;cursor:pointer;font-family:inherit;
-      box-shadow:0 4px 12px rgba(31,175,94,.25)}
-  .wa.sent{background:#EAF6EF;color:#157A43;box-shadow:none}
-  .hide{min-height:44px;padding:0 16px;border-radius:12px;background:#fff;border:1.5px solid #DCD6C8;
-      color:#5B6472;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
-  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:34px 18px;
-      background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
-  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
-  .empty .tt{font-size:15px;font-weight:800}
-  .empty .ss{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:270px}
-  #toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
-      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
-      pointer-events:none;z-index:80;white-space:nowrap}
-  @media (min-width:700px){ header,.sub,main{width:100%;max-width:600px;margin-left:auto;margin-right:auto} }
-</style></head><body>
-  <header>
-    <button class="backBtn" onclick="location.href='/v2/home'" aria-label="חזרה">
-      <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-    <div class="t">התאמות היום <span class="beta">בטא</span></div>
-    <div style="width:44px"></div>
-  </header>
-  <div class="sub">נכסים חדשים שמתאימים לקונים שלך · מתחדש כל בוקר</div>
-  <main id="list"><div class="empty"><div class="ss">מחפש התאמות…</div></div></main>
-  <div id="toast" role="status" aria-live="polite"></div>
-<script>
-var TOK = null;
-try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
-if (!TOK) location.replace('/v2');
-function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
-function POST(u, d){
-  return fetch(u, {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type': 'application/json'},
-    body: JSON.stringify(d || {})}).then(function(r){ return r.json(); });
-}
-function el(id){ return document.getElementById(id); }
-function esc(s){
-  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
-  });
-}
-function toast(m){
-  var t = el('toast'); t.textContent = m; t.style.opacity = '1';
-  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
-}
-var DATA = [], ME = '', OFFICE = '';
-var EMPTY_HTML = '<div class="empty">' +
-  '<div class="ic"><svg width="30" height="30" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#C29435" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#C29435" stroke-width="1.7" stroke-linecap="round"/></svg></div>' +
-  '<div class="tt">אין התאמות חדשות היום</div>' +
-  '<div class="ss">המנוע רץ פעם ביום בבוקר ומצליב נכסים חדשים עם הקונים שלך — נתראה מחר</div></div>';
-function firstName(s){ return String(s || '').trim().split(/\s+/)[0] || ''; }
-function srcChip(src){
-  return src === 'nb' ? '<span class="chip nb">נכס נולד</span>'
-    : src === 'shtaf' ? '<span class="chip sh">שת"פ</span>'
-    : '<span class="chip of">המשרד שלנו</span>';
-}
-function waText(m){
-  var hi = 'היי ' + firstName(m.buyer.name) + ', זה ' + firstName(ME) + ' מ' + OFFICE + '. ';
-  var pr = m.prop.price_txt ? ', ' + m.prop.price_txt + ' ₪' : '';
-  if (m.prop.src === 'nb'){   // נכס נולד — בלי כתובת מדויקת (הנכס עוד לא של המשרד)
-    var area = [m.prop.hood, m.prop.city].filter(Boolean).join(', ');
-    return hi + 'הרגע איתרתי נכס חדש בשוק שמתאים למה שחיפשת — באזור ' + area + pr + '. רוצה שאבדוק בשבילך?';
-  }
-  var what = [(m.prop.rooms ? m.prop.rooms + " חד'" : ''), (m.prop.address ? 'ב' + m.prop.address : ''), m.prop.city]
-    .filter(Boolean).join(', ');
-  return hi + 'נכנס נכס שמתאים למה שחיפשת — ' + what + pr + '. רוצה לשמוע פרטים לפני שהוא נחטף?';
-}
-function card(m, i){
-  var addr = m.prop.src === 'nb' ? ('באזור ' + [m.prop.hood, m.prop.city].filter(Boolean).join(', '))
-                                 : [m.prop.address, m.prop.city].filter(Boolean).join(', ');
-  return '<div class="mc">' +
-    '<div class="top"><div class="bn">' + esc(m.buyer.name) + (m.buyer.phone ? ' · ' + esc(m.buyer.phone) : '') + '</div>' + srcChip(m.prop.src) + '</div>' +
-    '<div class="ad">' + esc(addr) + '</div>' +
-    '<div class="ln">' + esc([m.prop.rooms ? m.prop.rooms + " חד'" : '', m.prop.price_txt ? m.prop.price_txt + ' ₪' : '', m.prop.agent].filter(Boolean).join(' · ')) + '</div>' +
-    (m.prop.desc ? '<div class="ds">' + esc(m.prop.desc) + '</div>' : '') +
-    '<div class="why">' + esc(m.why.join(' · ')) + '</div>' +
-    '<div class="acts">' +
-    (m.sent
-      ? '<button class="wa sent" disabled>נשלח לקונה ✓</button>'
-      : '<button class="wa" onclick="sendWa(' + i + ')">' +
-        '<svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.2A9 9 0 1 0 12 3z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
-        'שלח בוואטסאפ</button>') +
-    '<button class="hide" onclick="hideMatch(' + i + ')">הסתר</button></div></div>';
-}
-function render(){
-  el('list').innerHTML = DATA.map(card).join('') || EMPTY_HTML;
-}
-function sendWa(i){
-  var m = DATA[i]; if (!m) return;
-  window.open('https://wa.me/' + m.buyer.wa + '?text=' + encodeURIComponent(waText(m)), '_blank');
-  POST('/v2/api/matches/mark', {key: m.key, act: 'sent'}).catch(function(){});
-  m.sent = true; render();
-}
-function hideMatch(i){
-  var m = DATA[i]; if (!m) return;
-  POST('/v2/api/matches/mark', {key: m.key, act: 'hidden'}).catch(function(){});
-  DATA.splice(i, 1); render(); toast('הוסתר');
-}
-GET('/v2/api/matches').then(function(j){
-  if (!j.ok){
-    el('list').innerHTML = '<div class="empty"><div class="tt">ההתאמות לא נטענו</div>' +
-      '<div class="ss">נסה שוב מאוחר יותר</div></div>';
-    return;
-  }
-  DATA = j.results || []; ME = j.me || ''; OFFICE = j.office || '';
-  render();
-}).catch(function(){ location.replace('/v2'); });
-</script></body></html>'''
-
 V2_ACTIVITY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>יומן שימוש</title>
@@ -8420,35 +8278,6 @@ function saveContract(){var t=el('cType').value;POST('/api/dev/contract',{type:t
 })();
 </script></body></html>'''
 
-
-# ── התאמות היום (בטא): ניקוד קונה↔נכס — טהור, לבדיקה עצמאית ─────────────────
-def match_score(buyer_text, budget, price, city, hood, rooms):
-    """ניקוד התאמה בין קונה (טקסט "מה מחפש"+summary, תקציב) לנכס.
-    מחזיר (score, reasons). תנאי סף: אות "אזור" (עיר או שכונה בטקסט הקונה)
-    + לפחות אות נוסף (תקציב/חדרים). תקציב נמוך מ-85% מהמחיר — פסילה קשיחה."""
-    tx = str(buyer_text or "").replace("קריית", "קרית")
-    score, reasons = 0, []
-    budget = int(budget or 0); price = int(price or 0)
-    if budget and price:
-        if budget < price * 0.85:
-            return 0, []          # מעל היכולת של הקונה — לא מציעים
-        score += 2; reasons.append("תקציב מתאים")
-    area = False
-    c = str(city or "").replace("קריית", "קרית").strip()
-    if c and c in tx:
-        score += 2; reasons.append("אזור"); area = True
-    h = str(hood or "").strip()
-    if not area and len(h) >= 2 and h in tx:
-        score += 2; reasons.append("שכונה"); area = True
-    r = str(rooms or "").strip()
-    if r.endswith(".0"): r = r[:-2]
-    if r and _re.search("(^|[^0-9.])" + _re.escape(r) + r"\s*חד", tx):
-        score += 1; reasons.append("חדרים")
-    if not area or len(reasons) < 2:
-        return 0, []
-    return score, reasons
-
-
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -8660,10 +8489,6 @@ def register(app, G):
     @app.route("/v2/updates", methods=["GET"])
     def v2_updates():
         return _page(V2_UPDATES_HTML)
-
-    @app.route("/v2/matches", methods=["GET"])
-    def v2_matches():
-        return _page(V2_MATCHES_HTML)
 
     @app.route("/v2/activity", methods=["GET"])
     def v2_activity():
@@ -9199,177 +9024,6 @@ def register(app, G):
                         "buyersTotal": buyers_total,
                         "dealsYear": deals_year,
                         "hotProps": hot_props})
-
-    # ── התאמות היום (בטא): קונים בהיקף המשתמש × (נכס נולד שנחשף · משרד · שת"פ) ──
-    def _matches_props(eff_name, s, as_name):
-        """רשימת נכסים אחודה להצלבה — הכול מה-cache הקיים, אפס fetch חדש."""
-        now = time.time(); props = []
-        try:
-            for r in G["fetch_sheet_rows"]():
-                addr = (str(r.get("כתובת", "") or "").strip() + " " +
-                        str(r.get("מספר בית", "") or "").strip()).strip()
-                props.append({"src": "office",
-                              "key": "of:" + (str(r.get("מספר מודעה", "") or "").strip() or addr),
-                              "city": str(r.get("עיר / ישוב", "") or "").strip(),
-                              "hood": str(r.get("שכונה", "") or "").strip(),
-                              "address": addr,
-                              "rooms": str(r.get("חדרים", "") or "").strip(),
-                              "price": G["parse_price"](r.get("מחיר", "")) or 0,
-                              "price_txt": str(r.get("מחיר", "") or "").strip(),
-                              "desc": "", "agent": str(r.get("סוכן 1", "") or "").strip()})
-        except Exception as e:
-            if log: log.warning(f"v2 matches office: {e}")
-        try:
-            for r in G["_dedupe_exclusives"](G["fetch_external_exclusives"]()):
-                st_ = str(r.get("street", "") or "").strip()
-                city = st_.split(",")[-1].strip() if "," in st_ else ""
-                dtxt = (str(r.get("dest", "") or "") + " " + str(r.get("desti", "") or "")).strip()
-                mrx = _re.search(r"(\d(?:\.\d)?)\s*חד", dtxt)
-                props.append({"src": "shtaf", "key": "ex:" + st_,
-                              "city": city, "hood": "", "address": st_,
-                              "rooms": (mrx.group(1) if mrx else ""),
-                              "price": G["parse_price"](r.get("price", "")) or 0,
-                              "price_txt": str(r.get("price", "") or "").strip(),
-                              "desc": dtxt[:140], "agent": str(r.get("office", "") or "").strip()})
-        except Exception as e:
-            if log: log.warning(f"v2 matches shtaf: {e}")
-        try:
-            eff_norm = G["_norm_name"](eff_name)
-            delays = G["_fetch_newborn_delays"]()
-            _eck = "c:" + G["_canon_key"](eff_name)
-            _dphone = "" if as_name else s.get("phone", "")
-            admin_all = (s["role"] == "admin" and not as_name
-                         and not G["_delayed_admin_days"](eff_name, _dphone))
-            delay = 0 if admin_all else int(delays.get(eff_norm, delays.get(_eck, delays.get("_default", 0))))
-            _da = G["_delayed_admin_days"](eff_name, _dphone)
-            if _da and not admin_all and not ((eff_norm in delays) or (_eck in delays)):
-                delay = _da
-            if delay < G["NEWBORN_HIDDEN"]:
-                for r in G["fetch_newborn"]():
-                    created = G["_newborn_created_epoch"](r)
-                    if not created:
-                        continue
-                    if (now - created) / 86400 > 45:   # להתאמות — נכסים טריים בלבד
-                        continue
-                    lister = str(r.get("משתמש", "") or r.get("סוכן 1", "") or "").strip()
-                    own = bool(eff_norm) and G["_norm_name"](lister) == eff_norm
-                    if not (admin_all or own or now >= created + delay * 86400):
-                        continue   # טרם נחשף לסוכן — לא דולף דרך ההתאמות
-                    desc = str(r.get("תיאור נכס", "") or "").strip()
-                    mrx = _re.search(r"(\d(?:\.\d)?)\s*חד", desc)
-                    props.append({"src": "nb", "key": "nb:" + G["_nb_key"](r),
-                                  "city": str(r.get("עיר", "") or r.get("עיר / ישוב", "") or "").strip(),
-                                  "hood": str(r.get("שכונה", "") or "").strip(),
-                                  "address": str(r.get("רחוב1", "") or r.get("רחוב", "") or "").strip(),
-                                  "rooms": (mrx.group(1) if mrx else ""),
-                                  "price": G["parse_price"](r.get("מחיר", "")) or 0,
-                                  "price_txt": G["_newborn_price"](r.get("מחיר", "")),
-                                  "desc": desc[:140], "agent": lister})
-        except Exception as e:
-            if log: log.warning(f"v2 matches newborn: {e}")
-        return props
-
-    def _matches_build(buyers, eff_name, s, as_name):
-        props = _matches_props(eff_name, s, as_name)
-        out = []
-        for b in buyers:
-            btx = (str(b.get("search", "") or "") + " " + str(b.get("summary", "") or "")).strip()
-            bud = int(_re.sub(r"[^0-9]", "", str(b.get("budget", "") or "")) or 0)
-            if not btx:
-                continue   # בלי "מה מחפש" אין ממה להתאים
-            bl9 = _last9(b.get("phone", ""))
-            bm = []
-            for p in props:
-                sc, why = match_score(btx, bud, p["price"], p["city"], p["hood"], p["rooms"])
-                if sc:
-                    bm.append((sc, why, p))
-            bm.sort(key=lambda x: -x[0])
-            for sc, why, p in bm[:3]:   # עד 3 נכסים לקונה — בלי הצפה
-                out.append({"key": bl9 + "|" + p["key"], "score": sc, "why": why,
-                            "buyer": {"name": str(b.get("name", "") or "").strip(),
-                                      "phone": str(b.get("phone", "") or "").strip(),
-                                      "wa": G["_wa_phone"](b.get("phone", "")),
-                                      "budget": str(b.get("budget", "") or "").strip()},
-                            "prop": {k: p[k] for k in ("src", "address", "city", "hood",
-                                                       "rooms", "price_txt", "desc", "agent")}})
-        out.sort(key=lambda m: -m["score"])
-        return out[:60]
-
-    @app.route("/v2/api/matches", methods=["GET"])
-    def v2_api_matches():
-        """התאמות היום (בטא) — סנאפשוט יומי עצל: נבנה בפתיחה הראשונה של היום
-        (מפתח ה-cache כולל את התאריך, שעון ישראל), מוגש מהזיכרון עד חצות."""
-        s = _web_auth()
-        if not s:
-            return jsonify({"ok": False, "auth": False}), 401
-        try:
-            _canon = G["_canon_key"]
-            as_name = ""
-            if s["role"] in ("admin", "coordinator"):
-                as_name = (request.args.get("as", "") or "").strip()
-            eff_name = as_name or s.get("name", "")
-            rows = G["_fetch_manual_buyers"]()
-            if s["role"] == "admin" and not as_name:
-                mine, scope = rows, "admin"
-            else:
-                eff_phones = set(G["_phones_for_name"](eff_name))
-                if not as_name and s.get("phone"):
-                    eff_phones.add(_last9(s["phone"]))
-                role = "agent" if as_name else s["role"]
-                keys, phones, _m = G["_scope_keys_phones"](
-                    role, eff_name, eff_phones,
-                    None if as_name else s.get("agents"),
-                    None if as_name else s.get("agent_names"))
-                mine = [r for r in rows if (_canon(r.get("agent", "")) in keys)
-                        or (_last9(r.get("agent_phone", "")) in phones)]
-                scope = "|".join(sorted(keys)) or _canon(eff_name)
-            import datetime as _dmm
-            from zoneinfo import ZoneInfo as _ZI
-            today = _dmm.datetime.now(_ZI("Asia/Jerusalem")).strftime("%Y-%m-%d")
-            ck = "v2match:" + today + ":" + scope
-            snap = G["_cache_get"](ck, 86400)
-            if snap is None:
-                snap = _matches_build(mine, eff_name, s, as_name)
-                G["_cache_put"](ck, snap)
-            state = (_load_config().get("v2_matches") or {})
-            results = []
-            for m in snap:
-                st = state.get(m["key"]) or {}
-                if st.get("s") == "hidden":
-                    continue
-                mm = dict(m); mm["sent"] = (st.get("s") == "sent")
-                results.append(mm)
-            return jsonify({"ok": True, "date": today, "office": _office_name(),
-                            "me": s.get("name", ""), "count": len(results), "results": results})
-        except Exception as e:
-            if log: log.error(f"v2 matches error: {e}", exc_info=True)
-            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
-
-    @app.route("/v2/api/matches/mark", methods=["POST"])
-    def v2_api_matches_mark():
-        """סימון התאמה: sent (נשלח ללקוח) / hidden (לא רלוונטי) / clear."""
-        s = _web_auth()
-        if not s:
-            return jsonify({"ok": False, "auth": False}), 401
-        body = request.get_json(silent=True) or {}
-        mk = str(body.get("key", "") or "").strip()[:120]
-        act = str(body.get("act", "") or "").strip()
-        if not mk or act not in ("sent", "hidden", "clear"):
-            return jsonify({"ok": False, "reason": "bad_req"}), 400
-        def _mut(cfg):
-            d = cfg.setdefault("v2_matches", {})
-            now = time.time()
-            for k in [k for k, v in list(d.items())
-                      if now - (v.get("ts") or 0) > 90 * 86400]:
-                d.pop(k, None)   # גיזום 90 יום — הבלוב לא תופח לנצח
-            if act == "clear":
-                d.pop(mk, None)
-            else:
-                d[mk] = {"s": act, "ts": now, "by": _last9(s.get("phone", ""))}
-        ok, _ = _config_mutate(_mut)
-        if ok and act == "sent":
-            _log_activity(s["name"], s["role"], s["phone"], "שליחת התאמה לקונה", mk[:60])
-        return jsonify({"ok": bool(ok)})
 
     @app.route("/v2/api/admin/overview", methods=["GET"])
     def v2_api_admin_overview():
