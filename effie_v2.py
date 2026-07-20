@@ -6434,7 +6434,8 @@ V2_INVOICES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta char
   .ivr .l3 b{font-size:14px}
   .ivr .acts{display:flex;gap:7px}
   .open{display:flex;align-items:center;padding:0 13px;min-height:38px;border-radius:11px;background:#fff;
-      border:1.5px solid #DCD6C8;color:#1E3A5F;font-size:12px;font-weight:700;text-decoration:none}
+      border:1.5px solid #DCD6C8;color:#1E3A5F;font-size:12px;font-weight:700;text-decoration:none;
+      cursor:pointer;font-family:inherit}
   .wa{display:flex;align-items:center;gap:6px;padding:0 13px;min-height:38px;border-radius:11px;background:#157A43;
       color:#fff;font-size:12px;font-weight:800;border:0;cursor:pointer;font-family:inherit;
       box-shadow:0 3px 10px rgba(31,175,94,.22)}
@@ -6486,7 +6487,9 @@ function toast(m){
   var t = el('toast'); t.textContent = m; t.style.opacity = '1';
   clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
 }
-var LAST = [], RECENT = [], OFFICE = '';
+var LAST = [], RECENT = [], OFFICE = '', ME9 = '';
+// הטלפון של המשתמש (למשלוח-לעצמי) — מה-whoami; נכשל בשקט אם אין
+GET('/api/auth/whoami').then(function(w){ if (w && w.phone) ME9 = String(w.phone); }).catch(function(){});
 var FORBIDDEN_HTML = '<div class="empty">' +
   '<div class="tt">המסך זמין להנהלת חשבונות בלבד</div>' +
   '<div class="ss">אם את/ה אמור/ה לראות אותו — בקש/י ממנהל המשרד לעדכן את התפקיד שלך בניהול</div>' +
@@ -6498,6 +6501,7 @@ function invRow(v, ci, ii){
     '<div class="l3"><b>' + esc(v.amount ? v.amount + ' ₪' : '') + '</b>' +
     '<span class="acts">' +
     (v.link ? '<a class="open" target="_blank" rel="noopener" href="' + esc(v.link) + '">פתח מסמך</a>' : '') +
+    (v.link ? '<button class="open" onclick="sendInvSelf(' + ci + ',' + ii + ')">שלח אליי</button>' : '') +
     (v.link ? '<button class="wa" onclick="sendInv(' + ci + ',' + ii + ')">' +
       '<svg width="13" height="13" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.2A9 9 0 1 0 12 3z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
       'שלח בוואטסאפ</button>' : '') +
@@ -6540,6 +6544,15 @@ function sendInv(ci, ii){
   window.open('https://wa.me/' + to + '?text=' + encodeURIComponent(waTextInv(c, v)), '_blank');
   POST('/v2/api/invoices/sent', {num: v.num, client: c.client}).catch(function(){});
   toast('נפתח וואטסאפ עם ההודעה');
+}
+function sendInvSelf(ci, ii){
+  // שליחה לעצמי — אותה הודעה, לצ'אט-עם-עצמך של המשתמש המחובר (נוח להעביר הלאה ידנית)
+  var c = ci < 0 ? {client: RECENT[ii].client, wa: RECENT[ii].wa} : LAST[ci];
+  var v = ci < 0 ? RECENT[ii] : (c && c.invoices[ii]);
+  if (!v || !v.link) return;
+  if (!ME9){ toast('הטלפון שלך לא זוהה — נסה לרענן'); return; }
+  window.open('https://wa.me/972' + ME9 + '?text=' + encodeURIComponent(waTextInv(c, v)), '_blank');
+  toast('נפתח וואטסאפ לעצמך');
 }
 function render(j){
   if (j && j.forbidden){ el('list').innerHTML = FORBIDDEN_HTML; return; }
