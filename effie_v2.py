@@ -754,6 +754,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M4 14V9a7 7 0 0 1 14 0v5l1.5 2.5H2.5z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 18.5a2 2 0 0 0 4 0" fill="none" stroke="#1E3A5F" stroke-width="1.7"/></svg>
       עדכונים למשרד</a>
+    <a id="menuInvoices" href="/v2/invoices" style="display:none;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><rect x="4" y="2.5" width="14" height="17" rx="2.5" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M7.5 7h7M7.5 10.5h7M7.5 14h4" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
+      הנהלת חשבונות</a>
     <a id="menuActivity" href="/v2/activity" style="display:none;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M11 6.5V11l3 2" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -1377,6 +1381,7 @@ el('story').addEventListener('touchmove', function(e){
         (j.role === 'admin') ? 'מנהל' : (j.role === 'coordinator') ? 'מתאמת' : 'סוכן';
     if (j.dev) el('menuAdmin').style.display = 'flex';
     if (j.role === 'admin') el('menuActivity').style.display = 'flex';
+    if (['accountant','manager','developer'].indexOf(j.drole) >= 0) el('menuInvoices').style.display = 'flex';
     var impTok = null;
     try{ impTok = localStorage.getItem('fbTokAdmin'); }catch(e){}
     if (impTok && !j.dev){   // מצב "כניסה כסוכן (בדיקה)" — פס חזרה למנהל
@@ -6392,6 +6397,190 @@ function delAnn(id){
 </script></body></html>'''
 
 # ── יומן שימוש — דשבורד כניסות ופעולות (9ו, למנהל) ──────────────────────────
+V2_INVOICES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>הנהלת חשבונות</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 6px;display:flex;align-items:center;justify-content:space-between}
+  .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  .t{font-size:17px;font-weight:800}
+  .sub{padding:0 18px 8px;font-size:12px;color:#6B7280;font-weight:600;text-align:center}
+  .srch{margin:0 16px 10px;position:relative}
+  .srch input{width:100%;padding:13px 42px 13px 38px;border:1.5px solid #DCD6C8;border-radius:14px;
+      font-size:16px;font-family:inherit;outline:none;background:#fff;color:#1E3A5F}
+  .srch .ic{position:absolute;top:50%;right:14px;transform:translateY(-50%);pointer-events:none}
+  .srch .clr{position:absolute;top:50%;left:6px;transform:translateY(-50%);width:32px;height:32px;border:0;
+      background:none;cursor:pointer;display:none;align-items:center;justify-content:center;color:#6B7280;font-size:17px}
+  main{flex:1;padding:2px 16px 30px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .secT{font-size:12.5px;font-weight:800;color:#6B7280;margin-top:2px}
+  .cc{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 16px;
+      display:flex;flex-direction:column;gap:8px}
+  .cc .nm{font-size:15px;font-weight:800}
+  .ags{font-size:12.5px;font-weight:700;color:#1E3A5F;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .ags.none{color:#6B7280;font-weight:600}
+  .agc{background:#EAF0FA;border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:800;white-space:nowrap}
+  .agc i{font-style:normal;font-weight:600;color:#6B7280}
+  .sec{font-size:11.5px;font-weight:800;color:#6B7280;border-top:1px solid #F0EDE3;padding-top:9px;margin-top:2px}
+  .ivr{display:flex;flex-direction:column;gap:3px;padding:7px 0;border-bottom:1px dashed #F0EDE3}
+  .ivr:last-child{border-bottom:0}
+  .ivr .l1{font-size:13px;font-weight:700}
+  .ivr .l2{font-size:12px;color:#6B7280;line-height:1.5}
+  .ivr .l3{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
+  .ivr .l3 b{font-size:14px}
+  .ivr .acts{display:flex;gap:7px}
+  .open{display:flex;align-items:center;padding:0 13px;min-height:38px;border-radius:11px;background:#fff;
+      border:1.5px solid #DCD6C8;color:#1E3A5F;font-size:12px;font-weight:700;text-decoration:none}
+  .wa{display:flex;align-items:center;gap:6px;padding:0 13px;min-height:38px;border-radius:11px;background:#157A43;
+      color:#fff;font-size:12px;font-weight:800;border:0;cursor:pointer;font-family:inherit;
+      box-shadow:0 3px 10px rgba(31,175,94,.22)}
+  .sgr{font-size:12.5px;color:#5B6472;font-weight:600;padding:4px 0}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:34px 18px;
+      background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .tt{font-size:15px;font-weight:800}
+  .empty .ss{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:270px}
+  #toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:80;white-space:nowrap}
+  @media (min-width:700px){ header,.sub,.srch,main{width:100%;max-width:640px;margin-left:auto;margin-right:auto} }
+</style></head><body>
+  <header>
+    <button class="backBtn" onclick="location.href='/v2/home'" aria-label="חזרה">
+      <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="t">הנהלת חשבונות</div>
+    <div style="width:44px"></div>
+  </header>
+  <div class="sub">חיפוש לקוח — חשבוניות, חתימות והסוכן המטפל</div>
+  <div class="srch">
+    <svg class="ic" width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.6" fill="none" stroke="#6B7280" stroke-width="1.6"/><path d="M10.6 10.6L14 14" stroke="#6B7280" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <input id="q" type="search" placeholder="שם לקוח או טלפון" oninput="qChanged()" autocomplete="off">
+    <button class="clr" id="qClr" onclick="clearQ()" aria-label="נקה חיפוש">×</button>
+  </div>
+  <main id="list"><div class="empty"><div class="ss">טוען…</div></div></main>
+  <div id="toast" role="status" aria-live="polite"></div>
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){
+  if (r.status === 403) return {forbidden: true};
+  return r.json();
+}); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type': 'application/json'},
+    body: JSON.stringify(d || {})}).then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(m){
+  var t = el('toast'); t.textContent = m; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
+}
+var LAST = [], RECENT = [], OFFICE = '';
+var FORBIDDEN_HTML = '<div class="empty">' +
+  '<div class="tt">המסך זמין להנהלת חשבונות בלבד</div>' +
+  '<div class="ss">אם את/ה אמור/ה לראות אותו — בקש/י ממנהל המשרד לעדכן את התפקיד שלך בניהול</div>' +
+  '<button class="open" style="min-height:44px" onclick="location.href=\'/v2/home\'">חזרה לבית</button></div>';
+function invRow(v, ci, ii){
+  return '<div class="ivr">' +
+    '<div class="l1">' + esc([v.date, v.type, v.num ? '#' + v.num : ''].filter(Boolean).join(' · ')) + '</div>' +
+    (v.line ? '<div class="l2">' + esc(v.line) + '</div>' : '') +
+    '<div class="l3"><b>' + esc(v.amount ? v.amount + ' ₪' : '') + '</b>' +
+    '<span class="acts">' +
+    (v.link ? '<a class="open" target="_blank" rel="noopener" href="' + esc(v.link) + '">פתח מסמך</a>' : '') +
+    (v.link ? '<button class="wa" onclick="sendInv(' + ci + ',' + ii + ')">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.2A9 9 0 1 0 12 3z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
+      'שלח בוואטסאפ</button>' : '') +
+    '</span></div></div>';
+}
+function clientCard(c, ci){
+  var ag = (c.agents || []).map(function(a){
+    return '<span class="agc">' + esc(a.name) + ' <i>(' + esc(a.source) + ')</i></span>';
+  }).join('');
+  var sg = (c.signings || []).map(function(s){
+    return '<div class="sgr">' + esc([s.time, s.type, s.address, s.agent].filter(Boolean).join(' · ')) + '</div>';
+  }).join('');
+  return '<div class="cc">' +
+    '<div class="nm">' + esc(c.client) + (c.phone ? ' · ' + esc(c.phone) : '') + '</div>' +
+    (ag ? '<div class="ags">שייך לסוכן: ' + ag + '</div>' : '<div class="ags none">לא נמצא סוכן משויך במערכת</div>') +
+    ((c.invoices || []).length ? '<div class="sec">חשבוניות · ' + c.invoices.length + '</div>' +
+      c.invoices.map(function(v, ii){ return invRow(v, ci, ii); }).join('') : '') +
+    (sg ? '<div class="sec">חתימות במערכת · ' + (c.signings || []).length + '</div>' + sg : '') +
+    '</div>';
+}
+function recentRow(v, ii){
+  var c = {client: v.client, wa: v.wa, invoices: []};
+  return '<div class="cc"><div class="nm" style="font-size:13.5px">' + esc(v.client) +
+    (v.phone ? ' · ' + esc(v.phone) : '') + '</div>' + invRow(v, -1, ii) + '</div>';
+}
+function waTextInv(c, v){
+  return 'שלום ' + String(c.client || '').trim().split(/\s+/)[0] + ', מצורפת ' + (v.type && v.type !== 'אחר' ? v.type : 'חשבונית') +
+    ' מ' + OFFICE + (v.amount ? ' על סך ' + v.amount + ' ₪' : '') + ': ' + v.link;
+}
+function sendInv(ci, ii){
+  var c = ci < 0 ? {client: RECENT[ii].client, wa: RECENT[ii].wa} : LAST[ci];
+  var v = ci < 0 ? RECENT[ii] : (c && c.invoices[ii]);
+  if (!v || !v.link) return;
+  var to = c.wa || '';
+  if (!to){
+    var p = prompt('אין טלפון ברשומה — הזן מספר לשליחה:');
+    if (!p) return;
+    to = '972' + String(p).replace(/\D/g, '').slice(-9);
+  }
+  window.open('https://wa.me/' + to + '?text=' + encodeURIComponent(waTextInv(c, v)), '_blank');
+  POST('/v2/api/invoices/sent', {num: v.num, client: c.client}).catch(function(){});
+  toast('נפתח וואטסאפ עם ההודעה');
+}
+function render(j){
+  if (j && j.forbidden){ el('list').innerHTML = FORBIDDEN_HTML; return; }
+  if (!j || !j.ok){
+    el('list').innerHTML = '<div class="empty"><div class="tt">החשבוניות לא נטענו</div>' +
+      '<div class="ss">נסה שוב מאוחר יותר</div></div>';
+    return;
+  }
+  OFFICE = j.office || OFFICE;
+  if (j.results && j.results.length){
+    LAST = j.results;
+    el('list').innerHTML = LAST.map(clientCard).join('');
+    return;
+  }
+  if (el('q').value.trim()){
+    LAST = [];
+    el('list').innerHTML = '<div class="empty">' +
+      '<div class="ic"><svg width="28" height="28" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.6" fill="none" stroke="#C29435" stroke-width="1.5"/><path d="M10.6 10.6L14 14" stroke="#C29435" stroke-width="1.5" stroke-linecap="round"/></svg></div>' +
+      '<div class="tt">לא נמצא לקוח</div>' +
+      '<div class="ss">נסה שם חלקי, כתיב אחר או מספר טלפון</div></div>';
+    return;
+  }
+  RECENT = j.recent || [];
+  el('list').innerHTML = (RECENT.length
+    ? '<div class="secT">החשבוניות האחרונות</div>' + RECENT.map(recentRow).join('')
+    : '<div class="empty"><div class="tt">אין עדיין חשבוניות</div>' +
+      '<div class="ss">אחרי ייבוא הנתונים הן יופיעו כאן</div></div>');
+}
+var _qT = null;
+function qChanged(){
+  el('qClr').style.display = el('q').value ? 'flex' : 'none';
+  clearTimeout(_qT);
+  _qT = setTimeout(function(){
+    var q = el('q').value.trim();
+    GET('/v2/api/invoices' + (q ? '?q=' + encodeURIComponent(q) : '')).then(render).catch(function(){});
+  }, 400);
+}
+function clearQ(){ el('q').value = ''; qChanged(); }
+GET('/v2/api/invoices').then(render).catch(function(){ location.replace('/v2'); });
+</script></body></html>'''
+
 V2_ACTIVITY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>יומן שימוש</title>
@@ -8489,6 +8678,10 @@ def register(app, G):
     @app.route("/v2/updates", methods=["GET"])
     def v2_updates():
         return _page(V2_UPDATES_HTML)
+
+    @app.route("/v2/invoices", methods=["GET"])
+    def v2_invoices():
+        return _page(V2_INVOICES_HTML)
 
     @app.route("/v2/activity", methods=["GET"])
     def v2_activity():
