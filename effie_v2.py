@@ -991,6 +991,11 @@ function openMe(){
     'style="flex:1;min-width:0;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;outline:none">' +
     '<button onclick="saveLic()" style="flex-shrink:0;padding:0 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">שמירה</button>' +
     '</div></div>' +
+    '<div><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:6px">נוסח הפנייה לבעל נכס (נכס נולד) · <span style="font-weight:600">[שם] ו-[כתובת] מוחלפים אוטומטית</span></div>' +
+    '<textarea id="meNbT" rows="3" style="width:100%;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;outline:none;resize:vertical;box-sizing:border-box"></textarea>' +
+    '<div style="display:flex;gap:8px;margin-top:7px;align-items:center">' +
+    '<button onclick="saveNbT()" style="padding:10px 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">שמירה</button>' +
+    '<button onclick="resetNbT()" style="padding:10px 12px;border-radius:13px;background:none;border:0;color:#6B7280;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;text-decoration:underline">שחזר לנוסח הקבוע</button></div></div>' +
     '<input type="file" id="meFile" accept="image/*" style="display:none" onchange="meUpload(this)">' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" onclick="el(\'meFile\').click()">החלפת תמונת פרופיל</button>' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" ' +
@@ -1005,6 +1010,22 @@ function openMe(){
   GET('/v2/api/me/license').then(function(j){
     if (j && j.ok && el('meLic')) el('meLic').value = j.license || '';
   }).catch(function(){});
+  GET('/v2/api/me/nbtext').then(function(j){
+    var f = el('meNbT');
+    if (j && j.ok && f){ f.value = j.text || j.default || ''; f._def = j.default || ''; }
+  }).catch(function(){});
+}
+function saveNbT(){
+  var f = el('meNbT');
+  POST('/v2/api/me/nbtext', {text: (f && f.value || '').trim()}).then(function(j){
+    if (!(j && j.ok)){ toast('שגיאה בשמירה'); return; }
+    toast(j.text ? 'הנוסח האישי נשמר' : 'חזרת לנוסח הקבוע');
+    if (f && !j.text) f.value = f._def || '';
+  }).catch(function(){ toast('שגיאה'); });
+}
+function resetNbT(){
+  var f = el('meNbT');
+  if (f && f._def) f.value = f._def;
 }
 function meAppleUnlink(){
   POST('/v2/api/me/apple_unlink', {}).then(function(j){
