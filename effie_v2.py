@@ -2992,7 +2992,7 @@ function renderSmart(){
     h += '<div class="buyer">' +
       '<div class="top"><div><div class="nm">' + esc(b.phone || '') + '</div>' +
       '<div class="sb">' + esc([b.agent, b.date].filter(Boolean).join(' · ')) + '</div></div>' +
-      (b.budget ? '<div class="bdg">' + esc(b.budget) + '</div>' : '') + '</div>' +
+      (b.budget ? '<div class="bdg">' + esc(fmtBd(b.budget)) + '</div>' : '') + '</div>' +
       (b.summary ? '<div class="ai"><div class="t">' +
         '<svg width="14" height="13" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>' +
         'סיכום חכם</div><div class="x">' + esc(b.summary) + '</div></div>' : '') +
@@ -3073,7 +3073,7 @@ function render(){
       '<div class="nm">' + esc(b.name || b.phone || 'ללא שם') + (hot ? '<span class="tag">חם</span>' : '') + '</div>' +
       '<div class="sb">' + esc(sub) + '</div></div>' +
       '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">' +
-      (b.budget ? '<div class="bdg" onclick="pickStatus(' + i + ')">עד ' + esc(b.budget) + '</div>' :
+      (b.budget ? '<div class="bdg" onclick="pickStatus(' + i + ')">עד ' + esc(fmtBd(b.budget)) + '</div>' :
         '<div class="bdg" onclick="pickStatus(' + i + ')">' + ST_LABEL[st] + '</div>') +
       (b.search ? '<div class="req">' + esc(b.search.slice(0, 30)) + '</div>' : '') + '</div></div>' +
       (b.summary ? '<div class="ai"><div class="t">' +
@@ -3170,6 +3170,14 @@ function pickEdSt(node){
 function fmtBudget(inp){
   var d = (inp.value || '').replace(/[^\d]/g, '');
   inp.value = d ? Number(d).toLocaleString('en-US') : '';
+}
+function fmtBd(v){
+  // תצוגת תקציב עם פסיקים — רק כשהערך מספר נקי (טקסט חופשי כמו "1.5M" נשאר כמו שהוא)
+  v = String(v || '').trim();
+  var m = /^([\d,]+)(\s*₪)?$/.exec(v);
+  if (!m) return v;
+  var d = m[1].replace(/\D/g, '');
+  return d ? Number(d).toLocaleString('en-US') : v;
 }
 function saveEdit(i){
   var b = el('list')._src[i];
