@@ -438,6 +438,11 @@ function v2Me(){
     '<div style="display:flex;gap:8px">' +
     '<input id="v2meLic" type="text" inputmode="numeric" maxlength="10" placeholder="מספר הרישיון שלך" style="flex:1;min-width:0;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;outline:none">' +
     '<button onclick="v2MeSaveLic()" style="flex-shrink:0;padding:0 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">שמירה</button></div></div>' +
+    '<div><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:6px">נוסח הפנייה לבעל נכס (נכס נולד) · <span style="font-weight:600">[שם] ו-[כתובת] מוחלפים אוטומטית</span></div>' +
+    '<textarea id="v2meNbT" rows="3" style="width:100%;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;outline:none;resize:vertical;box-sizing:border-box"></textarea>' +
+    '<div style="display:flex;gap:8px;margin-top:7px;align-items:center">' +
+    '<button onclick="v2MeSaveNbT()" style="padding:10px 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">שמירה</button>' +
+    '<button onclick="v2MeResetNbT()" style="padding:10px 12px;border-radius:13px;background:none;border:0;color:#6B7280;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;text-decoration:underline">שחזר לנוסח הקבוע</button></div></div>' +
     '<input type="file" id="v2meFile" accept="image/*" style="display:none" onchange="v2MeUpload(this)">' +
     '<button class="v2meBtn" onclick="document.getElementById(\'v2meFile\').click()">החלפת תמונת פרופיל</button>' +
     '<button class="v2meBtn" onclick="location.href=\'/auth/google/login?\' + (window.Capacitor ? \'native=1\' : \'next=v2\')">סנכרון יומן Google</button>' +
@@ -449,6 +454,25 @@ function v2Me(){
     var f = document.getElementById('v2meLic');
     if (j && j.ok && f) f.value = j.license || '';
   }).catch(function(){});
+  fetch('/v2/api/me/nbtext', {headers: {'X-Auth-Token': tok}}).then(function(r){ return r.json(); }).then(function(j){
+    var f = document.getElementById('v2meNbT');
+    if (j && j.ok && f){ f.value = j.text || j.default || ''; f._def = j.default || ''; }
+  }).catch(function(){});
+}
+function v2MeSaveNbT(){
+  var tok = null; try{ tok = localStorage.getItem('fbTok'); }catch(e){}
+  var f = document.getElementById('v2meNbT');
+  var v = (f && f.value || '').trim();
+  fetch('/v2/api/me/nbtext', {method: 'POST', headers: {'X-Auth-Token': tok, 'Content-Type': 'application/json'},
+    body: JSON.stringify({text: v})}).then(function(r){ return r.json(); }).then(function(j){
+    if (!(j && j.ok)){ v2meToast('שגיאה בשמירה'); return; }
+    v2meToast(j.text ? 'הנוסח האישי נשמר' : 'חזרת לנוסח הקבוע');
+    if (f && !j.text) f.value = f._def || '';
+  }).catch(function(){ v2meToast('שגיאה'); });
+}
+function v2MeResetNbT(){
+  var f = document.getElementById('v2meNbT');
+  if (f && f._def) f.value = f._def;
 }
 function v2meToast(msg){
   var t = document.getElementById('v2meToast');
@@ -4268,12 +4292,16 @@ function markContact(i){
   var r = el('list')._src[i];
   POST('/api/newborn/contact', {key: r.key, addr: r.address}).catch(function(){});
 }
+var NB_WA_T = '';   // נוסח אישי מהאזור האישי; ריק → ברירת המחדל
+GET('/v2/api/me/nbtext').then(function(j){ if (j && j.ok) NB_WA_T = j.text || ''; }).catch(function(){});
 function waOwner(i){
   var r = el('list')._src[i];
   markContact(i);
-  window.open('https://wa.me/' + (r.wa || '') + '?text=' +
-    encodeURIComponent('שלום' + (r.owner ? ' ' + r.owner : '') + ', ראיתי את המודעה שלך ב' +
-    ((r.address || '') + (r.city ? ', ' + r.city : '')) + '. אשמח לדבר איתך לגבי הנכס.'), '_blank');
+  var addr = (r.address || '') + (r.city ? ', ' + r.city : '');
+  var t = NB_WA_T || 'שלום [שם], ראיתי את המודעה שלך ב[כתובת]. אשמח לדבר איתך לגבי הנכס.';
+  t = t.split('[שם]').join(r.owner || '').split('[כתובת]').join(addr)
+       .replace(/ +,/g, ',').replace(/ {2,}/g, ' ').trim();
+  window.open('https://wa.me/' + (r.wa || '') + '?text=' + encodeURIComponent(t), '_blank');
 }
 var MYNAME = '';
 var AG_OPTS = [];      // מתאמת: הסוכנים שלה (מהשרת); מנהל: כל סוכני המשרד
@@ -8996,6 +9024,31 @@ def register(app, G):
             cfg["v2_licenses"] = m
         ok, _ = _config_mutate(_mut)
         return jsonify({"ok": bool(ok), "license": lic})
+
+    # נוסח וואטסאפ אישי לפנייה לבעל נכס (נכס נולד) — פר-סוכן, דפוס הרישיון
+    _NB_WA_DEFAULT = "שלום [שם], ראיתי את המודעה שלך ב[כתובת]. אשמח לדבר איתך לגבי הנכס."
+
+    @app.route("/v2/api/me/nbtext", methods=["GET", "POST"])
+    def v2_api_me_nbtext():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        me = _last9(s.get("phone", ""))
+        if request.method == "GET":
+            t = str((_load_config().get("v2_nb_wa_texts") or {}).get(me, "") or "")
+            return jsonify({"ok": True, "text": t, "default": _NB_WA_DEFAULT})
+        t = str((request.get_json(silent=True) or {}).get("text", "") or "").strip()[:500]
+        if t == _NB_WA_DEFAULT:
+            t = ""   # שמירת ברירת המחדל כלשונה = חזרה לנוסח הקבוע (בלי רשומה בקונפיג)
+        def _mut(cfg):
+            m = cfg.get("v2_nb_wa_texts") or {}
+            if t:
+                m[me] = t
+            else:
+                m.pop(me, None)
+            cfg["v2_nb_wa_texts"] = m
+        ok, _ = _config_mutate(_mut)
+        return jsonify({"ok": bool(ok), "text": t})
 
     # ── טיוטות טפסי החתמה ("טיוטא — הכנה לחתימה") — נשמרות בקונפיג, פר-סוכן ──────
     @app.route("/v2/api/sign/draft", methods=["POST"])
