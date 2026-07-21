@@ -3466,7 +3466,12 @@ def _g_link_page(glink, email, dest="/app"):
         "});}else{var cd=document.getElementById('cd').value.replace(/\\D/g,'');"
         "px('/api/auth/glink_verify',{glink:G,phone:ph,code:cd}).then(function(p){"
         "if(!p.ok){e.textContent='קוד שגוי, נסה שוב';return;}"
-        "if(p.native){location.href='" + NATIVE_URL_SCHEME + "://login?token='+p.token;return;}"
+        "if(p.native&&!window.Capacitor){location.href='" + NATIVE_URL_SCHEME + "://login?token='+p.token;return;}"
+        "if(p.native){try{localStorage.setItem('fbTok',p.token);localStorage.setItem('fbRole',p.role||'');"
+        "if(p.phone)localStorage.setItem('fbPhone',p.phone);"
+        "localStorage.setItem('fbDrole',p.drole||'');localStorage.setItem('fbName',p.name||'');"
+        "localStorage.setItem('fbDev',p.dev?'1':'0');localStorage.setItem('fbTabs',JSON.stringify(p.tabs||null));}catch(x){}"
+        "location.replace('/v2/home');return;}"
         "try{localStorage.setItem('fbTok',p.token);localStorage.setItem('fbRole',p.role||'');"
         "if(p.phone)localStorage.setItem('fbPhone',p.phone);"
         "localStorage.setItem('fbDrole',p.drole||'');localStorage.setItem('fbName',p.name||'');"
@@ -3518,8 +3523,12 @@ def auth_google_callback():
         if rt:
             _gauth_link(email, rec["phone"], rt, name)   # רענון הטוקן אם הגיע חדש
         token, payload = _g_mint(rec["phone"])
-        if native:   # אפליקציה — דף חזרה (אוטומטי + כפתור גיבוי): חזרה אמינה בלי מסך אישור חוזר
+        if native:   # אפליקציה — בתוך ה-WebView (אנדרואיד): שמירת טוקן והמשך ישיר;
+                     # דפדפן חיצוני (iOS/ספארי): deep-link חזרה לאפליקציה (אוטומטי + כפתור גיבוי).
+                     # תיקון 21/07: באנדרואיד ה-OAuth רץ בתוך ה-WebView עצמו, וה-deep-link
+                     # שם התפרש עקום (נפתח Gmail) והטוקן אבד — window.Capacitor מכריע.
             _scheme = NATIVE_URL_SCHEME + "://login?token=" + token
+            _pj = _json.dumps(payload, ensure_ascii=False)
             return ('<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">'
                     '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Family Bot</title></head>'
                     '<body style="font-family:-apple-system,Heebo,Arial,sans-serif;background:#0D1B2A;color:#fff;text-align:center;padding:64px 24px;margin:0">'
@@ -3527,7 +3536,15 @@ def auth_google_callback():
                     '<h2 style="margin:14px 0 6px">התחברת בהצלחה</h2>'
                     '<div style="opacity:.75;font-size:15px">חוזר לאפליקציה…</div>'
                     '<a href="' + _scheme + '" style="display:inline-block;margin-top:22px;background:#e0b85a;color:#231700;font-weight:800;font-size:18px;padding:15px 30px;border-radius:14px;text-decoration:none">חזור לאפליקציה</a>'
-                    '<script>setTimeout(function(){location.href=' + _json.dumps(_scheme) + ';},250);</script>'
+                    '<script>var p=' + _pj + ';'
+                    'if(window.Capacitor){try{localStorage.setItem("fbTok",p.token);'
+                    'localStorage.setItem("fbRole",p.role||"");localStorage.setItem("fbDrole",p.drole||"");'
+                    'localStorage.setItem("fbName",p.name||"");localStorage.setItem("fbDev",p.dev?"1":"0");'
+                    'if(p.phone)localStorage.setItem("fbPhone",p.phone);'
+                    'localStorage.setItem("fbTabs",JSON.stringify(p.tabs||null));}catch(e){}'
+                    'location.replace("/v2/home");}'
+                    'else{setTimeout(function(){location.href=' + _json.dumps(_scheme) + ';},250);}'
+                    '</script>'
                     '</body></html>'), 200
         return _g_done_page(payload, _dest)
     # אימייל שעוד לא מקושר → דף קישור חד-פעמי עם אימות טלפון
