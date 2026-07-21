@@ -6929,6 +6929,7 @@ def _nb_cal_create(rec, date, organizer_email):
     addr = rec.get("addr", "")
     summary = label + " · " + (addr or "נכס נולד")
     desc = "נכס נולד · נקבע מ-Family Bot"
+    if rec.get("note"):   desc += "\nהערה: " + rec["note"]
     if rec.get("owner"):  desc += "\nבעל הנכס: " + rec["owner"]
     if addr:              desc += "\nכתובת: " + addr
     if rec.get("price"):  desc += "\nמחיר: " + rec["price"]
@@ -7566,8 +7567,9 @@ def api_newborn_status_edit():
     if new_status in ("meeting", "followup") and new_status != rec.get("status"):
         rec["status"] = new_status
         cal_changed = True
-    if note_in is not None:
+    if note_in is not None and str(note_in)[:1000] != (rec.get("note") or ""):
         rec["note"] = str(note_in)[:1000]
+        cal_changed = True   # ההערה מופיעה בתיאור אירוע היומן — רענון שישקף אותה
     if "tag" in d:   # עדכון תגית לפני/אחרי פגישה
         _t = (d.get("tag", "") or "").strip()
         rec["tag"] = _t if _t in ("before", "after") else ""
