@@ -106,7 +106,10 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       כניסה עם קוד ב-SMS
     </button>
     <div id="smsBox">
-      <div class="cap" id="alinkCap" style="display:none">קישור חד-פעמי של חשבון ה-Apple — הזן את מספר הטלפון שלך במערכת לאימות</div>
+      <div class="cap" id="alinkCap" style="display:none;font-size:13.5px;line-height:1.65;color:#fff;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:12px 14px;text-align:center">
+        <b>התחברת עם Apple — כמעט סיימנו!</b><br>הזן את מספר הטלפון שלך במערכת כדי להשלים את הכניסה (פעם אחת בלבד).<br>
+        <span dir="ltr"><b>Signed in with Apple — almost done!</b><br>Enter your phone number to finish signing in (one time only).</span>
+      </div>
       <input id="ph" type="tel" inputmode="numeric" autocomplete="tel" placeholder="מספר הטלפון שלך">
       <input id="cd" type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="4" placeholder="הקוד שקיבלת ב-SMS" style="display:none" oninput="cdAuto()">
       <button class="btn btn-go" id="go" onclick="smsGo()">שלח קוד</button>
@@ -164,7 +167,10 @@ function smsGo(){
   if (stage === 0){
     px(ALINK ? '/api/auth/alink_request' : '/api/auth/request', {phone: ph, alink: ALINK}).then(function(j){
       if (!j.ok){ fail(j.reason); return; }
-      stage = 1; el('cd').style.display = 'block'; el('go').textContent = 'כניסה'; el('cd').focus();
+      stage = 1; el('cd').style.display = 'block';
+      el('go').textContent = ALINK ? 'כניסה · Sign in' : 'כניסה';
+      if (ALINK) el('cd').placeholder = 'קוד · Code';
+      el('cd').focus();
     });
   } else {
     var cd = el('cd').value.replace(/\D/g, '');
@@ -189,13 +195,16 @@ function appleGo(){
     px('/api/auth/apple', {token: res.identityToken, name: nm}).then(function(j){
       if (!j || !j.ok){ fail((j && j.reason) || 'apple_server'); return; }
       if (j.token){ finishLogin(j); return; }
-      if (j.link){   // Apple ID שטרם קושר לסוכן — אימות טלפון חד-פעמי (בהזמנת מנהל)
+      if (j.link){   // Apple ID שטרם קושר לסוכן — אימות טלפון חד-פעמי (בהזמנת מנהל).
+        // שלב הקישור מוצג לבדו, דו-לשוני — שבודק App Review לא יחשוב שהכניסה "נתקעה"
         ALINK = j.link; stage = 0;
+        var hide = document.querySelectorAll('.btn-apple, .btn-g, .btn-sms, .or, .stack > .cap');
+        for (var hi = 0; hi < hide.length; hi++) hide[hi].style.display = 'none';
         el('smsBox').style.display = 'flex';
         el('alinkCap').style.display = 'block';
-        el('go').textContent = 'שלח קוד';
-        el('err').textContent = 'התחברת עם Apple — הזן את מספר הטלפון שלך במערכת כדי להשלים כניסה';
-        el('err').style.color = '#7CA9F2';
+        el('ph').placeholder = 'מספר טלפון · Phone number';
+        el('go').textContent = 'שלח קוד · Send Code';
+        el('err').textContent = '';
         el('smsBox').scrollIntoView({behavior: 'smooth', block: 'center'});
         el('ph').focus();
       } else { fail('apple_server'); }
