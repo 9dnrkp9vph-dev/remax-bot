@@ -7864,8 +7864,12 @@ def api_buyers_add():
                              and _canon_key(_r.get("agent", "")) == _ek
                 if _same_phone or _same_name:
                     _own = (_r.get("agent", "") or "").strip()
+                    # קונה של סוכן אחר — מוסיפים בשקט, בלי התראה (בקשת אייל 21/07).
+                    # ההתראה נשארת רק על כפילות אצל אותו סוכן (הגנה מהוספה כפולה בטעות).
+                    if _own and _canon_key(_own) != _ek:
+                        continue
                     return jsonify({"ok": False, "dup": True,
-                                    "reason": "הקונה כבר קיים" + ((" אצל " + _own) if _own else ""),
+                                    "reason": "הקונה כבר קיים אצלך",
                                     "agent": _own, "existing": (_r.get("name", "") or "").strip()})
         except Exception:
             pass
