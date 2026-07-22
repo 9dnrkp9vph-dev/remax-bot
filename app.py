@@ -3466,7 +3466,12 @@ def _g_link_page(glink, email, dest="/app"):
         "});}else{var cd=document.getElementById('cd').value.replace(/\\D/g,'');"
         "px('/api/auth/glink_verify',{glink:G,phone:ph,code:cd}).then(function(p){"
         "if(!p.ok){e.textContent='קוד שגוי, נסה שוב';return;}"
-        "if(p.native&&!window.Capacitor){location.href='" + NATIVE_URL_SCHEME + "://login?token='+p.token;return;}"
+        "if(p.native&&!window.Capacitor){location.href='" + NATIVE_URL_SCHEME + "://login?token='+p.token;"
+        "setTimeout(function(){try{localStorage.setItem('fbTok',p.token);localStorage.setItem('fbRole',p.role||'');"
+        "if(p.phone)localStorage.setItem('fbPhone',p.phone);"
+        "localStorage.setItem('fbDrole',p.drole||'');localStorage.setItem('fbName',p.name||'');"
+        "localStorage.setItem('fbDev',p.dev?'1':'0');localStorage.setItem('fbTabs',JSON.stringify(p.tabs||null));}catch(x){}"
+        "location.replace('/v2/home');},1800);return;}"
         "if(p.native){try{localStorage.setItem('fbTok',p.token);localStorage.setItem('fbRole',p.role||'');"
         "if(p.phone)localStorage.setItem('fbPhone',p.phone);"
         "localStorage.setItem('fbDrole',p.drole||'');localStorage.setItem('fbName',p.name||'');"
@@ -3543,7 +3548,13 @@ def auth_google_callback():
                     'if(p.phone)localStorage.setItem("fbPhone",p.phone);'
                     'localStorage.setItem("fbTabs",JSON.stringify(p.tabs||null));}catch(e){}'
                     'location.replace("/v2/home");}'
-                    'else{setTimeout(function(){location.href=' + _json.dumps(_scheme) + ';},250);}'
+                    'else{setTimeout(function(){location.href=' + _json.dumps(_scheme) + ';},250);'
+                    'setTimeout(function(){try{localStorage.setItem("fbTok",p.token);'
+                    'localStorage.setItem("fbRole",p.role||"");localStorage.setItem("fbDrole",p.drole||"");'
+                    'localStorage.setItem("fbName",p.name||"");localStorage.setItem("fbDev",p.dev?"1":"0");'
+                    'if(p.phone)localStorage.setItem("fbPhone",p.phone);'
+                    'localStorage.setItem("fbTabs",JSON.stringify(p.tabs||null));}catch(e){}'
+                    'location.replace("/v2/home");},1800);}'
                     '</script>'
                     '</body></html>'), 200
         return _g_done_page(payload, _dest)
