@@ -115,7 +115,7 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <button class="btn btn-go" id="go" onclick="smsGo()">שלח קוד</button>
       <div id="err"></div>
     </div>
-    <div class="foot">הצטרפות למשרד מתבצעת בהזמנת מנהל · תנאי שימוש ופרטיות</div>
+    <div class="foot">הכניסה לחברי צוות מוזמנים בלבד · For invited team members only · תנאי שימוש ופרטיות</div>
   </div>
 
 <script>
@@ -130,7 +130,7 @@ function toggleSms(){
   b.style.display = (b.style.display === 'flex') ? 'none' : 'flex';
   if (b.style.display === 'flex') el('ph').focus();
 }
-var REASONS = {unknown:'המספר לא רשום במערכת — הצטרפות בהזמנת מנהל בלבד',
+var REASONS = {unknown:'המספר לא רשום במערכת · This phone number is not registered',
                suspended:'המשתמש מושהה — פנה למנהל המשרד',
                sms_failed:'שליחת ה-SMS נכשלה, נסה שוב בעוד רגע',
                expired:'הקוד פג תוקף — שלח קוד חדש', wrong:'קוד שגוי, נסה שוב',
