@@ -7060,6 +7060,14 @@ function exclPeriod(i, months){
   }
 })();
 
+function feeInp(inp, i){
+  // עמלה עם נקודה עשרונית (1.5) — פסיק הופך לנקודה, נקודה אחת לכל היותר, נשמר תוך כדי הקלדה
+  var v = String(inp.value || '').replace(/,/g, '.').replace(/[^\d.]/g, '');
+  var p = v.split('.');
+  if (p.length > 2) v = p[0] + '.' + p.slice(1).join('');
+  if (v !== inp.value) inp.value = v;
+  DEALS_DEF[i].val = v;
+}
 function renderDeals(){
   el('dealRows').innerHTML = DEALS_DEF.map(function(d, i){
     var inputs = d.k === 'excl'
@@ -7070,7 +7078,7 @@ function renderDeals(){
         '<div style="display:flex;gap:6px">' +
         '<input style="width:88px" placeholder="מ- 07/07/26" value="' + esc(d.from) + '" onchange="DEALS_DEF[' + i + '].from=this.value;DEALS_DEF[' + i + '].mo=0">' +
         '<input style="width:88px" placeholder="עד 07/01/27" value="' + esc(d.to) + '" onchange="DEALS_DEF[' + i + '].to=this.value;DEALS_DEF[' + i + '].mo=0"></div></div>'
-      : '<div class="in"><input inputmode="decimal" style="width:' + (d.un === '₪' ? '76px' : '56px') + '" value="' + esc(d.val) + '" onchange="DEALS_DEF[' + i + '].val=this.value">' +
+      : '<div class="in"><input inputmode="decimal" style="width:' + (d.un === '₪' ? '76px' : '56px') + '" value="' + esc(d.val) + '" oninput="feeInp(this,' + i + ')" onchange="feeInp(this,' + i + ')">' +
         (d.units ? '<select class="unSel" onchange="DEALS_DEF[' + i + '].un=this.value;renderDeals()">' +
            d.units.map(function(u){ return '<option' + (u === d.un ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select>'
          : '<span class="un">' + d.un + '</span>') + '</div>';
