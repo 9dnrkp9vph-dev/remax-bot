@@ -279,19 +279,29 @@ def insert_ping(phone, name=""):
 
 
 def fetch_pings_today(iso_from):
-    """פעימות מ-iso_from ואילך → list של {phone, name, ts}."""
+    """פעימות מ-iso_from ואילך → list של {phone, name, ts}.
+    מדופדף — PostgREST חותך כל תשובה ל-1,000 שורות בלי קשר ל-limit, מה שגרם
+    לתצוגה השבועית להציג רק את תחילת החלון (סוכנים פעילים-לאחרונה נעלמו)."""
     if not enabled():
         return []
+    out, offset = [], 0
     try:
-        r = requests.get(SUPABASE_URL + "/rest/v1/usage_pings",
-                         headers=_headers(),
-                         params={"office_id": "eq." + SB_OFFICE_ID, "ts": "gte." + iso_from,
-                                 "select": "phone,name,ts", "order": "ts.asc", "limit": "100000"},
-                         timeout=20)
-        r.raise_for_status()
-        return r.json() or []
+        while offset < 200000:   # תקרת בטיחות
+            r = requests.get(SUPABASE_URL + "/rest/v1/usage_pings",
+                             headers=_headers(),
+                             params={"office_id": "eq." + SB_OFFICE_ID, "ts": "gte." + iso_from,
+                                     "select": "phone,name,ts", "order": "ts.asc",
+                                     "limit": str(_PAGE), "offset": str(offset)},
+                             timeout=20)
+            r.raise_for_status()
+            page = r.json() or []
+            out.extend(page)
+            if len(page) < _PAGE:
+                break
+            offset += _PAGE
+        return out
     except Exception:
-        return []
+        return out if out else []
 
 
 def fetch_config():
