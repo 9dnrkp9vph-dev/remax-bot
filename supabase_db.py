@@ -278,6 +278,23 @@ def insert_ping(phone, name=""):
         return False
 
 
+def prune_pings(days=60):
+    """גיזום פעימות ישנות (60+ יום) — שהטבלה לא תגדל לנצח. best-effort."""
+    if not enabled():
+        return False
+    try:
+        import datetime as _dt
+        cutoff = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days)).isoformat()
+        r = requests.delete(SUPABASE_URL + "/rest/v1/usage_pings",
+                            headers=_headers(),
+                            params={"office_id": "eq." + SB_OFFICE_ID, "ts": "lt." + cutoff},
+                            timeout=30)
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
 def fetch_pings_today(iso_from):
     """פעימות מ-iso_from ואילך → list של {phone, name, ts}.
     מדופדף — PostgREST חותך כל תשובה ל-1,000 שורות בלי קשר ל-limit, מה שגרם

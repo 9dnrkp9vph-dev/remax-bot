@@ -6750,7 +6750,7 @@ try{ USAGE_MODE = localStorage.getItem('v2st:usage') || 'today'; }catch(e){}
 var _usageFallback = [];
 function loadUsage(fallbackItems){
   if (fallbackItems) _usageFallback = fallbackItems;
-  var qp = USAGE_MODE === 'week' ? '?days=7&noweekend=1' : '';
+  var qp = USAGE_MODE === 'week' ? '?days=7' : USAGE_MODE === 'month' ? '?days=30' : '';
   GET('/v2/api/usage_today' + qp).then(function(u){
     if (!(u && u.ok && renderUsagePings(u.rows))) renderUsage(_usageFallback);
   }).catch(function(){ renderUsage(_usageFallback); });
@@ -6766,17 +6766,17 @@ function usageChips(){
       'font-weight:700;font-family:inherit;cursor:pointer;border:1.5px solid ' +
       (USAGE_MODE === m ? '#2E6BD6;background:#EAF0FA;color:#2E6BD6' : '#DCD6C8;background:#fff;color:#5B6472') + '">' + lb + '</button>';
   }
-  return '<div style="display:flex;gap:6px">' + c('today', 'היום') + c('week', "7 ימים · א'-ה'") + '</div>';
+  return '<div style="display:flex;gap:6px">' + c('today', 'היום') + c('week', '7 ימים') + c('month', '30 יום') + '</div>';
 }
 function renderUsagePings(rows){
   if (!rows || !rows.length) return false;   // אין פעימות עדיין → הקורא ייפול להערכה
   rows.sort(function(a, b){ return b.min - a.min; });
   var mx = rows[0].min || 1;
-  var week = USAGE_MODE === 'week';
+  var week = USAGE_MODE !== 'today';   // כל מצב רב-יומי
   el('useDash').style.display = 'block';
   el('useDash').innerHTML =
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 2px 10px">' +
-    '<div style="font-size:14.5px;font-weight:800">' + (week ? "זמן באפליקציה · 7 ימים (בלי שישי-שבת)" : 'זמן באפליקציה היום') + '</div>' +
+    '<div style="font-size:14.5px;font-weight:800">' + (USAGE_MODE === 'week' ? 'זמן באפליקציה · 7 ימים אחרונים' : USAGE_MODE === 'month' ? 'זמן באפליקציה · 30 יום אחרונים' : 'זמן באפליקציה היום') + '</div>' +
     usageChips() + '</div>' +
     rows.slice(0, 40).map(function(r){
       return '<div style="display:flex;align-items:center;gap:10px;padding:5px 2px">' +
@@ -9786,6 +9786,13 @@ def register(app, G):
             _tz = _dt2.timezone(_dt2.timedelta(hours=3))
         _mid = _dt2.datetime.now(_tz).replace(hour=0, minute=0, second=0, microsecond=0)
         _from = _mid - _dt2.timedelta(days=n_days - 1)
+        # גיזום עצל — פעם ביום, בפתיחה הראשונה של היומן: פעימות בנות 60+ יום נמחקות
+        if G["_cache_get"]("pings_pruned", 86400) is None:
+            G["_cache_put"]("pings_pruned", True)
+            try:
+                _sb.prune_pings(60)
+            except Exception:
+                pass
         pings = _sb.fetch_pings_today(_from.isoformat())
         _ckey = G["_canon_key"]
         by = {}
