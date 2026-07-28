@@ -9280,6 +9280,12 @@ def register(app, G):
             return jsonify({"ok": False, "auth": False}), 401
         _canon = G["_canon_key"]
         me = _canon(s.get("name", ""))
+        # cache פר-משתמש (90ש') — הבריף רץ על שיחות שנה שלמה; בלי cache כל פתיחת
+        # בית/סבב TV בנתה אותו מחדש (נמדד: עד 6ש') ותפסה thread — מקור גלי האיטיות
+        _bck = "v2brief:" + (me or "_viewer_") + ":" + str(s.get("role", ""))
+        _bc = G["_cache_get"](_bck, 90)
+        if _bc is not None:
+            return jsonify(_bc)
         week_ago = time.time() - 7 * 86400
         import datetime as _dty
         _yr = _dty.date.today().year
@@ -9376,14 +9382,16 @@ def register(app, G):
                     pass
         except Exception as e:
             if log: log.warning(f"effie brief hot: {e}")
-        return jsonify({"ok": True, "buyersMe": buyers_me, "buyersAll": buyers_all,
-                        "sigBMe": sigb_me, "sigBAll": sigb_all,
-                        "exclMe": excl_me, "exclAll": excl_all,
-                        "callsMe": calls_me, "callsAll": calls_all,
-                        "callsAnsAll": calls_ans_all, "hotBuyers": hot_buyers,
-                        "buyersTotal": buyers_total,
-                        "dealsYear": deals_year,
-                        "hotProps": hot_props})
+        _bout = {"ok": True, "buyersMe": buyers_me, "buyersAll": buyers_all,
+                 "sigBMe": sigb_me, "sigBAll": sigb_all,
+                 "exclMe": excl_me, "exclAll": excl_all,
+                 "callsMe": calls_me, "callsAll": calls_all,
+                 "callsAnsAll": calls_ans_all, "hotBuyers": hot_buyers,
+                 "buyersTotal": buyers_total,
+                 "dealsYear": deals_year,
+                 "hotProps": hot_props}
+        G["_cache_put"](_bck, _bout)
+        return jsonify(_bout)
 
     # ── הנהלת חשבונות: חשבוניות (Supabase) + איתור לקוח→סוכן ────────────────
     _INV_ROLES = ("accountant", "manager", "developer")
