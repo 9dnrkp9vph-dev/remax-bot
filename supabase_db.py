@@ -297,28 +297,44 @@ def prune_pings(days=60):
 
 def fetch_pings_today(iso_from):
     """פעימות מ-iso_from ואילך → list של {phone, name, ts}.
-    מדופדף — PostgREST חותך כל תשובה ל-1,000 שורות בלי קשר ל-limit, מה שגרם
-    לתצוגה השבועית להציג רק את תחילת החלון (סוכנים פעילים-לאחרונה נעלמו)."""
+    מדופדף (תקרת ה-1,000 של PostgREST) — והעמודים מעבר לראשון מובאים במקביל:
+    בטווח 30 יום יש עשרות עמודים, והבאה טורית לקחה ~15ש' ותפסה thread."""
     if not enabled():
         return []
-    out, offset = [], 0
+    def _page_params(offset):
+        return {"office_id": "eq." + SB_OFFICE_ID, "ts": "gte." + iso_from,
+                "select": "phone,name,ts", "order": "ts.asc",
+                "limit": str(_PAGE), "offset": str(offset)}
     try:
-        while offset < 200000:   # תקרת בטיחות
-            r = requests.get(SUPABASE_URL + "/rest/v1/usage_pings",
-                             headers=_headers(),
-                             params={"office_id": "eq." + SB_OFFICE_ID, "ts": "gte." + iso_from,
-                                     "select": "phone,name,ts", "order": "ts.asc",
-                                     "limit": str(_PAGE), "offset": str(offset)},
-                             timeout=20)
-            r.raise_for_status()
-            page = r.json() or []
-            out.extend(page)
-            if len(page) < _PAGE:
-                break
-            offset += _PAGE
+        r = requests.get(SUPABASE_URL + "/rest/v1/usage_pings",
+                         headers={**_headers(), "Prefer": "count=exact"},
+                         params=_page_params(0), timeout=20)
+        r.raise_for_status()
+        out = r.json() or []
+        total = 0
+        try:
+            total = int((r.headers.get("Content-Range", "") or "/0").split("/")[-1])
+        except Exception:
+            total = len(out)
+        total = min(total, 200000)   # תקרת בטיחות
+        if total <= _PAGE:
+            return out
+        offsets = list(range(_PAGE, total, _PAGE))
+        from concurrent.futures import ThreadPoolExecutor
+        def _fetch(off):
+            try:
+                rr = requests.get(SUPABASE_URL + "/rest/v1/usage_pings",
+                                  headers=_headers(), params=_page_params(off), timeout=20)
+                rr.raise_for_status()
+                return rr.json() or []
+            except Exception:
+                return []
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            for page in ex.map(_fetch, offsets):
+                out.extend(page)
         return out
     except Exception:
-        return out if out else []
+        return []
 
 
 def fetch_config():

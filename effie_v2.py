@@ -9778,6 +9778,11 @@ def register(app, G):
         except Exception:
             n_days = 1
         no_weekend = request.args.get("noweekend") == "1"
+        # cache 60ש' לתוצאה — פתיחות חוזרות של היומן לא מושכות שוב עשרות אלפי פעימות
+        _uck = "v2usage:%d:%d" % (n_days, 1 if no_weekend else 0)
+        _uc = G["_cache_get"](_uck, 60)
+        if _uc is not None:
+            return jsonify(_uc)
         import datetime as _dt2
         try:
             from zoneinfo import ZoneInfo
@@ -9832,7 +9837,9 @@ def register(app, G):
             rows.append({"name": d["name"] or ph, "min": int(round(mins)),
                          "pings": len(ts), "days": len(d["days"])})
         rows.sort(key=lambda x: -x["min"])
-        return jsonify({"ok": True, "rows": rows})
+        _uout = {"ok": True, "rows": rows}
+        G["_cache_put"](_uck, _uout)
+        return jsonify(_uout)
 
     @app.route("/v2/api/admin/policy", methods=["POST"])
     def v2_api_admin_policy():
