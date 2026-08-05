@@ -4974,6 +4974,10 @@ def api_sign_send_remote():
         docs1 = [dict(d) for i, d in enumerate(docs) if i != _excl_i]
         docs1[0]["next_token"] = token2
         docs1[0]["next_title"] = str(docs[_excl_i].get("title", "")).strip() or "הסכם בלעדיות"
+        # שרשור סימטרי (05/08): לקוח שנכנס מקישור הבלעדיות (ה-SMS הכפול) מנותב
+        # אחרי חתימתה גם להסכם המוכר — בלי זה חצי מהזוג נשאר "ממתין לחתימה"
+        _d2["next_token"] = token
+        _d2["next_title"] = str(docs1[0].get("title", "")).strip() or "הסכם מוכר"
         docs2 = [_d2]
     else:
         docs1, docs2 = list(docs), None
@@ -5136,7 +5140,18 @@ def api_sign_complete():
             _threading.Thread(target=_post_sign_bg, daemon=True).start()
         except Exception:
             _post_sign_bg()   # נפילה חזרה לסינכרוני — שלא יאבדו התראות
-    return jsonify({"ok": upd_ok, "link": link})
+    _nx, _nxt = "", ""
+    try:   # הסכם-אח בזוג (מוכר↔בלעדיות): מוצע להמשך רק אם עדיין לא נחתם
+        _docs0 = _json.loads(doc.get("docs") or "[]")
+        _nt = str((_docs0[0].get("next_token") if _docs0 else "") or "")
+        if _nt:
+            _sj = _signdoc_get(_nt)
+            if _sj and _sj.get("found") and str((_sj.get("doc") or {}).get("status", "")) != "signed":
+                _nx = _nt
+                _nxt = str((_docs0[0].get("next_title") if _docs0 else "") or "")
+    except Exception:
+        pass
+    return jsonify({"ok": upd_ok, "link": link, "next": _nx, "next_title": _nxt})
 
 @app.route("/api/sign/share", methods=["POST"])
 def api_sign_share():
@@ -5231,7 +5246,15 @@ def public_sign_doc(token):
     # הסכם המשך (בלעדיות): מוצג כ"חתימה ממתינה" מתחת להסכם המוכר, ונפתח אחרי חתימתו
     _next_tok = str((docs[0].get("next_token") if docs else "") or "")
     _next_title = str((docs[0].get("next_title") if docs else "") or "")
+    _sib_pending = False
     if _next_tok and status == "pending":
+        try:   # מציגים "חתימה ממתינה" רק כשהאח באמת טרם נחתם (Supabase — מילישניות)
+            _sj = _signdoc_get(_next_tok)
+            _sib_pending = bool(_sj and _sj.get("found")
+                                and str((_sj.get("doc") or {}).get("status", "")) != "signed")
+        except Exception:
+            _sib_pending = True   # ספק — עדיף להציג
+    if _sib_pending:
         docs_html += ("<div style='display:flex;align-items:center;gap:11px;background:#faf8f4;border:1.5px dashed var(--gold);"
                       "border-radius:14px;padding:13px 15px;margin-top:4px'>"
                       "<div style='width:10px;height:10px;border-radius:50%;background:var(--gold);flex:0 0 auto'></div>"
@@ -5408,8 +5431,8 @@ def public_sign_doc(token):
                "var tw=440,th=Math.round(tw*cv.height/cv.width);var c=document.createElement('canvas');c.width=tw;c.height=th;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,tw,th);x.drawImage(cv,0,0,tw,th);var sig=c.toDataURL('image/jpeg',0.55);"
                "var b=document.getElementById('sbtn');b.disabled=true;b.textContent='שומר…';"
                "fetch('/api/sign/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,cid:id,signature:sig})}).then(function(r){return r.json();}).then(function(r){if(r&&r.ok){"
-               "var okh = NEXT"
-               "? '<div class=okcard><div class=big>✅</div><h2>ההסכם הראשון נחתם</h2><p>נותר הסכם אחד לחתימה: '+(NEXTT||'הסכם הבלעדיות')+'.</p><button class=pb onclick=\"location.href=\\'/s/\\'+encodeURIComponent(NEXT)\">המשך לחתימת '+(NEXTT||'הסכם הבלעדיות')+' ›</button></div>'"
+               "var NX=(r.next!==undefined)?r.next:NEXT,NXT=(r.next_title)||NEXTT;var okh = NX"
+               "? '<div class=okcard><div class=big>✅</div><h2>ההסכם נחתם</h2><p>נותר הסכם אחד לחתימה: '+(NXT||'ההסכם הנוסף')+'.</p><button class=pb onclick=\"location.href=\\'/s/\\'+encodeURIComponent(NX)\">המשך לחתימת '+(NXT||'ההסכם הנוסף')+' ›</button></div>'"
                ": '<div class=okcard><div class=big>🎉</div><h2>ההסכם נחתם ונשמר</h2><p>עותק חתום נשמר אצל המתווך.<br>מומלץ לשמור עותק גם אצלך.</p><button class=pb onclick=\"location.reload()\">צפייה במסמך החתום · שמירת PDF</button></div>';"
                "document.getElementById('step2').innerHTML=okh;"
                "window.scrollTo(0,0);}else{b.disabled=false;b.textContent='✅ אשר וחתום';alert('שמירה נכשלה: '+((r&&r.reason)||'שגיאה'));}}).catch(function(){b.disabled=false;b.textContent='✅ אשר וחתום';alert('שגיאת רשת');});}"
