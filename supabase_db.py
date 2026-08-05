@@ -203,6 +203,28 @@ def fetch_excl_rows():
     return _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")
 
 
+def signatures_delete(event_id="", received_at="", client_name=""):
+    """מחיקת שורת חתימה מהמראה (טבלת signatures) — לפי event_id, או לקוח+תאריך.
+    best-effort: הגיליון נשאר מקור האמת; זה רק מוריד את השורה מהקריאות מיד."""
+    if not enabled():
+        return False
+    try:
+        params = {"office_id": "eq." + SB_OFFICE_ID}
+        if event_id:
+            params["raw->>event_id"] = "eq." + str(event_id)
+        elif client_name and received_at:
+            params["raw->>client_name"] = "eq." + str(client_name)
+            params["raw->>received_at"] = "eq." + str(received_at)
+        else:
+            return False
+        r = requests.delete(SUPABASE_URL + "/rest/v1/signatures",
+                            headers=_headers(), params=params, timeout=15)
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
 def signdoc_save(doc):
     """upsert מסמך חתימה לפי token (טבלת sign_docs). doc במבנה של savesigndoc:
     doc_token, event_id, status, header, docs (מחרוזת JSON), signature, signed_at."""

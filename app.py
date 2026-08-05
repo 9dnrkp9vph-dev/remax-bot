@@ -8183,14 +8183,31 @@ def api_sign_delete():
     client = str(body.get("client", "") or "").strip()
     if not (eid or (client and received)):
         return jsonify({"ok": False, "reason": "no_key"}), 400
-    j = _buyers_apps_post("deletesigning", {"event_id": eid, "received_at": received, "client_name": client})
-    ok = bool(j and j.get("ok"))
-    if ok:
+    # מחיקה אופטימית (05/08): הסוכן לא מחכה ל-Apps Script (שנמדד 20-40ש' בהאטת גוגל) —
+    # השורה יורדת מיד (גשר + מראה Supabase), והמקור בגיליון נמחק ברקע עם נסיונות חוזרים.
+    _recent_sign_del_add(eid, received, client)
+    _cache_clear("signings_sheet")
+    _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת הסכם", (client + " " + eid)[:80])
+    def _del_bg():
+        try:
+            if _sbdb and _sbdb.enabled():
+                _sbdb.signatures_delete(eid, received, client)   # ירידה מהמראה — הקריאות נקיות מיד
+        except Exception:
+            pass
+        for _try in range(3):
+            try:
+                j = _buyers_apps_post("deletesigning",
+                                      {"event_id": eid, "received_at": received, "client_name": client})
+                if j and j.get("ok"):
+                    break
+            except Exception:
+                pass
+            time.sleep(25)
         _cache_clear("signings_sheet")
         _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
-        _recent_sign_del_add(eid, received, client)   # ירידה מיידית מהלוח — עד שהסנכרון מוריד מהמקור
-        _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת הסכם", (client + " " + eid)[:80])
-    return jsonify({"ok": ok, "deleted": (j.get("deleted") if j else 0)})
+    threading.Thread(target=_del_bg, daemon=True).start()
+    return jsonify({"ok": True, "deleted": 1})
 
 @app.route("/api/calls/hide", methods=["POST"])
 def api_calls_hide():
