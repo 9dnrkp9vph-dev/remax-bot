@@ -1644,8 +1644,12 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
                 hit_nb = True; break
         if hit_nb:
             score += 30
+        elif not r_neigh:
+            # אין נתון שכונה בגיליון (העמודה לרוב ריקה) והעיר כבר תאמה — לא פוסלים
+            # (05/08: "הנוטר" נעלם מחיפוש "מזרחית" כי אין לו שכונה רשומה), רק בלי הבונוס
+            score += 6
         else:
-            return 0   # שכונה צוינה — תוצאות רק מהשכונה/ות, בכל רמות הגמישות
+            return 0   # שכונה אחרת מפורשת — באמת מחוץ לחיפוש
     q_street = (query.get("street") or "").strip()
     r_street = (row.get("כתובת", "") or "").strip()
     if q_street and r_street:
@@ -1666,14 +1670,21 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         if q_bmin and r_price < q_bmin * 0.7:
             return 0
         diff_pct = abs(r_price - q_bmax) / q_bmax
-        if diff_pct < 0.05:
-            score += 25
-        elif diff_pct < 0.10:
-            score += 20
-        elif diff_pct < 0.20:
-            score += 15
+        if q_bmin:
+            if diff_pct < 0.05:
+                score += 25
+            elif diff_pct < 0.10:
+                score += 20
+            elif diff_pct < 0.20:
+                score += 15
+            else:
+                score += 8
         else:
-            score += 8
+            # רק תקרה ("עד X") — הקרוב לתקציב מדורג ראשון (בקשת אייל 05/08): רציף עד +40,
+            # ונכס מתחת ל-55% מהתקציב = ליגת-מחיר אחרת, סופג קנס (מוצג, אבל בתחתית)
+            score += max(0, 40 - int(diff_pct * 80))
+            if r_price < q_bmax * 0.55:
+                score -= 18
     q_rmin = query.get("rooms_min")
     q_rmax = query.get("rooms_max")
     r_rooms_raw = (row.get("חדרים", "") or "").strip()
