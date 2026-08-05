@@ -203,6 +203,83 @@ def fetch_excl_rows():
     return _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")
 
 
+def signdoc_save(doc):
+    """upsert מסמך חתימה לפי token (טבלת sign_docs). doc במבנה של savesigndoc:
+    doc_token, event_id, status, header, docs (מחרוזת JSON), signature, signed_at."""
+    if not enabled():
+        return False
+    token = str(doc.get("doc_token") or "").strip()
+    if not token:
+        return False
+    try:
+        import json as _json
+        try:
+            docs_j = _json.loads(doc.get("docs") or "[]")
+        except Exception:
+            docs_j = []
+        row = {"office_id": SB_OFFICE_ID, "token": token,
+               "event_id": str(doc.get("event_id") or ""),
+               "status": str(doc.get("status") or "pending"),
+               "header": str(doc.get("header") or ""), "docs": docs_j,
+               "signature": str(doc.get("signature") or ""),
+               "signed_at": str(doc.get("signed_at") or "")}
+        r = requests.post(SUPABASE_URL + "/rest/v1/sign_docs",
+                          headers={**_headers(),
+                                   "Prefer": "resolution=merge-duplicates,return=minimal"},
+                          params={"on_conflict": "token"}, json=[row], timeout=15)
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def signdoc_get(token):
+    """מסמך חתימה לפי token → dict במבנה doc של getsigndoc (docs כמחרוזת JSON), או None."""
+    if not enabled():
+        return None
+    try:
+        r = requests.get(SUPABASE_URL + "/rest/v1/sign_docs", headers=_headers(),
+                         params={"office_id": "eq." + SB_OFFICE_ID, "token": "eq." + str(token or ""),
+                                 "select": "token,event_id,status,header,docs,signature,signed_at",
+                                 "limit": "1"},
+                         timeout=12)
+        r.raise_for_status()
+        rows = r.json() or []
+        if not rows:
+            return None
+        import json as _json
+        rec = rows[0]
+        return {"doc_token": rec.get("token", ""), "event_id": rec.get("event_id", ""),
+                "status": rec.get("status", ""), "header": rec.get("header", ""),
+                "docs": _json.dumps(rec.get("docs") or [], ensure_ascii=False),
+                "signature": rec.get("signature", ""), "signed_at": rec.get("signed_at", "")}
+    except Exception:
+        return None
+
+
+def signdoc_update(token, fields):
+    """עדכון שדות במסמך קיים לפי token. True=עודכן (נמצא); False=לא נמצא/כשל
+    (הקורא נופל חזרה ל-Apps Script — מסמכים ישנים חיים רק בגיליון)."""
+    if not enabled():
+        return False
+    try:
+        body = {}
+        for k in ("event_id", "status", "header", "signature", "signed_at"):
+            if k in fields:
+                body[k] = str(fields.get(k) or "")
+        if not body:
+            return False
+        r = requests.patch(SUPABASE_URL + "/rest/v1/sign_docs",
+                           headers={**_headers(), "Prefer": "return=representation"},
+                           params={"office_id": "eq." + SB_OFFICE_ID, "token": "eq." + str(token or "")},
+                           json=body, timeout=12)
+        r.raise_for_status()
+        rows = r.json() if r.text else []
+        return bool(rows)
+    except Exception:
+        return False
+
+
 def insert_invoice_row(row):
     """הוספת חשבונית בודדת (קליטה מ-Fireberry). כפילות row_hash נבלעת בשקט."""
     r = requests.post(SUPABASE_URL + "/rest/v1/invoices",

@@ -4566,7 +4566,7 @@ def api_sign_submit():
         recs.append(_srec)
     doc_saved = False; doc_resp = ""
     try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה) — סינכרוני, זה המסמך החתום
-        jd = _buyers_apps_post("savesigndoc", {
+        jd = _signdoc_save({
             "doc_token": token, "event_id": eid, "status": "signed",
             "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
             "signature": signature, "signed_at": now_iso})
@@ -4977,7 +4977,7 @@ def api_sign_send_remote():
     # שמירת המסמכים במצב 'pending' — סינכרוני: הקישור ב-SMS חייב לעבוד, וגם הסכם ההמשך
     doc_saved = False
     try:
-        jd = _buyers_apps_post("savesigndoc", {
+        jd = _signdoc_save({
             "doc_token": token, "event_id": token, "status": "pending",
             "header": header, "docs": _json.dumps(docs1, ensure_ascii=False),
             "signature": "", "signed_at": ""})
@@ -4986,7 +4986,7 @@ def api_sign_send_remote():
         doc_saved = False
     if doc_saved and docs2 is not None:
         try:
-            jd2 = _buyers_apps_post("savesigndoc", {
+            jd2 = _signdoc_save({
                 "doc_token": token2, "event_id": token2, "status": "pending",
                 "header": header, "docs": _json.dumps(docs2, ensure_ascii=False),
                 "signature": "", "signed_at": ""})
@@ -5036,7 +5036,7 @@ def api_sign_complete():
         return jsonify({"ok": False, "reason": "bad_id"}), 400
     if not signature:
         return jsonify({"ok": False, "reason": "no_signature"}), 400
-    j = _buyers_apps_post("getsigndoc", {"doc_token": token})
+    j = _signdoc_get(token)
     if not (j and j.get("ok") and j.get("found")):
         return jsonify({"ok": False, "reason": "not_found"}), 404
     doc = j.get("doc", {})
@@ -5056,8 +5056,8 @@ def api_sign_complete():
     link = base + "/s/" + token
     upd_ok = False
     try:
-        ju = _buyers_apps_post("updatesigndoc", {
-            "doc_token": token, "event_id": cid, "status": "signed",
+        ju = _signdoc_update(token, {
+            "event_id": cid, "status": "signed",
             "header": header, "signature": signature, "signed_at": now_iso})
         upd_ok = bool(ju and ju.get("ok"))
     except Exception:
@@ -5190,7 +5190,7 @@ def public_sign_doc(token):
     if j is not None and str(((j.get("doc") or {}) if isinstance(j, dict) else {}).get("status", "")) != "signed":
         j = _cache_get(_ck, 120)   # טרם נחתם — טריות קצרה, שהחתימה תופיע מהר
     if j is None:
-        j = _buyers_apps_post("getsigndoc", {"doc_token": token})
+        j = _signdoc_get(token)
         if j and j.get("ok") and j.get("found"):
             _cache_put(_ck, j)
     if not (j and j.get("ok") and j.get("found")):
@@ -7799,6 +7799,46 @@ def _buyers_apps_post(action, payload):
     except Exception as e:
         log.error(f"buyers {action} error: {e}")
         return None
+
+# ── מסמכי החתימה: Supabase ראשי, הגיליון גיבוי (05/08 — Apps Script זחל 20-40ש'
+#    והפיל את עמוד ההסכם; המסמך הוא הנתיב שהלקוח פוגש, אסור תלות בגוגל) ─────────
+def _signdoc_save(payload):
+    """שמירה: Supabase סינכרוני — ה-SMS נשלח רק אחרי ok (אין מסמך = אין קישור מת);
+    הצלחה → העתק לגיליון ברקע. Supabase נופל → Apps Script סינכרוני (כמו קודם)."""
+    if _sbdb and _sbdb.enabled() and _sbdb.signdoc_save(payload):
+        def _bg():
+            try:
+                _buyers_apps_post("savesigndoc", payload)
+            except Exception:
+                pass
+        threading.Thread(target=_bg, daemon=True).start()
+        return {"ok": True}
+    return _buyers_apps_post("savesigndoc", payload)
+
+def _signdoc_get(token):
+    """קריאה: Supabase קודם (מילישניות); לא נמצא (מסמך ישן) → Apps Script —
+    כל הקישורים שנשלחו לפני המעבר ממשיכים לעבוד."""
+    if _sbdb and _sbdb.enabled():
+        d = _sbdb.signdoc_get(token)
+        if d is not None:
+            return {"ok": True, "found": True, "doc": d}
+    return _buyers_apps_post("getsigndoc", {"doc_token": token})
+
+def _signdoc_update(token, fields):
+    """עדכון (חתימת הלקוח): Supabase סינכרוני; עודכן → גיליון ברקע;
+    לא נמצא (מסמך ישן שחי רק בגיליון) → Apps Script סינכרוני."""
+    payload = {"doc_token": token}
+    payload.update(fields)
+    if _sbdb and _sbdb.enabled() and _sbdb.signdoc_update(token, fields):
+        def _bg():
+            try:
+                _buyers_apps_post("updatesigndoc", payload)
+            except Exception:
+                pass
+        threading.Thread(target=_bg, daemon=True).start()
+        return {"ok": True}
+    return _buyers_apps_post("updatesigndoc", payload)
+
 
 def _fetch_manual_buyers():
     c = _cache_get("buyers", _src_ttl(BUYERS_SOURCE, 60, 10))
