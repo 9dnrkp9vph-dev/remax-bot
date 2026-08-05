@@ -5010,7 +5010,13 @@ def api_sign_send_remote():
     for _r in recs:
         _recent_signs_add(_r)   # נראות מיידית ב"ממתין לחתימה" — עד שהכתיבה ברקע נוחתת
     # שליחה אוטומטית ב-SMS בלבד. וואטסאפ = אופציה ידנית לסוכן (כפתור בצד הלקוח, נשלח מהוואטסאפ של הסוכן — לא אוטומטית מהשרת)
-    msg = ("שלום %s,\nהתבקשת לחתום על מסמך מטעם RE/MAX Family (%s).\nלצפייה וחתימה:\n%s" % (client, agent, link))
+    if token2:
+        # זוג בלעדיות (בקשת אייל 05/08): שני הקישורים כבר ב-SMS הראשון — מוכר + בלעדיות
+        msg = ("שלום %s,\nהתבקשת לחתום על 2 מסמכים מטעם RE/MAX Family (%s).\n"
+               "הסכם מוכר — לצפייה וחתימה:\n%s\n"
+               "הסכם בלעדיות — לצפייה וחתימה:\n%s" % (client, agent, link, base + "/s/" + token2))
+    else:
+        msg = ("שלום %s,\nהתבקשת לחתום על מסמך מטעם RE/MAX Family (%s).\nלצפייה וחתימה:\n%s" % (client, agent, link))
     sms_ok = False
     try: sms_ok = bool(web_send_sms(last9, msg))
     except Exception: sms_ok = False
