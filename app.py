@@ -4592,6 +4592,16 @@ def api_sign_submit():
             # פוש לכל המנהלים על חתימה חדשה + SMS לסוכן
             _notify_managers_signing("נחתם", client, agent, address)
             _sms_agent_signing(client, agent, address, link)
+            # עותק ללקוח (החתמה במקום — בקשת אייל 05/08): קישור להסכם החתום שלו.
+            # בהחתמה מרחוק הלקוח כבר מחזיק את הקישור; כאן הוא חתם על מכשיר הסוכן.
+            try:
+                _cl9 = _last9(phone)
+                if _cl9:
+                    _first = (client or "").split()[0] if (client or "").strip() else ""
+                    web_send_sms(_cl9, "שלום" + ((" " + _first) if _first else "") +
+                                 ", ההסכם שחתמת מטעם RE/MAX Family זמין לצפייה ולשמירה:\n" + link)
+            except Exception:
+                pass
         except Exception as _bge:
             log.error(f"sign submit bg error: {_bge}")
     if doc_saved:   # נכשל = הסוכן ינסה שוב — לא כותבים שורות שיוכפלו בניסיון הבא
