@@ -1649,7 +1649,13 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             # (05/08: "הנוטר" נעלם מחיפוש "מזרחית" כי אין לו שכונה רשומה), רק בלי הבונוס
             score += 6
         else:
-            return 0   # שכונה אחרת מפורשת — באמת מחוץ לחיפוש
+            # שכונה אחרת מפורשת (05/08): מוצגת רק כשהמחיר צמוד לתקציב — ±10%
+            # מהתקרה — קרבת-תקציב מצדיקה להציע חציית שכונה; אחרת מחוץ לחיפוש
+            _bm2 = query.get("budget_max")
+            _pr2 = parse_price(row.get("מחיר", ""))
+            if not (_bm2 and _pr2 and abs(_pr2 - _bm2) / _bm2 <= 0.10):
+                return 0
+            score -= 6   # נכנס, אבל תמיד אחרי נכסי השכונה המבוקשת
     q_street = (query.get("street") or "").strip()
     r_street = (row.get("כתובת", "") or "").strip()
     if q_street and r_street:
