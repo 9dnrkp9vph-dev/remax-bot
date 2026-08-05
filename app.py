@@ -1722,11 +1722,18 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             in_range = False
         if rmax_eff is not None and r_rooms > rmax_eff:
             in_range = False
+        exact_n = bool(q_rmin and q_rmax and q_rmin == q_rmax)
         if in_range:
-            if q_rmin and q_rmax and q_rmin == q_rmax and r_rooms == q_rmin:
+            if exact_n and r_rooms == q_rmin:
                 score += 20
             else:
                 score += 12
+        elif exact_n and q_rmax < r_rooms <= q_rmax + 2:
+            # חיפוש "N חדרים" בדיוק (לא "עד N" ולא טווח): דירה גדולה יותר עד +2 חד'
+            # רלוונטית לקונה — לא נפסלת ב-flex 0, רק מדורגת מתחת להתאמות המדויקות
+            # (05/08: הנוטר 28, 6.5 חד' מול חיפוש 5, נעלם — flex 0 פסל וסולם ה-flex
+            # עצר מוקדם כי כבר היו >=3 תוצאות)
+            score += max(0, 10 - int((r_rooms - q_rmax) * 4))
         elif flex_level == 0:
             return 0
     q_smin = query.get("size_min")
