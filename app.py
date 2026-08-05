@@ -5064,6 +5064,7 @@ def api_sign_complete():
         upd_ok = False
     # נראות מיידית: מסמנים את גשר הנראות כ'נחתם' עכשיו — הסוכן לא ממתין לסנכרון המקור
     _recent_signs_mark_signed(token, link, cid)
+    _cache_clear("signdoc:" + token)   # שהעמוד הציבורי יציג את החתימה, לא עותק ממתין מה-cache
     # השאר — שורת חתימה, קאש והתראות — ברקע: הלקוח מקבל אישור מיד אחרי שמירת המסמך
     # (אותו דפוס כמו האצת send_remote — הסינכרוני הוא רק מה שקובע הצלחה/כישלון).
     def _post_sign_bg():
@@ -5180,9 +5181,18 @@ def _parse_sign_header(header):
 
 @app.route("/s/<token>")
 def public_sign_doc(token):
-    """עמוד ציבורי של ההסכם החתום (ללא התחברות) — נפתח מהקישור בשורת החתימה / מה-SMS."""
+    """עמוד ציבורי של ההסכם החתום (ללא התחברות) — נפתח מהקישור בשורת החתימה / מה-SMS.
+    עם cache: מסמך חתום קבוע לנצח (6ש'); ממתין-לחתימה — 120ש'. בלי זה כל פתיחה
+    משכה מ-Apps Script (נמדד 20-40ש' בזמן האטה של גוגל) ותקעה thread."""
     import html as _h
-    j = _buyers_apps_post("getsigndoc", {"doc_token": token})
+    _ck = "signdoc:" + token
+    j = _cache_get(_ck, 21600)
+    if j is not None and str(((j.get("doc") or {}) if isinstance(j, dict) else {}).get("status", "")) != "signed":
+        j = _cache_get(_ck, 120)   # טרם נחתם — טריות קצרה, שהחתימה תופיע מהר
+    if j is None:
+        j = _buyers_apps_post("getsigndoc", {"doc_token": token})
+        if j and j.get("ok") and j.get("found"):
+            _cache_put(_ck, j)
     if not (j and j.get("ok") and j.get("found")):
         _dbg = _h.escape(str(j)[:400]) if j else "אין תגובה מ-Apps Script (None)"
         return ("<!DOCTYPE html><html dir=rtl lang=he><head><meta charset=utf-8>"
