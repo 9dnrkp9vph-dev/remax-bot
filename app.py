@@ -1581,6 +1581,10 @@ def normalize_city(city: str) -> str:
         return ""
     c = city.strip().replace("קריית", "קרית")
     return re.sub(r"\s+", " ", c)
+# שכונות "הקריות" של חיפה שרשומות בגיליון תחת עיר="חיפה" (05/08: "הנוטר 28" נעלם
+# מחיפוש "קרית חיים" כי המפענח הוציא אותה כעיר ופילטר העיר פסל) — חיפוש בשם
+# השכונה תופס גם עיר="חיפה", בניקוד נמוך מעט מהתאמת עיר מפורשת.
+HAIFA_KRAYOT_NEIGHBORHOODS = {"קרית חיים", "קרית חיים מזרחית", "קרית חיים מערבית", "קרית שמואל"}
 def parse_price(s: str) -> int:
     if not s:
         return 0
@@ -1613,6 +1617,7 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         q_cities = [q_city_single]
     else:
         q_cities = []
+    implied_neigh = ""   # שכונת-קריות שחיפשו כ"עיר" — תוזן לניקוד השכונה למטה
     if q_cities:
         matched_city = False
         for qc in q_cities:
@@ -1624,6 +1629,12 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
                 score += 18
                 matched_city = True
                 break
+            elif qc in HAIFA_KRAYOT_NEIGHBORHOODS and r_city == "חיפה":
+                # מיפוי עיר↔שכונה: הנכס רשום עיר="חיפה" והחיפוש הוא שכונת-קריות שלה
+                score += 22
+                matched_city = True
+                implied_neigh = qc
+                break
         if not matched_city:
             return 0
     else:
@@ -1634,6 +1645,10 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         _qn = (query.get("neighborhood") or "").strip()
         q_neighs_raw = [_qn] if _qn else []
     q_neighs = [str(n).strip() for n in q_neighs_raw if str(n).strip()]
+    if not q_neighs and implied_neigh:
+        # החיפוש "קרית חיים" בלי שכונה מפורשת — השכונה המשתמעת עוברת את אותו ניקוד:
+        # שכונה תואמת +30, אין-נתון-שכונה +6, שכונת-חיפה אחרת → כלל ה-±10% הקיים
+        q_neighs = [implied_neigh]
     if q_neighs:
         r_neigh = (row.get("שכונה", "") or "").strip()
         r_addr_n = (row.get("כתובת", "") or "").strip()
