@@ -5616,6 +5616,18 @@ def api_history():
         "notes": (g.get("notes") or g.get("הערות") or "").strip(),
         "raw": str(g.get("received_at", "") or "").strip(),
     } for g in sigs[:500]]
+    # שעת החתימה האמיתית (sign_docs ב-Supabase) — "נחתם · <מתי נחתם>" במקום שעת השליחה.
+    # מסמכים מלפני המעבר (05/08) אינם בטבלה — יציגו את שעת השליחה כמו קודם.
+    _sdt = _cache_get("signdoc_times", 60)
+    if _sdt is None:
+        _sdt = (_sbdb.signdoc_times() if (_sbdb and _sbdb.enabled()) else {})
+        _cache_put("signdoc_times", _sdt)
+    for _r0 in sig_out:
+        _lk = _r0.get("link") or ""
+        if "/s/" in _lk:
+            _sa = _sdt.get(_lk.rsplit("/s/", 1)[-1].strip("/ "))
+            if _sa:
+                _r0["signed_time"] = _fmt_il_dt(_sa) or _sa
     vphone = _vphone_for_name(eff["name"])
     return jsonify({"ok": True, "role": eff["role"], "name": eff["name"],
                     "dev": bool(s.get("dev", False)),

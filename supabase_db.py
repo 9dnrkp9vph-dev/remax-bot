@@ -280,6 +280,17 @@ def signdoc_update(token, fields):
         return False
 
 
+def signdoc_times():
+    """{token: signed_at} לכל המסמכים החתומים — שעת החתימה האמיתית לרשימת החתימות."""
+    if not enabled():
+        return {}
+    try:
+        recs = _get_all("sign_docs", "token,signed_at", {"status": "eq.signed"})
+        return {r.get("token", ""): r.get("signed_at", "") for r in recs if r.get("token")}
+    except Exception:
+        return {}
+
+
 def insert_invoice_row(row):
     """הוספת חשבונית בודדת (קליטה מ-Fireberry). כפילות row_hash נבלעת בשקט."""
     r = requests.post(SUPABASE_URL + "/rest/v1/invoices",

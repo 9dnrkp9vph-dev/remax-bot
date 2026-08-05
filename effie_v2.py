@@ -3885,7 +3885,8 @@ function render(){
       '<div class="top"><div><div class="ad">' + esc(g.address || g.client || '') + '</div>' +
       '<div class="sb">' + esc(sub) + '</div></div>' + chip + '</div>' +
       '<div class="st ' + (signed ? 'signed' : 'wait') + '"><i></i>' +
-      (signed ? 'נחתם' : 'ממתין לחתימה') + (g.time ? ' · ' + esc(g.time) : '') +
+      (signed ? ('נחתם' + ((g.signed_time || g.time) ? ' · ' + esc(g.signed_time || g.time) : ''))
+              : ('נשלח' + (g.time ? ' · ' + esc(g.time) : '') + ' · ממתין לחתימה')) +
       (signed && g.pct ? ' · עמלה ' + esc(String(g.pct)) + '%' : '') + '</div>' +
       (g.avg ? '<div style="font-size:11px;color:#6E7683;margin-top:3px">ממוצע הנכסים שנצפו: ' +
         esc(g.avg) + ' ₪' + (g.avg_n > 1 ? ' · ' + g.avg_n + ' נכסים' : '') + '</div>' : '') +
