@@ -8884,6 +8884,30 @@ except Exception as _effie_err:
     log.error(f"effie v2 init failed (old app unaffected): {_effie_err}")
 
 # ══════════════════════════════════════════════════════════════════════════════
+# WARMUP — חימום ה-caches הכבדים בעליית התהליך (deploy/restart מרוקן הכל)
+# 05/08: המשתמש הראשון אחרי deploy ספג בנייה קרה — /api/report נמדד 78ש' (מול
+# 0.3ש' חם) וחצה את תקרת ה-100ש' של Cloudflare → אריחי הבית הציגו אפסים.
+# ══════════════════════════════════════════════════════════════════════════════
+def _warmup_caches():
+    for _wname, _wfn in (("sheet", fetch_sheet_rows),
+                         ("calls", lambda: web_fetch_raw("שיחות")),
+                         ("signatures", lambda: web_fetch_raw("חתימות"))):
+        try:
+            _t0 = time.time()
+            _rows = _wfn()
+            log.info(f"warmup {_wname}: {len(_rows or [])} rows in {time.time() - _t0:.1f}s")
+        except Exception as _we:
+            log.warning(f"warmup {_wname} failed: {_we}")
+
+def _start_warmup():
+    # WARMUP_ON_BOOT=0 מכבה (ברירת מחדל: פועל) — לסביבות בדיקה/סקריפטים
+    if os.environ.get("WARMUP_ON_BOOT", "1") != "1":
+        return
+    threading.Thread(target=_warmup_caches, daemon=True, name="warmup").start()
+
+_start_warmup()
+
+# ══════════════════════════════════════════════════════════════════════════════
 # STARTUP
 # ══════════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":

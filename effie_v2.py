@@ -9309,8 +9309,8 @@ def register(app, G):
                 buyers_all += 1
                 if _canon(r.get("agent", "")) == me:
                     buyers_me += 1
-        except Exception:
-            pass
+        except Exception as _be:
+            if log: log.warning(f"brief buyers failed (tile will show 0): {_be}")
         calls_all = calls_me = calls_ans_all = 0
         try:
             my_phones = set(G["_last9"](x) for x in G["_phones_for_name"](s.get("name", "")))
@@ -9324,8 +9324,8 @@ def register(app, G):
                     calls_ans_all += 1
                 if _canon(c.get("agent", "")) == me or G["_last9"](c.get("agent_phone", "")) in my_phones:
                     calls_me += 1
-        except Exception:
-            pass
+        except Exception as _be:
+            if log: log.warning(f"brief calls failed (tile will show 0): {_be}")
         sigb_all = sigb_me = excl_all = excl_me = 0
         try:
             import datetime as _dt3
@@ -9340,8 +9340,8 @@ def register(app, G):
                 elif lb == "בלעדיות":
                     excl_all += 1
                     if mine: excl_me += 1
-        except Exception:
-            pass
+        except Exception as _be:
+            if log: log.warning(f"brief signings failed (tile will show 0): {_be}")
         # עסקאות שנסגרו מתחילת השנה (מוכר/קונה) — דרך _deals_load של app.py
         deals_year = 0
         try:
@@ -9352,8 +9352,8 @@ def register(app, G):
                 m = _re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", cd)
                 if m and int(m.group(3)) == _yr:
                     deals_year += 1
-        except Exception:
-            pass
+        except Exception as _be:
+            if log: log.warning(f"brief deals failed (tile will show 0): {_be}")
         # נכסים חמים כלל-משרדיים (כל הסוכנים) — כרטיסי הסטורי אחרי הסיכום
         hot_props = []
         hot_buyers = 0
@@ -9379,8 +9379,8 @@ def register(app, G):
                     _cr = rb.headers.get("Content-Range", "")
                     if "/" in _cr:
                         hot_buyers = int(_cr.split("/")[-1])
-                except Exception:
-                    pass
+                except Exception as _be:
+                    if log: log.warning(f"brief hot-buyers count failed: {_be}")
         except Exception as e:
             if log: log.warning(f"effie brief hot: {e}")
         _bout = {"ok": True, "buyersMe": buyers_me, "buyersAll": buyers_all,
