@@ -8943,6 +8943,43 @@ def _start_warmup():
 
 _start_warmup()
 
+def _sentinel_loop():
+    """שומר-סף (13/08): השירות מת פעמיים בלי שום שגיאה בלוג — בקשות פשוט הפסיקו
+    להיענות. בודק מבפנים כל 15ש'; 3 כשלים רצופים → dump מלא של כל ה-threads ללוג
+    (faulthandler) — האבחנה הסופית של איפה הכל תקוע. SENTINEL=0 מכבה."""
+    import faulthandler, sys as _sys
+    _port = os.environ.get("PORT", "10000")
+    _fails = 0
+    time.sleep(20)   # לא בודקים בזמן העלייה
+    while True:
+        _ok = False
+        try:
+            _r = requests.get("http://127.0.0.1:%s/health" % _port, timeout=5)
+            _ok = _r.status_code < 500
+        except Exception:
+            _ok = False
+        if _ok:
+            if _fails >= 3:
+                log.error("sentinel: service recovered after %s failed checks" % _fails)
+            _fails = 0
+        else:
+            _fails += 1
+            log.warning("sentinel: local /health failed (%s consecutive)" % _fails)
+            if _fails == 3 or (_fails > 3 and _fails % 20 == 0):
+                log.error("sentinel: service wedged — dumping all thread stacks")
+                try:
+                    faulthandler.dump_traceback(file=_sys.stderr, all_threads=True)
+                except Exception as _se:
+                    log.error("sentinel dump failed: %s" % _se)
+        time.sleep(15)
+
+def _start_sentinel():
+    if os.environ.get("SENTINEL", "1") != "1":
+        return
+    threading.Thread(target=_sentinel_loop, daemon=True, name="sentinel").start()
+
+_start_sentinel()
+
 # ══════════════════════════════════════════════════════════════════════════════
 # STARTUP
 # ══════════════════════════════════════════════════════════════════════════════
