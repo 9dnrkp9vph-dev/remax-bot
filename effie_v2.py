@@ -1119,15 +1119,23 @@ function dayDiff(d){   // ימים מהיום (שלילי = עבר)
 var M = {ready:false, name:'', calls:0, sigs:0, sigSample:null, buyersNew:0, buyersUn:0, buyersTot:0,
          meets:[], meetToday:0, meetLate:0, props:0, excl:0, nb:-1};
 
+/* 13/08: פתיחה בדיוק בחלון החלפת deploy → כל הקריאות נכשלות מהר → אפסים "נתקעים"
+   (הבית טוען פעם אחת; ב-iOS חזרה מהרקע לא טוענת את הדף מחדש). התיקון: כשל → עד
+   3 ניסיונות חוזרים כל 6ש'; חזרה מהרקע כשהנתונים בני 90ש'+ → רענון שקט. */
+var LD_TRY = 0, LD_TS = 0;
 function loadData(){
+  var ldFailed = false;
+  var LDF = function(){ ldFailed = true; return {}; };
   return Promise.all([
-    GET('/api/report?period=week').catch(function(){ return {}; }),
-    GET('/api/my/buyers').catch(function(){ return {}; }),
-    GET('/api/my/properties').catch(function(){ return {}; }),
-    GET('/api/signatures').catch(function(){ return {}; }),
-    GET('/api/newborn/meetings').catch(function(){ return {}; }),
-    GET('/v2/api/sign/drafts').catch(function(){ return {}; })
+    GET('/api/report?period=week').catch(LDF),
+    GET('/api/my/buyers').catch(LDF),
+    GET('/api/my/properties').catch(LDF),
+    GET('/api/signatures').catch(LDF),
+    GET('/api/newborn/meetings').catch(LDF),
+    GET('/v2/api/sign/drafts').catch(LDF)
   ]).then(function(rs){
+    if (ldFailed && LD_TRY < 3){ LD_TRY++; setTimeout(loadData, 6000); }
+    else if (!ldFailed){ LD_TRY = 0; LD_TS = Date.now(); }
     // גיוסים ב-7 הימים האחרונים — כל החתמת בעל נכס (בלעדיות או מוכר), בלי כפילויות
     var wk7 = Math.floor(Date.now() / 1000) - 7 * 86400;
     var seen = {};
@@ -1174,6 +1182,10 @@ function loadData(){
     if (STORY.open) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי
   });
 }
+document.addEventListener('visibilitychange', function(){
+  // חזרה מהרקע (iOS לא טוען את הדף מחדש) — נתונים ישנים/כושלים מתרעננים בשקט
+  if (document.visibilityState === 'visible' && Date.now() - LD_TS > 90000) loadData();
+});
 
 function renderDash(){
   el('stCalls').textContent = M.calls;
