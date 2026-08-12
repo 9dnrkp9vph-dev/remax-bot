@@ -2065,7 +2065,8 @@ def _excl_epoch(s) -> float:
         return datetime.fromisoformat(s.replace("Z","+00:00")).timestamp()
     except Exception:
         pass
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?", s)
+    # גם 12.8.2026 (פורמט ייצוא פיירברי) — תאריך-נקודות החזיר 0 ונפל מסינוני טווח (13/08)
+    m = re.match(r"^(\d{1,2})[./](\d{1,2})[./](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?", s)
     if m:
         d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
         hh, mi, ss = int(m.group(4) or 0), int(m.group(5) or 0), int(m.group(6) or 0)
@@ -8904,15 +8905,35 @@ except Exception as _effie_err:
 # 0.3ש' חם) וחצה את תקרת ה-100ש' של Cloudflare → אריחי הבית הציגו אפסים.
 # ══════════════════════════════════════════════════════════════════════════════
 def _warmup_caches():
-    for _wname, _wfn in (("sheet", fetch_sheet_rows),
-                         ("calls", lambda: web_fetch_raw("שיחות")),
-                         ("signatures", lambda: web_fetch_raw("חתימות"))):
-        try:
-            _t0 = time.time()
-            _rows = _wfn()
-            log.info(f"warmup {_wname}: {len(_rows or [])} rows in {time.time() - _t0:.1f}s")
-        except Exception as _we:
-            log.warning(f"warmup {_wname} failed: {_we}")
+    # 13/08 02:30: שתי הפלות — ה-warmup חשוד כטריגר. הוקשח: כל שלב רץ ב-thread
+    # משלו עם תקרת 90ש', וה-fetch עוקף את נעילת ה-singleflight (כותב ישירות ל-cache)
+    # — שלב תקוע לא מחזיק שום משאב משותף ולא משפיע על בקשות חיות.
+    def _step(_wname, _wfn, _ck):
+        _t0 = time.time()
+        _box = {}
+        def _run():
+            try:
+                _box["rows"] = _wfn()
+            except Exception as _we:
+                _box["err"] = _we
+        _th = threading.Thread(target=_run, daemon=True, name="warmup-" + _wname)
+        _th.start()
+        _th.join(timeout=90)
+        if _th.is_alive():
+            log.warning(f"warmup {_wname}: still running after 90s — skipping (not blocking anything)")
+            return
+        if _box.get("err") is not None:
+            log.warning(f"warmup {_wname} failed: {_box['err']}")
+            return
+        _rows = _box.get("rows")
+        if _rows and _ck:
+            _cache_put(_ck, _rows)
+        log.info(f"warmup {_wname}: {len(_rows or [])} rows in {time.time() - _t0:.1f}s")
+
+    _step("sheet", fetch_sheet_rows, "")   # fetch_sheet_rows כותב ל-cache בעצמו
+    _step("calls", lambda: _web_fetch_raw_uncached("שיחות"), "raw:שיחות:01/01/2020:31/12/2099")
+    _step("signatures", lambda: _web_fetch_raw_uncached("חתימות"), "raw:חתימות:01/01/2020:31/12/2099")
+    log.info("warmup done")
 
 def _start_warmup():
     # WARMUP_ON_BOOT=0 מכבה (ברירת מחדל: פועל) — לסביבות בדיקה/סקריפטים
