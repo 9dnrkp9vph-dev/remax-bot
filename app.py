@@ -2992,6 +2992,9 @@ def _sf_lock(key):
             lk = _threading.Lock(); _sf_locks[key] = lk
         return lk
 
+# תקרת ההמתנה לנעילת ה-singleflight. 13/08 01:30: fetch שנתלה החזיק את הנעילה,
+# כל הבקשות נערמו מאחוריה בהמתנה אינסופית → כל 8 ה-threads נחנקו → השירות נפל.
+_SF_WAIT = 20
 def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
     _ck = "raw:" + str(type_he) + ":" + str(frm) + ":" + str(to)
     _ttl = 60
@@ -3000,7 +3003,17 @@ def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
     c = _cache_get(_ck, _ttl)
     if c is not None:
         return c
-    with _sf_lock(_ck):
+    _lk = _sf_lock(_ck)
+    if not _lk.acquire(timeout=_SF_WAIT):
+        # לא ממתינים לנצח: מגישים cache ישן אם קיים (עדיף מספרים של אתמול מכלום),
+        # אחרת ריק — וה-thread משתחרר לשרת בקשות אחרות
+        _stale = _cache_get(_ck, 10**9)
+        if _stale is not None:
+            log.warning(f"web_fetch_raw {type_he}: lock busy {_SF_WAIT}s — serving stale cache")
+            return _stale
+        log.warning(f"web_fetch_raw {type_he}: lock busy {_SF_WAIT}s — returning empty")
+        return []
+    try:
         c = _cache_get(_ck, _ttl)   # בדיקה כפולה — אולי חוט אחר כבר מילא בזמן ההמתנה
         if c is not None:
             return c
@@ -3008,6 +3021,8 @@ def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
         if rows:
             _cache_put(_ck, rows)
         return rows
+    finally:
+        _lk.release()
 def _web_fetch_raw_uncached(type_he, frm="01/01/2020", to="31/12/2099"):
     if type_he == "שיחות" and CALLS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
         try:
