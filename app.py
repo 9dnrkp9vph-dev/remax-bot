@@ -2594,10 +2594,11 @@ def _load_config():
             return _LAST_GOOD_CONFIG
         return {}
 
+_CFG_BACKUP_MUTE_UNTIL = 0.0   # מנתק-זרם לגיבוי-הגיליון: אחרי כשל ממתינים 15 דק' (13/08)
 def _save_config(cfg):
     """כתיבת הקונפיג חזרה ל-Apps Script. מעדכן מטמון בהצלחה.
     הגנה: לא כותבים קונפיג שמרוקן את הסוכנים+תפקידים אם קודם היו כאלה (מונע מחיקה בטעות)."""
-    global _LAST_GOOD_CONFIG
+    global _LAST_GOOD_CONFIG, _CFG_BACKUP_MUTE_UNTIL
     if not isinstance(cfg, dict):
         return False
     if isinstance(_LAST_GOOD_CONFIG, dict) and (_LAST_GOOD_CONFIG.get("agents") or _LAST_GOOD_CONFIG.get("roles")):
@@ -2625,13 +2626,21 @@ def _save_config(cfg):
             _cache_put("app_config", cfg)
             _cache_clear("alias_key_map")
             _cache_clear("newborn_delays")
-            # שכפול לגיליון — אם נכשל, הסנכרון גיליון→Supabase עלול להחזיר מצב ישן; חייבים לוג
-            try:
-                _bj = _buyers_apps_post("setconfig", {"config": _json.dumps(cfg, ensure_ascii=False)})
-                if not (_bj and _bj.get("ok")):
-                    log.error(f"config sheet backup failed (sync may resurrect stale state): {str(_bj)[:200]}")
-            except Exception as _be:
-                log.error(f"config sheet backup exception: {_be}")
+            # שכפול לגיליון — אם נכשל, הסנכרון גיליון→Supabase עלול להחזיר מצב ישן; חייבים לוג.
+            # 13/08: מנתק-זרם — Apps Script קורס הציף עשרות כשלים בשעה (ניסיון פר-כתיבה);
+            # אחרי כשל משתיקים ניסיונות ל-15 דק'. בריא = lockstep מלא כמו תמיד (בטוח מול
+            # סנכרון-ההחייאה); הכתיבה הבאה אחרי החלון מגבה את הקונפיג המלא העדכני.
+            if time.time() >= _CFG_BACKUP_MUTE_UNTIL:
+                try:
+                    _bj = _buyers_apps_post("setconfig", {"config": _json.dumps(cfg, ensure_ascii=False)})
+                    if _bj and _bj.get("ok"):
+                        _CFG_BACKUP_MUTE_UNTIL = 0.0
+                    else:
+                        _CFG_BACKUP_MUTE_UNTIL = time.time() + 900
+                        log.error(f"config sheet backup failed (muting retries 15m; sync may resurrect stale state): {str(_bj)[:200]}")
+                except Exception as _be:
+                    _CFG_BACKUP_MUTE_UNTIL = time.time() + 900
+                    log.error(f"config sheet backup exception (muting retries 15m): {_be}")
             return True
         except Exception as _sbe:
             log.error(f"supabase config save failed — falling back to sheets: {_sbe}")
