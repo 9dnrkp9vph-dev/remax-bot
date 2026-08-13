@@ -8657,6 +8657,30 @@ def sig_ingest_norm(b):
                                .encode("utf-8")).hexdigest()
     return sk, riso, raw
 
+def sig_import_norm_row(r):
+    """שורת טאב "חתימות" מהגיליון (מבנה getRaw_) → (source_key, received_iso, raw) לייבוא
+    ההיסטורי החד-פעמי, או None לשורה ריקה. source_key='sheet:'+hash דטרמיניסטי —
+    הרצה חוזרת של הייבוא לא מכפילה. תאריך לא-פריס → היום (לא מאבדים שורות)."""
+    def g(k):
+        return str(r.get(k, "") or "").strip()
+    if not (g("agent") or g("client_name") or g("event_id")):
+        return None
+    rcv = g("received_at")
+    iso = inv_parse_dt(rcv)
+    if not iso:
+        import datetime as _ds
+        from zoneinfo import ZoneInfo as _ZS
+        iso = _ds.datetime.now(_ZS("Asia/Jerusalem")).strftime("%Y-%m-%dT%H:%M:00+03:00")
+    riso = iso[:10]
+    raw = {k: g(k) for k in ("event_id", "deal_type", "agent", "client_name",
+                             "address", "city", "commission_pct", "notes")}
+    raw["received_at"] = rcv
+    import hashlib as _hs
+    sk = "sheet:" + _hs.sha1("|".join([raw["agent"], raw["client_name"], raw["deal_type"],
+                                       raw["address"], rcv, raw["event_id"]])
+                             .encode("utf-8")).hexdigest()
+    return sk, riso, raw
+
 
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
@@ -9633,6 +9657,37 @@ def register(app, G):
             return jsonify({"ok": True, "source_key": sk})
         except Exception as e:
             if log: log.error(f"v2 signatures ingest error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    @app.route("/v2/api/dev/signatures_import", methods=["POST"])
+    def v2_api_dev_signatures_import():
+        """ייבוא חד-פעמי (שלב ב') של טאב "חתימות" ההיסטורי מהגיליון ל-Supabase.
+        מוגן dev; אידמפוטנטי — הרצה חוזרת לא מכפילה (source_key דטרמיניסטי)."""
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        try:
+            rows = G["fetch_signings_from_sheet"]() or []
+            triples = []
+            skipped = 0
+            for r in rows:
+                t = sig_import_norm_row(r)
+                if t:
+                    triples.append(t)
+                else:
+                    skipped += 1
+            sb = G.get("_sbdb")
+            if not (sb and sb.enabled()):
+                return jsonify({"ok": False, "reason": "no_supabase"}), 500
+            sent = sb.upsert_signature_rows(triples)
+            try:
+                G["_cache_clear"]("raw:חתימות:01/01/2020:31/12/2099")
+            except Exception:
+                pass
+            if log: log.info(f"signatures import: {sent} sent, {skipped} skipped of {len(rows)} sheet rows")
+            return jsonify({"ok": True, "sheet_rows": len(rows), "imported": sent, "skipped": skipped})
+        except Exception as e:
+            if log: log.error(f"v2 signatures import error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
     @app.route("/v2/api/admin/overview", methods=["GET"])
