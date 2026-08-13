@@ -1380,53 +1380,6 @@ def _fetch_sheet_rows_raw() -> list:
     except Exception as e:
         log.error(f"Fetch sheet error: {e}")
         return []
-SIGNINGS_SHEET_TAB = os.environ.get("SIGNINGS_SHEET_TAB", "חתימות")
-def fetch_signings_from_sheet():
-    """קורא חתימות מטאב מלא (ייצוא מהקרם) בגיליון הנכסים. ריק/לא קיים -> [] ונפילה חזרה."""
-    c = _cache_get("signings_sheet", 300)
-    if c is not None:
-        return c
-    if not GOOGLE_SHEETS_API_KEY:
-        return []
-    from urllib.parse import quote
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(SIGNINGS_SHEET_TAB)}!A1:Z?key={GOOGLE_SHEETS_API_KEY}"
-    try:
-        r = requests.get(url, timeout=15)
-        if r.status_code != 200:
-            return []
-        data = r.json().get("values", [])
-        if len(data) < 2:
-            return []
-        headers = [str(h).strip() for h in data[0]]
-        def col(row, name):
-            try:
-                i = headers.index(name)
-            except ValueError:
-                return ""
-            return row[i] if i < len(row) else ""
-        out = []
-        for row in data[1:]:
-            dt = col(row, "סוג הסכם"); agent = col(row, "סוכן")
-            if not dt and not agent:
-                continue
-            rec = col(row, "נוצר בתאריך")
-            out.append({
-                "agent": agent,
-                "agent_phone": col(row, "מספר טלפון סוכן 1"),
-                "deal_type": dt,
-                "received_at": rec,
-                "_date_key": rec,
-                "address": col(row, "כתובת") or col(row, "רחוב"),
-                "city": "",
-                "client_name": col(row, "שם לקוח"),
-                "commission_pct": col(row, "העמלה שנחתמה"),
-                "notes": col(row, "notes") or col(row, "הערות"),
-            })
-        _cache_put("signings_sheet", out)
-        return out
-    except Exception as e:
-        log.error(f"signings sheet error: {e}")
-        return []
 _RECENT_SIGNS = []   # (ts, rec) — גשר נראות: חתימה שנשלחה עכשיו מופיעה מיד, עד שהסנכרון למקור נוחת
 def _recent_signs_add(rec):
     try:
@@ -1525,18 +1478,10 @@ def _recent_signs_merge(rows):
     return out + extra
 
 def get_signings(frm="01/01/2020", to="31/12/2099"):
-    """חתימות לתקופה. אם יש טאב מלא (ייצוא מהקרם) — הוא הבסיס המדויק, ומוסיפים מהמקור
-    האוטומטי (Apps Script) רק חתימות חדשות יותר מההדבקה האחרונה, כך שהדוח תמיד עדכני
-    גם בלי הדבקה ידנית כל יום. אם אין טאב מלא — נופלים חזרה למקור האוטומטי בלבד."""
-    manual = fetch_signings_from_sheet()
-    if manual:
-        try:
-            auto = web_fetch_raw("חתימות")
-        except Exception:
-            auto = []
-        allsig = manual + auto
-    else:
-        allsig = web_fetch_raw("חתימות", frm, to)
+    """חתימות לתקופה — מהמקור האוטומטי (Supabase/Apps Script) + גשר הטריות.
+    (13/08: הוסר מסלול "טאב הייצוא מהקרם" — התגלה שטאב כזה לא קיים בגיליון;
+    הקריאה החזירה [] תמיד וכל ההיסטוריה ממילא במקור האוטומטי. git: c04da63~)"""
+    allsig = web_fetch_raw("חתימות", frm, to)
     allsig = _recent_signs_merge(allsig)
     allsig = _recent_sign_dels_filter(allsig)
     # דדופ יציב אחד (13/08) במקום שתי השכבות הישנות: המפתח הישן של המיזוג
@@ -8508,7 +8453,7 @@ def _warm_once():
     _warm_key("sheet_rows", _src_ttl(PROPS_SOURCE, 60, 90), _props_fetch_raw)
     # אלה מנהלים מטמון בעצמם — קריאה דרך העטיפה עושה עבודה רק כשה-TTL פג,
     # וכך ברוב המקרים ה-warmer (ולא משתמש) משלם את המשיכה האיטית
-    for _fn in (fetch_signings_from_sheet, _fetch_hidden_calls, fetch_external_exclusives, _load_config):
+    for _fn in (_fetch_hidden_calls, fetch_external_exclusives, _load_config):
         try:
             _fn()
         except Exception:
@@ -8905,44 +8850,8 @@ except Exception as _effie_err:
 # 05/08: המשתמש הראשון אחרי deploy ספג בנייה קרה — /api/report נמדד 78ש' (מול
 # 0.3ש' חם) וחצה את תקרת ה-100ש' של Cloudflare → אריחי הבית הציגו אפסים.
 # ══════════════════════════════════════════════════════════════════════════════
-def _warmup_caches():
-    # 13/08 02:30: שתי הפלות — ה-warmup חשוד כטריגר. הוקשח: כל שלב רץ ב-thread
-    # משלו עם תקרת 90ש', וה-fetch עוקף את נעילת ה-singleflight (כותב ישירות ל-cache)
-    # — שלב תקוע לא מחזיק שום משאב משותף ולא משפיע על בקשות חיות.
-    def _step(_wname, _wfn, _ck):
-        _t0 = time.time()
-        _box = {}
-        def _run():
-            try:
-                _box["rows"] = _wfn()
-            except Exception as _we:
-                _box["err"] = _we
-        _th = threading.Thread(target=_run, daemon=True, name="warmup-" + _wname)
-        _th.start()
-        _th.join(timeout=90)
-        if _th.is_alive():
-            log.warning(f"warmup {_wname}: still running after 90s — skipping (not blocking anything)")
-            return
-        if _box.get("err") is not None:
-            log.warning(f"warmup {_wname} failed: {_box['err']}")
-            return
-        _rows = _box.get("rows")
-        if _rows and _ck:
-            _cache_put(_ck, _rows)
-        log.info(f"warmup {_wname}: {len(_rows or [])} rows in {time.time() - _t0:.1f}s")
 
-    _step("sheet", fetch_sheet_rows, "")   # fetch_sheet_rows כותב ל-cache בעצמו
-    _step("calls", lambda: _web_fetch_raw_uncached("שיחות"), "raw:שיחות:01/01/2020:31/12/2099")
-    _step("signatures", lambda: _web_fetch_raw_uncached("חתימות"), "raw:חתימות:01/01/2020:31/12/2099")
-    log.info("warmup done")
 
-def _start_warmup():
-    # WARMUP_ON_BOOT=0 מכבה (ברירת מחדל: פועל) — לסביבות בדיקה/סקריפטים
-    if os.environ.get("WARMUP_ON_BOOT", "1") != "1":
-        return
-    threading.Thread(target=_warmup_caches, daemon=True, name="warmup").start()
-
-_start_warmup()
 
 def _sentinel_loop():
     """שומר-סף (13/08): השירות מת פעמיים בלי שום שגיאה בלוג — בקשות פשוט הפסיקו

@@ -243,35 +243,6 @@ def upsert_signature_row(source_key, received_iso, raw):
     return True
 
 
-def upsert_signature_rows(triples):
-    """ייבוא בכמויות: רשימת (source_key, received_iso, raw) → upsert במנות של 500
-    לפי (office_id, source_key). מחזיר כמה שורות נשלחו. אידמפוטנטי."""
-    total = 0
-    batch = []
-    def _row(sk, riso, raw):
-        return {"office_id": SB_OFFICE_ID, "source_key": sk,
-                "event_id": raw.get("event_id", ""), "deal_type": raw.get("deal_type", ""),
-                "agent": raw.get("agent", ""), "client_name": raw.get("client_name", ""),
-                "address": raw.get("address", ""), "city": raw.get("city", ""),
-                "commission_pct": raw.get("commission_pct", ""), "notes": raw.get("notes", ""),
-                "received_at": riso, "raw": raw}
-    def _flush():
-        nonlocal total, batch
-        if not batch:
-            return
-        r = requests.post(SUPABASE_URL + "/rest/v1/signatures",
-                          headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
-                          params={"on_conflict": "office_id,source_key"},
-                          json=batch, timeout=60)
-        r.raise_for_status()
-        total += len(batch)
-        batch = []
-    for (sk, riso, raw) in triples:
-        batch.append(_row(sk, riso, raw))
-        if len(batch) >= 500:
-            _flush()
-    _flush()
-    return total
 
 
 def signdoc_save(doc):
