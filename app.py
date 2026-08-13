@@ -1534,41 +1534,42 @@ def get_signings(frm="01/01/2020", to="31/12/2099"):
             auto = web_fetch_raw("חתימות")
         except Exception:
             auto = []
-        # מפתח זהות לזיהוי כפילות בין הייצוא מהקרם לבין החתימות הדיגיטליות (סוכן+לקוח+יום).
-        # לא משווים לפי חותמת זמן — חתימה דיגיטלית נושאת אזור-זמן ישראל, מה שהיה גורם לה
-        # ליפול מתחת לחותמת של רשומות קרם מאותו יום ולהיעלם מהטאב.
-        def _sig_day(s):
-            e = _excl_epoch(s)
-            if not e: return ""
-            import datetime as _dt
-            try: return _dt.datetime.fromtimestamp(e).strftime("%d/%m/%Y")
-            except Exception: return ""
-        def _sig_key(g):
-            # כולל את תווית ההסכם המנורמלת (_deal_label מנרמל עברית-גיליון ואנגלית-אוטומטי
-            # לאותה תווית) — כך שבלעדיות ומכר של אותו נכס/יום נשמרות כשתי חתימות נפרדות,
-            # אבל אותה חתימה משני מקורות עדיין מזוהה ככפילות.
-            return (_canon_key(g.get("agent", "")), _canon_key(g.get("client_name", "")),
-                    _sig_day(g.get("received_at", "")), _deal_label(g.get("deal_type", "")))
-        seen = set(_sig_key(g) for g in manual)
-        extra = [g for g in auto if _sig_key(g) not in seen]
-        allsig = manual + extra
+        allsig = manual + auto
     else:
         allsig = web_fetch_raw("חתימות", frm, to)
     allsig = _recent_signs_merge(allsig)
     allsig = _recent_sign_dels_filter(allsig)
-    # שורות זהות לגמרי = כפילות ודאית במקור — מסננים.
-    # חשוב: כולל deal_type — נכס אחד מייצר זוג חתימות (OWNER_EXCLUSIVE + OWNER_SALE)
-    # עם אותו event_id/לקוח ולעיתים אותה חותמת-זמן; בלי deal_type הבלעדיות נזרקת בטעות.
-    _seen_exact = set()
-    _dedup = []
+    # דדופ יציב אחד (13/08) במקום שתי השכבות הישנות: המפתח הישן של המיזוג
+    # (סוכן+לקוח+יום+תווית, בלי כתובת) בלע נכס שני של אותו לקוח באותו יום,
+    # וההשוואה המדויקת פספסה את אותה החתמה משני מקורות בהבדלי פורמט ("2 נכסים").
+    # המפתח: סוכן+לקוח+יום+תווית+עוגן-כתובת (עד המספר הראשון — עמיד לעיר שנוספת).
+    # זוג מוכר+בלעדיות שורד (תווית שונה); שורה עם קישור חתום גוברת על כפילתה.
+    def _sig_day(s):
+        e = _excl_epoch(s)
+        if not e: return ""
+        import datetime as _dt
+        try: return _dt.datetime.fromtimestamp(e).strftime("%d/%m/%Y")
+        except Exception: return ""
+    def _addr_anchor(a):
+        k = _sign_addr_key(str(a or "").split("|")[0])
+        m = re.match(r"^(\D*?\d+)", k)
+        return m.group(1) if m else k
+    _best = {}
+    _order = []
     for g in allsig:
-        _k = (str(g.get("event_id", "") or ""), str(g.get("received_at", "") or ""),
-              _canon_key(g.get("client_name", "")), str(g.get("deal_type", "") or ""))
-        if _k in _seen_exact:
-            continue
-        _seen_exact.add(_k)
-        _dedup.append(g)
-    allsig = _dedup
+        ak = _canon_key(g.get("agent", "")); ck = _canon_key(g.get("client_name", ""))
+        if not ak and not ck:
+            _k = ("_anon_", id(g))   # שורות בלי שם — לא מקבצים ביניהן
+        else:
+            _k = (ak, ck, _sig_day(g.get("received_at", "")),
+                  _deal_label(g.get("deal_type", "")), _addr_anchor(g.get("address", "")))
+        _cur = _best.get(_k)
+        if _cur is None:
+            _best[_k] = g
+            _order.append(_k)
+        elif str(g.get("commission_pct", "") or "") and not str(_cur.get("commission_pct", "") or ""):
+            _best[_k] = g   # השורה החתומה (עם קישור המסמך) גוברת
+    allsig = [_best[_k] for _k in _order]
     lo = _excl_epoch(frm); hi = _excl_epoch(to) + 86399
     out = []
     for g in allsig:

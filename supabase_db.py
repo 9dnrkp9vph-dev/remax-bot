@@ -225,6 +225,24 @@ def signatures_delete(event_id="", received_at="", client_name=""):
         return False
 
 
+def upsert_signature_row(source_key, received_iso, raw):
+    """שורת חתימה מ-webhook פיירברי — upsert לפי (office_id, source_key):
+    הטריגר "נוצרה או עודכנה" מעדכן שורה קיימת במקום להכפיל; retry לא מכפיל.
+    raw = במבנה getRaw_ (המפתחות ש-fetch_signatures_rows מחזיר 1:1)."""
+    row = {"office_id": SB_OFFICE_ID, "source_key": source_key,
+           "event_id": raw.get("event_id", ""), "deal_type": raw.get("deal_type", ""),
+           "agent": raw.get("agent", ""), "client_name": raw.get("client_name", ""),
+           "address": raw.get("address", ""), "city": raw.get("city", ""),
+           "commission_pct": raw.get("commission_pct", ""), "notes": raw.get("notes", ""),
+           "received_at": received_iso, "raw": raw}
+    r = requests.post(SUPABASE_URL + "/rest/v1/signatures",
+                      headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
+                      params={"on_conflict": "office_id,source_key"},
+                      json=[row], timeout=15)
+    r.raise_for_status()
+    return True
+
+
 def signdoc_save(doc):
     """upsert מסמך חתימה לפי token (טבלת sign_docs). doc במבנה של savesigndoc:
     doc_token, event_id, status, header, docs (מחרוזת JSON), signature, signed_at."""

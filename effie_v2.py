@@ -8621,6 +8621,42 @@ def inv_name_key(s):
     t = _re.sub(r'["\'׳״]', '', str(s or ''))
     return ' '.join(sorted(t.split()))
 
+def sig_ingest_norm(b):
+    """payload חתימה מאוטומציית פיירברי (אנגלית/עברית) → (source_key, תאריך ISO לעמודת
+    received_at, raw במבנה getRaw_ שהאפליקציה קוראת) — או None כשאין תוכן מהותי.
+    תאריך חסר/לא-פריס → עכשיו (שעון ישראל); upsert לפי source_key כך ש"נוצרה או
+    עודכנה" מעדכן שורה קיימת ו-retry לא מכפיל."""
+    def f(*names):
+        for n in names:
+            v = b.get(n)
+            if v is not None and str(v).strip() not in ("", "-"):
+                return str(v).strip()
+        return ""
+    event_id = f("event_id", "מזהה")
+    agent = f("agent", "סוכן")
+    client = f("client_name", "לקוח", "שם לקוח")
+    if not (event_id or agent or client):
+        return None
+    iso = inv_parse_dt(f("date", "received_at", "תאריך"))
+    if not iso:
+        import datetime as _ds
+        from zoneinfo import ZoneInfo as _ZS
+        iso = _ds.datetime.now(_ZS("Asia/Jerusalem")).strftime("%Y-%m-%dT%H:%M:00+03:00")
+    riso = iso[:10]
+    rcv = "%s/%s/%s %s" % (iso[8:10], iso[5:7], iso[0:4], iso[11:16])
+    raw = {"event_id": event_id, "deal_type": f("deal_type", "סוג הסכם", "סוג עסקה"),
+           "agent": agent, "client_name": client,
+           "address": f("address", "כתובת"), "city": f("city", "עיר"),
+           "commission_pct": f("commission_pct", "עמלה"), "notes": f("notes", "הערות"),
+           "phone": f("phone", "טלפון"), "received_at": rcv}
+    if event_id:
+        sk = "fb:" + event_id
+    else:
+        import hashlib as _hs
+        sk = "fbh:" + _hs.sha1("|".join([agent, client, raw["deal_type"], raw["address"], riso])
+                               .encode("utf-8")).hexdigest()
+    return sk, riso, raw
+
 
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
@@ -9566,6 +9602,37 @@ def register(app, G):
             return jsonify({"ok": True})
         except Exception as e:
             if log: log.error(f"v2 invoices ingest error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    # ── חתימות מפיירברי — webhook ישיר (מתכון החשבוניות; ספק 2026-08-13) ──────
+    _SIGN_INGEST_KEY = (os.environ.get("SIGN_INGEST_KEY") or "").strip()
+
+    @app.route("/v2/api/signatures/ingest", methods=["POST"])
+    def v2_api_signatures_ingest():
+        import hmac as _hmac
+        b = request.get_json(silent=True) or {}
+        # המפתח מגיע בשדה token שהאוטומציה כבר שולחת (או header X-Sign-Key)
+        k = (str(b.get("token", "") or "") or request.headers.get("X-Sign-Key", "") or "").strip()
+        if not _SIGN_INGEST_KEY or not k or not _hmac.compare_digest(k, _SIGN_INGEST_KEY):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        try:
+            norm = sig_ingest_norm(b)
+            if not norm:
+                return jsonify({"ok": False, "reason": "empty"})
+            sk, riso, raw = norm
+            sb = G.get("_sbdb")
+            if not (sb and sb.enabled()):
+                return jsonify({"ok": False, "reason": "no_supabase"}), 500
+            sb.upsert_signature_row(sk, riso, raw)
+            try:
+                G["_cache_clear"]("raw:חתימות:01/01/2020:31/12/2099")   # שתופיע מיד
+            except Exception:
+                pass
+            _log_activity("Fireberry", "system", "", "חתימה מפיירברי",
+                          ((raw.get("client_name") or "") + " " + (raw.get("address") or ""))[:60].strip())
+            return jsonify({"ok": True, "source_key": sk})
+        except Exception as e:
+            if log: log.error(f"v2 signatures ingest error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
     @app.route("/v2/api/admin/overview", methods=["GET"])
