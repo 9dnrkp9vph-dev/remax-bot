@@ -198,6 +198,65 @@ def fetch_buyers_rows():
     return rows
 
 
+_BUYER_KEYS = ("date", "name", "phone", "budget", "summary", "agent", "agent_phone", "search")
+
+def buyers_insert(raw):
+    """קונה חדש — כתיבה ישירה (23/08: הקונים מוזנים רק מהאפליקציה; הגיליון קפא).
+    sheet_row = הגבוה ביותר + 1 (ממשיך את המספור הקיים); על התנגשות ייחודיות (409)
+    ניסיון חוזר עד 3 פעמים. מחזיר את מספר השורה. raw תמיד עם 8 המפתחות (מבנה listbuyers)."""
+    rec = {k: str(raw.get(k, "") if raw.get(k) is not None else "") for k in _BUYER_KEYS}
+    last_err = None
+    for _attempt in range(3):
+        g = requests.get(SUPABASE_URL + "/rest/v1/buyers", headers=_headers(),
+                         params={"select": "sheet_row", "office_id": "eq." + SB_OFFICE_ID,
+                                 "order": "sheet_row.desc", "limit": "1"}, timeout=_TIMEOUT)
+        g.raise_for_status()
+        top = g.json() or []
+        row = int(top[0]["sheet_row"]) + 1 if top else 2   # שורה 1 = כותרות בגיליון
+        r = requests.post(SUPABASE_URL + "/rest/v1/buyers",
+                          headers={**_headers(), "Prefer": "return=minimal"},
+                          json=[{"office_id": SB_OFFICE_ID, "sheet_row": row, "raw": rec,
+                                 "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()}],
+                          timeout=_TIMEOUT)
+        if r.status_code == 409:
+            last_err = "conflict on row %s" % row
+            continue
+        r.raise_for_status()
+        return row
+    raise RuntimeError("buyers_insert: %s" % last_err)
+
+
+def buyers_update(row, fields):
+    """עדכון שדות בקונה קיים (לפי sheet_row): ממזג לתוך raw ו-PATCH. שורה לא קיימת → False."""
+    row = int(row)
+    g = requests.get(SUPABASE_URL + "/rest/v1/buyers", headers=_headers(),
+                     params={"select": "raw", "office_id": "eq." + SB_OFFICE_ID,
+                             "sheet_row": "eq.%d" % row, "limit": "1"}, timeout=_TIMEOUT)
+    g.raise_for_status()
+    cur = g.json() or []
+    if not cur:
+        return False
+    raw = dict(cur[0].get("raw") or {})
+    for k, v in (fields or {}).items():
+        if k in _BUYER_KEYS and v is not None:
+            raw[k] = str(v)
+    r = requests.patch(SUPABASE_URL + "/rest/v1/buyers",
+                       headers={**_headers(), "Prefer": "return=minimal"},
+                       params={"office_id": "eq." + SB_OFFICE_ID, "sheet_row": "eq.%d" % row},
+                       json={"raw": raw, "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()},
+                       timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def buyers_delete(row):
+    """מחיקת קונה — RPC buyers_delete_row הקיים (מוחק ומזיז את השורות שאחריו, כמו בגיליון)."""
+    r = requests.post(SUPABASE_URL + "/rest/v1/rpc/buyers_delete_row", headers=_headers(),
+                      json={"p_office": SB_OFFICE_ID, "p_row": int(row)}, timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
 def fetch_excl_rows():
     """'בלעדויות חיצוניות' — זהה 1:1 ל-getRaw_ (כולל _date_key)."""
     return _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")

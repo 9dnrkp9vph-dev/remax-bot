@@ -4750,7 +4750,7 @@ def _merge_buyer_search(r, desc, budget_txt=""):
         up = {"row": str(r.get("row")), "search": ((old + " · " + desc).strip(" ·") if old else desc)[:480]}
         if budget_txt:
             up["budget"] = budget_txt   # ממוצע נצפים מעודכן — ייקלט אם ה-Apps Script תומך, יתעלם אחרת
-        j = _buyers_apps_post("updatebuyer", up)
+        j = _buyers_write("updatebuyer", up)
         if j and j.get("ok"):
             _cache_clear("buyers")
     except Exception:
@@ -4826,7 +4826,7 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
             "name": client, "phone": phone, "budget": budget_txt, "summary": summary,
             "agent": agent, "agent_phone": agent_phone, "search": info_desc,
         }
-        j = _buyers_apps_post("addbuyer", payload)
+        j = _buyers_write("addbuyer", payload)
         if j and j.get("ok"):
             _cache_clear("buyers")
             # addbuyer עשוי להתעלם מ-search (תלוי בגרסת ה-Apps Script) — מוודאים שהתיאור
@@ -6845,6 +6845,9 @@ NEWBORN_SOURCE    = (os.environ.get("NEWBORN_SOURCE", "sheets") or "sheets").str
 CALLS_SOURCE      = (os.environ.get("CALLS_SOURCE", "sheets") or "sheets").strip().lower()
 SIGNATURES_SOURCE = (os.environ.get("SIGNATURES_SOURCE", "sheets") or "sheets").strip().lower()
 BUYERS_SOURCE     = (os.environ.get("BUYERS_SOURCE", "sheets") or "sheets").strip().lower()
+# כתיבות קונים (23/08): supabase = ישירות (הגיליון קפא; הקונים מוזנים רק מהאפליקציה);
+# sheets = המסלול הישן דרך Apps Script — rollback במשתנה סביבה אחד.
+BUYERS_WRITE      = (os.environ.get("BUYERS_WRITE", "supabase") or "supabase").strip().lower()
 EXCL_SOURCE       = (os.environ.get("EXCL_SOURCE", "sheets") or "sheets").strip().lower()
 PROPS_SOURCE      = (os.environ.get("PROPS_SOURCE", "sheets") or "sheets").strip().lower()
 CONFIG_SOURCE     = (os.environ.get("CONFIG_SOURCE", "sheets") or "sheets").strip().lower()
@@ -7901,6 +7904,31 @@ def _signdoc_update(token, fields):
     return _buyers_apps_post("updatesigndoc", payload)
 
 
+def _buyers_write(action, payload):
+    """מפזר כתיבות קונים — אותה חתימת תשובה כמו _buyers_apps_post ({"ok": True} / {"ok": False, "error"}).
+    BUYERS_WRITE=supabase (וגם הקריאות על Supabase, כדי שלא נכתוב למקום שלא קוראים ממנו) →
+    כתיבה ישירה; אחרת המסלול הישן (Apps Script → גיליון)."""
+    _direct = (BUYERS_WRITE == "supabase" and BUYERS_SOURCE == "supabase"
+               and _sbdb is not None and _sbdb.enabled())
+    if not _direct:
+        return _buyers_apps_post(action, payload)
+    try:
+        p = payload or {}
+        if action == "addbuyer":
+            row = _sbdb.buyers_insert(p)
+            return {"ok": True, "row": row}
+        if action == "updatebuyer":
+            fields = {k: v for k, v in p.items() if k != "row"}
+            ok = _sbdb.buyers_update(int(p.get("row")), fields)
+            return {"ok": True} if ok else {"ok": False, "error": "row_not_found"}
+        if action == "deletebuyer":
+            _sbdb.buyers_delete(int(p.get("row")))
+            return {"ok": True}
+        return _buyers_apps_post(action, payload)
+    except Exception as _e:
+        log.error(f"buyers write ({action}) failed on supabase: {_e}")
+        return {"ok": False, "error": str(_e)[:160]}
+
 def _fetch_manual_buyers():
     c = _cache_get("buyers", _src_ttl(BUYERS_SOURCE, 60, 10))
     if c is not None:
@@ -8000,7 +8028,7 @@ def api_buyers_add():
         "name": name, "phone": phone, "budget": budget, "summary": summary,
         "agent": eff_name, "agent_phone": eff_phone,
     }
-    j = _buyers_apps_post("addbuyer", payload)
+    j = _buyers_write("addbuyer", payload)
     if not j or not j.get("ok"):
         return jsonify({"ok": False, "reason": (j or {}).get("error", "save_failed")}), 502
     _cache_clear("buyers")
@@ -8109,7 +8137,7 @@ def api_buyers_update():
         _up["phone"] = str(body.get("phone")).strip()
     if body.get("budget") is not None:      # עריכת תקציב הקונה (עמודה 'תקציב')
         _up["budget"] = str(body.get("budget")).strip()
-    j = _buyers_apps_post("updatebuyer", _up)
+    j = _buyers_write("updatebuyer", _up)
     if not j or not j.get("ok"):
         return jsonify({"ok": False, "reason": (j or {}).get("error", "update_failed")}), 502
     _cache_clear("buyers")
@@ -8124,7 +8152,7 @@ def api_buyers_delete():
     row = str(body.get("row", "")).strip()
     if not row:
         return jsonify({"ok": False, "reason": "no_row"}), 400
-    j = _buyers_apps_post("deletebuyer", {"row": row})
+    j = _buyers_write("deletebuyer", {"row": row})
     if not j or not j.get("ok"):
         return jsonify({"ok": False, "reason": (j or {}).get("error", "delete_failed")}), 502
     _cache_clear("buyers")
