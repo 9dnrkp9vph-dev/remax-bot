@@ -5442,7 +5442,9 @@ def public_sign_doc(token):
                "var b=document.getElementById('sbtn');b.disabled=true;b.textContent='שומר…';"
                "fetch('/api/sign/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:TOKEN,cid:id,signature:sig})}).then(function(r){return r.json();}).then(function(r){if(r&&r.ok){"
                "var NX=(r.next!==undefined)?r.next:NEXT,NXT=(r.next_title)||NEXTT;var okh = NX"
-               "? '<div class=okcard><div class=big>✅</div><h2>ההסכם נחתם</h2><p>נותר הסכם אחד לחתימה: '+(NXT||'ההסכם הנוסף')+'.</p><button class=pb onclick=\"location.href=\\'/s/\\'+encodeURIComponent(NX)\">המשך לחתימת '+(NXT||'ההסכם הנוסף')+' ›</button></div>'"
+               # הכתובת נאפית לתוך ה-onclick בזמן בניית הכרטיס — onclick רץ בסקופ גלובלי,
+               # שם NX לא קיים (24/08: הכפתור "לא הוביל לטופס הבלעדיות" — ReferenceError שקט)
+               "? '<div class=okcard><div class=big>✅</div><h2>ההסכם נחתם</h2><p>נותר הסכם אחד לחתימה: '+(NXT||'ההסכם הנוסף')+'.</p><button class=pb onclick=\"location.href=\\''+('/s/'+encodeURIComponent(NX))+'\\'\">המשך לחתימת '+(NXT||'ההסכם הנוסף')+' ›</button></div>'"
                ": '<div class=okcard><div class=big>🎉</div><h2>ההסכם נחתם ונשמר</h2><p>עותק חתום נשמר אצל המתווך.<br>מומלץ לשמור עותק גם אצלך.</p><button class=pb onclick=\"location.reload()\">צפייה במסמך החתום · שמירת PDF</button></div>';"
                "document.getElementById('step2').innerHTML=okh;"
                "window.scrollTo(0,0);}else{b.disabled=false;b.textContent='✅ אשר וחתום';alert('שמירה נכשלה: '+((r&&r.reason)||'שגיאה'));}}).catch(function(){b.disabled=false;b.textContent='✅ אשר וחתום';alert('שגיאת רשת');});}"
