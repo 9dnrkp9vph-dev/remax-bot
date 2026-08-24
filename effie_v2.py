@@ -7611,6 +7611,10 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div class="cnt" id="cnt">—</div>
     </div>
 
+    <div style="margin:0 0 10px">
+      <input id="mq" placeholder="חיפוש: כתובת, סוכן, בעלים או הערה" oninput="render()" aria-label="חיפוש ביומן"
+             style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid #E3DFD2;border-radius:14px;background:#fff;font-size:16px;font-family:inherit;color:#1E3A5F">
+    </div>
     <div class="segs">
       <div class="sg on" data-f="all" onclick="setFilter(this)">הכל</div>
       <div class="sg" data-f="before" onclick="setFilter(this)">לפני פגישה</div>
@@ -7746,24 +7750,28 @@ function itemRow(m, i){
     '</div>';
 }
 function render(){
-  // סינון לפי קטגוריה: בוצע (done) / לפני פגישה / אחרי פגישה / הכל (הפעילים)
-  var pool = MEETS.filter(function(m){
-    if (FILTER === 'done') return m.done;
-    if (m.done) return false;                       // 'בוצע' מוסתר מהתצוגות הפעילות
-    if (FILTER === 'before') return m.tag === 'before';
-    if (FILTER === 'after') return m.tag === 'after';
-    return true;                                    // הכל (פעילים)
-  });
+  // חיפוש חופשי (23/08): טקסט בשדה → מחפשים בכל הרשומות, מכל הקטגוריות כולל
+  // "בוצע" (מתעלמים מהטאב); ריק → סינון הקטגוריה הרגיל
+  var q = '';
+  try{ q = (el('mq').value || '').trim(); }catch(e){}
+  var pool = q ? MEETS.filter(function(m){ return meetMatches(m, q); })
+    : MEETS.filter(function(m){
+        if (FILTER === 'done') return m.done;
+        if (m.done) return false;                   // 'בוצע' מוסתר מהתצוגות הפעילות
+        if (FILTER === 'before') return m.tag === 'before';
+        if (FILTER === 'after') return m.tag === 'after';
+        return true;                                // הכל (פעילים)
+      });
   var withD = pool.map(function(m) {
     var idx = MEETS.indexOf(m);
     var w = parseWhen(m.date);
     return {m: m, i: idx, d: w.d, dd: w.d ? dayDiff(w.d) : 99};
   });
   var isDone = FILTER === 'done';
-  var late = isDone ? [] : withD.filter(function(x){ return x.d && x.dd < 0; });
-  var rest = isDone ? withD : withD.filter(function(x){ return !(x.d && x.dd < 0); });
+  var late = isDone ? [] : withD.filter(function(x){ return !x.m.done && x.d && x.dd < 0; });
+  var rest = isDone ? withD : withD.filter(function(x){ return x.m.done || !(x.d && x.dd < 0); });
   rest.sort(function(a, b){ return isDone ? (b.d || 0) - (a.d || 0) : (a.d || 0) - (b.d || 0); });
-  var nDrafts = FILTER === 'all' ? DRAFTS.length : 0;
+  var nDrafts = (FILTER === 'all' && !q) ? DRAFTS.length : 0;
   el('cnt').textContent = late.length + rest.length + nDrafts;
   var h = '';
   if (late.length){
@@ -7778,9 +7786,20 @@ function render(){
     h += '<div class="card">' + rest.map(function(x){ return itemRow(x.m, x.i); }).join('') + '</div>';
   }
   el('list').innerHTML = h ||
-    '<div class="empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#C29435" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' +
-    '<div class="t">' + (FILTER === 'done' ? 'עוד לא סומן דבר כבוצע' : FILTER === 'before' ? 'אין פולו-אפ "לפני פגישה"' : FILTER === 'after' ? 'אין פולו-אפ "אחרי פגישה"' : 'הכל מטופל') + '</div>' +
-    '<div class="s">פגישה או פולו-אפ נקבעים מכרטיס נכס במסך נכס נולד — ויופיעו כאן וביומן</div></div>';
+    (q ? '<div class="empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#C29435" stroke-width="2"/><path d="M10.5 10.5L14 14" stroke="#C29435" stroke-width="2" stroke-linecap="round"/></svg></div>' +
+      '<div class="t">לא נמצא ביומן</div>' +
+      '<div class="s">לא נמצאו פגישות או פולו-אפ עבור "' + esc(q) + '" — נסה מילה אחרת או נקה את החיפוש</div></div>'
+    : '<div class="empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#C29435" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>' +
+      '<div class="t">' + (FILTER === 'done' ? 'עוד לא סומן דבר כבוצע' : FILTER === 'before' ? 'אין פולו-אפ "לפני פגישה"' : FILTER === 'after' ? 'אין פולו-אפ "אחרי פגישה"' : 'הכל מטופל') + '</div>' +
+      '<div class="s">פגישה או פולו-אפ נקבעים מכרטיס נכס במסך נכס נולד — ויופיעו כאן וביומן</div></div>');
+}
+function meetMatches(m, q){
+  // טוקנים: כולם חייבים להופיע איפשהו — כתובת/סוכן/מתאם/תווית/הערה/תאריך/סוג/תגית/בוצע
+  var hay = [m.addr, m.agent, m.by, m.label, m.note, m.date,
+             m.status === 'meeting' ? 'פגישה' : 'פולו-אפ',
+             m.tag === 'before' ? 'לפני פגישה' : m.tag === 'after' ? 'אחרי פגישה' : '',
+             m.done ? 'בוצע' : ''].join(' ').toLowerCase();
+  return String(q || '').toLowerCase().split(/\s+/).every(function(t){ return !t || hay.indexOf(t) >= 0; });
 }
 function setFilter(node){
   FILTER = node.getAttribute('data-f');
