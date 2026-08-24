@@ -15,6 +15,13 @@ from flask import Flask, request, jsonify, redirect
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 app = Flask(__name__)
+# [SWR-2 24/08] JSON ב-UTF-8 אמיתי: ברירת המחדל של Flask משדרת כל אות עברית
+# כ-\uXXXX (פי 6 בייטים) — נמדד ~1.5MB אוויר ב-/api/newborn לבדו (311K רצפי \u05).
+# lossless: אותו תוכן בדיוק, הדפדפן מפענח UTF-8 טבעית. להחזרה: מחיקת שתי השורות.
+try:
+    app.json.ensure_ascii = False
+except Exception:
+    app.config["JSON_AS_ASCII"] = False
 # ── Config from env vars ───────────────────────────────────────────────────────
 MAYTAPI_TOKEN    = os.environ["MAYTAPI_TOKEN"]
 MAYTAPI_PHONE_ID = os.environ["MAYTAPI_PHONE_ID"]
@@ -7362,8 +7369,7 @@ def api_newborn():
             ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
             _famv = _is_famexcl(_addr, city, fam_list)   # שם הסוכן שבבלעדיות / '' / None
             out.append({
-                "released": True,
-                "own": own,
+                # [SWR-2] "released"/"own" הוסרו — אף מסך לא קורא אותם (נסרק 24/08)
                 "key": _k,
                 "contacted": contacts.get(_k, []),
                 "city": city,
