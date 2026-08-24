@@ -8461,6 +8461,73 @@ def family_logo():
     return ("", 404)
 
 # ══════════════════════════════════════════════════════════════════════════════
+# הורדת אפליקציית האנדרואיד (APK ישיר — לא דרך Play Store).
+# /android = עמוד הסבר עם כפתור · /apk = הקובץ עצמו.
+# ══════════════════════════════════════════════════════════════════════════════
+APK_VERSION = "1.1"
+
+def _apk_path():
+    for d in (Path(__file__).parent, Path("."), Path("/app")):
+        p = d / "effie.apk"
+        if p.exists():
+            return p
+    return None
+
+@app.route("/apk", methods=["GET"])
+def apk_download():
+    p = _apk_path()
+    if not p:
+        return ("APK not found", 404)
+    resp = send_file(str(p), mimetype="application/vnd.android.package-archive",
+                     as_attachment=True, download_name="effie-%s.apk" % APK_VERSION)
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    return resp
+
+_APK_PAGE = """<!doctype html><html lang="he" dir="rtl"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>התקנת אפי לאנדרואיד</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2EFE7;font-family:Heebo,system-ui,sans-serif;color:#1E3A5F;
+     padding:24px 18px;display:flex;justify-content:center}
+.card{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);
+      padding:26px 22px;max-width:520px;width:100%}
+h1{font-size:22px;font-weight:800;margin:0 0 4px}
+.sub{color:#5B6472;font-size:14px;margin:0 0 22px}
+.btn{display:block;background:#2E6BD6;color:#fff;text-decoration:none;text-align:center;
+     font-weight:800;font-size:17px;padding:16px;border-radius:16px;margin:0 0 22px}
+.btn:active{opacity:.72}
+ol{margin:0;padding-inline-start:20px;line-height:1.9;font-size:15px}
+li b{font-weight:600}
+.note{margin-top:20px;background:#FBF6E8;border-radius:14px;padding:14px 16px;
+      font-size:14px;line-height:1.7;color:#7A5E1C}
+.ver{margin-top:18px;text-align:center;color:#6B7280;font-size:13px}
+</style></head><body><div class="card">
+<h1>התקנת אפי לאנדרואיד</h1>
+<p class="sub">העוזר של המתווך · __OFFICE__</p>
+<a class="btn" href="/apk">הורדת האפליקציה</a>
+<ol>
+<li>מקישים על <b>הורדת האפליקציה</b> — הקובץ יורד לטלפון.</li>
+<li>פותחים את הקובץ שירד (הודעת ההורדה למעלה, או תיקיית <b>Downloads</b>).</li>
+<li>אנדרואיד ישאל אם לאפשר התקנה ממקור זה — מאשרים <b>הגדרות ← אפשר</b>, וחוזרים.</li>
+<li>מקישים <b>התקן</b>, ובסיום <b>פתח</b>. נכנסים עם מספר הטלפון כרגיל.</li>
+</ol>
+<div class="note"><b>מותקנת אצלך גרסה ישנה?</b> יש למחוק אותה קודם (לחיצה ארוכה על האייקון ← הסר התקנה) ואז להתקין. פעם אחת בלבד — העדכונים הבאים יעברו חלק.</div>
+<div class="ver">גרסה __VER__</div>
+</div></body></html>"""
+
+@app.route("/android", methods=["GET"])
+def apk_page():
+    try:
+        v2o = (_load_config() or {}).get("v2_office") or {}
+        office = (v2o.get("name") or os.environ.get("OFFICE_NAME", "") or "רימקס פמילי").strip()
+    except Exception:
+        office = "רימקס פמילי"
+    html = _APK_PAGE.replace("__OFFICE__", office).replace("__VER__", APK_VERSION)
+    return Response(html, mimetype="text/html; charset=utf-8")
+
+# ══════════════════════════════════════════════════════════════════════════════
 # BACKGROUND CACHE WARMER — מרענן ברקע את הקריאות הכבדות מ-Apps Script,
 # כך שבקשות הסוכנים תמיד מקבלות תשובה מיידית מהמטמון (לא ממתינות בתור).
 # עדכון אטומי בלבד (אף פעם לא מרוקן את המטמון תוך כדי). config-agnostic לשכפול.
