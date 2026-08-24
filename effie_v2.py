@@ -7612,7 +7612,7 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     </div>
 
     <div style="margin:0 0 10px">
-      <input id="mq" placeholder="חיפוש: כתובת, סוכן, בעלים או הערה" oninput="render()" aria-label="חיפוש ביומן"
+      <input id="mq" placeholder="חיפוש: כתובת, סוכן, בעל הנכס או הערה" oninput="render()" aria-label="חיפוש ביומן"
              style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid #E3DFD2;border-radius:14px;background:#fff;font-size:16px;font-family:inherit;color:#1E3A5F">
     </div>
     <div class="segs">
@@ -7794,8 +7794,8 @@ function render(){
       '<div class="s">פגישה או פולו-אפ נקבעים מכרטיס נכס במסך נכס נולד — ויופיעו כאן וביומן</div></div>');
 }
 function meetMatches(m, q){
-  // טוקנים: כולם חייבים להופיע איפשהו — כתובת/סוכן/מתאם/תווית/הערה/תאריך/סוג/תגית/בוצע
-  var hay = [m.addr, m.agent, m.by, m.label, m.note, m.date,
+  // טוקנים: כולם חייבים להופיע איפשהו — כתובת/סוכן/מתאם/בעל הנכס+טלפון/תווית/הערה/תאריך/סוג/תגית/בוצע
+  var hay = [m.addr, m.agent, m.by, m.owner, m.ophone, m.label, m.note, m.date,
              m.status === 'meeting' ? 'פגישה' : 'פולו-אפ',
              m.tag === 'before' ? 'לפני פגישה' : m.tag === 'after' ? 'אחרי פגישה' : '',
              m.done ? 'בוצע' : ''].join(' ').toLowerCase();
