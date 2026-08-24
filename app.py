@@ -5531,6 +5531,19 @@ def _call_uid(c):
             "|" + str(c.get("agent_phone", "")) + "|" + str(c.get("status", "")))
     return "h" + _hashlib.md5(base.encode("utf-8")).hexdigest()[:16]
 
+def _etag_wrap(payload):
+    """[SWR 24/08] טביעת-אצבע לתשובות ה-API הכבדות: הקליינט שולח ?etag= של התשובה
+    הקודמת; אין שינוי → {"unchanged": true} זעיר במקום מאות KB. המסכים מציירים מיד
+    מהעותק המקומי ומרעננים ברקע — אותה טריות, בלי המתנה. הדפוס של /api/newborn [PERF-3]."""
+    import zlib as _zl
+    _etag_in = (request.args.get("etag", "") or "").strip()
+    _tag = format(_zl.crc32(_json.dumps(payload, ensure_ascii=False, sort_keys=True,
+                                        default=str).encode("utf-8")) & 0xffffffff, "08x")
+    if _etag_in and _etag_in == _tag:
+        return jsonify({"ok": True, "unchanged": True, "etag": _tag})
+    payload["etag"] = _tag
+    return jsonify(payload)
+
 @app.route("/api/history", methods=["GET"])
 def api_history():
     s = _web_auth()
@@ -5641,10 +5654,10 @@ def api_history():
             if _sa:
                 _r0["signed_time"] = _fmt_il_dt(_sa) or _sa
     vphone = _vphone_for_name(eff["name"])
-    return jsonify({"ok": True, "role": eff["role"], "name": eff["name"],
-                    "dev": bool(s.get("dev", False)),
-                    "drole": s.get("drole", ""), "tabs": _tabs_for_role(s.get("drole", "")),
-                    "vphone": vphone, "calls": call_out, "signatures": sig_out})
+    return _etag_wrap({"ok": True, "role": eff["role"], "name": eff["name"],
+                       "dev": bool(s.get("dev", False)),
+                       "drole": s.get("drole", ""), "tabs": _tabs_for_role(s.get("drole", "")),
+                       "vphone": vphone, "calls": call_out, "signatures": sig_out})
 
 @app.route("/api/signatures", methods=["GET"])
 def api_signatures():
@@ -5721,7 +5734,7 @@ def api_signatures():
                 d["avg_n"] = len(ps)
     except Exception as _ae:
         log.error(f"signatures avg error: {_ae}")
-    return jsonify({"ok": True, "role": eff["role"], "name": eff["name"], "signatures": sig_out})
+    return _etag_wrap({"ok": True, "role": eff["role"], "name": eff["name"], "signatures": sig_out})
 
 # ── תהליכים ועסקאות (אחסון מקומי בדיסק — ללא Google) ───────────────────────────
 import os as _os2, threading as _th, json as _j2  # כינויים (מוגדרים כאן כי בלוק זה רץ לפני בלוק המפה)
@@ -5818,7 +5831,7 @@ def api_deals():
     if s["name"] and s["name"] not in agents:
         agents = [s["name"]] + agents
     imported = any(it.get("src") == "reminders" for it in all_items) and any(it.get("src") == "sales2026" for it in all_items)
-    return jsonify({"ok": True, "role": s["role"], "name": eff["name"], "items": items, "agents": agents, "imported": imported})
+    return _etag_wrap({"ok": True, "role": s["role"], "name": eff["name"], "items": items, "agents": agents, "imported": imported})
 
 @app.route("/api/deals/save", methods=["POST"])
 def api_deals_save():
@@ -7571,7 +7584,7 @@ def api_newborn_meetings():
                     "addr": st.get("addr", ""), "skey": k,
                     "ophone": _oph, "wa": _wa, "owner": st.get("owner", ""), "note": st.get("note", "")})
     out.sort(key=lambda x: str(x.get("date", "")))
-    return jsonify({"ok": True, "results": out})
+    return _etag_wrap({"ok": True, "results": out})
 
 @app.route("/api/newborn/status/delete", methods=["POST"])
 def api_newborn_status_delete():
@@ -8119,7 +8132,7 @@ def api_my_buyers():
                 "row": r.get("row", ""),
                 "search": str(r.get("search", "") or "").strip(),
             })
-        return jsonify({"ok": True, "count": len(out), "multi": multi, "results": out})
+        return _etag_wrap({"ok": True, "count": len(out), "multi": multi, "results": out})
     except Exception as e:
         log.error(f"my buyers error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500

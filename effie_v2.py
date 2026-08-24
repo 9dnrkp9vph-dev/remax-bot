@@ -394,6 +394,24 @@ input, textarea, select{ font-size:16px !important; }
     }catch(e){}
     return _f(u, o);
   };
+  /* [SWR 24/08] etag למסכי הרשימות: swrU מוסיף ?etag= מהעותק השמור; שרת עונה
+     {unchanged} זעיר → swrJ מחזיר את העותק המלא השמור; swrPut שומר עותק מלא+etag.
+     המסכים ממשיכים לצייר מיד מהעותק החלקי הקיים — זה חוסך את ההורדה החוזרת. */
+  window.swrU = function(u, k){
+    var e = '';
+    try{ e = (JSON.parse(localStorage.getItem('v2s:' + k) || 'null') || {}).e || ''; }catch(_e){}
+    return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'etag=' + encodeURIComponent(e);
+  };
+  window.swrJ = function(j, k){
+    if (j && j.unchanged){
+      try{ var c = JSON.parse(localStorage.getItem('v2s:' + k) || 'null'); if (c && c.j) return c.j; }catch(_e){}
+    }
+    return j;
+  };
+  window.swrPut = function(k, j){
+    if (!j || j.ok === false || !j.etag) return;
+    try{ localStorage.setItem('v2s:' + k, JSON.stringify({e: j.etag, j: j})); }catch(_e){}
+  };
   /* prefetch: נגיעה/ריחוף על טאב מחמם את הדף הבא עוד לפני הניווט */
   function warm(e){
     var it = e.target && e.target.closest ? e.target.closest('nav .it') : null;
@@ -2503,13 +2521,15 @@ function weekStart(){
 
 function load(){
   // מהיר: מציירים מיד מהבקשה הראשית; מוסתרות וקונים נטענים ברקע (בלי לחסום)
-  var p = GET('/api/history').then(function(j){
+  var p = GET(swrU('/api/history', 'hist')).then(function(j){
+    j = swrJ(j, 'hist'); swrPut('hist', j);
     CALLS = (j && j.calls) || [];
     if (j && j.vphone){ el('vpNum').textContent = j.vphone; el('vpRow').style.display = 'flex'; }
     try{ localStorage.setItem('v2c:calls', JSON.stringify({calls: CALLS.slice(0, 120), vphone: j.vphone || ''})); }catch(e){}
     render();
   }).catch(function(){});
-  GET('/api/my/buyers').then(function(j){
+  GET(swrU('/api/my/buyers', 'buy')).then(function(j){
+    j = swrJ(j, 'buy'); swrPut('buy', j);
     BUYER_BY_PHONE = {};
     ((j && j.results) || []).forEach(function(b){
       var pp = last9(b.tel || b.phone);
@@ -2744,7 +2764,8 @@ render = function(){
   }catch(e){}
   load();
   setInterval(function(){   // רענון עדין לראשי בלבד — Realtime מלא כשעוברים ל-Supabase
-    GET('/api/history').then(function(j){
+    GET(swrU('/api/history', 'hist')).then(function(j){
+      j = swrJ(j, 'hist'); swrPut('hist', j);
       CALLS = (j && j.calls) || [];
       render();
     }).catch(function(){});
@@ -3044,9 +3065,10 @@ function stOf(b){ return STATUSES[bKey(b)] || STATUSES[b.row] || 'active'; }
 
 function load(){
   return Promise.all([
-    GET('/api/my/buyers').catch(function(){ return {}; }),
+    GET(swrU('/api/my/buyers', 'buy')).catch(function(){ return {}; }),
     GET('/v2/api/buyers/statuses').catch(function(){ return {}; })
   ]).then(function(rs){
+    rs[0] = swrJ(rs[0], 'buy'); swrPut('buy', rs[0]);
     BUYERS = (rs[0] && rs[0].results) || [];
     MULTI = !!(rs[0] && rs[0].multi);
     STATUSES = (rs[1] && rs[1].statuses) || {};
@@ -3779,10 +3801,10 @@ function weekStart(){
 var DRAFTS = [];   // טיוטות "הכנה לחתימה" — מוצגות תחת "הכל"
 function load(){
   return Promise.all([
-    GET('/api/signatures').catch(function(){ return {}; }),
+    GET(swrU('/api/signatures', 'sigs')).catch(function(){ return {}; }),
     GET('/v2/api/sign/drafts').catch(function(){ return {}; })
   ]).then(function(rs){
-    var j = rs[0] || {};
+    var j = swrJ(rs[0] || {}, 'sigs'); swrPut('sigs', j);
     SIGS = (j && j.signatures) || [];
     MULTI = (j && j.role) !== 'agent';
     ROLE = (j && j.role) || '';
@@ -5574,7 +5596,8 @@ function nfmt(v){ var d = String(v == null ? '' : v).replace(/[^0-9]/g, ''); ret
 function nfix(el){ var p = el.selectionStart; el.value = nfmt(el.value); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} }
 
 function load(){
-  return GET('/api/deals').then(function(j){
+  return GET(swrU('/api/deals', 'deals')).then(function(j){
+    j = swrJ(j, 'deals'); swrPut('deals', j);
     ITEMS = (j && j.items) || [];
     AGENTS = (j && j.agents) || [];
     try{ localStorage.setItem('v2c:deals', JSON.stringify({i: ITEMS.slice(0, 150), a: AGENTS})); }catch(e){}
@@ -6116,9 +6139,10 @@ function load(){
   return Promise.all([
     GET('/api/report?period=' + PERIOD + (PERIOD === 'month' && MONTH ? '&month=' + MONTH : ''))
       .catch(function(){ return {}; }),
-    GET('/api/deals').catch(function(){ return {}; })
+    GET(swrU('/api/deals', 'deals')).catch(function(){ return {}; })
   ]).then(function(rs){
     R = rs[0] || {};
+    rs[1] = swrJ(rs[1], 'deals'); swrPut('deals', rs[1]);
     DEALS = (rs[1] && rs[1].items) || [];
     render();
   });
@@ -7957,9 +7981,10 @@ function undoneMeet(i){   // החזרה מ'בוצע' לפעיל
 var DRAFTS = [];   // טיוטות החתמה — מוצגות תחת "הכל"
 function load(){
   return Promise.all([
-    GET('/api/newborn/meetings?done=1').catch(function(){ return {}; }),   // כולל 'בוצע' לקטגוריה
+    GET(swrU('/api/newborn/meetings?done=1', 'meets')).catch(function(){ return {}; }),   // כולל 'בוצע' לקטגוריה
     GET('/v2/api/sign/drafts').catch(function(){ return {}; })
   ]).then(function(rs){
+    rs[0] = swrJ(rs[0], 'meets'); swrPut('meets', rs[0]);
     MEETS = (rs[0] && rs[0].results) || [];
     DRAFTS = (rs[1] && rs[1].drafts) || [];
     try{ localStorage.setItem('v2c:meets', JSON.stringify(MEETS.slice(0, 100))); }catch(e){}
