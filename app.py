@@ -8545,6 +8545,7 @@ ol{margin:0;padding-inline-start:20px;line-height:1.9;font-size:15px}
 li b{font-weight:600}
 .note{margin-top:20px;background:#FBF6E8;border-radius:14px;padding:14px 16px;
       font-size:14px;line-height:1.7;color:#7A5E1C}
+.q{color:#C24040;font-weight:600}
 .ver{margin-top:18px;text-align:center;color:#6B7280;font-size:13px}
 </style></head><body><div class="card">
 <h1>התקנת אפי לאנדרואיד</h1>
@@ -8554,8 +8555,11 @@ li b{font-weight:600}
 <li>מקישים על <b>הורדת האפליקציה</b> — הקובץ יורד לטלפון.</li>
 <li>פותחים את הקובץ שירד (הודעת ההורדה למעלה, או תיקיית <b>Downloads</b>).</li>
 <li>אנדרואיד ישאל אם לאפשר התקנה ממקור זה — מאשרים <b>הגדרות ← אפשר</b>, וחוזרים.</li>
-<li>מקישים <b>התקן</b>, ובסיום <b>פתח</b>. נכנסים עם מספר הטלפון כרגיל.</li>
+<li>מקישים <b>התקן</b>.</li>
+<li>אם קופץ <b>"האפליקציה נחסמה כדי להגן על המכשיר"</b> — מקישים <b>פרטים נוספים</b> ואז <b>התקן בכל זאת</b>. <span class="q">(ולא "הבנתי" — זה מבטל)</span></li>
+<li>בסיום מקישים <b>פתח</b>, ונכנסים עם מספר הטלפון כרגיל.</li>
 </ol>
+<div class="note"><b>למה האזהרה מופיעה?</b> אפי לא מותקנת דרך חנות Play אלא ישירות מהמשרד, ולכן אנדרואיד לא מזהה אותה. זה תקין — ממשיכים דרך <b>פרטים נוספים ← התקן בכל זאת</b>.</div>
 <div class="note"><b>מותקנת אצלך גרסה ישנה?</b> יש למחוק אותה קודם (לחיצה ארוכה על האייקון ← הסר התקנה) ואז להתקין. פעם אחת בלבד — העדכונים הבאים יעברו חלק.</div>
 <div class="ver">גרסה __VER__</div>
 </div></body></html>"""
