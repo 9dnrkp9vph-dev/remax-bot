@@ -3328,6 +3328,26 @@ def api_auth_verify():
 from urllib.parse import urlencode as _urlencode
 _goauth_state   = {}   # state(csrf) -> {"exp", "native"}
 NATIVE_URL_SCHEME = os.environ.get("NATIVE_URL_SCHEME", "remaxfamily")   # deep-link חזרה לאפליקציה
+NATIVE_ANDROID_PACKAGE = os.environ.get("NATIVE_ANDROID_PACKAGE", "com.remaxfamily.familybot")
+
+def _deep_back(token, dest="/v2/home"):
+    """שתי צורות של קישור-חזרה לאפליקציה אחרי כניסת Google בדפדפן חיצוני.
+
+    iOS/ספארי — scheme רגיל (עובד). אנדרואיד — intent:// עם browser_fallback_url:
+    דפדפן מרשה הפעלת אפליקציה חיצונית רק בתוך חלון קצר אחרי מגע של המשתמש, ואם
+    החלון נסגר (חזרה איטית מ-Google) הניווט נחסם. בלי fallback מוגדר סמסונג
+    גילגל את זה ל-intent גנרי שנחת ב-Gmail — מכאן ה"לפעמים עובד ולפעמים לא".
+    עם browser_fallback_url הכישלון דטרמיניסטי: הדפדפן פשוט הולך ל-/v2/home."""
+    from urllib.parse import quote as _q
+    sch = NATIVE_URL_SCHEME + "://login?token=" + token
+    try:
+        base = request.url_root.rstrip("/")
+    except Exception:
+        base = ""
+    fb = _q(base + dest, safe="")
+    intent = ("intent://login?token=" + token + "#Intent;scheme=" + NATIVE_URL_SCHEME +
+              ";package=" + NATIVE_ANDROID_PACKAGE + ";S.browser_fallback_url=" + fb + ";end")
+    return sch, intent
 _goauth_pending = {}   # glink token -> {"email","name","refresh_token","exp"} לאימייל שעוד לא מקושר
 
 def _gauth_enabled():
@@ -3480,7 +3500,7 @@ def _g_link_page(glink, email, dest="/app"):
         "<button id='btn' onclick='go()' style='width:100%;padding:14px;background:#0D1B2A;color:#fff;border:none;"
         "border-radius:13px;font-size:16px;font-weight:800'>שלח קוד</button>"
         "<div id='err' style='color:#dc2626;font-size:13px;margin-top:10px;min-height:18px'></div>"
-        "<script>var G='" + glink + "',stage=0;"
+        "<script>var G='" + glink + "',stage=0,_FB=encodeURIComponent(location.origin+'/v2/home');"
         "function px(u,d){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(function(r){return r.json()})}"
         "function go(){var e=document.getElementById('err');e.textContent='';"
         "var ph=document.getElementById('ph').value.replace(/\\D/g,'');"
@@ -3490,7 +3510,11 @@ def _g_link_page(glink, email, dest="/app"):
         "});}else{var cd=document.getElementById('cd').value.replace(/\\D/g,'');"
         "px('/api/auth/glink_verify',{glink:G,phone:ph,code:cd}).then(function(p){"
         "if(!p.ok){e.textContent='קוד שגוי, נסה שוב';return;}"
-        "if(p.native&&!window.Capacitor){location.href='" + NATIVE_URL_SCHEME + "://login?token='+p.token;"
+        "if(p.native&&!window.Capacitor){"
+        "var isA=/Android/i.test(navigator.userAgent||'');"
+        "var D=isA?('intent://login?token='+p.token+'#Intent;scheme=" + NATIVE_URL_SCHEME +
+        ";package=" + NATIVE_ANDROID_PACKAGE + ";S.browser_fallback_url='+_FB+';end')"
+        ":('" + NATIVE_URL_SCHEME + "://login?token='+p.token);location.href=D;"
         "setTimeout(function(){try{localStorage.setItem('fbTok',p.token);localStorage.setItem('fbRole',p.role||'');"
         "if(p.phone)localStorage.setItem('fbPhone',p.phone);"
         "localStorage.setItem('fbDrole',p.drole||'');localStorage.setItem('fbName',p.name||'');"
@@ -3556,29 +3580,32 @@ def auth_google_callback():
                      # דפדפן חיצוני (iOS/ספארי): deep-link חזרה לאפליקציה (אוטומטי + כפתור גיבוי).
                      # תיקון 21/07: באנדרואיד ה-OAuth רץ בתוך ה-WebView עצמו, וה-deep-link
                      # שם התפרש עקום (נפתח Gmail) והטוקן אבד — window.Capacitor מכריע.
-            _scheme = NATIVE_URL_SCHEME + "://login?token=" + token
+            _scheme, _intent = _deep_back(token, "/v2/home")
             _pj = _json.dumps(payload, ensure_ascii=False)
+            _save = ('try{localStorage.setItem("fbTok",p.token);'
+                     'localStorage.setItem("fbRole",p.role||"");localStorage.setItem("fbDrole",p.drole||"");'
+                     'localStorage.setItem("fbName",p.name||"");localStorage.setItem("fbDev",p.dev?"1":"0");'
+                     'if(p.phone)localStorage.setItem("fbPhone",p.phone);'
+                     'localStorage.setItem("fbTabs",JSON.stringify(p.tabs||null));}catch(e){}')
             return ('<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">'
                     '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Family Bot</title></head>'
                     '<body style="font-family:-apple-system,Heebo,Arial,sans-serif;background:#0D1B2A;color:#fff;text-align:center;padding:64px 24px;margin:0">'
                     '<div style="font-size:52px">✅</div>'
                     '<h2 style="margin:14px 0 6px">התחברת בהצלחה</h2>'
-                    '<div style="opacity:.75;font-size:15px">חוזר לאפליקציה…</div>'
-                    '<a href="' + _scheme + '" style="display:inline-block;margin-top:22px;background:#e0b85a;color:#231700;font-weight:800;font-size:18px;padding:15px 30px;border-radius:14px;text-decoration:none">חזור לאפליקציה</a>'
+                    '<div id="ht" style="opacity:.75;font-size:15px">חוזר לאפליקציה…</div>'
+                    '<a id="bk" href="' + _scheme + '" style="display:inline-block;margin-top:22px;background:#e0b85a;color:#231700;font-weight:800;font-size:18px;padding:15px 30px;border-radius:14px;text-decoration:none">חזור לאפליקציה</a>'
                     '<script>var p=' + _pj + ';'
-                    'if(window.Capacitor){try{localStorage.setItem("fbTok",p.token);'
-                    'localStorage.setItem("fbRole",p.role||"");localStorage.setItem("fbDrole",p.drole||"");'
-                    'localStorage.setItem("fbName",p.name||"");localStorage.setItem("fbDev",p.dev?"1":"0");'
-                    'if(p.phone)localStorage.setItem("fbPhone",p.phone);'
-                    'localStorage.setItem("fbTabs",JSON.stringify(p.tabs||null));}catch(e){}'
-                    'location.replace("/v2/home");}'
-                    'else{setTimeout(function(){location.href=' + _json.dumps(_scheme) + ';},250);'
-                    'setTimeout(function(){try{localStorage.setItem("fbTok",p.token);'
-                    'localStorage.setItem("fbRole",p.role||"");localStorage.setItem("fbDrole",p.drole||"");'
-                    'localStorage.setItem("fbName",p.name||"");localStorage.setItem("fbDev",p.dev?"1":"0");'
-                    'if(p.phone)localStorage.setItem("fbPhone",p.phone);'
-                    'localStorage.setItem("fbTabs",JSON.stringify(p.tabs||null));}catch(e){}'
-                    'location.replace("/v2/home");},1800);}'
+                    'function sv(){' + _save + '}'
+                    'if(window.Capacitor){sv();location.replace("/v2/home");}'
+                    'else{sv();'   # שומרים מיד — כך שגם מסלול הגיבוי בדפדפן נוחת מחובר
+                    'var isA=/Android/i.test(navigator.userAgent||"");'
+                    'var D=isA?' + _json.dumps(_intent) + ':' + _json.dumps(_scheme) + ';'
+                    'var b=document.getElementById("bk");if(b)b.href=D;'
+                    'location.href=D;'   # מיידי — בתוך חלון ה-user activation של בחירת החשבון
+                    'setTimeout(function(){var h=document.getElementById("ht");'
+                    'if(h)h.textContent="אם האפליקציה לא נפתחה — הקש על הכפתור";},1200);'
+                    # אנדרואיד: browser_fallback_url כבר מטפל בכשל. iOS: מפלט אחרי 2.5ש'.
+                    'if(!isA)setTimeout(function(){location.replace("/v2/home");},2500);}'
                     '</script>'
                     '</body></html>'), 200
         return _g_done_page(payload, _dest)
