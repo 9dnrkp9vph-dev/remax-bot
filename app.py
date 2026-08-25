@@ -3580,6 +3580,10 @@ def auth_google_callback():
                      # דפדפן חיצוני (iOS/ספארי): deep-link חזרה לאפליקציה (אוטומטי + כפתור גיבוי).
                      # תיקון 21/07: באנדרואיד ה-OAuth רץ בתוך ה-WebView עצמו, וה-deep-link
                      # שם התפרש עקום (נפתח Gmail) והטוקן אבד — window.Capacitor מכריע.
+            try:
+                log.info("gauth: native return page ua=%s", (request.headers.get("User-Agent") or "")[:120])
+            except Exception:
+                pass
             _scheme, _intent = _deep_back(token, "/v2/home")
             _pj = _json.dumps(payload, ensure_ascii=False)
             _save = ('try{localStorage.setItem("fbTok",p.token);'
@@ -3593,7 +3597,8 @@ def auth_google_callback():
                     '<div style="font-size:52px">✅</div>'
                     '<h2 style="margin:14px 0 6px">התחברת בהצלחה</h2>'
                     '<div id="ht" style="opacity:.75;font-size:15px">חוזר לאפליקציה…</div>'
-                    '<a id="bk" href="' + _scheme + '" style="display:inline-block;margin-top:22px;background:#e0b85a;color:#231700;font-weight:800;font-size:18px;padding:15px 30px;border-radius:14px;text-decoration:none">חזור לאפליקציה</a>'
+                    '<a id="bk" href="' + _scheme + '" style="display:inline-block;margin-top:22px;background:#e0b85a;color:#231700;font-weight:800;font-size:18px;padding:15px 30px;border-radius:14px;text-decoration:none">פתח את אפי</a>'
+                    '<div style="margin-top:16px"><a href="/v2/home" style="color:#9fb6d4;font-size:14px">להמשיך כאן בדפדפן</a></div>'
                     '<script>var p=' + _pj + ';'
                     'function sv(){' + _save + '}'
                     'if(window.Capacitor){sv();location.replace("/v2/home");}'
@@ -3601,11 +3606,12 @@ def auth_google_callback():
                     'var isA=/Android/i.test(navigator.userAgent||"");'
                     'var D=isA?' + _json.dumps(_intent) + ':' + _json.dumps(_scheme) + ';'
                     'var b=document.getElementById("bk");if(b)b.href=D;'
-                    'location.href=D;'   # מיידי — בתוך חלון ה-user activation של בחירת החשבון
-                    'setTimeout(function(){var h=document.getElementById("ht");'
-                    'if(h)h.textContent="אם האפליקציה לא נפתחה — הקש על הכפתור";},1200);'
-                    # אנדרואיד: browser_fallback_url כבר מטפל בכשל. iOS: מפלט אחרי 2.5ש'.
-                    'if(!isA)setTimeout(function(){location.replace("/v2/home");},2500);}'
+                    # אנדרואיד: אין ניווט אוטומטי בכלל. ניווט מתוזמן נחסם (user activation)
+                    # ובסמסונג התגלגל ל-intent גנרי שנחת ב-Gmail. מגע של המשתמש לא נחסם.
+                    'if(isA){var h=document.getElementById("ht");'
+                    'if(h)h.textContent="הקש כדי לחזור לאפליקציה";}'
+                    'else{location.href=D;'
+                    'setTimeout(function(){location.replace("/v2/home");},2500);}}'
                     '</script>'
                     '</body></html>'), 200
         return _g_done_page(payload, _dest)
