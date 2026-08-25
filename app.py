@@ -3194,6 +3194,13 @@ def _web_auth():
 # --- activity log (in-memory, newest last) ---
 _activity = []
 def _persist_activity(entry):
+    # supabase ראשי; כשל → נפילה ל-Apps Script (לא מאבדים רשומה). sheets = המסלול הישן.
+    if ACTIVITY_WRITE == "supabase" and _sbdb is not None and _sbdb.enabled():
+        try:
+            _sbdb.activity_insert(entry)
+            return
+        except Exception as _ae:
+            log.warning(f"activity supabase write failed — falling back to sheets: {_ae}")
     try:
         _buyers_apps_post("logactivity", {"entry": json.dumps(entry, ensure_ascii=False)})
     except Exception:
@@ -6163,8 +6170,18 @@ def api_activity():
     if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
     c = _cache_get("activity_today", 45)
     if c is None:
-        jj = _buyers_apps_post("listactivity", {})
-        c = jj.get("items", []) if (jj and jj.get("ok")) else []
+        if ACTIVITY_WRITE == "supabase" and _sbdb is not None and _sbdb.enabled():
+            try:
+                import datetime as _dta
+                from zoneinfo import ZoneInfo as _ZIa
+                _mid0 = _dta.datetime.now(_ZIa("Asia/Jerusalem")).replace(hour=0, minute=0, second=0, microsecond=0)
+                c = _sbdb.fetch_activity_today(_mid0.timestamp())
+            except Exception as _ae:
+                log.warning(f"activity supabase read failed — falling back to sheets: {_ae}")
+                c = None
+        if c is None:
+            jj = _buyers_apps_post("listactivity", {})
+            c = jj.get("items", []) if (jj and jj.get("ok")) else []
         _cache_put("activity_today", c)
     seen = set(); merged = []
     for it in (list(c) + list(_activity[-400:])):
@@ -6870,6 +6887,12 @@ BUYERS_SOURCE     = (os.environ.get("BUYERS_SOURCE", "sheets") or "sheets").stri
 # כתיבות קונים (23/08): supabase = ישירות (הגיליון קפא; הקונים מוזנים רק מהאפליקציה);
 # sheets = המסלול הישן דרך Apps Script — rollback במשתנה סביבה אחד.
 BUYERS_WRITE      = (os.environ.get("BUYERS_WRITE", "supabase") or "supabase").strip().lower()
+# "הקטנים" (24/08): activity + מי-פנה ישירות ל-Supabase (בטוח — add-only, ה-reconcile לא
+# מוחק אותם). hidecall ברירת מחדל sheets עד ש-sbBackfillHidden ינוטרל ב-Apps Script —
+# אחרת ה-reconcile "מחייה" שיחה ששוחזרה מהסתרה; אז HIDECALL_WRITE=supabase.
+ACTIVITY_WRITE    = (os.environ.get("ACTIVITY_WRITE", "supabase") or "supabase").strip().lower()
+NBCONTACT_WRITE   = (os.environ.get("NBCONTACT_WRITE", "supabase") or "supabase").strip().lower()
+HIDECALL_WRITE    = (os.environ.get("HIDECALL_WRITE", "sheets") or "sheets").strip().lower()
 EXCL_SOURCE       = (os.environ.get("EXCL_SOURCE", "sheets") or "sheets").strip().lower()
 PROPS_SOURCE      = (os.environ.get("PROPS_SOURCE", "sheets") or "sheets").strip().lower()
 CONFIG_SOURCE     = (os.environ.get("CONFIG_SOURCE", "sheets") or "sheets").strip().lower()
@@ -7415,11 +7438,17 @@ def api_newborn_contact():
     nm = as_name or s.get("name", "")
     _log_activity(nm, s["role"], s.get("phone", ""), "📲 וואטסאפ — נכס נולד", addr or key)
     if key:
+        def _contact_bg():
+            # supabase ראשי; כשל → Apps Script (הרשומה לא הולכת לאיבוד)
+            if NBCONTACT_WRITE == "supabase" and _sbdb is not None and _sbdb.enabled():
+                try:
+                    _sbdb.newborn_contact_add(key, nm, addr)
+                    return
+                except Exception as _ce:
+                    log.warning(f"newborn contact supabase write failed — falling back: {_ce}")
+            _buyers_apps_post("newborncontact", {"key": key, "agent": nm, "addr": addr})
         try:
-            _threading.Thread(
-                target=lambda: _buyers_apps_post("newborncontact",
-                                                 {"key": key, "agent": nm, "addr": addr}),
-                daemon=True).start()
+            _threading.Thread(target=_contact_bg, daemon=True).start()
         except Exception:
             pass
         _cache_clear("newborn_contacts")
@@ -8251,13 +8280,27 @@ def api_sign_delete():
     threading.Thread(target=_del_bg, daemon=True).start()
     return jsonify({"ok": True, "deleted": 1})
 
+def _hidden_write(action, eid):
+    """מפזר הסתרת/שחזור שיחה — supabase ישיר או Apps Script (HIDECALL_WRITE)."""
+    if HIDECALL_WRITE == "supabase" and _sbdb is not None and _sbdb.enabled():
+        try:
+            if action == "hidecall":
+                _sbdb.hidden_add(eid)
+            else:
+                _sbdb.hidden_remove(eid)
+            return {"ok": True}
+        except Exception as _he:
+            log.error(f"hidden write ({action}) failed on supabase: {_he}")
+            return {"ok": False, "error": str(_he)[:160]}
+    return _buyers_apps_post(action, {"event_id": eid})
+
 @app.route("/api/calls/hide", methods=["POST"])
 def api_calls_hide():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     eid = str((request.get_json(silent=True) or {}).get("id", "")).strip()
     if not eid: return jsonify({"ok": False, "reason": "no_id"}), 400
-    j = _buyers_apps_post("hidecall", {"event_id": eid})
+    j = _hidden_write("hidecall", eid)
     if not j or not j.get("ok"): return jsonify({"ok": False, "reason": "fail"}), 502
     _cache_clear("hidden_calls")
     _log_activity(s["name"], s["role"], s["phone"], "הסתרת שיחה", eid)
@@ -8269,7 +8312,7 @@ def api_calls_unhide():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     eid = str((request.get_json(silent=True) or {}).get("id", "")).strip()
     if not eid: return jsonify({"ok": False, "reason": "no_id"}), 400
-    j = _buyers_apps_post("unhidecall", {"event_id": eid})
+    j = _hidden_write("unhidecall", eid)
     if not j or not j.get("ok"): return jsonify({"ok": False, "reason": "fail"}), 502
     _cache_clear("hidden_calls")
     return jsonify({"ok": True})

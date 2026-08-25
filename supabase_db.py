@@ -284,6 +284,73 @@ def signatures_delete(event_id="", received_at="", client_name=""):
         return False
 
 
+def activity_insert(entry):
+    """רשומת יומן-פעילות — כתיבה ישירה ל-activity_log (24/08: "הקטנים" עוזבים את גוגל).
+    entry במבנה _log_activity: ts (epoch), name, role, phone, action, detail."""
+    ts = float(entry.get("ts") or 0) or None
+    iso = _dt.datetime.fromtimestamp(ts, _dt.timezone.utc).isoformat() if ts else \
+        _dt.datetime.now(_dt.timezone.utc).isoformat()
+    r = requests.post(SUPABASE_URL + "/rest/v1/activity_log",
+                      headers={**_headers(), "Prefer": "return=minimal"},
+                      json=[{"office_id": SB_OFFICE_ID, "user_name": str(entry.get("name", "") or ""),
+                             "role": str(entry.get("role", "") or ""), "phone": str(entry.get("phone", "") or ""),
+                             "action": str(entry.get("action", "") or ""),
+                             "target": str(entry.get("detail", "") or ""), "ts": iso}],
+                      timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def fetch_activity_today(t0_epoch):
+    """רשומות activity_log מ-t0 (epoch) — במבנה שמסך הפעילות מצפה לו (name/detail/ts-epoch)."""
+    iso = _dt.datetime.fromtimestamp(float(t0_epoch), _dt.timezone.utc).isoformat()
+    recs = _get_all("activity_log", "user_name,role,phone,action,target,ts",
+                    {"and": "(ts.gte." + iso + ")", "order": "ts.desc"})
+    out = []
+    for rec in recs:
+        try:
+            ep = _dt.datetime.fromisoformat(str(rec.get("ts"))).timestamp()
+        except Exception:
+            continue
+        out.append({"ts": float(ep), "name": rec.get("user_name") or "", "role": rec.get("role") or "",
+                    "phone": rec.get("phone") or "", "action": rec.get("action") or "",
+                    "detail": rec.get("target") or ""})
+    return out
+
+
+def hidden_add(event_id):
+    """הסתרת שיחה — כתיבה ישירה ל-hidden_calls (ignore-duplicates: הסתרה חוזרת לא מכפילה)."""
+    r = requests.post(SUPABASE_URL + "/rest/v1/hidden_calls",
+                      headers={**_headers(), "Prefer": "resolution=ignore-duplicates"},
+                      params={"on_conflict": "office_id,event_id"},
+                      json=[{"office_id": SB_OFFICE_ID, "event_id": str(event_id)}],
+                      timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def hidden_remove(event_id):
+    """שחזור שיחה מוסתרת — מחיקה מ-hidden_calls."""
+    r = requests.delete(SUPABASE_URL + "/rest/v1/hidden_calls", headers=_headers(),
+                        params={"office_id": "eq." + SB_OFFICE_ID,
+                                "event_id": "eq." + str(event_id)},
+                        timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def newborn_contact_add(listing_key, agent_name, addr=""):
+    """רישום "כבר פנו" — כתיבה ישירה ל-newborn_contacts (ignore-duplicates)."""
+    r = requests.post(SUPABASE_URL + "/rest/v1/newborn_contacts",
+                      headers={**_headers(), "Prefer": "resolution=ignore-duplicates"},
+                      params={"on_conflict": "office_id,listing_key,agent_name"},
+                      json=[{"office_id": SB_OFFICE_ID, "listing_key": str(listing_key),
+                             "agent_name": str(agent_name or ""), "addr": str(addr or "")}],
+                      timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
 def upsert_signature_row(source_key, received_iso, raw):
     """שורת חתימה מ-webhook פיירברי — upsert לפי (office_id, source_key):
     הטריגר "נוצרה או עודכנה" מעדכן שורה קיימת במקום להכפיל; retry לא מכפיל.
