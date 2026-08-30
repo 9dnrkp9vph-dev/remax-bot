@@ -888,18 +888,14 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="l">תהליכים</div>
         <div class="qaBadge" id="dealsBadge"></div>
       </div>
+      <div class="a lite" onclick="location.href = (M.role === 'admin') ? '/v2/props' : '/v2/props?mine=1'">
+        <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+        <div class="l" id="propsT">נכסי המשרד</div>
+        <div id="propsSum" style="font-size:10px;color:#6E7683;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      </div>
     </div>
 
-    <div style="display:flex;gap:10px">
-      <div class="strip" style="flex:1;min-width:0;cursor:pointer" onclick="location.href = (M.role === 'admin') ? '/v2/props' : '/v2/props?mine=1'">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
-        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
-          <div class="t" id="propsT">הנכסים שלי</div>
-          <div class="s" id="propsSum" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">מתעדכן…</div>
-        </div>
-      </div>
-      <span id="meetsSum" style="display:none"></span>
-    </div>
+    <span id="meetsSum" style="display:none"></span>
 
     <div class="care">
       <div class="hd"><div class="t">דורש טיפול</div><div class="all" onclick="location.href='/v2/meets'">הכל</div></div>
