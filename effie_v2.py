@@ -646,7 +646,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .briefBar .cta{background:#E4C56B;color:#1E3A5F;border-radius:11px;padding:9px 15px;font-size:12.5px;
       font-weight:800;white-space:nowrap;border:0;cursor:pointer;font-family:inherit}
   .qa{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .qa .a{border-radius:18px;padding:14px 16px;display:flex;align-items:center;gap:11px;cursor:pointer;min-height:44px}
+  .qa .a{border-radius:18px;padding:14px 16px;display:flex;align-items:center;gap:11px;cursor:pointer;min-height:44px;min-width:0;overflow:hidden}
   .qa .a .ic{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .qa .a .l{font-size:14px;font-weight:700}
   .qa .blue{background:#2E6BD6;box-shadow:0 6px 16px rgba(46,107,214,.25)}
@@ -890,8 +890,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       </div>
       <div class="a lite" onclick="location.href = (M.role === 'admin') ? '/v2/props' : '/v2/props?mine=1'">
         <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
-        <div class="l" id="propsT">נכסי המשרד</div>
-        <div id="propsSum" style="font-size:10px;color:#6E7683;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        <div style="flex:1;min-width:0">
+          <div class="l" id="propsT">נכסי המשרד</div>
+          <div id="propsSum" style="font-size:10px;color:#6E7683;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        </div>
       </div>
     </div>
 
@@ -8850,6 +8852,22 @@ def ef_first(name):
     """שם פרטי בלבד — כלל הפרטיות של אפי (בלי שם משפחה/טלפון בתשובות התאמה)."""
     return str(name or "").strip().split(" ")[0]
 
+def ef_pending(sigs):
+    """ממתינות אמת: שורות לא-חתומות שאין להן חתימה מאוחרת על אותו (לקוח, נכס) —
+    טופס שנשלח ולא נחתם אך הלקוח חתם על אותו נכס בטופס אחר אינו "תקוע" (פידבק אייל 30/08)."""
+    signed_keys = set()
+    for g in sigs:
+        if ef_signed(g):
+            signed_keys.add((str(g.get("client", "") or "").strip(), ef_addr_anchor(g.get("address", ""))))
+    out = []
+    for g in sigs:
+        if ef_signed(g) or _ef_is_test(g):
+            continue
+        if (str(g.get("client", "") or "").strip(), ef_addr_anchor(g.get("address", ""))) in signed_keys:
+            continue
+        out.append(g)
+    return out
+
 def ef_quota_ok(store, phone, limit=20):
     """מכסת שאלות AI יומית פר משתמש (מונה בזיכרון; מתאפס ברסטארט — מספיק v1)."""
     import datetime as _dq
@@ -9888,7 +9906,7 @@ def register(app, G):
         month0 = now - 30 * 86400
         m_sigs = [g for g in sigs if (g.get("ts") or 0) >= month0]
         gius, konim = ef_gius(m_sigs), ef_konim(m_sigs)
-        pending = [g for g in m_sigs if not ef_signed(g) and not _ef_is_test(g)]
+        pending = ef_pending(sigs)   # מכל ההיסטוריה — "תקוע" אמיתי בלבד (נחתם-בטופס-אחר לא נספר)
         buyers = []
         for b in G["_fetch_manual_buyers"]():
             if not office and name and _canon(b.get("agent", "")) != _canon(name):
@@ -9914,6 +9932,7 @@ def register(app, G):
                 "giusN": len(gius), "konimN": len(konim),
                 "pendingN": len(pending), "pending": [{"client": g["client"], "address": g["address"]} for g in pending[:8]],
                 "buyersN": len(buyers), "buyersRecent": sorted(buyers, key=lambda b: G["_excl_epoch"](b.get("date", "")), reverse=True)[:8],
+                "giusYearN": len(ef_gius(sigs)), "konimYearN": len(ef_konim(sigs)),
                 "dealsOpen": deals_open, "dealsClosed": deals_closed,
                 "meetsOpen": meets[:10], "trends4w": ef_week_trends(sigs, now)}
         if office:
@@ -9942,7 +9961,7 @@ def register(app, G):
                            for r in (G["fetch_sheet_rows"]() or [])]
             snap["propsOffice"] = ef_retrieve(q, office_rows, ("addr", "hood", "city", "rooms"))
             shtaf_rows = [{"addr": r.get("street", ""), "desc": str(r.get("dest", "") or "")[:90],
-                           "price": r.get("price", "")}
+                           "price": r.get("price", ""), "office": str(r.get("office", "") or "").strip() or "משרד שותף"}
                           for r in (G["fetch_external_exclusives"]() or [])]
             snap["propsShtaf"] = ef_retrieve(q, shtaf_rows, ("addr", "desc"))
             # נכס נולד — מכבד את השהיית הסוכן (אין דליפת נכסים שטרם נחשפו לו)
@@ -9960,13 +9979,16 @@ def register(app, G):
                 nb_rows.append({"addr": r.get("רחוב1", "") or r.get("רחוב", ""), "city": r.get("עיר", ""),
                                 "price": r.get("מחיר", ""), "desc": str(r.get("תיאור נכס", "") or "")[:70]})
             snap["propsNewborn"] = ef_retrieve(q, nb_rows, ("addr", "city", "desc"))
-            buyer_rows = []
-            for b in G["_fetch_manual_buyers"]():
-                if not office and name and _canon(b.get("agent", "")) != _canon(name):
-                    continue
-                buyer_rows.append({"first": ef_first(b.get("name", "")), "agent": b.get("agent", ""),
-                                   "budget": b.get("budget", ""), "search": str(b.get("search", "") or "")[:90]})
+            # קונים מכל המשרד — במכוון גם לסוכן (שיתוף פעולה); הפרטיות מבנית:
+            # שם פרטי + סוכן + תקציב + מה-מחפש בלבד, בלי טלפונים (פידבק אייל 30/08)
+            buyer_rows = [{"first": ef_first(b.get("name", "")), "agent": b.get("agent", ""),
+                           "budget": b.get("budget", ""), "search": str(b.get("search", "") or "")[:90]}
+                          for b in G["_fetch_manual_buyers"]()]
             snap["buyersMatch"] = ef_retrieve(q, buyer_rows, ("search", "budget", "agent", "first"))
+            sig_all = [{"client": g.get("client", ""), "address": g.get("address", ""),
+                        "type": g.get("type", ""), "signed": ef_signed(g),
+                        "agent": g.get("agent", "")} for g in sigs if not _ef_is_test(g)]
+            snap["sigsMatch"] = ef_retrieve(q, sig_all, ("address", "client", "agent", "type"))
         return snap
 
     @app.route("/v2/api/effie/card", methods=["GET"])
@@ -10001,8 +10023,11 @@ def register(app, G):
                       "כללים: (1) כששואלים על נכסים למכירה באזור — הצג לפי הסדר: קודם נכסי המשרד (propsOffice), "
                       "אחר כך שת\"פ (propsShtaf), ולבסוף נכס נולד (propsNewborn), וציין את המקור. "
                       "(2) כששואלים על קונים מתאימים — הצג שם פרטי, שם הסוכן ותקציב בלבד; לעולם אל תמסור "
-                      "טלפון או פרט מזהה אחר. (3) עסקאות: dealsMatch — השדה addr הוא הכתובת; ההיסטוריה "
-                      "מתחילת השנה בלבד, ציין זאת אם רלוונטי. (4) המונים סופרים רק מה שנחתם.\n"
+                      "טלפון או פרט מזהה אחר; קונים של סוכנים אחרים מוצגים — ציין את הסוכן שלהם. "
+                      "(3) עסקאות (dealsMatch, addr=כתובת) וחתימות (sigsMatch): הנתונים מתחילת השנה — "
+                      "אל תגביל את עצמך לחודש האחרון אלא אם נשאלת; giusYearN/konimYearN הם מוני השנה, "
+                      "gius/konim של 30 הימים. (4) בשת\"פ ציין תמיד את שם המשרד (office). "
+                      "(5) המונים סופרים רק מה שנחתם.\n"
                       "הנתונים (סקופ: " + (name or "כל המשרד") + "):\n" +
                       _json.dumps(snap, ensure_ascii=False) + "\n\nשאלה: " + q)
             import requests as _rq
