@@ -898,13 +898,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
           <div class="s" id="propsSum" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">מתעדכן…</div>
         </div>
       </div>
-      <div class="strip" style="flex:1;min-width:0;cursor:pointer" onclick="location.href='/v2/meets'">
-        <div class="ic" style="background:#F6EEDB"><svg width="17" height="17" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#7A5E1C" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#7A5E1C" stroke-width="1.6" stroke-linecap="round"/></svg></div>
-        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
-          <div class="t">יומן</div>
-          <div class="s" id="meetsSum" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">פגישות ופולו-אפ</div>
-        </div>
-      </div>
+      <span id="meetsSum" style="display:none"></span>
     </div>
 
     <div class="care">
@@ -8831,6 +8825,35 @@ def ef_week_trends(sigs, now):
                 W[w][kind] += 1
     return W
 
+def ef_tokens(q):
+    """טוקני חיפוש מהשאלה: מילים באורך 2+ (ומספרים בכל אורך), קריית→קרית, lowercase."""
+    t = str(q or "").lower().replace("קריית", "קרית")
+    out = []
+    for w in _re.split(r"[^א-ת0-9a-z]+", t):
+        if not w:
+            continue
+        if len(w) >= 2 or w.isdigit():
+            out.append(w)
+    return out
+
+def ef_retrieve(q, rows, fields, cap=25):
+    """שליפת שורות רלוונטיות לשאלה: ניקוד לפי מספר טוקנים שפגעו בשדות. אפס פגיעות = בחוץ."""
+    toks = ef_tokens(q)
+    if not toks:
+        return []
+    scored = []
+    for r in rows:
+        hay = " ".join(str(r.get(f, "") or "") for f in fields).lower().replace("קריית", "קרית")
+        n = sum(1 for t in toks if t in hay)
+        if n:
+            scored.append((n, r))
+    scored.sort(key=lambda x: -x[0])
+    return [r for (_n, r) in scored[:cap]]
+
+def ef_first(name):
+    """שם פרטי בלבד — כלל הפרטיות של אפי (בלי שם משפחה/טלפון בתשובות התאמה)."""
+    return str(name or "").strip().split(" ")[0]
+
 def ef_quota_ok(store, phone, limit=20):
     """מכסת שאלות AI יומית פר משתמש (מונה בזיכרון; מתאפס ברסטארט — מספיק v1)."""
     import datetime as _dq
@@ -9859,8 +9882,9 @@ def register(app, G):
                          "ts": G["_excl_epoch"](g.get("received_at", "")), "agent": ag})
         return rows
 
-    def _effie_snapshot(name, office):
-        """תמצית נתונים ממודרת — הבסיס גם לכרטיסים וגם ל-AI. name=''+office=True → כלל-משרדי."""
+    def _effie_snapshot(name, office, q=""):
+        """תמצית נתונים ממודרת — הבסיס גם לכרטיסים וגם ל-AI. name=''+office=True → כלל-משרדי.
+        q לא-ריק → נוספים מאגרי-שליפה רלוונטיים לשאלה (עסקאות/נכסים/קונים מתאימים)."""
         import time as _t
         now = _t.time()
         _canon = G["_canon_key"]
@@ -9903,6 +9927,50 @@ def register(app, G):
             for g in ef_konim([x for x in m_sigs]):
                 byag.setdefault(_canon(g.get("agent", "")), {"name": g.get("agent", ""), "gius": 0, "konim": 0})["konim"] += 1
             snap["topAgents"] = sorted(byag.values(), key=lambda x: -(x["gius"] * 2 + x["konim"]))[:8]
+        if q:
+            # מאגרי-שליפה לפי השאלה (24/08, פידבק אייל): עסקאות לפי רחוב, נכסים
+            # מ-3 המקורות (משרד→שת"פ→נכס נולד), וקונים מתאימים — פרטיות מבנית:
+            # שם פרטי + סוכן + תקציב + מה-מחפש בלבד; טלפונים לא נשלחים למודל בכלל.
+            deal_rows = []
+            for it in (G["_deals_load"]() or []):
+                ags = [str(a) for a in (it.get("agents") or []) if str(a).strip()]
+                if not office and name and _canon(name) not in [_canon(a) for a in ags]:
+                    continue
+                deal_rows.append({"addr": str(it.get("notes", "") or ""), "stage": it.get("stage", ""),
+                                  "closed": bool(it.get("deal")), "close_date": it.get("close_date", ""),
+                                  "agents": ags, "price": str(it.get("sale_price") or it.get("price") or "")})
+            snap["dealsMatch"] = ef_retrieve(q, deal_rows, ("addr", "agents", "stage", "close_date"))
+            office_rows = [{"addr": r.get("כתובת", ""), "hood": r.get("שכונה", ""),
+                            "city": r.get("עיר / ישוב", ""), "price": r.get("מחיר", ""),
+                            "rooms": r.get("חדרים", ""), "agent": r.get("סוכן 1", "")}
+                           for r in (G["fetch_sheet_rows"]() or [])]
+            snap["propsOffice"] = ef_retrieve(q, office_rows, ("addr", "hood", "city", "rooms"))
+            shtaf_rows = [{"addr": r.get("street", ""), "desc": str(r.get("dest", "") or "")[:90],
+                           "price": r.get("price", "")}
+                          for r in (G["fetch_external_exclusives"]() or [])]
+            snap["propsShtaf"] = ef_retrieve(q, shtaf_rows, ("addr", "desc"))
+            # נכס נולד — מכבד את השהיית הסוכן (אין דליפת נכסים שטרם נחשפו לו)
+            delays = G["_fetch_newborn_delays"]() or {}
+            nrm = G["_norm_name"](name or "")
+            delay = 0 if office else int(delays.get(nrm, delays.get("c:" + _canon(name or ""), delays.get("_default", 0))))
+            nb_rows = []
+            for r in (G["fetch_newborn"]() or []):
+                created = G["_newborn_created_epoch"](r)
+                if not created:
+                    continue
+                own = bool(nrm) and G["_norm_name"](str(r.get("משתמש", "") or "")) == nrm
+                if not office and not own and now < created + delay * 86400:
+                    continue
+                nb_rows.append({"addr": r.get("רחוב1", "") or r.get("רחוב", ""), "city": r.get("עיר", ""),
+                                "price": r.get("מחיר", ""), "desc": str(r.get("תיאור נכס", "") or "")[:70]})
+            snap["propsNewborn"] = ef_retrieve(q, nb_rows, ("addr", "city", "desc"))
+            buyer_rows = []
+            for b in G["_fetch_manual_buyers"]():
+                if not office and name and _canon(b.get("agent", "")) != _canon(name):
+                    continue
+                buyer_rows.append({"first": ef_first(b.get("name", "")), "agent": b.get("agent", ""),
+                                   "budget": b.get("budget", ""), "search": str(b.get("search", "") or "")[:90]})
+            snap["buyersMatch"] = ef_retrieve(q, buyer_rows, ("search", "budget", "agent", "first"))
         return snap
 
     @app.route("/v2/api/effie/card", methods=["GET"])
@@ -9930,10 +9998,15 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "quota", "msg": "הגעת ל-20 שאלות היום — הכפתורים המהירים תמיד פתוחים 🙂"})
         try:
             name, office = _effie_scope(s)
-            snap = _effie_snapshot(name, office)
+            snap = _effie_snapshot(name, office, q=q)
             prompt = ("אתה 'אפי' — עוזר הנתונים של משרד תיווך. ענה בעברית, קצר וידידותי, על סמך "
                       "נתוני ה-JSON בלבד. אם הנתון לא קיים בנתונים — אמור שאין לך אותו. אל תמציא "
                       "מספרים. אל תחשוף נתונים של סוכנים אחרים אלא אם הם בנתונים שקיבלת.\n"
+                      "כללים: (1) כששואלים על נכסים למכירה באזור — הצג לפי הסדר: קודם נכסי המשרד (propsOffice), "
+                      "אחר כך שת\"פ (propsShtaf), ולבסוף נכס נולד (propsNewborn), וציין את המקור. "
+                      "(2) כששואלים על קונים מתאימים — הצג שם פרטי, שם הסוכן ותקציב בלבד; לעולם אל תמסור "
+                      "טלפון או פרט מזהה אחר. (3) עסקאות: dealsMatch — השדה addr הוא הכתובת; ההיסטוריה "
+                      "מתחילת השנה בלבד, ציין זאת אם רלוונטי. (4) המונים סופרים רק מה שנחתם.\n"
                       "הנתונים (סקופ: " + (name or "כל המשרד") + "):\n" +
                       _json.dumps(snap, ensure_ascii=False) + "\n\nשאלה: " + q)
             import requests as _rq
