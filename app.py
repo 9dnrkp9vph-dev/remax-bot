@@ -1178,9 +1178,17 @@ def parse_search_query(text: str) -> dict:
         log.error(f"Search JSON parse error: {e}")
         return {}
 _agents_cache = {"data": None, "ts": 0}
+_agents_lock = threading.Lock()
 def fetch_agents_phones() -> dict:
     if _agents_cache["data"] is not None and (time.time() - _agents_cache["ts"]) < 300:
         return _agents_cache["data"]
+    # singleflight (30/08): בקר אחרי deploy, 5 בקשות מקבילות משכו כל אחת את הגיליון —
+    # הראשונה מושכת, השאר ממתינות ומקבלות מהמטמון
+    with _agents_lock:
+        if _agents_cache["data"] is not None and (time.time() - _agents_cache["ts"]) < 300:
+            return _agents_cache["data"]
+        return _fetch_agents_phones_locked()
+def _fetch_agents_phones_locked() -> dict:
     if not GOOGLE_SHEETS_API_KEY:
         return {}
     from urllib.parse import quote
@@ -8658,7 +8666,7 @@ def _warm_once():
     _warm_key("sheet_rows", _src_ttl(PROPS_SOURCE, 60, 90), _props_fetch_raw)
     # אלה מנהלים מטמון בעצמם — קריאה דרך העטיפה עושה עבודה רק כשה-TTL פג,
     # וכך ברוב המקרים ה-warmer (ולא משתמש) משלם את המשיכה האיטית
-    for _fn in (_fetch_hidden_calls, fetch_external_exclusives, _load_config):
+    for _fn in (_fetch_hidden_calls, fetch_external_exclusives, _load_config, fetch_agents_phones):
         try:
             _fn()
         except Exception:
