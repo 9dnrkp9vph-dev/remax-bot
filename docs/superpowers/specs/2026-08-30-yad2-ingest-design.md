@@ -25,9 +25,23 @@ payload: `{key, stream: private|agency, machine, scanFull, rows|delisted}`.
 6. מסחרי מחוץ לתחום.
 7. רימקס פמילי = **שלושה** agency IDs (ידועים: 5625538, 5628636; השלישי — מהצ'אט השני).
 
-## ממתין מהצ'אט השני (ההודעה נמסרה לאייל להדבקה)
-(א) סכימת שורה מדויקת לשני הזרמים · (ב) ה-ID השלישי · (ג) האם "ירד מפרסום" קיים גם
-לזרם הפרטי · (ד) נפחי batch ומודעות-חדשות-ליום.
+## תשובות הצ'אט השני (30/08) — סגור
+- **private:** deal_type·address(מאוחד)·property_type·rooms·floor·total_floors·price·contact·
+  phone·price_update·sqm·neighborhood·link·image·listing_date·city·street·description·
+  **_orderId (זהות)**·_city. **agency:** agent·city·neighborhood·street·homeNum·type·rooms·
+  sqm·price·tags(;)·link(token=זהות)·description·phone·image·excl('1'/'0') + office/officeId ברמת batch.
+- **3 סניפים:** 5625538 · 5628636 · **8532791** (256/189/68 מודעות).
+- "ירד מפרסום" בשני הזרמים, מגודר בשערי כיסוי (פרטי ≥80% פר-מקור, משרדים ≥60% פר-משרד).
+- נפחים: פרטי 870-900/batch, 0-30 חדשים/יום; משרדים 40-590×9 משרדים×2/יום, 0-12 חדשים/יום.
+
+## שלבים
+**שלב א' (נבנה עכשיו):** `/v2/api/yad2/ingest` (מפתח YAD2_INGEST_KEY): private→newborn_listings
+(source_key='id:'+_orderId — מתאחד עם הצינור הישן!), agency שאינו-שלנו→external_exclusives
+(source_key='y2x:'+token; raw בסגנון getRaw_: street/dest/price/office/link/phone), delisted→
+תווית raw.delisted_at (בלי מחיקה, בלי מיגרציית SQL — בתוך ה-jsonb). שורות 3 הסניפים שלנו:
+נספרות ומוחזרות בתשובה (ourN) אך לא נכתבות — שלב ב'. סריקה חלקית: delisted מכובד רק אם
+scanFull (השערים גם בצד הסורק). **שלב ב' (עיצוב נפרד):** נכסי המשרד לאוטומט + תוויות UI
+"ירד מפרסום" במסכים + כיבוי הצינורות הישנים אחרי חפיפה.
 
 ## פתוח לתכנון מפורט (אחרי התשובות)
 מיפוי שדות → newborn_listings/external_exclusives/properties (יתכנו עמודות חדשות:
