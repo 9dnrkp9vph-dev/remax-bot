@@ -879,6 +879,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
         <div class="l">חיפוש נכס</div>
       </div>
+      <div class="a lite" onclick="location.href='/v2/effie'">
+        <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 2a4.5 4.5 0 0 1 4.5 4.5c0 2.6-2.1 4.4-4.5 4.4-.5 0-1-.06-1.4-.2L4 12l.7-2.3A4.4 4.4 0 0 1 3.5 6.5 4.5 4.5 0 0 1 8 2z" fill="none" stroke="#C29435" stroke-width="1.6" stroke-linejoin="round"/><circle cx="6.3" cy="6.5" r=".8" fill="#C29435"/><circle cx="9.7" cy="6.5" r=".8" fill="#C29435"/></svg></div>
+        <div class="l">שאל את אפי</div>
+      </div>
       <div class="a lite" style="position:relative" onclick="location.href='/v2/deals'">
         <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#7A5E1C" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#7A5E1C" stroke-width="1.6" stroke-linecap="round"/></svg></div>
         <div class="l">תהליכים</div>
@@ -4593,6 +4597,113 @@ render = function(){
 
 
 # ── טאב הנכסים המאוחד (עיצוב 20a) — משרד / שת"פ / שלי + קונים מתאימים ──────
+V2_EFFIE_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>שאל את אפי</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Heebo',sans-serif;-webkit-tap-highlight-color:transparent}
+body{background:#F2EFE7;min-height:100dvh;display:flex;flex-direction:column}
+header{position:sticky;top:0;z-index:10;background:#F2EFE7;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;display:flex;align-items:center;gap:10px}
+header .bk{width:38px;height:38px;border-radius:12px;background:#fff;border:none;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(30,58,95,.06);cursor:pointer}
+header h1{font-size:18px;font-weight:800;color:#1E3A5F;flex:1}
+header .badge{font-size:10.5px;font-weight:700;color:#7A5E1C;background:#F6EEDB;border-radius:999px;padding:3px 10px}
+#chat{flex:1;overflow-y:auto;padding:6px 16px 12px;-webkit-overflow-scrolling:touch}
+.msg{max-width:88%;border-radius:18px;padding:11px 14px;margin:7px 0;font-size:14px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.me{background:#2E6BD6;color:#fff;margin-inline-start:auto;border-bottom-left-radius:6px}
+.ef{background:#fff;color:#1E3A5F;box-shadow:0 6px 20px rgba(30,58,95,.06);border-bottom-right-radius:6px}
+.ef b{color:#7A5E1C}
+.think{display:inline-flex;gap:4px;padding:4px 2px}
+.think i{width:7px;height:7px;border-radius:50%;background:#C29435;animation:bl 1.2s infinite}
+.think i:nth-child(2){animation-delay:.2s}.think i:nth-child(3){animation-delay:.4s}
+@keyframes bl{0%,80%,100%{opacity:.25}40%{opacity:1}}
+#chips{display:flex;gap:8px;overflow-x:auto;padding:6px 16px;scrollbar-width:none}
+#chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;background:#fff;border:1.5px solid #E4C56B;color:#7A5E1C;font-size:12.5px;font-weight:700;border-radius:999px;padding:8px 14px;cursor:pointer;min-height:36px}
+#bar{display:flex;gap:8px;padding:8px 16px calc(env(safe-area-inset-bottom) + 12px);background:#F2EFE7}
+#q{flex:1;padding:12px 15px;border:1.5px solid #E3DFD2;border-radius:16px;background:#fff;font-size:16px;color:#1E3A5F}
+#send{width:46px;height:46px;border-radius:14px;border:none;background:#C29435;color:#231700;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center}
+</style></head><body>
+<header>
+  <button class="bk" onclick="location.href='/v2/home'" aria-label="חזרה"><svg width="17" height="17" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <h1>שאל את אפי</h1><span class="badge">בטא · AI</span>
+</header>
+<div id="chips"></div>
+<div id="chat" role="log" aria-live="polite"></div>
+<div id="bar">
+  <input id="q" placeholder="שאל אותי כל דבר על הנתונים שלך…" onkeydown="if(event.key==='Enter')ask()">
+  <button id="send" onclick="ask()" aria-label="שליחה"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M14 8L3 3l2 5-2 5z" fill="currentColor"/></svg></button>
+</div>
+<script>
+var TOK = localStorage.getItem('fbTok'); if (!TOK) location.href = '/v2';
+function el(i){ return document.getElementById(i); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+var ROLE = '';
+function add(cls, html){ var d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html; el('chat').appendChild(d); el('chat').scrollTop = 1e9; return d; }
+function thinking(){ return add('ef', '<span class="think"><i></i><i></i><i></i></span>'); }
+function fmtN(n){ return (n == null ? '—' : n); }
+function trendArrow(tr, k){
+  if (!tr || tr.length < 2) return '';
+  var a = tr[1][k], b = tr[0][k];
+  return b > a ? ' ↑' : b < a ? ' ↓' : ' →';
+}
+/* כרטיס "המצב" — נבנה מה-snapshot; נחתם בלבד, נכסים ייחודיים */
+function statusCard(j){
+  var s = j.snap, L = [];
+  L.push('<b>' + esc(j.who) + ' · ' + esc(s.period) + '</b>');
+  L.push('🏆 גיוסים (נחתמו): <b>' + fmtN(s.giusN) + '</b>' + trendArrow(s.trends4w, 'gius') +
+         (s.gius && s.gius.length ? ' — ' + s.gius.slice(0, 4).map(function(g){ return esc(g.address); }).join(' · ') : ''));
+  L.push('✍️ החתמות קונים (נחתמו): <b>' + fmtN(s.konimN) + '</b>' + trendArrow(s.trends4w, 'konim'));
+  if (s.pendingN) L.push('⏳ ממתינות לחתימה: <b>' + s.pendingN + '</b>' + (s.pending.length ? ' — ' + s.pending.slice(0, 3).map(function(p){ return esc(p.client || p.address); }).join(', ') : ''));
+  L.push('👥 קונים: <b>' + fmtN(s.buyersN) + '</b>' + (s.buyersRecent && s.buyersRecent[0] ? ' — האחרון: ' + esc(s.buyersRecent[0].name) : ''));
+  L.push('💼 תהליכים פתוחים: <b>' + fmtN(s.dealsOpen) + '</b> · עסקאות סגורות: <b>' + fmtN(s.dealsClosed) + '</b>');
+  L.push(s.meetsOpen && s.meetsOpen.length ? '📅 פגישות/פולו-אפ פתוחים: <b>' + s.meetsOpen.length + '</b>'
+       : '📅 אין פגישות מתוכננות — אולי הזמן לקבוע 🙂');
+  if (s.topAgents && s.topAgents.length){
+    L.push('🥇 מובילים: ' + s.topAgents.slice(0, 3).map(function(a, i){ return (i + 1) + '. ' + esc(a.name) + ' (' + a.gius + ' גיוסים, ' + a.konim + ' קונים)'; }).join(' · '));
+  }
+  var w = s.trends4w;
+  if (w && w.length === 4){
+    L.push('📈 4 שבועות (ישן→חדש): גיוסים ' + [w[3].gius, w[2].gius, w[1].gius, w[0].gius].join('→') +
+           ' · קונים ' + [w[3].konim, w[2].konim, w[1].konim, w[0].konim].join('→'));
+  }
+  return L.join('<br>');
+}
+function card(as){
+  var t = thinking();
+  GET('/v2/api/effie/card' + (as ? '?as=' + encodeURIComponent(as) : '')).then(function(j){
+    t.remove();
+    if (!j.ok){ add('ef', 'לא הצלחתי לשלוף נתונים כרגע'); return; }
+    add('ef', statusCard(j));
+  }).catch(function(){ t.remove(); add('ef', 'שגיאת רשת — נסה שוב'); });
+}
+function ask(free){
+  var q = free || el('q').value.trim();
+  if (!q) return;
+  el('q').value = '';
+  add('me', esc(q));
+  var t = thinking();
+  fetch('/v2/api/effie/ask', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Auth-Token': TOK},
+    body: JSON.stringify({q: q})}).then(function(r){ return r.json(); }).then(function(j){
+    t.remove();
+    add('ef', esc(j.answer || j.msg || 'משהו השתבש — נסה שוב'));
+  }).catch(function(){ t.remove(); add('ef', 'שגיאת רשת — נסה שוב'); });
+}
+function chip(tx, fn){ var c = document.createElement('div'); c.className = 'chip'; c.textContent = tx; c.onclick = fn; el('chips').appendChild(c); }
+GET('/api/auth/whoami').then(function(w){
+  ROLE = (w && w.role) || '';
+  chip(ROLE === 'admin' ? 'מצב המשרד 📊' : 'המצב שלי 📊', function(){ card(''); });
+  if (ROLE === 'admin') chip('מה המצב של סוכן…', function(){ var n = prompt('שם הסוכן (כמו במערכת):'); if (n) card(n); });
+  chip('מה תקוע בחתימות?', function(){ ask('מה ממתין אצלי לחתימה וכמה זמן?'); });
+  chip('הקונים הטריים', function(){ ask('מי הקונים החדשים מהשבוע האחרון ומה הם מחפשים?'); });
+  chip('תן לי תובנה 💡', function(){ ask('תסתכל על הנתונים ותן לי תובנה אחת שכדאי לי לפעול עליה היום'); });
+  add('ef', 'היי! אני אפי 🐥 שאל אותי על הנתונים שלך — או גע באחד הכפתורים למעלה.' +
+    (ROLE === 'admin' ? '<br>כמנהל אתה רואה את כל המשרד, ואפשר גם לשאול על סוכן ספציפי.' : ''));
+});
+</script></body></html>'''
+
+
 V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>נכסים</title>
@@ -8665,6 +8776,72 @@ def inv_name_key(s):
     t = _re.sub(r'["\'׳״]', '', str(s or ''))
     return ' '.join(sorted(t.split()))
 
+# ── "שאל את אפי" — חוקי חישוב (ספק 2026-08-30). הכלל: נחתם ולא נשלח ──────────
+def ef_signed(g):
+    """נחתם בפועל = יש קישור מסמך חתום או עמלה (הכלל של מסך החתימות)."""
+    return bool(str(g.get("pct", "") or "").strip() or str(g.get("link", "") or "").strip())
+
+def ef_addr_anchor(a):
+    """עוגן-כתובת: אותיות/ספרות עד וכולל המספר הראשון — 'העצמאות 24, קרית ביאליק'
+    ו'העצמאות 24 קריית ביאליק' מתמפים לאותו נכס. בלי מספר → המחרוזת המנורמלת כולה."""
+    k = _re.sub(r"[^א-ת0-9a-z]", "", str(a or "").lower().replace("קריית", "קרית"))
+    m = _re.match(r"^(\D*?\d+)", k)
+    return m.group(1) if m else k
+
+def _ef_is_test(g):
+    """רשומות בדיקה (כתובת 'בדיקה בדיקה...') לא נספרות בשום מונה."""
+    return "בדיקה בדיקה" in str(g.get("address", "") or "")
+
+def ef_gius(sigs):
+    """גיוסים אמיתיים: בלעדיות שנחתמו, נכס ייחודי (עוגן-כתובת), בלי רשומות בדיקה."""
+    seen, out = set(), []
+    for g in sigs:
+        if str(g.get("type", "")) != "בלעדיות" or not ef_signed(g) or _ef_is_test(g):
+            continue
+        k = ef_addr_anchor(g.get("address", ""))
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(g)
+    return out
+
+def ef_konim(sigs):
+    """החתמות קונים שנחתמו — ייחוד לפי (לקוח, עוגן-כתובת), בלי רשומות בדיקה."""
+    seen, out = set(), []
+    for g in sigs:
+        if str(g.get("type", "")) != "קונים" or not ef_signed(g) or _ef_is_test(g):
+            continue
+        k = (str(g.get("client", "") or "").strip(), ef_addr_anchor(g.get("address", "")))
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(g)
+    return out
+
+def ef_week_trends(sigs, now):
+    """4 חלונות מתגלגלים של 7 ימים (0=האחרון): גיוסים/קונים חתומים בלבד."""
+    W = [{"gius": 0, "konim": 0} for _ in range(4)]
+    for kind, rows in (("gius", ef_gius(sigs)), ("konim", ef_konim(sigs))):
+        for g in rows:
+            ts = float(g.get("ts") or 0)
+            if not ts:
+                continue
+            w = int((now - ts) // (7 * 86400))
+            if 0 <= w < 4:
+                W[w][kind] += 1
+    return W
+
+def ef_quota_ok(store, phone, limit=20):
+    """מכסת שאלות AI יומית פר משתמש (מונה בזיכרון; מתאפס ברסטארט — מספיק v1)."""
+    import datetime as _dq
+    key = (str(phone or ""), _dq.date.today().isoformat())
+    n = store.get(key, 0)
+    if n >= limit:
+        return False
+    store[key] = n + 1
+    return True
+
+
 def sig_ingest_norm(b):
     """payload חתימה מאוטומציית פיירברי (אנגלית/עברית) → (source_key, תאריך ISO לעמודת
     received_at, raw במבנה getRaw_ שהאפליקציה קוראת) — או None כשאין תוכן מהותי.
@@ -8890,6 +9067,10 @@ def register(app, G):
     @app.route("/v2/meets", methods=["GET"])
     def v2_meets():
         return _page(V2_MEETS_HTML)
+
+    @app.route("/v2/effie", methods=["GET"])
+    def v2_effie():
+        return _page(V2_EFFIE_HTML)
 
     @app.route("/v2/newborn", methods=["GET"])
     def v2_newborn():
@@ -9648,6 +9829,127 @@ def register(app, G):
         except Exception as e:
             if log: log.error(f"v2 invoices ingest error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    # ── "שאל את אפי" (ספק 2026-08-30): כרטיסים מחושבים + שאלה חופשית ל-AI ─────
+    _EFFIE_QUOTA = {}
+
+    def _effie_scope(s):
+        """(שם-אפקטיבי, admin?) — מנהל יכול as=סוכן; סוכן/מתאמת = עצמם בלבד."""
+        as_name = (request.args.get("as", "") or (request.get_json(silent=True) or {}).get("as", "") or "").strip() \
+            if request.method in ("GET", "POST") else ""
+        if s["role"] == "admin" and as_name:
+            return as_name, False
+        if s["role"] == "admin":
+            return "", True   # משרד מלא
+        return s.get("name", ""), False
+
+    def _effie_sigrows(name):
+        """שורות חתימה בסקופ, בצורת ef_*: client/address/type/pct/link/ts/agent."""
+        _canon = G["_canon_key"]
+        rows = []
+        for g in G["get_signings"]():
+            ag = g.get("agent", "")
+            if name and _canon(ag) != _canon(name):
+                continue
+            lk = str(g.get("commission_pct", "") or "")
+            rows.append({"client": g.get("client_name", ""), "address": g.get("address", ""),
+                         "type": G["_deal_label"](g.get("deal_type", "")),
+                         "pct": lk if not lk.startswith("http") else "",
+                         "link": lk if lk.startswith("http") else "",
+                         "ts": G["_excl_epoch"](g.get("received_at", "")), "agent": ag})
+        return rows
+
+    def _effie_snapshot(name, office):
+        """תמצית נתונים ממודרת — הבסיס גם לכרטיסים וגם ל-AI. name=''+office=True → כלל-משרדי."""
+        import time as _t
+        now = _t.time()
+        _canon = G["_canon_key"]
+        sigs = _effie_sigrows("" if office else name)
+        month0 = now - 30 * 86400
+        m_sigs = [g for g in sigs if (g.get("ts") or 0) >= month0]
+        gius, konim = ef_gius(m_sigs), ef_konim(m_sigs)
+        pending = [g for g in m_sigs if not ef_signed(g) and not _ef_is_test(g)]
+        buyers = []
+        for b in G["_fetch_manual_buyers"]():
+            if not office and name and _canon(b.get("agent", "")) != _canon(name):
+                continue
+            buyers.append({"name": b.get("name", ""), "date": b.get("date", ""),
+                           "budget": b.get("budget", ""), "search": str(b.get("search", "") or "")[:80]})
+        deals_open = deals_closed = 0
+        for it in (G["_deals_load"]() or []):
+            ags = _canon(str(it.get("agent1", "") or it.get("agent", "") or ""))
+            if not office and name and _canon(name) not in (ags, _canon(str(it.get("agent2", "") or ""))):
+                continue
+            if it.get("deal"): deals_closed += 1
+            else: deals_open += 1
+        meets = []
+        for k, st in (G["_nb_statuses"]() or {}).items():
+            if st.get("status") not in ("meeting", "followup") or st.get("done"):
+                continue
+            if not office and name and _canon(st.get("agent", "")) != _canon(name):
+                continue
+            meets.append({"kind": st.get("status"), "date": st.get("date", ""),
+                          "addr": st.get("addr", ""), "agent": st.get("agent", "")})
+        snap = {"period": "30 הימים האחרונים", "gius": [{"address": g["address"], "client": g["client"]} for g in gius],
+                "giusN": len(gius), "konimN": len(konim),
+                "pendingN": len(pending), "pending": [{"client": g["client"], "address": g["address"]} for g in pending[:8]],
+                "buyersN": len(buyers), "buyersRecent": sorted(buyers, key=lambda b: G["_excl_epoch"](b.get("date", "")), reverse=True)[:8],
+                "dealsOpen": deals_open, "dealsClosed": deals_closed,
+                "meetsOpen": meets[:10], "trends4w": ef_week_trends(sigs, now)}
+        if office:
+            byag = {}
+            for g in ef_gius([x for x in m_sigs]):
+                byag.setdefault(_canon(g.get("agent", "")), {"name": g.get("agent", ""), "gius": 0, "konim": 0})["gius"] += 1
+            for g in ef_konim([x for x in m_sigs]):
+                byag.setdefault(_canon(g.get("agent", "")), {"name": g.get("agent", ""), "gius": 0, "konim": 0})["konim"] += 1
+            snap["topAgents"] = sorted(byag.values(), key=lambda x: -(x["gius"] * 2 + x["konim"]))[:8]
+        return snap
+
+    @app.route("/v2/api/effie/card", methods=["GET"])
+    def v2_api_effie_card():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        try:
+            name, office = _effie_scope(s)
+            snap = _effie_snapshot(name, office)
+            return jsonify({"ok": True, "who": name or "המשרד", "snap": snap})
+        except Exception as e:
+            if log: log.error(f"effie card error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    @app.route("/v2/api/effie/ask", methods=["POST"])
+    def v2_api_effie_ask():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        q = ((request.get_json(silent=True) or {}).get("q", "") or "").strip()[:300]
+        if not q:
+            return jsonify({"ok": False, "reason": "empty"}), 400
+        if not ef_quota_ok(_EFFIE_QUOTA, _last9(s.get("phone", ""))):
+            return jsonify({"ok": False, "reason": "quota", "msg": "הגעת ל-20 שאלות היום — הכפתורים המהירים תמיד פתוחים 🙂"})
+        try:
+            name, office = _effie_scope(s)
+            snap = _effie_snapshot(name, office)
+            prompt = ("אתה 'אפי' — עוזר הנתונים של משרד תיווך. ענה בעברית, קצר וידידותי, על סמך "
+                      "נתוני ה-JSON בלבד. אם הנתון לא קיים בנתונים — אמור שאין לך אותו. אל תמציא "
+                      "מספרים. אל תחשוף נתונים של סוכנים אחרים אלא אם הם בנתונים שקיבלת.\n"
+                      "הנתונים (סקופ: " + (name or "כל המשרד") + "):\n" +
+                      _json.dumps(snap, ensure_ascii=False) + "\n\nשאלה: " + q)
+            import requests as _rq
+            r = _rq.post("https://api.anthropic.com/v1/messages",
+                         headers={"anthropic-version": "2023-06-01", "x-api-key": G["CLAUDE_API_KEY"],
+                                  "content-type": "application/json"},
+                         json={"model": "claude-sonnet-4-5", "max_tokens": 700,
+                               "messages": [{"role": "user", "content": prompt}]},
+                         timeout=30)
+            r.raise_for_status()
+            ans = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text").strip()
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שאל את אפי", q[:60])
+            return jsonify({"ok": True, "answer": ans or "לא הצלחתי לנסח תשובה — נסה לנסח אחרת"})
+        except Exception as e:
+            if log: log.error(f"effie ask error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": "ai_failed", "msg": "משהו השתבש בדרך למוח של אפי — נסה שוב"}), 500
 
     # ── חתימות מפיירברי — webhook ישיר (מתכון החשבוניות; ספק 2026-08-13) ──────
     _SIGN_INGEST_KEY = (os.environ.get("SIGN_INGEST_KEY") or "").strip()
