@@ -8768,6 +8768,59 @@ def inv_name_key(s):
     t = _re.sub(r'["\'׳״]', '', str(s or ''))
     return ' '.join(sorted(t.split()))
 
+# ── yad2 ingest שלב א' (ספק 2026-08-30): פרטי→נכס נולד · משרדים→שת"פ ─────────
+Y2_OUR_OFFICE_IDS = {"5625538", "5628636", "8532791"}   # שלושת סניפי רימקס פמילי ביד2
+
+def y2_token(link):
+    """הטוקן מזהה המודעה בקישור משרדים: .../realestate/item/{token}[?...]"""
+    m = _re.search(r"/item/([A-Za-z0-9_-]+)", str(link or ""))
+    return m.group(1) if m else ""
+
+def y2_is_ours(office_id):
+    return str(office_id or "").strip() in Y2_OUR_OFFICE_IDS
+
+def y2_norm_private(row):
+    """שורת סריקה פרטית → (source_key, רשומת newborn_listings). המפתח 'id:'+_orderId —
+    זהה לקונבנציית _nb_key של הצינור הישן, כך שהחפיפה מתאחדת מעצמה."""
+    g = lambda k: str(row.get(k, "") or "").strip()
+    oid = g("_orderId")
+    sk = ("id:" + oid) if oid else ("ln:" + g("link"))
+    parts = [p for p in (g("property_type"),
+                         (g("rooms") + " חד'") if g("rooms") else "",
+                         (g("sqm") + " מ\"ר") if g("sqm") else "",
+                         ("קומה " + g("floor")) if g("floor") else "") if p]
+    desc = " · ".join(parts) + ((". " + g("description")) if g("description") else "")
+    raw = {"שם בעל הנכס": g("contact"), "טלפון בעל הנכס-": g("phone"),
+           "רחוב": g("street") or g("address"), "נוצר בתאריך": g("listing_date"),
+           "עודכן בתאריך": g("price_update"), "מחיר": g("price"), "תיאור נכס": desc,
+           "קישור": g("link"), "הערות חדש": "", "משתמש": "", "עיר": g("city") or g("_city"),
+           "שכונה": g("neighborhood"), "מזהה": oid, "סוג עסקה": g("deal_type"), "מקור": "yad2"}
+    rec = {"pid": oid, "owner_name": g("contact"), "owner_phone": g("phone"),
+           "street": g("street") or g("address"), "city": g("city") or g("_city"),
+           "price": g("price"), "description": desc, "link": g("link"),
+           "notes": "", "lister": "", "created_at_source": g("listing_date") or None, "raw": raw}
+    return sk, rec
+
+def y2_norm_agency(row, office, office_id):
+    """שורת מודעת-משרד → (source_key, רשומת external_exclusives) במבנה getRaw_ שהאפליקציה קוראת."""
+    g = lambda k: str(row.get(k, "") or "").strip()
+    tok = y2_token(g("link"))
+    sk = ("y2x:" + tok) if tok else ("y2x:" + g("street") + "|" + g("homeNum") + "|" + str(office_id))
+    street_full = (g("street") + (" " + g("homeNum") if g("homeNum") else "")).strip()
+    if g("city"):
+        street_full = (street_full + ", " + g("city")).strip(", ")
+    dparts = [p for p in (g("type"),
+                          (g("rooms") + " חד'") if g("rooms") else "",
+                          (g("sqm") + " מ\"ר") if g("sqm") else "",
+                          g("tags").replace(";", " · ")) if p]
+    raw = {"street": street_full, "dest": " · ".join(dparts), "desti": g("description")[:200],
+           "price": g("price"), "office": str(office or "").strip(), "officeId": str(office_id or "").strip(),
+           "link": g("link"), "phone": g("phone"), "excl": g("excl"),
+           "event_id": tok, "city": g("city"), "neighborhood": g("neighborhood"), "מקור": "yad2"}
+    rec = {"event_id": tok, "street": street_full, "dest": raw["dest"], "link": g("link"),
+           "price": g("price"), "raw": raw}
+    return sk, rec
+
 # ── "שאל את אפי" — חוקי חישוב (ספק 2026-08-30). הכלל: נחתם ולא נשלח ──────────
 def ef_signed(g):
     """נחתם בפועל = יש קישור מסמך חתום או עמלה (הכלל של מסך החתימות)."""
@@ -10044,6 +10097,67 @@ def register(app, G):
         except Exception as e:
             if log: log.error(f"effie ask error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": "ai_failed", "msg": "משהו השתבש בדרך למוח של אפי — נסה שוב"}), 500
+
+    # ── yad2 ingest שלב א' (ספק 2026-08-30): הסריקה שולחת, האפליקציה ממיינת ────
+    _Y2_KEY = (os.environ.get("YAD2_INGEST_KEY") or "").strip()
+
+    @app.route("/v2/api/yad2/ingest", methods=["POST"])
+    def v2_api_yad2_ingest():
+        import hmac as _hmac
+        b = request.get_json(silent=True) or {}
+        k = str(b.get("key", "") or "").strip()
+        if not _Y2_KEY or not k or not _hmac.compare_digest(k, _Y2_KEY):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        try:
+            sb = G.get("_sbdb")
+            if not (sb and sb.enabled()):
+                return jsonify({"ok": False, "reason": "no_supabase"}), 500
+            stream = str(b.get("stream", "") or "").strip()
+            scan_full = bool(b.get("scanFull"))
+            out = {"ok": True, "stream": stream, "n": 0, "ourN": 0, "shtafN": 0, "nbN": 0, "delistedN": 0}
+            rows = b.get("rows") or []
+            if stream == "private":
+                for r in rows:
+                    sk, rec = y2_norm_private(r)
+                    sb.newborn_upsert_row(sk, rec)
+                    out["nbN"] += 1
+            elif stream == "agency":
+                office = b.get("office", ""); office_id = b.get("officeId", "")
+                if y2_is_ours(office_id):
+                    out["ourN"] = len(rows)   # שלב ב' — נכסי המשרד; כרגע נספר בלבד
+                else:
+                    for r in rows:
+                        sk, rec = y2_norm_agency(r, office, office_id)
+                        sb.excl_upsert_row(sk, rec)
+                        out["shtafN"] += 1
+            # "ירד מפרסום" — תווית בלבד (לא מחיקה), ורק בסריקה מלאה (שערי הכיסוי בצד הסורק)
+            delisted = [str(x) for x in (b.get("delisted") or []) if str(x).strip()]
+            if delisted and scan_full:
+                import datetime as _dy
+                from zoneinfo import ZoneInfo as _ZY
+                stamp = _dy.datetime.now(_ZY("Asia/Jerusalem")).strftime("%d/%m/%Y")
+                if stream == "private":
+                    out["delistedN"] = sb.mark_delisted("newborn_listings",
+                                                        ["id:" + d for d in delisted], stamp)
+                elif stream == "agency":
+                    out["delistedN"] = sb.mark_delisted("external_exclusives",
+                                                        ["y2x:" + d for d in delisted], stamp)
+            out["n"] = len(rows)
+            # רעננות: גרסת נכס-נולד + מטמון השת"פ — שהמסכים יראו את החדש מיד
+            try:
+                if out["nbN"] or (out["delistedN"] and stream == "private"):
+                    G["_NB_RESULT_VER"][0] += 1
+                    G["_cache_clear"]("newborn_rows")
+                if out["shtafN"] or (out["delistedN"] and stream == "agency"):
+                    G["_external_excl_cache"]["ts"] = 0
+            except Exception:
+                pass
+            if log: log.info(f"yad2 ingest: stream={stream} machine={b.get('machine','')} "
+                             f"n={out['n']} nb={out['nbN']} shtaf={out['shtafN']} our={out['ourN']} delisted={out['delistedN']}")
+            return jsonify(out)
+        except Exception as e:
+            if log: log.error(f"yad2 ingest error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
     # ── חתימות מפיירברי — webhook ישיר (מתכון החשבוניות; ספק 2026-08-13) ──────
     _SIGN_INGEST_KEY = (os.environ.get("SIGN_INGEST_KEY") or "").strip()

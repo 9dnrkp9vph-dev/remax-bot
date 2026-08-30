@@ -351,6 +351,65 @@ def newborn_contact_add(listing_key, agent_name, addr=""):
     return True
 
 
+def newborn_upsert_row(source_key, rec):
+    """מודעת נכס-נולד מ-yad2 ingest — upsert לפי (office_id, source_key), אותה קונבנציה
+    כמו sbNewbornUpsert_ ב-Apps Script (החפיפה עם הצינור הישן מתאחדת במפתח)."""
+    row = {"office_id": SB_OFFICE_ID, "source_key": source_key,
+           "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()}
+    for k in ("pid", "owner_name", "owner_phone", "street", "city", "price",
+              "description", "link", "notes", "lister", "created_at_source", "raw"):
+        if k in rec:
+            row[k] = rec[k]
+    r = requests.post(SUPABASE_URL + "/rest/v1/newborn_listings",
+                      headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
+                      params={"on_conflict": "office_id,source_key"},
+                      json=[row], timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def excl_upsert_row(source_key, rec):
+    """מודעת משרד-אחר (שת"פ) מ-yad2 ingest — upsert ל-external_exclusives."""
+    row = {"office_id": SB_OFFICE_ID, "source_key": source_key,
+           "event_id": rec.get("event_id", ""), "street": rec.get("street", ""),
+           "dest": rec.get("dest", ""), "link": rec.get("link", ""),
+           "price": rec.get("price", ""),
+           "received_at": _dt.date.today().isoformat(), "raw": rec.get("raw") or {},
+           "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()}
+    r = requests.post(SUPABASE_URL + "/rest/v1/external_exclusives",
+                      headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
+                      params={"on_conflict": "office_id,source_key"},
+                      json=[row], timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def mark_delisted(table, source_keys, stamp):
+    """תווית "ירד מפרסום" (החלטת אייל 30/08 — לא מוחקים): raw.delisted_at=stamp.
+    בתוך ה-jsonb — בלי מיגרציית סכימה. מחזיר כמה שורות עודכנו."""
+    n = 0
+    for i in range(0, len(source_keys), 50):
+        chunk = source_keys[i:i + 50]
+        g = requests.get(SUPABASE_URL + "/rest/v1/" + table, headers=_headers(),
+                         params={"select": "id,raw", "office_id": "eq." + SB_OFFICE_ID,
+                                 "source_key": "in.(" + ",".join('"%s"' % k for k in chunk) + ")"},
+                         timeout=_TIMEOUT)
+        g.raise_for_status()
+        for rec in (g.json() or []):
+            raw = dict(rec.get("raw") or {})
+            if raw.get("delisted_at"):
+                continue   # כבר מסומן — לא דורסים את התאריך המקורי
+            raw["delisted_at"] = stamp
+            r = requests.patch(SUPABASE_URL + "/rest/v1/" + table, headers=_headers(),
+                               params={"id": "eq.%s" % rec["id"]},
+                               json={"raw": raw,
+                                     "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()},
+                               timeout=_TIMEOUT)
+            r.raise_for_status()
+            n += 1
+    return n
+
+
 def upsert_signature_row(source_key, received_iso, raw):
     """שורת חתימה מ-webhook פיירברי — upsert לפי (office_id, source_key):
     הטריגר "נוצרה או עודכנה" מעדכן שורה קיימת במקום להכפיל; retry לא מכפיל.
