@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      9.1
+// @version      9.2
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=15;          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='9.1'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='9.2'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1579,19 +1579,20 @@ function exclRunPublic(){
 function exclScanOffices(OFFICES,fetchFn,dirDiag){
   var i=0,summary=[],diags=[],doneThisRun=0,blocked=false;
   var prog=exclRunProg(Date.now()); // resume: משרדים שכבר נשלחו בריצה קטועה של היום — מדלגים
-  var skipped=OFFICES.filter(function(o){return prog.ids[o.id];}).length;
+  var skipped=OFFICES.filter(function(o){return prog.ids[o.id]&&!isFamId(o.id);}).length;
   log('🏢 סריקת בלעדיות מתחילה — '+OFFICES.length+' משרדים'+(skipped?(' (ממשיך ריצה קטועה, '+skipped+' כבר נסרקו)'):''));
   (function nextOffice(){
     // נחסמנו (CAPTCHA) או שהגענו לתקרת המשרדים לריצה — עוצרים בלי לסמן את הנותרים כ"בוצעו".
     // ההתקדמות נשמרת, ובסריקה הבאה ממשיכים בדיוק מהמשרד הבא. חסימה → מנוחה לפני ניסיון חדש.
     // מדלגים מראש על מה שכבר נסרק בריצה הזו, כדי לדעת מי המשרד הבא באמת
-    while(i<OFFICES.length && prog.ids[OFFICES[i].id]) i++;
+    // סניפי Family נסרקים בכל ריצה — יומן ההתקדמות היומי לא חוסם אותם.
+    while(i<OFFICES.length && prog.ids[OFFICES[i].id] && !isFamId(OFFICES[i].id)) i++;
     var nxt=OFFICES[i]||null;
     // סניפי Family לא נספרים בתקרת המשרדים לריצה: הם המקור לנתוני המשרד שלנו,
     // שאר המשרדים הם מודיעין שוק ויכולים להמתין לריצה הבאה. חסימה עדיין עוצרת הכל.
     var famNext=!!(nxt && isFamId(nxt.id));
     if(blocked || (doneThisRun>=OFFICES_PER_RUN && !famNext)){
-      var rest=OFFICES.filter(function(o){return !prog.ids[o.id];}).length;
+      var rest=OFFICES.filter(function(o){return !prog.ids[o.id]&&!isFamId(o.id);}).length;
       if(blocked){
         gmSet('ysExclCool',String(Date.now()+BLOCK_COOLDOWN_MIN*60000));
         summary.push('⛔ יד2 חסם — מנוחה '+BLOCK_COOLDOWN_MIN+' דק׳, נמשיך מ-'+rest+' משרדים');
@@ -1617,7 +1618,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
       return;
     }
     var office=OFFICES[i++];
-    if(prog.ids[office.id]){setTimeout(nextOffice,50);return;} // נסרק בריצה הקטועה — הלאה
+    if(prog.ids[office.id] && !isFamId(office.id)){setTimeout(nextOffice,50);return;} // נסרק בריצה הקטועה — הלאה (Family תמיד נסרק)
     exclCrawlOffice(office,fetchFn,function(name,part,page,n){log('🏢 '+name+' '+part+' עמ׳ '+page+': '+n);},function(rowsArr,diag){
       if(diag)diags.push(diag);
       if(diag&&diag.blocked){ // עמוד CAPTCHA — לא מסמנים "בוצע", עוצרים את הריצה ונחים
@@ -1652,7 +1653,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
     });
   })();
 }
-try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
+try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
 
 // ===== סימן-חיים + התאוששות SMS אוטומטית =====
 var LOGIN_PHONE='0505709865';  // הנייד שממלאים אוטומטית בכניסה מחדש
