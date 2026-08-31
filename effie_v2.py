@@ -8795,10 +8795,13 @@ def y2_norm_private(row):
            "עודכן בתאריך": g("price_update"), "מחיר": g("price"), "תיאור נכס": desc,
            "קישור": g("link"), "הערות חדש": "", "משתמש": "", "עיר": g("city") or g("_city"),
            "שכונה": g("neighborhood"), "מזהה": oid, "סוג עסקה": g("deal_type"), "מקור": "yad2"}
+    # created_at_source הוא timestamptz — פורמט לא-ISO (למשל 31/08/2026 10:22 מ-modified
+    # של יד2) החזיר 400 מ-Supabase (אומת חי 31/08). inv_parse_dt מנרמל; לא-פריס → None.
+    _cs = inv_parse_dt(g("listing_date"))
     rec = {"pid": oid, "owner_name": g("contact"), "owner_phone": g("phone"),
            "street": g("street") or g("address"), "city": g("city") or g("_city"),
            "price": g("price"), "description": desc, "link": g("link"),
-           "notes": "", "lister": "", "created_at_source": g("listing_date") or None, "raw": raw}
+           "notes": "", "lister": "", "created_at_source": _cs, "raw": raw}
     return sk, rec
 
 def y2_norm_agency(row, office, office_id):
