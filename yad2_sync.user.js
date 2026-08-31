@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      8.9
+// @version      9.0
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=15;          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='8.9'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='9.0'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -973,15 +973,21 @@ function profileItems(){
   return out;
 }
 // מחליף לפרופיל שאינו הפעיל. done(true/false) — כשל לא מפיל כלום.
+// profSwitchWhy — באיזה שלב בדיוק נכשלה ההחלפה. "נכשלה" לבד לא אומר כלום (v9.0).
+var profSwitchWhy='';
 function profileSwitch(done){
   done=once(done);
   var before=srcKey(), active=profileLabel();
+  var beforeOffice=(function(){try{return officeIdSeen()||'';}catch(e){return '';}})();
+  var beforeSig=(function(){try{return lastTableSig();}catch(e){return '';}})();
+  profSwitchWhy='';
   var btn=accountButton();
-  if(!btn){ log('👤 לא נמצא כפתור החשבון — סורקים את הפרופיל הפעיל'); done(false); return; }
-  try{btn.click();}catch(e){ done(false); return; }
+  if(!btn){ profSwitchWhy='אין כפתור חשבון'; log('👤 לא נמצא כפתור החשבון — סורקים את הפרופיל הפעיל'); done(false); return; }
+  try{btn.click();}catch(e){ profSwitchWhy='לחיצה על החשבון נכשלה'; done(false); return; }
   setTimeout(function(){
-    var items=profileItems().filter(function(x){return !active||x.label!==active;});
-    if(!items.length){ log('👤 לא נמצא פרופיל אחר בתפריט'); try{btn.click();}catch(e){} done(false); return; }
+    var all=profileItems();
+    var items=all.filter(function(x){return !active||x.label!==active;});
+    if(!items.length){ profSwitchWhy='אין פרופיל שני בתפריט ('+all.length+' פריטים)'; log('👤 לא נמצא פרופיל אחר בתפריט'); try{btn.click();}catch(e){} done(false); return; }
     var st=profStore(); st.labels=(st.labels||[]);
     items.concat(active?[{label:active}]:[]).forEach(function(x){ if(st.labels.indexOf(x.label)===-1)st.labels.push(x.label); });
     profSave(st);
@@ -989,9 +995,24 @@ function profileSwitch(done){
     try{items[0].el.click();}catch(e){ done(false); return; }
     var t0=Date.now(), tries=0;
     (function wait(){
-      if(srcKey()!==before){ var st2=profStore(); st2.last=items[0].label; profSave(st2); log('👤 הוחלף בהצלחה ('+srcKey()+')'); done(true); return; }
+      // שלושה סימנים להצלחה — di שלושתם אומרים "המלאי שמול העיניים התחלף":
+      // (1) מפתח המקור השתנה · (2) מזהה המשרד השתנה · (3) הגיעה תשובת טבלה חדשה.
+      // בעבר נבדק רק (1), והוא נגזר ממסנן האזור — ולכן החלפה מוצלחת בין שני פרופילים
+      // באותו אזור דווחה ככישלון (אייל, 31/08).
+      var nowSrc=srcKey();
+      var nowOffice=(function(){try{return officeIdSeen()||'';}catch(e){return '';}})();
+      var nowSig=(function(){try{return lastTableSig();}catch(e){return '';}})();
+      if(nowSrc!==before || (nowOffice&&nowOffice!==beforeOffice) || (nowSig&&nowSig!==beforeSig)){
+        var st2=profStore(); st2.last=items[0].label; profSave(st2);
+        profSwitchWhy='';
+        log('👤 הוחלף בהצלחה ל-'+items[0].label+' ('+nowSrc+')');
+        done(true); return;
+      }
       // תקרה כפולה: זמן *וגם* מספר נסיונות (מכשיר שנרדם מקפיא את השעון ותוקע את הלופ)
-      if(++tries>=16 || Date.now()-t0>SWITCH_TIMEOUT_MS){ log('👤 ההחלפה לא נקלטה — ממשיכים עם מה שיש'); done(false); return; }
+      if(++tries>=16 || Date.now()-t0>SWITCH_TIMEOUT_MS){
+        profSwitchWhy='נלחץ "'+items[0].label+'" ולא הגיב ('+nowSrc+')';
+        log('👤 ההחלפה לא נקלטה — ממשיכים עם מה שיש'); done(false); return;
+      }
       setTimeout(wait,1500);
     })();
   },1200);
@@ -1010,7 +1031,7 @@ function waitScrape(attempt){
     if(ok){ profSwitchNote=''; runFullScan(log, function(){ paused=false; scheduleNext(); }); return; }
     setTimeout(function(){
       profileSwitch(function(ok2){
-        profSwitchNote = ok2 ? '' : ' · ⚠️ החלפת פרופיל נכשלה';
+        profSwitchNote = ok2 ? '' : (' · ⚠️ החלפת פרופיל: '+(profSwitchWhy||'נכשלה'));
         runFullScan(log, function(){ paused=false; scheduleNext(); });
       });
     }, 3000);
@@ -1679,7 +1700,7 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitch;window.__ysAccountButton=accountButton;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitch;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
