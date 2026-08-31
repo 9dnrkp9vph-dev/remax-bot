@@ -388,6 +388,28 @@ def excl_upsert_row(source_key, rec):
     return True
 
 
+def newborn_dates(source_keys):
+    """'נוצר בתאריך' הקיים לכל source_key — לשימור שעה שכבר נקבעה (ingest יד2).
+    מחזיר {source_key: המחרוזת הקיימת} רק לשורות שנמצאו."""
+    out = {}
+    if not (enabled() and source_keys):
+        return out
+    for i in range(0, len(source_keys), 100):
+        chunk = source_keys[i:i + 100]
+        try:
+            r = requests.get(SUPABASE_URL + "/rest/v1/newborn_listings", headers=_headers(),
+                             params={"select": "source_key,d:raw->>נוצר בתאריך",
+                                     "office_id": "eq." + SB_OFFICE_ID,
+                                     "source_key": "in.(" + ",".join('"%s"' % k for k in chunk) + ")"},
+                             timeout=_TIMEOUT)
+            r.raise_for_status()
+            for rec in (r.json() or []):
+                out[str(rec.get("source_key") or "")] = str(rec.get("d") or "")
+        except Exception:
+            continue   # best-effort: בלי שעה קיימת פשוט לא משמרים
+    return out
+
+
 def mark_delisted(table, source_keys, stamp):
     """תווית "ירד מפרסום" (החלטת אייל 30/08 — לא מוחקים): raw.delisted_at=stamp.
     בתוך ה-jsonb — בלי מיגרציית סכימה. מחזיר כמה שורות עודכנו."""

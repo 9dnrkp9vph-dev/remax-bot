@@ -8794,7 +8794,8 @@ def y2_norm_private(row):
            "רחוב": g("street") or g("address"), "נוצר בתאריך": g("listing_date"),
            "עודכן בתאריך": g("price_update"), "מחיר": g("price"), "תיאור נכס": desc,
            "קישור": g("link"), "הערות חדש": "", "משתמש": "", "עיר": g("city") or g("_city"),
-           "שכונה": g("neighborhood"), "מזהה": oid, "סוג עסקה": g("deal_type"), "מקור": "yad2"}
+           "שכונה": g("neighborhood"), "מזהה": oid, "סוג עסקה": g("deal_type"),
+           "קומה": g("floor"), "מקור": "yad2"}
     # created_at_source הוא timestamptz — פורמט לא-ISO (למשל 31/08/2026 10:22 מ-modified
     # של יד2) החזיר 400 מ-Supabase (אומת חי 31/08). inv_parse_dt מנרמל; לא-פריס → None.
     _cs = inv_parse_dt(g("listing_date"))
@@ -8803,6 +8804,30 @@ def y2_norm_private(row):
            "price": g("price"), "description": desc, "link": g("link"),
            "notes": "", "lister": "", "created_at_source": _cs, "raw": raw}
     return sk, rec
+
+_Y2_TIME_RE = _re.compile(r'\d{1,2}:\d{2}')
+
+def y2_date_part(s):
+    m = _re.search(r'(\d{1,2})[./](\d{1,2})[./](\d{4})', str(s or ''))
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+def y2_fix_created(listing_date, existing, now_il):
+    """שעה מלאה ל'נוצר בתאריך' (בקשת אייל 01/09) — יד2 שולח לרוב תאריך בלבד.
+    יש שעה → כמו שהוא; אין שעה → (א) רשומה קיימת עם שעה מאותו יום שומרת אותה
+    (סריקה חוזרת לא מוחקת), (ב) מודעה שנולדה היום מקבלת את שעת הקליטה
+    (הסריקות רצות כל 8-30 דק' — דיוק אמיתי), (ג) תאריך ישן נשאר תאריך-בלבד."""
+    t = str(listing_date or '').strip()
+    if not t or _Y2_TIME_RE.search(t):
+        return t
+    d = y2_date_part(t)
+    ex = str(existing or '').strip()
+    if ex and _Y2_TIME_RE.search(ex) and y2_date_part(ex) == d:
+        return ex
+    if d and y2_date_part(now_il) == d:
+        m = _Y2_TIME_RE.search(str(now_il or ''))
+        if m:
+            return t + ' ' + m.group(0)
+    return t
 
 def y2_norm_agency(row, office, office_id):
     """שורת מודעת-משרד → (source_key, רשומת external_exclusives) במבנה getRaw_ שהאפליקציה קוראת."""
@@ -10120,8 +10145,18 @@ def register(app, G):
             out = {"ok": True, "stream": stream, "n": 0, "ourN": 0, "shtafN": 0, "nbN": 0, "delistedN": 0}
             rows = b.get("rows") or []
             if stream == "private":
-                for r in rows:
-                    sk, rec = y2_norm_private(r)
+                norm = [y2_norm_private(r) for r in rows]
+                try:   # שעות קיימות ב-DB — שסריקה חוזרת (תאריך-בלבד) לא תמחק שעה שכבר נקבעה
+                    existing = sb.newborn_dates([sk for sk, _ in norm]) if norm else {}
+                except Exception:
+                    existing = {}
+                import datetime as _dy2
+                from zoneinfo import ZoneInfo as _ZY2
+                now_il = _dy2.datetime.now(_ZY2("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
+                for sk, rec in norm:
+                    fixed = y2_fix_created(rec["raw"].get("נוצר בתאריך", ""), existing.get(sk, ""), now_il)
+                    rec["raw"]["נוצר בתאריך"] = fixed
+                    rec["created_at_source"] = inv_parse_dt(fixed)
                     sb.newborn_upsert_row(sk, rec)
                     out["nbN"] += 1
             elif stream == "agency":

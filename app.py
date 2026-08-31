@@ -7273,6 +7273,22 @@ def _addr_tokens(*parts):
     words = set(w for w in toks if (not w.isdigit()) and len(w) >= 2 and w not in _noise)
     return nums, words
 
+def _famexcl_price(p):
+    """מחיר לנתון מספרי להשוואת famexcl — None כשאין/לא מספר סביר."""
+    d = re.sub(r"[^\d]", "", str(p or ""))
+    if not d:
+        return None
+    try:
+        n = int(d)
+        return n if n >= 10000 else None   # ערכים זעירים = לא מחיר נכס
+    except Exception:
+        return None
+
+def _famexcl_floor(v):
+    """קומה לערך מספרי (0=קרקע תקין) — None כשאין נתון."""
+    m = re.search(r"-?\d+", str(v or ""))
+    return int(m.group(0)) if m else None
+
 def _famexcl_addr_list():
     """כתובות שכבר בבלעדיות/טיפול RE/MAX Family — לסימון ב'נכס נולד', עם שם הסוכן.
     שלושה מקורות (בקשת אייל 13/07): בלעדויות חיצוניות (שת"פ — רק שלנו),
@@ -7284,18 +7300,19 @@ def _famexcl_addr_list():
     if c is not None:
         return c
     idx = {}
-    def _add(addr_parts, agent):
+    def _add(addr_parts, agent, price=None, floor=None):
         nums, words = _addr_tokens(*addr_parts)
         if not nums or not words:
             return
-        ent = (nums, words, (agent or "").strip())
+        # מחיר/קומה (בקשת אייל 01/09): פוסלי-שווא — אותה כתובת אך דירה אחרת
+        ent = (nums, words, (agent or "").strip(), _famexcl_price(price), _famexcl_floor(floor))
         for n in nums:
             idx.setdefault(n, []).append(ent)
     # 1) בלעדויות חיצוניות — רק של רימקס פמילי (אין שדה סוכן אמין → ריק)
     try:
         for r in (fetch_external_exclusives() or []):
             if _is_our_office(r.get("office", "")):
-                _add((r.get("street", ""),), "")
+                _add((r.get("street", ""),), "", r.get("price", ""))
     except Exception:
         pass
     # 2) נכסי המשרד (יד2) — כל מודעה פעילה; הסוכן = "סוכן 1"
@@ -7306,7 +7323,8 @@ def _famexcl_addr_list():
             street = (r.get("כתובת", "") or r.get("רחוב1", "") or r.get("רחוב", "") or "").strip()
             house = (r.get("מספר בית", "") or r.get("מס בית", "") or r.get("מס' בית", "") or r.get("בית", "") or "").strip()
             city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()
-            _add((street, house, city), _canon_agent_name((r.get("סוכן 1", "") or "").strip()))
+            _add((street, house, city), _canon_agent_name((r.get("סוכן 1", "") or "").strip()),
+                 r.get("מחיר", ""), r.get("קומה", ""))
     except Exception:
         pass
     # 3) חתימות בלעדיות (OWNER_EXCLUSIVE) — הסוכן = agent
@@ -7314,16 +7332,19 @@ def _famexcl_addr_list():
         for g in get_signings():
             if "OWNER_EXCLUSIVE" not in str(g.get("deal_type", "")).upper():
                 continue
-            _add((g.get("address", ""), g.get("city", "")), _canon_agent_name((g.get("agent", "") or "").strip()))
+            _add((g.get("address", ""), g.get("city", "")), _canon_agent_name((g.get("agent", "") or "").strip()),
+                 g.get("price", ""))
     except Exception:
         pass
     _cache_put("famexcl_index", idx)
     return idx
 
-def _is_famexcl(addr, city, fam_idx):
+def _is_famexcl(addr, city, fam_idx, price=None, floor=None):
     """מחזיר את שם הסוכן שבבלעדיות אם הכתובת כבר בטיפול RE/MAX Family, אחרת None.
     שמרני: כל אסימוני הנכס (מספר+רחוב+עיר) חייבים להופיע בכתובת שבמקור.
-    בודק רק מול כתובות שחולקות מספר בית (דרך האינדקס) — מהיר גם עם אלפי נכסים."""
+    דיוק (בקשת אייל 01/09): כששני הצדדים מכירים מחיר — סטייה מעל 5% פוסלת;
+    כששניהם מכירים קומה — קומה שונה פוסלת (אותה כתובת, דירה אחרת). נתון חסר
+    באחד הצדדים לא פוסל. בודק רק מול כתובות שחולקות מספר בית — מהיר."""
     if not fam_idx:
         return None
     nb_nums, nb_words = _addr_tokens(addr, city)
@@ -7333,15 +7354,20 @@ def _is_famexcl(addr, city, fam_idx):
     seen = set()
     best = None
     for n in nb_nums:
-        for ex_nums, ex_words, agent in fam_idx.get(n, ()):
+        for ex_nums, ex_words, agent, ex_price, ex_floor in fam_idx.get(n, ()):
             _id = id(ex_words)
             if _id in seen:
                 continue
             seen.add(_id)
-            if need <= (ex_nums | ex_words):
-                if agent:
-                    return agent       # התאמה עם שם סוכן — עדיפה
-                best = ""               # התאמה בלי שם (בלעדיות חיצונית) — שומרים כגיבוי
+            if not (need <= (ex_nums | ex_words)):
+                continue
+            if price is not None and ex_price is not None and                     abs(price - ex_price) > 0.05 * max(price, ex_price):
+                continue
+            if floor is not None and ex_floor is not None and floor != ex_floor:
+                continue
+            if agent:
+                return agent       # התאמה עם שם סוכן — עדיפה
+            best = ""               # התאמה בלי שם (בלעדיות חיצונית) — שומרים כגיבוי
     return best
 
 _NB_RESULT_VER = [0]   # מעלים בכל שינוי (סטטוס/הערה/פנייה) כדי לבטל את מטמון התוצאה לכל הסקופים
@@ -7431,7 +7457,12 @@ def api_newborn():
             _k = _nb_key(r)
             _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
             ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
-            _famv = _is_famexcl(_addr, city, fam_list)   # שם הסוכן שבבלעדיות / '' / None
+            _nb_fl = _famexcl_floor(r.get("קומה", ""))
+            if _nb_fl is None:   # שורות ישנות בלי שדה קומה — מהתיאור ("קומה N")
+                _m_fl = re.search(r"קומה\s*(-?\d+)", str(r.get("תיאור נכס", "") or ""))
+                _nb_fl = int(_m_fl.group(1)) if _m_fl else None
+            _famv = _is_famexcl(_addr, city, fam_list,
+                                _famexcl_price(r.get("מחיר", "")), _nb_fl)   # שם הסוכן שבבלעדיות / '' / None
             out.append({
                 # [SWR-2] "released"/"own" הוסרו — אף מסך לא קורא אותם (נסרק 24/08)
                 "key": _k,
@@ -8783,6 +8814,7 @@ _seen_newborns = set()
 _seen_newborns_seeded = False
 _NB_SEEN_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(__file__), "newborn_seen.json")
 _NB_PUSH_MAX_BURST = 15   # שסתום בטיחות: יותר מזה "חדשים" בבת אחת = אנומליה (איפוס מצב), לא מפציצים
+_NB_PUSH_DIGEST_MAX = 80  # 16-80 חדשים = batch אמיתי (מכונת יד2 השלימה פער) → פוש מסכם אחד; מעל = אנומליה, שקט
 
 def _nb_seen_load():
     """טעינת הסט מהדיסק (שורד restart/deploy — מונע הצפת פוש אחרי כל פריסה)."""
@@ -8827,10 +8859,20 @@ def check_new_newborns():
         return
     new_keys = [k for k in keymap.keys() if k not in _seen_newborns]
     if len(new_keys) > _NB_PUSH_MAX_BURST:
-        # אנומליה (מצב אופס/שינוי מפתחות) — מסמנים כמוכרים בלי לדחוף, כדי לא להפציץ
         _seen_newborns |= set(keymap.keys())
         _nb_seen_save()
-        log.error(f"newborn push burst guard: {len(new_keys)} new at once — suppressed")
+        if len(new_keys) <= _NB_PUSH_DIGEST_MAX:
+            # batch גדול אמיתי (מכונת יד2 השלימה פער אחרי השבתה) — פוש מסכם אחד במקום שקט
+            try:
+                threading.Thread(target=send_push,
+                    args=("נכס נולד 🐥", f"{len(new_keys)} נכסים חדשים נכנסו למערכת",
+                          _nb_push_targets()), daemon=True).start()
+            except Exception:
+                pass
+            log.warning(f"newborn push digest: {len(new_keys)} new at once — one summary push")
+        else:
+            # אנומליה (מצב אופס/שינוי מפתחות) — מסמנים כמוכרים בלי לדחוף, כדי לא להפציץ
+            log.error(f"newborn push burst guard: {len(new_keys)} new at once — suppressed")
         return
     for k in new_keys:
         r = keymap[k]
