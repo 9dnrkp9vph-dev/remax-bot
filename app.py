@@ -8567,6 +8567,26 @@ def apk_download():
     resp.headers["Cache-Control"] = "public, max-age=300"
     return resp
 
+# ── סקריפט הסריקה של יד2 — מוגש כדי שטמפרמונקי יעדכן את מחשב המשרד לבד ──────────
+# בלי זה כל עדכון לסורק דורש גישה פיזית ללפטופ שבמשרד. עם זה: מעדכנים את הקובץ
+# בריפו, פורסים, והלפטופ מתקין את הגרסה החדשה בעצמו (@updateURL בכותרת הסקריפט).
+def _yad2_script_path():
+    for d in (Path(__file__).parent, Path("."), Path("/app")):
+        p = d / "yad2_sync.user.js"
+        if p.exists():
+            return p
+    return None
+
+@app.route("/yad2.user.js", methods=["GET"])
+def yad2_userscript():
+    p = _yad2_script_path()
+    if not p:
+        return ("userscript not found", 404)
+    resp = Response(p.read_text(encoding="utf-8"), mimetype="text/javascript; charset=utf-8")
+    # בלי מטמון — אחרת טמפרמונקי ימשיך לראות גרסה ישנה אחרי פריסה
+    resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
+
 _APK_PAGE = """<!doctype html><html lang="he" dir="rtl"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>התקנת אפי לאנדרואיד</title>
