@@ -101,6 +101,10 @@ def fetch_newborn_rows():
         ep = _nb_parse_date_ms(raw.get("נוצר בתאריך", ""))
         if ep and ep < cutoff_ms:
             continue          # ישן מדי — זהה להתנהגות listnewborn
+        # השכרות מסריקת יד2 לא מוצגות בנכס נולד (החלטת אייל 31/08) — נשארות ב-DB
+        # לאופציה עתידית פר-סוכן ב"ניהול". שורות הצינור הישן בלי "סוג עסקה" — עוברות.
+        if "שכר" in str(raw.get("סוג עסקה") or ""):
+            continue
         rows.append(raw)
     return rows
 
