@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      9.3
+// @version      9.4
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=15;          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='9.3'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='9.4'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1596,6 +1596,8 @@ function exclRunPublic(){
     gmSet('ysExclScanHB',String(Date.now()));
     setInterval(function(){gmSet('ysExclScanHB',String(Date.now()));},20000);
     log('🏠 סורק רק את סניפי רימקס Family ('+EXCL_OFFICES.length+')');
+    lastScanMsg='🏠 סריקת Family התחילה ('+EXCL_OFFICES.length+' סניפים)';
+    try{postHB('ok');}catch(e){}
     exclScanOffices(EXCL_OFFICES.slice(), fetchFn, {famOnly:1, total:EXCL_OFFICES.length});
     return;
   }
@@ -1603,6 +1605,8 @@ function exclRunPublic(){
   gmSet('ysExclScanHB',String(Date.now()));
   setInterval(function(){gmSet('ysExclScanHB',String(Date.now()));},20000);
   log('🏢 מגלה משרדים מהמדריך…');
+  lastScanMsg='🏢 סריקת משרדים התחילה';
+  try{postHB('ok');}catch(e){}
   exclDiscoverOffices(fetchFn,function(offices,dirDiag){
     if(!offices.length){log('🏢 גילוי המדריך נכשל — נופלים לרשימה הקבועה');offices=EXCL_OFFICES;}
     log('🏢 נמצאו '+offices.length+' משרדים בקריות');
@@ -1633,6 +1637,8 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
       } else summary.push('⏸️ תקרת '+OFFICES_PER_RUN+' משרדים לסריקה — נותרו '+rest+' (סניפי Family נסרקו)');
       exclPostDiag({at:new Date().toISOString(),dir:dirDiag||null,blocked:blocked?1:0,offices:diags});
       gmSet('ysExclLast',new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})+' '+summary.join(' · '));
+      lastScanMsg='🏢 עצירה: '+summary.join(' · ').slice(0,220);
+      try{postHB(blocked?'blocked':'ok');}catch(e){}
       log('🏢 עצירה מסודרת: '+summary.join(' · '));
       setTimeout(function(){try{window.close();}catch(e){}},4000);
       return;
@@ -1646,6 +1652,8 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
       summary.push('סה"כ: בלעדי '+exT+' · רגיל '+exF+' · טל '+phN);
       exclPostDiag({at:new Date().toISOString(),dir:dirDiag||null,offices:diags});
       gmSet('ysExclLast',new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})+' '+summary.join(' · '));
+      lastScanMsg='🏢 הושלמה: '+summary.join(' · ').slice(0,220);
+      try{postHB('ok');}catch(e){}
       log('🏢 סריקה הושלמה: '+summary.join(' · '));
       setTimeout(function(){try{window.close();}catch(e){}},4000);
       return;
