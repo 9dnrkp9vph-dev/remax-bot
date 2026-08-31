@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      9.4
+// @version      9.5
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=15;          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='9.4'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='9.5'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1703,12 +1703,16 @@ var HB_MIN=10, lastHB=0, lastFill=0;
 // כדי שאפשר יהיה לראות מרחוק איזו מכונה סורקת — ואם שתיים סורקות במקביל, זה יתגלה מיד.
 function machineId(){
   try{
-    var k='yad2_machine_v1', v=localStorage.getItem(k);
+    // ⚠️ אחסון של טמפרמונקי (gm) ולא localStorage: הפאנל יושב על plus.yad2.co.il
+    // וטאב הסריקה על www.yad2.co.il — שני origin נפרדים, ולכן נוצרו שני מזהים
+    // לאותה מכונה (win-yahv / win-6krq). gm משותף לכל הסקריפט (v9.5).
+    var k='yad2_machine_v1', v=gmGet(k,'')||localStorage.getItem(k);
+    if(v && !gmGet(k,'')) gmSet(k,v);      // מיגרציה: מזהה קיים עובר לאחסון המשותף
     if(!v){
       var ua=String(navigator.userAgent||'');
       var os=/Windows/i.test(ua)?'win':(/Mac/i.test(ua)?'mac':'pc');
       v=os+'-'+Math.random().toString(36).slice(2,6);
-      localStorage.setItem(k,v);
+      gmSet(k,v); try{localStorage.setItem(k,v);}catch(e){}
     }
     return v;
   }catch(e){ return '?'; }
