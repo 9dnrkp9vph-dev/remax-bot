@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      9.0
+// @version      9.1
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=15;          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='9.0'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='9.1'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -192,7 +192,7 @@ function latestApiTemplate(){
 // יד2 חוסם בעקביות בקשות-עמוד ששולחים בעצמנו (כל סריקה נעצרה על 100 מודעות מ-900/1,866).
 // הפתרון: ללחוץ על "העמוד הבא" בממשק — יד2 טוען את העמוד בעצמו, ואת התשובה שלו אנחנו
 // אוספים ממילא (הוא לא חוסם את הבקשות של עצמו). נופלים למשיכה הישנה אם אין פגינציה בדף.
-var UI_PAGES_MAX=25, UI_PAGE_WAIT_MS=12000, UI_TOTAL_MS=240000;
+var UI_PAGES_MAX=25, UI_PAGE_WAIT_MS=12000, UI_TOTAL_MS=420000;   // 7 דק': 4 לא הספיקו ל-9 עמודים (31/08), ושומר-הראש עדיין ב-15
 var UI_PAGER_WAIT_MS=20000;  // כמה לחכות שהטבלה של יד2 תיבנה לפני שמתייאשים מהפגינציה
 var PAGER_BACK_KEY='yad2_pager_back_v1';
 var PAGER_KEY='yad2_pager_v1';   // זוכרים איזה חץ הוא "הבא" אחרי שהוכח
@@ -953,7 +953,11 @@ var PROFILE_KEY='yad2_profiles_v1';   // {labels:[...], last:'<label>'}
 var SWITCH_TIMEOUT_MS=25000;
 function profStore(){try{return JSON.parse(localStorage.getItem(PROFILE_KEY)||'{}');}catch(e){return {};}}
 function profSave(o){try{localStorage.setItem(PROFILE_KEY,JSON.stringify(o));}catch(e){}}
-function notProfile(t){return /צור קשר|יצירת קשר|יציאה|התנתק|מהמערכת|לצפיה בפרופיל|לצפייה בפרופיל|הגדרות|עזרה/.test(t);}
+// פריטי תפריט שאינם פרופיל. "עדכונים" נתפס בשטח (31/08) — הסורק לחץ עליו וההחלפה
+// "לא הגיבה". כל מילה כאן היא פריט אמיתי מתפריט החשבון של יד2.
+function notProfile(t){
+  return /צור קשר|יצירת קשר|יציאה|התנתק|מהמערכת|לצפיה בפרופיל|לצפייה בפרופיל|הגדרות|עזרה|עדכונים|הודעות|התראות|תמיכה|חיפושים שמורים|המודעות שלי|הנכסים שלי|חשבון|מרכז|תשלום|חשבונית|מנוי/.test(t);
+}
 // כפתור החשבון בכותרת (מציג את שם הפרופיל הפעיל)
 function accountButton(){ var a=activeProfile(); return a?a.el:null; }
 // פריטי הפרופילים בתפריט הפתוח
@@ -987,6 +991,12 @@ function profileSwitch(done){
   setTimeout(function(){
     var all=profileItems();
     var items=all.filter(function(x){return !active||x.label!==active;});
+    // מכירים כבר את שמות הפרופילים? הם קודמים לכל ניחוש מהתפריט.
+    var known=(profStore().labels||[]).filter(function(l){return l&&l!==active;});
+    if(known.length){
+      var pref=items.filter(function(x){return known.indexOf(x.label)>-1;});
+      if(pref.length)items=pref.concat(items.filter(function(x){return known.indexOf(x.label)===-1;}));
+    }
     if(!items.length){ profSwitchWhy='אין פרופיל שני בתפריט ('+all.length+' פריטים)'; log('👤 לא נמצא פרופיל אחר בתפריט'); try{btn.click();}catch(e){} done(false); return; }
     var st=profStore(); st.labels=(st.labels||[]);
     items.concat(active?[{label:active}]:[]).forEach(function(x){ if(st.labels.indexOf(x.label)===-1)st.labels.push(x.label); });
