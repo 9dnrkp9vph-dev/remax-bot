@@ -8772,8 +8772,9 @@ def inv_name_key(s):
 Y2_OUR_OFFICE_IDS = {"5625538", "5628636", "8532791"}   # שלושת סניפי רימקס פמילי ביד2
 
 def y2_token(link):
-    """הטוקן מזהה המודעה בקישור משרדים: .../realestate/item/{token}[?...]"""
-    m = _re.search(r"/item/([A-Za-z0-9_-]+)", str(link or ""))
+    """הטוקן מזהה המודעה בקישור: .../item/{token} או .../item/{אזור}/{token} —
+    תמיד הסגמנט האחרון (יד2 מוסיף סגמנט אזור כמו coastal-north; אומת מול דאטה אמיתי 01/09)."""
+    m = _re.search(r"/item/(?:[A-Za-z0-9_-]+/)*([A-Za-z0-9_-]+)(?:[?#]|$)", str(link or ""))
     return m.group(1) if m else ""
 
 def y2_is_ours(office_id):
@@ -8804,6 +8805,25 @@ def y2_norm_private(row):
            "price": g("price"), "description": desc, "link": g("link"),
            "notes": "", "lister": "", "created_at_source": _cs, "raw": raw}
     return sk, rec
+
+# שמות סוכנים כפי שיד2 מציג ↔ השם הקנוני באפליקציה (מההשוואה 01/09; להרחבה בהמשך ב"ניהול")
+Y2_AGENT_FIX = {"דוד עובדיה": "דודו עובדיה", "רחל וקסלר": "רחלי וקסלר",
+                "זאודיטו חן בזונך": "זאודיטו בזונך", "בינימין אביטן": "בנימין אביטן"}
+
+def y2_norm_office(row, office_id):
+    """שורת מודעה של סניף שלנו → שורת properties בפורמט הגיליון (כותרות עבריות) —
+    כל צרכני fetch_sheet_rows (הנכסים שלי/חיפוש/החתמה/מפה/famexcl/מזכירה) עובדים בלי שינוי.
+    _y2_office_id מתייג את הסניף כדי ש-merge_office_props יחליף רק אותו."""
+    g = lambda k: str(row.get(k, "") or "").strip()
+    ag = Y2_AGENT_FIX.get(g("agent"), g("agent"))
+    return {"סוכן 1": ag, "כתובת": g("street"), "מספר בית": g("homeNum"),
+            "עיר / ישוב": g("city"), "שכונה": g("neighborhood"),
+            "סוג נכס": g("type"), "חדרים": g("rooms"), 'מ"ר': g("sqm"),
+            "מחיר": g("price"), "מספר מודעה": y2_token(g("link")) or g("link"),
+            "קישור": g("link"), "טלפון 1": g("phone"), "בלעדיות": g("excl"),
+            "תגיות": g("tags").replace(";", " · "), "תמונה": g("image"),
+            "סטטוס": "פעילה", "_desc_ae": g("description"),
+            "_y2_office_id": str(office_id or "").strip(), "מקור": "yad2"}
 
 _Y2_TIME_RE = _re.compile(r'\d{1,2}:\d{2}')
 
@@ -10162,7 +10182,17 @@ def register(app, G):
             elif stream == "agency":
                 office = b.get("office", ""); office_id = b.get("officeId", "")
                 if y2_is_ours(office_id):
-                    out["ourN"] = len(rows)   # שלב ב' — נכסי המשרד; כרגע נספר בלבד
+                    # שלב ב' (החלטת אייל 01/09): הסניפים שלנו → טבלת properties בפורמט הגיליון;
+                    # שורות הגיליון הישן נמחקות בכתיבה הראשונה. delisted של הסניף מטופל בתוך המיזוג.
+                    import datetime as _dyo
+                    from zoneinfo import ZoneInfo as _ZYo
+                    _stamp = _dyo.datetime.now(_ZYo("Asia/Jerusalem")).strftime("%d/%m/%Y")
+                    _dl = set(str(x) for x in (b.get("delisted") or []) if str(x).strip()) if scan_full else set()
+                    props = [y2_norm_office(r, office_id) for r in rows]
+                    if props:
+                        _okp, out["ourN"] = sb.merge_office_props(str(office_id or "").strip(), props, _dl, _stamp)
+                        G["_cache_clear"]("sheet_rows")
+                        G["_cache_clear"]("famexcl_index")
                 else:
                     for r in rows:
                         sk, rec = y2_norm_agency(r, office, office_id)
@@ -10177,7 +10207,7 @@ def register(app, G):
                 if stream == "private":
                     out["delistedN"] = sb.mark_delisted("newborn_listings",
                                                         ["id:" + d for d in delisted], stamp)
-                elif stream == "agency":
+                elif stream == "agency" and not y2_is_ours(b.get("officeId", "")):
                     out["delistedN"] = sb.mark_delisted("external_exclusives",
                                                         ["y2x:" + d for d in delisted], stamp)
             out["n"] = len(rows)

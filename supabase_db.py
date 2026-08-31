@@ -578,9 +578,43 @@ def fetch_invoices_rows(q="", limit=400):
 
 def fetch_properties_rows():
     """'נכסים במשרד' — זהה 1:1 ל-fetch_sheet_rows (dict לפי כותרות + _desc_ae),
-    לפי סדר השורות בגיליון."""
+    לפי סדר השורות בגיליון. שורות "ירד מפרסום" (תיוג יד2) לא מוזרמות לאפליקציה —
+    תוויות UI לירד-מפרסום הן צעד נפרד (יומן 01/09)."""
     recs = _get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"})
-    return [rec["raw"] for rec in recs if isinstance(rec.get("raw"), dict)]
+    return [rec["raw"] for rec in recs
+            if isinstance(rec.get("raw"), dict) and not rec["raw"].get("ירד מפרסום")]
+
+
+def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp=""):
+    """נכסי המשרד מיד2 (שלב ב', החלטת אייל 01/09): מחליף את שורות הסניף office_tag
+    ברשימה החדשה ושומר את שאר הסניפים. שורה של הסניף שנעדרת מהסריקה: ב-delisted →
+    נשארת עם תווית "ירד מפרסום"; אחרת נשארת כמו שהיא (סריקה חלקית לא מוחקת).
+    שורות ללא _y2_office_id (הגיליון הישן) נמחקות בכתיבה הראשונה. מחזיר (ok, n)."""
+    if not enabled() or not raw_rows:
+        return False, 0
+    office_tag = str(office_tag or "").strip()
+    delisted_tokens = set(delisted_tokens or ())
+    new_tokens = set(str(r.get("מספר מודעה") or "") for r in raw_rows)
+    keep = []
+    for rec in _get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"}):
+        raw = rec.get("raw")
+        if not isinstance(raw, dict):
+            continue
+        tag = str(raw.get("_y2_office_id") or "").strip()
+        if not tag:
+            continue   # שורת הגיליון הישן — יורדת
+        if tag != office_tag:
+            keep.append(raw)
+            continue
+        tok = str(raw.get("מספר מודעה") or "")
+        if tok in new_tokens:
+            continue   # מוחלפת בגרסה הטרייה
+        if tok in delisted_tokens:
+            if not raw.get("ירד מפרסום"):
+                raw["ירד מפרסום"] = stamp
+            raw["סטטוס"] = "ירד מפרסום"
+        keep.append(raw)
+    return replace_properties(keep + list(raw_rows))
 
 
 def replace_properties(raw_rows):
