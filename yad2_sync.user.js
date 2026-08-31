@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      9.2
+// @version      9.3
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=15;          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='9.2'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='9.3'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -828,6 +828,11 @@ function buildPanel(){
   box.appendChild(mk('ys-reveal','#2563eb','📞 חשוף מספרים',revealAll));
   box.appendChild(mk('ys-save','#16a34a','💾 שמור לגיליון',manualSave));
   box.appendChild(mk('ys-net','#7c3aed','🔎 JSON לניתוח',copyNetReport,';font-size:13px;padding:9px'));
+  box.appendChild(mk('ys-fam','#0f766e','🏠 סרוק רימקס פמילי',function(){
+    var armed=exclForceArm && (Date.now()-exclForceArm)<30000;
+    var r=exclScanFamilyNow(armed);
+    status((r.ok?'✓ ':'⚠️ ')+r.msg);
+  },';font-size:13px;padding:9px'));
   box.appendChild(mk('ys-offices','#b45309','🏢 סרוק משרדים עכשיו',function(){
     var armed=exclForceArm && (Date.now()-exclForceArm)<30000;   // לחיצה שנייה תוך 30ש' = אילוץ
     var r=exclScanNow(armed);
@@ -1093,6 +1098,7 @@ var FAMILY_IDS=['5625538','5628636','8532791'];
 function isFamId(id){return FAMILY_IDS.indexOf(String(id||''))>-1;}
 var EXCL_OFFICES=FAMILY_IDS.map(function(id){return {id:Number(id),name:'Re/max Family'};}); // רשת ביטחון
 var EXCL_FLAG='ysExclScan';
+var EXCL_FAM_FLAG='famonly';   // סריקת שלושת סניפי Family בלבד (כפתור ייעודי)
 // חילוץ משרדים מדף המדריך: עוגני agency/{id} + שם המשרד מתוך הכרטיס (השורה העברית הארוכה בטקסט העוגן)
 function exclParseDirectory(html){
   var out={},m,re=/<a[^>]+href="[^"]*\/realestate\/agency\/(\d+)[^"]*"[^>]*>([\s\S]*?)<\/a>/g;
@@ -1496,6 +1502,24 @@ function exclPostOffice(officeName,officeId,rowsArr,cb){
 // מנקה את סימון "בוצע היום" ואת ההתקדמות, כדי שהסריקה תתחיל מהמשרד הראשון.
 // מנוחה אחרי חסימת יד2 מכובדת: לחיצה ראשונה מזהירה, שנייה מאלצת.
 var exclForceArm=0;
+// סריקת שלושת הסניפים בלבד. אותן הגנות כמו הסריקה המלאה.
+function exclScanFamilyNow(force){
+  var now=Date.now();
+  var cool=Number(gmGet('ysExclCool','0'));
+  if(now<cool && !force){
+    exclForceArm=now;
+    return {ok:false,msg:'יד2 חסם לאחרונה — מנוחה עוד '+Math.ceil((cool-now)/60000)+' דק׳. לחץ שוב כדי לסרוק בכל זאת'};
+  }
+  if(!exclScanDead(now,Number(gmGet('ysExclScanHB','0')),Number(gmGet('ysExclLaunch','0'))))
+    return {ok:false,msg:'סריקת משרדים כבר רצה כרגע'};
+  if(force)gmSet('ysExclCool','0');
+  try{ exclRunClear(); }catch(e){}          // שהסניפים לא ידולגו בגלל יומן ההתקדמות
+  gmSet('ysExclLaunch',String(now));
+  try{ GM_openInTab(EXCL_DIRECTORY+'#'+EXCL_FLAG+'-'+EXCL_FAM_FLAG,{active:true,insert:true}); }
+  catch(e){ return {ok:false,msg:'פתיחת הטאב נכשלה: '+e}; }
+  log('🏠 סריקת רימקס Family הופעלה ידנית'+(force?' (בכפייה)':''));
+  return {ok:true,msg:'סורק את 3 סניפי רימקס Family — נפתח טאב, אל תסגור אותו'};
+}
 function exclScanNow(force){
   var now=Date.now();
   var cool=Number(gmGet('ysExclCool','0'));
@@ -1566,6 +1590,15 @@ function exclPostDiag(diagObj){
 // צד ציבורי: רצים רק כשנקראנו עם הדגל — סורקים את כל המשרדים, שולחים, מסמנים, סוגרים
 function exclRunPublic(){
   var fetchFn=function(u){return fetch(u,{credentials:'include'}).then(function(r){return r.text();});};
+  // רק סניפי Family? מדלגים על גילוי המדריך ועל שאר המשרדים — סריקה קצרה וממוקדת.
+  var famOnly=false; try{famOnly=location.hash.indexOf(EXCL_FAM_FLAG)>-1;}catch(e){}
+  if(famOnly){
+    gmSet('ysExclScanHB',String(Date.now()));
+    setInterval(function(){gmSet('ysExclScanHB',String(Date.now()));},20000);
+    log('🏠 סורק רק את סניפי רימקס Family ('+EXCL_OFFICES.length+')');
+    exclScanOffices(EXCL_OFFICES.slice(), fetchFn, {famOnly:1, total:EXCL_OFFICES.length});
+    return;
+  }
   // דופק לטאב הסריקה — המתזמן בטאב פלוס יודע שהסריקה חיה ולא משגר כפול; מת → שיגור-מחדש עם resume
   gmSet('ysExclScanHB',String(Date.now()));
   setInterval(function(){gmSet('ysExclScanHB',String(Date.now()));},20000);
@@ -1653,7 +1686,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
     });
   })();
 }
-try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
+try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
 
 // ===== סימן-חיים + התאוששות SMS אוטומטית =====
 var LOGIN_PHONE='0505709865';  // הנייד שממלאים אוטומטית בכניסה מחדש
