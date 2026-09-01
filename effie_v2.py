@@ -1376,8 +1376,8 @@ function renderCard(i){
   } else {
     var hp = (B.hotProps || [])[i - 1] || {};
     var isLast = (i >= total() - 1);
-    var prNum = String(hp.price || '').replace(/[^0-9]/g, '');
-    var prTxt = prNum ? '₪' + Number(prNum).toLocaleString() : esc(hp.price || '');
+    var prF = parseFloat(String(hp.price || '').replace(/[^0-9.]/g, ''));
+    var prTxt = (prF && isFinite(prF)) ? '₪' + Math.round(prF).toLocaleString() : esc(hp.price || '');
     var wa = String(hp.agentPhone || '').replace(/^0/, ''); if (wa) wa = '972' + wa;
     var ini = esc((String(hp.agent || '?').trim().charAt(0)) || '?');
     /* תמונת הפרופיל של הסוכן (אם העלה) על טבעת הסטורי; אין תמונה → 404 → נשארת האות */
@@ -1392,9 +1392,10 @@ function renderCard(i){
           '<div style="font-size:11.5px;font-weight:600;color:#E4C56B">משתפת נכס חם'+(hp.ts?' · '+timeAgo(hp.ts):'')+'</div></div></div>'+
       '<div style="display:flex;justify-content:center;margin-top:2px"><div style="background:rgba(228,197,107,.16);border:1px solid rgba(228,197,107,.4);color:#E4C56B;border-radius:999px;padding:6px 15px;font-size:12px;font-weight:800">נכס חם</div></div>'+
       '<div style="display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;margin-top:2px">'+
+        (hp.img?'<img src="'+esc(hp.img)+'" onerror="this.remove()" alt="" style="width:100%;max-width:320px;max-height:30vh;object-fit:cover;border-radius:16px;box-shadow:0 10px 26px rgba(0,0,0,.35)">':'')+
         '<div style="font-size:22px;font-weight:800;color:#fff;line-height:1.25">'+esc(hp.title||'נכס')+'</div>'+
         (hp.details?'<div style="font-size:13.5px;color:rgba(255,255,255,.72)">'+esc(hp.details)+'</div>':'')+
-        (hp.desc?'<div style="font-size:13px;color:rgba(255,255,255,.58);line-height:1.6;max-width:300px">'+esc(hp.desc)+'</div>':'')+
+        (hp.desc?'<div style="font-size:13px;color:rgba(255,255,255,.58);line-height:1.6;max-width:300px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">'+esc(hp.desc)+'</div>':'')+
         (prTxt?'<div style="font-size:30px;font-weight:800;color:#E4C56B;margin-top:6px">'+prTxt+'</div>':'')+
       '</div>'+
       '<div style="margin-top:auto;display:flex;flex-direction:column;gap:9px">'+
@@ -8542,8 +8543,8 @@ function render(i){
         (B.hotProps.length) + ' נכסים חמים בסבב ←</div>' : '');
   } else {
     var hp = it.hp || {};
-    var prNum = String(hp.price || '').replace(/[^0-9]/g, '');
-    var prTxt = prNum ? '₪' + Number(prNum).toLocaleString() : esc(hp.price || '');
+    var prF = parseFloat(String(hp.price || '').replace(/[^0-9.]/g, ''));
+    var prTxt = (prF && isFinite(prF)) ? '₪' + Math.round(prF).toLocaleString() : esc(hp.price || '');
     var ini = esc((String(hp.agent || '?').trim().charAt(0)) || '?');
     /* תמונת הפרופיל של הסוכן (אם העלה); אין → 404 → נשארת האות */
     var avp = String(hp.agentPhone || '').replace(/\D/g, '');
@@ -8556,6 +8557,9 @@ function render(i){
           '<div class="chipHot">נכס ' + it.n + ' מתוך ' + it.of + '</div>' +
         '</div>' +
         '<div class="hotBody">' +
+          (hp.img ? '<img src="' + esc(hp.img) + '" onerror="this.remove()" alt="" ' +
+            'style="max-width:min(560px,44%);max-height:38vh;object-fit:cover;border-radius:18px;' +
+            'float:inline-end;margin-inline-start:26px;box-shadow:0 12px 30px rgba(0,0,0,.4)">' : '') +
           '<div class="ttl">' + esc(hp.title || 'נכס') + '</div>' +
           (hp.details ? '<div class="det">' + esc(hp.details) + '</div>' : '') +
           (hp.desc ? '<div class="dsc">' + esc(hp.desc) + '</div>' : '') +
@@ -8791,22 +8795,22 @@ def y2_norm_private(row):
     oid = g("_orderId")
     sk = ("id:" + oid) if oid else ("ln:" + g("link"))
     parts = [p for p in (g("property_type"),
-                         (g("rooms") + " חד'") if g("rooms") else "",
-                         (g("sqm") + " מ\"ר") if g("sqm") else "",
-                         ("קומה " + g("floor")) if g("floor") else "") if p]
+                         (y2_num_str(g("rooms")) + " חד'") if g("rooms") else "",
+                         (y2_num_str(g("sqm")) + " מ\"ר") if g("sqm") else "",
+                         ("קומה " + y2_num_str(g("floor"))) if g("floor") else "") if p]
     desc = " · ".join(parts) + ((". " + g("description")) if g("description") else "")
     raw = {"שם בעל הנכס": g("contact"), "טלפון בעל הנכס-": g("phone"),
            "רחוב": g("street") or g("address"), "נוצר בתאריך": g("listing_date"),
-           "עודכן בתאריך": g("price_update"), "מחיר": g("price"), "תיאור נכס": desc,
+           "עודכן בתאריך": g("price_update"), "מחיר": y2_num_str(g("price")), "תיאור נכס": desc,
            "קישור": g("link"), "הערות חדש": "", "משתמש": "", "עיר": g("city") or g("_city"),
            "שכונה": g("neighborhood"), "מזהה": oid, "סוג עסקה": g("deal_type"),
-           "קומה": g("floor"), "מקור": "yad2"}
+           "קומה": y2_num_str(g("floor")), "מקור": "yad2"}
     # created_at_source הוא timestamptz — פורמט לא-ISO (למשל 31/08/2026 10:22 מ-modified
     # של יד2) החזיר 400 מ-Supabase (אומת חי 31/08). inv_parse_dt מנרמל; לא-פריס → None.
     _cs = inv_parse_dt(g("listing_date"))
     rec = {"pid": oid, "owner_name": g("contact"), "owner_phone": g("phone"),
            "street": g("street") or g("address"), "city": g("city") or g("_city"),
-           "price": g("price"), "description": desc, "link": g("link"),
+           "price": y2_num_str(g("price")), "description": desc, "link": g("link"),
            "notes": "", "lister": "", "created_at_source": _cs, "raw": raw}
     return sk, rec
 
@@ -8814,19 +8818,45 @@ def y2_norm_private(row):
 Y2_AGENT_FIX = {"דוד עובדיה": "דודו עובדיה", "רחל וקסלר": "רחלי וקסלר",
                 "זאודיטו חן בזונך": "זאודיטו בזונך", "בינימין אביטן": "בנימין אביטן"}
 
+def y2_num_str(v):
+    """מספרים מהסריקה/גיליון עלולים להגיע כ-float ("18.0", "2390000.0") — מנקה
+    אפס-עשרוני מיותר ושומר שברים אמיתיים ("6.5"). לא-מספר חוזר כמו שהוא."""
+    t = str(v or "").strip()
+    if not _re.match(r'^-?\d+(?:\.\d+)?$', t):
+        return t
+    if '.' in t:
+        t = t.rstrip('0').rstrip('.')
+    return t
+
+# חיתוך הטקסט השיווקי של יד2 מהתיאור (בקשת אייל 01/09): הפורמט "שם מוכר … תאור לקוח
+# <הטקסט האמיתי> <פרומו של המשרד>" — לוקחים אחרי "תאור לקוח" וחותכים בפרומו.
+_Y2_DESC_CUT = ("57 יועצי נדל", "לוקיישן בביאליק", "רוצים לדעת עוד", "משרד הנדל\"ן הגדול",
+                "סוכנות Re/max", "סוכנות רי/מקס", "שמה לה למטרה", "מרשת רי/מקס")
+
+def y2_clean_desc(d):
+    t = str(d or "").strip()
+    if "תאור לקוח" in t:
+        t = t.split("תאור לקוח", 1)[1]
+    cut = len(t)
+    for m in _Y2_DESC_CUT:
+        i = t.find(m)
+        if i >= 0:
+            cut = min(cut, i)
+    return t[:cut].strip(" ,.\n-·")
+
 def y2_norm_office(row, office_id):
     """שורת מודעה של סניף שלנו → שורת properties בפורמט הגיליון (כותרות עבריות) —
     כל צרכני fetch_sheet_rows (הנכסים שלי/חיפוש/החתמה/מפה/famexcl/מזכירה) עובדים בלי שינוי.
     _y2_office_id מתייג את הסניף כדי ש-merge_office_props יחליף רק אותו."""
     g = lambda k: str(row.get(k, "") or "").strip()
     ag = Y2_AGENT_FIX.get(g("agent"), g("agent"))
-    return {"סוכן 1": ag, "כתובת": g("street"), "מספר בית": g("homeNum"),
+    return {"סוכן 1": ag, "כתובת": g("street"), "מספר בית": y2_num_str(g("homeNum")),
             "עיר / ישוב": g("city"), "שכונה": g("neighborhood"),
-            "סוג נכס": g("type"), "חדרים": g("rooms"), 'מ"ר': g("sqm"),
-            "מחיר": g("price"), "מספר מודעה": y2_token(g("link")) or g("link"),
+            "סוג נכס": g("type"), "חדרים": y2_num_str(g("rooms")), 'מ"ר': y2_num_str(g("sqm")),
+            "מחיר": y2_num_str(g("price")), "מספר מודעה": y2_token(g("link")) or g("link"),
             "קישור": g("link"), "טלפון 1": g("phone"), "בלעדיות": g("excl"),
             "תגיות": g("tags").replace(";", " · "), "תמונה": g("image"),
-            "סטטוס": "פעילה", "_desc_ae": g("description"),
+            "סטטוס": "פעילה", "_desc_ae": y2_clean_desc(g("description")),
             "_y2_office_id": str(office_id or "").strip(), "מקור": "yad2"}
 
 _Y2_TIME_RE = _re.compile(r'\d{1,2}:\d{2}')
@@ -8862,15 +8892,15 @@ def y2_norm_agency(row, office, office_id):
     if g("city"):
         street_full = (street_full + ", " + g("city")).strip(", ")
     dparts = [p for p in (g("type"),
-                          (g("rooms") + " חד'") if g("rooms") else "",
-                          (g("sqm") + " מ\"ר") if g("sqm") else "",
+                          (y2_num_str(g("rooms")) + " חד'") if g("rooms") else "",
+                          (y2_num_str(g("sqm")) + " מ\"ר") if g("sqm") else "",
                           g("tags").replace(";", " · ")) if p]
-    raw = {"street": street_full, "dest": " · ".join(dparts), "desti": g("description")[:200],
-           "price": g("price"), "office": str(office or "").strip(), "officeId": str(office_id or "").strip(),
+    raw = {"street": street_full, "dest": " · ".join(dparts), "desti": y2_clean_desc(g("description"))[:200],
+           "price": y2_num_str(g("price")), "office": str(office or "").strip(), "officeId": str(office_id or "").strip(),
            "link": g("link"), "phone": g("phone"), "excl": g("excl"),
            "event_id": tok, "city": g("city"), "neighborhood": g("neighborhood"), "מקור": "yad2"}
     rec = {"event_id": tok, "street": street_full, "dest": raw["dest"], "link": g("link"),
-           "price": g("price"), "raw": raw}
+           "price": y2_num_str(g("price")), "raw": raw}
     return sk, rec
 
 # ── "שאל את אפי" — חוקי חישוב (ספק 2026-08-30). הכלל: נחתם ולא נשלח ──────────
@@ -9786,6 +9816,26 @@ def register(app, G):
                                       "details": r.get("details") or "", "price": r.get("price") or "",
                                       "desc": r.get("description") or "", "agent": r.get("agent_name") or "",
                                       "agentPhone": r.get("agent_phone") or "", "ts": r.get("created_at") or ""})
+                # העשרה חיה מנכסי המשרד (בקשת אייל 01/09): תמונה, תיאור נקי ומחיר עדכני
+                try:
+                    _pmap = {}
+                    for _r in (G["fetch_sheet_rows"]() or []):
+                        _lid = str(_r.get("מספר מודעה", "") or "").strip()
+                        if _lid:
+                            _pmap[_lid] = _r
+                    for _hp in hot_props:
+                        _r = _pmap.get(str(_hp.get("key") or ""))
+                        if not _r:
+                            continue
+                        _hp["img"] = str(_r.get("תמונה", "") or "").strip()
+                        _d = str(_r.get("_desc_ae", "") or "").strip()
+                        if _d:
+                            _hp["desc"] = _d[:600]
+                        _pv = str(_r.get("מחיר", "") or "").strip()
+                        if _pv:
+                            _hp["price"] = _pv
+                except Exception:
+                    pass
                 # קונים חמים (buyers.status=hot) — לסלייד הסיכום
                 try:
                     rb = _requests.get(_sb.SUPABASE_URL + "/rest/v1/buyers",
