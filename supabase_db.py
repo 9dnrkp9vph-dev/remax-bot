@@ -388,6 +388,41 @@ def excl_upsert_row(source_key, rec):
     return True
 
 
+def avatar_save(phone, img_b64):
+    """תמונת פרופיל (base64 JPEG אחרי ההקטנה) → טבלת avatars — שורדת deploy
+    (הדיסק של Render מתאפס בכל פריסה; התגלה חי 01/09). best-effort."""
+    if not (enabled() and phone and img_b64):
+        return False
+    try:
+        r = requests.post(SUPABASE_URL + "/rest/v1/avatars?on_conflict=office_id,phone",
+                          headers={**_headers(), "Content-Type": "application/json",
+                                   "Prefer": "resolution=merge-duplicates"},
+                          json={"office_id": SB_OFFICE_ID, "phone": str(phone)[-9:], "img": img_b64,
+                                "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()},
+                          timeout=15)
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def avatar_get(phone):
+    """base64 של תמונת הפרופיל מ-Supabase, או '' — fallback כשהדיסק התאפס."""
+    if not (enabled() and phone):
+        return ""
+    try:
+        r = requests.get(SUPABASE_URL + "/rest/v1/avatars",
+                         headers=_headers(),
+                         params={"select": "img", "office_id": "eq." + SB_OFFICE_ID,
+                                 "phone": "eq." + str(phone)[-9:], "limit": "1"},
+                         timeout=10)
+        r.raise_for_status()
+        rows = r.json() or []
+        return str(rows[0].get("img") or "") if rows else ""
+    except Exception:
+        return ""
+
+
 def newborn_dates(source_keys):
     """'נוצר בתאריך' הקיים לכל source_key — לשימור שעה שכבר נקבעה (ingest יד2).
     מחזיר {source_key: המחרוזת הקיימת} רק לשורות שנמצאו."""

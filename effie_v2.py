@@ -9675,11 +9675,27 @@ def register(app, G):
         if request.method == "GET":
             pp = "".join(ch for ch in (request.args.get("p", "") or "") if ch.isdigit())[-9:]
             fp = os.path.join(_AV_DIR, pp + ".jpg") if pp else ""
-            if not (pp and os.path.exists(fp)):
-                return Response("", status=404)
-            with open(fp, "rb") as f:
-                return Response(f.read(), mimetype="image/jpeg",
-                                headers={"Cache-Control": "private, max-age=300"})
+            if pp and os.path.exists(fp):
+                with open(fp, "rb") as f:
+                    return Response(f.read(), mimetype="image/jpeg",
+                                    headers={"Cache-Control": "private, max-age=300"})
+            # הדיסק מתאפס בכל deploy — נפילה ל-Supabase (avatars) ושחזור ה-cache המקומי
+            try:
+                _sbav = _sb_mod()
+                b64av = _sbav.avatar_get(pp) if (pp and _sbav) else ""
+                if b64av:
+                    rawav = _b64.b64decode(b64av)
+                    try:
+                        os.makedirs(_AV_DIR, exist_ok=True)
+                        with open(fp, "wb") as f:
+                            f.write(rawav)
+                    except Exception:
+                        pass
+                    return Response(rawav, mimetype="image/jpeg",
+                                    headers={"Cache-Control": "private, max-age=300"})
+            except Exception:
+                pass
+            return Response("", status=404)
         s = _web_auth()
         if not s:
             return jsonify({"ok": False, "auth": False}), 401
@@ -9714,6 +9730,12 @@ def register(app, G):
         os.makedirs(_AV_DIR, exist_ok=True)
         with open(os.path.join(_AV_DIR, pp + ".jpg"), "wb") as f:
             f.write(raw)
+        try:   # עותק עמיד ב-Supabase — שורד deploy (best-effort; הדיסק נשאר ה-cache המהיר)
+            _sbav = _sb_mod()
+            if _sbav:
+                _sbav.avatar_save(pp, _b64.b64encode(raw).decode("ascii"))
+        except Exception:
+            pass
         return jsonify({"ok": True})
 
     @app.route("/v2/api/brief", methods=["GET"])

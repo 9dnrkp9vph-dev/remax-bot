@@ -6790,6 +6790,9 @@ def _prop_price_key(row):
 def _price_digits(p):
     return re.sub(r"\D", "", str(p or ""))
 
+# גל תגי-שווא 01/09 (המעבר ליד2: backfill עם ".0" ואז נקי → "שינוי" בכל נכס) — תגים
+# שנרשמו לפני הרגע הזה נזרקים. תגים אמיתיים מכאן והלאה חיים 7 ימים כרגיל.
+_PC_FLUSH_BEFORE = 1788260400   # 01/09/2026 14:00 IL
 _PRICE_SCAN = {"ts": 0.0}
 def _scan_price_changes():
     """משווה מחירי נכסים נוכחיים לסנאפשוט הקודם (בקונפיג); מחיר שהשתנה → רושם חותמת זמן.
@@ -6817,8 +6820,8 @@ def _scan_price_changes():
             if old is not None and old != pn:   # מחיר השתנה (לא מופע ראשון) → תג
                 changes[k] = int(now)
             snap[k] = pn
-        cutoff = int(now) - 7 * 86400
-        changes = {k: v for k, v in changes.items() if (v or 0) >= cutoff}   # גיזום >7 יום
+        cutoff = max(int(now) - 7 * 86400, _PC_FLUSH_BEFORE)
+        changes = {k: v for k, v in changes.items() if (v or 0) >= cutoff}   # גיזום >7 יום + שטיפת גל-השווא
         cfg["v2_price_snap"] = snap
         cfg["v2_price_changes"] = changes
     try:
