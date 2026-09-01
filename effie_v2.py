@@ -10193,6 +10193,7 @@ def register(app, G):
                         _okp, out["ourN"] = sb.merge_office_props(str(office_id or "").strip(), props, _dl, _stamp)
                         G["_cache_clear"]("sheet_rows")
                         G["_cache_clear"]("famexcl_index")
+                        G["_cache_clear"]("map_props")   # המפה בונה מ-fetch_sheet_rows — שתראה את החדש מיד
                 else:
                     for r in rows:
                         sk, rec = y2_norm_agency(r, office, office_id)
@@ -10218,6 +10219,7 @@ def register(app, G):
                     G["_cache_clear"]("newborn_rows")
                 if out["shtafN"] or (out["delistedN"] and stream == "agency"):
                     G["_external_excl_cache"]["ts"] = 0
+                    G["_cache_clear"]("map_props")   # פיני השת"פ במפה מתרעננים גם הם
             except Exception:
                 pass
             if log: log.info(f"yad2 ingest: stream={stream} machine={b.get('machine','')} "
