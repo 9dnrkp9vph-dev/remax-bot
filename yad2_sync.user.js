@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      9.9
+// @version      10.0
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,9 +25,9 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='9.9'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='10.0'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
-const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
+const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
 const OFFICES_PER_RUN=6;        // כמה משרדים בסריקה אחת — יד2 חוסם (ShieldSquare) כשסורקים הרבה ברצף
 const BLOCK_COOLDOWN_MIN=90;    // נחסמנו? מנוחה לפני ניסיון חדש (הסריקה תמשיך מהמשרד שנחסם)
@@ -543,8 +543,11 @@ function needTokens(rows){
   (rows||[]).forEach(function(r){
     var oid=r._orderId; if(!oid||seen[oid])return; seen[oid]=1;
     if(cache[oid]&&cache[oid].t&&cache[oid].dt)return;  // כבר ב-cache עם תיאור שנוסה
-    out.push({orderId:oid,city:r._city});
+    // מודעה בלי קישור כלל קודמת למי שחסר לה רק תיאור: קישור הוא הזהות שהאפליקציה
+    // מתבססת עליה, ותיאור הוא העשרה. בלי זה מלאי חדש נדחק לסוף התור (v10.0).
+    out.push({orderId:oid,city:r._city,pri:(r.link?1:0)});
   });
+  out.sort(function(a,b){return a.pri-b.pri;});
   return out;
 }
 // שליפה סדרתית עדינה (fetchFn מוזרק לבדיקות). onProg(i,total,ok). done(cache,ok)
