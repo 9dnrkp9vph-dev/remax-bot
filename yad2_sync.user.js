@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      10.1
+// @version      10.2
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='10.1'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='10.2'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1540,7 +1540,7 @@ function exclScanFamilyNow(force){
     exclForceArm=now;
     return {ok:false,msg:'יד2 חסם לאחרונה — מנוחה עוד '+Math.ceil((cool-now)/60000)+' דק׳. לחץ שוב כדי לסרוק בכל זאת'};
   }
-  if(!force && !exclScanDead(now,Number(gmGet('ysExclScanHB','0')),Number(gmGet('ysExclLaunch','0')))){
+  if(!force && !exclDeadNow(now)){
     // ההודעה הישנה ("כבר רצה") הטעתה: לרוב זו פשוט לחיצה שנייה בתוך 5 דקות (אייל, 01/09)
     var hb2=Number(gmGet('ysExclScanHB','0')), lc2=Number(gmGet('ysExclLaunch','0'));
     var why = (now-hb2<3*60000) ? ('סריקה פעילה — דופק לפני '+Math.round((now-hb2)/1000)+'ש׳')
@@ -1563,7 +1563,7 @@ function exclScanNow(force){
     exclForceArm=now;
     return {ok:false,msg:'יד2 חסם לאחרונה — מנוחה עוד '+mins+' דק׳. לחץ שוב כדי לסרוק בכל זאת'};
   }
-  if(!force && !exclScanDead(now,Number(gmGet('ysExclScanHB','0')),Number(gmGet('ysExclLaunch','0')))){
+  if(!force && !exclDeadNow(now)){
     var hb3=Number(gmGet('ysExclScanHB','0')), lc3=Number(gmGet('ysExclLaunch','0'));
     var why3 = (now-hb3<3*60000) ? ('סריקה פעילה — דופק לפני '+Math.round((now-hb3)/1000)+'ש׳')
                                  : ('שוגרה לפני '+Math.round((now-lc3)/60000)+' דק׳');
@@ -1587,11 +1587,19 @@ function exclStallCheck(now){
   var launched=Number(gmGet('ysExclLaunch','0'));
   if(!launched)return false;
   var done=Number(gmGet('ysExclDone','0'));
-  if(done>=launched)return false;                 // הריצה האחרונה הסתיימה
+  if(done>=launched){                             // הריצה האחרונה הסתיימה
+    // ...אבל אם הדופק ממשיך, זה טאב מת ששודר "אני חי" — מנקים כדי שלא ינעל (v10.2)
+    if(now-Number(gmGet('ysExclScanHB','0'))<3*60000){
+      gmSet('ysExclScanHB','0');
+      log('🧹 דופק שנשאר מריצה שהסתיימה — נוקה');
+      return true;
+    }
+    return false;
+  }
   if(now-launched<6*60000)return false;           // עדיין בטווח סביר
   var hb=Number(gmGet('ysExclScanHB','0'));
   // דופק טרי אבל שוגרה לפני יותר מ-25 דק' ואין חותמת סיום = טאב זומבי ששודר
-  // "אני חי" בלי לעבוד. זה מה ששיתק את סריקת המשרדים מ-25/08 (v10.1).
+  // "אני חי" בלי לעבוד. זה מה ששיתק את סריקת המשרדים מ-25/08 (v10.2).
   if(now-hb<3*60000 && now-launched<25*60000)return false;   // חיה באמת
   if(now-hb<3*60000){
     gmSet('ysExclLaunch','0'); gmSet('ysExclScanHB','0');
@@ -1624,7 +1632,12 @@ function exclSchedTick(){
   var skip='';
   if(inQuiet(new Date(now))) skip='חלון שקט';
   else if(now<Number(gmGet('ysExclCool','0'))) skip='מנוחה אחרי חסימת יד2 ('+Math.ceil((Number(gmGet('ysExclCool','0'))-now)/60000)+' דק׳)';
-  else if(!exclScanDead(now,Number(gmGet('ysExclScanHB','0')),Number(gmGet('ysExclLaunch','0')))) skip='סריקה קודמת נחשבת פעילה';
+  else if(!exclDeadNow(now)){
+    // המספרים עצמם בהודעה — בלי זה "נחשבת פעילה" הוא ניחוש, ואי אפשר לאבחן מרחוק
+    var _hb=Number(gmGet('ysExclScanHB','0')),_lc=Number(gmGet('ysExclLaunch','0')),_dn=Number(gmGet('ysExclDone','0'));
+    skip='סריקה קודמת נחשבת פעילה (דופק לפני '+(_hb?Math.round((now-_hb)/1000):'∞')+'ש׳, שוגר לפני '
+        +(_lc?Math.round((now-_lc)/60000):'∞')+' דק׳, סיום '+(_dn?Math.round((now-_dn)/60000)+' דק׳':'אין')+')';
+  }
   if(skip){
     var lastNag=Number(gmGet('ysExclSkipAt','0'));
     if(now-lastNag>30*60000){            // דיווח אחד ל-30 דק', לא בכל טיק
@@ -1637,7 +1650,7 @@ function exclSchedTick(){
   }
   // סריקה חיה? טאב הסריקה כותב heartbeat כל ~20ש'. טרי = לא פותחים כפול.
   // מת באמצע (חניקת טיימרים/קריסה)? אחרי 3 דק' בלי דופק משגרים מחדש — וההתקדמות נשמרת (resume).
-  if(!exclScanDead(now,Number(gmGet('ysExclScanHB','0')),Number(gmGet('ysExclLaunch','0'))))return;
+  if(!exclDeadNow(now))return;
   gmSet('ysExclLaunch',String(now));
   // active:true — טאב רקע נחנק ע"י כרום אחרי 5 דק' (טיימר פעם בדקה) והסריקה לא מסתיימת לעולם.
   // במכונת המשרד אין משתמש ליד המסך, אז טאב קדמי לא מפריע — והסריקה רצה במלוא הקצב עד הסוף.
@@ -1645,10 +1658,18 @@ function exclSchedTick(){
   catch(e){log('GM_openInTab נכשל: '+e);}
 }
 // מותר לשגר סריקה? רק אם אין דופק טרי (3 דק') וגם עברו 5 דק' מהשיגור הקודם (מרווח ביטחון)
-function exclScanDead(now,hb,launched){
+function exclScanDead(now,hb,launched,done){
+  if(now-launched<5*60000)return false;          // מרווח ביטחון מהשיגור הקודם
+  // 🐞 01/09: טאב שסיים ואז התחיל לפעום שוב (רענון/ניווט) נעל את המתזמן לצמיתות —
+  //    exclScanDead הסתכל רק על הדופק, ו-exclStallCheck ויתר מראש כשיש חותמת סיום.
+  //    אם הריצה האחרונה הסתיימה, דופק שנשאר הוא של טאב מת ואינו חוסם.
+  if(done&&done>=launched)return true;
   if(now-hb<3*60000)return false;
-  if(now-launched<5*60000)return false;
   return true;
+}
+// קריאה אחת שקוראת את שלוש החותמות — כדי ששום נקודת-בדיקה לא תשכח אחת מהן
+function exclDeadNow(now){
+  return exclScanDead(now,Number(gmGet('ysExclScanHB','0')),Number(gmGet('ysExclLaunch','0')),Number(gmGet('ysExclDone','0')));
 }
 // התקדמות הסריקה של היום (resume): שיגור-מחדש אחרי מוות ממשיך מהמשרד הבא, לא מהתחלה
 function exclRunProg(now){
@@ -1668,7 +1689,7 @@ function exclPostDiag(diagObj){
 }
 // צד ציבורי: רצים רק כשנקראנו עם הדגל — סורקים את כל המשרדים, שולחים, מסמנים, סוגרים
 // דופק טאב הסריקה — עם מפסק. עוצר בסיום, וגם מעצמו אחרי 25 דקות: טאב שנשכח פתוח
-// היה משדר "אני חי" לנצח ומשתק את המתזמן (v10.1).
+// היה משדר "אני חי" לנצח ומשתק את המתזמן (v10.2).
 function exclHbBeat(){
   exclHbStart=Date.now();
   gmSet('ysExclScanHB',String(exclHbStart));
