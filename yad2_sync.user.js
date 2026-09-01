@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      10.0
+// @version      10.1
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='10.0'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='10.1'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -970,6 +970,7 @@ function scanWatchdog(){
 // החלפת הפרופיל ביד2 היא מצב-שרת ולא כתובת (נבדק 03/08), ולכן הדרך היחידה לסרוק את שני
 // המלאים היא ללחוץ בתפריט החשבון. הכל עטוף: כשל בהחלפה = סורקים את הפרופיל הפעיל, בלי נזק.
 var profSwitchNote='';
+var exclHbTimer=null, exclHbStart=0;   // דופק טאב הסריקה — חייב להיעצר בסיום
 var PROFILE_KEY='yad2_profiles_v1';   // {labels:[...], last:'<label>'}
 var SWITCH_TIMEOUT_MS=25000;
 function profStore(){try{return JSON.parse(localStorage.getItem(PROFILE_KEY)||'{}');}catch(e){return {};}}
@@ -1589,7 +1590,16 @@ function exclStallCheck(now){
   if(done>=launched)return false;                 // הריצה האחרונה הסתיימה
   if(now-launched<6*60000)return false;           // עדיין בטווח סביר
   var hb=Number(gmGet('ysExclScanHB','0'));
-  if(now-hb<3*60000)return false;                 // יש דופק — חיה, גם אם איטית
+  // דופק טרי אבל שוגרה לפני יותר מ-25 דק' ואין חותמת סיום = טאב זומבי ששודר
+  // "אני חי" בלי לעבוד. זה מה ששיתק את סריקת המשרדים מ-25/08 (v10.1).
+  if(now-hb<3*60000 && now-launched<25*60000)return false;   // חיה באמת
+  if(now-hb<3*60000){
+    gmSet('ysExclLaunch','0'); gmSet('ysExclScanHB','0');
+    lastScanMsg='⚠️ טאב סריקה זומבי ('+Math.round((now-launched)/60000)+' דק׳ בלי סיום) — שוחרר';
+    try{postHB('ok');}catch(e){}
+    log('⚠️ טאב סריקה זומבי — משחרר');
+    return true;
+  }
   gmSet('ysExclLaunch','0'); gmSet('ysExclScanHB','0');   // שחרור
   var mins=Math.round((now-launched)/60000);
   lastScanMsg='⚠️ סריקת משרדים נתקעה ('+mins+' דק׳ בלי דופק) — שוחררה, אפשר להפעיל שוב';
@@ -1657,13 +1667,24 @@ function exclPostDiag(diagObj){
   }catch(e){}
 }
 // צד ציבורי: רצים רק כשנקראנו עם הדגל — סורקים את כל המשרדים, שולחים, מסמנים, סוגרים
+// דופק טאב הסריקה — עם מפסק. עוצר בסיום, וגם מעצמו אחרי 25 דקות: טאב שנשכח פתוח
+// היה משדר "אני חי" לנצח ומשתק את המתזמן (v10.1).
+function exclHbBeat(){
+  exclHbStart=Date.now();
+  gmSet('ysExclScanHB',String(exclHbStart));
+  if(exclHbTimer)clearInterval(exclHbTimer);
+  exclHbTimer=setInterval(function(){
+    if(Date.now()-exclHbStart>25*60000){ exclHbStop(); gmSet('ysExclScanHB','0'); log('⏱️ דופק הסריקה נעצר אחרי 25 דק׳'); return; }
+    gmSet('ysExclScanHB',String(Date.now()));
+  },20000);
+}
+function exclHbStop(){ if(exclHbTimer){clearInterval(exclHbTimer);exclHbTimer=null;} }
 function exclRunPublic(){
   var fetchFn=function(u){return fetch(u,{credentials:'include'}).then(function(r){return r.text();});};
   // רק סניפי Family? מדלגים על גילוי המדריך ועל שאר המשרדים — סריקה קצרה וממוקדת.
   var famOnly=false; try{famOnly=location.hash.indexOf(EXCL_FAM_FLAG)>-1;}catch(e){}
   if(famOnly){
-    gmSet('ysExclScanHB',String(Date.now()));
-    setInterval(function(){gmSet('ysExclScanHB',String(Date.now()));},20000);
+    exclHbBeat();
     log('🏠 סורק רק את סניפי רימקס Family ('+EXCL_OFFICES.length+')');
     lastScanMsg='🏠 סריקת Family התחילה ('+EXCL_OFFICES.length+' סניפים)';
     try{postHB('ok');}catch(e){}
@@ -1671,8 +1692,7 @@ function exclRunPublic(){
     return;
   }
   // דופק לטאב הסריקה — המתזמן בטאב פלוס יודע שהסריקה חיה ולא משגר כפול; מת → שיגור-מחדש עם resume
-  gmSet('ysExclScanHB',String(Date.now()));
-  setInterval(function(){gmSet('ysExclScanHB',String(Date.now()));},20000);
+  exclHbBeat();
   log('🏢 מגלה משרדים מהמדריך…');
   lastScanMsg='🏢 סריקת משרדים התחילה';
   try{postHB('ok');}catch(e){}
@@ -1706,7 +1726,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
       } else summary.push('⏸️ תקרת '+OFFICES_PER_RUN+' משרדים לסריקה — נותרו '+rest+' (סניפי Family נסרקו)');
       exclPostDiag({at:new Date().toISOString(),dir:dirDiag||null,blocked:blocked?1:0,offices:diags});
       gmSet('ysExclLast',new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})+' '+summary.join(' · '));
-      gmSet('ysExclDone',String(Date.now()));   // הריצה נגמרה כמו שצריך
+      gmSet('ysExclDone',String(Date.now()));exclHbStop();gmSet('ysExclScanHB','0');   // הריצה נגמרה — משחררים את הנעילה
       lastScanMsg='🏢 עצירה: '+summary.join(' · ').slice(0,220);
       try{postHB(blocked?'blocked':'ok');}catch(e){}
       log('🏢 עצירה מסודרת: '+summary.join(' · '));
@@ -1722,7 +1742,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
       summary.push('סה"כ: בלעדי '+exT+' · רגיל '+exF+' · טל '+phN);
       exclPostDiag({at:new Date().toISOString(),dir:dirDiag||null,offices:diags});
       gmSet('ysExclLast',new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})+' '+summary.join(' · '));
-      gmSet('ysExclDone',String(Date.now()));
+      gmSet('ysExclDone',String(Date.now()));exclHbStop();gmSet('ysExclScanHB','0');
       lastScanMsg='🏢 הושלמה: '+summary.join(' · ').slice(0,220);
       try{postHB('ok');}catch(e){}
       log('🏢 סריקה הושלמה: '+summary.join(' · '));
