@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      9.6
+// @version      9.7
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=15;          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='9.6'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='9.7'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -828,6 +828,17 @@ function buildPanel(){
   box.appendChild(mk('ys-reveal','#2563eb','📞 חשוף מספרים',revealAll));
   box.appendChild(mk('ys-save','#16a34a','💾 שמור לגיליון',manualSave));
   box.appendChild(mk('ys-net','#7c3aed','🔎 JSON לניתוח',copyNetReport,';font-size:13px;padding:9px'));
+  box.appendChild(mk('ys-prof','#475569','👤 בחר פרופיל שני',function(){
+    var cands=[]; try{cands=JSON.parse(gmGet('ysProfCand','[]'))||[];}catch(e){}
+    var cur=gmGet('ysProfileSecond','');
+    var list=cands.length?cands.map(function(l,i){return (i+1)+'. '+l;}).join('\n'):'(עדיין לא נראו פריטים — הרץ סריקה אחת קודם)';
+    var ans=prompt('מה השם המדויק של הפרופיל השני?\n\nמה שנראה בתפריט:\n'+list+'\n\nהקלד מספר או שם מלא (ריק = ביטול הקיבוע):', cur||'');
+    if(ans===null)return;
+    ans=String(ans).trim();
+    if(/^\d+$/.test(ans)&&cands[Number(ans)-1])ans=cands[Number(ans)-1];
+    gmSet('ysProfileSecond',ans);
+    status(ans?('✓ הפרופיל השני נקבע: '+ans):'✓ הקיבוע בוטל — חזרה לזיהוי אוטומטי');
+  },';font-size:12px;padding:7px'));
   box.appendChild(mk('ys-fam','#0f766e','🏠 סרוק רימקס פמילי',function(){
     var armed=exclForceArm && (Date.now()-exclForceArm)<30000;
     var r=exclScanFamilyNow(armed);
@@ -961,7 +972,11 @@ function profSave(o){try{localStorage.setItem(PROFILE_KEY,JSON.stringify(o));}ca
 // פריטי תפריט שאינם פרופיל. "עדכונים" נתפס בשטח (31/08) — הסורק לחץ עליו וההחלפה
 // "לא הגיבה". כל מילה כאן היא פריט אמיתי מתפריט החשבון של יד2.
 function notProfile(t){
-  return /צור קשר|יצירת קשר|יציאה|התנתק|מהמערכת|לצפיה בפרופיל|לצפייה בפרופיל|הגדרות|עזרה|עדכונים|הודעות|התראות|תמיכה|חיפושים שמורים|המודעות שלי|הנכסים שלי|חשבון|מרכז|תשלום|חשבונית|מנוי/.test(t);
+  if(/צור קשר|יצירת קשר|יציאה|התנתק|מהמערכת|לצפיה בפרופיל|לצפייה בפרופיל|הגדרות|עזרה|עדכונים|הודעות|התראות|תמיכה|חיפושים שמורים|המודעות שלי|הנכסים שלי|חשבון|מרכז|תשלום|חשבונית|מנוי/.test(t))return true;
+  // פקודות תפריט מתחילות בפועל ציווי ("סמנו הכל כנקרא" נתפס 01/09). שם פרופיל אינו פקודה.
+  if(/^(סמנו|סמן|הצג|הצגת|ראה|צפה|מחק|נקה|בחר|עבור|הוסף|ערוך|שמור|שלח|פתח|סגור)(\s|$)/.test(t))return true;
+  if(/כנקרא|כל ההתראות|כל ההודעות/.test(t))return true;
+  return false;
 }
 // כפתור החשבון בכותרת (מציג את שם הפרופיל הפעיל)
 function accountButton(){ var a=activeProfile(); return a?a.el:null; }
@@ -996,6 +1011,15 @@ function profileSwitch(done){
   setTimeout(function(){
     var all=profileItems();
     var items=all.filter(function(x){return !active||x.label!==active;});
+    // נבחר ידנית פעם אחת? זה גובר על כל ניחוש (v9.7 — אחרי שיד2 הציג פריטי תפריט
+    // משתנים: "עדכונים", "סמנו הכל כנקרא"...).
+    var pinned=gmGet('ysProfileSecond','');
+    if(pinned){
+      var exact=items.filter(function(x){return x.label===pinned;});
+      if(exact.length)items=exact;
+    }
+    // שומרים מה נראה בתפריט — כדי שאפשר יהיה לבחור, ולראות מרחוק מה יד2 מציג
+    try{gmSet('ysProfCand',JSON.stringify(all.map(function(x){return x.label;}).slice(0,12)));}catch(e){}
     // מכירים כבר את שמות הפרופילים? הם קודמים לכל ניחוש מהתפריט.
     var known=(profStore().labels||[]).filter(function(l){return l&&l!==active;});
     if(known.length){
@@ -1025,7 +1049,7 @@ function profileSwitch(done){
       }
       // תקרה כפולה: זמן *וגם* מספר נסיונות (מכשיר שנרדם מקפיא את השעון ותוקע את הלופ)
       if(++tries>=16 || Date.now()-t0>SWITCH_TIMEOUT_MS){
-        profSwitchWhy='נלחץ "'+items[0].label+'" ולא הגיב ('+nowSrc+')';
+        profSwitchWhy='נלחץ "'+items[0].label+'" ולא הגיב · בתפריט: '+(gmGet('ysProfCand','[]')||'').slice(0,120);
         log('👤 ההחלפה לא נקלטה — ממשיכים עם מה שיש'); done(false); return;
       }
       setTimeout(wait,1500);
@@ -1724,7 +1748,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
     });
   })();
 }
-try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysExclStallCheck=exclStallCheck;window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
+try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysExclStallCheck=exclStallCheck;window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
 
 // ===== סימן-חיים + התאוששות SMS אוטומטית =====
 var LOGIN_PHONE='0505709865';  // הנייד שממלאים אוטומטית בכניסה מחדש
