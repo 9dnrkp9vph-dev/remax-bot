@@ -4908,7 +4908,7 @@ function fmtPrice(p){
   return (/^[\d,.]+$/.test(p) ? '₪' : '') + p;
 }
 
-var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''};
+var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''}, UPD = {office:'', shtaf:''};
 var HOT = {};   // property_key → true עבור הנכס החם של הסוכן (אחד בלבד)
 function toggleHot(i){
   var p = el('list')._src[i]; if (!p) return;
@@ -4947,8 +4947,10 @@ function load(q){
     if (seq !== _loadSeq) return;   // כבר יצא חיפוש חדש יותר — מתעלמים מהתשובה הישנה
     OFFICE = (rs[0] && rs[0].results) || [];
     SUM.office = (rs[0] && rs[0].summary) || '';
+    UPD.office = (rs[0] && rs[0].updated) || '';
     SHTAF = (rs[1] && rs[1].results) || [];
     SUM.shtaf = (rs[1] && rs[1].summary) || '';
+    UPD.shtaf = (rs[1] && rs[1].updated) || '';
     MINE = (rs[2] && rs[2].results) || [];
     MINE_MULTI = !!(rs[2] && rs[2].multi);   // מתאמת/מנהל/צוות — "שלי" מכיל כמה סוכנים
     if (!q) try{ localStorage.setItem('v2c:props', JSON.stringify(
@@ -4984,7 +4986,10 @@ function render(){
   });
   if (el('qSpin')) el('qSpin').style.display = 'none';
   el('sumLine').style.color = ''; el('sumLine').style.fontWeight = '';
-  el('sumLine').textContent = (MODE === 'office' ? SUM.office : MODE === 'shtaf' ? SUM.shtaf : '') || '';
+  var _sumTxt = (MODE === 'office' ? SUM.office : MODE === 'shtaf' ? SUM.shtaf : '') || '';
+  var _updTxt = (MODE === 'shtaf') ? UPD.shtaf : UPD.office;   // "שלי" = אותו מקור כמו המשרד
+  if (_updTxt) _sumTxt = (_sumTxt ? _sumTxt + ' · ' : '') + 'עדכון אחרון: ' + _updTxt;
+  el('sumLine').textContent = _sumTxt;
   src.slice(0, 40).forEach(function(p, i){ h += propCard(p, i); });
   if (src.length > 40) h += '<div class="more">מוצגים 40 מתוך ' + src.length + ' — חדד את החיפוש</div>';
   el('list').innerHTML = h ||
@@ -10264,7 +10269,10 @@ def register(app, G):
                     from zoneinfo import ZoneInfo as _ZYo
                     _stamp = _dyo.datetime.now(_ZYo("Asia/Jerusalem")).strftime("%d/%m/%Y")
                     _dl = set(str(x) for x in (b.get("delisted") or []) if str(x).strip()) if scan_full else set()
+                    _now_full = _dyo.datetime.now(_ZYo("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
                     props = [y2_norm_office(r, office_id) for r in rows]
+                    for _pr in props:
+                        _pr["_y2_ingested"] = _now_full   # "עדכון אחרון" במסך הנכסים
                     if props:
                         _okp, out["ourN"] = sb.merge_office_props(str(office_id or "").strip(), props, _dl, _stamp)
                         G["_cache_clear"]("sheet_rows")

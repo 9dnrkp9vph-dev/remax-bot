@@ -6675,12 +6675,14 @@ def api_search_properties():
             out = [_row_out(r) for r in rows]
             return jsonify({"ok": True,
                             "summary": f"כל הנכסים הפעילים ({len(out)}) — מהחדש לישן",
+                            "updated": _props_updated(rows),
                             "results": out})
 
         parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
         matches = search_listings_in_sheet(parsed) if parsed else []
         out = [_row_out(row, score) for score, row, flex in matches]
-        return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "ptype": (parsed or {}).get("property_type", ""), "results": out})
+        return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "ptype": (parsed or {}).get("property_type", ""),
+                        "updated": _props_updated(fetch_sheet_rows()), "results": out})
     except Exception as e:
         log.error(f"properties search error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -6777,6 +6779,19 @@ def _removed_listing_ids():
         return set(str(k) for k in m.keys())
     except Exception:
         return set()
+
+def _props_updated(rows):
+    """חותמת הקליטה הטרייה ביותר (raw._y2_ingested, DD/MM/YYYY HH:MM) — לתצוגת
+    "עדכון אחרון" במסך הנכסים. ריק כשאין (מקור גיליון ישן)."""
+    best, bestk = "", ""
+    for r in rows or []:
+        t = str(r.get("_y2_ingested", "") or "")
+        m = re.match(r"(\d{2})/(\d{2})/(\d{4}) (\d{2}:\d{2})", t)
+        if m:
+            k = m.group(3) + m.group(2) + m.group(1) + m.group(4)
+            if k > bestk:
+                bestk, best = k, t
+    return best
 
 def _prop_price_key(row):
     """מפתח יציב לזיהוי נכס לאורך העלאות — מספר מודעה, ובלעדיו כתובת+עיר מנורמלים."""
@@ -7909,7 +7924,14 @@ def api_search_exclusives():
                 "lat": round(_ll[0], 6) if _ll else None,
                 "lng": round(_ll[1], 6) if _ll else None,
             })
-        return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "ptype": parsed.get("property_type", ""), "results": out})
+        _upd = ""
+        try:
+            _mx = max((str(r.get("received_at", "") or "") for r in rows), default="")
+            if len(_mx) >= 10:
+                _upd = f"{_mx[8:10]}/{_mx[5:7]}/{_mx[0:4]}"
+        except Exception:
+            pass
+        return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "ptype": parsed.get("property_type", ""), "updated": _upd, "results": out})
     except Exception as e:
         log.error(f"exclusives search error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
