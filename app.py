@@ -6656,6 +6656,7 @@ def api_search_properties():
                 "agent": _canon_agent_name(ag),
                 "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
                 "desc": (row.get("_desc_ae", "") or "").strip(),
+                "link": (row.get("קישור", "") or "").strip(),   # מודעת יד2 (בקשת אייל 01/09)
             }
             if score is not None:
                 d["score"] = min(100, int(score))
@@ -6750,6 +6751,7 @@ def api_my_properties():
                 "agent": _canon_agent_name(ag),
                 "wa": _wa_phone(phones_map.get(ag, r.get("טלפון 1", ""))),
                 "desc": (r.get("_desc_ae", "") or "").strip(),
+                "link": (r.get("קישור", "") or "").strip(),   # מודעת יד2 (בקשת אייל 01/09)
             })
         _log_activity(s["name"], s["role"], s["phone"], "הנכסים שלי",
                       eff_name if as_name else "")
@@ -7252,7 +7254,7 @@ def api_map_properties():
         if ll and _MBB[0]<=ll[0]<=_MBB[1] and _MBB[2]<=ll[1]<=_MBB[3]:
             out.append({"t":"office","a":f"{street} {house}".strip(),"c":city,"p":_mnb(r.get("מחיר","")),
                 "r":_mnb(r.get("חדרים","")),"z":_mnb(r.get('מ"ר',"") or r.get("מ״ר","")),"fl":_mnb(r.get("קומה","")),
-                "g":_mnb(r.get("סוכן 1","")),"l":"","d":(r.get("_desc_ae","") or "").strip(),"lat":round(ll[0],5),"lng":round(ll[1],5)})
+                "g":_mnb(r.get("סוכן 1","")),"l":_mnb(r.get("קישור","")),"d":(r.get("_desc_ae","") or "").strip(),"lat":round(ll[0],5),"lng":round(ll[1],5)})
     for r in fetch_external_exclusives():  # שת"פ — כל הנכסים (ללא סינון תאריך)
         raw=_mnb(r.get("street",""))
         if not raw: continue

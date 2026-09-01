@@ -3380,12 +3380,12 @@ function propCard(p, b, shtaf){
       '<svg width="13" height="13" viewBox="0 0 16 16" style="transition:transform .18s"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
     '</div>' +
     (desc ? '<div class="dx" id="' + did + '" style="display:none;margin-top:2px">' + esc(desc) + '</div>' : '') +
-    // שת"פ: קישור למודעה המקורית (נדל"ן וואן)
-    (shtaf && p.link ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener" style="display:flex;align-items:center;' +
+    // קישור למודעה המקורית (יד2) — משרד ושת"פ (בקשת אייל 01/09)
+    (p.link ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener" style="display:flex;align-items:center;' +
       'justify-content:center;gap:6px;background:#fff;border:1.5px solid #DCD6C8;border-radius:12px;padding:9px 0;' +
       'font-size:12.5px;font-weight:700;color:#1E3A5F;text-decoration:none">' +
       '<svg width="12" height="12" viewBox="0 0 16 16"><path d="M6.5 9.5l6-6M9 2.5h4.5V7M13 9.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3.5" fill="none" stroke="#1E3A5F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-      'צפייה במודעה בנדל"ן וואן</a>' : '') +
+      'צפייה במודעה</a>' : '') +
     '<div class="acts2">' +
     '<button class="sel' + (MSEL[mi] ? ' on' : '') + '" onclick="toggleSel(' + mi + ')" aria-label="בחירה לשליחה">' +
     '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7.5l3.5 3.5L12 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
@@ -5032,7 +5032,8 @@ function propCard(p, i){
     '<div class="acts"><button class="a1" onclick="matchBuyers(' + i + ')">' +
     '<svg width="12" height="12" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
     'קונים מתאימים</button>' +
-    '<button class="a2" onclick="propDetails(' + i + ')">פרטי הנכס</button></div>' +
+    '<button class="a2" onclick="propDetails(' + i + ')">פרטי הנכס</button>' +
+    (p.link ? '<button class="a2" onclick="window.open(\'' + esc(p.link) + '\',\'_blank\')">למודעה</button>' : '') + '</div>' +
     // בקשות למזכירה — עדכון מחיר / הסרת מודעה (רק בנכס שלי, עם מספר מודעה)
     (isMine && p.own && p.id ? (p.pending
       ? '<div class="reqRow"><button class="dn" onclick="doneListing(' + i + ')">הטיפול בוצע — הסר את הסימון</button></div>'
@@ -5327,6 +5328,7 @@ V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
     <div class="feats" id="pcFeats"></div>
     <div class="pr"><b id="pcPr"></b><span id="pcSqm"></span></div>
     <button class="cta" id="pcCta">לכרטיס הנכס</button>
+    <a class="cta" id="pcLink" target="_blank" rel="noopener" style="display:none;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8;text-decoration:none;text-align:center">למודעה ביד2</a>
   </div>
   <div id="toast"></div>
 
@@ -5433,6 +5435,8 @@ function selectItem(idx, mk){
       {m: it.t === 'coop' ? 'shtaf' : 'office', q: it.a || '', y: 0})); }catch(e){}
     location.href = '/v2/props';
   };
+  var lk = el('pcLink');
+  if (lk){ if (it.l){ lk.href = it.l; lk.style.display = 'block'; } else lk.style.display = 'none'; }
   el('propCard').style.display = 'flex';
 }
 function hideCard(){
