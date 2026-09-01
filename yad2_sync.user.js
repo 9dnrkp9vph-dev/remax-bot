@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      9.7
+// @version      9.8
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -24,8 +24,8 @@ const WEBHOOK='https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2
 const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
-const SCAN_MAX_MIN=15;          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='9.7'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
+var VER='9.8'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -192,7 +192,7 @@ function latestApiTemplate(){
 // יד2 חוסם בעקביות בקשות-עמוד ששולחים בעצמנו (כל סריקה נעצרה על 100 מודעות מ-900/1,866).
 // הפתרון: ללחוץ על "העמוד הבא" בממשק — יד2 טוען את העמוד בעצמו, ואת התשובה שלו אנחנו
 // אוספים ממילא (הוא לא חוסם את הבקשות של עצמו). נופלים למשיכה הישנה אם אין פגינציה בדף.
-var UI_PAGES_MAX=25, UI_PAGE_WAIT_MS=12000, UI_TOTAL_MS=420000;   // 7 דק': 4 לא הספיקו ל-9 עמודים (31/08), ושומר-הראש עדיין ב-15
+var UI_PAGES_MAX=25, UI_PAGE_WAIT_MS=12000, UI_TOTAL_MS=720000;   // 12 דק': 4 עצרו ב-5/9, גם 7 עצרו ב-5/9 (01/09)
 var UI_PAGER_WAIT_MS=20000;  // כמה לחכות שהטבלה של יד2 תיבנה לפני שמתייאשים מהפגינציה
 var PAGER_BACK_KEY='yad2_pager_back_v1';
 var PAGER_KEY='yad2_pager_v1';   // זוכרים איזה חץ הוא "הבא" אחרי שהוכח
@@ -378,7 +378,9 @@ function uiWalkPages(info, onProg, done){
     if(onProg)onProg(cur.cur, cur.total, rows().length);
     var atEnd = cur.cur>=cur.total;
     if(atEnd || ++pages>UI_PAGES_MAX || Date.now()-t0>UI_TOTAL_MS){
-      pgDiag = pgPrefix + (atEnd ? ('עמודים 1-'+cur.total+(partial?' (חלקי)':'')) : ('נעצר בעמוד '+cur.cur+'/'+cur.total+' (תקרה)'));
+      var mins=((Date.now()-t0)/60000).toFixed(1);
+      pgDiag = pgPrefix + (atEnd ? ('עמודים 1-'+cur.total+' ב-'+mins+' דק׳'+(partial?' (חלקי)':''))
+                                 : ('נעצר בעמוד '+cur.cur+'/'+cur.total+' אחרי '+mins+' דק׳ (תקרת זמן)'));
       done(rows(), atEnd && !partial);   // full=true רק אם כיסינו מעמוד 1 עד האחרון
       return;
     }
