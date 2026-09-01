@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      9.8
+// @version      9.9
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='9.8'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='9.9'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=40;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1607,9 +1607,21 @@ function exclSchedTick(){
     el.textContent='🏢 בלעדיות: בוקר '+fmt(st.m.t)+(st.m.done?' ✓':'')+' · ערב '+fmt(st.e.t)+(st.e.done?' ✓':'')+quietStr+(last?' · '+last:'');
   }
   if(!due.length)return;
-  if(inQuiet(new Date(now)))return; // חלון שקט — דוחים; ההשלמה (catch-up) תפעיל אחריו
-  var cool=Number(gmGet('ysExclCool','0'));
-  if(now<cool)return;               // מנוחה אחרי חסימת יד2 — לא דוחפים לקיר
+  // מכאן: סריקה אמורה לרוץ. אם היא לא רצה — רושמים למה, ומדווחים לשרת (v9.9).
+  var skip='';
+  if(inQuiet(new Date(now))) skip='חלון שקט';
+  else if(now<Number(gmGet('ysExclCool','0'))) skip='מנוחה אחרי חסימת יד2 ('+Math.ceil((Number(gmGet('ysExclCool','0'))-now)/60000)+' דק׳)';
+  else if(!exclScanDead(now,Number(gmGet('ysExclScanHB','0')),Number(gmGet('ysExclLaunch','0')))) skip='סריקה קודמת נחשבת פעילה';
+  if(skip){
+    var lastNag=Number(gmGet('ysExclSkipAt','0'));
+    if(now-lastNag>30*60000){            // דיווח אחד ל-30 דק', לא בכל טיק
+      gmSet('ysExclSkipAt',String(now));
+      lastScanMsg='⏸️ סריקת משרדים ממתינה ('+due.join('+')+') — '+skip;
+      try{postHB('ok');}catch(e){}
+      log('⏸️ סריקת משרדים לא שוגרה: '+skip);
+    }
+    return;
+  }
   // סריקה חיה? טאב הסריקה כותב heartbeat כל ~20ש'. טרי = לא פותחים כפול.
   // מת באמצע (חניקת טיימרים/קריסה)? אחרי 3 דק' בלי דופק משגרים מחדש — וההתקדמות נשמרת (resume).
   if(!exclScanDead(now,Number(gmGet('ysExclScanHB','0')),Number(gmGet('ysExclLaunch','0'))))return;
