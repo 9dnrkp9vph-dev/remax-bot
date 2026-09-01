@@ -105,6 +105,12 @@ def fetch_newborn_rows():
         # לאופציה עתידית פר-סוכן ב"ניהול". שורות הצינור הישן בלי "סוג עסקה" — עוברות.
         if "שכר" in str(raw.get("סוג עסקה") or ""):
             continue
+        # חיפה: רק קרית חיים מזרחית/מערבית (החלטת אייל 01/09) — שאר העיר מוסתר
+        # (נשאר ב-DB). מזוהה לפי שכונה/רחוב; "קרית"/"קריית" שניהם נתפסים.
+        if "חיפה" in str(raw.get("עיר") or raw.get("עיר / ישוב") or ""):
+            _zone = " ".join(str(raw.get(k) or "") for k in ("שכונה", "רחוב", "רחוב1", "כתובת"))
+            if not re.search(r"קרי+ת חיים", _zone):
+                continue
         rows.append(raw)
     return rows
 
