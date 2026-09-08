@@ -5743,6 +5743,16 @@ def api_signatures():
             nm = _canon_key(eff["name"])
             sigs = [g for g in sigs if _canon_key(g.get("agent", "")) == nm]
     sigs.sort(key=lambda g: _excl_epoch(g.get("received_at", "")), reverse=True)
+    # חיפוש בכל ההיסטוריה (בקשת אייל 09/09): q של טוקנים שכולם חייבים להופיע
+    # בלקוח/כתובת/עיר/סוכן — רץ לפני תקרת ה-500, כך שההיסטוריה כולה נגישה.
+    _q = (request.args.get("q", "") or "").strip().lower()
+    if _q:
+        _toks = [t for t in _q.split() if t]
+        def _sig_match(g):
+            hay = " ".join(str(g.get(k, "") or "") for k in
+                           ("client_name", "address", "city", "agent")).lower().replace("קריית", "קרית")
+            return all(t.replace("קריית", "קרית") in hay for t in _toks)
+        sigs = [g for g in sigs if _sig_match(g)]
     sig_out = [{
         "time": (_fmt_il_dt(g.get("received_at", "")) or str(g.get("received_at", "") or "").strip()),
         "type": _deal_label(g.get("deal_type", "")),
