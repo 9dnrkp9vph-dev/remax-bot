@@ -3716,6 +3716,10 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         </button>
         <button class="b2" onclick="openSignInfo('buyer')">החתם מתעניין</button>
       </div>
+      <div style="margin-top:10px">
+        <input id="sq" placeholder="חיפוש בכל ההיסטוריה — כתובת או שם לקוח" oninput="sigQ()"
+          style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid #E3DFD3;border-radius:13px;font-size:16px;font-family:inherit;background:#FAF8F2;outline:none">
+      </div>
       <div class="segs" id="filters">
         <div class="sg on" data-f="buyer" onclick="setFilter(this)">קונים</div>
         <div class="sg" data-f="excl" onclick="setFilter(this)">בלעדיות</div>
@@ -3783,7 +3787,20 @@ function POST(u, d){
     body: JSON.stringify(d)}).then(function(r){ return r.json(); });
 }
 
-var SIGS = [], FILTER = 'buyer', MULTI = false, ROLE = '';   // ברירת מחדל: קונים (מימין); שכירות/מוכר וכו' — תחת "הכל"
+var SIGS = [], FILTER = 'buyer', MULTI = false, ROLE = '';
+var QSIGS = null, _sqT = null;   // חיפוש היסטורי: null=לא מחפשים; מערך=תוצאות מהשרת
+function sigQ(){
+  clearTimeout(_sqT);
+  _sqT = setTimeout(function(){
+    var q = el('sq').value.trim();
+    if (!q){ QSIGS = null; render(); return; }
+    GET('/api/signatures?q=' + encodeURIComponent(q)).then(function(j){
+      if (el('sq').value.trim() !== q) return;   // הקלדה המשיכה — תשובה ישנה נזרקת
+      QSIGS = (j && j.signatures) || [];
+      render();
+    }).catch(function(){});
+  }, 300);
+}   // ברירת מחדל: קונים (מימין); שכירות/מוכר וכו' — תחת "הכל"
 function kindOf(g){   // תוויות _deal_label בשרת: "קונים" / "בלעדיות" / "שכירות" / "מוכר"
   var t = g.type || '';
   if (t.indexOf('בלעדיות') >= 0) return 'excl';
@@ -3851,8 +3868,9 @@ function delDraft(di){
 function render(){
   var ws = weekStart();
   el('weekN').textContent = SIGS.filter(function(g){ return (g.ts || 0) >= ws; }).length + ' השבוע';
-  var src = SIGS.filter(function(g){
-    if (FILTER === 'all') return true;
+  var searching = (QSIGS !== null);
+  var src = searching ? QSIGS.slice() : SIGS.filter(function(g){
+    if (FILTER === 'all') return true;   // בחיפוש: כל ההיסטוריה, מכל הסוגים, בלי טאבים
     return kindOf(g) === FILTER;
   });
   /* הגנה כפולה מפני כפילות (גשר-הנראות מול השורה האמיתית): מקבצים לפי לקוח+כתובת+סוג,
@@ -3879,10 +3897,12 @@ function render(){
     });
   })();
   var h = '';
-  if (FILTER === 'all' && DRAFTS.length){   // טיוטות — למעלה, תחת "הכל" בלבד
+  if (searching) h += '<div style="font-size:12.5px;color:#6B7280;font-weight:600;margin:2px 4px 8px">' +
+    src.length + ' תוצאות מכל ההיסטוריה</div>';
+  if (!searching && FILTER === 'all' && DRAFTS.length){   // טיוטות — למעלה, תחת "הכל" בלבד
     DRAFTS.forEach(function(d, di){ h += draftCard(d, di); });
   }
-  var shown = src.slice(0, 100);
+  var shown = src.slice(0, searching ? 200 : 100);
   shown.forEach(function(g, gi){
     var k = kindOf(g);
     var chip = (k === 'buyer') ? '<div class="chip buyer">קונים</div>'
