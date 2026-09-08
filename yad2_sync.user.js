@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      11.5
+// @version      11.6
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='11.5'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='11.6'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -896,6 +896,12 @@ function saveRows(rows,dom,full,done){
   //    השרת מייצרת את "שגיאת השרת". המדידה (acts ב-v74) הפריכה: ההמתנה לנעילה
   //    היא 51-260ms. ובשטח ההשהיה עשתה נזק — 30 דק' רצופות בלי שמירה פרטית,
   //    כי סריקת המשרדים מתה ומשוגרת מחדש שוב ושוב. הוסרה ב-v11.2.
+  if(!mayScan()){
+    var omsg=scanOwnerMsg();
+    lastScanMsg=omsg; status('⏸️ '+omsg);
+    if(done)done(omsg);
+    return;
+  }
   mergeDomPhones(rows,dom);
   var withPhone=rows.filter(hasPhone).length, withLink=rows.filter(function(r){return r.link;}).length;
   status('שומר '+rows.length+' נכסים ('+withPhone+' טל׳, '+withLink+' קישורים)...');
@@ -1547,6 +1553,7 @@ var exclForceArm=0;
 // סריקת שלושת הסניפים בלבד. אותן הגנות כמו הסריקה המלאה.
 function exclScanFamilyNow(force){
   var now=Date.now();
+  if(!mayScan())return {ok:false,msg:scanOwnerMsg()};
   var cool=Number(gmGet('ysExclCool','0'));
   if(now<cool && !force){
     exclForceArm=now;
@@ -1566,6 +1573,7 @@ function exclScanFamilyNow(force){
 }
 function exclScanNow(force){
   var now=Date.now();
+  if(!mayScan())return {ok:false,msg:scanOwnerMsg()};
   var cool=Number(gmGet('ysExclCool','0'));
   if(now<cool && !force){
     var mins=Math.ceil((cool-now)/60000);
@@ -1605,6 +1613,7 @@ function exclSchedTick(){
     el.textContent='🏢 בלעדיות: בוקר '+fmt(st.m.t)+(st.m.done?' ✓':'')+' · ערב '+fmt(st.e.t)+(st.e.done?' ✓':'')+quietStr+(last?' · '+last:'');
   }
   if(!due.length)return;
+  if(!mayScan()){ lastScanMsg=scanOwnerMsg(); return; }
   // מכאן: סריקה אמורה לרוץ. אם היא לא רצה — רושמים למה, ומדווחים לשרת (v9.9).
   var skip='';
   if(inQuiet(new Date(now))) skip='חלון שקט';
@@ -1876,7 +1885,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
     });
   })();
 }
-try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysLeaseOwn=leaseOwn;window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysExclPostOffice=exclPostOffice;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
+try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysPostHB=postHB;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysLeaseOwn=leaseOwn;window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysExclPostOffice=exclPostOffice;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
 
 // ===== סימן-חיים + התאוששות SMS אוטומטית =====
 var LOGIN_PHONE='0505709865';  // הנייד שממלאים אוטומטית בכניסה מחדש
@@ -1899,11 +1908,30 @@ function machineId(){
     return v;
   }catch(e){ return '?'; }
 }
+// האם המכונה הזו מורשית לסרוק? ברירת מחדל: כן (עד שהשרת אומר במפורש שלא).
+function mayScan(){ return gmGet('ysMayScan','1')!=='0'; }
+function scanOwnerMsg(){
+  var o=gmGet('ysScanOwner','');
+  return 'סריקה מושבתת במכונה הזו'+(o?(' — הבעלות על '+o):'')+'. אפשר להעביר אותה מה-CRM';
+}
 function postHB(status){
   // last = תמצית מצב הסריקה (נקרא מרחוק ב-?health=1) כדי שנדע אם היא רצה/נתקעה בלי גישה למכשיר
   // הגרסה נוסעת עם סימן-החיים: ?health=1 מגלה מרחוק איזו גרסה רצה על כל מכונה
   var last='v'+VER+' '+machineId()+' · '+(scanStart?'סורק כרגע · ':'')+(lastScanMsg||'');
-  try{GM_xmlhttpRequest({method:'POST',url:WEBHOOK,data:'secret='+encodeURIComponent(SECRET)+'&action=hb&status='+encodeURIComponent(status||'ok')+'&last='+encodeURIComponent(last.slice(0,200)),headers:{'Content-Type':'application/x-www-form-urlencoded'},timeout:30000,onload:function(){},onerror:function(){},ontimeout:function(){}});}catch(e){}
+  // תשובת סימן-החיים נושאת את הבעלות על הסריקה. ברירת המחדל מתירנית בכוונה:
+  // רק "אתה לא הבעלים" מפורש משתיק את המכונה. תשובה שבורה/דף שגיאה של גוגל
+  // לא משנה דבר — אחרת תקלת רשת הייתה משביתה את הסריקה בשקט (09/09).
+  try{GM_xmlhttpRequest({method:'POST',url:WEBHOOK,
+    data:'secret='+encodeURIComponent(SECRET)+'&action=hb&status='+encodeURIComponent(status||'ok')
+        +'&machine='+encodeURIComponent((function(){try{return machineId();}catch(e){return '';}})())
+        +'&last='+encodeURIComponent(last.slice(0,200)),
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},timeout:30000,
+    onload:function(r){
+      var j=null; try{j=JSON.parse(r.responseText);}catch(e){}
+      if(!j||typeof j!=='object'||typeof j.mayScan!=='boolean')return;   // לא הבנתי — לא נוגע
+      gmSet('ysMayScan', j.mayScan?'1':'0');
+      gmSet('ysScanOwner', String(j.owner||''));
+    },onerror:function(){},ontimeout:function(){}});}catch(e){}
 }
 // מחוברים? יש API של נכסים = כן. אחרת, אם יש שדה טלפון/מסך כניסה = מנותקים
 function looksLoggedOut(){
