@@ -9048,7 +9048,11 @@ def sig_ingest_norm(b):
            "commission_pct": f("commission_pct", "עמלה"), "notes": f("notes", "הערות"),
            "phone": f("phone", "טלפון"), "received_at": rcv}
     if event_id:
-        sk = "fb:" + event_id
+        # 🐞 09/09: שני מסמכי זוג מוכר+בלעדיות חולקים את אותו event_id בפיירברי —
+        # מפתח לפי event_id בלבד גרם לשני לדרוס את הראשון ("נעלמה הבלעדיות").
+        # סוג ההסכם מצטרף למפתח: כל מסמך שורה משלו, ועדכון חוזר עדיין idempotent.
+        _tk = _re.sub(r"[^A-Z_]", "", str(raw["deal_type"]).upper())[:24]
+        sk = "fb:" + event_id + ((":" + _tk) if _tk else "")
     else:
         import hashlib as _hs
         sk = "fbh:" + _hs.sha1("|".join([agent, client, raw["deal_type"], raw["address"], riso])
