@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      11.3
+// @version      11.5
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='11.3'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='11.5'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1528,7 +1528,15 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
 function exclPostOffice(officeName,officeId,rowsArr,cb){
   var body='secret='+encodeURIComponent(SECRET)+'&action=importexcl&feed=daily&office='+encodeURIComponent(officeName)+'&officeId='+encodeURIComponent(officeId||'')+'&machine='+encodeURIComponent((function(){try{return machineId();}catch(e){return '';}})())+'&data='+encodeURIComponent(JSON.stringify(rowsArr));
   GM_xmlhttpRequest({method:'POST',url:WEBHOOK,data:body,headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    onload:function(r){var j={};try{j=JSON.parse(r.responseText);}catch(e){}cb(null,j);},
+    // 🐞 08/09: תשובה שאינה JSON (דף שגיאה של גוגל) נספרה כהצלחה — היומן דיווח
+    //    "נסרקו 9" בזמן שהגיליון לא זז ו-agency מעולם לא נקרא. בקשה שנהרגה היא
+    //    כשל, והמשרד יישלח שוב בריצה הבאה.
+    onload:function(r){
+      var j=null;
+      try{j=JSON.parse(r.responseText);}catch(e){}
+      if(!j||typeof j!=='object'){cb('שגיאת שרת — התשובה אינה JSON',{});return;}
+      cb(null,j);
+    },
     onerror:function(){cb('network');}});
 }
 // צד פלוס: טיימר דקה — כשמגיע הזמן, פותחים טאב רקע לסריקה
@@ -1629,8 +1637,13 @@ function exclSchedTick(){
 // מקור שני הבאגים של 01/09: שני שומרים פירשו את הצירוף אחרת, וכל אחד הניח
 // שהשני משחרר. כאן: אובייקט אחד, פונקציה אחת שמחליטה, **ותפוגה מובנית** —
 // ריצה לא יכולה להיחשב חיה יותר מ-25 דק' בשום צירוף, ולכן אין מה "לשחרר".
-var LEASE_KEY='ysExclLease', LEASE_BEAT_MS=3*60000, LEASE_MAX_MS=25*60000;
-var leaseTimer=null;
+// ⏱️ מכוילים למדידה מ-08/09, לא להערכה: ריצה מלאה נמשכה 48-64 דק', ומשרד בודד
+// (עמודים + הפוגות + שליפת סוכנים) לוקח דקות. הערכים הקודמים — דופק 3 דק' ותקרה
+// 25 דק' — הכריזו ריצות חיות כמתות, וכל הכרזה כזו פתחה טאב מתחרה. בשיא רצו
+// ארבעה סורקים במקביל (63.7/48.4/22.7/11.2 דק', כולם הסתיימו 21:24-21:36),
+// וזה מה שגרם גם לחסימות יד2 וגם לגוגל להרוג את הבקשות שלנו.
+var LEASE_KEY='ysExclLease', LEASE_BEAT_MS=12*60000, LEASE_MAX_MS=90*60000;
+var leaseTimer=null, leaseMine='';
 function leaseGet(){ try{return JSON.parse(gmGet(LEASE_KEY,'null'))||null;}catch(e){return null;} }
 function leaseSet(l){ gmSet(LEASE_KEY,l?JSON.stringify(l):'null'); }
 function leaseLive(now,l){
@@ -1647,18 +1660,32 @@ function leaseWhy(now){
   return 'דופק לפני '+Math.round((now-(l.beat||l.start))/1000)+'ש׳, רצה '+Math.round((now-l.start)/60000)+' דק׳';
 }
 function leaseOpen(now,kind){
-  var l={id:String(now).slice(-6),kind:kind||'full',start:now,beat:now,end:0};
+  var l={id:String(now).slice(-6)+'-'+Math.random().toString(36).slice(2,6),kind:kind||'full',start:now,beat:now,end:0};
+  leaseMine=l.id;
   leaseSet(l);
   if(leaseTimer)clearInterval(leaseTimer);
   leaseTimer=setInterval(function(){
     var c=leaseGet();
-    if(!c||c.id!==l.id||c.end){leaseStop();return;}          // ריצה אחרת השתלטה
+    if(!c||c.id!==l.id||c.end){                              // ריצה אחרת השתלטה
+      leaseStop();
+      if(location.hash.indexOf(EXCL_FLAG)>-1){ log('🛑 החכירה הוחלפה — סוגר את טאב הסריקה'); try{window.close();}catch(e){} }
+      return;
+    }
     if(Date.now()-c.start>=LEASE_MAX_MS){leaseStop();return;} // חורג — מפסיקים לפעום
     c.beat=Date.now(); leaseSet(c);
   },20000);
   return l;
 }
 function leaseStop(){ if(leaseTimer){clearInterval(leaseTimer);leaseTimer=null;} }
+// האם הטאב הזה עדיין בעל התור? אישור אייל מהשטח (09/09): "כל פעם נפתח חלון נוסף
+// של סריקת משרדים". v11.4 מנע את יצירתם — אבל שום דבר לא סגר טאב שהוחלף, והוא
+// המשיך לסרוק במקביל לנצח. טאב שאיבד את התור חייב לעצור ולסגור את עצמו.
+function leaseOwn(){
+  var l=leaseGet();
+  if(!l||!l.start||l.end)return true;   // אין ריצה רשומה — אין ממי לקחת את התור
+  if(!leaseMine)return true;            // לא פתחנו חכירה בעצמנו — לא חוסמים סריקה
+  return l.id===leaseMine;              // עוצרים רק כשמישהו אחר באמת מחזיק אותה
+}
 // פירור-דרך: איפה הריצה נמצאת עכשיו. ריצה שמתה לא שולחת דיאגנוסטיקה (זו נשלחת
 // רק בסיום מסודר), ולכן בלי זה "died" לא אומר איפה — וזה מה שחסר ב-19:55 (08/09).
 function leaseStep(s){
@@ -1752,6 +1779,14 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
   var skipped=OFFICES.filter(function(o){return prog.ids[o.id]&&!isFamId(o.id);}).length;
   log('🏢 סריקת בלעדיות מתחילה — '+OFFICES.length+' משרדים'+(skipped?(' (ממשיך ריצה קטועה, '+skipped+' כבר נסרקו)'):''));
   (function nextOffice(){
+    // איבדנו את התור? ריצה אחרת השתלטה — עוצרים מיד וסוגרים את הטאב. בלי זה
+    // טאב מוחלף ממשיך לסרוק במקביל, וזה מה שגרם לארבעה סורקים בו-זמנית (09/09).
+    if(!leaseOwn()){
+      ledgerAdd({kind:(dirDiag&&dirDiag.famOnly)?'fam':'full',ms:Date.now()-runT0,offices:OFFICES.length,ok:okTot,blocked:blockTot,done:false,why:'superseded'});
+      log('🛑 ריצה אחרת השתלטה — עוצר וסוגר את הטאב');
+      setTimeout(function(){try{window.close();}catch(e){}},500);
+      return;
+    }
     // נחסמנו (CAPTCHA) או שהגענו לתקרת המשרדים לריצה — עוצרים בלי לסמן את הנותרים כ"בוצעו".
     // ההתקדמות נשמרת, ובסריקה הבאה ממשיכים בדיוק מהמשרד הבא. חסימה → מנוחה לפני ניסיון חדש.
     // מדלגים מראש על מה שכבר נסרק בריצה הזו, כדי לדעת מי המשרד הבא באמת
@@ -1841,7 +1876,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
     });
   })();
 }
-try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
+try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysLeaseOwn=leaseOwn;window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysExclPostOffice=exclPostOffice;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
 
 // ===== סימן-חיים + התאוששות SMS אוטומטית =====
 var LOGIN_PHONE='0505709865';  // הנייד שממלאים אוטומטית בכניסה מחדש
