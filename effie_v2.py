@@ -8928,6 +8928,32 @@ def y2_fix_created(listing_date, existing, now_il):
             return t + ' ' + m.group(0)
     return t
 
+def y2_row_office(row, office="", office_id=""):
+    """שם/מזהה המשרד של שורת-סריקה: מהשורה (office/office_id — כמו בגיליון) ובלעדיהם
+    מרמת ה-batch. 09/09: ה-forward שלח בלי office/officeId ברמת ה-batch → הכל נכתב
+    לשת"פ כאנונימי והסניפים שלנו לא זוהו."""
+    g = lambda k: str(row.get(k, "") or "").strip()
+    name = g("office") or g("officeName") or str(office or "").strip()
+    oid = y2_num_str(g("office_id") or g("officeId") or str(office_id or "").strip())
+    return name, oid
+
+def y2_split_batch(b):
+    """batch משרדים → (ours: {oid: [rows]}, others: [(row, name, oid)], batch_oid).
+    batch_oid = officeId של ה-batch, ובלעדיו — של השורה הראשונה (batch = משרד אחד)."""
+    rows = b.get("rows") or []
+    office = str(b.get("office", "") or "").strip()
+    office_id = y2_num_str(str(b.get("officeId", "") or b.get("office_id", "") or "").strip())
+    ours, others, batch_oid = {}, [], office_id
+    for r in rows:
+        name, oid = y2_row_office(r, office, office_id)
+        if not batch_oid and oid:
+            batch_oid = oid
+        if y2_is_ours(oid):
+            ours.setdefault(oid, []).append(r)
+        else:
+            others.append((r, name, oid))
+    return ours, others, batch_oid
+
 def y2_norm_agency(row, office, office_id):
     """שורת מודעת-משרד → (source_key, רשומת external_exclusives) במבנה getRaw_ שהאפליקציה קוראת."""
     g = lambda k: str(row.get(k, "") or "").strip()
@@ -8940,7 +8966,11 @@ def y2_norm_agency(row, office, office_id):
                           (y2_num_str(g("rooms")) + " חד'") if g("rooms") else "",
                           (y2_num_str(g("sqm")) + " מ\"ר") if g("sqm") else "",
                           g("tags").replace(";", " · ")) if p]
+    import datetime as _dya
+    from zoneinfo import ZoneInfo as _ZYa
+    _rcv = _dya.datetime.now(_ZYa("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
     raw = {"street": street_full, "dest": " · ".join(dparts), "desti": y2_clean_desc(g("description"))[:200],
+           "received_at": _rcv,   # המסך/המיון קוראים את התאריך מה-raw (09/09: היה ריק → 'פורסם' ריק ומיון לתחתית)
            "price": y2_num_str(g("price")), "office": str(office or "").strip(), "officeId": str(office_id or "").strip(),
            "link": g("link"), "phone": g("phone"), "excl": g("excl"),
            "event_id": tok, "city": g("city"), "neighborhood": g("neighborhood"), "מקור": "yad2"}
@@ -10305,28 +10335,34 @@ def register(app, G):
                     sb.newborn_upsert_row(sk, rec)
                     out["nbN"] += 1
             elif stream == "agency":
-                office = b.get("office", ""); office_id = b.get("officeId", "")
-                if y2_is_ours(office_id):
-                    # שלב ב' (החלטת אייל 01/09): הסניפים שלנו → טבלת properties בפורמט הגיליון;
-                    # שורות הגיליון הישן נמחקות בכתיבה הראשונה. delisted של הסניף מטופל בתוך המיזוג.
-                    import datetime as _dyo
-                    from zoneinfo import ZoneInfo as _ZYo
-                    _stamp = _dyo.datetime.now(_ZYo("Asia/Jerusalem")).strftime("%d/%m/%Y")
-                    _dl = set(str(x) for x in (b.get("delisted") or []) if str(x).strip()) if scan_full else set()
-                    _now_full = _dyo.datetime.now(_ZYo("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
-                    props = [y2_norm_office(r, office_id) for r in rows]
+                # 09/09: המשרד מזוהה פר-שורה (office/office_id) עם נפילה ל-batch — ה-forward לא
+                # שלח office/officeId ברמת ה-batch, וכל הסניפים נכתבו לשת"פ כאנונימיים.
+                ours, others, batch_oid = y2_split_batch(b)
+                import datetime as _dyo
+                from zoneinfo import ZoneInfo as _ZYo
+                _stamp = _dyo.datetime.now(_ZYo("Asia/Jerusalem")).strftime("%d/%m/%Y")
+                _now_full = _dyo.datetime.now(_ZYo("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
+                _dl = set(str(x) for x in (b.get("delisted") or []) if str(x).strip()) if scan_full else set()
+                for _oid, _rows in ours.items():
+                    # שלב ב' (החלטת אייל 01/09): הסניפים שלנו → properties בפורמט הגיליון
+                    props = [y2_norm_office(r, _oid) for r in _rows]
                     for _pr in props:
                         _pr["_y2_ingested"] = _now_full   # "עדכון אחרון" במסך הנכסים
-                    if props:
-                        _okp, out["ourN"] = sb.merge_office_props(str(office_id or "").strip(), props, _dl, _stamp)
-                        G["_cache_clear"]("sheet_rows")
-                        G["_cache_clear"]("famexcl_index")
-                        G["_cache_clear"]("map_props")   # המפה בונה מ-fetch_sheet_rows — שתראה את החדש מיד
-                else:
-                    for r in rows:
-                        sk, rec = y2_norm_agency(r, office, office_id)
-                        sb.excl_upsert_row(sk, rec)
-                        out["shtafN"] += 1
+                    _okp, _n = sb.merge_office_props(_oid, props, _dl if _oid == batch_oid else set(), _stamp)
+                    out["ourN"] += _n
+                    try:   # ריפוי עצמי: עותקים אנונימיים של הנכסים שלנו שנכנסו לשת"פ לפני התיקון
+                        sb.excl_delete_keys(["y2x:" + str(p.get("מספר מודעה") or "") for p in props])
+                    except Exception:
+                        pass
+                for r, _name, _oid in others:
+                    sk, rec = y2_norm_agency(r, _name, _oid)
+                    sb.excl_upsert_row(sk, rec)
+                    out["shtafN"] += 1
+                if ours:
+                    G["_cache_clear"]("sheet_rows")
+                    G["_cache_clear"]("famexcl_index")
+                    G["_cache_clear"]("map_props")   # המפה בונה מ-fetch_sheet_rows — שתראה את החדש מיד
+                office_id = batch_oid
             # "ירד מפרסום" — תווית בלבד (לא מחיקה), ורק בסריקה מלאה (שערי הכיסוי בצד הסורק)
             delisted = [str(x) for x in (b.get("delisted") or []) if str(x).strip()]
             if delisted and scan_full:
@@ -10336,7 +10372,7 @@ def register(app, G):
                 if stream == "private":
                     out["delistedN"] = sb.mark_delisted("newborn_listings",
                                                         ["id:" + d for d in delisted], stamp)
-                elif stream == "agency" and not y2_is_ours(b.get("officeId", "")):
+                elif stream == "agency" and not y2_is_ours(office_id):
                     out["delistedN"] = sb.mark_delisted("external_exclusives",
                                                         ["y2x:" + d for d in delisted], stamp)
             out["n"] = len(rows)

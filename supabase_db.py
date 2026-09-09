@@ -398,6 +398,27 @@ def excl_upsert_row(source_key, rec):
     return True
 
 
+def excl_delete_keys(source_keys):
+    """מחיקת שורות שת"פ לפי source_key (ריפוי עצמי: נכסי הסניפים שלנו שנכנסו לשת"פ
+    כאנונימיים לפני תיקון זיהוי המשרד, 09/09). מחזיר כמה בקשות הצליחו."""
+    keys = [k for k in (source_keys or []) if k and not k.endswith("y2x:")]
+    if not (enabled() and keys):
+        return 0
+    n = 0
+    for i in range(0, len(keys), 50):
+        chunk = keys[i:i + 50]
+        try:
+            r = requests.delete(SUPABASE_URL + "/rest/v1/external_exclusives", headers=_headers(),
+                                params={"office_id": "eq." + SB_OFFICE_ID,
+                                        "source_key": "in.(" + ",".join('"%s"' % k for k in chunk) + ")"},
+                                timeout=_TIMEOUT)
+            r.raise_for_status()
+            n += 1
+        except Exception:
+            continue
+    return n
+
+
 def avatar_save(phone, img_b64):
     """תמונת פרופיל (base64 JPEG אחרי ההקטנה) → טבלת avatars — שורדת deploy
     (הדיסק של Render מתאפס בכל פריסה; התגלה חי 01/09). best-effort."""
