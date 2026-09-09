@@ -717,7 +717,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   #story .shead .t{font-size:14.5px;font-weight:800}
   #story .shead .s{font-size:11.5px;color:rgba(255,255,255,.55);white-space:nowrap}
   #story .x{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;cursor:pointer}
-  #story .body{flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;padding-bottom:24px}
+  #story .body{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:14px;padding-bottom:18px}
   #story .kicker{font-size:13px;font-weight:700;color:#E4C56B;letter-spacing:.12em}
   #story .big{display:flex;align-items:baseline;gap:14px}
   #story .big .n{font-size:96px;font-weight:800;line-height:1;color:#E4C56B;font-variant-numeric:tabular-nums}
@@ -1391,12 +1391,12 @@ function renderCard(i){
         '<div style="text-align:center"><div style="font-size:17px;font-weight:800;color:#fff">'+esc(hp.agent||'')+'</div>'+
           '<div style="font-size:11.5px;font-weight:600;color:#E4C56B">משתפת נכס חם'+(hp.ts?' · '+timeAgo(hp.ts):'')+'</div></div></div>'+
       '<div style="display:flex;justify-content:center;margin-top:2px"><div style="background:rgba(228,197,107,.16);border:1px solid rgba(228,197,107,.4);color:#E4C56B;border-radius:999px;padding:6px 15px;font-size:12px;font-weight:800">נכס חם</div></div>'+
-      '<div style="display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;margin-top:2px">'+
-        (hp.img?'<img src="'+esc(hp.img)+'" onerror="this.remove()" alt="" style="width:100%;max-width:320px;max-height:30vh;object-fit:cover;border-radius:16px;box-shadow:0 10px 26px rgba(0,0,0,.35)">':'')+
+      '<div style="display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;margin-top:2px;min-height:0;flex-shrink:1">'+
+        (hp.img?'<img src="'+esc(hp.img)+'" onerror="this.remove()" alt="" style="width:100%;max-width:320px;max-height:24vh;min-height:0;flex-shrink:1;object-fit:cover;border-radius:16px;box-shadow:0 10px 26px rgba(0,0,0,.35)">':'')+
         '<div style="font-size:22px;font-weight:800;color:#fff;line-height:1.25">'+esc(hp.title||'נכס')+'</div>'+
         (hp.details?'<div style="font-size:13.5px;color:rgba(255,255,255,.72)">'+esc(hp.details)+'</div>':'')+
-        (hp.desc?'<div style="font-size:13px;color:rgba(255,255,255,.58);line-height:1.6;max-width:300px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">'+esc(hp.desc)+'</div>':'')+
-        (prTxt?'<div style="font-size:30px;font-weight:800;color:#E4C56B;margin-top:6px">'+prTxt+'</div>':'')+
+        (hp.desc?'<div style="font-size:13px;color:rgba(255,255,255,.58);line-height:1.55;max-width:300px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">'+esc(hp.desc)+'</div>':'')+
+        (prTxt?'<div style="font-size:28px;font-weight:800;color:#E4C56B">'+prTxt+'</div>':'')+
       '</div>'+
       '<div style="margin-top:auto;display:flex;flex-direction:column;gap:9px">'+
 
@@ -3723,9 +3723,14 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         </button>
         <button class="b2" onclick="openSignInfo('buyer')">החתם מתעניין</button>
       </div>
-      <div style="margin-top:10px">
+      <div style="margin-top:10px;position:relative;display:flex;align-items:center">
         <input id="sq" placeholder="חיפוש בכל ההיסטוריה — כתובת או שם לקוח" oninput="sigQ()"
-          style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid #E3DFD3;border-radius:13px;font-size:16px;font-family:inherit;background:#FAF8F2;outline:none">
+          style="width:100%;box-sizing:border-box;padding:11px 40px 11px 14px;border:1.5px solid #E3DFD3;border-radius:13px;font-size:16px;font-family:inherit;background:#FAF8F2;outline:none">
+        <button id="sqClear" onclick="el('sq').value='';QSIGS=null;sigClearBtn();render()" aria-label="ניקוי חיפוש"
+          style="display:none;position:absolute;inset-inline-end:9px;width:26px;height:26px;border-radius:50%;background:#EBE8DD;border:none;
+          align-items:center;justify-content:center;cursor:pointer;padding:0">
+          <svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
       </div>
       <div class="segs" id="filters">
         <div class="sg on" data-f="buyer" onclick="setFilter(this)">קונים</div>
@@ -3796,7 +3801,12 @@ function POST(u, d){
 
 var SIGS = [], FILTER = 'buyer', MULTI = false, ROLE = '';
 var QSIGS = null, _sqT = null;   // חיפוש היסטורי: null=לא מחפשים; מערך=תוצאות מהשרת
+function sigClearBtn(){
+  var b = el('sqClear');
+  if (b) b.style.display = el('sq').value ? 'flex' : 'none';
+}
 function sigQ(){
+  sigClearBtn();
   clearTimeout(_sqT);
   _sqT = setTimeout(function(){
     var q = el('sq').value.trim();
