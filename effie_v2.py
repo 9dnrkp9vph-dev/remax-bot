@@ -5667,6 +5667,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <input id="q" placeholder="כתובת, סוכן או עו&quot;ד" oninput="render()">
       </div>
       <div class="segs" id="filters">
+        <div class="sg" data-f="lawyer" onclick="setFilter(this)">אצל עו"ד</div>
         <div class="sg on" data-f="open" onclick="setFilter(this)">תהליכים פתוחים</div>
         <div class="sg" data-f="closed" onclick="setFilter(this)">נסגרו</div>
         <div class="sg" data-f="all" onclick="setFilter(this)">הכל</div>
@@ -5772,6 +5773,7 @@ function render(){
   var src = ITEMS.filter(function(it){
     if (FILTER === 'open' && it.deal) return false;
     if (FILTER === 'closed' && !it.deal) return false;
+    if (FILTER === 'lawyer' && (it.deal || it.stage !== 'אצל עו"ד')) return false;
     if (q && ((it.notes || '') + ' ' + (it.agents || []).join(' ') + ' ' + (it.lawyers || ''))
         .toLowerCase().indexOf(q) < 0) return false;
     return true;
@@ -5787,7 +5789,8 @@ function render(){
   src.slice(0, 60).forEach(function(it, i){ h += dealCard(it, i); });
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#C29435" stroke-width="1.4"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#C29435" stroke-width="1.4" stroke-linecap="round"/></svg></div>' +
-    '<div class="t">' + (FILTER === 'closed' ? 'עוד לא נסגרו עסקאות' : 'אין תהליכים פתוחים') + '</div>' +
+    '<div class="t">' + (FILTER === 'closed' ? 'עוד לא נסגרו עסקאות'
+      : FILTER === 'lawyer' ? 'אין תהליכים אצל עו"ד' : 'אין תהליכים פתוחים') + '</div>' +
     '<div class="s">כל תהליך מכירה שתפתח יופיע כאן, ומ"נמכר" הוא הופך לעסקה</div>' +
     '<button class="btnMain" style="max-width:220px;flex:none;padding:13px 26px" onclick="openForm(null,false)">+ תהליך חדש</button></div>';
   el('list')._src = src;
