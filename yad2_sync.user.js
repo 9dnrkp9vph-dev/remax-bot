@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      11.9
+// @version      12.0
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='11.9'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='12.0'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1533,7 +1533,8 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
 // שליחת סנאפשוט משרד ל-CRM (feed=daily → ירידות/מחירים/תיאורים מטופלים בשרת)
 function exclPostOffice(officeName,officeId,rowsArr,cb){
   var body='secret='+encodeURIComponent(SECRET)+'&action=importexcl&feed=daily&office='+encodeURIComponent(officeName)+'&officeId='+encodeURIComponent(officeId||'')+'&machine='+encodeURIComponent((function(){try{return machineId();}catch(e){return '';}})())+'&data='+encodeURIComponent(JSON.stringify(rowsArr));
-  GM_xmlhttpRequest({method:'POST',url:WEBHOOK,data:body,headers:{'Content-Type':'application/x-www-form-urlencoded'},
+  GM_xmlhttpRequest({method:'POST',url:WEBHOOK,data:body,headers:{'Content-Type':'application/x-www-form-urlencoded'},timeout:60000,
+    ontimeout:function(){cb('שגיאת שרת — פסק זמן (60ש׳)',{});},
     // 🐞 08/09: תשובה שאינה JSON (דף שגיאה של גוגל) נספרה כהצלחה — היומן דיווח
     //    "נסרקו 9" בזמן שהגיליון לא זז ו-agency מעולם לא נקרא. בקשה שנהרגה היא
     //    כשל, והמשרד יישלח שוב בריצה הבאה.
@@ -1658,7 +1659,12 @@ function exclSchedTick(){
 // 25 דק' — הכריזו ריצות חיות כמתות, וכל הכרזה כזו פתחה טאב מתחרה. בשיא רצו
 // ארבעה סורקים במקביל (63.7/48.4/22.7/11.2 דק', כולם הסתיימו 21:24-21:36),
 // וזה מה שגרם גם לחסימות יד2 וגם לגוגל להרוג את הבקשות שלנו.
-var LEASE_KEY='ysExclLease', LEASE_BEAT_MS=12*60000, LEASE_MAX_MS=90*60000;
+// ⏱️ מכוילים למדידה מ-09/09: ריצה מלאה (3 סניפים + 6 משרדים) נמשכת 63-101 דק',
+// וההפוגה הארוכה ביותר בקצב האנושי היא 25-90ש'. לכן **חלון הדופק הוא המדד** —
+// 12 דק' הם פי 6 מהפוגה הסבירה. התקרה של 90 דק' הרגה ריצות שעבדו
+// ("90.0 דק' · שומר מגה נדל\"ן"), והיא הייתה נחוצה רק כי הטיימר רענן את הדופק
+// גם בלי התקדמות. מעכשיו הדופק = התקדמות אמיתית, והתקרה היא רשת ביטחון רחוקה.
+var LEASE_KEY='ysExclLease', LEASE_BEAT_MS=12*60000, LEASE_MAX_MS=4*60*60000;
 var leaseTimer=null, leaseMine='';
 function leaseGet(){ try{return JSON.parse(gmGet(LEASE_KEY,'null'))||null;}catch(e){return null;} }
 function leaseSet(l){ gmSet(LEASE_KEY,l?JSON.stringify(l):'null'); }
@@ -1687,8 +1693,10 @@ function leaseOpen(now,kind){
       if(location.hash.indexOf(EXCL_FLAG)>-1){ log('🛑 החכירה הוחלפה — סוגר את טאב הסריקה'); try{window.close();}catch(e){} }
       return;
     }
-    if(Date.now()-c.start>=LEASE_MAX_MS){leaseStop();return;} // חורג — מפסיקים לפעום
-    c.beat=Date.now(); leaseSet(c);
+    if(Date.now()-c.start>=LEASE_MAX_MS){leaseStop();return;} // חורג — מפסיקים
+    // ⚠️ בכוונה **לא** נוגעים ב-beat: דופק שנקבע ע"י טיימר אומר "הטאב קיים",
+    //    וזה מה שאילץ תקרת זמן שהרגה ריצות עובדות. beat מתעדכן רק בהתקדמות
+    //    אמיתית (leaseStep מכל שליפה), ולכן הוא מדד אמיתי לחיים.
   },20000);
   return l;
 }
