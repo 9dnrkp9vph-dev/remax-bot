@@ -701,12 +701,12 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp=""):
         tag = str(raw.get("_y2_office_id") or "").strip()
         if not tag:
             continue   # שורת הגיליון הישן — יורדת
+        tok = str(raw.get("מספר מודעה") or "")
+        if tok in new_tokens:
+            continue   # מוחלפת בגרסה הטרייה — גם אם תויגה בעבר לסניף/תג אחר ('family' → מזהה אמיתי)
         if tag != office_tag:
             keep.append(raw)
             continue
-        tok = str(raw.get("מספר מודעה") or "")
-        if tok in new_tokens:
-            continue   # מוחלפת בגרסה הטרייה
         if tok in delisted_tokens:
             if not raw.get("ירד מפרסום"):
                 raw["ירד מפרסום"] = stamp
