@@ -704,7 +704,8 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
     new_rows = [r for r in raw_rows if str(r.get("מספר מודעה") or "") not in existing_tokens]   # לפוש לסוכן
     for r in raw_rows:
         tok = str(r.get("מספר מודעה") or "")
-        r["_y2_first_seen"] = first_seen.get(tok) or r.get("_y2_first_seen") or now_full or stamp
+        # תאריך מפורש מהסורק (imported_at) גובר — הוא האמת; בלעדיו: החותמת השמורה, ואחרת זמן הקליטה
+        r["_y2_first_seen"] = r.get("_y2_first_seen") or first_seen.get(tok) or now_full or stamp
     keep = []
     for rec in current:
         raw = rec.get("raw")
