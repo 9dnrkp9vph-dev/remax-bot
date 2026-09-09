@@ -7339,8 +7339,11 @@ def api_map_properties():
     return jsonify({"ok":True,"items":out})
 
 def _addr_tokens(*parts):
-    """מנרמל כתובת לאסימונים: (מספרים, מילות רחוב/עיר משמעותיות) — לצורך הצלבה."""
-    t = " ".join(str(p or "") for p in parts)
+    """מנרמל כתובת לאסימונים: (מספרים, מילות רחוב/עיר משמעותיות) — לצורך הצלבה.
+    10/09: קריית→קרית; "קומה N"/"דירה N"/"מתוך N" מוסרים לפני הטוקניזציה — אחרת מספר
+    הקומה נתפס כמספר בית ("אהוד מנור 4 קומה 13" התאים ל"אהוד מנור 13")."""
+    t = " ".join(str(p or "") for p in parts).replace("קריית", "קרית")
+    t = re.sub(r"(?:קומה|דירה|מתוך)\s*-?\d+", " ", t)
     t = re.sub(r"[^0-9֐-׿ ]", " ", t)
     _noise = {"רחוב", "רח", "שדרות", "שד", "דרך", "סמטה", "ככר", "כיכר", "דירה", "בית", "קומה"}
     toks = [w for w in t.split() if w]
@@ -7383,13 +7386,8 @@ def _famexcl_addr_list():
         ent = (nums, words, (agent or "").strip(), _famexcl_price(price), _famexcl_floor(floor))
         for n in nums:
             idx.setdefault(n, []).append(ent)
-    # 1) בלעדויות חיצוניות — רק של רימקס פמילי (אין שדה סוכן אמין → ריק)
-    try:
-        for r in (fetch_external_exclusives() or []):
-            if _is_our_office(r.get("office", "")):
-                _add((r.get("street", ""),), "", r.get("price", ""))
-    except Exception:
-        pass
+    # 1) [הוסר 10/09] שת"פ של רימקס פמילי מהצינור הישן — רשומות מיושנות (קישורי נדל"ן-וואן,
+    #    בלי סוכן) שגרמו לסימוני-שווא; נכסי המשרד מיד2 (מקור 2) מכסים את כל הבלעדויות הפעילות.
     # 2) נכסי המשרד (יד2) — כל מודעה פעילה; הסוכן = "סוכן 1"
     try:
         for r in fetch_sheet_rows():
@@ -7402,10 +7400,14 @@ def _famexcl_addr_list():
                  r.get("מחיר", ""), r.get("קומה", ""))
     except Exception:
         pass
-    # 3) חתימות בלעדיות (OWNER_EXCLUSIVE) — הסוכן = agent
+    # 3) חתימות בלעדיות (OWNER_EXCLUSIVE) — הסוכן = agent. 10/09: רק מ-12 החודשים האחרונים
+    #    (תקופת בלעדיות מקסימלית) — חתימה ישנה יותר = בלעדיות שפגה, סימון-שווא.
     try:
+        _sig_floor = time.time() - 365 * 86400
         for g in get_signings():
             if "OWNER_EXCLUSIVE" not in str(g.get("deal_type", "")).upper():
+                continue
+            if _excl_epoch(g.get("received_at", "")) < _sig_floor:
                 continue
             _add((g.get("address", ""), g.get("city", "")), _canon_agent_name((g.get("agent", "") or "").strip()),
                  g.get("price", ""))
@@ -7434,7 +7436,11 @@ def _is_famexcl(addr, city, fam_idx, price=None, floor=None):
             if _id in seen:
                 continue
             seen.add(_id)
-            if not (need <= (ex_nums | ex_words)):
+            have = ex_nums | ex_words
+            # 10/09: התאמה דו-כיוונית — הצד המינימלי (רחוב+מספר+עיר) חייב להיכלל בצד העשיר.
+            # שורות נכס-נולד ותיקות כוללות שכונה; מקורות יד2 מינימליים — הדרישה החד-כיוונית
+            # הישנה (הנכס ⊆ המקור) פספסה 112 התאמות אמיתיות (נבדק על הדאטה החי).
+            if not (need <= have or have <= need):
                 continue
             if price is not None and ex_price is not None and                     abs(price - ex_price) > 0.05 * max(price, ex_price):
                 continue
