@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      12.5
+// @version      12.6
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='12.5'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='12.6'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1548,10 +1548,12 @@ function exclPostOffice(officeName,officeId,rowsArr,cb){
         var j=null;
         try{j=JSON.parse(r.responseText);}catch(e){}
         if(!j||typeof j!=='object'){
-          // תשובה שאינה JSON = תקלת גוגל רגעית. שומרים את הראיה, ומנסים שוב.
-          var raw=String(r&&r.responseText||'').replace(/\s+/g,' ').slice(0,90);
+          // תשובה שאינה JSON = תקלת גוגל רגעית. שומרים חתימה קצרה (לא גוף HTML
+          // גולמי — הוא הציף את הפאנל, אייל 09/09): קוד + סוג הדף אם מזוהה.
+          var body=String(r&&r.responseText||'');
+          var kind=/<!DOCTYPE|<html/i.test(body)?'דף HTML':(body?('תשובה לא-JSON'):'תשובה ריקה');
           var st=(r&&r.status)?(' http='+r.status):'';
-          fail('שגיאת שרת'+st+' — '+(raw||'תשובה ריקה'));
+          fail('שגיאת שרת'+st+' ('+kind+')');
           return;
         }
         cb(null,j);  // הצלחה
@@ -1936,7 +1938,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
             var up=(diag&&diag.upgraded)||0, ag=(res.exclAgentUpd||0)+gotAgents;
             // ⚠️ 09/09: כאן נזרקה הראיה. לוכד-הראיות של v11.7 מילא את err עם
             //    http=<status> ו-90 תווים מהתשובה, והשורה הזו הדפיסה 'שגיאה' יבש.
-            summary.push(office.name+': '+(err?String(err).slice(0,110):(
+            summary.push(office.name+': '+(err?String(err).slice(0,60):(
               '✓ '+rowsArr.length+' נבדקו'
               +(res.exclAdded?(' · '+res.exclAdded+' חדשים'):'')
               +(up?(' · '+up+' שמות סוכן'):'')
@@ -1945,7 +1947,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
               +((!res.exclAdded&&!up&&!ag&&!res.exclDelisted)?' · ללא שינוי':'')
             )));
             if(!err){okTot++;prog.ids[office.id]=1;if(!isFamId(office.id))doneThisRun++;exclRunSave(prog);} // שגיאה → לא מסומן, יישלח שוב בשיגור הבא
-            setTimeout(nextOffice,8000+Math.random()*7000); // הפוגה בין משרדים — הגורם העיקרי לחסימות
+            setTimeout(nextOffice,14000+Math.random()*10000); // הפוגה בין משרדים — 14-24ש' מרווח POST-ים כדי שגוגל לא תחסום-קצב (09/09)
           });
         }, agStats, office.id);
     });
