@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.0
+// @version      13.1
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.0'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='13.1'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -852,10 +852,14 @@ function buildPanel(){
     var r=exclScanNow(exclForceArmed());   // לחיצה שנייה תוך 30ש' = אילוץ
     status((r.ok?'✓ ':'⚠️ ')+r.msg);
   },';font-size:13px;padding:9px'));
-  box.appendChild(mk('ys-nav','#7c3aed','🧭 נווט-ואסוף רימקס (בטא)',function(){
-    var r=navCollectStart();               // ניווט אמיתי במקום fetch — עוקף Radware
+  box.appendChild(mk('ys-nav','#7c3aed','🧭 נווט-ואסוף כל המשרדים (בטא)',function(){
+    var r=navCollectStart('all');          // גילוי + כל המשרדים; ניווט אמיתי עוקף Radware
     status((r.ok?'✓ ':'⚠️ ')+r.msg);
   },';font-size:13px;padding:9px'));
+  box.appendChild(mk('ys-nav-fam','#7c3aed','🧭 נווט-ואסוף רימקס בלבד',function(){
+    var r=navCollectStart('fam');
+    status((r.ok?'✓ ':'⚠️ ')+r.msg);
+  },';font-size:12px;padding:7px'));
   var st=document.createElement('div');st.id='ys-status';st.style.cssText='font-size:12px;margin-top:8px;color:#cbd5e1';st.textContent='מוכן';
   box.appendChild(st);
   document.body.appendChild(box);
@@ -1849,56 +1853,97 @@ function exclRunPublic(){
 var NAV_FLAG='ysnav';                 // בהאש של ה-URL — מסמן שזה טאב נווט-ואסוף
 var NAV_KEY='ysNav';                  // מצב הריצה ב-GM
 var NAV_PAGE_MAX=40;
+var NAV_DIR_MAX=30;                   // עמודי המדריך בשלב הגילוי
 function navState(){ try{return JSON.parse(gmGet(NAV_KEY,'null'))||null;}catch(e){return null;} }
 function navSave(st){ gmSet(NAV_KEY, st?JSON.stringify(st):'null'); }
 function navUrl(id,page){ return 'https://www.yad2.co.il/realestate/agency/'+id+'/forsale?page='+page+'#'+NAV_FLAG; }
+function navDirUrl(page){ return EXCL_DIRECTORY+'&page='+page+'#'+NAV_FLAG; }
+function navOfficeAt(state){ var o=state.offices&&state.offices[state.idx]; return o?(typeof o==='object'?o:{id:String(o),name:'Re/max Family'}):null; }
+// מסדר את המשרדים: שלושת סניפי Family ראשונים (הדאטה שלנו נוחתת מוקדם), השאר אחריהם
+function navArrange(list){
+  var fam=list.filter(function(o){return isFamId(o.id);});
+  var rest=list.filter(function(o){return !isFamId(o.id);});
+  return fam.concat(rest);
+}
 // לב הלוגיקה — טהור וניתן-לבדיקה: בהינתן המצב ו-HTML הנוכחי, מה הצעד הבא.
-// מחזיר {state, act:'navigate'|'post'|'done', url?, officeId?, rows?, nextUrl?, thenDone?}.
+// שני שלבים: 'discover' (מנווט את המדריך, מחלץ מזהי משרדים) ו-'offices' (סורק כל משרד).
+// מחזיר {state, act:'navigate'|'post', url?, officeId?, officeName?, rows?, nextUrl?, thenDone?}.
 function navCollectAdvance(state, html){
+  if(state.phase==='discover'){
+    var dir=[]; try{dir=exclParseDirectory(html)||[];}catch(e){}
+    state.disc=state.disc||{};
+    var fresh=0;
+    dir.forEach(function(o){ if(o&&o.id&&!state.disc[o.id]){ state.disc[o.id]=o; fresh++; } });
+    state.dirPage=state.dirPage||1;
+    state.probe={phase:'discover', found:dir.length, total:Object.keys(state.disc).length, dirPage:state.dirPage};
+    if(fresh>0 && state.dirPage<NAV_DIR_MAX){
+      state.dirPage++;
+      return {state:state, act:'navigate', url:navDirUrl(state.dirPage)};
+    }
+    // גילוי הסתיים — Family תמיד נכנס, מסדרים, ומתחילים לסרוק משרדים
+    var all=state.disc||{};
+    FAMILY_IDS.forEach(function(id){ if(!all[id]) all[id]={id:Number(id),name:'Re/max Family'}; });
+    state.offices=navArrange(Object.keys(all).map(function(k){return all[k];}));
+    state.phase='offices'; state.idx=0; state.page=1; state.rows={};
+    if(!state.offices.length) return {state:state, act:'post', officeId:null, rows:[], thenDone:true, nextUrl:null};
+    var o0=navOfficeAt(state);
+    return {state:state, act:'navigate', url:navUrl(o0.id,1)};
+  }
+  // phase==='offices'
   var nd=null; try{nd=exclParseNextData(html);}catch(e){}
-  var found = nd?exclFindListings(nd):{};
-  var keys=Object.keys(found);
+  var found = nd?exclFindListings(nd):[];   // מערך פריטים, כל אחד עם .token
   state.rows=state.rows||{};
-  keys.forEach(function(tok){
-    if(state.rows[tok])return;
-    var r=exclMapItem(found[tok]); r.excl=exclIsExclusive(found[tok])?'1':'0';
+  found.forEach(function(it){
+    var tok=it&&it.token; if(!tok||state.rows[tok])return;
+    var r=exclMapItem(it); r.excl=exclIsExclusive(it)?'1':'0';
     r.link='https://www.yad2.co.il/realestate/item/'+tok;
     state.rows[tok]=r;
   });
-  state.probe={items:keys.length, hasNextData:!!nd, total:Object.keys(state.rows).length, office:state.offices[state.idx], page:state.page};
-  if(keys.length>0 && state.page<NAV_PAGE_MAX){
+  var cur=navOfficeAt(state);
+  state.probe={phase:'offices', items:found.length, hasNextData:!!nd, total:Object.keys(state.rows).length, office:cur&&cur.id, page:state.page};
+  if(found.length>0 && state.page<NAV_PAGE_MAX){
     state.page++;
-    return {state:state, act:'navigate', url:navUrl(state.offices[state.idx], state.page)};
+    return {state:state, act:'navigate', url:navUrl(cur.id, state.page)};
   }
   // סניף הסתיים — אוספים לשליחה, מתקדמים לסניף הבא
   var rows=Object.keys(state.rows).map(function(k){return state.rows[k];});
-  var oid=state.offices[state.idx];
   state.idx++; state.page=1; state.rows={};
   var done=state.idx>=state.offices.length;
-  return {state:state, act:'post', officeId:oid, rows:rows, thenDone:done, nextUrl:done?null:navUrl(state.offices[state.idx],1)};
+  var nxt=done?null:navOfficeAt(state);
+  return {state:state, act:'post', officeId:cur&&cur.id, officeName:(cur&&cur.name)||'Re/max Family', rows:rows, thenDone:done, nextUrl:done?null:navUrl(nxt.id,1)};
 }
-// הפעלה מהפאנל (plus.yad2): פותח טאב מנווט לסניף הראשון
-function navCollectStart(){
+// הפעלה מהפאנל (plus.yad2). mode:'all' = גילוי כל המשרדים ואז סריקה; אחרת 3 סניפי Family בלבד.
+function navCollectStart(mode){
   var now=Date.now();
   if(!mayScan())return {ok:false,msg:scanOwnerMsg()};
   if(!exclForceArmed() && !exclDeadNow(now)){ exclForceArm=now; return {ok:false,msg:'סריקה פעילה — '+leaseWhy(now)+'. לחץ שוב כדי להפעיל בכל זאת'}; }
   leaseClear();
-  navSave({offices:FAMILY_IDS.slice(), idx:0, page:1, rows:{}, t0:now});
+  var openUrl, msg;
+  if(mode==='all'){
+    navSave({phase:'discover', disc:{}, dirPage:1, offices:[], idx:0, page:1, rows:{}, t0:now});
+    openUrl=navDirUrl(1); msg='נווט-ואסוף לכל המשרדים התחיל — מגלה מהמדריך, נפתח טאב, אל תסגור';
+  } else {
+    navSave({phase:'offices', offices:FAMILY_IDS.map(function(id){return {id:Number(id),name:'Re/max Family'};}), idx:0, page:1, rows:{}, t0:now});
+    openUrl=navUrl(FAMILY_IDS[0],1); msg='נווט-ואסוף התחיל — '+FAMILY_IDS.length+' סניפים, נפתח טאב, אל תסגור';
+  }
   leaseOpen(now,'nav');
-  try{ GM_openInTab(navUrl(FAMILY_IDS[0],1),{active:true,insert:true}); }catch(e){ return {ok:false,msg:'פתיחת טאב נכשלה: '+e}; }
-  return {ok:true,msg:'נווט-ואסוף התחיל — '+FAMILY_IDS.length+' סניפים, נפתח טאב, אל תסגור'};
+  try{ GM_openInTab(openUrl,{active:true,insert:true}); }catch(e){ return {ok:false,msg:'פתיחת טאב נכשלה: '+e}; }
+  return {ok:true,msg:msg};
 }
 // רץ על טאב www כשההאש מכיל ysnav — קורא את העמוד הטעון וממשיך את המכונה
 function navCollectStep(){
   var st=navState();
   if(!st){ log('🧭 נווט-ואסוף: אין מצב — סוגר'); try{window.close();}catch(e){} return; }
   if(!leaseOwn()){ log('🧭 החכירה הוחלפה — סוגר'); try{window.close();}catch(e){} return; }
-  leaseStep('נווט '+(st.idx+1)+'/'+st.offices.length+' עמ׳ '+st.page);
+  var disc=(st.phase==='discover');
+  leaseStep(disc?('נווט·גילוי עמ׳ '+(st.dirPage||1)):('נווט '+(st.idx+1)+'/'+(st.offices?st.offices.length:'?')+' עמ׳ '+st.page));
   var html=''; try{html=document.documentElement.outerHTML;}catch(e){}
   var blocked=false; try{blocked=looksBlocked(html);}catch(e){}
   var res=navCollectAdvance(st, blocked?'':html);   // עמוד חסום = 0 פריטים → סוגר את הסניף
   navSave(res.state);
-  lastScanMsg='🧭 נווט '+(st.idx+1)+'/'+st.offices.length+' · עמ׳ '+st.page+' · '+(res.state.probe?res.state.probe.items:0)+' פריטים'+(blocked?' · ⚠️ נחסם':'')+(res.state.probe&&!res.state.probe.hasNextData?' · ⚠️ אין NEXT_DATA':'');
+  var pr=res.state.probe||{};
+  if(disc) lastScanMsg='🧭 גילוי משרדים · עמ׳ '+(st.dirPage||1)+' · '+(pr.total||0)+' נמצאו'+(blocked?' · ⚠️ נחסם':'');
+  else lastScanMsg='🧭 נווט '+(st.idx+1)+'/'+(st.offices?st.offices.length:'?')+' · עמ׳ '+st.page+' · '+(pr.items||0)+' פריטים'+(blocked?' · ⚠️ נחסם':'')+(pr.hasNextData===false?' · ⚠️ אין NEXT_DATA':'');
   try{postHB('ok');}catch(e){}
   if(res.act==='navigate'){
     setTimeout(function(){ try{location.href=res.url;}catch(e){} }, humanGap(2500,2500));
@@ -1909,13 +1954,13 @@ function navCollectStep(){
     if(res.thenDone){
       navSave(null); leaseClose();
       lastScanMsg='🧭 נווט-ואסוף הושלם'; try{postHB('ok');}catch(e){}
-      ledgerAdd({kind:'nav',ms:Date.now()-(st.t0||Date.now()),offices:st.offices.length,ok:st.offices.length,blocked:0,done:true});
+      ledgerAdd({kind:'nav',ms:Date.now()-(st.t0||Date.now()),offices:(res.state.offices?res.state.offices.length:0),ok:(res.state.offices?res.state.offices.length:0),blocked:0,done:true});
       setTimeout(function(){try{window.close();}catch(e){}},3000);
     } else {
       setTimeout(function(){ try{location.href=res.nextUrl;}catch(e){} }, humanGap(3000,3000));
     }
   };
-  if(res.rows&&res.rows.length){ exclPostOffice('Re/max Family',res.officeId,res.rows,function(){ finish(); }); }
+  if(res.rows&&res.rows.length && res.officeId){ exclPostOffice(res.officeName||'Re/max Family',res.officeId,res.rows,function(){ finish(); }); }
   else finish();
 }
 // סיכום קומפקטי לפאנל: מונים + שמות שנשמרו, במקום שורה לכל משרד (v12.6 —
@@ -2059,7 +2104,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
     });
   })();
 }
-try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysPostHB=postHB;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysLeaseOwn=leaseOwn;window.__ysExclFetchFn=exclFetchFn;window.__ysExclForceArmed=exclForceArmed;window.__ysExclForceArmSet=function(t){exclForceArm=t;};window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysExclRollup=exclRollup;window.__ysNavCollectAdvance=navCollectAdvance;window.__ysNavUrl=navUrl;window.__ysNavState=navState;window.__ysNavSave=navSave;window.__ysNavCollectStart=navCollectStart;window.__ysNavCollectStep=navCollectStep;window.__ysExclPostOffice=exclPostOffice;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
+try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysPostHB=postHB;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysLeaseOwn=leaseOwn;window.__ysExclFetchFn=exclFetchFn;window.__ysExclForceArmed=exclForceArmed;window.__ysExclForceArmSet=function(t){exclForceArm=t;};window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysExclRollup=exclRollup;window.__ysNavCollectAdvance=navCollectAdvance;window.__ysNavUrl=navUrl;window.__ysNavState=navState;window.__ysNavSave=navSave;window.__ysNavCollectStart=navCollectStart;window.__ysNavArrange=navArrange;window.__ysNavDirUrl=navDirUrl;window.__ysNavCollectStep=navCollectStep;window.__ysExclPostOffice=exclPostOffice;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
 
 // ===== סימן-חיים + התאוששות SMS אוטומטית =====
 var LOGIN_PHONE='0505709865';  // הנייד שממלאים אוטומטית בכניסה מחדש
