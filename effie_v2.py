@@ -2609,7 +2609,7 @@ function callCard(c, i, hidden){
   } else {
     acts = '<div class="acts">' +
       '<button class="main green" onclick="openWa(' + i + ')">' + WA_SVG('#fff') + 'שלח וואטסאפ</button>' +
-      '<button class="main sec" onclick="location.href=\'tel:' + esc(c.tel || '') + '\'">' + PHONE_SVG('#1E3A5F') + 'חייג חזרה</button>' +
+      '<button class="main sec" onclick="dialBack(' + i + ')">' + PHONE_SVG('#1E3A5F') + 'חייג חזרה</button>' +
       '<button class="sq" style="background:#EAF0FA" onclick="addBuyer(' + i + ')">' +
       '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#2E6BD6" stroke-width="2" stroke-linecap="round"/></svg></button>' +
       '<button class="sq" style="background:#F5F3EC" onclick="hide(\'' + esc(c.id) + '\')">' + EYE_SVG + '</button></div>';
@@ -2646,6 +2646,13 @@ function unhide(id){
     if (!j.ok){ toast('שגיאה בשחזור'); return; }
     toast('השיחה שוחזרה'); load();
   });
+}
+function dialBack(i){
+  /* חיוג חזרה: קישור ה-click2call של Maskyoo (מהסיכום) כשקיים — השיחה יוצאת מהמרכזיה,
+     מוקלטת ומתועדת; בלעדיו — נפילה לחייגן הרגיל (tel:). בקשת אייל 09/09. */
+  var c = el('list')._src[i];
+  if (c.callback){ window.open(c.callback, '_blank'); return; }
+  if (c.tel) location.href = 'tel:' + c.tel;
 }
 function openWa(i){
   var c = el('list')._src[i];
