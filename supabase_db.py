@@ -272,8 +272,11 @@ def buyers_delete(row):
 
 
 def fetch_excl_rows():
-    """'בלעדויות חיצוניות' — זהה 1:1 ל-getRaw_ (כולל _date_key)."""
-    return _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")
+    """'בלעדויות חיצוניות' — זהה 1:1 ל-getRaw_ (כולל _date_key). מודעה שירדה מפרסום
+    ביד2 (raw.delisted_at, מסומנת רק בסריקה מלאה) לא מוזרמת לאפליקציה — נשארת ב-DB
+    (החלטת אייל 09/09: סנכרון מלא, בלי למחוק היסטוריה)."""
+    rows = _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")
+    return [r for r in rows if not r.get("delisted_at")]
 
 
 def signatures_delete(event_id="", received_at="", client_name=""):
@@ -661,8 +664,17 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp=""):
     office_tag = str(office_tag or "").strip()
     delisted_tokens = set(delisted_tokens or ())
     new_tokens = set(str(r.get("מספר מודעה") or "") for r in raw_rows)
+    current = _get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"})
+    # שער-שפיות (אייל 09/09): batch שקטן בחצי ומטה מהפעילים הקיימים של הסניף = סריקה
+    # חלקית/תקלה — לא מסמנים "ירד מפרסום" (רק מעדכנים מה שהגיע); נחזור לסנכרן בסריקה שפויה.
+    cur_active = sum(1 for rec in current
+                     if isinstance(rec.get("raw"), dict)
+                     and str(rec["raw"].get("_y2_office_id") or "").strip() == office_tag
+                     and not rec["raw"].get("ירד מפרסום"))
+    if delisted_tokens and cur_active >= 10 and len(raw_rows) < 0.5 * cur_active:
+        delisted_tokens = set()
     keep = []
-    for rec in _get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"}):
+    for rec in current:
         raw = rec.get("raw")
         if not isinstance(raw, dict):
             continue
