@@ -84,6 +84,24 @@ def _nb_parse_date_ms(s):
         return 0
 
 
+DELISTED_GRACE_DAYS = 3   # "ירד מפרסום" מוצג עם תווית 3 ימים ואז נעלם (החלטת אייל 09/09)
+
+def delisted_visible(stamp):
+    """stamp של ירד-מפרסום (DD/MM/YYYY) → האם עדיין בחלון התווית. ריק=פעיל=מוצג;
+    חותמת לא-פריסה = ירד, לא מוצג."""
+    t = str(stamp or "").strip()
+    if not t:
+        return True
+    m = re.match(r"^(\d{1,2})[/.](\d{1,2})[/.](\d{4})", t)
+    if not m:
+        return False
+    try:
+        d = _dt.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except Exception:
+        return False
+    return (_dt.date.today() - d).days < DELISTED_GRACE_DAYS
+
+
 def fetch_newborn_rows():
     """שורות 'נכס נולד' — אותו פורמט בדיוק כמו listnewborn מה-Apps Script:
     list של dicts עם מפתחות עבריים (העמודה raw שנשמרה 1:1 מהגיליון),
@@ -104,6 +122,8 @@ def fetch_newborn_rows():
         # השכרות מסריקת יד2 לא מוצגות בנכס נולד (החלטת אייל 31/08) — נשארות ב-DB
         # לאופציה עתידית פר-סוכן ב"ניהול". שורות הצינור הישן בלי "סוג עסקה" — עוברות.
         if "שכר" in str(raw.get("סוג עסקה") or ""):
+            continue
+        if not delisted_visible(raw.get("delisted_at")):   # ירד מיד2 לפני 3+ ימים
             continue
         # רשימת ערים סגורה (החלטת אייל 01/09): רק 4 הקריות + קרית חיים מזרחית/מערבית
         # (חלק מעיריית חיפה — מזוהה לפי שכונה/רחוב). כל השאר — נשאר ב-DB, לא מוצג.
@@ -276,7 +296,7 @@ def fetch_excl_rows():
     ביד2 (raw.delisted_at, מסומנת רק בסריקה מלאה) לא מוזרמת לאפליקציה — נשארת ב-DB
     (החלטת אייל 09/09: סנכרון מלא, בלי למחוק היסטוריה)."""
     rows = _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")
-    return [r for r in rows if not r.get("delisted_at")]
+    return [r for r in rows if delisted_visible(r.get("delisted_at"))]
 
 
 def signatures_delete(event_id="", received_at="", client_name=""):
@@ -651,7 +671,7 @@ def fetch_properties_rows():
     תוויות UI לירד-מפרסום הן צעד נפרד (יומן 01/09)."""
     recs = _get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"})
     return [rec["raw"] for rec in recs
-            if isinstance(rec.get("raw"), dict) and not rec["raw"].get("ירד מפרסום")]
+            if isinstance(rec.get("raw"), dict) and delisted_visible(rec["raw"].get("ירד מפרסום"))]
 
 
 def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp=""):

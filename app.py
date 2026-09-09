@@ -6667,6 +6667,7 @@ def api_search_properties():
                 "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
                 "desc": (row.get("_desc_ae", "") or "").strip(),
                 "link": (row.get("קישור", "") or "").strip(),   # מודעת יד2 (בקשת אייל 01/09)
+                "delisted": (row.get("ירד מפרסום", "") or "").strip(),   # תווית 3 ימים (09/09)
             }
             if score is not None:
                 d["score"] = min(100, int(score))
@@ -6764,6 +6765,7 @@ def api_my_properties():
                 "wa": _wa_phone(phones_map.get(ag, r.get("טלפון 1", ""))),
                 "desc": (r.get("_desc_ae", "") or "").strip(),
                 "link": (r.get("קישור", "") or "").strip(),   # מודעת יד2 (בקשת אייל 01/09)
+                "delisted": (r.get("ירד מפרסום", "") or "").strip(),
             })
         _log_activity(s["name"], s["role"], s["phone"], "הנכסים שלי",
                       eff_name if as_name else "")
@@ -7511,6 +7513,7 @@ def api_newborn():
                 "stat": _vstat or None,
                 "unotes": _nb_notes_for(_k, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", "")))),
                 "ageDays": ad,
+                "delisted": _nb(r.get("delisted_at", "")),   # ירד מיד2 — תווית 3 ימים
                 "famexcl": (_famv is not None),
                 "famexclAgent": (_famv or ""),
             })
@@ -7931,6 +7934,7 @@ def api_search_exclusives():
                 "own": _is_our_office(r.get("office", "")),   # בלעדיות חיצונית של רימקס פמילי עצמו → הבלטה בלקוח
                 "date": str(r.get("received_at", "") or "")[:10],
                 "link": str(r.get("link", "") or "").strip(),
+                "delisted": str(r.get("delisted_at", "") or "").strip(),
                 "lat": round(_ll[0], 6) if _ll else None,
                 "lng": round(_ll[1], 6) if _ll else None,
             })

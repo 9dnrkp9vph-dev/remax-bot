@@ -4378,6 +4378,10 @@ function nbCard(r, i){
       'border:1px solid #F0B8B8;font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px">' +
       '🔴 כבר בבלעדיות RE/MAX Family' + (r.famexclAgent ? ' · ' + esc(r.famexclAgent) : '') + '</div>'
     : '';
+  // ירד מפרסום ביד2 — תווית 3 ימים ואז נעלם מהמסך (החלטת אייל 09/09)
+  if (r.delisted) fam += '<div style="display:inline-flex;align-items:center;background:#EBE8DD;color:#5B6472;' +
+    'font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-start:6px">' +
+    'ירד מפרסום · ' + esc(r.delisted) + '</div>';
   return '<div class="nb">' +
     '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
     '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' + fam + '</div>' + chip + '</div>' +
@@ -5066,6 +5070,8 @@ function propCard(p, i){
   var chip = isShtaf ? '<div class="chip shtaf">שת"פ</div>'
     : isMine ? (p.pending ? '<div class="chip pend">בטיפול אצל המזכירה</div>' : '<div class="chip mine">הנכס שלי</div>')
     : '<div class="chip office">המשרד שלנו</div>';
+  // ירד מפרסום ביד2 — תווית ל-3 ימים ואז הנכס נעלם (החלטת אייל 09/09)
+  if (p.delisted) chip = '<div class="chip" style="background:#EBE8DD;color:#5B6472">ירד מפרסום · ' + esc(p.delisted) + '</div>';
   var acts = isShtaf
     ? '<div class="acts"><button class="a1" onclick="matchBuyers(' + i + ')">' +
       '<svg width="12" height="12" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
@@ -8917,6 +8923,8 @@ def y2_hot_reconcile(hot_props, rows, canon):
     kept, stale = [], []
     for hp in hot_props:
         r = pmap.get(str(hp.get("key") or ""))
+        if r and r.get("ירד מפרסום"):
+            r = None   # בחלון התווית — עדיין במסך הנכסים, אבל לא בסטורי (נכס שירד לא "חם")
         if r:
             if y2_source and canon(r.get("סוכן 1", "")) != canon(hp.get("agent", "")):
                 stale.append(hp.get("key") or "")   # עברה לסוכן אחר — לא בסטורי של הסוכן הישן
