@@ -6665,6 +6665,7 @@ def api_search_properties():
                 "price": (row.get("מחיר", "") or "").strip(),
                 "priceChanged": _prop_price_key(row) in _pc_map,   # תג "עדכון מחיר" (לכולם)
                 "priceDropped": _prop_price_key(row) in _pd_map,
+                "priceOld": _pd_map.get(_prop_price_key(row), ""),
                 "date": (row.get("תאריך יצירה", "") or row.get("_y2_first_seen", "") or "").strip(),
                 "isNew": _prop_is_new(row),
                 "agent": _canon_agent_name(ag),
@@ -6768,6 +6769,7 @@ def api_my_properties():
                 "price": (r.get("מחיר", "") or "").strip(),
                 "priceChanged": _prop_price_key(r) in _pc_map,
                 "priceDropped": _prop_price_key(r) in _pd_map,
+                "priceOld": _pd_map.get(_prop_price_key(r), ""),
                 "agent": _canon_agent_name(ag),
                 "wa": _wa_phone(phones_map.get(ag, r.get("טלפון 1", ""))),
                 "desc": (r.get("_desc_ae", "") or "").strip(),
@@ -6864,7 +6866,9 @@ def _scan_price_changes():
                 changes[k] = int(now)
                 try:
                     if int(pn) < int(old):
-                        drops[k] = int(now)
+                        prev = drops.get(k)
+                        # ירידה על ירידה בתוך החלון — המחיר "לפני" נשאר המקורי (הגבוה)
+                        drops[k] = {"ts": int(now), "old": (prev.get("old") if isinstance(prev, dict) else None) or old}
                     else:
                         drops.pop(k, None)   # עלייה — מבטלת תג ירידה קודם
                 except Exception:
@@ -6872,7 +6876,7 @@ def _scan_price_changes():
             snap[k] = pn
         cutoff = max(int(now) - 7 * 86400, _PC_FLUSH_BEFORE)
         changes = {k: v for k, v in changes.items() if (v or 0) >= cutoff}   # גיזום >7 יום + שטיפת גל-השווא
-        drops = {k: v for k, v in drops.items() if (v or 0) >= cutoff}
+        drops = {k: v for k, v in drops.items() if ((v.get("ts") if isinstance(v, dict) else v) or 0) >= cutoff}
         cfg["v2_price_snap"] = snap
         cfg["v2_price_changes"] = changes
         cfg["v2_price_drops"] = drops
@@ -6891,11 +6895,16 @@ def _price_changed_map():
         return {}
 
 def _price_dropped_map():
-    """{key: ts} של נכסים שהמחיר שלהם ירד ב-7 הימים האחרונים (תג 'ירידת מחיר')."""
+    """{key: המחיר-לפני (ספרות)} של נכסים שהמחיר שלהם ירד ב-7 הימים האחרונים (תג 'ירידת מחיר')."""
     try:
         now = time.time()
         m = _load_config().get("v2_price_drops") or {}
-        return {k: v for k, v in m.items() if (now - (v or 0)) < 7 * 86400}
+        out = {}
+        for k, v in m.items():
+            ts = v.get("ts") if isinstance(v, dict) else v
+            if (now - (ts or 0)) < 7 * 86400:
+                out[k] = str(v.get("old") or "") if isinstance(v, dict) else ""
+        return out
     except Exception:
         return {}
 

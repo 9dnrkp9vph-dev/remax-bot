@@ -5107,7 +5107,10 @@ function propCard(p, i){
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
     '<div style="display:flex;align-items:center;gap:8px">' +
-    '<div class="pr">' + esc(fmtPrice(p.price)) + '</div>' +
+    ((p.priceDropped && p.priceOld)
+      ? '<span style="text-decoration:line-through;color:#8B8F99;font-size:14px;font-weight:600">' + esc(fmtPrice(p.priceOld)) + '</span>' +
+        '<div class="pr" style="font-size:1.18em">' + esc(fmtPrice(p.price)) + '</div>'
+      : '<div class="pr">' + esc(fmtPrice(p.price)) + '</div>') +
     (p.priceDropped ? '<span style="font-size:11px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>'
       : p.priceChanged ? '<span style="font-size:11px;font-weight:800;color:#231700;background:#E4C56B;border-radius:999px;padding:3px 10px;white-space:nowrap">עדכון מחיר</span>' : '') +
     '</div>' +
@@ -8907,6 +8910,30 @@ def y2_first_seen_str(v):
     hh, mi = (int(m.group(4)), int(m.group(5))) if m.group(4) else (0, 0)
     return "%02d/%02d/%04d %02d:%02d" % (d, mo, y, hh, mi)
 
+def y2_new_push_plan(new_rows, max_total=40, max_per_agent=10):
+    """פוש לסוכן על מודעה חדשה שלו (אייל 10/09) → {סוכן: (כותרת, גוף)}. הגנות: מעל max_total
+    חדשים ב-batch = הזרמה/backfill/אנומליה → בלי פוש בכלל; לסוכן עם כמה חדשים — פוש מסכם אחד."""
+    if not new_rows or len(new_rows) > max_total:
+        return {}
+    by = {}
+    for r in new_rows:
+        ag = str(r.get("סוכן 1") or "").strip()
+        if ag:
+            by.setdefault(ag, []).append(r)
+    plan = {}
+    for ag, rs in by.items():
+        if len(rs) == 1:
+            r = rs[0]
+            addr = " ".join(x for x in (str(r.get("כתובת") or ""), str(r.get("מספר בית") or "")) if x).strip()
+            where = ", ".join(x for x in (addr, str(r.get("עיר / ישוב") or "")) if x)
+            pr = y2_num_str(str(r.get("מחיר") or ""))
+            body = where + ((" · " + "{:,}".format(int(pr)) + " ₪") if pr.isdigit() else "")
+            plan[ag] = ("המודעה שלך נקלטה מיד2", body or "נכס חדש")
+        else:
+            n = min(len(rs), max_per_agent) if len(rs) <= max_per_agent else len(rs)
+            plan[ag] = ("המודעות שלך נקלטו מיד2", f"{n} מודעות חדשות שלך נכנסו לנכסי המשרד")
+    return plan
+
 def y2_norm_office(row, office_id):
     """שורת מודעה של סניף שלנו → שורת properties בפורמט הגיליון (כותרות עבריות) —
     כל צרכני fetch_sheet_rows (הנכסים שלי/חיפוש/החתמה/מפה/famexcl/מזכירה) עובדים בלי שינוי.
@@ -10420,8 +10447,21 @@ def register(app, G):
                     props = [y2_norm_office(r, _oid) for r in _rows]
                     for _pr in props:
                         _pr["_y2_ingested"] = _now_full   # "עדכון אחרון" במסך הנכסים
-                    _okp, _n = sb.merge_office_props(_oid, props, _dl if _oid == batch_oid else set(), _stamp, _now_full)
+                    _okp, _n, _new_rows = sb.merge_office_props(_oid, props, _dl if _oid == batch_oid else set(), _stamp, _now_full)
                     out["ourN"] += _n
+                    try:   # פוש לסוכן על מודעה חדשה שלו (אייל 10/09) — לא בהזרמות/backfill (שער 40)
+                        if str(b.get("machine", "") or "").startswith("resend"):
+                            raise StopIteration
+                        for _ag, (_t, _body) in y2_new_push_plan(_new_rows).items():
+                            _ids = [G["_last9"](x) for x in (G["_phones_for_name"](_ag) or [])]
+                            _ids = [x for x in _ids if x]
+                            if _ids:
+                                _bth.Thread(target=G["send_push"], args=(_t, _body, _ids), daemon=True).start()
+                                out["pushN"] = out.get("pushN", 0) + 1
+                    except StopIteration:
+                        pass
+                    except Exception as _pe:
+                        if log: log.warning(f"yad2 new-listing push failed: {_pe}")
                     try:   # ריפוי עצמי: עותקים אנונימיים של הנכסים שלנו שנכנסו לשת"פ לפני התיקון
                         sb.excl_delete_keys(["y2x:" + str(p.get("מספר מודעה") or "") for p in props])
                     except Exception:

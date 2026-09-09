@@ -680,7 +680,7 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
     נשארת עם תווית "ירד מפרסום"; אחרת נשארת כמו שהיא (סריקה חלקית לא מוחקת).
     שורות ללא _y2_office_id (הגיליון הישן) נמחקות בכתיבה הראשונה. מחזיר (ok, n)."""
     if not enabled() or not raw_rows:
-        return False, 0
+        return False, 0, []
     office_tag = str(office_tag or "").strip()
     delisted_tokens = set(delisted_tokens or ())
     new_tokens = set(str(r.get("מספר מודעה") or "") for r in raw_rows)
@@ -700,6 +700,8 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
         raw = rec.get("raw")
         if isinstance(raw, dict) and raw.get("_y2_first_seen"):
             first_seen[str(raw.get("מספר מודעה") or "")] = raw["_y2_first_seen"]
+    existing_tokens = set(str(rec["raw"].get("מספר מודעה") or "") for rec in current if isinstance(rec.get("raw"), dict))
+    new_rows = [r for r in raw_rows if str(r.get("מספר מודעה") or "") not in existing_tokens]   # לפוש לסוכן
     for r in raw_rows:
         tok = str(r.get("מספר מודעה") or "")
         r["_y2_first_seen"] = first_seen.get(tok) or r.get("_y2_first_seen") or now_full or stamp
@@ -722,7 +724,8 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
                 raw["ירד מפרסום"] = stamp
             raw["סטטוס"] = "ירד מפרסום"
         keep.append(raw)
-    return replace_properties(keep + list(raw_rows))
+    ok, n = replace_properties(keep + list(raw_rows))
+    return ok, n, new_rows
 
 
 def replace_properties(raw_rows):
