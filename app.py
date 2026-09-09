@@ -6649,6 +6649,7 @@ def api_search_properties():
             _push_recent(s["phone"], "props", q)
         _scan_price_changes()
         _pc_map = _price_changed_map()   # נכסים שהמחיר שלהם השתנה ב-7 ימים — תג לכולם
+        _pd_map = _price_dropped_map()   # ירידת מחיר — תג נפרד (אייל 09/09)
         phones = fetch_agents_phones()
 
         def _row_out(row, score=None):
@@ -6663,6 +6664,7 @@ def api_search_properties():
                 "floor": (row.get("קומה", "") or "").strip(),
                 "price": (row.get("מחיר", "") or "").strip(),
                 "priceChanged": _prop_price_key(row) in _pc_map,   # תג "עדכון מחיר" (לכולם)
+                "priceDropped": _prop_price_key(row) in _pd_map,
                 "date": (row.get("תאריך יצירה", "") or row.get("_y2_first_seen", "") or "").strip(),
                 "isNew": _prop_is_new(row),
                 "agent": _canon_agent_name(ag),
@@ -6744,6 +6746,7 @@ def api_my_properties():
         removed = _removed_listing_ids()   # נכסים שהסוכן ביקש להסיר — יורדים מיד מהתצוגה והספירה
         _scan_price_changes()
         _pc_map = _price_changed_map()      # תג "עדכון מחיר" (7 ימים, לכולם)
+        _pd_map = _price_dropped_map()      # תג "ירידת מחיר"
         out = []
         for r in mine:
             ag = (r.get("סוכן 1", "") or "").strip()
@@ -6764,6 +6767,7 @@ def api_my_properties():
                 "floor": (r.get("קומה", "") or "").strip(),
                 "price": (r.get("מחיר", "") or "").strip(),
                 "priceChanged": _prop_price_key(r) in _pc_map,
+                "priceDropped": _prop_price_key(r) in _pd_map,
                 "agent": _canon_agent_name(ag),
                 "wa": _wa_phone(phones_map.get(ag, r.get("טלפון 1", ""))),
                 "desc": (r.get("_desc_ae", "") or "").strip(),
@@ -6853,15 +6857,25 @@ def _scan_price_changes():
     def _mut(cfg):
         snap = dict(cfg.get("v2_price_snap") or {})
         changes = dict(cfg.get("v2_price_changes") or {})
+        drops = dict(cfg.get("v2_price_drops") or {})   # ירידת מחיר (אייל 09/09) — תג נפרד
         for k, pn in cur.items():
             old = snap.get(k)
             if old is not None and old != pn:   # מחיר השתנה (לא מופע ראשון) → תג
                 changes[k] = int(now)
+                try:
+                    if int(pn) < int(old):
+                        drops[k] = int(now)
+                    else:
+                        drops.pop(k, None)   # עלייה — מבטלת תג ירידה קודם
+                except Exception:
+                    pass
             snap[k] = pn
         cutoff = max(int(now) - 7 * 86400, _PC_FLUSH_BEFORE)
         changes = {k: v for k, v in changes.items() if (v or 0) >= cutoff}   # גיזום >7 יום + שטיפת גל-השווא
+        drops = {k: v for k, v in drops.items() if (v or 0) >= cutoff}
         cfg["v2_price_snap"] = snap
         cfg["v2_price_changes"] = changes
+        cfg["v2_price_drops"] = drops
     try:
         _config_mutate(_mut)
     except Exception as _e:
@@ -6872,6 +6886,15 @@ def _price_changed_map():
     try:
         now = time.time()
         m = _load_config().get("v2_price_changes") or {}
+        return {k: v for k, v in m.items() if (now - (v or 0)) < 7 * 86400}
+    except Exception:
+        return {}
+
+def _price_dropped_map():
+    """{key: ts} של נכסים שהמחיר שלהם ירד ב-7 הימים האחרונים (תג 'ירידת מחיר')."""
+    try:
+        now = time.time()
+        m = _load_config().get("v2_price_drops") or {}
         return {k: v for k, v in m.items() if (now - (v or 0)) < 7 * 86400}
     except Exception:
         return {}
