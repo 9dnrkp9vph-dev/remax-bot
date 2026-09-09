@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Yad2 Plus → Google Sheets Auto-Sync
 // @namespace    eyal-yad2-sync
-// @updateURL    https://remax-bot.onrender.com/yad2.user.js
-// @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      12.1
+// @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
+// @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
+// @version      12.5
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='12.1'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='12.5'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1529,27 +1529,35 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
   }).catch(function(){done([],diag);});
 }
 // שליחת סנאפשוט משרד ל-CRM (feed=daily → ירידות/מחירים/תיאורים מטופלים בשרת)
+// ניסיונות חוזרים לשמירת המשרד — 09/09: ריצה נקייה הושלמה אך השמירה קיבלה
+// "http=200 <!DOCTYPE html>" (תקלת גוגל רגעית, אותן 404/HTML מזדמנות). הזרם
+// הפרטי כבר מנסה-שוב (POST_RETRY_WAITS); שמירת המשרד לא — ולכן תקלה אחת איבדה
+// את כל הסניף. עכשיו: עד 3 ניסיונות בהמתנה, ורק אז מדווחים את הראיה שנלכדה.
+var EXCL_SAVE_WAITS=[8000,20000];
 function exclPostOffice(officeName,officeId,rowsArr,cb){
   var body='secret='+encodeURIComponent(SECRET)+'&action=importexcl&feed=daily&office='+encodeURIComponent(officeName)+'&officeId='+encodeURIComponent(officeId||'')+'&machine='+encodeURIComponent((function(){try{return machineId();}catch(e){return '';}})())+'&data='+encodeURIComponent(JSON.stringify(rowsArr));
-  GM_xmlhttpRequest({method:'POST',url:WEBHOOK,data:body,headers:{'Content-Type':'application/x-www-form-urlencoded'},timeout:60000,
-    ontimeout:function(){cb('שגיאת שרת — פסק זמן (60ש׳)',{});},
-    // 🐞 08/09: תשובה שאינה JSON (דף שגיאה של גוגל) נספרה כהצלחה — היומן דיווח
-    //    "נסרקו 9" בזמן שהגיליון לא זז ו-agency מעולם לא נקרא. בקשה שנהרגה היא
-    //    כשל, והמשרד יישלח שוב בריצה הבאה.
-    onload:function(r){
-      var j=null;
-      try{j=JSON.parse(r.responseText);}catch(e){}
-      if(!j||typeof j!=='object'){
-        // שומרים את הראיה: מה גוגל *כן* החזירה. בלי זה "לא JSON" הוא קיר אטום
-        // (09/09 — importexcl שנשלח מכאן נכנס מושלם, אז ההבדל הוא בתשובה).
-        var raw=String(r&&r.responseText||'').replace(/\s+/g,' ').slice(0,90);
-        var st=(r&&r.status)?(' http='+r.status):'';
-        cb('שגיאת שרת'+st+' — '+(raw||'תשובה ריקה'),{});
-        return;
-      }
-      cb(null,j);
-    },
-    onerror:function(){cb('network');}});
+  var attempt=0;
+  (function send(){
+    function fail(msg){
+      if(attempt<EXCL_SAVE_WAITS.length){ var w=EXCL_SAVE_WAITS[attempt++]; setTimeout(send,w); return; }
+      cb(msg,{});  // נגמרו הניסיונות — מדווחים את הראיה
+    }
+    GM_xmlhttpRequest({method:'POST',url:WEBHOOK,data:body,headers:{'Content-Type':'application/x-www-form-urlencoded'},timeout:60000,
+      ontimeout:function(){ fail('שגיאת שרת — פסק זמן (60ש׳)'); },
+      onload:function(r){
+        var j=null;
+        try{j=JSON.parse(r.responseText);}catch(e){}
+        if(!j||typeof j!=='object'){
+          // תשובה שאינה JSON = תקלת גוגל רגעית. שומרים את הראיה, ומנסים שוב.
+          var raw=String(r&&r.responseText||'').replace(/\s+/g,' ').slice(0,90);
+          var st=(r&&r.status)?(' http='+r.status):'';
+          fail('שגיאת שרת'+st+' — '+(raw||'תשובה ריקה'));
+          return;
+        }
+        cb(null,j);  // הצלחה
+      },
+      onerror:function(){ fail('network'); }});
+  })();
 }
 // צד פלוס: טיימר דקה — כשמגיע הזמן, פותחים טאב רקע לסריקה
 // הפעלה ידנית של סריקת המשרדים (כפתור בפאנל). אותו מסלול כמו המתוזמנת —
@@ -1890,7 +1898,12 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
     var office=OFFICES[i++];
     leaseStep('משרד '+i+'/'+OFFICES.length+' · '+office.name);
     if(prog.ids[office.id] && !isFamId(office.id)){setTimeout(nextOffice,50);return;} // נסרק בריצה הקטועה — הלאה (Family תמיד נסרק)
-    exclCrawlOffice(office,fetchFn,function(name,part,page,n){log('🏢 '+name+' '+part+' עמ׳ '+page+': '+n);},function(rowsArr,diag){
+    exclCrawlOffice(office,fetchFn,function(name,part,page,n){
+      // הפירור העמוק: כל עמוד מעדכן את שלב החכירה לתת-השלב האמיתי (סוכן/עמוד),
+      // כדי שמוות בתוך משרד יצביע במדויק ולא רק "משרד N/M" (09/09).
+      try{leaseStep('משרד '+i+'/'+OFFICES.length+' · '+part+' עמ׳ '+page);}catch(e){}
+      log('🏢 '+name+' '+part+' עמ׳ '+page+': '+n);
+    },function(rowsArr,diag){
       if(diag)diags.push(diag);
       if(diag&&diag.blocked){ // עמוד CAPTCHA — לא מסמנים "בוצע"
         blockRun++; blockTot++;
@@ -1901,6 +1914,9 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
           setTimeout(nextOffice,500); return;
         }
         // חסימה בודדת: נסיגה ארוכה וממשיכים למשרד הבא. הריצה לא מתה בגלל עמוד אחד.
+        // הנסיגה (2-4 דק') היא שטח עיוור — בלי leaseStep כאן, מוות בזמנה נראה
+        // כאילו נתקע ב"שומר" של המשרד הקודם (09/09).
+        try{leaseStep('משרד '+i+' נחסם — נסיגה '+blockRun+'/'+BLOCK_RUN_MAX);}catch(e){}
         log('⛔ '+office.name+' נחסם ('+blockRun+'/'+BLOCK_RUN_MAX+') — נסיגה וממשיכים למשרד הבא');
         setTimeout(nextOffice,120000+Math.random()*120000); return;
       }
