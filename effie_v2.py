@@ -5072,6 +5072,8 @@ function propCard(p, i){
     : '<div class="chip office">המשרד שלנו</div>';
   // ירד מפרסום ביד2 — תווית ל-3 ימים ואז הנכס נעלם (החלטת אייל 09/09)
   if (p.delisted) chip = '<div class="chip" style="background:#EBE8DD;color:#5B6472">ירד מפרסום · ' + esc(p.delisted) + '</div>';
+  // נכס חדש (נראה לראשונה ב-3 הימים האחרונים) — תווית זהב, גם במשרד וגם בשלי (אייל 09/09)
+  else if (p.isNew && !isShtaf) chip = '<div class="chip" style="background:#E4C56B;color:#231700">חדש</div>' + chip;
   var acts = isShtaf
     ? '<div class="acts"><button class="a1" onclick="matchBuyers(' + i + ')">' +
       '<svg width="12" height="12" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
@@ -8895,6 +8897,15 @@ def y2_clean_desc(d):
             cut = min(cut, i)
     return t[:cut].strip(" ,.\n-·")
 
+def y2_first_seen_str(v):
+    """'DD/MM/YYYY[ HH:MM]' מהסורק (imported_at) → מנורמל; לא-פריס → '' (המיזוג ישים זמן קליטה)."""
+    m = _re.match(r"^\s*(\d{1,2})[./](\d{1,2})[./](\d{4})(?:[ T](\d{1,2}):(\d{2}))?", str(v or ""))
+    if not m:
+        return ""
+    d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    hh, mi = (int(m.group(4)), int(m.group(5))) if m.group(4) else (0, 0)
+    return "%02d/%02d/%04d %02d:%02d" % (d, mo, y, hh, mi)
+
 def y2_norm_office(row, office_id):
     """שורת מודעה של סניף שלנו → שורת properties בפורמט הגיליון (כותרות עבריות) —
     כל צרכני fetch_sheet_rows (הנכסים שלי/חיפוש/החתמה/מפה/famexcl/מזכירה) עובדים בלי שינוי.
@@ -8908,6 +8919,7 @@ def y2_norm_office(row, office_id):
             "קישור": g("link"), "טלפון 1": g("phone"), "בלעדיות": g("excl"),
             "תגיות": g("tags").replace(";", " · "), "תמונה": g("image"),
             "סטטוס": "פעילה", "_desc_ae": y2_clean_desc(g("description")),
+            "_y2_first_seen": y2_first_seen_str(g("imported_at") or g("listing_date") or g("first_seen")),
             "_y2_office_id": str(office_id or "").strip(), "מקור": "yad2"}
 
 def y2_hot_reconcile(hot_props, rows, canon):
@@ -10407,7 +10419,7 @@ def register(app, G):
                     props = [y2_norm_office(r, _oid) for r in _rows]
                     for _pr in props:
                         _pr["_y2_ingested"] = _now_full   # "עדכון אחרון" במסך הנכסים
-                    _okp, _n = sb.merge_office_props(_oid, props, _dl if _oid == batch_oid else set(), _stamp)
+                    _okp, _n = sb.merge_office_props(_oid, props, _dl if _oid == batch_oid else set(), _stamp, _now_full)
                     out["ourN"] += _n
                     try:   # ריפוי עצמי: עותקים אנונימיים של הנכסים שלנו שנכנסו לשת"פ לפני התיקון
                         sb.excl_delete_keys(["y2x:" + str(p.get("מספר מודעה") or "") for p in props])

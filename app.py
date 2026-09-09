@@ -2047,14 +2047,15 @@ def _prop_epoch(row) -> float:
     """תאריך יצירה של נכס מגיליון המשרד → epoch למיון. תומך ב-DD.M.YYYY (18.5.2026),
     DD/MM/YYYY ו-ISO. נכסים חדשים יותר מקבלים ערך גבוה יותר (מיון יורד = החדש ראשון)."""
     from datetime import datetime
-    s = str(row.get("תאריך יצירה", "") or "").strip()
+    s = str(row.get("תאריך יצירה", "") or row.get("_y2_first_seen", "") or "").strip()
     if not s:
         return 0.0
-    m = re.match(r"^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})", s)
+    m = re.match(r"^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})(?:[ T](\d{1,2}):(\d{2}))?", s)
     if m:
         d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        hh, mi = (int(m.group(4)), int(m.group(5))) if m.group(4) else (0, 0)
         try:
-            return datetime(y, mo, d).timestamp()
+            return datetime(y, mo, d, hh, mi).timestamp()
         except Exception:
             return 0.0
     return _excl_epoch(s)
@@ -6662,7 +6663,8 @@ def api_search_properties():
                 "floor": (row.get("קומה", "") or "").strip(),
                 "price": (row.get("מחיר", "") or "").strip(),
                 "priceChanged": _prop_price_key(row) in _pc_map,   # תג "עדכון מחיר" (לכולם)
-                "date": (row.get("תאריך יצירה", "") or "").strip(),
+                "date": (row.get("תאריך יצירה", "") or row.get("_y2_first_seen", "") or "").strip(),
+                "isNew": _prop_is_new(row),
                 "agent": _canon_agent_name(ag),
                 "wa": _wa_phone(phones.get(ag, row.get("טלפון 1", ""))),
                 "desc": (row.get("_desc_ae", "") or "").strip(),
@@ -6736,6 +6738,7 @@ def api_my_properties():
                 s["role"], eff_name, eff_phones, s.get("agents"), s.get("agent_names"))
         rows = fetch_sheet_rows()
         mine = [r for r in rows if _row_owned(r, keys, phones)]
+        mine.sort(key=_prop_epoch, reverse=True)   # החדש למעלה (אייל 09/09)
         phones_map = fetch_agents_phones()
         pending = _fetch_pending_listings()
         removed = _removed_listing_ids()   # נכסים שהסוכן ביקש להסיר — יורדים מיד מהתצוגה והספירה
@@ -6766,7 +6769,10 @@ def api_my_properties():
                 "desc": (r.get("_desc_ae", "") or "").strip(),
                 "link": (r.get("קישור", "") or "").strip(),   # מודעת יד2 (בקשת אייל 01/09)
                 "delisted": (r.get("ירד מפרסום", "") or "").strip(),
+                "date": (r.get("תאריך יצירה", "") or r.get("_y2_first_seen", "") or "").strip(),
+                "isNew": _prop_is_new(r),
             })
+
         _log_activity(s["name"], s["role"], s["phone"], "הנכסים שלי",
                       eff_name if as_name else "")
         return jsonify({"ok": True, "count": len(out), "name": eff_name, "multi": multi, "results": out})
@@ -6804,6 +6810,11 @@ def _props_updated(rows):
             if k > bestk:
                 bestk, best = k, t
     return best
+
+def _prop_is_new(row, days=3):
+    """נכס 'חדש' = נראה לראשונה ב-3 הימים האחרונים (תווית זהב, אייל 09/09)."""
+    e = _prop_epoch(row)
+    return bool(e) and (time.time() - e) < days * 86400
 
 def _prop_price_key(row):
     """מפתח יציב לזיהוי נכס לאורך העלאות — מספר מודעה, ובלעדיו כתובת+עיר מנורמלים."""

@@ -674,7 +674,7 @@ def fetch_properties_rows():
             if isinstance(rec.get("raw"), dict) and delisted_visible(rec["raw"].get("ירד מפרסום"))]
 
 
-def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp=""):
+def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now_full=""):
     """נכסי המשרד מיד2 (שלב ב', החלטת אייל 01/09): מחליף את שורות הסניף office_tag
     ברשימה החדשה ושומר את שאר הסניפים. שורה של הסניף שנעדרת מהסריקה: ב-delisted →
     נשארת עם תווית "ירד מפרסום"; אחרת נשארת כמו שהיא (סריקה חלקית לא מוחקת).
@@ -693,6 +693,16 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp=""):
                      and not rec["raw"].get("ירד מפרסום"))
     if delisted_tokens and cur_active >= 10 and len(raw_rows) < 0.5 * cur_active:
         delisted_tokens = set()
+    # "נראה לראשונה" (אייל 09/09 — מיון מהחדש לישן + תווית 'חדש' 3 ימים): שורה קיימת שומרת
+    # את החותמת המקורית שלה; שורה חדשה מקבלת imported_at מהסורק אם הגיע, אחרת את זמן הקליטה.
+    first_seen = {}
+    for rec in current:
+        raw = rec.get("raw")
+        if isinstance(raw, dict) and raw.get("_y2_first_seen"):
+            first_seen[str(raw.get("מספר מודעה") or "")] = raw["_y2_first_seen"]
+    for r in raw_rows:
+        tok = str(r.get("מספר מודעה") or "")
+        r["_y2_first_seen"] = first_seen.get(tok) or r.get("_y2_first_seen") or now_full or stamp
     keep = []
     for rec in current:
         raw = rec.get("raw")
