@@ -8837,7 +8837,7 @@ def y2_token(link):
     return m.group(1) if m else ""
 
 def y2_is_ours(office_id):
-    return str(office_id or "").strip() in Y2_OUR_OFFICE_IDS
+    return str(office_id or "").strip() in Y2_OUR_OFFICE_IDS or str(office_id or "").strip() == "family"
 
 def y2_norm_private(row):
     """שורת סריקה פרטית → (source_key, רשומת newborn_listings). המפתח 'id:'+_orderId —
@@ -8967,13 +8967,36 @@ def y2_fix_created(listing_date, existing, now_il):
             return t + ' ' + m.group(0)
     return t
 
+_Y2_SELLER_RE = _re.compile(r"^\s*שם מוכר\s+(.+?)\s+נכס\s+(?:למכירה|להשכרה|מסוג)")
+
+def y2_office_from_desc(desc, agent=""):
+    """שם המשרד מתוך תיאור יד2 ("שם מוכר {משרד} {סוכן} נכס למכירה…") — fallback כשה-forward
+    לא שולח office. שם הסוכן (אם ידוע) מקולף מהסוף."""
+    m = _Y2_SELLER_RE.match(str(desc or ""))
+    if not m:
+        return ""
+    t = m.group(1).strip()
+    ag = str(agent or "").strip()
+    if ag and t.endswith(ag):
+        t = t[: -len(ag)].strip()
+    return t
+
+def y2_is_ours_name(name):
+    """רימקס פמילי לפי שם (כשאין office_id): 'Re/max Family' / 'רימקס פמילי' / 'RE/MAX Family'."""
+    n = str(name or "").lower().replace("/", "").replace("-", "").replace(" ", "")
+    return ("family" in n or "פמילי" in n) and ("max" in n or "מקס" in n)
+
 def y2_row_office(row, office="", office_id=""):
     """שם/מזהה המשרד של שורת-סריקה: מהשורה (office/office_id — כמו בגיליון) ובלעדיהם
     מרמת ה-batch. 09/09: ה-forward שלח בלי office/officeId ברמת ה-batch → הכל נכתב
     לשת"פ כאנונימי והסניפים שלנו לא זוהו."""
     g = lambda k: str(row.get(k, "") or "").strip()
     name = g("office") or g("officeName") or str(office or "").strip()
+    if not name:   # 09/09: ה-forward לא שולח משרד בשום מפתח — מחלצים מהתיאור
+        name = y2_office_from_desc(g("description"), g("agent"))
     oid = y2_num_str(g("office_id") or g("officeId") or str(office_id or "").strip())
+    if not oid and y2_is_ours_name(name):
+        oid = "family"   # תג-סניף כללי לשלנו כשאין מזהה (merge פר-תג; הסריקה מביאה את כולם)
     return name, oid
 
 def y2_split_batch(b):
@@ -10368,6 +10391,9 @@ def register(app, G):
                     sb.newborn_upsert_row(sk, rec)
                     out["nbN"] += 1
             elif stream == "agency":
+                if log and rows:   # אבחון מבנה ה-payload (09/09: המשרד לא הגיע בשום מפתח)
+                    log.info(f"yad2 agency payload: batch_keys={sorted(k for k in b.keys() if k != 'rows')} "
+                             f"row_keys={sorted((rows[0] or {}).keys())}")
                 # 09/09: המשרד מזוהה פר-שורה (office/office_id) עם נפילה ל-batch — ה-forward לא
                 # שלח office/officeId ברמת ה-batch, וכל הסניפים נכתבו לשת"פ כאנונימיים.
                 ours, others, batch_oid = y2_split_batch(b)
