@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://remax-bot.onrender.com/yad2.user.js
 // @downloadURL  https://remax-bot.onrender.com/yad2.user.js
-// @version      11.8
+// @version      11.9
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='11.8'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='11.9'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
@@ -1906,7 +1906,9 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
             // מדווחים גם מה *נבדק*, לא רק מה שנוסף: סריקה תקינה בלי מודעות חדשות
             // נראתה קודם כמו "0 · 0 · 0" — כאילו לא רצה כלל (אייל, 30/08).
             var up=(diag&&diag.upgraded)||0, ag=(res.exclAgentUpd||0)+gotAgents;
-            summary.push(office.name+': '+(err?'שגיאה':(
+            // ⚠️ 09/09: כאן נזרקה הראיה. לוכד-הראיות של v11.7 מילא את err עם
+            //    http=<status> ו-90 תווים מהתשובה, והשורה הזו הדפיסה 'שגיאה' יבש.
+            summary.push(office.name+': '+(err?String(err).slice(0,110):(
               '✓ '+rowsArr.length+' נבדקו'
               +(res.exclAdded?(' · '+res.exclAdded+' חדשים'):'')
               +(up?(' · '+up+' שמות סוכן'):'')
