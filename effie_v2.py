@@ -563,6 +563,10 @@ function v2MeUpload(inp){
 function c2cDial(tel){
   tel = String(tel || '').trim();
   if (!tel) return Promise.resolve(false);
+  /* גידור פיילוט: whoami במטמון אומר c2c:false → חייגן רגיל מיד, בלי חלון ריק ובלי שרת */
+  var who = null;
+  try{ who = (JSON.parse(localStorage.getItem('v2who') || 'null') || {}).j || null; }catch(_e){}
+  if (who && who.ok && who.c2c === false){ location.href = 'tel:' + tel; return Promise.resolve(false); }
   var w = null;
   try{ w = window.open('', '_blank'); }catch(_e){ w = null; }
   var fallback = function(){ try{ if (w) w.close(); }catch(_e){} location.href = 'tel:' + tel; return false; };
@@ -4377,7 +4381,7 @@ function nbCard(r, i){
       '<div style="flex:1"><div class="nm">' + esc([r.owner, r.phone].filter(Boolean).join(' · ')) + '</div>' +
       '<div class="sb">בעל הנכס · מתעדכן יומית</div></div></div>' +
       '<div class="oActs">' +
-      '<a class="a call" href="tel:' + esc((r.phone || '').replace(/\D/g, '')) + '" onclick="markContact(' + i + ')">' +
+      '<a class="a call" href="tel:' + esc((r.phone || '').replace(/\D/g, '')) + '" onclick="return nbDial(' + i + ')">' +
       '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7"/></svg>חייג</a>' +
       '<button class="a wa" onclick="waOwner(' + i + ')">' +
       '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5"/></svg>וואטסאפ</button>' +
@@ -4421,6 +4425,12 @@ function nbCard(r, i){
 var NB_SHOWN = 40;   // כמה כרטיסים מוצגים; "הצג עוד" מגדיל. מתאפס בשינוי ותק/חיפוש.
 function nbMore(){ NB_SHOWN += 40; render(); }
 function setAge(i){ AGE = (AGE === i) ? -1 : i; NB_SHOWN = 40; render(); }
+function nbDial(i){   // חיוג לבעל הנכס (10/09): רישום 'מי פנה' + click2call בפיילוט, אחרת tel:
+  markContact(i);
+  var r = el('list')._src[i];
+  c2cDial(String(r.phone || '').replace(/\D/g, ''));
+  return false;
+}
 function markContact(i){
   var r = el('list')._src[i];
   POST('/api/newborn/contact', {key: r.key, addr: r.address}).catch(function(){});

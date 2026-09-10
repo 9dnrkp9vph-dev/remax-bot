@@ -2891,6 +2891,23 @@ def _is_answered_status(st):
     st = str(st or "").upper().strip()
     return st in ("ANSWER", "CALL2CALL")
 
+def _c2c_enabled_for(name):
+    """גידור הפיילוט של click2call (10/09): C2C_PILOT="all" → כולם; רשימת שמות → רק הם;
+    ריק → רק מי שהוגדר לו מספר וירטואלי בניהול הצוות (קונפיג agents[].vphone)."""
+    nm = _canon_key(name)
+    if not nm: return False
+    pilot = (C2C_PILOT or "").strip()
+    if pilot.lower() == "all": return True
+    if pilot:
+        return nm in {_canon_key(x) for x in pilot.split(",") if x.strip()}
+    try:
+        for ag in (_load_config().get("agents") or []):
+            if (ag.get("vphone") or "").strip() and _canon_key(ag.get("name", "")) == nm:
+                return True
+    except Exception:
+        pass
+    return False
+
 def make_c2c_link(from_phone, to_phone):
     """קישור click2call של Maskyoo דרך Make — הסנריו 'קישור חיוג (click2call)' (7321077):
     from_phone = הקו הווירטואלי של הסוכן, to_phone = היעד (כל פורמט; הסנריו מנרמל).
@@ -2900,7 +2917,8 @@ def make_c2c_link(from_phone, to_phone):
         r = requests.post(url, headers={"Authorization": "Token " + MAKE_API_TOKEN,
                                         "Content-Type": "application/json"},
                           json={"data": {"from_phone": str(from_phone or "").strip(),
-                                         "to_phone": str(to_phone or "").strip()},
+                                         "to_phone": str(to_phone or "").strip(),
+                                         "first_target": (C2C_FIRST_TARGET or "destination")},
                                 "responsive": True}, timeout=25)
     except Exception as e:
         log.warning(f"click2call: Make request failed: {e}")
@@ -3862,7 +3880,9 @@ def api_auth_whoami():
     out = {"ok": True, "role": s.get("role"), "drole": s.get("drole", ""),
            "name": s.get("name", ""), "phone": _last9(s.get("phone", "")),
            "dev": bool(s.get("dev", False)),
-           "tabs": _tabs_for_role(s.get("drole", ""))}
+           "tabs": _tabs_for_role(s.get("drole", "")),
+           # click2call (10/09): true → הקליינט מחייג דרך המרכזיה; false → tel: ישיר בלי חלון ריק
+           "c2c": bool(MAKE_API_TOKEN) and _c2c_enabled_for(s.get("name", ""))}
     return jsonify(out)
 
 def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
@@ -7053,6 +7073,13 @@ NBCONTACT_WRITE   = (os.environ.get("NBCONTACT_WRITE", "supabase") or "supabase"
 MAKE_API_TOKEN    = (os.environ.get("MAKE_API_TOKEN", "") or "").strip()
 MAKE_ZONE         = (os.environ.get("MAKE_ZONE", "eu1.make.com") or "eu1.make.com").strip()
 MAKE_C2C_SCENARIO = (os.environ.get("MAKE_C2C_SCENARIO", "7321077") or "7321077").strip()
+# פיילוט click2call: "all" = כולם; רשימת שמות מופרדת בפסיקים = רק הם; ריק = רק סוכנים שהוגדר
+# להם "מספר וירטואלי" בניהול הצוות (הקונפיג, לא גיליון אנשי הקשר) — כך אייל מדליק לסוכן בלחיצה.
+C2C_PILOT         = (os.environ.get("C2C_PILOT", "") or "").strip()
+# איזו רגל מצלצלת ראשונה בקישור: destination (הלקוח, כמו בסנריו האח — אומת 10/09) / maskyoo (הסוכן).
+C2C_FIRST_TARGET  = (os.environ.get("C2C_FIRST_TARGET", "destination") or "destination").strip()
+# מייל סיכום 12:00 (Make → Gmail): GET /api/digest?k=<DIGEST_KEY>. ריק = כבוי.
+DIGEST_KEY        = (os.environ.get("DIGEST_KEY", "") or "").strip()
 HIDECALL_WRITE    = (os.environ.get("HIDECALL_WRITE", "sheets") or "sheets").strip().lower()
 EXCL_SOURCE       = (os.environ.get("EXCL_SOURCE", "sheets") or "sheets").strip().lower()
 PROPS_SOURCE      = (os.environ.get("PROPS_SOURCE", "sheets") or "sheets").strip().lower()
@@ -8518,6 +8545,7 @@ def api_click2call():
     name = str(s.get("name", "") or "")
     as_name = str(b.get("as", "") or "").strip()
     if s.get("role") == "admin" and as_name: name = as_name
+    if not _c2c_enabled_for(name): return jsonify({"ok": False, "disabled": True})   # מחוץ לפיילוט
     vphone = _vphone_for_name(name)
     if not vphone:
         return jsonify({"ok": False, "error": "אין מספר וירטואלי מוגדר לסוכן — יש להגדיר בניהול הצוות"})
@@ -9169,6 +9197,138 @@ def _wa_call_message(c):
     lines.append('➕ להוספת הקונה ל"קונים שלי":')
     lines.append(link)
     return "\n".join(lines)
+
+def build_daily_digest(now_ts=None):
+    """מייל סיכום 12:00 (10/09, פיילוט אוצר): פגישות/פולו-אפ שתואמו ב-24 השעות האחרונות,
+    פגישות היום ומחר, פולו-אפ להיום, שיחות יוצאות (click2call) עם סיכום, ומוני שיחות נכנסות.
+    מחזיר {subject, html, text, counts}. Make (סנריו 'סיכום יומי 12:00') שולח את ה-html ב-Gmail."""
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        _tz = ZoneInfo("Asia/Jerusalem")
+    except Exception:
+        _tz = _dt.timezone(_dt.timedelta(hours=3))
+    now_ts = float(now_ts or time.time())
+    now = _dt.datetime.fromtimestamp(now_ts, _tz)
+    today = now.date(); tomorrow = today + _dt.timedelta(days=1)
+    day_start = _dt.datetime(today.year, today.month, today.day, tzinfo=_tz).timestamp()
+    since = now_ts - 86400
+    def _d(s):   # 'YYYY-MM-DD' / 'YYYY-MM-DDTHH:MM' → (date, 'HH:MM')
+        s = str(s or "").strip()
+        try: d = _dt.date.fromisoformat(s[:10])
+        except Exception: return None, ""
+        return d, (s[11:16] if len(s) >= 16 else "")
+    def _when(rec):
+        d, t = _d(rec.get("date", ""))
+        return (d.strftime("%d/%m") + (" " + t if t else "")) if d else ""
+    def _esc(x):
+        return (str(x or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+    def _clean(raw):
+        t = re.sub(r"https?://\S+", "", str(raw or ""))
+        t = re.sub(r"\*", "", t); t = re.sub(r"AI מתמלל ומסכם שיחות", "", t)
+        t = re.sub(r"[ \t]+", " ", t).strip()
+        if not re.sub(r"[\s.\-–—:·•]", "", re.sub(r"^\s*סיכום השיחה:?\s*", "", t)): t = ""
+        return t
+    new_m, today_m, tomorrow_m, fu_today = [], [], [], []
+    for k, st in (_nb_statuses() or {}).items():
+        try:
+            if st.get("status") not in ("meeting", "followup") or st.get("done"): continue
+            d, t = _d(st.get("date", ""))
+            row = {"kind": "פגישה" if st.get("status") == "meeting" else "פולו-אפ", "agent": st.get("agent", ""),
+                   "by": st.get("by", "") or st.get("agent", ""), "addr": st.get("addr", ""), "owner": st.get("owner", ""),
+                   "ophone": st.get("ophone", ""), "when": _when(st), "note": st.get("note", ""), "tag": st.get("tag", "")}
+            if float(st.get("ts") or 0) >= since: new_m.append(row)
+            if d == today and st.get("status") == "meeting": today_m.append(row)
+            if d == tomorrow and st.get("status") == "meeting": tomorrow_m.append(row)
+            if d == today and st.get("status") == "followup": fu_today.append(row)
+        except Exception:
+            continue
+    calls_out, ans_in, missed_in = [], 0, 0
+    try:
+        rows = web_fetch_raw("שיחות") or []
+    except Exception as e:
+        log.warning(f"digest: calls failed: {e}"); rows = []
+    for c in rows:
+        try:
+            e = _epoch_from_iso(c.get("received_at", ""))
+            st = str(c.get("status", "") or "").upper().strip()
+            if st == "CALL2CALL" and e >= since:
+                calls_out.append({"agent": c.get("agent", ""), "phone": _il_phone(c.get("caller_phone", ""))[0] or c.get("caller_phone", ""),
+                                  "time": _fmt_il_dt(c.get("received_at", "")), "dur": c.get("duration_sec", ""),
+                                  "summary": _clean(c.get("transcript_summary", ""))})
+            elif e >= day_start and st != "CALL2CALL":
+                if _is_answered_status(st): ans_in += 1
+                else: missed_in += 1
+        except Exception:
+            continue
+    calls_out.sort(key=lambda x: x.get("time", ""), reverse=True)
+    for lst in (new_m, today_m, tomorrow_m, fu_today): lst.sort(key=lambda x: x.get("when", ""))
+    try:
+        office = ((_load_config() or {}).get("v2_office") or {}).get("name") or "המשרד"
+    except Exception:
+        office = "המשרד"
+    counts = {"meetings_new": len(new_m), "meetings_today": len(today_m), "meetings_tomorrow": len(tomorrow_m),
+              "followups_today": len(fu_today), "calls_out": len(calls_out), "calls_in_answered": ans_in, "calls_in_missed": missed_in}
+    stamp = now.strftime("%d/%m/%Y %H:%M")
+    subject = f"סיכום פגישות ושיחות · {stamp} · {office}"
+    # ── טקסט ──
+    L = [f"סיכום {office} · {stamp}", ""]
+    def _mline(r):
+        s = f"{r['kind']} · {r['when'] or 'ללא מועד'} · {r['addr']}"
+        if r.get("owner") or r.get("ophone"): s += f" · {r.get('owner','')} {r.get('ophone','')}".rstrip()
+        s += f" · לסוכן: {r['agent']}"
+        if r.get("by") and r["by"] != r["agent"]: s += f" · תיאם: {r['by']}"
+        if r.get("note"): s += f" · הערה: {r['note']}"
+        return s
+    def _sec(title, rows, fmt, empty):
+        L.append(title); L.extend(("- " + fmt(r)) for r in rows) if rows else L.append("- " + empty); L.append("")
+    _sec("תואמו ב-24 השעות האחרונות:", new_m, _mline, "אין פגישות חדשות")
+    _sec("פגישות היום:", today_m, _mline, "אין פגישות היום")
+    _sec("פגישות מחר:", tomorrow_m, _mline, "אין פגישות מחר")
+    _sec("פולו-אפ להיום:", fu_today, _mline, "אין פולו-אפ להיום")
+    def _cline(c):
+        s = f"{c['time']} · {c['agent']} → {c['phone']}" + (f" · {c['dur']} שנ'" if c.get("dur") else "")
+        return s + (f" · {c['summary']}" if c.get("summary") else " · אין סיכום")
+    _sec("שיחות יוצאות (click2call) ב-24 השעות האחרונות:", calls_out, _cline, "אין שיחות יוצאות")
+    L.append(f"שיחות נכנסות היום: נענו {ans_in} · לא נענו {missed_in}")
+    text = "\n".join(L)
+    # ── HTML ──
+    def _hsec(title, rows, fmt, empty):
+        body = "".join(f"<li style='margin:0 0 8px'>{fmt(r)}</li>" for r in rows) if rows else f"<li style='color:#6B7280'>{_esc(empty)}</li>"
+        return f"<h3 style='margin:18px 0 6px;color:#1E3A5F;font-size:16px'>{_esc(title)}</h3><ul style='margin:0;padding-inline-start:18px'>{body}</ul>"
+    def _hm(r):
+        s = f"<b>{_esc(r['kind'])}</b> · {_esc(r['when'] or 'ללא מועד')} · {_esc(r['addr'])}"
+        if r.get("owner") or r.get("ophone"): s += f" · {_esc(r.get('owner',''))} {_esc(r.get('ophone',''))}"
+        s += f" · לסוכן: <b>{_esc(r['agent'])}</b>"
+        if r.get("by") and r["by"] != r["agent"]: s += f" · תיאם/ה: {_esc(r['by'])}"
+        if r.get("note"): s += f"<br><span style='color:#5B6472'>הערה: {_esc(r['note'])}</span>"
+        return s
+    def _hc(c):
+        s = f"{_esc(c['time'])} · <b>{_esc(c['agent'])}</b> → {_esc(c['phone'])}" + (f" · {_esc(c['dur'])} שנ'" if c.get("dur") else "")
+        return s + (f"<br><span style='color:#5B6472'>{_esc(c['summary'])}</span>" if c.get("summary") else " · <span style='color:#6B7280'>אין סיכום</span>")
+    html = (f"<div dir=\"rtl\" style=\"font-family:Heebo,Arial,sans-serif;color:#1E3A5F;max-width:640px;margin:0 auto;padding:16px;background:#F2EFE7\">"
+            f"<div style='background:#fff;border-radius:20px;padding:18px 20px;box-shadow:0 6px 20px rgba(30,58,95,.06)'>"
+            f"<h2 style='margin:0 0 4px;font-size:20px'>סיכום פגישות ושיחות</h2>"
+            f"<div style='color:#6B7280;font-size:13px'>{_esc(office)} · {_esc(stamp)}</div>"
+            f"<div style='margin:14px 0 4px;font-size:14px'>תואמו ב-24ש': <b>{counts['meetings_new']}</b> · היום: <b>{counts['meetings_today']}</b> · מחר: <b>{counts['meetings_tomorrow']}</b> · פולו-אפ להיום: <b>{counts['followups_today']}</b> · שיחות יוצאות: <b>{counts['calls_out']}</b></div>"
+            + _hsec("תואמו ב-24 השעות האחרונות", new_m, _hm, "אין פגישות חדשות")
+            + _hsec("פגישות היום", today_m, _hm, "אין פגישות היום")
+            + _hsec("פגישות מחר", tomorrow_m, _hm, "אין פגישות מחר")
+            + _hsec("פולו-אפ להיום", fu_today, _hm, "אין פולו-אפ להיום")
+            + _hsec("שיחות יוצאות (click2call) ב-24 השעות האחרונות", calls_out, _hc, "אין שיחות יוצאות")
+            + f"<div style='margin-top:16px;font-size:13px;color:#5B6472'>שיחות נכנסות היום: נענו <b>{ans_in}</b> · לא נענו <b>{missed_in}</b></div>"
+            "</div></div>")
+    return {"subject": subject, "html": html, "text": text, "counts": counts}
+
+@app.route("/api/digest", methods=["GET"])
+def api_digest():
+    """סיכום 12:00 ל-Make (מייל): מפתח משותף DIGEST_KEY (env) ב-?k=. ריק = כבוי (403)."""
+    import hmac as _h
+    k = str(request.args.get("k", "") or "").strip()
+    if not DIGEST_KEY or not k or not _h.compare_digest(k, DIGEST_KEY):
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    d = build_daily_digest()
+    return jsonify({"ok": True, "subject": d["subject"], "html": d["html"], "text": d["text"], "counts": d["counts"]})
 
 def check_new_calls():
     """מזהה שיחה חדשה בגיליון 'שיחות' ושולח לסוכן וואטסאפ עם תמלול + קישור הוספת קונה.
