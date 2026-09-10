@@ -2891,22 +2891,43 @@ def _is_answered_status(st):
     st = str(st or "").upper().strip()
     return st in ("ANSWER", "CALL2CALL")
 
-def _c2c_enabled_for(name):
-    """גידור הפיילוט של click2call (10/09): C2C_PILOT="all" → כולם; רשימת שמות → רק הם;
-    ריק → רק מי שהוגדר לו מספר וירטואלי בניהול הצוות (קונפיג agents[].vphone)."""
-    nm = _canon_key(name)
-    if not nm: return False
+def _c2c_agent_entry(who):
+    """רשומת הצוות (קונפיג agents[]) של המשתמש: לפי **טלפון** הסשן (הזהות האמיתית — מנהלים
+    מקבלים את השם הגנרי 'מנהל', כפי שקרה לאוצר 10/09), ואם אין התאמה — לפי שם.
+    who = dict סשן (name/phone/phones) או מחרוזת שם (מנהל ב'צפה כסוכן')."""
+    try:
+        agents = _load_config().get("agents") or []
+    except Exception:
+        agents = []
+    phones = set()
+    if isinstance(who, dict):
+        for p in ([who.get("phone", "")] + list(who.get("phones") or [])):
+            p9 = _last9(p)
+            if p9: phones.add(p9)
+    if phones:
+        for ag in agents:
+            if _last9(ag.get("phone", "")) in phones:
+                return ag
+    nm = _canon_key(who.get("name", "") if isinstance(who, dict) else who)
+    if nm:
+        for ag in agents:
+            if _canon_key(ag.get("name", "")) == nm:
+                return ag
+    return None
+
+def _c2c_enabled_for(who):
+    """גידור הפיילוט של click2call (10/09): C2C_PILOT="all" → כולם; רשימת שמות → רק הם
+    (לפי שם הרשומה או שם הסשן); ריק → רק מי שהוגדר לו מספר וירטואלי בניהול הצוות
+    (agents[].vphone). הזיהוי לפי טלפון הסשן, לא לפי השם."""
     pilot = (C2C_PILOT or "").strip()
     if pilot.lower() == "all": return True
+    ag = _c2c_agent_entry(who)
     if pilot:
-        return nm in {_canon_key(x) for x in pilot.split(",") if x.strip()}
-    try:
-        for ag in (_load_config().get("agents") or []):
-            if (ag.get("vphone") or "").strip() and _canon_key(ag.get("name", "")) == nm:
-                return True
-    except Exception:
-        pass
-    return False
+        names = {_canon_key(x) for x in pilot.split(",") if x.strip()}
+        cand = {_canon_key(who.get("name", "") if isinstance(who, dict) else who)}
+        if ag: cand.add(_canon_key(ag.get("name", "")))
+        return bool(names & cand - {""})
+    return bool(ag and (ag.get("vphone") or "").strip())
 
 def make_c2c_link(from_phone, to_phone):
     """קישור click2call של Maskyoo דרך Make — הסנריו 'קישור חיוג (click2call)' (7321077):
@@ -3906,7 +3927,7 @@ def api_auth_whoami():
            "dev": bool(s.get("dev", False)),
            "tabs": _tabs_for_role(s.get("drole", "")),
            # click2call (10/09): true → הקליינט מחייג דרך המרכזיה; false → tel: ישיר בלי חלון ריק
-           "c2c": bool(MAKE_API_TOKEN) and _c2c_enabled_for(s.get("name", ""))}
+           "c2c": bool(MAKE_API_TOKEN) and _c2c_enabled_for(s)}
     return jsonify(out)
 
 def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
@@ -8567,15 +8588,18 @@ def api_click2call():
     if not to: return jsonify({"ok": False, "error": "חסר מספר יעד"})
     name = str(s.get("name", "") or "")
     as_name = str(b.get("as", "") or "").strip()
-    if s.get("role") == "admin" and as_name: name = as_name
+    who = s   # זיהוי לפי טלפון הסשן (מנהלים נקראים 'מנהל')
+    if s.get("role") == "admin" and as_name: name = as_name; who = as_name
     # אבחון פיילוט (10/09): כל לחיצה נרשמת בלוג, ותשובת "כבוי" מסבירה למה (why)
     if not MAKE_API_TOKEN:
         log.info(f"click2call: disabled (no MAKE_API_TOKEN) name={name!r} to={to}")
         return jsonify({"ok": False, "disabled": True, "why": "token_missing"})
-    if not _c2c_enabled_for(name):
-        log.info(f"click2call: disabled (not in pilot) name={name!r} to={to} pilot={C2C_PILOT!r}")
+    if not _c2c_enabled_for(who):
+        log.info(f"click2call: disabled (not in pilot) name={name!r} phone={_last9(s.get('phone', ''))} to={to} pilot={C2C_PILOT!r}")
         return jsonify({"ok": False, "disabled": True, "why": "not_in_pilot", "name": name})
-    vphone = _vphone_for_name(name)
+    ag = _c2c_agent_entry(who) or {}
+    if ag.get("name"): name = ag["name"]
+    vphone = (ag.get("vphone") or "").strip() or _vphone_for_name(name)
     if not vphone:
         log.info(f"click2call: no vphone for name={name!r}")
         return jsonify({"ok": False, "error": "אין מספר וירטואלי מוגדר לסוכן — יש להגדיר בניהול הצוות"})
