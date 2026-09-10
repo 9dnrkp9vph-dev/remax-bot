@@ -8541,14 +8541,21 @@ def api_click2call():
     b = request.get_json(silent=True) or {}
     to = str(b.get("to", "") or "").strip()
     if not to: return jsonify({"ok": False, "error": "חסר מספר יעד"})
-    if not MAKE_API_TOKEN: return jsonify({"ok": False, "disabled": True})
     name = str(s.get("name", "") or "")
     as_name = str(b.get("as", "") or "").strip()
     if s.get("role") == "admin" and as_name: name = as_name
-    if not _c2c_enabled_for(name): return jsonify({"ok": False, "disabled": True})   # מחוץ לפיילוט
+    # אבחון פיילוט (10/09): כל לחיצה נרשמת בלוג, ותשובת "כבוי" מסבירה למה (why)
+    if not MAKE_API_TOKEN:
+        log.info(f"click2call: disabled (no MAKE_API_TOKEN) name={name!r} to={to}")
+        return jsonify({"ok": False, "disabled": True, "why": "token_missing"})
+    if not _c2c_enabled_for(name):
+        log.info(f"click2call: disabled (not in pilot) name={name!r} to={to} pilot={C2C_PILOT!r}")
+        return jsonify({"ok": False, "disabled": True, "why": "not_in_pilot", "name": name})
     vphone = _vphone_for_name(name)
     if not vphone:
+        log.info(f"click2call: no vphone for name={name!r}")
         return jsonify({"ok": False, "error": "אין מספר וירטואלי מוגדר לסוכן — יש להגדיר בניהול הצוות"})
+    log.info(f"click2call: name={name!r} vphone={vphone} to={to}")
     link, err = make_c2c_link(vphone, to)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "חיוג ללקוח",
                   (to + (" ✓" if link else " ✗ " + err))[:80])

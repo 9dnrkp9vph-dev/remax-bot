@@ -574,6 +574,8 @@ function c2cDial(tel){
   return req.then(function(j){
     if (j && j.ok && j.link){ if (w) w.location = j.link; else location.href = j.link; return true; }
     if (j && j.error && !j.disabled && typeof toast === 'function') toast('חיוג דרך המרכזיה נכשל: ' + j.error);
+    /* פיילוט: השרת אמר "כבוי" למרות שהאפליקציה חשבה שמופעל — מציגים את הסיבה (אבחון) */
+    if (j && j.disabled && j.why && typeof toast === 'function') toast('חיוג במרכזיה כבוי: ' + j.why + (j.name ? ' (' + j.name + ')' : ''));
     return fallback();
   }).catch(function(){ return fallback(); });
 }
