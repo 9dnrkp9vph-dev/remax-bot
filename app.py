@@ -1926,7 +1926,7 @@ def fetch_calls_for_agent(agent_phone: str) -> list:
     norm = normalize_phone_simple(agent_phone)
     filtered = []
     for row in all_rows:
-        if str(row.get("status", "")).upper() != "ANSWER":
+        if not _is_answered_status(row.get("status", "")):
             continue
         if normalize_phone_simple(str(row.get("agent_phone", ""))) != norm:
             continue
@@ -2646,7 +2646,9 @@ def _save_config(cfg):
             # 13/08: מנתק-זרם — Apps Script קורס הציף עשרות כשלים בשעה (ניסיון פר-כתיבה);
             # אחרי כשל משתיקים ניסיונות ל-15 דק'. בריא = lockstep מלא כמו תמיד (בטוח מול
             # סנכרון-ההחייאה); הכתיבה הבאה אחרי החלון מגבה את הקונפיג המלא העדכני.
-            if time.time() >= _CFG_BACKUP_MUTE_UNTIL:
+            # 10/09: CONFIG_SHEET_BACKUP=0 מכבה את השכפול לגיליון — הקונפיג חי ב-Supabase, סנכרון
+            # ההחייאה גיליון→Supabase כבוי מ-24/08, וה-Apps Script מחזיר תשובה לא-JSON בכל עלייה.
+            if CONFIG_SHEET_BACKUP and time.time() >= _CFG_BACKUP_MUTE_UNTIL:
                 try:
                     _bj = _buyers_apps_post("setconfig", {"config": _json.dumps(cfg, ensure_ascii=False)})
                     if _bj and _bj.get("ok"):
@@ -2882,6 +2884,43 @@ def _vphone_for_name(name):
     for nm, vp in vm.items():
         if _canon_key(nm) == ck: return vp
     return ""
+
+def _is_answered_status(st):
+    """שיחה שנענתה: ANSWER (נכנסת) או CALL2CALL (יוצאת דרך המרכזיה, 10/09 — הסנריו
+    'לוג שיחה מסקיו' מסמן כך שיחות שנפתחו מקישור click2call של האפליקציה)."""
+    st = str(st or "").upper().strip()
+    return st in ("ANSWER", "CALL2CALL")
+
+def make_c2c_link(from_phone, to_phone):
+    """קישור click2call של Maskyoo דרך Make — הסנריו 'קישור חיוג (click2call)' (7321077):
+    from_phone = הקו הווירטואלי של הסוכן, to_phone = היעד (כל פורמט; הסנריו מנרמל).
+    מחזיר (link, error). פתיחת הקישור מפעילה את החיוג (היעד מצלצל ראשון, ואז הסוכן)."""
+    url = f"https://{MAKE_ZONE}/api/v2/scenarios/{MAKE_C2C_SCENARIO}/run"
+    try:
+        r = requests.post(url, headers={"Authorization": "Token " + MAKE_API_TOKEN,
+                                        "Content-Type": "application/json"},
+                          json={"data": {"from_phone": str(from_phone or "").strip(),
+                                         "to_phone": str(to_phone or "").strip()},
+                                "responsive": True}, timeout=25)
+    except Exception as e:
+        log.warning(f"click2call: Make request failed: {e}")
+        return "", f"Make לא זמין ({type(e).__name__})"
+    if r.status_code != 200:
+        log.warning(f"click2call: Make HTTP {r.status_code}: {(r.text or '')[:200]}")
+        return "", f"Make HTTP {r.status_code}"
+    try:
+        body = r.json() or {}
+    except Exception:
+        return "", "תשובה לא תקינה מ-Make"
+    out = body.get("outputs")
+    if not isinstance(out, dict):
+        log.warning(f"click2call: no outputs in Make response: {json.dumps(body, ensure_ascii=False)[:300]}")
+        return "", "Make לא החזיר outputs"
+    link = str(out.get("link", "") or "").strip()
+    err = str(out.get("error", "") or "").strip()
+    if not link:
+        return "", (err or "לא התקבל קישור")
+    return link, ""
 
 def _deal_label(code):
     c = str(code or "").upper()
@@ -6293,13 +6332,13 @@ def _web_org_summary(frm, to, agent_name=None, agent_phones=None, agent_keys=Non
     answered = cc = busy = 0; by_agent = {}
     for c in calls:
         st = str(c.get("status", "")).upper().strip()
-        if st == "ANSWER": answered += 1
+        if _is_answered_status(st): answered += 1
         elif st == "CALLER_CANCEL": cc += 1
         elif st == "BUSY": busy += 1
         ag = (c.get("agent", "") or "").strip()
         if ag:
             d = by_agent.setdefault(ag, {"total": 0, "answered": 0}); d["total"] += 1
-            if st == "ANSWER": d["answered"] += 1
+            if _is_answered_status(st): d["answered"] += 1
     total = len(calls); noanswer = total - answered - cc - busy
     rate = round(answered / total * 100) if total else 0
     agents = sorted(({"name": k, "total": v["total"], "answered": v["answered"],
@@ -6837,6 +6876,7 @@ def _price_digits(p):
 # גל תגי-שווא 01/09 (המעבר ליד2: backfill עם ".0" ואז נקי → "שינוי" בכל נכס) — תגים
 # שנרשמו לפני הרגע הזה נזרקים. תגים אמיתיים מכאן והלאה חיים 7 ימים כרגיל.
 _PC_FLUSH_BEFORE = 1788260400   # 01/09/2026 14:00 IL
+CONFIG_SHEET_BACKUP = (os.environ.get("CONFIG_SHEET_BACKUP", "1") or "1").strip() not in ("0", "false", "off")
 _PRICE_SCAN = {"ts": 0.0}
 def _scan_price_changes():
     """משווה מחירי נכסים נוכחיים לסנאפשוט הקודם (בקונפיג); מחיר שהשתנה → רושם חותמת זמן.
@@ -7008,6 +7048,11 @@ BUYERS_WRITE      = (os.environ.get("BUYERS_WRITE", "supabase") or "supabase").s
 # אחרת ה-reconcile "מחייה" שיחה ששוחזרה מהסתרה; אז HIDECALL_WRITE=supabase.
 ACTIVITY_WRITE    = (os.environ.get("ACTIVITY_WRITE", "supabase") or "supabase").strip().lower()
 NBCONTACT_WRITE   = (os.environ.get("NBCONTACT_WRITE", "supabase") or "supabase").strip().lower()
+# click2call דרך Make (10/09): הסנריו "קישור חיוג" מייצר קישור Maskyoo לחיוג מהקו הווירטואלי
+# של הסוכן אל הלקוח. MAKE_API_TOKEN ריק = הפיצ'ר כבוי (הכפתור נופל ל-tel: כמו קודם).
+MAKE_API_TOKEN    = (os.environ.get("MAKE_API_TOKEN", "") or "").strip()
+MAKE_ZONE         = (os.environ.get("MAKE_ZONE", "eu1.make.com") or "eu1.make.com").strip()
+MAKE_C2C_SCENARIO = (os.environ.get("MAKE_C2C_SCENARIO", "7321077") or "7321077").strip()
 HIDECALL_WRITE    = (os.environ.get("HIDECALL_WRITE", "sheets") or "sheets").strip().lower()
 EXCL_SOURCE       = (os.environ.get("EXCL_SOURCE", "sheets") or "sheets").strip().lower()
 PROPS_SOURCE      = (os.environ.get("PROPS_SOURCE", "sheets") or "sheets").strip().lower()
@@ -7378,12 +7423,14 @@ def _famexcl_addr_list():
     if c is not None:
         return c
     idx = {}
-    def _add(addr_parts, agent, price=None, floor=None):
+    def _add(addr_parts, agent, price=None, floor=None, has_city=False):
         nums, words = _addr_tokens(*addr_parts)
         if not nums or not words:
             return
-        # מחיר/קומה (בקשת אייל 01/09): פוסלי-שווא — אותה כתובת אך דירה אחרת
-        ent = (nums, words, (agent or "").strip(), _famexcl_price(price), _famexcl_floor(floor))
+        # מחיר/קומה (בקשת אייל 01/09): פוסלי-שווא — אותה כתובת אך דירה אחרת.
+        # has_city (10/09): מקור בלי עיר ("הרצל 5" מחתימה) לא רשאי "להיכלל" בנכס — אחרת
+        # הוא תופס הרצל 5 בכל עיר; כזה נבדק רק בכיוון המחמיר (הנכס ⊆ המקור).
+        ent = (nums, words, (agent or "").strip(), _famexcl_price(price), _famexcl_floor(floor), bool(has_city))
         for n in nums:
             idx.setdefault(n, []).append(ent)
     # 1) [הוסר 10/09] שת"פ של רימקס פמילי מהצינור הישן — רשומות מיושנות (קישורי נדל"ן-וואן,
@@ -7397,7 +7444,7 @@ def _famexcl_addr_list():
             house = (r.get("מספר בית", "") or r.get("מס בית", "") or r.get("מס' בית", "") or r.get("בית", "") or "").strip()
             city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()
             _add((street, house, city), _canon_agent_name((r.get("סוכן 1", "") or "").strip()),
-                 r.get("מחיר", ""), r.get("קומה", ""))
+                 r.get("מחיר", ""), r.get("קומה", ""), has_city=bool(city))
     except Exception:
         pass
     # 3) חתימות בלעדיות (OWNER_EXCLUSIVE) — הסוכן = agent. 10/09: רק מ-12 החודשים האחרונים
@@ -7410,7 +7457,7 @@ def _famexcl_addr_list():
             if _excl_epoch(g.get("received_at", "")) < _sig_floor:
                 continue
             _add((g.get("address", ""), g.get("city", "")), _canon_agent_name((g.get("agent", "") or "").strip()),
-                 g.get("price", ""))
+                 g.get("price", ""), has_city=bool(str(g.get("city", "") or "").strip()))
     except Exception:
         pass
     _cache_put("famexcl_index", idx)
@@ -7431,7 +7478,7 @@ def _is_famexcl(addr, city, fam_idx, price=None, floor=None):
     seen = set()
     best = None
     for n in nb_nums:
-        for ex_nums, ex_words, agent, ex_price, ex_floor in fam_idx.get(n, ()):
+        for ex_nums, ex_words, agent, ex_price, ex_floor, ex_has_city in fam_idx.get(n, ()):
             _id = id(ex_words)
             if _id in seen:
                 continue
@@ -7440,7 +7487,8 @@ def _is_famexcl(addr, city, fam_idx, price=None, floor=None):
             # 10/09: התאמה דו-כיוונית — הצד המינימלי (רחוב+מספר+עיר) חייב להיכלל בצד העשיר.
             # שורות נכס-נולד ותיקות כוללות שכונה; מקורות יד2 מינימליים — הדרישה החד-כיוונית
             # הישנה (הנכס ⊆ המקור) פספסה 112 התאמות אמיתיות (נבדק על הדאטה החי).
-            if not (need <= have or have <= need):
+            # הכיוון "המקור ⊆ הנכס" מותר רק למקור עם עיר — אחרת "הרצל 5" תופס כל עיר.
+            if not (need <= have or (ex_has_city and have <= need)):
                 continue
             if price is not None and ex_price is not None and                     abs(price - ex_price) > 0.05 * max(price, ex_price):
                 continue
@@ -8013,13 +8061,13 @@ def api_search_buyers():
         as_pset = _phones_for_name(as_name) if as_name else set()
         if as_pset:
             candidates = [c for c in web_fetch_raw("שיחות")
-                          if str(c.get("status", "")).upper() == "ANSWER" and _last9(c.get("agent_phone", "")) in as_pset]
+                          if _is_answered_status(c.get("status", "")) and _last9(c.get("agent_phone", "")) in as_pset]
         elif s["role"] == "admin":
-            candidates = [c for c in web_fetch_raw("שיחות") if str(c.get("status", "")).upper() == "ANSWER"]
+            candidates = [c for c in web_fetch_raw("שיחות") if _is_answered_status(c.get("status", ""))]
         elif s["role"] == "coordinator":
             agset = set(s.get("agents") or [])
             candidates = [c for c in web_fetch_raw("שיחות")
-                          if str(c.get("status", "")).upper() == "ANSWER" and _last9(c.get("agent_phone", "")) in agset]
+                          if _is_answered_status(c.get("status", "")) and _last9(c.get("agent_phone", "")) in agset]
         else:
             candidates = fetch_calls_for_agent(s["phone"])
         target_budget = _web_num(parsed.get("budget"))
@@ -8455,6 +8503,29 @@ def _hidden_write(action, eid):
             log.error(f"hidden write ({action}) failed on supabase: {_he}")
             return {"ok": False, "error": str(_he)[:160]}
     return _buyers_apps_post(action, {"event_id": eid})
+
+@app.route("/api/click2call", methods=["POST"])
+def api_click2call():
+    """חיוג ללקוח דרך המרכזיה (10/09): מבקש מ-Make קישור click2call מהקו הווירטואלי של הסוכן
+    אל היעד; הקליינט פותח את הקישור. בלי MAKE_API_TOKEN → disabled (הקליינט נופל ל-tel:).
+    מנהל ב'צפה כסוכן' (as) → הקו של הסוכן הנבחר."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    b = request.get_json(silent=True) or {}
+    to = str(b.get("to", "") or "").strip()
+    if not to: return jsonify({"ok": False, "error": "חסר מספר יעד"})
+    if not MAKE_API_TOKEN: return jsonify({"ok": False, "disabled": True})
+    name = str(s.get("name", "") or "")
+    as_name = str(b.get("as", "") or "").strip()
+    if s.get("role") == "admin" and as_name: name = as_name
+    vphone = _vphone_for_name(name)
+    if not vphone:
+        return jsonify({"ok": False, "error": "אין מספר וירטואלי מוגדר לסוכן — יש להגדיר בניהול הצוות"})
+    link, err = make_c2c_link(vphone, to)
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "חיוג ללקוח",
+                  (to + (" ✓" if link else " ✗ " + err))[:80])
+    if not link: return jsonify({"ok": False, "error": err or "לא התקבל קישור"})
+    return jsonify({"ok": True, "link": link, "vphone": vphone})
 
 @app.route("/api/calls/hide", methods=["POST"])
 def api_calls_hide():
@@ -9081,7 +9152,7 @@ def _wa_call_message(c):
     if not re.sub(r"[\s.\-–—:·•]", "", re.sub(r"^\s*סיכום השיחה:?\s*", "", text)):
         text = ""
     st = str(c.get("status", "")).upper()
-    st_he = "נענתה" if st == "ANSWER" else "לא נענתה"
+    st_he = "שיחה יוצאת" if st == "CALL2CALL" else ("נענתה" if _is_answered_status(st) else "לא נענתה")
     when = _fmt_il_dt(c.get("received_at", "")) or ""
     base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
     import base64 as _b64c

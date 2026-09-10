@@ -557,6 +557,24 @@ function v2MeUpload(inp){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
   else wire();
 })();
+/* [click2call 10/09] חיוג ללקוח דרך המרכזיה: השרת מבקש מ-Make קישור Maskyoo (הקו הווירטואלי
+   של הסוכן → הלקוח) ופותחים אותו. החלון נפתח מיד (user activation) ומקבל את הקישור כשמגיע;
+   כשל / פיצ'ר כבוי (אין MAKE_API_TOKEN) → נפילה לחייגן הרגיל (tel:). משותף לכל הדפים. */
+function c2cDial(tel){
+  tel = String(tel || '').trim();
+  if (!tel) return Promise.resolve(false);
+  var w = null;
+  try{ w = window.open('', '_blank'); }catch(_e){ w = null; }
+  var fallback = function(){ try{ if (w) w.close(); }catch(_e){} location.href = 'tel:' + tel; return false; };
+  var req = (typeof POST === 'function') ? POST('/api/click2call', {to: tel}) : Promise.resolve({ok: false, disabled: true});
+  return req.then(function(j){
+    if (j && j.ok && j.link){ if (w) w.location = j.link; else location.href = j.link; return true; }
+    if (j && j.error && !j.disabled && typeof toast === 'function') toast('חיוג דרך המרכזיה נכשל: ' + j.error);
+    return fallback();
+  }).catch(function(){ return fallback(); });
+}
+window.c2cDial = c2cDial;
+/* end c2cDial */
 </script>"""
 
 # ── שכבת דסקטופ/טאבלט (עיצוב §13): סרגל צד מימין, תוכן רחב, בית בגריד ─────────
@@ -2499,11 +2517,14 @@ var WA_SVG = function(color){
   return '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 };
 
+function isAns(st){   // נענתה: נכנסת (ANSWER) או יוצאת דרך המרכזיה (CALL2CALL, 10/09)
+  return st === 'ANSWER' || st === 'CALL2CALL';
+}
 function isHot(c){   // ליד חם: יש סיכום ממשי עם פרטי לקוח / סיכום עשיר
-  return c.status === 'ANSWER' && !!c.summary && (!!c.clientDetails || c.summary.length > 60);
+  return isAns(c.status) && !!c.summary && (!!c.clientDetails || c.summary.length > 60);
 }
 function stLabel(st){
-  return st === 'ANSWER' ? 'נענתה' : st === 'BUSY' ? 'תפוס' : st === 'CALLER_CANCEL' ? 'נותקה' : 'לא נענתה';
+  return st === 'ANSWER' ? 'נענתה' : st === 'CALL2CALL' ? 'שיחה יוצאת' : st === 'BUSY' ? 'תפוס' : st === 'CALLER_CANCEL' ? 'נותקה' : 'לא נענתה';
 }
 function fmtDur(d){
   d = parseInt(d, 10);
@@ -2549,7 +2570,7 @@ function loadHidden(){
 function render(){
   var ws = weekStart();
   var wk = CALLS.filter(function(c){ return (c.ts || 0) >= ws; });
-  var ans = wk.filter(function(c){ return c.status === 'ANSWER'; }).length;
+  var ans = wk.filter(function(c){ return isAns(c.status); }).length;
   var became = {};
   wk.forEach(function(c){
     var p = last9(c.tel || c.caller);
@@ -2566,8 +2587,8 @@ function render(){
   el('filters').style.display = VIEW === 'hidden' ? 'none' : 'flex';
 
   var src = VIEW === 'hidden' ? HIDDEN : CALLS.filter(function(c){
-    if (FILTER === 'ans') return c.status === 'ANSWER';
-    if (FILTER === 'miss') return c.status !== 'ANSWER';
+    if (FILTER === 'ans') return isAns(c.status);
+    if (FILTER === 'miss') return !isAns(c.status);
     if (FILTER === 'hot') return isHot(c);
     return true;
   });
@@ -2581,7 +2602,7 @@ function render(){
 }
 
 function callCard(c, i, hidden){
-  var ok = c.status === 'ANSWER';
+  var ok = isAns(c.status);
   var p = last9(c.tel || c.caller);
   var known = BUYER_BY_PHONE[p];
   var title = known ? known : (c.caller || '');
@@ -2648,11 +2669,12 @@ function unhide(id){
   });
 }
 function dialBack(i){
-  /* חיוג חזרה: קישור ה-click2call של Maskyoo (מהסיכום) כשקיים — השיחה יוצאת מהמרכזיה,
-     מוקלטת ומתועדת; בלעדיו — נפילה לחייגן הרגיל (tel:). בקשת אייל 09/09. */
+  /* חיוג חזרה: קישור ה-click2call של Maskyoo מהסיכום כשקיים; אחרת (10/09) מבקשים קישור
+     חדש מהשרת דרך Make (c2cDial ב-V2_BOOST) — השיחה יוצאת מהמרכזיה, מוקלטת ומתועדת;
+     כשל/כבוי → החייגן הרגיל (tel:). */
   var c = el('list')._src[i];
   if (c.callback){ window.open(c.callback, '_blank'); return; }
-  if (c.tel) location.href = 'tel:' + c.tel;
+  return c2cDial(c.tel);
 }
 function openWa(i){
   var c = el('list')._src[i];
@@ -3039,7 +3061,7 @@ function renderSmart(){
       'הוסף כקונה</button>' +
       (b.wa ? '<button class="sq" style="background:#E7F7EE" onclick="window.open(\'https://wa.me/' + esc(b.wa) + '\',\'_blank\')">' +
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5"/></svg></button>' : '') +
-      (b.tel ? '<button class="sq" style="background:#EAF0FA" onclick="location.href=\'tel:' + esc(b.tel) + '\'">' +
+      (b.tel ? '<button class="sq" style="background:#EAF0FA" onclick="c2cDial(\'' + esc(b.tel) + '\')">' +
       '<svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7"/></svg></button>' : '') +
       '</div></div>';
   });
@@ -3127,7 +3149,7 @@ function render(){
       '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#5B6472" stroke-width="1.5" stroke-linejoin="round"/></svg></button>' +
       '<button class="sq" style="background:#E7F7EE" onclick="window.open(\'https://wa.me/' + esc(b.wa || '') + '\',\'_blank\')">' +
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
-      '<button class="sq" style="background:#EAF0FA" onclick="location.href=\'tel:' + esc(b.tel || '') + '\'">' +
+      '<button class="sq" style="background:#EAF0FA" onclick="c2cDial(\'' + esc(b.tel || '') + '\')">' +
       '<svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7" stroke-linejoin="round"/></svg></button>' +
       '</div></div>';
   });
@@ -9969,7 +9991,7 @@ def register(app, G):
                     continue
                 calls_all += 1
                 st = str(c.get("status", "") or "").upper()
-                if "ANSWER" in st and "NOANSWER" not in st and "NO ANSWER" not in st:
+                if ("ANSWER" in st and "NOANSWER" not in st and "NO ANSWER" not in st) or "CALL2CALL" in st:
                     calls_ans_all += 1
                 if _canon(c.get("agent", "")) == me or G["_last9"](c.get("agent_phone", "")) in my_phones:
                     calls_me += 1
