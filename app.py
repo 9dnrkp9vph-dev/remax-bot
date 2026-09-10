@@ -2961,6 +2961,42 @@ def make_c2c_link(from_phone, to_phone):
         return "", (err or "לא התקבל קישור")
     return link, ""
 
+def make_c2c_run(from_phone, to_phone):
+    """מריץ את סנריו 'קישור חיוג' ב-Make עם dial=1 (10/09 צהריים): **הסנריו עצמו מפעיל את קישור
+    ה-click2call** (ה-REST של Make לא מחזיר outputs לסנריו הזה, אז השרת מסתמך על סטטוס ההרצה —
+    הסנריו זורק שגיאה כש-Maskyoo מסרב). מחזיר (ok, msg, link) — link רק אם Make החזיר outputs."""
+    url = f"https://{MAKE_ZONE}/api/v2/scenarios/{MAKE_C2C_SCENARIO}/run"
+    try:
+        r = requests.post(url, headers={"Authorization": "Token " + MAKE_API_TOKEN,
+                                        "Content-Type": "application/json"},
+                          json={"data": {"from_phone": str(from_phone or "").strip(),
+                                         "to_phone": str(to_phone or "").strip(),
+                                         "first_target": (C2C_FIRST_TARGET or "destination"),
+                                         "dial": "1"},
+                                "responsive": True}, timeout=40)
+    except Exception as e:
+        log.warning(f"click2call: Make request failed: {e}")
+        return False, f"Make לא זמין ({type(e).__name__})", ""
+    if r.status_code != 200:
+        log.warning(f"click2call: Make HTTP {r.status_code}: {(r.text or '')[:300]}")
+        return False, f"Make HTTP {r.status_code}", ""
+    try:
+        body = r.json() or {}
+    except Exception:
+        return False, "תשובה לא תקינה מ-Make", ""
+    out = body.get("outputs") if isinstance(body.get("outputs"), dict) else {}
+    link = str(out.get("link", "") or "").strip()
+    err = str(out.get("error", "") or "").strip()
+    st = body.get("status")
+    if err:
+        return False, err, link
+    if st not in (1, "1", None):
+        e = body.get("error")
+        msg = (e.get("message") if isinstance(e, dict) else e) or f"הרצה ב-Make נכשלה (status {st})"
+        log.warning(f"click2call: Make run status={st}: {json.dumps(body, ensure_ascii=False)[:300]}")
+        return False, str(msg), link
+    return True, "call in progress", link
+
 def maskyoo_trigger_link(link):
     """מפעיל את קישור ה-click2call מהשרת (10/09 בוקר): GET לקישור = Maskyoo מתחיל לחייג,
     בלי לפתוח דפדפן בטלפון (ב-iOS פתיחת חלון מהאפליקציה לא אמינה). מחזיר (ok, msg).
@@ -8604,13 +8640,11 @@ def api_click2call():
         log.info(f"click2call: no vphone for name={name!r}")
         return jsonify({"ok": False, "error": "אין מספר וירטואלי מוגדר לסוכן — יש להגדיר בניהול הצוות"})
     log.info(f"click2call: name={name!r} vphone={vphone} to={to}")
-    link, err = make_c2c_link(vphone, to)
-    dialed, msg = (maskyoo_trigger_link(link) if link else (False, err))   # השרת מפעיל את הקישור
+    dialed, msg, link = make_c2c_run(vphone, to)   # הסנריו ב-Make מחייג בעצמו (dial=1)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "חיוג ללקוח",
-                  (to + (" ✓" if dialed else " ✗ " + str(msg or err)))[:80])
-    if not link: return jsonify({"ok": False, "error": err or "לא התקבל קישור"})
+                  (to + (" ✓" if dialed else " ✗ " + str(msg)))[:80])
     if not dialed:
-        log.warning(f"click2call: trigger not ok: {msg}")
+        log.warning(f"click2call: not dialed: {msg}")
         return jsonify({"ok": False, "error": msg or "החיוג לא הופעל", "link": link, "vphone": vphone})
     return jsonify({"ok": True, "dialed": True, "link": link, "vphone": vphone, "msg": msg})
 
