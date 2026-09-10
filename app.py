@@ -2823,10 +2823,12 @@ def _team_for(name):
     return (phones, keys) if found else None
 
 def _row_owned(row, keys, phones):
-    """האם שורת נכס שייכת לאחד מחברי הצוות (שם קנוני או טלפון)."""
+    """האם שורת נכס שייכת לאחד מחברי הצוות (שם קנוני או טלפון).
+    11/09: בשורות יד2 "טלפון 1" הוא טלפון איש-הקשר של המודעה (לא בהכרח הסוכן) — מודעה של
+    אוריין שמול עם טלפון משפחתי הופיעה ב'שלי' של אייל. בשורות יד2 השם הוא המקור היחיד."""
     for col in ("סוכן 1", "סוכן 2"):
         if _canon_key(row.get(col, "")) in keys: return True
-    if phones:
+    if phones and str(row.get("מקור", "") or "") != "yad2":
         for col in ("טלפון 1", "טלפון 2", "טלפון"):
             ph = _last9(row.get(col, ""))
             if ph and ph in phones: return True
@@ -6851,7 +6853,7 @@ def _agent_owns_row(row, agent_name, agent_phones):
         for col in ("סוכן 1", "סוכן 2"):
             if _canon_key(row.get(col, "")) == nn:
                 return True
-    if agent_phones:
+    if agent_phones and str(row.get("מקור", "") or "") != "yad2":   # יד2: שם בלבד (ראה _row_owned)
         for col in ("טלפון 1", "טלפון 2", "טלפון"):
             ph = _last9(row.get(col, ""))
             if ph and ph in agent_phones:
