@@ -44,7 +44,11 @@ def _headers():
 
 
 def _get_all(table, select, extra_params=None):
-    """קריאה מדופדפת (1000 בכל עמוד) מ-PostgREST; מחזיר list של dicts."""
+    """קריאה מדופדפת (1000 בכל עמוד) מ-PostgREST; מחזיר list של dicts.
+    🐞 10/09: דפדוף limit/offset בלי ORDER BY אינו יציב — Postgres מחזיר עמודים בסדר
+    שרירותי, ובטבלה שמתעדכנת כל דקה (נכס נולד 2,500+ שורות = 3 עמודים) שורות נפלו
+    בין העמודים ("נכסים נחמקים") או הוכפלו. מיון קבוע לפי id (uuid, יציב) כברירת מחדל;
+    קריאה שמעבירה order משלה (properties לפי sheet_row) שומרת אותו."""
     out, offset = [], 0
     while True:
         params = {
@@ -52,6 +56,7 @@ def _get_all(table, select, extra_params=None):
             "office_id": "eq." + SB_OFFICE_ID,
             "limit": str(_PAGE),
             "offset": str(offset),
+            "order": "id.asc",
         }
         if extra_params:
             params.update(extra_params)
