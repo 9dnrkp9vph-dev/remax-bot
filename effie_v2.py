@@ -558,8 +558,8 @@ function v2MeUpload(inp){
   else wire();
 })();
 /* [click2call 10/09] חיוג ללקוח דרך המרכזיה: השרת מבקש מ-Make קישור Maskyoo (הקו הווירטואלי
-   של הסוכן → הלקוח) ופותחים אותו. החלון נפתח מיד (user activation) ומקבל את הקישור כשמגיע;
-   כשל / פיצ'ר כבוי (אין MAKE_API_TOKEN) → נפילה לחייגן הרגיל (tel:). משותף לכל הדפים. */
+   של הסוכן → הלקוח) ומפעיל אותו בעצמו; כאן רק הודעה. כשל / פיצ'ר כבוי (אין MAKE_API_TOKEN)
+   → נפילה לחייגן הרגיל (tel:). משותף לכל הדפים. */
 function c2cDial(tel){
   tel = String(tel || '').trim();
   if (!tel) return Promise.resolve(false);
@@ -567,12 +567,16 @@ function c2cDial(tel){
   var who = null;
   try{ who = (JSON.parse(localStorage.getItem('v2who') || 'null') || {}).j || null; }catch(_e){}
   if (who && who.ok && who.c2c === false){ location.href = 'tel:' + tel; return Promise.resolve(false); }
-  var w = null;
-  try{ w = window.open('', '_blank'); }catch(_e){ w = null; }
-  var fallback = function(){ try{ if (w) w.close(); }catch(_e){} location.href = 'tel:' + tel; return false; };
+  var fallback = function(){ location.href = 'tel:' + tel; return false; };
   var req = (typeof POST === 'function') ? POST('/api/click2call', {to: tel}) : Promise.resolve({ok: false, disabled: true});
   return req.then(function(j){
-    if (j && j.ok && j.link){ if (w) w.location = j.link; else location.href = j.link; return true; }
+    /* השרת הפעיל את הקישור בעצמו (10/09): רק הודעה, בלי חלון — ב-iOS פתיחת דף מהאפליקציה לא אמינה */
+    if (j && j.ok && j.dialed){ if (typeof toast === 'function') toast('מחייג… הלקוח יצלצל ראשון, ואז הטלפון שלך'); return true; }
+    if (j && j.ok && j.link){   // גיבוי: יש קישור אבל השרת לא הצליח להפעיל — פתיחה בחלון
+      var w = null; try{ w = window.open(j.link, '_blank'); }catch(_e){ w = null; }
+      if (!w) location.href = j.link;
+      return true;
+    }
     if (j && j.error && !j.disabled && typeof toast === 'function') toast('חיוג דרך המרכזיה נכשל: ' + j.error);
     /* פיילוט: השרת אמר "כבוי" למרות שהאפליקציה חשבה שמופעל — מציגים את הסיבה (אבחון) */
     if (j && j.disabled && j.why && typeof toast === 'function') toast('חיוג במרכזיה כבוי: ' + j.why + (j.name ? ' (' + j.name + ')' : ''));

@@ -2940,6 +2940,30 @@ def make_c2c_link(from_phone, to_phone):
         return "", (err or "לא התקבל קישור")
     return link, ""
 
+def maskyoo_trigger_link(link):
+    """מפעיל את קישור ה-click2call מהשרת (10/09 בוקר): GET לקישור = Maskyoo מתחיל לחייג,
+    בלי לפתוח דפדפן בטלפון (ב-iOS פתיחת חלון מהאפליקציה לא אמינה). מחזיר (ok, msg).
+    התשובה של Maskyoo היא XML (ברירת מחדל) או JSON: status.code/description + result."""
+    link = str(link or "").strip()
+    if not link: return False, "אין קישור"
+    try:
+        r = requests.get(link, timeout=15, headers={"User-Agent": "remax-bot click2call"})
+    except Exception as e:
+        log.warning(f"click2call: trigger failed: {e}")
+        return False, f"Maskyoo לא זמין ({type(e).__name__})"
+    if r.status_code != 200:
+        return False, f"Maskyoo HTTP {r.status_code}"
+    t = r.text or ""
+    m = re.search(r"<result>(.*?)</result>", t, re.S) or re.search(r'"result"\s*:\s*"([^"]*)"', t)
+    res = (m.group(1).strip() if m else "")
+    d = re.search(r"<description>(.*?)</description>", t, re.S) or re.search(r'"description"\s*:\s*"([^"]*)"', t)
+    desc = (d.group(1).strip() if d else "")
+    c = re.search(r"<code>(\d+)</code>", t) or re.search(r'"code"\s*:\s*(\d+)', t)
+    code = c.group(1) if c else ""
+    if "call in progress" in res.lower() or code == "200":
+        return True, (res or desc or "call in progress")
+    return False, (desc or res or f"תשובה לא צפויה מ-Maskyoo: {t[:120]}")
+
 def _deal_label(code):
     c = str(code or "").upper()
     if "OWNER_EXCLUSIVE" in c: return "בלעדיות"
@@ -8557,10 +8581,14 @@ def api_click2call():
         return jsonify({"ok": False, "error": "אין מספר וירטואלי מוגדר לסוכן — יש להגדיר בניהול הצוות"})
     log.info(f"click2call: name={name!r} vphone={vphone} to={to}")
     link, err = make_c2c_link(vphone, to)
+    dialed, msg = (maskyoo_trigger_link(link) if link else (False, err))   # השרת מפעיל את הקישור
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "חיוג ללקוח",
-                  (to + (" ✓" if link else " ✗ " + err))[:80])
+                  (to + (" ✓" if dialed else " ✗ " + str(msg or err)))[:80])
     if not link: return jsonify({"ok": False, "error": err or "לא התקבל קישור"})
-    return jsonify({"ok": True, "link": link, "vphone": vphone})
+    if not dialed:
+        log.warning(f"click2call: trigger not ok: {msg}")
+        return jsonify({"ok": False, "error": msg or "החיוג לא הופעל", "link": link, "vphone": vphone})
+    return jsonify({"ok": True, "dialed": True, "link": link, "vphone": vphone, "msg": msg})
 
 @app.route("/api/calls/hide", methods=["POST"])
 def api_calls_hide():
