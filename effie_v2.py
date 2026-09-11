@@ -9035,6 +9035,61 @@ def y2_hot_reconcile(hot_props, rows, canon):
         kept.append(hp)
     return kept, stale
 
+def y2_hot_owner_filter(phone, name):
+    """פילטר PostgREST: הסימונים של הסוכן — לפי טלפון (9 אחרונות) *או* שם. שם בגרשיים
+    (מרכאות/פסיקים בשם נמלטים) — כדי שסוכן עם כמה טלפונים יראה את הסימון שלו מכל אחד."""
+    p9 = _re.sub(r"\D", "", str(phone or ""))[-9:]
+    nm = str(name or "").strip().replace("\\", "\\\\").replace('"', '\\"')
+    parts = []
+    if p9:
+        parts.append("agent_phone.eq." + p9)
+    if nm:
+        parts.append('agent_name.eq."' + nm + '"')
+    if not parts:
+        parts.append("agent_phone.eq.__none__")
+    return "(" + ",".join(parts) + ")"
+
+Y2_HOT_MISSING_SCANS = 3
+
+def y2_hot_missing_update(state, hot_props, rows, stamp, n=Y2_HOT_MISSING_SCANS):
+    """נכס חם שהמודעה שלו נעלמה מנכסי המשרד (אייל 11/09: "אם הנכס לא זמין בנכסים של הסוכן —
+    שיסיר אותו מהסטורי לאחר 3 סריקות משרדים"). state = {key: [חותמות-סריקה נבדלות שבהן חסר]}.
+    בכל בריף: מפה בריאה (≥50 שורות יד2) + חותמת סריקה חדשה → מפתח חסר צובר את החותמת;
+    n חותמות נבדלות → לניטרול. מפתח שנמצא שוב — מתאפס. מפה לא-בריאה/בלי חותמת → בלי שינוי.
+    מחזיר (state_חדש, מפתחות_לניטרול, השתנה?)."""
+    st = {k: list(v) for k, v in (state or {}).items() if isinstance(v, list)}
+    stamp = str(stamp or "").strip()
+    present = set()
+    healthy = 0
+    for r in rows or []:
+        lid = str(r.get("מספר מודעה", "") or "").strip()
+        if lid:
+            present.add(lid)
+        if r.get("_y2_office_id"):
+            healthy += 1
+    if not stamp or healthy < 50:
+        return st, [], False
+    changed = False
+    deact = []
+    keys = set(str(hp.get("key") or "") for hp in hot_props if hp.get("key"))
+    for k in keys:
+        if k in present:
+            if k in st:
+                del st[k]; changed = True
+            continue
+        seen = st.get(k, [])
+        if stamp not in seen:
+            seen = (seen + [stamp])[-n:]
+            st[k] = seen; changed = True
+        if len(seen) >= n:
+            deact.append(k)
+    for k in list(st):
+        if k not in keys:        # סימון שכבר לא פעיל — ניקוי
+            del st[k]; changed = True
+    for k in deact:
+        st.pop(k, None)
+    return st, deact, changed
+
 _Y2_TIME_RE = _re.compile(r'\d{1,2}:\d{2}')
 
 def y2_date_part(s):
@@ -9632,7 +9687,9 @@ def register(app, G):
         params = {"office_id": "eq." + _sb.SB_OFFICE_ID, "active": "eq.true",
                   "select": "property_key,agent_name"}
         if not want_all:
-            params["agent_phone"] = "eq." + _last9(s.get("phone", ""))
+            # 🐞 11/09: המכסה נאכפת לפי שם הסוכן, אבל הרשימה נטענה לפי טלפון — סוכן שסימן מטלפון
+            # אחר (או שם/טלפון שהשתנו) לא ראה את הסימון, לא יכול להסיר, ונחסם ב"אחד בלבד"
+            params["or"] = y2_hot_owner_filter(s.get("phone", ""), s.get("name", ""))
         try:
             r = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories", headers=_sb._headers(),
                               params=params, timeout=10)
@@ -9666,7 +9723,8 @@ def register(app, G):
             if not on:
                 r = _requests.patch(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
                                     headers={**_sb._headers(), "Content-Type": "application/json"},
-                                    params={**base, "property_key": "eq." + key},
+                                    params={"office_id": "eq." + _sb.SB_OFFICE_ID, "property_key": "eq." + key,
+                                            "or": y2_hot_owner_filter(s.get("phone", ""), s.get("name", ""))},
                                     json={"active": False}, timeout=10)
                 r.raise_for_status()
                 _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "הסרת נכס חם", key)
@@ -10075,9 +10133,32 @@ def register(app, G):
                 # עברה לסוכן אחר → לא בסטורי, והסימון מנוטרל (best-effort) כדי לפנות מקום ל-2.
                 try:
                     # 11/09: בלי ניטרול ב-DB — הסתרה בלבד (ירד מפרסום); הסימון של הסוכן נשאר שלו
-                    hot_props, _stale = y2_hot_reconcile(hot_props, G["fetch_sheet_rows"]() or [], G["_canon_key"])
-                except Exception:
-                    pass
+                    _prow = G["fetch_sheet_rows"]() or []
+                    hot_props, _stale = y2_hot_reconcile(hot_props, _prow, G["_canon_key"])
+                    # 11/09 (אייל): מודעה שנעלמה מנכסי המשרד ל-3 סריקות משרדים → הסימון מנוטרל
+                    # (מפנה את המכסה לסוכן; ספירה לפי חותמות-סריקה נבדלות, לא לפי בריפים)
+                    _stamp = G["_props_updated"](_prow)
+                    _deact = []
+                    def _hm(cfg):
+                        nonlocal _deact
+                        st, _deact, ch = y2_hot_missing_update(cfg.get("v2_hot_missing") or {}, hot_props, _prow, _stamp)
+                        if ch:
+                            cfg["v2_hot_missing"] = st
+                        return ch
+                    # בדיקה יבשה על הקונפיג מהקאש — נועלים וכותבים רק כשיש מה לשנות
+                    _st0 = (G["_load_config"]().get("v2_hot_missing") or {})
+                    if y2_hot_missing_update(_st0, hot_props, _prow, _stamp)[2]:
+                        _config_mutate(_hm)
+                    if _deact:
+                        for _k in _deact:
+                            _requests.patch(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
+                                            headers={**_sb._headers(), "Content-Type": "application/json"},
+                                            params={"office_id": "eq." + _sb.SB_OFFICE_ID, "property_key": "eq." + _k},
+                                            json={"active": False}, timeout=10)
+                            if log: log.info(f"hot story deactivated (missing {Y2_HOT_MISSING_SCANS} scans): {_k}")
+                        hot_props = [hp for hp in hot_props if str(hp.get("key") or "") not in set(_deact)]
+                except Exception as _he:
+                    if log: log.warning(f"effie brief hot reconcile: {_he}")
                 # קונים חמים (buyers.status=hot) — לסלייד הסיכום
                 try:
                     rb = _requests.get(_sb.SUPABASE_URL + "/rest/v1/buyers",
