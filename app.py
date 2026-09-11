@@ -7522,30 +7522,34 @@ def _famexcl_floor(v):
     m = re.search(r"-?\d+", str(v or ""))
     return int(m.group(0)) if m else None
 
+def _famexcl_rooms(v):
+    """חדרים ("4", "6.5", "5 חד'", "דירה, 4 חדרים") → float; None כשאין."""
+    m = re.search(r"(\d+(?:\.\d)?)\s*(?:חד|$)", str(v or "").strip())
+    try:
+        return float(m.group(1)) if m else None
+    except Exception:
+        return None
+
+def _famexcl_sqm(v):
+    """מ"ר ("162", '162 מ"ר', "… 120 מ\"ר …") → int; None כשאין."""
+    t = str(v or "")
+    m = re.search(r"(\d{2,4})\s*מ[\"״]ר", t) or (re.match(r"^\s*(\d{2,4})\s*$", t))
+    return int(m.group(1)) if m else None
+
+def _famexcl_floor_txt(v):
+    """קומה מתוך תיאור ("קומה 3 מתוך 4") → int; None כשאין."""
+    m = re.search(r"קומה\s*(-?\d+)", str(v or ""))
+    return int(m.group(1)) if m else None
+
 def _famexcl_addr_list():
     """כתובות שכבר בבלעדיות/טיפול RE/MAX Family — לסימון ב'נכס נולד', עם שם הסוכן.
-    שלושה מקורות (בקשת אייל 13/07): בלעדויות חיצוניות (שת"פ — רק שלנו),
-    נכסי המשרד (יד2, כל מודעה פעילה) וחתימות בלעדיות (OWNER_EXCLUSIVE).
-    מוחזר כאינדקס לפי מספר-בית: {num: [(nums, words, agent), ...]} — כדי שההצלבה
-    בנכס נולד תהיה מהירה (השוואה רק מול כתובות שחולקות מספר בית). cache 300ש'
-    (המקורות כבר cached — הבנייה כאן היא רק טוקניזציה, פעם ב-5 דקות)."""
+    11/09 (אייל: "רק אם בטוח"): מקור יחיד — נכסי המשרד מיד2 (רחוב/בית/עיר בנפרד + מחיר/חדרים/
+    מ"ר/קומה כמאמתים). חתימות בלעדיות הוסרו: אין להן מחיר/חדרים → אי-אפשר לאמת (יחזרו כשנשמור
+    מחיר בהחתמה). אינדקס לפי מספר-בית: {house: [entry, ...]}; cache 300ש'."""
     c = _cache_get("famexcl_index", 300)
     if c is not None:
         return c
     idx = {}
-    def _add(addr_parts, agent, price=None, floor=None, has_city=False):
-        nums, words = _addr_tokens(*addr_parts)
-        if not nums or not words:
-            return
-        # מחיר/קומה (בקשת אייל 01/09): פוסלי-שווא — אותה כתובת אך דירה אחרת.
-        # has_city (10/09): מקור בלי עיר ("הרצל 5" מחתימה) לא רשאי "להיכלל" בנכס — אחרת
-        # הוא תופס הרצל 5 בכל עיר; כזה נבדק רק בכיוון המחמיר (הנכס ⊆ המקור).
-        ent = (nums, words, (agent or "").strip(), _famexcl_price(price), _famexcl_floor(floor), bool(has_city))
-        for n in nums:
-            idx.setdefault(n, []).append(ent)
-    # 1) [הוסר 10/09] שת"פ של רימקס פמילי מהצינור הישן — רשומות מיושנות (קישורי נדל"ן-וואן,
-    #    בלי סוכן) שגרמו לסימוני-שווא; נכסי המשרד מיד2 (מקור 2) מכסים את כל הבלעדויות הפעילות.
-    # 2) נכסי המשרד (יד2) — כל מודעה פעילה; הסוכן = "סוכן 1"
     try:
         for r in fetch_sheet_rows():
             if (r.get("סטטוס", "") or "").strip() not in ("", "פעילה"):
@@ -7553,61 +7557,62 @@ def _famexcl_addr_list():
             street = (r.get("כתובת", "") or r.get("רחוב1", "") or r.get("רחוב", "") or "").strip()
             house = (r.get("מספר בית", "") or r.get("מס בית", "") or r.get("מס' בית", "") or r.get("בית", "") or "").strip()
             city = (r.get("עיר / ישוב", "") or r.get("עיר", "") or "").strip()
-            _add((street, house, city), _canon_agent_name((r.get("סוכן 1", "") or "").strip()),
-                 r.get("מחיר", ""), r.get("קומה", ""), has_city=bool(city))
-    except Exception:
-        pass
-    # 3) חתימות בלעדיות (OWNER_EXCLUSIVE) — הסוכן = agent. 10/09: רק מ-12 החודשים האחרונים
-    #    (תקופת בלעדיות מקסימלית) — חתימה ישנה יותר = בלעדיות שפגה, סימון-שווא.
-    try:
-        _sig_floor = time.time() - 365 * 86400
-        for g in get_signings():
-            if "OWNER_EXCLUSIVE" not in str(g.get("deal_type", "")).upper():
+            s_nums, s_words = _addr_tokens(street, house)
+            c_nums, c_words = _addr_tokens(city)
+            _m = re.search(r"\d+", street)
+            hn = re.sub(r"\D", "", house) or (_m.group(0) if _m else "")
+            if not hn or not s_words:
                 continue
-            if _excl_epoch(g.get("received_at", "")) < _sig_floor:
-                continue
-            _add((g.get("address", ""), g.get("city", "")), _canon_agent_name((g.get("agent", "") or "").strip()),
-                 g.get("price", ""), has_city=bool(str(g.get("city", "") or "").strip()))
+            ent = {"house": hn, "street": s_words, "city": c_words,
+                   "agent": _canon_agent_name((r.get("סוכן 1", "") or "").strip()),
+                   "price": _famexcl_price(r.get("מחיר", "")), "rooms": _famexcl_rooms(r.get("חדרים", "")),
+                   "sqm": _famexcl_sqm(r.get('מ"ר', "") or r.get("מ״ר", "")), "floor": _famexcl_floor(r.get("קומה", ""))}
+            idx.setdefault(hn, []).append(ent)
     except Exception:
         pass
     _cache_put("famexcl_index", idx)
     return idx
 
-def _is_famexcl(addr, city, fam_idx, price=None, floor=None):
-    """מחזיר את שם הסוכן שבבלעדיות אם הכתובת כבר בטיפול RE/MAX Family, אחרת None.
-    שמרני: כל אסימוני הנכס (מספר+רחוב+עיר) חייבים להופיע בכתובת שבמקור.
-    דיוק (בקשת אייל 01/09): כששני הצדדים מכירים מחיר — סטייה מעל 5% פוסלת;
-    כששניהם מכירים קומה — קומה שונה פוסלת (אותה כתובת, דירה אחרת). נתון חסר
-    באחד הצדדים לא פוסל. בודק רק מול כתובות שחולקות מספר בית — מהיר."""
+def _is_famexcl(addr, city, fam_idx, price=None, floor=None, rooms=None, sqm=None):
+    """שם הסוכן שבבלעדיות אם הנכס-הנולד הוא *בוודאות* נכס משרד שלנו, אחרת None.
+    כלל (אייל 11/09): כתובת מדויקת — כל מילות הרחוב והעיר של נכס המשרד מופיעות בנכס-הנולד
+    ומספר הבית הראשון זהה — **ולפחות אימות אחד** בין: מחיר ±5%, חדרים זהים, מ"ר ±10%, קומה זהה.
+    נתון שקיים בשני הצדדים וסותר — פוסל. נתון חסר — לא מאמת ולא פוסל."""
     if not fam_idx:
         return None
-    nb_nums, nb_words = _addr_tokens(addr, city)
+    a = re.sub(r"(?:קומה|דירה|מתוך)\s*-?\d+", " ", str(addr or ""))
+    nb_nums, nb_words = _addr_tokens(a, city)
     if not nb_nums or not nb_words:
         return None
-    need = nb_nums | nb_words
-    seen = set()
-    best = None
-    for n in nb_nums:
-        for ex_nums, ex_words, agent, ex_price, ex_floor, ex_has_city in fam_idx.get(n, ()):
-            _id = id(ex_words)
-            if _id in seen:
+    m = re.search(r"\d+", a.replace("קריית", "קרית"))
+    house = m.group(0) if m else ""
+    if not house:
+        return None
+    for e in fam_idx.get(house, ()):
+        if not (e["street"] <= nb_words):
+            continue
+        if e["city"] and not (e["city"] <= nb_words):
+            continue
+        conf = 0
+        if price is not None and e["price"] is not None:
+            if abs(price - e["price"]) > 0.05 * max(price, e["price"]):
                 continue
-            seen.add(_id)
-            have = ex_nums | ex_words
-            # 10/09: התאמה דו-כיוונית — הצד המינימלי (רחוב+מספר+עיר) חייב להיכלל בצד העשיר.
-            # שורות נכס-נולד ותיקות כוללות שכונה; מקורות יד2 מינימליים — הדרישה החד-כיוונית
-            # הישנה (הנכס ⊆ המקור) פספסה 112 התאמות אמיתיות (נבדק על הדאטה החי).
-            # הכיוון "המקור ⊆ הנכס" מותר רק למקור עם עיר — אחרת "הרצל 5" תופס כל עיר.
-            if not (need <= have or (ex_has_city and have <= need)):
+            conf += 1
+        if rooms is not None and e["rooms"] is not None:
+            if abs(rooms - e["rooms"]) > 0.01:
                 continue
-            if price is not None and ex_price is not None and                     abs(price - ex_price) > 0.05 * max(price, ex_price):
+            conf += 1
+        if sqm is not None and e["sqm"] is not None:
+            if abs(sqm - e["sqm"]) > 0.10 * max(sqm, e["sqm"]):
                 continue
-            if floor is not None and ex_floor is not None and floor != ex_floor:
+            conf += 1
+        if floor is not None and e["floor"] is not None:
+            if floor != e["floor"]:
                 continue
-            if agent:
-                return agent       # התאמה עם שם סוכן — עדיפה
-            best = ""               # התאמה בלי שם (בלעדיות חיצונית) — שומרים כגיבוי
-    return best
+            conf += 1
+        if conf >= 1:
+            return e["agent"] or ""
+    return None
 
 _NB_RESULT_VER = [0]   # מעלים בכל שינוי (סטטוס/הערה/פנייה) כדי לבטל את מטמון התוצאה לכל הסקופים
 _NB_BUCKETS = [(0, 30), (30, 60), (60, 90), (90, 120), (120, 150), (150, 180), (180, 10**9)]   # דליי ותק לפי חודשים — חייב להתאים ל-NB_AGE_BUCKETS בפרונט
@@ -7700,8 +7705,10 @@ def api_newborn():
             if _nb_fl is None:   # שורות ישנות בלי שדה קומה — מהתיאור ("קומה N")
                 _m_fl = re.search(r"קומה\s*(-?\d+)", str(r.get("תיאור נכס", "") or ""))
                 _nb_fl = int(_m_fl.group(1)) if _m_fl else None
+            _dsc_ = str(r.get("תיאור נכס", "") or "")
             _famv = _is_famexcl(_addr, city, fam_list,
-                                _famexcl_price(r.get("מחיר", "")), _nb_fl)   # שם הסוכן שבבלעדיות / '' / None
+                                _famexcl_price(r.get("מחיר", "")), _nb_fl,
+                                _famexcl_rooms(_dsc_), _famexcl_sqm(_dsc_))   # שם הסוכן שבבלעדיות / '' / None
             out.append({
                 # [SWR-2] "released"/"own" הוסרו — אף מסך לא קורא אותם (נסרק 24/08)
                 "key": _k,
