@@ -8972,6 +8972,17 @@ def y2_new_push_plan(new_rows, max_total=40, max_per_agent=10):
             plan[ag] = ("המודעות שלך נקלטו מיד2", f"{n} מודעות חדשות שלך נכנסו לנכסי המשרד")
     return plan
 
+def y2_office_key(row, office_id):
+    """מזהה המודעה לנכסי המשרד: הטוקן מהקישור; כשהסורק לא תפס אותו (link ריק או /item/0 —
+    11/09: שלוש מודעות חדשות נכנסו ככה והתנגשו על המפתח "0") — מפתח-כתובת יציב פר-סניף.
+    merge_office_props מקפל שורת-כתובת כזו לתוך שורת-הטוקן של אותה כתובת כשהיא קיימת."""
+    g = lambda k: str(row.get(k, "") or "").strip()
+    tok = y2_token(g("link"))
+    if tok and tok != "0":
+        return tok
+    addr = (g("street") + "|" + y2_num_str(g("homeNum")) + "|" + g("city")).strip("|")
+    return "addr:" + str(office_id or "").strip() + ":" + addr if addr.strip("|") else ""
+
 def y2_norm_office(row, office_id):
     """שורת מודעה של סניף שלנו → שורת properties בפורמט הגיליון (כותרות עבריות) —
     כל צרכני fetch_sheet_rows (הנכסים שלי/חיפוש/החתמה/מפה/famexcl/מזכירה) עובדים בלי שינוי.
@@ -8981,7 +8992,7 @@ def y2_norm_office(row, office_id):
     return {"סוכן 1": ag, "כתובת": g("street"), "מספר בית": y2_num_str(g("homeNum")),
             "עיר / ישוב": g("city"), "שכונה": g("neighborhood"),
             "סוג נכס": g("type"), "חדרים": y2_num_str(g("rooms")), 'מ"ר': y2_num_str(g("sqm")),
-            "מחיר": y2_num_str(g("price")), "מספר מודעה": y2_token(g("link")) or g("link"),
+            "מחיר": y2_num_str(g("price")), "מספר מודעה": y2_office_key(row, office_id),
             "קישור": g("link"), "טלפון 1": g("phone"), "בלעדיות": g("excl"),
             "תגיות": g("tags").replace(";", " · "), "תמונה": g("image"),
             "סטטוס": "פעילה", "_desc_ae": y2_clean_desc(g("description")),

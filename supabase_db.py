@@ -705,6 +705,32 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
         raw = rec.get("raw")
         if isinstance(raw, dict) and raw.get("_y2_first_seen"):
             first_seen[str(raw.get("מספר מודעה") or "")] = raw["_y2_first_seen"]
+    # 11/09: שורה שהגיעה בלי טוקן (מפתח addr:…) — אם באותו סניף כבר יש שורת-טוקן לאותה כתובת,
+    # מקפלים אותה לתוכה: שומרים טוקן/קישור/סוכן/נראה-לראשונה של הקיימת, מעדכנים מחיר ופרטים.
+    def _addr_of(r):
+        return (str(r.get("כתובת") or "").strip() + "|" + str(r.get("מספר בית") or "").strip()
+                + "|" + str(r.get("עיר / ישוב") or "").strip())
+    by_addr = {}
+    for rec in current:
+        raw = rec.get("raw")
+        if isinstance(raw, dict) and str(raw.get("_y2_office_id") or "").strip() == office_tag \
+                and not str(raw.get("מספר מודעה") or "").startswith("addr:"):
+            by_addr.setdefault(_addr_of(raw), raw)
+    raw_rows = list(raw_rows)
+    for r in raw_rows:
+        if str(r.get("מספר מודעה") or "").startswith("addr:"):
+            ex = by_addr.get(_addr_of(r))
+            if ex:
+                r["מספר מודעה"] = ex.get("מספר מודעה")
+                _lk = str(r.get("קישור") or "").strip()
+                if (not _lk or _lk.rstrip("/").endswith("/item/0")) and ex.get("קישור"):
+                    r["קישור"] = ex.get("קישור")
+                for k in ("תמונה", "_y2_first_seen", "סוכן 1"):
+                    if not str(r.get(k) or "").strip() and ex.get(k):
+                        r[k] = ex.get(k)
+    # שורה בלי מפתח בכלל (בלי טוקן ובלי כתובת) — לא נכתבת
+    raw_rows = [r for r in raw_rows if str(r.get("מספר מודעה") or "").strip()]
+    new_tokens = set(str(r.get("מספר מודעה") or "") for r in raw_rows)
     existing_tokens = set(str(rec["raw"].get("מספר מודעה") or "") for rec in current if isinstance(rec.get("raw"), dict))
     new_rows = [r for r in raw_rows if str(r.get("מספר מודעה") or "") not in existing_tokens]   # לפוש לסוכן
     for r in raw_rows:
