@@ -5112,6 +5112,10 @@ function propCard(p, i){
   if (p.delisted) chip = '<div class="chip" style="background:#EBE8DD;color:#5B6472">ירד מפרסום · ' + esc(p.delisted) + '</div>';
   // נכס חדש (נראה לראשונה ב-3 הימים האחרונים) — תווית זהב, גם במשרד וגם בשלי (אייל 09/09)
   else if (p.isNew && !isShtaf) chip = '<div class="chip" style="background:#E4C56B;color:#231700">חדש</div>' + chip;
+  // בלעדי / רגיל לפי סימון המודעה ביד2 (מהסורק) — רק ב"נכסים שלי", לא במשרד (בקשת אייל 11/09)
+  if (isMine && !isShtaf && p.excl != null)
+    chip = (p.excl ? '<div class="chip" style="background:#FBF3DD;color:#7A5E1C;border:1px solid #E4C56B">בלעדי</div>'
+                   : '<div class="chip" style="background:#EEF1F5;color:#5B6472">רגיל</div>') + chip;
   var acts = isShtaf
     ? '<div class="acts"><button class="a1" onclick="matchBuyers(' + i + ')">' +
       '<svg width="12" height="12" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
@@ -8994,7 +8998,9 @@ def y2_norm_office(row, office_id):
             "סוג נכס": g("type"), "חדרים": y2_num_str(g("rooms")), 'מ"ר': y2_num_str(g("sqm")),
             "קומה": y2_num_str(g("floor")),
             "מחיר": y2_num_str(g("price")), "מספר מודעה": y2_office_key(row, office_id),
-            "קישור": g("link"), "טלפון 1": g("phone"), "בלעדיות": g("excl"),
+            "קישור": g("link"), "טלפון 1": g("phone"),
+            "בלעדיות": ("1" if g("excl").strip().lower() in ("1", "1.0", "true", "yes", "כן", "בלעדי")
+                        else ("0" if g("excl").strip().lower() in ("0", "0.0", "false", "no", "לא") else "")),
             "תגיות": g("tags").replace(";", " · "), "תמונה": g("image"),
             "סטטוס": "פעילה", "_desc_ae": y2_clean_desc(g("description")),
             "_y2_first_seen": y2_first_seen_str(g("imported_at") or g("listing_date") or g("first_seen")),

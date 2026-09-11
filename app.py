@@ -6919,6 +6919,8 @@ def api_my_properties():
                 "delisted": (r.get("ירד מפרסום", "") or "").strip(),
                 "date": (r.get("תאריך יצירה", "") or r.get("_y2_first_seen", "") or "").strip(),
                 "isNew": _prop_is_new(r),
+                # בלעדי/רגיל לפי סימון יד2 (מהסורק) — מוצג רק ב"נכסים שלי" (בקשת אייל 11/09)
+                "excl": _y2_excl_flag(r.get("בלעדיות", "")),
             })
 
         _log_activity(s["name"], s["role"], s["phone"], "הנכסים שלי",
@@ -7521,6 +7523,17 @@ def _famexcl_floor(v):
     """קומה לערך מספרי (0=קרקע תקין) — None כשאין נתון."""
     m = re.search(r"-?\d+", str(v or ""))
     return int(m.group(0)) if m else None
+
+def _y2_excl_flag(v):
+    """דגל 'בלעדי' של מודעת יד2 (מהסורק: 1/0, לפעמים 1.0/true) → True/False; ריק/לא ידוע → None."""
+    t = str(v or "").strip().lower()
+    if not t:
+        return None
+    if t in ("1", "1.0", "true", "yes", "כן", "בלעדי", "בלעדיות"):
+        return True
+    if t in ("0", "0.0", "false", "no", "לא", "רגיל"):
+        return False
+    return None
 
 def _famexcl_rooms(v):
     """חדרים ("4", "6.5", "5 חד'", "דירה, 4 חדרים") → float; None כשאין."""
