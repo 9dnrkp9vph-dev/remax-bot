@@ -17,6 +17,7 @@ import os
 import re as _re
 import time
 import json as _json
+import html as _html
 from urllib.parse import quote as _quote
 
 import requests as _requests
@@ -8933,7 +8934,7 @@ def y2_is_ours(office_id):
 def y2_norm_private(row):
     """שורת סריקה פרטית → (source_key, רשומת newborn_listings). המפתח 'id:'+_orderId —
     זהה לקונבנציית _nb_key של הצינור הישן, כך שהחפיפה מתאחדת מעצמה."""
-    g = lambda k: str(row.get(k, "") or "").strip()
+    g = lambda k: _html.unescape(str(row.get(k, "") or "")).strip()   # 11/09: &#x27; בשמות מהסורק
     oid = g("_orderId")
     sk = ("id:" + oid) if oid else ("ln:" + g("link"))
     parts = [p for p in (g("property_type"),
@@ -9034,7 +9035,7 @@ def y2_norm_office(row, office_id):
     """שורת מודעה של סניף שלנו → שורת properties בפורמט הגיליון (כותרות עבריות) —
     כל צרכני fetch_sheet_rows (הנכסים שלי/חיפוש/החתמה/מפה/famexcl/מזכירה) עובדים בלי שינוי.
     _y2_office_id מתייג את הסניף כדי ש-merge_office_props יחליף רק אותו."""
-    g = lambda k: str(row.get(k, "") or "").strip()
+    g = lambda k: _html.unescape(str(row.get(k, "") or "")).strip()   # 11/09: &#x27; בשמות מהסורק
     ag = Y2_AGENT_FIX.get(g("agent"), g("agent"))
     return {"סוכן 1": ag, "כתובת": g("street"), "מספר בית": y2_num_str(g("homeNum")),
             "עיר / ישוב": g("city"), "שכונה": g("neighborhood"),
@@ -9208,7 +9209,7 @@ def y2_split_batch(b):
 
 def y2_norm_agency(row, office, office_id):
     """שורת מודעת-משרד → (source_key, רשומת external_exclusives) במבנה getRaw_ שהאפליקציה קוראת."""
-    g = lambda k: str(row.get(k, "") or "").strip()
+    g = lambda k: _html.unescape(str(row.get(k, "") or "")).strip()   # 11/09: &#x27; בשמות מהסורק
     tok = y2_token(g("link"))
     sk = ("y2x:" + tok) if tok else ("y2x:" + g("street") + "|" + g("homeNum") + "|" + str(office_id))
     street_full = (g("street") + (" " + g("homeNum") if g("homeNum") else "")).strip()
