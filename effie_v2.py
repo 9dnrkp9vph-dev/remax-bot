@@ -9008,16 +9008,16 @@ def y2_hot_reconcile(hot_props, rows, canon):
         lid = str(r.get("מספר מודעה", "") or "").strip()
         if lid:
             pmap[lid] = r
-    y2_source = len(pmap) >= 50 and any(r.get("_y2_office_id") for r in pmap.values())
+    # 🐞 11/09: הגרסה הקודמת ניטרלה סימונים ב-DB כשהמודעה לא נמצאה במפה או כשהסוכן "שונה"
+    # (איות שונה בין שם המשתמש לשם ביד2, מפתח שהוחלף) — וכל הסטורי נעלם. מעכשיו: מסתירים רק
+    # כשבטוח (המודעה נמצאה ומסומנת "ירד מפרסום"); לא נמצאה/סוכן שונה → מציגים מהעותק השמור.
     kept, stale = [], []
     for hp in hot_props:
         r = pmap.get(str(hp.get("key") or ""))
         if r and r.get("ירד מפרסום"):
-            r = None   # בחלון התווית — עדיין במסך הנכסים, אבל לא בסטורי (נכס שירד לא "חם")
+            stale.append(hp.get("key") or "")   # ירדה מפרסום — לא בסטורי (הסימון נשאר ב-DB)
+            continue
         if r:
-            if y2_source and canon(r.get("סוכן 1", "")) != canon(hp.get("agent", "")):
-                stale.append(hp.get("key") or "")   # עברה לסוכן אחר — לא בסטורי של הסוכן הישן
-                continue
             hp["img"] = str(r.get("תמונה", "") or "").strip()
             d = str(r.get("_desc_ae", "") or "").strip()
             if d:
@@ -9025,11 +9025,7 @@ def y2_hot_reconcile(hot_props, rows, canon):
             pv = str(r.get("מחיר", "") or "").strip()
             if pv:
                 hp["price"] = pv
-            kept.append(hp)
-        elif y2_source:
-            stale.append(hp.get("key") or "")   # ירדה מפרסום/נמחקה — לא מציגים
-        else:
-            kept.append(hp)   # מקור לא-יד2: אין ודאות — מציגים מהעותק השמור
+        kept.append(hp)
     return kept, stale
 
 _Y2_TIME_RE = _re.compile(r'\d{1,2}:\d{2}')
@@ -10071,15 +10067,8 @@ def register(app, G):
                 # העשרה חיה מנכסי המשרד (01/09) + התאמה למודעה חיה (09/09): ירדה מפרסום או
                 # עברה לסוכן אחר → לא בסטורי, והסימון מנוטרל (best-effort) כדי לפנות מקום ל-2.
                 try:
+                    # 11/09: בלי ניטרול ב-DB — הסתרה בלבד (ירד מפרסום); הסימון של הסוכן נשאר שלו
                     hot_props, _stale = y2_hot_reconcile(hot_props, G["fetch_sheet_rows"]() or [], G["_canon_key"])
-                    for _k in _stale:
-                        try:
-                            _requests.patch(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
-                                            headers={**_sb._headers(), "Content-Type": "application/json"},
-                                            params={"office_id": "eq." + _sb.SB_OFFICE_ID, "property_key": "eq." + str(_k)},
-                                            json={"active": False}, timeout=8)
-                        except Exception:
-                            pass
                 except Exception:
                     pass
                 # קונים חמים (buyers.status=hot) — לסלייד הסיכום
