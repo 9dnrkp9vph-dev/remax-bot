@@ -781,6 +781,84 @@ def replace_properties(raw_rows):
     return True, n
 
 
+# ── גיבוי/שחזור נכסי המשרד (אייל 11/09: "לחזור אחורה אם הסורק מפקשש") ─────────────
+PROPS_SNAPSHOT_KEEP = 3   # תאריכים אחרונים של גיבוי אוטומטי
+
+def _il_today():
+    try:
+        from zoneinfo import ZoneInfo
+        return _dt.datetime.now(ZoneInfo("Asia/Jerusalem")).date()
+    except Exception:
+        return (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=3)).date()
+
+def props_snapshot_list(limit=12):
+    """הגיבויים הקיימים (בלי התוכן): [{id, taken_at, label, n}] מהחדש לישן."""
+    if not enabled():
+        return []
+    r = requests.get(SUPABASE_URL + "/rest/v1/properties_snapshots", headers=_headers(),
+                     params={"office_id": "eq." + SB_OFFICE_ID, "select": "id,taken_at,label,n",
+                             "order": "taken_at.desc", "limit": str(limit)}, timeout=20)
+    r.raise_for_status()
+    return r.json() or []
+
+def props_snapshot_take(label="auto"):
+    """צילום כל שורות נכסי המשרד (raw) לטבלת properties_snapshots. label='auto' = לכל היותר אחד
+    ביום (הראשון — המצב שלפני הסריקה הראשונה של היום); נשמרים PROPS_SNAPSHOT_KEEP התאריכים
+    האחרונים. label אחר (manual / before-restore) נשמר תמיד ולא נגזם. מחזיר (id או '', n)."""
+    if not enabled():
+        return "", 0
+    if label == "auto":
+        today = _il_today().isoformat()
+        r = requests.get(SUPABASE_URL + "/rest/v1/properties_snapshots", headers=_headers(),
+                         params={"office_id": "eq." + SB_OFFICE_ID, "label": "eq.auto", "select": "id,taken_at",
+                                 "order": "taken_at.desc", "limit": "1"}, timeout=20)
+        r.raise_for_status()
+        last = (r.json() or [None])[0]
+        if last and str(last.get("taken_at", ""))[:10] == today:
+            return "", 0   # כבר יש גיבוי אוטומטי היום
+    recs = _get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"})
+    rows = [rec["raw"] for rec in recs if isinstance(rec.get("raw"), dict)]
+    if not rows:
+        return "", 0   # אין מה לגבות (ומצב ריק לא שווה שחזור)
+    hdr = {**_headers(), "Content-Type": "application/json", "Prefer": "return=representation"}
+    r = requests.post(SUPABASE_URL + "/rest/v1/properties_snapshots", headers=hdr,
+                      json={"office_id": SB_OFFICE_ID, "label": label, "n": len(rows), "rows": rows}, timeout=120)
+    r.raise_for_status()
+    sid = ((r.json() or [{}])[0] or {}).get("id", "")
+    if label == "auto":
+        try:   # גיזום: משאירים את PROPS_SNAPSHOT_KEEP האוטומטיים האחרונים
+            ra = requests.get(SUPABASE_URL + "/rest/v1/properties_snapshots", headers=_headers(),
+                              params={"office_id": "eq." + SB_OFFICE_ID, "label": "eq.auto", "select": "id",
+                                      "order": "taken_at.desc"}, timeout=20)
+            ra.raise_for_status()
+            old = [x["id"] for x in (ra.json() or [])[PROPS_SNAPSHOT_KEEP:] if x.get("id")]
+            if old:
+                requests.delete(SUPABASE_URL + "/rest/v1/properties_snapshots", headers=_headers(),
+                                params={"id": "in.(" + ",".join(old) + ")"}, timeout=30).raise_for_status()
+        except Exception:
+            pass
+    return sid, len(rows)
+
+def props_snapshot_restore(snapshot_id):
+    """שחזור מלא של נכסי המשרד מגיבוי: קודם צילום 'before-restore' של המצב הנוכחי (השחזור הפיך),
+    ואז replace_properties בשורות הגיבוי. מחזיר (ok, n, reason)."""
+    if not enabled() or not snapshot_id:
+        return False, 0, "disabled"
+    r = requests.get(SUPABASE_URL + "/rest/v1/properties_snapshots", headers=_headers(),
+                     params={"office_id": "eq." + SB_OFFICE_ID, "id": "eq." + str(snapshot_id),
+                             "select": "id,rows,n"}, timeout=120)
+    r.raise_for_status()
+    snap = (r.json() or [None])[0]
+    if not snap or not isinstance(snap.get("rows"), list) or not snap["rows"]:
+        return False, 0, "not_found"
+    try:
+        props_snapshot_take("before-restore")
+    except Exception:
+        return False, 0, "backup_failed"   # בלי צילום של המצב הנוכחי לא משחזרים
+    ok, n = replace_properties(snap["rows"])
+    return ok, n, "" if ok else "replace_failed"
+
+
 def insert_ping(phone, name=""):
     """פעימת נוכחות (heartbeat) לטבלת usage_pings — לחישוב זמן-פעיל אמיתי ביומן השימוש. best-effort."""
     if not enabled():

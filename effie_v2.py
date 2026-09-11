@@ -1673,6 +1673,15 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div id="rmvList"></div>
     </div>
 
+    <!-- גיבוי/שחזור נכסי המשרד (אייל 11/09) -->
+    <div class="card" id="snapCard">
+      <div class="cardTitle">גיבוי נכסי המשרד</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">צילום אוטומטי של כל נכסי המשרד לפני הסריקה הראשונה בכל יום (3 התאריכים האחרונים).
+        שחזור מחזיר את כל הנכסים למצב שבצילום; לפני כל שחזור נשמר צילום של המצב הנוכחי, כך שאפשר לחזור גם ממנו.</div>
+      <div id="snapList" style="margin-top:8px"></div>
+      <button onclick="snapTake()" style="margin-top:10px;width:100%;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">צור גיבוי עכשיו</button>
+    </div>
+
     <!-- הגדרות המשרד -->
     <div class="card">
       <div class="cardTitle">הגדרות המשרד</div>
@@ -1826,7 +1835,7 @@ function boot(){
           .concat(((rs[1] && rs[1].unmatchedListings) || []).map(function(u){ return {n: u.name, c: u.count, w: 'נכסים'}; }));
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
-        render();
+        render(); loadSnaps();
       });
   }).catch(function(){ location.replace('/v2'); });
 }
@@ -1861,6 +1870,40 @@ function render(){
   renderRemoved();
 }
 var RMV = [];
+var SNAPS = [];
+function snapLabel(l){ return l === 'auto' ? 'אוטומטי' : l === 'manual' ? 'ידני' : l === 'before-restore' ? 'לפני שחזור' : (l || ''); }
+function snapWhen(ts){
+  try { var d = new Date(ts); if (isNaN(d)) return String(ts || '');
+    var p = function(n){ return (n < 10 ? '0' : '') + n; };
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); } catch(e){ return String(ts || ''); }
+}
+function renderSnaps(){
+  var box = el('snapList'); if (!box) return;
+  if (!SNAPS.length){ box.innerHTML = '<div style="font-size:13px;color:#6B7280;padding:6px 0">עדיין אין גיבויים — הראשון ייווצר בסריקת המשרדים הבאה.</div>'; return; }
+  box.innerHTML = SNAPS.map(function(s, i){
+    return '<div class="setRow" style="cursor:default"><div class="mid"><div class="nm">' + esc(snapWhen(s.taken_at)) + '</div>' +
+      '<div class="sb">' + esc(snapLabel(s.label)) + ' · ' + (s.n || 0) + ' נכסים</div></div>' +
+      '<button onclick="snapRestore(' + i + ')" style="padding:9px 16px;border:none;border-radius:11px;background:#2E6BD6;' +
+      'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">שחזר</button></div>';
+  }).join('');
+}
+function loadSnaps(){
+  GET('/v2/api/admin/props/snapshots').then(function(j){ if (j && j.ok){ SNAPS = j.snapshots || []; renderSnaps(); } }).catch(function(){});
+}
+function snapTake(){
+  POST('/v2/api/admin/props/snapshot', {}).then(function(j){
+    if (j && j.ok){ toast('נשמר גיבוי של ' + j.n + ' נכסים'); loadSnaps(); }
+    else toast(j && j.reason === 'forbidden' ? 'אין הרשאה' : 'הגיבוי נכשל');
+  }).catch(function(){ toast('שגיאה'); });
+}
+function snapRestore(i){
+  var s = SNAPS[i]; if (!s) return;
+  if (!confirm('לשחזר את כל נכסי המשרד למצב מ-' + snapWhen(s.taken_at) + ' (' + (s.n || 0) + ' נכסים)?\nהמצב הנוכחי יישמר כגיבוי "לפני שחזור".')) return;
+  POST('/v2/api/admin/props/restore', {id: s.id}).then(function(j){
+    if (j && j.ok){ toast('שוחזרו ' + j.n + ' נכסים'); loadSnaps(); }
+    else toast('השחזור נכשל' + (j && j.reason ? ' (' + j.reason + ')' : ''));
+  }).catch(function(){ toast('שגיאה'); });
+}
 function renderRemoved(){
   var card = el('rmvCard');
   if (!card) return;
@@ -10568,6 +10611,12 @@ def register(app, G):
                 _stamp = _dyo.datetime.now(_ZYo("Asia/Jerusalem")).strftime("%d/%m/%Y")
                 _now_full = _dyo.datetime.now(_ZYo("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
                 _dl = set(str(x) for x in (b.get("delisted") or []) if str(x).strip()) if scan_full else set()
+                if ours:
+                    try:   # גיבוי אוטומטי (אחד ביום, 3 תאריכים) לפני שהסריקה נוגעת בנכסי המשרד — אייל 11/09
+                        _sid, _sn = sb.props_snapshot_take("auto")
+                        if _sid and log: log.info(f"props snapshot taken: {_sn} rows ({_sid})")
+                    except Exception as _se:
+                        if log: log.warning(f"props snapshot failed: {_se}")
                 for _oid, _rows in ours.items():
                     # שלב ב' (החלטת אייל 01/09): הסניפים שלנו → properties בפורמט הגיליון
                     props = [y2_norm_office(r, _oid) for r in _rows]
@@ -10696,6 +10745,61 @@ def register(app, G):
             "invites": invites,
             "gauth_phones": sorted(gauth),
         })
+
+    # ── גיבוי/שחזור נכסי המשרד (אייל 11/09) — מפתח בלבד ─────────────────────────
+    @app.route("/v2/api/admin/props/snapshots", methods=["GET"])
+    def v2_api_props_snapshots():
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": False, "reason": "no_supabase"})
+        try:
+            return jsonify({"ok": True, "snapshots": _sb.props_snapshot_list()})
+        except Exception as e:
+            if log: log.warning(f"props snapshots list: {e}")
+            return jsonify({"ok": False, "reason": "list_failed"})
+
+    @app.route("/v2/api/admin/props/snapshot", methods=["POST"])
+    def v2_api_props_snapshot_take():
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": False, "reason": "no_supabase"})
+        try:
+            sid, n = _sb.props_snapshot_take("manual")
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "גיבוי נכסי המשרד", f"{n} נכסים")
+            return jsonify({"ok": bool(sid), "id": sid, "n": n})
+        except Exception as e:
+            if log: log.warning(f"props snapshot take: {e}")
+            return jsonify({"ok": False, "reason": "take_failed"})
+
+    @app.route("/v2/api/admin/props/restore", methods=["POST"])
+    def v2_api_props_restore():
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        sid = str(b.get("id") or "").strip()
+        if not _re.match(r"^[0-9a-fA-F-]{36}$", sid):
+            return jsonify({"ok": False, "reason": "bad_id"}), 400
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": False, "reason": "no_supabase"})
+        try:
+            ok, n, reason = _sb.props_snapshot_restore(sid)
+            if ok:
+                for _ck in ("sheet_rows", "famexcl_index", "map_props"):
+                    try: G["_cache_clear"](_ck)
+                    except Exception: pass
+                _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "שחזור נכסי המשרד מגיבוי", f"{n} נכסים")
+            return jsonify({"ok": ok, "n": n, "reason": reason})
+        except Exception as e:
+            if log: log.warning(f"props restore: {e}")
+            return jsonify({"ok": False, "reason": "restore_failed"})
 
     @app.route("/v2/api/admin/invite", methods=["POST"])
     def v2_api_admin_invite():
