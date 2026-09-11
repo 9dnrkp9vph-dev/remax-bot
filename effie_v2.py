@@ -8992,6 +8992,7 @@ def y2_norm_office(row, office_id):
     return {"סוכן 1": ag, "כתובת": g("street"), "מספר בית": y2_num_str(g("homeNum")),
             "עיר / ישוב": g("city"), "שכונה": g("neighborhood"),
             "סוג נכס": g("type"), "חדרים": y2_num_str(g("rooms")), 'מ"ר': y2_num_str(g("sqm")),
+            "קומה": y2_num_str(g("floor")),
             "מחיר": y2_num_str(g("price")), "מספר מודעה": y2_office_key(row, office_id),
             "קישור": g("link"), "טלפון 1": g("phone"), "בלעדיות": g("excl"),
             "תגיות": g("tags").replace(";", " · "), "תמונה": g("image"),

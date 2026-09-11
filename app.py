@@ -7567,6 +7567,8 @@ def _famexcl_addr_list():
                    "agent": _canon_agent_name((r.get("סוכן 1", "") or "").strip()),
                    "price": _famexcl_price(r.get("מחיר", "")), "rooms": _famexcl_rooms(r.get("חדרים", "")),
                    "sqm": _famexcl_sqm(r.get('מ"ר', "") or r.get("מ״ר", "")), "floor": _famexcl_floor(r.get("קומה", ""))}
+            if ent["floor"] is None:   # שורות יד2 של המשרד: הקומה לרוב רק בתיאור
+                ent["floor"] = _famexcl_floor_txt(r.get("_desc_ae", "") or r.get("תיאור", ""))
             idx.setdefault(hn, []).append(ent)
     except Exception:
         pass
