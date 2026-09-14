@@ -6831,10 +6831,10 @@ def api_search_properties():
                     if (r.get("סטטוס", "") or "").strip() in ("", "פעילה")]
             rows.sort(key=_prop_epoch, reverse=True)
             out = [_row_out(r) for r in rows]
-            return jsonify({"ok": True,
-                            "summary": f"כל הנכסים הפעילים ({len(out)}) — מהחדש לישן",
-                            "updated": _props_updated(rows),
-                            "results": out})
+            return _etag_wrap({"ok": True,   # [SWR 14/09] המסך מצייר מהעותק השמור ומרענן ברקע
+                               "summary": f"כל הנכסים הפעילים ({len(out)}) — מהחדש לישן",
+                               "updated": _props_updated(rows),
+                               "results": out})
 
         parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
         matches = search_listings_in_sheet(parsed) if parsed else []
@@ -6925,7 +6925,7 @@ def api_my_properties():
 
         _log_activity(s["name"], s["role"], s["phone"], "הנכסים שלי",
                       eff_name if as_name else "")
-        return jsonify({"ok": True, "count": len(out), "name": eff_name, "multi": multi, "results": out})
+        return _etag_wrap({"ok": True, "count": len(out), "name": eff_name, "multi": multi, "results": out})
     except Exception as e:
         log.error(f"my properties error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -8185,7 +8185,7 @@ def api_search_exclusives():
                 "lng": round(_ll[1], 6) if _ll else None,
             })
         _upd = _excl_updated_stamp(rows)
-        return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "ptype": parsed.get("property_type", ""), "updated": _upd, "results": out})
+        return _etag_wrap({"ok": True, "summary": parsed.get("summary_he", ""), "ptype": parsed.get("property_type", ""), "updated": _upd, "results": out})
     except Exception as e:
         log.error(f"exclusives search error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500

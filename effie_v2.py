@@ -5060,30 +5060,41 @@ function loadHot(tries){
 }
 
 var _loadSeq = 0;
+/* [SWR 14/09] "המסך נטען לאט" (אייל): שלוש הקריאות (משרד/שת"פ/שלי, ~1MB) חיכו זו לזו
+   (Promise.all) וציירו רק בסוף. עכשיו: (1) ציור מיידי מהעותק המלא השמור (v2s:props:*),
+   (2) כל טאב מתרענן ומצטייר ברגע שהתשובה שלו מגיעה, (3) etag — בלי שינוי התשובה ~100B. */
+function _applyOffice(j){ OFFICE = (j && j.results) || []; SUM.office = (j && j.summary) || ''; UPD.office = (j && j.updated) || ''; }
+function _applyShtaf(j){ SHTAF = (j && j.results) || []; SUM.shtaf = (j && j.summary) || ''; UPD.shtaf = (j && j.updated) || ''; }
+function _applyMine(j){ MINE = (j && j.results) || []; MINE_MULTI = !!(j && j.multi); }
 function load(q){
   var seq = ++_loadSeq;   // שומר רצף: תשובה של חיפוש ישן שהגיעה באיחור לא דורסת את החדש
+  var base = !q;          // רשימה מלאה (בלי חיפוש) — נשמרת ומרוענת ב-etag; חיפוש = רגיל
+  var _hotOnce = false;
+  function step(p, key, apply){
+    return p.catch(function(){ return null; }).then(function(j){
+      if (seq !== _loadSeq) return;   // כבר יצא חיפוש חדש יותר — מתעלמים מהתשובה הישנה
+      if (base){ j = swrJ(j, key); swrPut(key, j); }
+      if (j) apply(j);
+      render();
+      if (!_hotOnce){ _hotOnce = true; loadHot(); }   // מצב כפתורי "נכס חם" — פעם אחת
+    });
+  }
   return Promise.all([
-    POST('/api/search/properties', {q: q || '', nosave: true}).catch(function(){ return {}; }),
-    POST('/api/search/exclusives', {q: q || '', nosave: true}).catch(function(){ return {}; }),
-    GET('/api/my/properties').catch(function(){ return {}; })
-  ]).then(function(rs){
-    if (seq !== _loadSeq) return;   // כבר יצא חיפוש חדש יותר — מתעלמים מהתשובה הישנה
-    OFFICE = (rs[0] && rs[0].results) || [];
-    SUM.office = (rs[0] && rs[0].summary) || '';
-    UPD.office = (rs[0] && rs[0].updated) || '';
-    SHTAF = (rs[1] && rs[1].results) || [];
-    SUM.shtaf = (rs[1] && rs[1].summary) || '';
-    UPD.shtaf = (rs[1] && rs[1].updated) || '';
-    MINE = (rs[2] && rs[2].results) || [];
-    MINE_MULTI = !!(rs[2] && rs[2].multi);   // מתאמת/מנהל/צוות — "שלי" מכיל כמה סוכנים
-    if (!q) try{ localStorage.setItem('v2c:props', JSON.stringify(
-      {o: OFFICE.slice(0, 80), so: SUM.office, s: SHTAF.slice(0, 60), ss: SUM.shtaf, m: MINE.slice(0, 60), mm: MINE_MULTI})); }catch(e){}
-    render();
-    loadHot();   // טעינת הנכסים החמים של הסוכן (מצב הכפתורים)
-  });
+    step(POST(base ? swrU('/api/search/properties', 'props:o') : '/api/search/properties', {q: q || '', nosave: true}), 'props:o', _applyOffice),
+    step(POST(base ? swrU('/api/search/exclusives', 'props:s') : '/api/search/exclusives', {q: q || '', nosave: true}), 'props:s', _applyShtaf),
+    step(GET(base ? swrU('/api/my/properties', 'props:m') : '/api/my/properties'), 'props:m', _applyMine)
+  ]);
 }
 (function(){
+  // ציור מיידי: עותק מלא (v2s, מ-14/09) ואם אין — העותק החלקי הישן (v2c)
+  var got = false;
   try{
+    var o = JSON.parse(localStorage.getItem('v2s:props:o') || 'null'), sh = JSON.parse(localStorage.getItem('v2s:props:s') || 'null'), m = JSON.parse(localStorage.getItem('v2s:props:m') || 'null');
+    if (o && o.j){ _applyOffice(o.j); got = true; }
+    if (sh && sh.j){ _applyShtaf(sh.j); got = true; }
+    if (m && m.j){ _applyMine(m.j); got = true; }
+  }catch(e){}
+  if (!got) try{
     var c = JSON.parse(localStorage.getItem('v2c:props') || 'null');
     if (c && c.o){ OFFICE = c.o; SUM.office = c.so || ''; SHTAF = c.s || []; SUM.shtaf = c.ss || ''; MINE = c.m || []; MINE_MULTI = !!c.mm; }
   }catch(e){}
