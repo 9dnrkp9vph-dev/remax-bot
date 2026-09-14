@@ -9309,7 +9309,10 @@ def y2_norm_agency(row, office, office_id):
            "received_at": _rcv,   # המסך/המיון קוראים את התאריך מה-raw (09/09: היה ריק → 'פורסם' ריק ומיון לתחתית)
            "price": y2_num_str(g("price")), "office": str(office or "").strip(), "officeId": str(office_id or "").strip(),
            "link": g("link"), "phone": g("phone"), "excl": g("excl"),
-           "event_id": tok, "city": g("city"), "neighborhood": g("neighborhood"), "מקור": "yad2"}
+           "event_id": tok, "city": g("city"), "neighborhood": g("neighborhood"), "מקור": "yad2",
+           # 15/09: 'נראה לראשונה' מהסורק (imported_at) — יציב בין סריקות, בניגוד ל-received_at שנדרס בכל upsert;
+           # הדוח היומי משווה "נכסים חדשים" בין המשרדים לפיו (ריק = הסורק לא שלח → נופל ל-received_at)
+           "first_seen": y2_first_seen_str(g("imported_at") or g("first_seen"))}
     rec = {"event_id": tok, "street": street_full, "dest": raw["dest"], "link": g("link"),
            "price": y2_num_str(g("price")), "raw": raw}
     return sk, rec

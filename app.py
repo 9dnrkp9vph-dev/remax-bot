@@ -9594,7 +9594,7 @@ def build_office_report(day=None):
     # ── שת"פ (משרדים אחרים) ונכס נולד ──
     shtaf = _safe(fetch_external_exclusives, "shtaf")
     _xoff = lambda r: str(r.get("office", "") or "").strip() or "ללא שם משרד"
-    _xd = lambda r: _rep_date(r.get("received_at", ""))
+    _xd = lambda r: _rep_date(r.get("first_seen", "")) or _rep_date(r.get("received_at", ""))   # 15/09: נראה-לראשונה מהסורק, לא זמן קליטה
     _excl_on = lambda v: str(v or "").strip().lower() in ("1", "1.0", "true", "yes", "כן", "בלעדי")
     x_all, x_by = _rep_count(shtaf, _xd, P, key=_xoff)
     _, x_excl_by = _rep_count([r for r in shtaf if _excl_on(r.get("excl"))], _xd, P, key=_xoff)
@@ -9606,15 +9606,22 @@ def build_office_report(day=None):
     branches = len(set(str(r.get("_y2_office_id", "") or "").strip() for r in props if r.get("_y2_office_id")))
     nb = _safe(fetch_newborn, "newborn")
     _nbd = lambda r: _rep_date(r.get("נוצר בתאריך", ""))
+    _NB_CITIES = ("קרית חיים", "קרית אתא", "קרית מוצקין", "קרית ביאליק", "קרית ים")
     def _nb_city(r):
         c = str(r.get("עיר", "") or r.get("עיר / ישוב", "") or "").strip().replace("קריית", "קרית")
-        zone = " ".join(str(r.get(k, "") or "") for k in ("שכונה", "רחוב", "כתובת")).replace("קריית", "קרית")
-        if "חיפה" in c or "קרית חיים" in zone:
-            return "קרית חיים" if "קרית חיים" in (c + " " + zone) else c
-        return c or "ללא עיר"
+        zone = " ".join(str(r.get(k, "") or "") for k in ("שכונה", "רחוב", "כתובת", "תיאור נכס")).replace("קריית", "קרית")
+        if "קרית חיים" in (c + " " + zone):
+            return "קרית חיים"           # מזרחית+מערבית — כולל שורות שהעיר בהן 'חיפה'
+        for k in _NB_CITIES:
+            if k in c: return k
+        for k in _NB_CITIES:             # אין עיר (הצינור הישן) — מהכתובת/השכונה/התיאור
+            if k in zone: return k
+        return c or ""
     n_all, n_city = _rep_count(nb, _nbd, P, key=_nb_city)
     from collections import Counter as _C0
     n_city_total = _C0(_nb_city(r) for r in nb)
+    for _d0 in (n_city_total,) + tuple(n_city.values()):   # לא-ידוע לא מוצג (אייל 15/09 'תוריד את הללא עיר')
+        _d0.pop("", None); _d0.pop("—", None)
     # ── קונים ──
     buyers = _safe(_fetch_manual_buyers, "buyers")
     b_all, b_by = _rep_count(buyers, lambda r: _rep_date(r.get("date", "")), P, key=lambda r: _canon_agent_name(str(r.get("agent", "") or "").strip()))
@@ -9790,7 +9797,7 @@ def render_office_report_page(rep):
     # ── אנחנו מול השוק (החודש) ──
     others = sorted((d["shtaf_by_office"].get("month") or {}).items(), key=lambda kv: -kv[1])
     xex = d.get("shtaf_excl_by_office", {}).get("month") or {}
-    market = [(office + (f" · {branches} סניפים" if branches > 1 else ""), o_all.get("month", 0), o_excl.get("month", 0), True)] + \
+    market = [(office, o_all.get("month", 0), o_excl.get("month", 0), True)] + \
              [(o, n, xex.get(o, 0), False) for o, n in others]
     market.sort(key=lambda t: -t[1])
     pos = next((i + 1 for i, t in enumerate(market) if t[3]), 1)
@@ -9813,12 +9820,12 @@ def render_office_report_page(rep):
         (d["deals_closed"]["year"], "עסקאות שנסגרו השנה"), (calls["month"], "שיחות נכנסות החודש")))
     # ── כרטיסי מדדים ──
     def _kpi(title, c, sub="", accent="#1E3A5F"):
-        small = " · ".join(f"<span style='white-space:nowrap'>{h} <b>{c.get(p, 0)}</b></span>" for p, h in PH[1:])
-        return (f"<div class='kpi'><div class='kt'>{_e(title)}</div><div class='kv' style='color:{accent}'>{c.get('day', 0)}</div>"
+        small = " · ".join(f"<span style='white-space:nowrap'>{h} <b>{c.get(p, 0)}</b></span>" for p, h in (PH[0], PH[1], PH[3]))
+        return (f"<div class='kpi'><div class='kt'>{_e(title)} <span class='kh'>החודש</span></div><div class='kv' style='color:{accent}'>{c.get('month', 0)}</div>"
                 f"<div class='ks'>{small}</div>" + (f"<div class='ks2'>{_e(sub)}</div>" if sub else "") + "</div>")
     rate = (100.0 * ans["day"] / calls["day"]) if calls["day"] else None
     kpis = "".join([
-        _kpi("שיחות נכנסות", calls, f"נענו אתמול {ans['day']}" + (f" ({rate:.0f}%)" if rate is not None else "")),
+        _kpi("שיחות נכנסות", calls, f"נענו החודש {ans['month']}" + (f" ({100.0 * ans['month'] / calls['month']:.0f}%)" if calls['month'] else "") + f" · אתמול {ans['day']}"),
         _kpi("החתמות", sig, f"קונים {lab['קונים']['month']} · מוכרים {lab['מוכר']['month']} · בלעדיות {lab['בלעדיות']['month']} (החודש)", "#7A5E1C"),
         _kpi("נכסים חדשים שלנו", o_all, f"בבלעדיות: אתמול {o_excl.get('day', 0)} · החודש {o_excl.get('month', 0)}", "#C29435"),
         _kpi("קונים חדשים", d["buyers"], "", "#157A43"),
@@ -9847,7 +9854,10 @@ def render_office_report_page(rep):
     # ── אנחנו מול השוק ──
     mm = max([t[1] for t in market] + [1])
     mrows = ""
-    for i, (name, n, ex, ours) in enumerate(market[:9]):
+    shown = list(enumerate(market[:9]))
+    if not any(t[3] for _, t in shown):   # אנחנו מחוץ ל-9 הראשונים → בכל זאת מוצגים, במקום האמיתי (אייל 15/09)
+        shown.append(next((i, t) for i, t in enumerate(market) if t[3]))
+    for i, (name, n, ex, ours) in shown:
         w = int(100 * n / mm) if mm else 0
         mrows += (f"<div class='mrow{' ours' if ours else ''}'><div class='ml'><span class='mp'>{i+1}</span>{_e(name)}</div>"
                   f"<div class='cell'><b class='num'>{n}</b><div class='bar'><div class='fill' style='width:{w}%;background:{'#C29435' if ours else '#2C4C77'}'></div></div></div>"
@@ -9882,7 +9892,7 @@ def render_office_report_page(rep):
     .hs{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:12px 14px}.hn{font-size:30px;font-weight:800;color:#E4C56B;line-height:1}.hl{font-size:12.5px;color:#D9DEE8;margin-top:4px}
     .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:18px}
     .kpi{background:#fff;border-radius:20px;padding:18px 18px 14px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
-    .kt{font-size:14px;color:#6B7280;font-weight:600}.kv{font-size:50px;font-weight:800;line-height:1.05;margin:6px 0 4px}
+    .kt{font-size:14px;color:#6B7280;font-weight:600}.kh{font-size:11px;color:#C29435;font-weight:800;margin-inline-start:4px}.kv{font-size:50px;font-weight:800;line-height:1.05;margin:6px 0 4px}
     .ks{font-size:13px;color:#5B6472}.ks b{color:#1E3A5F}.ks2{font-size:12.5px;color:#6B7280;margin-top:6px;border-top:1px solid #EFEAE0;padding-top:6px}
     .sec{background:#fff;border-radius:22px;padding:20px 22px;box-shadow:0 6px 20px rgba(30,58,95,.06);margin-top:18px}
     .sec h2{margin:0 0 12px;font-size:20px;font-weight:800}.sec h2 small{font-weight:500;color:#6B7280;font-size:13px;margin-inline-start:8px}
@@ -10033,8 +10043,9 @@ def _report_build_and_send(day, to=""):
     try:
         rep = build_office_report(day)
         tm = rep["data"].get("timing") or {}
-        _REPORT_LAST.update({"state": "sending", "timing": tm, "subject": rep["subject"]})
-        ok, msg = _report_send_email(rep["subject"], rep["html"], rep["text"], to)
+        subj = rep["subject"] + " · נשלח " + _dt.datetime.now(_rep_tz()).strftime("%H:%M")   # נושא ייחודי — לא נבלע בשרשור הקודם ב-Gmail
+        _REPORT_LAST.update({"state": "sending", "timing": tm, "subject": subj})
+        ok, msg = _report_send_email(subj, rep["html"], rep["text"], to)
         _REPORT_LAST.update({"state": "done", "ok": bool(ok), "msg": msg, "secs": round(time.time() - t0, 1)})
         _report_record(key, ok, msg, {"secs": round(time.time() - t0, 1), "timing": tm})
         log.info(f"daily report manual {key}: {msg} in {round(time.time() - t0, 1)}s timing={tm}")
