@@ -7194,6 +7194,13 @@ C2C_PILOT         = (os.environ.get("C2C_PILOT", "") or "").strip()
 C2C_FIRST_TARGET  = (os.environ.get("C2C_FIRST_TARGET", "destination") or "destination").strip()
 # מייל סיכום 12:00 (Make → Gmail): GET /api/digest?k=<DIGEST_KEY>. ריק = כבוי.
 DIGEST_KEY        = (os.environ.get("DIGEST_KEY", "") or "").strip()
+# דוח יומי למשרד במייל (אייל 15/09): SMTP (Gmail app password) — ריק = לא נשלח אוטומטית (הדוח זמין ב-API).
+REPORT_TO         = (os.environ.get("REPORT_TO", "eyalshmul@gmail.com") or "").strip()
+REPORT_HOUR       = int((os.environ.get("REPORT_HOUR", "7") or "7").strip() or 7)
+SMTP_HOST         = (os.environ.get("SMTP_HOST", "smtp.gmail.com") or "").strip()
+SMTP_PORT         = int((os.environ.get("SMTP_PORT", "587") or "587").strip() or 587)
+SMTP_USER         = (os.environ.get("SMTP_USER", "") or "").strip()
+SMTP_PASS         = (os.environ.get("SMTP_PASS", "") or "").strip()
 HIDECALL_WRITE    = (os.environ.get("HIDECALL_WRITE", "sheets") or "sheets").strip().lower()
 EXCL_SOURCE       = (os.environ.get("EXCL_SOURCE", "sheets") or "sheets").strip().lower()
 PROPS_SOURCE      = (os.environ.get("PROPS_SOURCE", "sheets") or "sheets").strip().lower()
@@ -9486,6 +9493,320 @@ def api_digest():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     d = build_daily_digest()
     return jsonify({"ok": True, "subject": d["subject"], "html": d["html"], "text": d["text"], "counts": d["counts"]})
+
+# ── דוח יומי למשרד (אייל 15/09): שיחות · החתמות · שת"פ/נכס נולד · קונים · תהליכים — יומי/שבוע/חודש/שנה ──
+def _rep_tz():
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo("Asia/Jerusalem")
+    except Exception:
+        return _dt.timezone(_dt.timedelta(hours=3))
+
+def _rep_date(s):
+    """תאריך של רשומה בכל פורמט שבמערכת → date (שעון ישראל) או None.
+    'DD/MM/YYYY[ HH:MM]' ו-'DD.MM.YYYY' נקראים ישירות (בלי המרת אזור-זמן — הם כבר שעון ישראל);
+    ISO עם אזור-זמן מומר לישראל; ISO בלי אזור-זמן = ישראל."""
+    import datetime as _dt
+    s = str(s or "").strip()
+    if not s:
+        return None
+    m = re.match(r"^(\d{1,2})[./](\d{1,2})[./](\d{4})", s)
+    if m:
+        try: return _dt.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except Exception: return None
+    try:
+        d = _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is not None:
+            d = d.astimezone(_rep_tz())
+        return d.date()
+    except Exception:
+        pass
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        try: return _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except Exception: return None
+    return None
+
+def _rep_periods(day):
+    """יומי / מתחילת השבוע (ראשון) / מתחילת החודש / מתחילת השנה — כולם עד היום המבוקש כולל."""
+    import datetime as _dt
+    wk = day - _dt.timedelta(days=(day.weekday() + 1) % 7)   # weekday: שני=0 … ראשון=6
+    return {"day": (day, day), "week": (wk, day), "month": (day.replace(day=1), day),
+            "year": (day.replace(month=1, day=1), day)}
+
+_REP_PERIOD_HE = (("day", "אתמול"), ("week", "השבוע"), ("month", "החודש"), ("year", "השנה"))
+
+def _rep_count(items, getdate, periods, key=None):
+    """מונים לכל תקופה + פירוט לפי key (סוכן/משרד/תווית) לכל תקופה."""
+    from collections import Counter as _C
+    out = {p: 0 for p in periods}
+    by = {p: _C() for p in periods}
+    for it in items:
+        try:
+            d = getdate(it)
+        except Exception:
+            d = None
+        if not d:
+            continue
+        for p, (a, b) in periods.items():
+            if a <= d <= b:
+                out[p] += 1
+                if key:
+                    try: k = key(it) or "—"
+                    except Exception: k = "—"
+                    by[p][k] += 1
+    return out, by
+
+def build_office_report(day=None):
+    """הדוח היומי (אייל 15/09). day = התאריך המדווח (ברירת מחדל: אתמול, שעון ישראל).
+    מחזיר {subject, html, text, data}. כל מקור נתונים עטוף — כשל באחד לא מפיל את הדוח."""
+    import datetime as _dt
+    tz = _rep_tz()
+    now = _dt.datetime.now(tz)
+    if day is None:
+        day = (now - _dt.timedelta(days=1)).date()
+    P = _rep_periods(day)
+    def _safe(fn, what):
+        try:
+            return fn() or []
+        except Exception as e:
+            log.warning(f"daily report: {what} failed: {e}")
+            return []
+    try:
+        office = ((_load_config() or {}).get("v2_office") or {}).get("name") or "המשרד"
+    except Exception:
+        office = "המשרד"
+    # ── שיחות ──
+    calls = _safe(lambda: web_fetch_raw("שיחות"), "calls")
+    c_all, c_by = _rep_count(calls, lambda c: _rep_date(c.get("received_at", "")), P, key=lambda c: _canon_agent_name(str(c.get("agent", "") or "").strip()))
+    c_ans, _ = _rep_count([c for c in calls if _is_answered_status(str(c.get("status", "") or ""))], lambda c: _rep_date(c.get("received_at", "")), P)
+    # ── החתמות ──
+    sigs = _safe(get_signings, "signings")
+    s_all, s_by = _rep_count(sigs, lambda g: _rep_date(g.get("received_at", "")), P, key=lambda g: _canon_agent_name(str(g.get("agent", "") or "").strip()))
+    s_lab = {}
+    for lab in ("קונים", "מוכר", "בלעדיות", "שכירות"):
+        s_lab[lab], _ = _rep_count([g for g in sigs if _deal_label(g.get("deal_type", "")) == lab], lambda g: _rep_date(g.get("received_at", "")), P)
+    # ── שת"פ (משרדים אחרים) ונכס נולד ──
+    shtaf = _safe(fetch_external_exclusives, "shtaf")
+    x_all, x_by = _rep_count(shtaf, lambda r: _rep_date(r.get("received_at", "")), P, key=lambda r: str(r.get("office", "") or "").strip() or "ללא שם משרד")
+    nb = _safe(fetch_newborn, "newborn")
+    n_all, _ = _rep_count(nb, lambda r: _rep_date(r.get("נוצר בתאריך", "")), P)
+    # ── קונים ──
+    buyers = _safe(_fetch_manual_buyers, "buyers")
+    b_all, b_by = _rep_count(buyers, lambda r: _rep_date(r.get("date", "")), P, key=lambda r: _canon_agent_name(str(r.get("agent", "") or "").strip()))
+    # ── תהליכים ועסקאות ──
+    deals = _safe(_deals_load, "deals")
+    def _dagent(it):
+        ags = it.get("agents") or []
+        return _canon_agent_name(str(ags[0] if ags else (it.get("by", "") or "")).strip()) or "—"
+    def _dcreated(it):
+        d = _rep_date(it.get("created", ""))
+        if d: return d
+        try: return _dt.datetime.fromtimestamp(float(it.get("ts") or 0), tz).date() if it.get("ts") else None
+        except Exception: return None
+    d_open, d_open_by = _rep_count(deals, _dcreated, P, key=_dagent)
+    closed = [it for it in deals if it.get("deal")]
+    d_closed, d_closed_by = _rep_count(closed, lambda it: _rep_date(it.get("close_date", "")), P, key=_dagent)
+    lawyer_now = [it for it in deals if not it.get("deal") and str(it.get("stage", "") or "").strip() == 'אצל עו"ד']
+    from collections import Counter as _C
+    lawyer_by = _C(_dagent(it) for it in lawyer_now)
+    open_now = sum(1 for it in deals if not it.get("deal"))
+    # ── סריקות אחרונות ──
+    try: scan_office = _props_updated(fetch_sheet_rows()) or "—"
+    except Exception: scan_office = "—"
+    try: scan_shtaf = _excl_updated_stamp(shtaf) or "—"
+    except Exception: scan_shtaf = "—"
+    scan_nb = "—"
+    try:
+        best, be = "", 0.0
+        for r in nb:
+            v = str(r.get("נוצר בתאריך", "") or ""); e = _excl_epoch(v)
+            if e > be: be, best = e, v
+        scan_nb = best[:16] or "—"
+    except Exception:
+        pass
+    # ── תובנות (מבוססות נתונים בלבד) ──
+    ins = []
+    try:
+        days_m = max(1, (day - P["month"][0]).days + 1)
+        avg_calls = c_all["month"] / days_m
+        if c_all["day"] == 0:
+            ins.append("אפס שיחות נכנסות ביום המדווח — לבדוק שהמרכזיה/הוובהוק מזרימים.")
+        elif avg_calls and c_all["day"] >= avg_calls * 1.5:
+            ins.append(f"יום חזק בשיחות: {c_all['day']} מול ממוצע חודשי של {avg_calls:.1f} ליום.")
+        elif avg_calls and c_all["day"] <= avg_calls * 0.5:
+            ins.append(f"יום חלש בשיחות: {c_all['day']} מול ממוצע חודשי של {avg_calls:.1f} ליום.")
+        if c_all["day"]:
+            rate = 100.0 * c_ans["day"] / c_all["day"]
+            if rate < 60: ins.append(f"רק {rate:.0f}% מהשיחות אתמול נענו — {c_all['day'] - c_ans['day']} לא נענו, שווה 'חייג חזרה'.")
+        if c_by["week"]:
+            top, n = c_by["week"].most_common(1)[0]
+            ins.append(f"הכי הרבה שיחות השבוע: {top} ({n}).")
+        if s_all["day"] == 0 and c_all["day"] >= 10:
+            ins.append("הרבה שיחות ואפס החתמות אתמול — פער בין לידים לפגישות.")
+        if s_lab["בלעדיות"]["month"] and s_lab["מוכר"]["month"] and s_lab["בלעדיות"]["month"] > s_lab["מוכר"]["month"]:
+            ins.append("יש החתמות בלעדיות בלי טופס מוכר תואם החודש — לבדוק זוגות חסרים.")
+        if x_by["day"]:
+            top, n = x_by["day"].most_common(1)[0]
+            ins.append(f"המשרד הפעיל ביותר אתמול בשת\"פ: {top} ({n} מודעות חדשות).")
+        if lawyer_now:
+            ins.append(f"{len(lawyer_now)} תהליכים אצל עו\"ד כרגע — " + ", ".join(f"{a} ({n})" for a, n in lawyer_by.most_common(4)) + ".")
+        if d_closed["month"] == 0 and day.day >= 15:
+            ins.append("אפס עסקאות שנסגרו החודש עד כה.")
+        if scan_office != "—":
+            so = _rep_date(scan_office)
+            if so and (day - so).days >= 1:
+                ins.append(f"סריקת נכסי המשרד האחרונה {scan_office} — לא רצה ביום המדווח.")
+    except Exception as e:
+        log.warning(f"daily report insights: {e}")
+    data = {"day": day.isoformat(), "office": office,
+            "calls": c_all, "calls_answered": c_ans, "calls_by_agent": {p: dict(v) for p, v in c_by.items()},
+            "signings": s_all, "signings_by_label": s_lab, "signings_by_agent": {p: dict(v) for p, v in s_by.items()},
+            "shtaf": x_all, "shtaf_by_office": {p: dict(v) for p, v in x_by.items()},
+            "newborn": n_all, "buyers": b_all, "buyers_by_agent": {p: dict(v) for p, v in b_by.items()},
+            "deals_opened": d_open, "deals_closed": d_closed, "deals_closed_by_agent": {p: dict(v) for p, v in d_closed_by.items()},
+            "deals_opened_by_agent": {p: dict(v) for p, v in d_open_by.items()},
+            "lawyer_now": len(lawyer_now), "lawyer_by_agent": dict(lawyer_by), "open_now": open_now,
+            "scans": {"office": scan_office, "shtaf": scan_shtaf, "newborn": scan_nb}, "insights": ins}
+    # ── רינדור ──
+    dstr = day.strftime("%d/%m/%Y")
+    subject = f"דוח יומי {office} · {dstr}"
+    def _esc(x): return str(x or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    def _row(label, vals, bold=False):
+        cells = "".join(f"<td style='padding:7px 10px;text-align:center;border-bottom:1px solid #EFEAE0;{'font-weight:800' if bold else ''}'>{_esc(v)}</td>" for v in vals)
+        return f"<tr><td style='padding:7px 10px;border-bottom:1px solid #EFEAE0;{'font-weight:800' if bold else ''}'>{_esc(label)}</td>{cells}</tr>"
+    def _table(title, rows):
+        head = "".join(f"<th style='padding:7px 10px;text-align:center;color:#6B7280;font-weight:600;font-size:12px'>{h}</th>" for _, h in _REP_PERIOD_HE)
+        return (f"<h3 style='margin:18px 0 6px;color:#1E3A5F;font-size:16px'>{_esc(title)}</h3>"
+                f"<table dir='rtl' style='width:100%;border-collapse:collapse;font-size:14px'><tr><th></th>{head}</tr>{''.join(rows)}</table>")
+    def _vals(c): return [c[p] for p, _ in _REP_PERIOD_HE]
+    def _by_list(by, p, n=6):
+        return ", ".join(f"{a} ({k})" for a, k in by[p].most_common(n)) if by[p] else "—"
+    H = []
+    H.append(_table("שיחות", [_row("שיחות נכנסות", _vals(c_all), True), _row("נענו", _vals(c_ans)),
+                              _row("לא נענו", [c_all[p] - c_ans[p] for p, _ in _REP_PERIOD_HE])]))
+    H.append(f"<div style='font-size:12.5px;color:#5B6472;margin-top:4px'>לפי סוכן (השבוע): {_esc(_by_list(c_by, 'week'))}</div>")
+    H.append(_table("החתמות", [_row("סה\"כ", _vals(s_all), True), _row("קונים", _vals(s_lab["קונים"])), _row("מוכרים", _vals(s_lab["מוכר"])),
+                               _row("בלעדיות", _vals(s_lab["בלעדיות"])), _row("שכירות", _vals(s_lab["שכירות"]))]))
+    H.append(f"<div style='font-size:12.5px;color:#5B6472;margin-top:4px'>לפי סוכן (החודש): {_esc(_by_list(s_by, 'month', 8))}</div>")
+    H.append(_table("נכסים שיצאו לשוק", [_row("שת\"פ (משרדים אחרים)", _vals(x_all), True), _row("נכס נולד (פרטיים)", _vals(n_all), True)]))
+    H.append(f"<div style='font-size:12.5px;color:#5B6472;margin-top:4px'>שת\"פ לפי משרד — אתמול: {_esc(_by_list(x_by, 'day'))}<br>החודש: {_esc(_by_list(x_by, 'month', 8))}</div>")
+    H.append(_table("קונים שנכנסו למערכת", [_row("קונים", _vals(b_all), True)]))
+    H.append(f"<div style='font-size:12.5px;color:#5B6472;margin-top:4px'>לפי סוכן (החודש): {_esc(_by_list(b_by, 'month', 8))}</div>")
+    H.append(_table("תהליכים ועסקאות", [_row("תהליכים שנפתחו", _vals(d_open)), _row("עסקאות שנסגרו", _vals(d_closed), True)]))
+    H.append(f"<div style='font-size:12.5px;color:#5B6472;margin-top:4px'>פתוחים כרגע: <b>{open_now}</b> · אצל עו\"ד: <b>{len(lawyer_now)}</b>"
+             + (f" ({_esc(', '.join(f'{a} ({n})' for a, n in lawyer_by.most_common(8)))})" if lawyer_now else "")
+             + f"<br>נסגרו לפי סוכן — השבוע: {_esc(_by_list(d_closed_by, 'week', 8))} · החודש: {_esc(_by_list(d_closed_by, 'month', 8))} · השנה: {_esc(_by_list(d_closed_by, 'year', 10))}"
+             + f"<br>נפתחו לפי סוכן (החודש): {_esc(_by_list(d_open_by, 'month', 8))}</div>")
+    H.append(f"<h3 style='margin:18px 0 6px;color:#1E3A5F;font-size:16px'>סריקות אחרונות</h3>"
+             f"<div style='font-size:13.5px'>נכסי המשרד (יד2): <b>{_esc(scan_office)}</b> · שת\"פ: <b>{_esc(scan_shtaf)}</b> · נכס נולד (מודעה אחרונה): <b>{_esc(scan_nb)}</b></div>")
+    if ins:
+        H.append("<h3 style='margin:18px 0 6px;color:#7A5E1C;font-size:16px'>תובנות</h3><ul style='margin:0;padding-inline-start:18px;font-size:13.5px'>"
+                 + "".join(f"<li style='margin:0 0 6px'>{_esc(i)}</li>" for i in ins) + "</ul>")
+    html = (f"<div dir=\"rtl\" style=\"font-family:Heebo,Arial,sans-serif;color:#1E3A5F;max-width:680px;margin:0 auto;padding:16px;background:#F2EFE7\">"
+            f"<div style='background:#fff;border-radius:20px;padding:18px 20px;box-shadow:0 6px 20px rgba(30,58,95,.06)'>"
+            f"<h2 style='margin:0 0 4px;font-size:20px'>דוח יומי · {_esc(office)}</h2>"
+            f"<div style='color:#6B7280;font-size:13px'>יום {_esc(dstr)} · השבוע מ-{P['week'][0].strftime('%d/%m')} · הופק {now.strftime('%d/%m/%Y %H:%M')}</div>"
+            + "".join(H) + "</div></div>")
+    # ── טקסט ──
+    L = [subject, ""]
+    def _tl(label, c): L.append(f"{label}: " + " · ".join(f"{h} {c[p]}" for p, h in _REP_PERIOD_HE))
+    _tl("שיחות", c_all); _tl("נענו", c_ans)
+    _tl("החתמות", s_all); _tl("  קונים", s_lab["קונים"]); _tl("  מוכרים", s_lab["מוכר"]); _tl("  בלעדיות", s_lab["בלעדיות"])
+    _tl("שת\"פ", x_all); _tl("נכס נולד", n_all); _tl("קונים שנכנסו", b_all)
+    _tl("תהליכים שנפתחו", d_open); _tl("עסקאות שנסגרו", d_closed)
+    L.append(f"פתוחים כרגע {open_now} · אצל עו\"ד {len(lawyer_now)}")
+    L.append(f"סריקות: משרד {scan_office} · שת\"פ {scan_shtaf} · נכס נולד {scan_nb}")
+    if ins: L += ["", "תובנות:"] + ["- " + i for i in ins]
+    return {"subject": subject, "html": html, "text": "\n".join(L), "data": data}
+
+def _report_send_email(subject, html, text, to=None):
+    """שליחת הדוח במייל דרך SMTP (Gmail app password ב-env). מחזיר (ok, הודעה)."""
+    to = (to or REPORT_TO or "").strip()
+    if not (SMTP_USER and SMTP_PASS and to):
+        return False, "SMTP לא מוגדר (SMTP_USER/SMTP_PASS/REPORT_TO)"
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.utils import formataddr
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = formataddr(("אפי", SMTP_USER))
+        msg["To"] = to
+        msg.attach(MIMEText(text, "plain", "utf-8"))
+        msg.attach(MIMEText(html, "html", "utf-8"))
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as sm:
+            sm.ehlo(); sm.starttls(); sm.login(SMTP_USER, SMTP_PASS)
+            sm.sendmail(SMTP_USER, [x.strip() for x in to.split(",") if x.strip()], msg.as_string())
+        return True, "נשלח"
+    except Exception as e:
+        log.warning(f"daily report mail failed: {e}")
+        return False, f"שליחה נכשלה: {type(e).__name__}"
+
+def _report_auth_ok():
+    """מפתח משותף (?k=DIGEST_KEY) או סשן מנהל/מפתח."""
+    import hmac as _h
+    k = str(request.args.get("k", "") or "").strip()
+    if DIGEST_KEY and k and _h.compare_digest(k, DIGEST_KEY):
+        return True
+    s = _web_auth()
+    return bool(s and (s.get("role") == "admin" or _is_dev(s.get("phone", ""))))
+
+def _report_day_arg():
+    import datetime as _dt
+    d = str(request.args.get("d", "") or "").strip()
+    if not d:
+        return None
+    try: return _dt.date.fromisoformat(d)
+    except Exception: return _rep_date(d)
+
+@app.route("/api/daily-report", methods=["GET"])
+def api_daily_report():
+    """הדוח היומי: ברירת מחדל HTML (לדפדפן / Make → Gmail); ?fmt=json → {subject, html, text, data}."""
+    if not _report_auth_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    rep = build_office_report(_report_day_arg())
+    if (request.args.get("fmt", "") or "").lower() == "json":
+        return jsonify({"ok": True, **rep})
+    return Response("<!doctype html><meta charset='utf-8'><title>" + rep["subject"] + "</title>" + rep["html"], mimetype="text/html")
+
+@app.route("/api/daily-report/send", methods=["POST", "GET"])
+def api_daily_report_send():
+    """הפקה + שליחה במייל (SMTP). ?to= לעקוף את REPORT_TO (מנהל בלבד)."""
+    if not _report_auth_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    rep = build_office_report(_report_day_arg())
+    ok, msg = _report_send_email(rep["subject"], rep["html"], rep["text"], request.args.get("to", ""))
+    return jsonify({"ok": ok, "msg": msg, "subject": rep["subject"], "day": rep["data"]["day"]})
+
+def _report_daily_loop():
+    """שליחה אוטומטית פעם ביום ב-REPORT_HOUR (שעון ישראל) — idempotent דרך הקונפיג (v2_daily_report[יום])."""
+    import datetime as _dt
+    while True:
+        try:
+            now = _dt.datetime.now(_rep_tz())
+            if now.hour == REPORT_HOUR and now.minute < 10:
+                key = now.date().isoformat()
+                sent = (_load_config() or {}).get("v2_daily_report") or {}
+                if key not in sent:
+                    rep = build_office_report()
+                    ok, msg = _report_send_email(rep["subject"], rep["html"], rep["text"])
+                    log.info(f"daily report {key}: {msg}")
+                    def _mark(cfg, _k=key, _ok=ok):
+                        d = cfg.get("v2_daily_report") or {}
+                        d[_k] = {"ts": time.time(), "ok": _ok}
+                        for kk in sorted(d)[:-14]: d.pop(kk, None)   # שומרים שבועיים
+                        cfg["v2_daily_report"] = d
+                        return True
+                    _config_mutate(_mark)
+        except Exception as e:
+            log.warning(f"daily report loop: {e}")
+        time.sleep(60)
+
+if SMTP_USER and SMTP_PASS and (os.environ.get("DAILY_REPORT", "1") or "1") != "0":
+    _threading.Thread(target=_report_daily_loop, daemon=True).start()
 
 def check_new_calls():
     """מזהה שיחה חדשה בגיליון 'שיחות' ושולח לסוכן וואטסאפ עם תמלול + קישור הוספת קונה.
