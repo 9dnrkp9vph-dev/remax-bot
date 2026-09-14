@@ -1759,19 +1759,48 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
                     score += 20
                 continue
             garden_only = False
-            col = col_map.get(feature_clean, feature_clean)
-            val = (row.get(col, "") or "").strip()
-            has_feature = val and val not in ("ללא", "לא", "", "0", "אין")
-            if has_feature:
+            # 14/09: שורות יד2 בלי עמודות מעלית/חנייה/ממ"ד/מרפסת → "עם מעלית" פסל את כל המשרד (0 תוצאות).
+            # עכשיו: עמודה מפורשת (גיליון ישן) או תגיות/תיאור יד2; לא-ידוע = לא פוסל, רק בלי בונוס.
+            _fs = _row_feature_state(row, col_map.get(feature_clean, feature_clean), feature_clean)
+            if _fs is True:
                 score += 10
-            else:
+            elif _fs is False:
                 missing_features += 1
                 if flex_level <= 1:
                     return 0
                 score -= 15
+            else:
+                score -= 3
         if flex_level == 2 and not garden_only and missing_features == len([f for f in must_have if f.strip() != "גינה"]):
             return 0
     return max(0, score)
+_FEATURE_SYN = {
+    "מעלית": ("מעלית",),
+    "חנייה": ("חניה", "חנייה", "חניות"),
+    "ממ״ד": ('ממ"ד', "ממ״ד", "ממד", 'ממ"דים'),
+    "מרפסת": ("מרפסת", "מרפסות"),
+    "גישה לנכים": ("גישה לנכים", "נגיש לנכים", "נגישות"),
+}
+_FEATURE_NEG = ("ללא", "בלי", "אין")
+
+def _row_feature_state(row, col, feature):
+    """True/False/None לתכונה בשורת נכס: עמודה מפורשת של הגיליון הישן ('כן'/'לא'), ואם אין —
+    תגיות יד2 ('מעלית · חניה · ממ"ד') והתיאור ('… עם מעלית …' / '… ללא מעלית …'). None = לא ידוע."""
+    val = str(row.get(col, "") or "").strip()
+    if val:
+        return val not in ("ללא", "לא", "0", "אין")
+    syn = _FEATURE_SYN.get(feature, (feature,))
+    txt = " ".join(str(row.get(k, "") or "") for k in ("תגיות", "_desc_ae", "תיאור", "הערות"))
+    if not txt.strip():
+        return None
+    for w in syn:
+        for m in re.finditer(re.escape(w), txt):
+            pre = txt[max(0, m.start() - 6):m.start()]
+            if any(n in pre for n in _FEATURE_NEG):
+                return False
+            return True
+    return None
+
 def search_listings_in_sheet(query: dict) -> list:
     rows = fetch_sheet_rows()
     if not rows:
