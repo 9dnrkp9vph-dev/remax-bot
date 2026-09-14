@@ -567,7 +567,12 @@ function c2cDial(tel){
   /* גידור פיילוט: whoami במטמון אומר c2c:false → חייגן רגיל מיד, בלי חלון ריק ובלי שרת */
   var who = null;
   try{ who = (JSON.parse(localStorage.getItem('v2who') || 'null') || {}).j || null; }catch(_e){}
-  if (who && who.ok && who.c2c === false){ location.href = 'tel:' + tel; return Promise.resolve(false); }
+  if (who && who.ok && who.c2c === false){
+    /* 14/09: לא בשקט — הסוכן חייב לדעת שזו נפילה לחייגן (אין קו וירטואלי בניהול / לא בפיילוט C2C_PILOT) */
+    if (typeof toast === 'function') toast('חיוג במרכזיה לא פעיל עבורך (אין מספר וירטואלי בניהול / לא בפיילוט) — מחייג מהטלפון');
+    setTimeout(function(){ location.href = 'tel:' + tel; }, 900);
+    return Promise.resolve(false);
+  }
   var fallback = function(){ location.href = 'tel:' + tel; return false; };
   var req = (typeof POST === 'function') ? POST('/api/click2call', {to: tel}) : Promise.resolve({ok: false, disabled: true});
   return req.then(function(j){
