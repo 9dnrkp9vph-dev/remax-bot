@@ -9604,6 +9604,12 @@ def build_office_report(day=None):
     o_all, _ = _rep_count(props, _pd, P)
     o_excl, _ = _rep_count([r for r in props if _excl_on(r.get("בלעדיות"))], _pd, P)
     branches = len(set(str(r.get("_y2_office_id", "") or "").strip() for r in props if r.get("_y2_office_id")))
+    # 15/09 (אייל): ההשוואה בין המשרדים = מודעות **בפרסום כרגע** ביד2 (אותו מדד כמו 'המשרד שלנו' במסך הנכסים)
+    from collections import Counter as _C1
+    x_active = _C1(_xoff(r) for r in shtaf)
+    x_active_excl = _C1(_xoff(r) for r in shtaf if _excl_on(r.get("excl")))
+    o_active = len(props)
+    o_active_excl = sum(1 for r in props if _excl_on(r.get("בלעדיות")))
     nb = _safe(fetch_newborn, "newborn")
     _nbd = lambda r: _rep_date(r.get("נוצר בתאריך", ""))
     _NB_CITIES = ("קרית חיים", "קרית אתא", "קרית מוצקין", "קרית ביאליק", "קרית ים")
@@ -9678,14 +9684,14 @@ def build_office_report(day=None):
         if s_lab["בלעדיות"]["month"] and s_lab["מוכר"]["month"] and s_lab["בלעדיות"]["month"] > s_lab["מוכר"]["month"]:
             ins.append("יש החתמות בלעדיות בלי טופס מוכר תואם החודש — לבדוק זוגות חסרים.")
         # אנחנו מול השוק (החודש): דירוג לפי מודעות חדשות, כולל בלעדיות
-        others = sorted(x_by["month"].items(), key=lambda kv: -kv[1])
+        others = sorted(x_active.items(), key=lambda kv: -kv[1])
         if others:
             o1, n1 = others[0]
-            if o_all["month"] >= n1:
-                ins.append(f"{office} מובילה את השוק החודש: {o_all['month']} מודעות חדשות ({o_excl['month']} בבלעדיות) מול {n1} של {o1} — פער של {o_all['month'] - n1}.")
+            if o_active >= n1:
+                ins.append(f"{office} מובילה את השוק: {o_active} נכסים בפרסום ({o_active_excl} בבלעדיות) מול {n1} של {o1} — פער של {o_active - n1}.")
             else:
-                pos = 1 + sum(1 for _, n in others if n > o_all["month"])
-                ins.append(f"{o1} מוביל את השוק החודש עם {n1} מודעות חדשות; אנחנו במקום {pos} עם {o_all['month']}.")
+                pos = 1 + sum(1 for _, n in others if n > o_active)
+                ins.append(f"{o1} מוביל את השוק עם {n1} נכסים בפרסום; אנחנו במקום {pos} עם {o_active} ({o_active_excl} בבלעדיות).")
         if lawyer_now:
             ins.append(f"{len(lawyer_now)} תהליכים אצל עו\"ד כרגע — " + ", ".join(f"{a} ({n})" for a, n in lawyer_by.most_common(4)) + ".")
         if d_closed["month"] == 0 and day.day >= 15:
@@ -9702,6 +9708,8 @@ def build_office_report(day=None):
             "shtaf": x_all, "shtaf_by_office": {p: dict(v) for p, v in x_by.items()},
             "shtaf_excl_by_office": {p: dict(v) for p, v in x_excl_by.items()},
             "office_new": o_all, "office_new_excl": o_excl, "branches": branches,
+            "office_active": o_active, "office_active_excl": o_active_excl,
+            "shtaf_active_by_office": dict(x_active), "shtaf_active_excl_by_office": dict(x_active_excl),
             "newborn": n_all, "newborn_by_city": {p: dict(v) for p, v in n_city.items()}, "newborn_city_total": dict(n_city_total),
             "buyers": b_all, "buyers_by_agent": {p: dict(v) for p, v in b_by.items()},
             "deals_opened": d_open, "deals_closed": d_closed, "deals_closed_by_agent": {p: dict(v) for p, v in d_closed_by.items()},
@@ -9769,6 +9777,8 @@ def build_office_report(day=None):
     for _c, _tot in sorted(n_city_total.items(), key=lambda kv: -kv[1])[:8]:
         L.append(f"  {_c}: פעילים {_tot} · " + " · ".join(f"{h} {n_city[p].get(_c, 0)}" for p, h in _REP_PERIOD_HE))
     L.append(f"נכסים חדשים שלנו ביד2: " + " · ".join(f"{h} {o_all[p]}" for p, h in _REP_PERIOD_HE) + f" (בבלעדיות ביד2 החודש {o_excl['month']} · החתמות בלעדיות החודש {s_lab['בלעדיות']['month']})")
+    _mk = sorted([(office, o_active, o_active_excl)] + [(o, n, x_active_excl.get(o, 0)) for o, n in x_active.items()], key=lambda t: -t[1])
+    L.append("בפרסום כרגע ביד2 לפי משרד: " + ", ".join(f"{o} {n} ({e} בלעדיות)" for o, n, e in _mk[:10]))
     L.append("שת\"פ לפי משרד — אתמול: " + _by_list(x_by, "day")); L.append("שת\"פ לפי משרד — החודש: " + _by_list(x_by, "month", 8)); L.append("")
     L.append("— קונים —"); _tl("נכנסו למערכת", b_all); L.append("לפי סוכן (החודש): " + _by_list(b_by, "month", 8)); L.append("")
     L.append("— תהליכים ועסקאות —"); _tl("נפתחו", d_open); _tl("נסגרו", d_closed)
@@ -9804,28 +9814,28 @@ def render_office_report_page(rep):
     o_all, o_excl = d.get("office_new") or {}, d.get("office_new_excl") or {}
     branches = d.get("branches") or 0
     # ── אנחנו מול השוק (החודש) ──
-    others = sorted((d["shtaf_by_office"].get("month") or {}).items(), key=lambda kv: -kv[1])
-    xex = d.get("shtaf_excl_by_office", {}).get("month") or {}
-    market = [(office, o_all.get("month", 0), o_excl.get("month", 0), True)] + \
-             [(o, n, xex.get(o, 0), False) for o, n in others]
+    # 15/09 (אייל): השוואה לפי נכסים **בפרסום כרגע** ביד2 — אותו מדד לכולם (לנו: כמו 'המשרד שלנו' במסך הנכסים)
+    o_act, o_act_ex = d.get("office_active", 0), d.get("office_active_excl", 0)
+    xact = d.get("shtaf_active_by_office") or {}; xex = d.get("shtaf_active_excl_by_office") or {}
+    market = [(office, o_act, o_act_ex, True)] + [(o, n, xex.get(o, 0), False) for o, n in xact.items()]
     market.sort(key=lambda t: -t[1])
     pos = next((i + 1 for i, t in enumerate(market) if t[3]), 1)
     n_offices = len(market)
     runner = next((t for t in market if not t[3]), None)
-    gap = (o_all.get("month", 0) - runner[1]) if runner else 0
-    # ── היירו: ההישג של החודש ──
+    gap = (o_act - runner[1]) if runner else 0
+    # ── היירו: המצב בשוק ──
     if pos == 1 and runner and gap > 0:
-        hero_title = f"מקום 1 בשוק · {mname}"
-        hero_sub = f"{o_all.get('month', 0)} נכסים חדשים לשוק, מתוכם {o_excl.get('month', 0)} בבלעדיות — פער של {gap} מול {runner[0]} ({n_offices} משרדים בהשוואה)"
+        hero_title = "מקום 1 בשוק"
+        hero_sub = f"{o_act} נכסים בפרסום ביד2, מתוכם {o_act_ex} בבלעדיות — פער של {gap} מול {runner[0]} ({n_offices} משרדים בהשוואה)"
     elif pos == 1:
-        hero_title = f"מקום 1 בשוק · {mname}"
-        hero_sub = f"{o_all.get('month', 0)} נכסים חדשים לשוק, מתוכם {o_excl.get('month', 0)} בבלעדיות"
+        hero_title = "מקום 1 בשוק"
+        hero_sub = f"{o_act} נכסים בפרסום ביד2, מתוכם {o_act_ex} בבלעדיות"
     else:
-        hero_title = f"מקום {pos} מתוך {n_offices} בשוק · {mname}"
-        hero_sub = f"{o_all.get('month', 0)} נכסים חדשים לשוק ({o_excl.get('month', 0)} בבלעדיות) · המוביל: {market[0][0]} עם {market[0][1]}"
-    hero_sub += f" · החתמות בלעדיות שלנו החודש: {lab['בלעדיות']['month']}"
+        hero_title = f"מקום {pos} מתוך {n_offices} בשוק"
+        hero_sub = f"{o_act} נכסים בפרסום ביד2 ({o_act_ex} בבלעדיות) · המוביל: {market[0][0]} עם {market[0][1]}"
+    hero_sub += f" · החתמות בלעדיות שלנו החודש: {lab['בלעדיות']['month']} · נכסים חדשים שלנו החודש: {o_all.get('month', 0)}"
     hero_stats = "".join(f"<div class='hs'><div class='hn'>{v}</div><div class='hl'>{_e(l)}</div></div>" for v, l in (
-        (lab["בלעדיות"]["month"], "החתמות בלעדיות החודש"), (sig["month"], "החתמות החודש"),
+        (o_act, "נכסים בפרסום ביד2"), (lab["בלעדיות"]["month"], "החתמות בלעדיות החודש"),
         (d["deals_closed"]["year"], "עסקאות שנסגרו השנה"), (calls["month"], "שיחות נכנסות החודש")))
     # ── כרטיסי מדדים ──
     def _kpi(title, c, sub="", accent="#1E3A5F"):
@@ -9863,7 +9873,7 @@ def render_office_report_page(rep):
     # ── אנחנו מול השוק ──
     mm = max([t[1] for t in market] + [1])
     mrows = ""
-    shown = list(enumerate(market[:9]))
+    shown = list(enumerate(market[:12]))
     if not any(t[3] for _, t in shown):   # אנחנו מחוץ ל-9 הראשונים → בכל זאת מוצגים, במקום האמיתי (אייל 15/09)
         shown.append(next((i, t) for i, t in enumerate(market) if t[3]))
     for i, (name, n, ex, ours) in shown:
@@ -9929,10 +9939,10 @@ def render_office_report_page(rep):
             f"<div class='hero'><div class='htop'><div class='hbrand'><div class='hlogo'><img src='/assets/logo' alt='' onerror=\"this.outerHTML='<span class=init>{init}</span>'\"></div>"
             f"<div><h1>סיכום יומי · {_e(office)}</h1><div class='hsub'>יום {_e(dstr)} · השבוע מ-{_e(wkstr)} · הנתונים לפי אתמול / השבוע / החודש / השנה</div></div></div>"
             f"<div class='effie'>{effie_logo}<div>אפי<b>העוזר של המתווך</b></div></div></div>"
-            f"<div class='ach'><div class='t'>ההישג של החודש</div><div class='h'>{_e(hero_title)}</div><div class='s'>{_e(hero_sub)}</div></div>"
+            f"<div class='ach'><div class='t'>המצב בשוק</div><div class='h'>{_e(hero_title)}</div><div class='s'>{_e(hero_sub)}</div></div>"
             f"<div class='hstats'>{hero_stats}</div></div>"
             f"<div class='grid'>{kpis}</div>"
-            f"<div class='sec'><h2>אנחנו מול השוק<small>נתוני יד2 עדכניים ל-{_e(sc_.get('shtaf') or sc_.get('office') or '')} · נכסים חדשים שיצאו לשוק ב{_e(mname)} · {n_offices} משרדים</small></h2>{mrows}"
+            f"<div class='sec'><h2>אנחנו מול השוק<small>נתוני יד2 עדכניים ל-{_e(sc_.get('shtaf') or sc_.get('office') or '')} · נכסים בפרסום כרגע · {n_offices} משרדים</small></h2>{mrows}"
             "</div>" + nb_sec +
             f"<div class='sec'><h2>פודיום הסוכנים<small>דירוג משולב: שיחות, החתמות, קונים, סגירות</small></h2>{leaders}</div>"
             f"<div class='sec'><h2>צנרת העסקאות</h2><div class='pipe'>"

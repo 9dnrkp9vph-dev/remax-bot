@@ -1945,7 +1945,14 @@ function repSend(d){
   POST('/api/daily-report/send' + (d ? '?d=' + d : ''), {}).then(function(j){
     if (!(j && j.ok)){ toast('לא התקבל: ' + ((j && (j.msg || j.error)) || 'שגיאה')); return; }
     var n = 0; clearInterval(_repPoll);
-    _repPoll = setInterval(function(){ repLoad(); if (++n >= 18) clearInterval(_repPoll); }, 5000);   // 90 שניות
+    _repPoll = setInterval(function(){
+      GET('/api/daily-report/status').then(function(st){
+        var L = (st && st.last) || {};
+        if (L.state === 'done'){ clearInterval(_repPoll); toast(L.ok ? ('נשלח למייל ✓ ' + (L.secs ? L.secs + 'ש׳' : '')) : ('לא נשלח: ' + (L.msg || 'ללא סיבה'))); }
+        repLoad();
+      }).catch(function(){});
+      if (++n >= 36){ clearInterval(_repPoll); toast('עדיין מפיק… תרענן את הדף בעוד דקה'); }
+    }, 5000);   // עד 3 דקות
   }).catch(function(){ toast('שגיאה'); });
 }
 function repOpen(){
