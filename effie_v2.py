@@ -2478,7 +2478,13 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
           <span class="num" id="vpNum"></span>
           <span class="sub">· המספר הווירטואלי</span>
         </div>
-        <svg width="15" height="15" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="#2E6BD6" stroke-width="1.6"/></svg>
+        <div class="r" style="gap:10px">
+          <!-- חיוג לכל מספר מהקו הווירטואלי (14/09): click2call דרך השרת/Make -->
+          <button class="sq" style="background:#EAF0FA;width:36px;height:36px" onclick="event.stopPropagation();dialAny()" aria-label="חיוג למספר מהקו הווירטואלי">
+            <svg width="16" height="16" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7" stroke-linejoin="round"/></svg>
+          </button>
+          <svg width="15" height="15" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M11 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1" fill="none" stroke="#2E6BD6" stroke-width="1.6"/></svg>
+        </div>
       </div>
       <div class="segs" id="filters">
         <div class="sg on" data-f="all" onclick="setFilter(this)">הכל</div>
@@ -2705,6 +2711,23 @@ function setFilter(node){
   render();
 }
 function toggleHidden(){ VIEW = (VIEW === 'hidden') ? 'main' : 'hidden'; render(); window.scrollTo(0, 0); }
+function dialAny(){   // חיוג לכל מספר מהקו הווירטואלי של הסוכן (14/09) — click2call דרך השרת/Make
+  var vp = el('vpNum').textContent || '';
+  openSheet('<h3>חיוג מהמספר הווירטואלי</h3>' +
+    '<div style="font-size:12px;color:#6B7280">השיחה תצא מ-' + esc(vp) + ' · הלקוח יצלצל ראשון, ואז הטלפון שלך</div>' +
+    '<input id="anyTel" type="tel" inputmode="tel" placeholder="050-1234567" autocomplete="off" ' +
+    'style="width:100%;box-sizing:border-box;font-size:16px;padding:12px 14px;border:1px solid #E9E4D8;border-radius:13px;background:#fff;direction:ltr;text-align:right" ' +
+    'onkeydown="if(event.key===\'Enter\')dialAnyGo()">' +
+    '<button class="btn btn-blue" onclick="dialAnyGo()">חייג</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
+  setTimeout(function(){ try{ el('anyTel').focus(); }catch(e){} }, 60);
+}
+function dialAnyGo(){
+  var v = String((el('anyTel') || {}).value || '').replace(/\D/g, '');
+  if (v.length < 9){ toast('מספר לא תקין'); return Promise.resolve(false); }
+  closeSheet();
+  return c2cDial(v);
+}
 function copyVp(){
   var v = el('vpNum').textContent;
   try{ navigator.clipboard.writeText(v).then(function(){ toast('המספר הועתק'); }); }
