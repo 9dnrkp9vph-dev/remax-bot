@@ -8126,6 +8126,23 @@ def _dedupe_exclusives(rows):
     return list(best.values())
 
 @app.route("/api/search/exclusives", methods=["POST"])
+def _excl_updated_stamp(rows):
+    """'עדכון אחרון' של השת"פ — הקליטה הטרייה ביותר. 14/09: max לקסיקוגרפי הניח ISO; שורות יד2
+    נושאות 'DD/MM/YYYY HH:MM' ואחרי איפוס הישן נשארו רק הן → '26//2/11/0'. עכשיו לפי epoch,
+    והפלט תמיד DD/MM/YYYY[ HH:MM]."""
+    best, be = "", 0.0
+    for r in rows or []:
+        sv = str(r.get("received_at", "") or "").strip()
+        e = _excl_epoch(sv)
+        if e > be:
+            be, best = e, sv
+    if not best:
+        return ""
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?", best)
+    if m:
+        return f"{m.group(3)}/{m.group(2)}/{m.group(1)}" + (f" {m.group(4)}:{m.group(5)}" if m.group(4) else "")
+    return best[:16]
+
 def api_search_exclusives():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
@@ -8167,13 +8184,7 @@ def api_search_exclusives():
                 "lat": round(_ll[0], 6) if _ll else None,
                 "lng": round(_ll[1], 6) if _ll else None,
             })
-        _upd = ""
-        try:
-            _mx = max((str(r.get("received_at", "") or "") for r in rows), default="")
-            if len(_mx) >= 10:
-                _upd = f"{_mx[8:10]}/{_mx[5:7]}/{_mx[0:4]}"
-        except Exception:
-            pass
+        _upd = _excl_updated_stamp(rows)
         return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "ptype": parsed.get("property_type", ""), "updated": _upd, "results": out})
     except Exception as e:
         log.error(f"exclusives search error: {e}", exc_info=True)
