@@ -9785,6 +9785,16 @@ def api_daily_report():
         return jsonify({"ok": True, **rep})
     return Response("<!doctype html><meta charset='utf-8'><title>" + rep["subject"] + "</title>" + rep["html"], mimetype="text/html")
 
+@app.route("/api/daily-report/status", methods=["GET"])
+def api_daily_report_status():
+    """מצב השליחות האוטומטיות (14 ימים) — לניהול/אבחון."""
+    if not _report_auth_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    d = (_load_config() or {}).get("v2_daily_report") or {}
+    return jsonify({"ok": True, "to": REPORT_TO, "hour": REPORT_HOUR,
+                    "channel": "smtp" if (SMTP_USER and SMTP_PASS) else ("apps_script" if (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN) else "none"),
+                    "days": {k: d[k] for k in sorted(d)[-14:]}})
+
 @app.route("/api/daily-report/send", methods=["POST", "GET"])
 def api_daily_report_send():
     """הפקה + שליחה במייל (SMTP). ?to= לעקוף את REPORT_TO (מנהל בלבד)."""
@@ -9803,13 +9813,18 @@ def _report_daily_loop():
             if now.hour >= REPORT_HOUR:   # השלמה: עלייה/deploy אחרי השעה → נשלח מיד (פעם אחת ביום)
                 key = now.date().isoformat()
                 sent = (_load_config() or {}).get("v2_daily_report") or {}
-                if key not in sent:
+                rec = sent.get(key) or {}
+                # 15/09: כשל שליחה לא "נשלח" — ניסיון חוזר כל 15 דק', עד 8 ביום; הצלחה נועלת את היום
+                due = (not rec.get("ok")) and int(rec.get("tries") or 0) < 8 \
+                      and (time.time() - float(rec.get("ts") or 0)) >= 900
+                if due:
                     rep = build_office_report()
                     ok, msg = _report_send_email(rep["subject"], rep["html"], rep["text"])
-                    log.info(f"daily report {key}: {msg}")
-                    def _mark(cfg, _k=key, _ok=ok):
+                    log.info(f"daily report {key}: {msg} (try {int(rec.get('tries') or 0) + 1})")
+                    def _mark(cfg, _k=key, _ok=ok, _msg=msg):
                         d = cfg.get("v2_daily_report") or {}
-                        d[_k] = {"ts": time.time(), "ok": _ok}
+                        prev = d.get(_k) or {}
+                        d[_k] = {"ts": time.time(), "ok": _ok, "tries": int(prev.get("tries") or 0) + 1, "msg": str(_msg)[:120]}
                         for kk in sorted(d)[:-14]: d.pop(kk, None)   # שומרים שבועיים
                         cfg["v2_daily_report"] = d
                         return True

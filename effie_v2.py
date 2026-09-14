@@ -1688,6 +1688,16 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <button onclick="snapTake()" style="margin-top:10px;width:100%;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">צור גיבוי עכשיו</button>
     </div>
 
+    <!-- דוח יומי במייל (אייל 15/09) -->
+    <div class="card" id="repCard">
+      <div class="cardTitle">דוח יומי במייל</div>
+      <div id="repStatus" style="font-size:12px;color:#6B7280;line-height:1.5">טוען…</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button onclick="repSend('')" style="flex:1;padding:12px 0;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">שלח עכשיו (אתמול)</button>
+        <button onclick="repOpen()" style="flex:1;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">הצג דוח</button>
+      </div>
+    </div>
+
     <!-- הגדרות המשרד -->
     <div class="card">
       <div class="cardTitle">הגדרות המשרד</div>
@@ -1841,7 +1851,7 @@ function boot(){
           .concat(((rs[1] && rs[1].unmatchedListings) || []).map(function(u){ return {n: u.name, c: u.count, w: 'נכסים'}; }));
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
-        render(); loadSnaps();
+        render(); loadSnaps(); repLoad();
       });
   }).catch(function(){ location.replace('/v2'); });
 }
@@ -1908,6 +1918,31 @@ function snapRestore(i){
   POST('/v2/api/admin/props/restore', {id: s.id}).then(function(j){
     if (j && j.ok){ toast('שוחזרו ' + j.n + ' נכסים'); loadSnaps(); }
     else toast('השחזור נכשל' + (j && j.reason ? ' (' + j.reason + ')' : ''));
+  }).catch(function(){ toast('שגיאה'); });
+}
+function repLoad(){
+  GET('/api/daily-report/status').then(function(j){
+    var b = el('repStatus'); if (!b) return;
+    if (!j || !j.ok){ b.textContent = 'אין הרשאה / לא זמין'; return; }
+    var days = j.days || {}, ks = Object.keys(days).sort().reverse();
+    var ch = j.channel === 'smtp' ? 'SMTP' : j.channel === 'apps_script' ? 'Apps Script (כמו דיווח תקלה)' : 'אין ערוץ מייל';
+    var h = 'נשלח ל-' + esc(j.to || '') + ' · שעה ' + esc(String(j.hour)) + ':00 · ערוץ: ' + esc(ch) + '<br>';
+    if (!ks.length) h += 'עדיין לא נשלח אף דוח.';
+    else h += ks.slice(0, 5).map(function(k){ var d = days[k] || {}; return esc(k) + ': ' + (d.ok ? 'נשלח' : 'נכשל') + (d.tries ? ' (' + d.tries + ' ניסיונות)' : '') + (d.msg ? ' — ' + esc(d.msg) : ''); }).join('<br>');
+    b.innerHTML = h;
+  }).catch(function(){});
+}
+function repSend(d){
+  toast('מפיק ושולח…');
+  POST('/api/daily-report/send' + (d ? '?d=' + d : ''), {}).then(function(j){
+    toast(j && j.ok ? ('נשלח: ' + (j.subject || '')) : ('לא נשלח: ' + ((j && (j.msg || j.error)) || 'שגיאה')));
+    repLoad();
+  }).catch(function(){ toast('שגיאה'); });
+}
+function repOpen(){
+  fetch('/api/daily-report', {headers: {'X-Auth-Token': TOK}}).then(function(r){ return r.text(); }).then(function(html){
+    var w = window.open('', '_blank'); if (!w){ toast('חלון נחסם'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
   }).catch(function(){ toast('שגיאה'); });
 }
 function renderRemoved(){
