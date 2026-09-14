@@ -9969,12 +9969,18 @@ def api_daily_report_status():
     if not _report_auth_ok():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     d = (_load_config() or {}).get("v2_daily_report") or {}
+    th = _REPORT_THREAD[0]
     return jsonify({"ok": True, "to": REPORT_TO, "hour": REPORT_HOUR,
                     "channel": "smtp" if (SMTP_USER and SMTP_PASS) else ("apps_script" if (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN) else "none"),
+                    "thread_alive": bool(th is not None and th.is_alive()),
+                    "last": dict(_REPORT_LAST),
                     "days": {k: d[k] for k in sorted(d)[-14:]}})
 
+_REPORT_LAST = {}          # מצב ההפקה/שליחה האחרונה בזיכרון — לאבחון גם כשהקונפיג לא נשמר
+_REPORT_THREAD = [None]    # ה-thread של הלולאה היומית (לבדיקת חיים ב-status)
+
 def _report_record(key, ok, msg, extra=None):
-    """רישום תוצאת שליחה ב-v2_daily_report[יום] (מקור האמת לכרטיס בניהול)."""
+    """רישום תוצאת שליחה ב-v2_daily_report[יום] (מקור האמת לכרטיס בניהול). מחזיר האם נשמר."""
     def _mark(cfg):
         d = cfg.get("v2_daily_report") or {}
         prev = d.get(key) or {}
@@ -9985,24 +9991,33 @@ def _report_record(key, ok, msg, extra=None):
         cfg["v2_daily_report"] = d
         return True
     try:
-        _config_mutate(_mark)
+        saved, _ = _config_mutate(_mark)
+        _REPORT_LAST["cfg_saved"] = bool(saved)
+        if not saved: log.warning("daily report record: config save refused")
+        return bool(saved)
     except Exception as e:
         log.warning(f"daily report record: {e}")
+        _REPORT_LAST["cfg_saved"] = False; _REPORT_LAST["cfg_error"] = f"{type(e).__name__}: {str(e)[:120]}"
+        return False
 
 def _report_build_and_send(day, to=""):
     """הפקה + שליחה + רישום — רץ ב-thread (הכפתור בניהול חוזר מיד)."""
     import datetime as _dt
     t0 = time.time()
     key = (day or (_dt.datetime.now(_rep_tz()) - _dt.timedelta(days=1)).date()).isoformat() if isinstance(day, _dt.date) or day is None else str(day)
+    _REPORT_LAST.update({"state": "running", "day": key, "started": time.time(), "ok": None, "msg": "", "secs": None, "timing": {}})
     try:
         rep = build_office_report(day)
-        ok, msg = _report_send_email(rep["subject"], rep["html"], rep["text"], to)
         tm = rep["data"].get("timing") or {}
+        _REPORT_LAST.update({"state": "sending", "timing": tm, "subject": rep["subject"]})
+        ok, msg = _report_send_email(rep["subject"], rep["html"], rep["text"], to)
+        _REPORT_LAST.update({"state": "done", "ok": bool(ok), "msg": msg, "secs": round(time.time() - t0, 1)})
         _report_record(key, ok, msg, {"secs": round(time.time() - t0, 1), "timing": tm})
         log.info(f"daily report manual {key}: {msg} in {round(time.time() - t0, 1)}s timing={tm}")
     except Exception as e:
         log.warning(f"daily report manual {key} crashed: {e}", exc_info=True)
-        _report_record(key, False, f"קריסה: {type(e).__name__}: {str(e)[:100]}", {"secs": round(time.time() - t0, 1)})
+        _REPORT_LAST.update({"state": "done", "ok": False, "msg": f"קריסה: {type(e).__name__}: {str(e)[:100]}", "secs": round(time.time() - t0, 1)})
+        _report_record(key, False, _REPORT_LAST["msg"], {"secs": round(time.time() - t0, 1)})
 
 @app.route("/api/daily-report/send", methods=["POST", "GET"])
 def api_daily_report_send():
@@ -10029,8 +10044,11 @@ def _report_daily_loop():
                 due = (not rec.get("ok")) and int(rec.get("tries") or 0) < 8 \
                       and (time.time() - float(rec.get("ts") or 0)) >= 900
                 if due:
+                    _REPORT_LAST.update({"state": "running", "day": key, "started": time.time(), "ok": None, "msg": "", "secs": None, "timing": {}, "auto": True})
+                    _t0 = time.time()
                     rep = build_office_report()
                     ok, msg = _report_send_email(rep["subject"], rep["html"], rep["text"])
+                    _REPORT_LAST.update({"state": "done", "ok": bool(ok), "msg": msg, "secs": round(time.time() - _t0, 1), "timing": rep["data"].get("timing") or {}})
                     log.info(f"daily report {key}: {msg} (try {int(rec.get('tries') or 0) + 1})")
                     def _mark(cfg, _k=key, _ok=ok, _msg=msg):
                         d = cfg.get("v2_daily_report") or {}
@@ -10042,11 +10060,13 @@ def _report_daily_loop():
                     _config_mutate(_mark)
         except Exception as e:
             log.warning(f"daily report loop: {e}")
+            _REPORT_LAST.update({"state": "done", "ok": False, "msg": f"לולאה: {type(e).__name__}: {str(e)[:100]}"})
         time.sleep(60)
 
 if ((SMTP_USER and SMTP_PASS) or (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN)) and REPORT_TO \
         and (os.environ.get("DAILY_REPORT", "1") or "1") != "0":
-    _threading.Thread(target=_report_daily_loop, daemon=True).start()
+    _REPORT_THREAD[0] = _threading.Thread(target=_report_daily_loop, daemon=True, name="daily-report")
+    _REPORT_THREAD[0].start()
 
 def check_new_calls():
     """מזהה שיחה חדשה בגיליון 'שיחות' ושולח לסוכן וואטסאפ עם תמלול + קישור הוספת קונה.

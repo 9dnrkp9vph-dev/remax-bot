@@ -1926,8 +1926,13 @@ function repLoad(){
     if (!j || !j.ok){ b.textContent = 'אין הרשאה / לא זמין'; return; }
     var days = j.days || {}, ks = Object.keys(days).sort().reverse();
     var ch = j.channel === 'smtp' ? 'SMTP' : j.channel === 'apps_script' ? 'Apps Script (כמו דיווח תקלה)' : 'אין ערוץ מייל';
-    var h = 'נשלח ל-' + esc(j.to || '') + ' · שעה ' + esc(String(j.hour)) + ':00 · ערוץ: ' + esc(ch) + '<br>';
-    if (!ks.length) h += 'עדיין לא נשלח אף דוח.';
+    var h = 'נשלח ל-' + esc(j.to || '') + ' · שעה ' + esc(String(j.hour)) + ':00 · ערוץ: ' + esc(ch) + (j.thread_alive === false ? ' · <b style="color:#C24040">השליחה האוטומטית לא רצה</b>' : '') + '<br>';
+    var L = j.last || {};
+    if (L.state){
+      var tm = L.timing && Object.keys(L.timing).length ? ' · זמנים: ' + Object.keys(L.timing).map(function(x){ return x + ' ' + L.timing[x] + 'ש׳'; }).join(', ') : '';
+      h += '<b>' + (L.state === 'done' ? (L.ok ? 'נשלח' : 'נכשל') : L.state === 'sending' ? 'שולח…' : 'מפיק…') + '</b>' + (L.day ? ' ' + esc(L.day) : '') + (L.secs ? ' · ' + L.secs + 'ש׳' : '') + (L.msg ? ' — ' + esc(L.msg) : '') + esc(tm) + (L.cfg_saved === false ? ' · <span style="color:#C24040">הרישום לקונפיג נכשל' + (L.cfg_error ? ' (' + esc(L.cfg_error) + ')' : '') + '</span>' : '') + '<br>';
+    }
+    if (!ks.length) h += 'עדיין לא נרשם אף דוח.';
     else h += ks.slice(0, 5).map(function(k){ var d = days[k] || {};
       var tm = d.timing ? (' · זמנים: ' + Object.keys(d.timing).map(function(x){ return x + ' ' + d.timing[x] + 'ש׳'; }).join(', ')) : '';
       return esc(k) + ': ' + (d.ok ? 'נשלח' : 'נכשל') + (d.tries ? ' (' + d.tries + ' ניסיונות)' : '') + (d.secs ? ' · ' + d.secs + 'ש׳' : '') + (d.msg ? ' — ' + esc(d.msg) : '') + esc(tm); }).join('<br>');
@@ -1944,13 +1949,10 @@ function repSend(d){
   }).catch(function(){ toast('שגיאה'); });
 }
 function repOpen(){
-  var w = window.open('', '_blank');   // נפתח בתוך המגע (אחרת iOS חוסם); התוכן נכתב כשמגיע
-  if (!w){ toast('הדפדפן חסם חלון — מנסה באותו טאב'); }
-  else { w.document.open(); w.document.write('<!doctype html><meta charset="utf-8"><body dir="rtl" style="font-family:Heebo,Arial;padding:24px;color:#1E3A5F">מפיק את הדוח… (עד דקה)</body>'); w.document.close(); }
-  fetch('/api/daily-report', {headers: {'X-Auth-Token': TOK}}).then(function(r){ return r.text(); }).then(function(html){
-    if (w){ w.document.open(); w.document.write(html); w.document.close(); }
-    else { document.open(); document.write(html); document.close(); }
-  }).catch(function(){ toast('שגיאה בהפקת הדוח'); if (w) try{ w.close(); }catch(e){} });
+  // ניווט באותו טאב עם הטוקן ב-query (השרת מקבל ?token=) — בלי window.open שה-WebView חוסם,
+  // ובלי להמתין ל-fetch: הדפדפן מציג את הטעינה בעצמו, וחזרה = כפתור אחורה
+  toast('מפיק את הדוח… (עד דקה)');
+  location.href = '/api/daily-report?token=' + encodeURIComponent(TOK || '');
 }
 function renderRemoved(){
   var card = el('rmvCard');
