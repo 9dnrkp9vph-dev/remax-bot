@@ -8125,7 +8125,6 @@ def _dedupe_exclusives(rows):
             best[key] = r
     return list(best.values())
 
-@app.route("/api/search/exclusives", methods=["POST"])
 def _excl_updated_stamp(rows):
     """'עדכון אחרון' של השת"פ — הקליטה הטרייה ביותר. 14/09: max לקסיקוגרפי הניח ISO; שורות יד2
     נושאות 'DD/MM/YYYY HH:MM' ואחרי איפוס הישן נשארו רק הן → '26//2/11/0'. עכשיו לפי epoch,
@@ -8143,6 +8142,7 @@ def _excl_updated_stamp(rows):
         return f"{m.group(3)}/{m.group(2)}/{m.group(1)}" + (f" {m.group(4)}:{m.group(5)}" if m.group(4) else "")
     return best[:16]
 
+@app.route("/api/search/exclusives", methods=["POST"])
 def api_search_exclusives():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
