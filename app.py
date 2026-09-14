@@ -9732,6 +9732,107 @@ def build_office_report(day=None):
     if ins: L += ["", "— תובנות —"] + ["- " + i for i in ins]
     return {"subject": subject, "html": html, "text": "\n".join(L), "data": data}
 
+def render_office_report_page(rep):
+    """עמוד מצגת לישיבת צוות (אייל 15/09: 'מסודר ושיווקי לצופה') — מהנתונים של build_office_report.
+    מסך מלא, RTL, פלטת אפי; כרטיסי מדדים גדולים, סוכנים מובילים עם פסים, שוק לפי משרדים, צנרת, תובנות."""
+    import datetime as _dt
+    d = rep["data"]; office = d.get("office") or "המשרד"
+    def _e(x): return str(x or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    try: dstr = _dt.date.fromisoformat(d["day"]).strftime("%d/%m/%Y")
+    except Exception: dstr = d.get("day", "")
+    try:
+        _dd = _dt.date.fromisoformat(d["day"])
+        wk = _dd - _dt.timedelta(days=(_dd.weekday() + 1) % 7)
+        wkstr = wk.strftime("%d/%m")
+    except Exception:
+        wkstr = ""
+    PH = (("day", "אתמול"), ("week", "השבוע"), ("month", "החודש"), ("year", "השנה"))
+    def _kpi(title, c, sub="", accent="#1E3A5F"):
+        small = " · ".join(f"<span style='white-space:nowrap'>{h} <b>{c.get(p, 0)}</b></span>" for p, h in PH[1:])
+        return (f"<div class='kpi'><div class='kt'>{_e(title)}</div><div class='kv' style='color:{accent}'>{c.get('day', 0)}</div>"
+                f"<div class='ks'>{small}</div>" + (f"<div class='ks2'>{_e(sub)}</div>" if sub else "") + "</div>")
+    calls, ans = d["calls"], d["calls_answered"]
+    sig = d["signings"]; lab = d["signings_by_label"]
+    new_props = {p: d["shtaf"].get(p, 0) + d["newborn"].get(p, 0) for p, _ in PH}
+    rate = (100.0 * ans["day"] / calls["day"]) if calls["day"] else None
+    kpis = "".join([
+        _kpi("שיחות נכנסות", calls, f"נענו אתמול {ans['day']}" + (f" ({rate:.0f}%)" if rate is not None else "")),
+        _kpi("החתמות", sig, f"קונים {lab['קונים']['month']} · מוכרים {lab['מוכר']['month']} · בלעדיות {lab['בלעדיות']['month']} (החודש)", "#7A5E1C"),
+        _kpi("נכסים חדשים בשוק", new_props, f"שת\"פ {d['shtaf']['day']} · נכס נולד {d['newborn']['day']} (אתמול)"),
+        _kpi("קונים חדשים", d["buyers"], "", "#157A43"),
+        _kpi("עסקאות שנסגרו", d["deals_closed"], f"פתוחים {d['open_now']} · אצל עו\"ד {d['lawyer_now']}", "#2E6BD6"),
+    ])
+    # ── סוכנים מובילים: ניקוד משולב (שיחות השבוע ×1, החתמות החודש ×5, קונים החודש ×3, סגירות השנה ×20) ──
+    from collections import defaultdict as _dd_
+    sc = _dd_(lambda: {"calls": 0, "sigs": 0, "buyers": 0, "closed": 0})
+    for a, n in (d["calls_by_agent"].get("week") or {}).items(): sc[a]["calls"] += n
+    for a, n in (d["signings_by_agent"].get("month") or {}).items(): sc[a]["sigs"] += n
+    for a, n in (d["buyers_by_agent"].get("month") or {}).items(): sc[a]["buyers"] += n
+    for a, n in (d["deals_closed_by_agent"].get("year") or {}).items(): sc[a]["closed"] += n
+    sc.pop("—", None); sc.pop("", None)
+    rank = sorted(sc.items(), key=lambda kv: -(kv[1]["calls"] + 5 * kv[1]["sigs"] + 3 * kv[1]["buyers"] + 20 * kv[1]["closed"]))[:10]
+    mx = {k: max([v[k] for _, v in rank] + [1]) for k in ("calls", "sigs", "buyers", "closed")}
+    def _bar(v, m, color):
+        w = int(100 * v / m) if m else 0
+        return f"<div class='bar'><div class='fill' style='width:{w}%;background:{color}'></div><span><i>{v}</i></span></div>"
+    rows = "".join(f"<tr><td class='nm'><span class='pos'>{i+1}</span>{_e(a)}</td>"
+                   f"<td>{_bar(v['calls'], mx['calls'], '#1E3A5F')}</td><td>{_bar(v['sigs'], mx['sigs'], '#C29435')}</td>"
+                   f"<td>{_bar(v['buyers'], mx['buyers'], '#157A43')}</td><td>{_bar(v['closed'], mx['closed'], '#2E6BD6')}</td></tr>"
+                   for i, (a, v) in enumerate(rank))
+    leaders = (f"<div class='tbl'><table class='lead'><tr><th>סוכן</th><th>שיחות · השבוע</th><th>החתמות · החודש</th><th>קונים · החודש</th><th>סגירות · השנה</th></tr>{rows}</table></div>"
+               if rank else "<div class='empty'>עדיין אין פעילות לפי סוכן בתקופה</div>")
+    # ── השוק: שת"פ לפי משרד (החודש) ──
+    xo = sorted((d["shtaf_by_office"].get("month") or {}).items(), key=lambda kv: -kv[1])[:8]
+    xm = max([n for _, n in xo] + [1])
+    market = "".join(f"<div class='mrow'><div class='ml'>{_e(o)}</div>{_bar(n, xm, '#2C4C77')}</div>" for o, n in xo) or "<div class='empty'>אין מודעות חדשות החודש</div>"
+    # ── צנרת ──
+    law = ", ".join(f"{_e(a)} ({n})" for a, n in sorted((d.get("lawyer_by_agent") or {}).items(), key=lambda kv: -kv[1])) or "—"
+    closed_m = ", ".join(f"{_e(a)} ({n})" for a, n in sorted((d["deals_closed_by_agent"].get("month") or {}).items(), key=lambda kv: -kv[1])) or "—"
+    opened_m = ", ".join(f"{_e(a)} ({n})" for a, n in sorted((d["deals_opened_by_agent"].get("month") or {}).items(), key=lambda kv: -kv[1])) or "—"
+    ins = "".join(f"<div class='ins'>{_e(i)}</div>" for i in (d.get("insights") or [])) or "<div class='empty'>אין תובנות מיוחדות ליום הזה</div>"
+    sc_ = d.get("scans") or {}
+    css = """
+    *{box-sizing:border-box}body{margin:0;background:#F2EFE7;color:#1E3A5F;font-family:Heebo,Arial,sans-serif}
+    .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 48px}
+    .hd{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}
+    .hd h1{margin:0;font-size:34px;font-weight:800;letter-spacing:-.3px}.hd .sub{color:#6B7280;font-size:16px;margin-top:4px}
+    .hd .brand{font-size:14px;color:#6B7280;text-align:left}.hd .brand b{display:block;font-size:22px;color:#1E3A5F}
+    .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+    .kpi{background:#fff;border-radius:20px;padding:18px 18px 14px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+    .kt{font-size:14px;color:#6B7280;font-weight:600}.kv{font-size:52px;font-weight:800;line-height:1.05;margin:6px 0 4px}
+    .ks{font-size:13px;color:#5B6472}.ks b{color:#1E3A5F}.ks2{font-size:12.5px;color:#6B7280;margin-top:6px;border-top:1px solid #EFEAE0;padding-top:6px}
+    .sec{background:#fff;border-radius:22px;padding:20px 22px;box-shadow:0 6px 20px rgba(30,58,95,.06);margin-top:18px}
+    .sec h2{margin:0 0 12px;font-size:20px;font-weight:800}.sec h2 small{font-weight:500;color:#6B7280;font-size:13px;margin-inline-start:8px}
+    .two{display:grid;grid-template-columns:1.25fr 1fr;gap:18px}@media(max-width:900px){.two{grid-template-columns:1fr}}
+    table.lead{width:100%;min-width:560px;border-collapse:collapse;font-size:15px}table.lead th{color:#6B7280;font-weight:600;font-size:12.5px;text-align:right;padding:4px 8px}
+    table.lead td{padding:7px 8px;border-top:1px solid #F1EDE3;vertical-align:middle}td.nm{font-weight:800;white-space:nowrap;width:1%}
+    .pos{display:inline-block;width:24px;height:24px;border-radius:50%;background:#E4C56B;color:#231700;font-size:12.5px;text-align:center;line-height:24px;margin-inline-end:8px}
+    .bar{position:relative;background:#F2EFE7;border-radius:999px;height:22px;min-width:0}.bar .fill{height:100%;border-radius:999px;transition:width .4s}
+    .bar span{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding:0 6px;font-size:12.5px;font-weight:800;color:#1E3A5F}
+    .bar span i{font-style:normal;background:rgba(255,255,255,.92);border-radius:999px;padding:0 7px;line-height:16px;min-width:22px;text-align:center}
+    .mrow{display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;margin:6px 0}@media(max-width:700px){.mrow{grid-template-columns:100px 1fr}}
+    .tbl{overflow-x:auto}.hd{flex-wrap:wrap}.ml{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pipe{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}@media(max-width:700px){.pipe{grid-template-columns:1fr}.grid{grid-template-columns:1fr 1fr}.kv{font-size:40px}}.pbox{background:#F7F5EE;border-radius:16px;padding:14px}.pbox .n{font-size:34px;font-weight:800}.pbox .l{font-size:13px;color:#6B7280}.pbox .w{font-size:13px;margin-top:6px}
+    .ins{background:#FBF3DD;border-inline-start:4px solid #C29435;border-radius:12px;padding:10px 14px;margin:8px 0;font-size:15px}
+    .empty{color:#6B7280;font-size:14px}.ft{margin-top:18px;color:#6B7280;font-size:12.5px;text-align:center}
+    @media print{body{background:#fff}.kpi,.sec{box-shadow:none;border:1px solid #EFEAE0}}
+    """
+    return (f"<!doctype html><html lang='he' dir='rtl'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>{_e(rep['subject'])}</title><link href='https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700;800&display=swap' rel='stylesheet'><style>{css}</style></head><body><div class='wrap'>"
+            f"<div class='hd'><div><h1>סיכום יומי · {_e(office)}</h1><div class='sub'>יום {_e(dstr)} · השבוע מ-{_e(wkstr)} · הנתונים לפי אתמול / השבוע / החודש / השנה</div></div>"
+            f"<div class='brand'>אפי<b>{_e(office)}</b></div></div>"
+            f"<div class='grid'>{kpis}</div>"
+            f"<div class='two'><div class='sec'><h2>הסוכנים המובילים<small>דירוג משולב: שיחות, החתמות, קונים, סגירות</small></h2>{leaders}</div>"
+            f"<div class='sec'><h2>השוק סביבנו<small>מודעות חדשות של משרדים אחרים · החודש</small></h2>{market}"
+            f"<div style='margin-top:14px;font-size:14px;color:#5B6472'>נכס נולד (פרטיים): אתמול <b>{d['newborn']['day']}</b> · השבוע <b>{d['newborn']['week']}</b> · החודש <b>{d['newborn']['month']}</b></div></div></div>"
+            f"<div class='sec'><h2>צנרת העסקאות</h2><div class='pipe'>"
+            f"<div class='pbox'><div class='n'>{d['open_now']}</div><div class='l'>תהליכים פתוחים</div><div class='w'>נפתחו החודש: {opened_m}</div></div>"
+            f"<div class='pbox'><div class='n'>{d['lawyer_now']}</div><div class='l'>אצל עו\"ד</div><div class='w'>{law}</div></div>"
+            f"<div class='pbox'><div class='n' style='color:#2E6BD6'>{d['deals_closed']['month']}</div><div class='l'>נסגרו החודש · השנה {d['deals_closed']['year']}</div><div class='w'>{closed_m}</div></div></div></div>"
+            f"<div class='sec'><h2>תובנות</h2>{ins}</div>"
+            f"<div class='ft'>סריקות אחרונות — נכסי המשרד {_e(sc_.get('office'))} · שת\"פ {_e(sc_.get('shtaf'))} · נכס נולד {_e(sc_.get('newborn'))}</div>"
+            "</div></body></html>")
+
 def _report_send_email(subject, html, text, to=None):
     """שליחת הדוח במייל דרך SMTP (Gmail app password ב-env). מחזיר (ok, הודעה)."""
     to = (to or REPORT_TO or "").strip()
@@ -9768,6 +9869,9 @@ def _report_auth_ok():
     k = str(request.args.get("k", "") or "").strip()
     if DIGEST_KEY and k and _h.compare_digest(k, DIGEST_KEY):
         return True
+    _tvk = (os.environ.get("TV_KEY", "") or "").strip()   # מסך המשרד (קיוסק) — צפייה בלבד
+    if _tvk and k and _h.compare_digest(k, _tvk):
+        return True
     s = _web_auth()
     return bool(s and (s.get("role") == "admin" or _is_dev(s.get("phone", ""))))
 
@@ -9785,9 +9889,12 @@ def api_daily_report():
     if not _report_auth_ok():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     rep = build_office_report(_report_day_arg())
-    if (request.args.get("fmt", "") or "").lower() == "json":
+    fmt = (request.args.get("fmt", "") or "").lower()
+    if fmt == "json":
         return jsonify({"ok": True, **rep})
-    return Response("<!doctype html><meta charset='utf-8'><title>" + rep["subject"] + "</title>" + rep["html"], mimetype="text/html")
+    if fmt == "mail":
+        return Response("<!doctype html><meta charset='utf-8'><title>" + rep["subject"] + "</title>" + rep["html"], mimetype="text/html")
+    return Response(render_office_report_page(rep), mimetype="text/html")   # 15/09: עמוד מצגת לישיבת צוות
 
 @app.route("/api/daily-report/status", methods=["GET"])
 def api_daily_report_status():
