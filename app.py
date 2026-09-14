@@ -9605,7 +9605,16 @@ def build_office_report(day=None):
     o_excl, _ = _rep_count([r for r in props if _excl_on(r.get("בלעדיות"))], _pd, P)
     branches = len(set(str(r.get("_y2_office_id", "") or "").strip() for r in props if r.get("_y2_office_id")))
     nb = _safe(fetch_newborn, "newborn")
-    n_all, _ = _rep_count(nb, lambda r: _rep_date(r.get("נוצר בתאריך", "")), P)
+    _nbd = lambda r: _rep_date(r.get("נוצר בתאריך", ""))
+    def _nb_city(r):
+        c = str(r.get("עיר", "") or r.get("עיר / ישוב", "") or "").strip().replace("קריית", "קרית")
+        zone = " ".join(str(r.get(k, "") or "") for k in ("שכונה", "רחוב", "כתובת")).replace("קריית", "קרית")
+        if "חיפה" in c or "קרית חיים" in zone:
+            return "קרית חיים" if "קרית חיים" in (c + " " + zone) else c
+        return c or "ללא עיר"
+    n_all, n_city = _rep_count(nb, _nbd, P, key=_nb_city)
+    from collections import Counter as _C0
+    n_city_total = _C0(_nb_city(r) for r in nb)
     # ── קונים ──
     buyers = _safe(_fetch_manual_buyers, "buyers")
     b_all, b_by = _rep_count(buyers, lambda r: _rep_date(r.get("date", "")), P, key=lambda r: _canon_agent_name(str(r.get("agent", "") or "").strip()))
@@ -9686,7 +9695,8 @@ def build_office_report(day=None):
             "shtaf": x_all, "shtaf_by_office": {p: dict(v) for p, v in x_by.items()},
             "shtaf_excl_by_office": {p: dict(v) for p, v in x_excl_by.items()},
             "office_new": o_all, "office_new_excl": o_excl, "branches": branches,
-            "newborn": n_all, "buyers": b_all, "buyers_by_agent": {p: dict(v) for p, v in b_by.items()},
+            "newborn": n_all, "newborn_by_city": {p: dict(v) for p, v in n_city.items()}, "newborn_city_total": dict(n_city_total),
+            "buyers": b_all, "buyers_by_agent": {p: dict(v) for p, v in b_by.items()},
             "deals_opened": d_open, "deals_closed": d_closed, "deals_closed_by_agent": {p: dict(v) for p, v in d_closed_by.items()},
             "deals_opened_by_agent": {p: dict(v) for p, v in d_open_by.items()},
             "lawyer_now": len(lawyer_now), "lawyer_by_agent": dict(lawyer_by), "open_now": open_now,
@@ -9740,6 +9750,9 @@ def build_office_report(day=None):
     L.append("— החתמות —"); _tl("סה\"כ", s_all); _tl("קונים", s_lab["קונים"]); _tl("מוכרים", s_lab["מוכר"]); _tl("בלעדיות", s_lab["בלעדיות"]); _tl("שכירות", s_lab["שכירות"])
     L.append("לפי סוכן (החודש): " + _by_list(s_by, "month", 8)); L.append("")
     L.append("— נכסים שיצאו לשוק —"); _tl("שת\"פ", x_all); _tl("נכס נולד", n_all)
+    for _c, _tot in sorted(n_city_total.items(), key=lambda kv: -kv[1])[:8]:
+        L.append(f"  {_c}: פעילים {_tot} · " + " · ".join(f"{h} {n_city[p].get(_c, 0)}" for p, h in _REP_PERIOD_HE))
+    L.append(f"נכסים חדשים שלנו ביד2: " + " · ".join(f"{h} {o_all[p]}" for p, h in _REP_PERIOD_HE) + f" (בבלעדיות ביד2 החודש {o_excl['month']} · החתמות בלעדיות החודש {s_lab['בלעדיות']['month']})")
     L.append("שת\"פ לפי משרד — אתמול: " + _by_list(x_by, "day")); L.append("שת\"פ לפי משרד — החודש: " + _by_list(x_by, "month", 8)); L.append("")
     L.append("— קונים —"); _tl("נכנסו למערכת", b_all); L.append("לפי סוכן (החודש): " + _by_list(b_by, "month", 8)); L.append("")
     L.append("— תהליכים ועסקאות —"); _tl("נפתחו", d_open); _tl("נסגרו", d_closed)
@@ -9794,8 +9807,9 @@ def render_office_report_page(rep):
     else:
         hero_title = f"מקום {pos} מתוך {n_offices} בשוק · {mname}"
         hero_sub = f"{o_all.get('month', 0)} נכסים חדשים לשוק ({o_excl.get('month', 0)} בבלעדיות) · המוביל: {market[0][0]} עם {market[0][1]}"
+    hero_sub += f" · החתמות בלעדיות שלנו החודש: {lab['בלעדיות']['month']}"
     hero_stats = "".join(f"<div class='hs'><div class='hn'>{v}</div><div class='hl'>{_e(l)}</div></div>" for v, l in (
-        (o_excl.get("month", 0), "בלעדיות חדשות החודש"), (sig["month"], "החתמות החודש"),
+        (lab["בלעדיות"]["month"], "החתמות בלעדיות החודש"), (sig["month"], "החתמות החודש"),
         (d["deals_closed"]["year"], "עסקאות שנסגרו השנה"), (calls["month"], "שיחות נכנסות החודש")))
     # ── כרטיסי מדדים ──
     def _kpi(title, c, sub="", accent="#1E3A5F"):
@@ -9837,12 +9851,20 @@ def render_office_report_page(rep):
         w = int(100 * n / mm) if mm else 0
         mrows += (f"<div class='mrow{' ours' if ours else ''}'><div class='ml'><span class='mp'>{i+1}</span>{_e(name)}</div>"
                   f"<div class='cell'><b class='num'>{n}</b><div class='bar'><div class='fill' style='width:{w}%;background:{'#C29435' if ours else '#2C4C77'}'></div></div></div>"
-                  f"<div class='mx'>{ex} בבלעדיות</div></div>")
+                  f"<div class='mx'>{ex} בבלעדיות ביד2" + (f" · {lab['בלעדיות']['month']} החתמות בלעדיות" if ours else "") + "</div></div>")
     if not mrows: mrows = "<div class='empty'>אין מודעות חדשות החודש</div>"
     # ── צנרת ──
     def _lst(dct): return ", ".join(f"{_e(a)} ({n})" for a, n in sorted((dct or {}).items(), key=lambda kv: -kv[1])) or "—"
     law = _lst(d.get("lawyer_by_agent")); closed_m = _lst(d["deals_closed_by_agent"].get("month")); opened_m = _lst(d["deals_opened_by_agent"].get("month"))
     ins = "".join(f"<div class='ins'>{_e(i)}</div>" for i in (d.get("insights") or [])) or "<div class='empty'>אין תובנות מיוחדות ליום הזה</div>"
+    # ── נכס נולד לפי ערים (אייל 15/09): פעילים כרגע + נוספו לפי תקופה ──
+    nct = d.get("newborn_city_total") or {}; nbc = d.get("newborn_by_city") or {}
+    cities = sorted(nct.items(), key=lambda kv: -kv[1])[:8]
+    nb_rows = "".join(f"<tr><td class='nm'>{_e(c)}</td><td class='tot'>{t}</td>" + "".join(f"<td>{(nbc.get(p) or {}).get(c, 0)}</td>" for p, _ in PH) + "</tr>" for c, t in cities)
+    nb_tot_row = (f"<tr class='sum'><td class='nm'>סה\"כ</td><td class='tot'>{sum(nct.values())}</td>" + "".join(f"<td>{d['newborn'].get(p, 0)}</td>" for p, _ in PH) + "</tr>") if cities else ""
+    nb_sec = (f"<div class='sec'><h2>נכס נולד לפי ערים<small>מודעות של פרטיים — הזדמנויות לגיוס</small></h2>"
+              + (f"<div class='tbl'><table class='cty'><tr><th>עיר</th><th>פעילים כרגע</th>" + "".join(f"<th>{h}</th>" for _, h in PH) + f"</tr>{nb_rows}{nb_tot_row}</table></div>" if cities else "<div class='empty'>אין מודעות פרטיות</div>")
+              + "</div>")
     sc_ = d.get("scans") or {}
     css = """
     *{box-sizing:border-box}body{margin:0;background:#F2EFE7;color:#1E3A5F;font-family:Heebo,Arial,sans-serif}
@@ -9874,6 +9896,8 @@ def render_office_report_page(rep):
     .mrow.ours{background:#FBF3DD;border:1px solid #E4C56B}.ml{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .mp{display:inline-block;width:22px;height:22px;border-radius:50%;background:#EFEAE0;color:#1E3A5F;font-size:12px;font-weight:800;text-align:center;line-height:22px;margin-inline-end:8px}.ours .mp{background:#C29435;color:#fff}
     .mx{font-size:12.5px;color:#7A5E1C;font-weight:700;white-space:nowrap}
+    table.cty{width:100%;min-width:520px;border-collapse:collapse;font-size:15px}table.cty th{color:#6B7280;font-weight:600;font-size:12.5px;text-align:center;padding:4px 8px}table.cty th:first-child{text-align:right}
+    table.cty td{padding:8px;border-top:1px solid #F1EDE3;text-align:center;font-weight:700}table.cty td.nm{text-align:right;font-weight:800}table.cty td.tot{color:#7A5E1C;font-size:17px}table.cty tr.sum td{background:#F7F5EE;border-top:2px solid #E4C56B}
     .pipe{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.pbox{background:#F7F5EE;border-radius:16px;padding:14px}.pbox .n{font-size:34px;font-weight:800}.pbox .l{font-size:13px;color:#6B7280}.pbox .w{font-size:13px;margin-top:6px}
     .ins{background:#FBF3DD;border-inline-start:4px solid #C29435;border-radius:12px;padding:10px 14px;margin:8px 0;font-size:15px}
     .empty{color:#6B7280;font-size:14px}.ft{margin-top:18px;color:#6B7280;font-size:12.5px;text-align:center}
@@ -9889,8 +9913,8 @@ def render_office_report_page(rep):
             f"<div class='ach'><div class='t'>ההישג של החודש</div><div class='h'>{_e(hero_title)}</div><div class='s'>{_e(hero_sub)}</div></div>"
             f"<div class='hstats'>{hero_stats}</div></div>"
             f"<div class='grid'>{kpis}</div>"
-            f"<div class='sec'><h2>אנחנו מול השוק<small>נכסים חדשים שיצאו לשוק ב{_e(mname)} · {n_offices} משרדים · לפי יד2</small></h2>{mrows}"
-            f"<div style='margin-top:12px;font-size:13.5px;color:#5B6472'>נכס נולד (פרטיים, הזדמנויות לגיוס): אתמול <b>{d['newborn']['day']}</b> · השבוע <b>{d['newborn']['week']}</b> · החודש <b>{d['newborn']['month']}</b></div></div>"
+            f"<div class='sec'><h2>אנחנו מול השוק<small>נתוני יד2 עדכניים ל-{_e(sc_.get('shtaf') or sc_.get('office') or '')} · נכסים חדשים שיצאו לשוק ב{_e(mname)} · {n_offices} משרדים</small></h2>{mrows}"
+            "</div>" + nb_sec +
             f"<div class='sec'><h2>פודיום הסוכנים<small>דירוג משולב: שיחות, החתמות, קונים, סגירות</small></h2>{leaders}</div>"
             f"<div class='sec'><h2>צנרת העסקאות</h2><div class='pipe'>"
             f"<div class='pbox'><div class='n'>{d['open_now']}</div><div class='l'>תהליכים פתוחים</div><div class='w'>נפתחו החודש: {opened_m}</div></div>"
