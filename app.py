@@ -10027,6 +10027,9 @@ def api_daily_report_status():
     return jsonify({"ok": True, "to": REPORT_TO, "hour": REPORT_HOUR,
                     "channel": "smtp" if (SMTP_USER and SMTP_PASS) else ("apps_script" if (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN) else "none"),
                     "thread_alive": bool(th is not None and th.is_alive()),
+                    "thread_started": th is not None, "pid": os.getpid(),
+                    "env": {"apps_script": bool(APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN), "smtp": bool(SMTP_USER and SMTP_PASS),
+                            "report_to": bool(REPORT_TO), "daily_report": (os.environ.get("DAILY_REPORT", "1") or "1")},
                     "last": dict(_REPORT_LAST),
                     "days": {k: d[k] for k in sorted(d)[-14:]}})
 
@@ -10082,12 +10085,26 @@ def api_daily_report_send():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     day = _report_day_arg()
     to = str(request.args.get("to", "") or "").strip()
-    _threading.Thread(target=_report_build_and_send, args=(day, to), daemon=True).start()
+    _REPORT_LAST.update({"queued_at": time.time(), "queued_pid": os.getpid(), "state": "queued"})
+    try:
+        _threading.Thread(target=_report_build_and_send, args=(day, to), daemon=True, name="daily-report-manual").start()
+    except BaseException as e:
+        _REPORT_LAST.update({"state": "done", "ok": False, "msg": f"thread לא נפתח: {type(e).__name__}: {str(e)[:120]}"})
+        return jsonify({"ok": False, "msg": _REPORT_LAST["msg"]})
     return jsonify({"ok": True, "queued": True})
 
 def _report_daily_loop():
     """שליחה אוטומטית פעם ביום ב-REPORT_HOUR (שעון ישראל) — idempotent דרך הקונפיג (v2_daily_report[יום])."""
     import datetime as _dt
+    _REPORT_LAST["loop_started"] = time.time(); _REPORT_LAST["pid"] = os.getpid()
+    try:
+        _report_daily_loop_body(_dt)
+    except BaseException as e:   # 15/09: אם הלולאה מתה — שנדע למה (status), לא בשקט
+        _REPORT_LAST["loop_error"] = f"{type(e).__name__}: {str(e)[:160]}"
+        log.error(f"daily report loop died: {e}", exc_info=True)
+        raise
+
+def _report_daily_loop_body(_dt):
     while True:
         try:
             now = _dt.datetime.now(_rep_tz())

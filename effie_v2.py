@@ -1920,13 +1920,16 @@ function snapRestore(i){
     else toast('השחזור נכשל' + (j && j.reason ? ' (' + j.reason + ')' : ''));
   }).catch(function(){ toast('שגיאה'); });
 }
+var L0;
 function repLoad(){
   GET('/api/daily-report/status').then(function(j){
     var b = el('repStatus'); if (!b) return;
     if (!j || !j.ok){ b.textContent = 'אין הרשאה / לא זמין'; return; }
     var days = j.days || {}, ks = Object.keys(days).sort().reverse();
     var ch = j.channel === 'smtp' ? 'SMTP' : j.channel === 'apps_script' ? 'Apps Script (כמו דיווח תקלה)' : 'אין ערוץ מייל';
-    var h = 'נשלח ל-' + esc(j.to || '') + ' · שעה ' + esc(String(j.hour)) + ':00 · ערוץ: ' + esc(ch) + (j.thread_alive === false ? ' · <b style="color:#C24040">השליחה האוטומטית לא רצה</b>' : '') + '<br>';
+    var e = j.env || {};
+    var h = 'נשלח ל-' + esc(j.to || '') + ' · שעה ' + esc(String(j.hour)) + ':00 · ערוץ: ' + esc(ch) + (j.thread_alive === false ? ' · <b style="color:#C24040">השליחה האוטומטית לא רצה</b>' + (j.thread_started === false ? ' (לא הופעלה: apps_script=' + e.apps_script + ' smtp=' + e.smtp + ' to=' + e.report_to + ' daily=' + esc(String(e.daily_report)) + ')' : ' (מתה: ' + esc((j.last || {}).loop_error || 'ללא שגיאה') + ')') : '') + ' · pid ' + esc(String(j.pid || '')) + '<br>';
+    if (L0 = j.last || {}, L0.queued_at) h += 'לחיצה אחרונה נקלטה ' + esc(new Date(L0.queued_at * 1000).toLocaleTimeString('he-IL')) + (L0.queued_pid && L0.queued_pid !== j.pid ? ' <b style="color:#C24040">(בתהליך אחר! pid ' + esc(String(L0.queued_pid)) + ')</b>' : '') + '<br>';
     var L = j.last || {};
     if (L.state){
       var tm = L.timing && Object.keys(L.timing).length ? ' · זמנים: ' + Object.keys(L.timing).map(function(x){ return x + ' ' + L.timing[x] + 'ש׳'; }).join(', ') : '';
