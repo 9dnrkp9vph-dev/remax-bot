@@ -9748,8 +9748,17 @@ def build_office_report(day=None):
             f"<h2 style='margin:0 0 4px;font-size:20px'>דוח יומי · {_esc(office)}</h2>"
             f"<div style='color:#6B7280;font-size:13px'>יום {_esc(dstr)} · השבוע מ-{P['week'][0].strftime('%d/%m')} · הופק {now.strftime('%d/%m/%Y %H:%M')}</div>"
             + "".join(H) + "</div></div>")
+    # ── קישור לדוח המעוצב (15/09): המייל דרך Apps Script הוא טקסט (ונחתך) — הקישור פותח את המצגת בדפדפן ──
+    _base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    _tvk = (os.environ.get("TV_KEY", "") or "").strip()
+    report_url = f"{_base}/api/daily-report?d={day.isoformat()}" + (f"&k={_tvk}" if _tvk else "")
+    data["report_url"] = report_url
+    html = html.replace("<h2 style='margin:0 0 4px;font-size:20px'>",
+                        f"<a href='{report_url}' style='display:inline-block;margin:0 0 12px;padding:10px 16px;background:#2E6BD6;color:#fff;border-radius:12px;text-decoration:none;font-weight:800'>פתח את הדוח המעוצב</a>"
+                        "<h2 style='margin:0 0 4px;font-size:20px'>", 1)
     # ── טקסט ──
     L = [subject, f"יום {dstr} · השבוע מ-{P['week'][0].strftime('%d/%m')} · הופק {now.strftime('%d/%m/%Y %H:%M')}", "",
+         f"לדוח המעוצב (מצגת): {report_url}", "",
          "(אתמול · השבוע · החודש · השנה)", ""]
     def _tl(label, c): L.append(f"{label}: " + " · ".join(f"{h} {c[p]}" for p, h in _REP_PERIOD_HE))
     L.append("— שיחות —"); _tl("נכנסות", c_all); _tl("נענו", c_ans)
@@ -9942,7 +9951,8 @@ def _report_send_email(subject, html, text, to=None):
         # ה-CRM (action=sendhelp → MailApp.sendEmail, טקסט). נושא: '[Family Bot] <kind> — <agent>'.
         if not (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN and to):
             return False, "אין ערוץ מייל (SMTP / Apps Script)"
-        j = _buyers_apps_post("sendhelp", {"to": to, "kind": subject, "message": text, "agent": "אפי", "phone": ""})
+        j = _buyers_apps_post("sendhelp", {"to": to, "kind": subject, "message": text, "agent": "אפי", "phone": "",
+                                           "html": html})   # 15/09: htmlBody — נדרשת שורה אחת ב-Apps Script של ה-CRM
         ok = bool(j and j.get("ok"))
         return ok, ("נשלח דרך Apps Script" if ok else f"Apps Script סירב: {str(j)[:120]}")
     try:
