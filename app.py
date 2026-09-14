@@ -9710,22 +9710,35 @@ def build_office_report(day=None):
             f"<div style='color:#6B7280;font-size:13px'>יום {_esc(dstr)} · השבוע מ-{P['week'][0].strftime('%d/%m')} · הופק {now.strftime('%d/%m/%Y %H:%M')}</div>"
             + "".join(H) + "</div></div>")
     # ── טקסט ──
-    L = [subject, ""]
+    L = [subject, f"יום {dstr} · השבוע מ-{P['week'][0].strftime('%d/%m')} · הופק {now.strftime('%d/%m/%Y %H:%M')}", "",
+         "(אתמול · השבוע · החודש · השנה)", ""]
     def _tl(label, c): L.append(f"{label}: " + " · ".join(f"{h} {c[p]}" for p, h in _REP_PERIOD_HE))
-    _tl("שיחות", c_all); _tl("נענו", c_ans)
-    _tl("החתמות", s_all); _tl("  קונים", s_lab["קונים"]); _tl("  מוכרים", s_lab["מוכר"]); _tl("  בלעדיות", s_lab["בלעדיות"])
-    _tl("שת\"פ", x_all); _tl("נכס נולד", n_all); _tl("קונים שנכנסו", b_all)
-    _tl("תהליכים שנפתחו", d_open); _tl("עסקאות שנסגרו", d_closed)
-    L.append(f"פתוחים כרגע {open_now} · אצל עו\"ד {len(lawyer_now)}")
-    L.append(f"סריקות: משרד {scan_office} · שת\"פ {scan_shtaf} · נכס נולד {scan_nb}")
-    if ins: L += ["", "תובנות:"] + ["- " + i for i in ins]
+    L.append("— שיחות —"); _tl("נכנסות", c_all); _tl("נענו", c_ans)
+    L.append("לפי סוכן (השבוע): " + _by_list(c_by, "week")); L.append("")
+    L.append("— החתמות —"); _tl("סה\"כ", s_all); _tl("קונים", s_lab["קונים"]); _tl("מוכרים", s_lab["מוכר"]); _tl("בלעדיות", s_lab["בלעדיות"]); _tl("שכירות", s_lab["שכירות"])
+    L.append("לפי סוכן (החודש): " + _by_list(s_by, "month", 8)); L.append("")
+    L.append("— נכסים שיצאו לשוק —"); _tl("שת\"פ", x_all); _tl("נכס נולד", n_all)
+    L.append("שת\"פ לפי משרד — אתמול: " + _by_list(x_by, "day")); L.append("שת\"פ לפי משרד — החודש: " + _by_list(x_by, "month", 8)); L.append("")
+    L.append("— קונים —"); _tl("נכנסו למערכת", b_all); L.append("לפי סוכן (החודש): " + _by_list(b_by, "month", 8)); L.append("")
+    L.append("— תהליכים ועסקאות —"); _tl("נפתחו", d_open); _tl("נסגרו", d_closed)
+    L.append(f"פתוחים כרגע {open_now} · אצל עו\"ד {len(lawyer_now)}" + (" (" + ", ".join(f"{a} ({n})" for a, n in lawyer_by.most_common(8)) + ")" if lawyer_now else ""))
+    L.append("נסגרו לפי סוכן — השבוע: " + _by_list(d_closed_by, "week", 8) + " · החודש: " + _by_list(d_closed_by, "month", 8) + " · השנה: " + _by_list(d_closed_by, "year", 10))
+    L.append("נפתחו לפי סוכן (החודש): " + _by_list(d_open_by, "month", 8)); L.append("")
+    L.append(f"סריקות אחרונות: נכסי המשרד {scan_office} · שת\"פ {scan_shtaf} · נכס נולד {scan_nb}")
+    if ins: L += ["", "— תובנות —"] + ["- " + i for i in ins]
     return {"subject": subject, "html": html, "text": "\n".join(L), "data": data}
 
 def _report_send_email(subject, html, text, to=None):
     """שליחת הדוח במייל דרך SMTP (Gmail app password ב-env). מחזיר (ok, הודעה)."""
     to = (to or REPORT_TO or "").strip()
     if not (SMTP_USER and SMTP_PASS and to):
-        return False, "SMTP לא מוגדר (SMTP_USER/SMTP_PASS/REPORT_TO)"
+        # אייל 15/09 "באותה דרך, בלי Environment": המסלול הקיים של 'דיווח תקלה' — Apps Script של
+        # ה-CRM (action=sendhelp → MailApp.sendEmail, טקסט). נושא: '[Family Bot] <kind> — <agent>'.
+        if not (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN and to):
+            return False, "אין ערוץ מייל (SMTP / Apps Script)"
+        j = _buyers_apps_post("sendhelp", {"to": to, "kind": subject, "message": text, "agent": "אפי", "phone": ""})
+        ok = bool(j and j.get("ok"))
+        return ok, ("נשלח דרך Apps Script" if ok else f"Apps Script סירב: {str(j)[:120]}")
     try:
         import smtplib
         from email.mime.multipart import MIMEMultipart
@@ -9787,7 +9800,7 @@ def _report_daily_loop():
     while True:
         try:
             now = _dt.datetime.now(_rep_tz())
-            if now.hour == REPORT_HOUR and now.minute < 10:
+            if now.hour >= REPORT_HOUR:   # השלמה: עלייה/deploy אחרי השעה → נשלח מיד (פעם אחת ביום)
                 key = now.date().isoformat()
                 sent = (_load_config() or {}).get("v2_daily_report") or {}
                 if key not in sent:
@@ -9805,7 +9818,8 @@ def _report_daily_loop():
             log.warning(f"daily report loop: {e}")
         time.sleep(60)
 
-if SMTP_USER and SMTP_PASS and (os.environ.get("DAILY_REPORT", "1") or "1") != "0":
+if ((SMTP_USER and SMTP_PASS) or (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN)) and REPORT_TO \
+        and (os.environ.get("DAILY_REPORT", "1") or "1") != "0":
     _threading.Thread(target=_report_daily_loop, daemon=True).start()
 
 def check_new_calls():
