@@ -9567,12 +9567,16 @@ def build_office_report(day=None):
     if day is None:
         day = (now - _dt.timedelta(days=1)).date()
     P = _rep_periods(day)
+    timing = {}
     def _safe(fn, what):
+        t0 = time.time()
         try:
             return fn() or []
         except Exception as e:
             log.warning(f"daily report: {what} failed: {e}")
             return []
+        finally:
+            timing[what] = round(time.time() - t0, 1)
     try:
         office = ((_load_config() or {}).get("v2_office") or {}).get("name") or "המשרד"
     except Exception:
@@ -9668,7 +9672,7 @@ def build_office_report(day=None):
             "deals_opened": d_open, "deals_closed": d_closed, "deals_closed_by_agent": {p: dict(v) for p, v in d_closed_by.items()},
             "deals_opened_by_agent": {p: dict(v) for p, v in d_open_by.items()},
             "lawyer_now": len(lawyer_now), "lawyer_by_agent": dict(lawyer_by), "open_now": open_now,
-            "scans": {"office": scan_office, "shtaf": scan_shtaf, "newborn": scan_nb}, "insights": ins}
+            "scans": {"office": scan_office, "shtaf": scan_shtaf, "newborn": scan_nb}, "insights": ins, "timing": timing}
     # ── רינדור ──
     dstr = day.strftime("%d/%m/%Y")
     subject = f"דוח יומי {office} · {dstr}"
@@ -9795,14 +9799,47 @@ def api_daily_report_status():
                     "channel": "smtp" if (SMTP_USER and SMTP_PASS) else ("apps_script" if (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN) else "none"),
                     "days": {k: d[k] for k in sorted(d)[-14:]}})
 
+def _report_record(key, ok, msg, extra=None):
+    """רישום תוצאת שליחה ב-v2_daily_report[יום] (מקור האמת לכרטיס בניהול)."""
+    def _mark(cfg):
+        d = cfg.get("v2_daily_report") or {}
+        prev = d.get(key) or {}
+        rec = {"ts": time.time(), "ok": bool(ok), "tries": int(prev.get("tries") or 0) + 1, "msg": str(msg)[:160]}
+        if extra: rec.update(extra)
+        d[key] = rec
+        for kk in sorted(d)[:-14]: d.pop(kk, None)
+        cfg["v2_daily_report"] = d
+        return True
+    try:
+        _config_mutate(_mark)
+    except Exception as e:
+        log.warning(f"daily report record: {e}")
+
+def _report_build_and_send(day, to=""):
+    """הפקה + שליחה + רישום — רץ ב-thread (הכפתור בניהול חוזר מיד)."""
+    import datetime as _dt
+    t0 = time.time()
+    key = (day or (_dt.datetime.now(_rep_tz()) - _dt.timedelta(days=1)).date()).isoformat() if isinstance(day, _dt.date) or day is None else str(day)
+    try:
+        rep = build_office_report(day)
+        ok, msg = _report_send_email(rep["subject"], rep["html"], rep["text"], to)
+        tm = rep["data"].get("timing") or {}
+        _report_record(key, ok, msg, {"secs": round(time.time() - t0, 1), "timing": tm})
+        log.info(f"daily report manual {key}: {msg} in {round(time.time() - t0, 1)}s timing={tm}")
+    except Exception as e:
+        log.warning(f"daily report manual {key} crashed: {e}", exc_info=True)
+        _report_record(key, False, f"קריסה: {type(e).__name__}: {str(e)[:100]}", {"secs": round(time.time() - t0, 1)})
+
 @app.route("/api/daily-report/send", methods=["POST", "GET"])
 def api_daily_report_send():
-    """הפקה + שליחה במייל (SMTP). ?to= לעקוף את REPORT_TO (מנהל בלבד)."""
+    """הפקה + שליחה במייל — ברקע (15/09: הבנייה על דאטה חי עלולה לעבור את תקרת הבקשה);
+    התוצאה נרשמת ב-/api/daily-report/status. ?to= לעקוף את REPORT_TO."""
     if not _report_auth_ok():
         return jsonify({"ok": False, "error": "forbidden"}), 403
-    rep = build_office_report(_report_day_arg())
-    ok, msg = _report_send_email(rep["subject"], rep["html"], rep["text"], request.args.get("to", ""))
-    return jsonify({"ok": ok, "msg": msg, "subject": rep["subject"], "day": rep["data"]["day"]})
+    day = _report_day_arg()
+    to = str(request.args.get("to", "") or "").strip()
+    _threading.Thread(target=_report_build_and_send, args=(day, to), daemon=True).start()
+    return jsonify({"ok": True, "queued": True})
 
 def _report_daily_loop():
     """שליחה אוטומטית פעם ביום ב-REPORT_HOUR (שעון ישראל) — idempotent דרך הקונפיג (v2_daily_report[יום])."""

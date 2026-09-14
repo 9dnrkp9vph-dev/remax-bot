@@ -1928,22 +1928,29 @@ function repLoad(){
     var ch = j.channel === 'smtp' ? 'SMTP' : j.channel === 'apps_script' ? 'Apps Script (כמו דיווח תקלה)' : 'אין ערוץ מייל';
     var h = 'נשלח ל-' + esc(j.to || '') + ' · שעה ' + esc(String(j.hour)) + ':00 · ערוץ: ' + esc(ch) + '<br>';
     if (!ks.length) h += 'עדיין לא נשלח אף דוח.';
-    else h += ks.slice(0, 5).map(function(k){ var d = days[k] || {}; return esc(k) + ': ' + (d.ok ? 'נשלח' : 'נכשל') + (d.tries ? ' (' + d.tries + ' ניסיונות)' : '') + (d.msg ? ' — ' + esc(d.msg) : ''); }).join('<br>');
+    else h += ks.slice(0, 5).map(function(k){ var d = days[k] || {};
+      var tm = d.timing ? (' · זמנים: ' + Object.keys(d.timing).map(function(x){ return x + ' ' + d.timing[x] + 'ש׳'; }).join(', ')) : '';
+      return esc(k) + ': ' + (d.ok ? 'נשלח' : 'נכשל') + (d.tries ? ' (' + d.tries + ' ניסיונות)' : '') + (d.secs ? ' · ' + d.secs + 'ש׳' : '') + (d.msg ? ' — ' + esc(d.msg) : '') + esc(tm); }).join('<br>');
     b.innerHTML = h;
-  }).catch(function(){});
+  }).catch(function(){ var b = el('repStatus'); if (b) b.textContent = 'שגיאה בטעינת המצב'; });
 }
+var _repPoll = null;
 function repSend(d){
-  toast('מפיק ושולח…');
+  toast('מפיק ושולח ברקע… התוצאה תופיע כאן בעוד רגע');
   POST('/api/daily-report/send' + (d ? '?d=' + d : ''), {}).then(function(j){
-    toast(j && j.ok ? ('נשלח: ' + (j.subject || '')) : ('לא נשלח: ' + ((j && (j.msg || j.error)) || 'שגיאה')));
-    repLoad();
+    if (!(j && j.ok)){ toast('לא התקבל: ' + ((j && (j.msg || j.error)) || 'שגיאה')); return; }
+    var n = 0; clearInterval(_repPoll);
+    _repPoll = setInterval(function(){ repLoad(); if (++n >= 18) clearInterval(_repPoll); }, 5000);   // 90 שניות
   }).catch(function(){ toast('שגיאה'); });
 }
 function repOpen(){
+  var w = window.open('', '_blank');   // נפתח בתוך המגע (אחרת iOS חוסם); התוכן נכתב כשמגיע
+  if (!w){ toast('הדפדפן חסם חלון — מנסה באותו טאב'); }
+  else { w.document.open(); w.document.write('<!doctype html><meta charset="utf-8"><body dir="rtl" style="font-family:Heebo,Arial;padding:24px;color:#1E3A5F">מפיק את הדוח… (עד דקה)</body>'); w.document.close(); }
   fetch('/api/daily-report', {headers: {'X-Auth-Token': TOK}}).then(function(r){ return r.text(); }).then(function(html){
-    var w = window.open('', '_blank'); if (!w){ toast('חלון נחסם'); return; }
-    w.document.open(); w.document.write(html); w.document.close();
-  }).catch(function(){ toast('שגיאה'); });
+    if (w){ w.document.open(); w.document.write(html); w.document.close(); }
+    else { document.open(); document.write(html); document.close(); }
+  }).catch(function(){ toast('שגיאה בהפקת הדוח'); if (w) try{ w.close(); }catch(e){} });
 }
 function renderRemoved(){
   var card = el('rmvCard');
