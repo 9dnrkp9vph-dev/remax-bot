@@ -1929,6 +1929,8 @@ function repLoad(){
     var ch = j.channel === 'smtp' ? 'SMTP' : j.channel === 'apps_script' ? 'Apps Script (כמו דיווח תקלה)' : 'אין ערוץ מייל';
     var e = j.env || {};
     var h = 'נשלח ל-' + esc(j.to || '') + ' · שעה ' + esc(String(j.hour)) + ':00 · ערוץ: ' + esc(ch) + (j.thread_alive === false ? ' · <b style="color:#C24040">השליחה האוטומטית לא רצה</b>' + (j.thread_started === false ? ' (לא הופעלה: apps_script=' + e.apps_script + ' smtp=' + e.smtp + ' to=' + e.report_to + ' daily=' + esc(String(e.daily_report)) + ')' : ' (מתה: ' + esc((j.last || {}).loop_error || 'ללא שגיאה') + ')') : '') + ' · pid ' + esc(String(j.pid || '')) + '<br>';
+    if (j.threads) h += 'threads: ' + esc((j.threads || []).join(', ')) + (j.server ? ' · WEB_CONCURRENCY=' + esc(String(j.server.web_concurrency || '')) + ' · ' + esc(j.server.argv || '') : '') + '<br>';
+    if ((j.last || {}).stage) h += 'שלב אחרון בבנייה: <b>' + esc((j.last || {}).stage) + '</b>' + ((j.last || {}).stage_at ? ' (' + esc(new Date((j.last || {}).stage_at * 1000).toLocaleTimeString('he-IL')) + ')' : '') + '<br>';
     if (L0 = j.last || {}, L0.queued_at) h += 'לחיצה אחרונה נקלטה ' + esc(new Date(L0.queued_at * 1000).toLocaleTimeString('he-IL')) + (L0.queued_pid && L0.queued_pid !== j.pid ? ' <b style="color:#C24040">(בתהליך אחר! pid ' + esc(String(L0.queued_pid)) + ')</b>' : '') + '<br>';
     var L = j.last || {};
     if (L.state){

@@ -9570,6 +9570,7 @@ def build_office_report(day=None):
     timing = {}
     def _safe(fn, what):
         t0 = time.time()
+        _REPORT_LAST["stage"] = what; _REPORT_LAST["stage_at"] = time.time()   # אבחון: איפה הבנייה עומדת
         try:
             return fn() or []
         except Exception as e:
@@ -9648,6 +9649,7 @@ def build_office_report(day=None):
     from collections import Counter as _C
     lawyer_by = _C(_dagent(it) for it in lawyer_now)
     open_now = sum(1 for it in deals if not it.get("deal"))
+    _REPORT_LAST["stage"] = "render"
     # ── סריקות אחרונות ──
     try: scan_office = _props_updated(fetch_sheet_rows()) or "—"
     except Exception: scan_office = "—"
@@ -10028,6 +10030,9 @@ def api_daily_report_status():
                     "channel": "smtp" if (SMTP_USER and SMTP_PASS) else ("apps_script" if (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN) else "none"),
                     "thread_alive": bool(th is not None and th.is_alive()),
                     "thread_started": th is not None, "pid": os.getpid(),
+                    "threads": sorted(t.name for t in _threading.enumerate())[:24],
+                    "server": {"web_concurrency": os.environ.get("WEB_CONCURRENCY", ""), "argv": " ".join(sys.argv)[:120],
+                               "gunicorn": os.environ.get("SERVER_SOFTWARE", "")},
                     "env": {"apps_script": bool(APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN), "smtp": bool(SMTP_USER and SMTP_PASS),
                             "report_to": bool(REPORT_TO), "daily_report": (os.environ.get("DAILY_REPORT", "1") or "1")},
                     "last": dict(_REPORT_LAST),
