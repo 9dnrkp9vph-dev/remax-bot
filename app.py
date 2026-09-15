@@ -9613,6 +9613,27 @@ def build_office_report(day=None):
     o_active_excl = sum(1 for r in props if _excl_on(r.get("בלעדיות")))
     nb = _safe(fetch_newborn, "newborn")
     _nbd = lambda r: _rep_date(r.get("נוצר בתאריך", ""))
+    # 15/09 (אייל): כפילויות — אותה מודעה מגיעה גם מפיירברי (הצינור הישן) וגם מסריקת יד2.
+    # מפתח: טלפון בעל הנכס (9 ספרות); בלי טלפון — רחוב+מספר+עיר. נשמרת המוקדמת (לא נספרת פעמיים כ'חדשה').
+    def _nb_key(r):
+        for k in ("טלפון בעל הנכס-:", "טלפון בעל הנכס:", "טלפון בעל הנכס", "owner_phone", "טלפון"):
+            p9 = re.sub(r"\D", "", str(r.get(k, "") or ""))[-9:]
+            if len(p9) == 9:
+                return "p:" + p9
+        addr = " ".join(str(r.get(k, "") or "") for k in ("רחוב", "כתובת", "street")).replace("קריית", "קרית")
+        nums = re.findall(r"\d+", addr); words = [w for w in re.sub(r"[^֐-׿ ]", " ", addr).split() if len(w) >= 2][:3]
+        city = str(r.get("עיר", "") or r.get("עיר / ישוב", "") or "").strip().replace("קריית", "קרית")
+        return ("a:" + " ".join(words) + "|" + (nums[0] if nums else "") + "|" + city) if words and nums else ""
+    _seen = {}
+    for r in nb:
+        k = _nb_key(r)
+        if not k:
+            _seen[id(r)] = r; continue
+        cur = _seen.get(k)
+        if cur is None or (_excl_epoch(r.get("נוצר בתאריך", "")) or 0) < (_excl_epoch(cur.get("נוצר בתאריך", "")) or 0):
+            _seen[k] = r
+    nb_dupes = len(nb) - len(_seen)
+    nb = list(_seen.values())
     _NB_CITIES = ("קרית חיים", "קרית אתא", "קרית מוצקין", "קרית ביאליק", "קרית ים")
     def _nb_city(r):
         c = str(r.get("עיר", "") or r.get("עיר / ישוב", "") or "").strip().replace("קריית", "קרית")
@@ -9712,7 +9733,7 @@ def build_office_report(day=None):
             "office_new": o_all, "office_new_excl": o_excl, "branches": branches,
             "office_active": o_active, "office_active_excl": o_active_excl,
             "shtaf_active_by_office": dict(x_active), "shtaf_active_excl_by_office": dict(x_active_excl),
-            "newborn": n_all, "newborn_by_city": {p: dict(v) for p, v in n_city.items()}, "newborn_city_total": dict(n_city_total),
+            "newborn": n_all, "newborn_by_city": {p: dict(v) for p, v in n_city.items()}, "newborn_city_total": dict(n_city_total), "newborn_dupes": nb_dupes,
             "buyers": b_all, "buyers_by_agent": {p: dict(v) for p, v in b_by.items()},
             "deals_opened": d_open, "deals_closed": d_closed, "deals_closed_by_agent": {p: dict(v) for p, v in d_closed_by.items()},
             "deals_opened_by_agent": {p: dict(v) for p, v in d_open_by.items()},
@@ -9893,7 +9914,8 @@ def render_office_report_page(rep):
     cities = sorted(nct.items(), key=lambda kv: -kv[1])[:8]
     nb_rows = "".join(f"<tr><td class='nm'>{_e(c)}</td><td class='tot'>{t}</td>" + "".join(f"<td>{(nbc.get(p) or {}).get(c, 0)}</td>" for p, _ in PH) + "</tr>" for c, t in cities)
     nb_tot_row = (f"<tr class='sum'><td class='nm'>סה\"כ</td><td class='tot'>{sum(nct.values())}</td>" + "".join(f"<td>{d['newborn'].get(p, 0)}</td>" for p, _ in PH) + "</tr>") if cities else ""
-    nb_sec = (f"<div class='sec'><h2>נכס נולד לפי ערים<small>מודעות של פרטיים — הזדמנויות לגיוס</small></h2>"
+    _dup = d.get("newborn_dupes") or 0
+    nb_sec = (f"<div class='sec'><h2>נכס נולד לפי ערים<small>מודעות של פרטיים — הזדמנויות לגיוס" + (f" · אחרי ניכוי {_dup} כפילויות (פיירברי+יד2)" if _dup else "") + "</small></h2>"
               + (f"<div class='tbl'><table class='cty'><tr><th>עיר</th><th>פעילים כרגע</th>" + "".join(f"<th>{h}</th>" for _, h in PH) + f"</tr>{nb_rows}{nb_tot_row}</table></div>" if cities else "<div class='empty'>אין מודעות פרטיות</div>")
               + "</div>")
     sc_ = d.get("scans") or {}
@@ -10055,7 +10077,7 @@ def render_office_report_email(rep):
             + (f"<div style='margin-top:12px'>{btn}</div>" if btn else "") + "</td></tr></table></td></tr>"
             f"<tr><td style='padding:2px 0'><table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>{kpis}</tr></table></td></tr>"
             + _sec("אנחנו מול השוק", f"נתוני יד2 עדכניים ל-{sc_.get('shtaf') or sc_.get('office') or ''} · נכסים בפרסום כרגע · {n_off} משרדים", f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0'>{mrows}</table>")
-            + _sec("נכס נולד לפי ערים", "מודעות של פרטיים — הזדמנויות לגיוס", cities_tbl)
+            + _sec("נכס נולד לפי ערים", "מודעות של פרטיים — הזדמנויות לגיוס" + (f" · אחרי ניכוי {d.get('newborn_dupes', 0)} כפילויות" if d.get("newborn_dupes") else ""), cities_tbl)
             + _sec("פודיום הסוכנים", "דירוג משולב: שיחות, החתמות, קונים, סגירות", leaders)
             + _sec("צנרת העסקאות", "", f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>{pipe}</tr></table>")
             + _sec("תובנות", "", ins)
