@@ -10031,7 +10031,7 @@ def api_daily_report_status():
                     "thread_alive": bool(th is not None and th.is_alive()),
                     "thread_started": th is not None, "pid": os.getpid(),
                     "threads": sorted(t.name for t in _threading.enumerate())[:24],
-                    "server": {"web_concurrency": os.environ.get("WEB_CONCURRENCY", ""), "argv": " ".join(sys.argv)[:120],
+                    "server": {"web_concurrency": os.environ.get("WEB_CONCURRENCY", ""), "argv": " ".join(__import__("sys").argv)[:120],
                                "gunicorn": os.environ.get("SERVER_SOFTWARE", "")},
                     "env": {"apps_script": bool(APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN), "smtp": bool(SMTP_USER and SMTP_PASS),
                             "report_to": bool(REPORT_TO), "daily_report": (os.environ.get("DAILY_REPORT", "1") or "1")},
