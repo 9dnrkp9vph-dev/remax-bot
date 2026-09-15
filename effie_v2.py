@@ -10719,12 +10719,14 @@ def register(app, G):
                 import datetime as _dy2
                 from zoneinfo import ZoneInfo as _ZY2
                 now_il = _dy2.datetime.now(_ZY2("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
+                _items = []
                 for sk, rec in norm:
                     fixed = y2_fix_created(rec["raw"].get("נוצר בתאריך", ""), existing.get(sk, ""), now_il)
                     rec["raw"]["נוצר בתאריך"] = fixed
                     rec["created_at_source"] = inv_parse_dt(fixed)
-                    sb.newborn_upsert_row(sk, rec)
-                    out["nbN"] += 1
+                    _items.append((sk, rec))
+                # 15/09: upsert במנות של 100 במקום קריאה לכל שורה — 200 שורות ירדו מ-~50ש׳ לשניות
+                out["nbN"] += sb.newborn_upsert_rows(_items)
             elif stream == "agency":
                 if log and rows:   # אבחון מבנה ה-payload (09/09: המשרד לא הגיע בשום מפתח)
                     log.info(f"yad2 agency payload: batch_keys={sorted(k for k in b.keys() if k != 'rows')} "
@@ -10767,10 +10769,8 @@ def register(app, G):
                         sb.excl_delete_keys(["y2x:" + str(p.get("מספר מודעה") or "") for p in props])
                     except Exception:
                         pass
-                for r, _name, _oid in others:
-                    sk, rec = y2_norm_agency(r, _name, _oid)
-                    sb.excl_upsert_row(sk, rec)
-                    out["shtafN"] += 1
+                _xitems = [y2_norm_agency(r, _name, _oid) for r, _name, _oid in others]
+                out["shtafN"] += sb.excl_upsert_rows(_xitems)   # 15/09: במנות, לא שורה-שורה
                 if ours:
                     G["_cache_clear"]("sheet_rows")
                     G["_cache_clear"]("famexcl_index")

@@ -426,6 +426,87 @@ def excl_upsert_row(source_key, rec):
     return True
 
 
+def _upsert_bulk(table, rows, key_field="source_key", chunk=100, single=None):
+    """upsert של הרבה שורות בקריאות מעטות (15/09: ה-ingest של יד2 עשה POST לכל שורה —
+    200 שורות = 200 סיבובי-רשת = ~50ש׳ למנה, ולכן הסורק הספיק להעביר מנה אחת לסריקה).
+    PostgREST דורש אותן עמודות בכל השורות ואוסר על אותו מפתח פעמיים בקריאה אחת —
+    לכן: דדופ לפי המפתח (האחרון גובר) וסדר עמודות אחיד. כשל של מנה → נפילה לשורה-שורה
+    (single) כדי ששורה אחת פגומה לא תפיל 99 תקינות. מחזיר כמה שורות נכתבו."""
+    if not rows:
+        return 0
+    seen = {}
+    for r in rows:
+        seen[str(r.get(key_field, ""))] = r          # האחרון גובר — כמו בקריאות הבודדות ברצף
+    rows = list(seen.values())
+    n = 0
+    for i in range(0, len(rows), chunk):
+        part = rows[i:i + chunk]
+        try:
+            r = requests.post(SUPABASE_URL + "/rest/v1/" + table,
+                              headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                              params={"on_conflict": "office_id," + key_field},
+                              json=part, timeout=max(_TIMEOUT, 60))
+            r.raise_for_status()
+            n += len(part)
+        except Exception:
+            if not single:
+                raise
+            for row in part:                          # נפילה: שורה-שורה, שגיאה בודדת לא עוצרת את השאר
+                try:
+                    single(row)
+                    n += 1
+                except Exception:
+                    pass
+    return n
+
+
+def _newborn_row(source_key, rec):
+    row = {"office_id": SB_OFFICE_ID, "source_key": source_key,
+           "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()}
+    for k in ("pid", "owner_name", "owner_phone", "street", "city", "price",
+              "description", "link", "notes", "lister", "created_at_source", "raw"):
+        if k in rec:
+            row[k] = rec[k]
+    return row
+
+
+def newborn_upsert_rows(items):
+    """items = [(source_key, rec)] — כמו newborn_upsert_row, במנות של 100 (ראה _upsert_bulk)."""
+    rows = [_newborn_row(sk, rec) for sk, rec in items]
+    keys = set()
+    for r in rows:
+        keys |= set(r.keys())
+    for r in rows:                                    # עמודות אחידות — דרישת PostgREST ל-bulk
+        for k in keys:
+            r.setdefault(k, None)
+    def _single(row):
+        r = requests.post(SUPABASE_URL + "/rest/v1/newborn_listings",
+                          headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
+                          params={"on_conflict": "office_id,source_key"}, json=[row], timeout=_TIMEOUT)
+        r.raise_for_status()
+    return _upsert_bulk("newborn_listings", rows, single=_single)
+
+
+def _excl_row(source_key, rec):
+    return {"office_id": SB_OFFICE_ID, "source_key": source_key,
+            "event_id": rec.get("event_id", ""), "street": rec.get("street", ""),
+            "dest": rec.get("dest", ""), "link": rec.get("link", ""),
+            "price": rec.get("price", ""),
+            "received_at": _dt.date.today().isoformat(), "raw": rec.get("raw") or {},
+            "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()}
+
+
+def excl_upsert_rows(items):
+    """items = [(source_key, rec)] — כמו excl_upsert_row, במנות של 100."""
+    rows = [_excl_row(sk, rec) for sk, rec in items]
+    def _single(row):
+        r = requests.post(SUPABASE_URL + "/rest/v1/external_exclusives",
+                          headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
+                          params={"on_conflict": "office_id,source_key"}, json=[row], timeout=_TIMEOUT)
+        r.raise_for_status()
+    return _upsert_bulk("external_exclusives", rows, single=_single)
+
+
 def excl_delete_keys(source_keys):
     """מחיקת שורות שת"פ לפי source_key (ריפוי עצמי: נכסי הסניפים שלנו שנכנסו לשת"פ
     כאנונימיים לפני תיקון זיהוי המשרד, 09/09). מחזיר כמה בקשות הצליחו."""
