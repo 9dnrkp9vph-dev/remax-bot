@@ -10135,10 +10135,31 @@ def _report_daily_loop_body(_dt):
             _REPORT_LAST.update({"state": "done", "ok": False, "msg": f"לולאה: {type(e).__name__}: {str(e)[:100]}"})
         time.sleep(60)
 
-if ((SMTP_USER and SMTP_PASS) or (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN)) and REPORT_TO \
-        and (os.environ.get("DAILY_REPORT", "1") or "1") != "0":
-    _REPORT_THREAD[0] = _threading.Thread(target=_report_daily_loop, daemon=True, name="daily-report")
-    _REPORT_THREAD[0].start()
+_REPORT_THREAD_LOCK = _threading.Lock()
+
+def _report_ensure_thread():
+    """15/09: הלולאה מתחילה **בתוך תהליך ההגשה** (בבקשה הראשונה), לא בזמן הייבוא — בפרודקשן
+    הכרטיס הראה 'מתה: ללא שגיאה' + 'מפיק…' תקוע: השרת מייבא ואז מפצל תהליך (fork); thread שנולד
+    לפני הפיצול מת בתהליך הבן, ונעילות שהחזיק ברגע הפיצול נשארות נעולות → גם השליחה הידנית נתקעה."""
+    if not (((SMTP_USER and SMTP_PASS) or (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN)) and REPORT_TO
+            and (os.environ.get("DAILY_REPORT", "1") or "1") != "0"):
+        return False
+    with _REPORT_THREAD_LOCK:
+        th = _REPORT_THREAD[0]
+        if th is not None and th.is_alive():
+            return True
+        _REPORT_THREAD[0] = _threading.Thread(target=_report_daily_loop, daemon=True, name="daily-report")
+        _REPORT_THREAD[0].start()
+        _REPORT_LAST["thread_pid"] = os.getpid()
+        return True
+
+@app.before_request
+def _report_thread_kick():
+    try:
+        if _REPORT_THREAD[0] is None or not _REPORT_THREAD[0].is_alive():
+            _report_ensure_thread()
+    except Exception as e:
+        log.warning(f"daily report thread kick: {e}")
 
 def check_new_calls():
     """מזהה שיחה חדשה בגיליון 'שיחות' ושולח לסוכן וואטסאפ עם תמלול + קישור הוספת קונה.
