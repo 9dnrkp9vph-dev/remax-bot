@@ -9928,13 +9928,16 @@ def render_office_report_page(rep):
     .hbrand{display:flex;align-items:center;gap:14px}.hlogo{width:74px;height:74px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;padding:9px;box-shadow:0 0 0 3px #E4C56B}
     .hlogo img{width:100%;height:100%;object-fit:contain}.hlogo .init{font-size:30px;font-weight:800;color:#1E3A5F}
     .hero h1{margin:0;font-size:30px;font-weight:800;line-height:1.1}.hero .hsub{color:#D9DEE8;font-size:15px;margin-top:4px}
-    .effie{display:flex;align-items:center;gap:8px;color:#E4C56B;font-size:13px}.effie b{display:block;font-size:17px;color:#fff;line-height:1}
+    .effie{display:flex;align-items:center;gap:12px;color:#E4C56B;font-size:13px}.effie b{display:block;font-size:17px;color:#fff;line-height:1}
+    .back{display:inline-block;padding:9px 14px;border:1.5px solid rgba(255,255,255,.55);border-radius:12px;color:#fff;text-decoration:none;font-weight:800;font-size:13px;background:rgba(255,255,255,.08)}.back:hover{background:rgba(255,255,255,.16)}
+    @media print{.back{display:none}}
     .ach{margin-top:20px;position:relative;z-index:1}.ach .t{font-size:13px;letter-spacing:.06em;color:#E4C56B;font-weight:700;text-transform:uppercase}
     .ach .h{font-size:38px;font-weight:800;line-height:1.1;margin:4px 0 6px}.ach .s{color:#D9DEE8;font-size:15px;max-width:820px}
     .hstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:20px;position:relative;z-index:1}
     .hs{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:12px 14px}.hn{font-size:30px;font-weight:800;color:#E4C56B;line-height:1}.hl{font-size:12.5px;color:#D9DEE8;margin-top:4px}
     .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:18px}
-    .kpi{background:#fff;border-radius:20px;padding:18px 18px 14px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+    .kpi{background:#fff;border-radius:20px;padding:18px 18px 14px;box-shadow:0 6px 20px rgba(30,58,95,.06);display:flex;flex-direction:column;min-height:196px}
+    .kpi .ks{display:grid;grid-template-columns:1fr;gap:2px}.kpi .ks span{display:flex;justify-content:space-between}.kpi .ks2{margin-top:auto;padding-top:8px}
     .kt{font-size:14px;color:#6B7280;font-weight:600}.kh{font-size:11px;color:#C29435;font-weight:800;margin-inline-start:4px}.kv{font-size:50px;font-weight:800;line-height:1.05;margin:6px 0 4px}
     .ks{font-size:13px;color:#5B6472}.ks b{color:#1E3A5F}.ks2{font-size:12.5px;color:#6B7280;margin-top:6px;border-top:1px solid #EFEAE0;padding-top:6px}
     .sec{background:#fff;border-radius:22px;padding:20px 22px;box-shadow:0 6px 20px rgba(30,58,95,.06);margin-top:18px}
@@ -9962,7 +9965,7 @@ def render_office_report_page(rep):
             f"<title>{_e(rep['subject'])}</title><link href='https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700;800&display=swap' rel='stylesheet'><style>{css}</style></head><body><div class='wrap'>"
             f"<div class='hero'><div class='htop'><div class='hbrand'><div class='hlogo'><img src='/assets/logo' alt='' onerror=\"this.outerHTML='<span class=init>{init}</span>'\"></div>"
             f"<div><h1>סיכום יומי · {_e(office)}</h1><div class='hsub'>יום {_e(dstr)} · השבוע מ-{_e(wkstr)} · הנתונים לפי אתמול / השבוע / החודש / השנה</div></div></div>"
-            f"<div class='effie'>{effie_logo}<div>אפי<b>העוזר של המתווך</b></div></div></div>"
+            f"<div class='effie'><a href='/v2/home' onclick=\"if(history.length>1){{history.back();return false;}}\" class='back'>חזרה לאפליקציה</a>{effie_logo}<div>אפי<b>העוזר של המתווך</b></div></div></div>"
             f"<div class='ach'><div class='t'>המצב בשוק</div><div class='h'>{_e(hero_title)}</div><div class='s'>{_e(hero_sub)}</div></div>"
             f"<div class='hstats'>{hero_stats}</div></div>"
             f"<div class='grid'>{kpis}</div>"
@@ -10004,18 +10007,21 @@ def render_office_report_email(rep):
         return (f"<td style='padding:4px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#24406A;border-radius:12px'><tr><td style='padding:10px 12px;{F}'>"
                 f"<div style='font-size:26px;font-weight:800;color:#E4C56B;line-height:1'>{v}</div><div style='font-size:12px;color:#D9DEE8;margin-top:4px'>{_e(l)}</div></td></tr></table></td>")
     hero_stats = "".join(_hstat(v, l) for v, l in ((o_act, "נכסים בפרסום ביד2"), (lab["בלעדיות"]["month"], "החתמות בלעדיות החודש"), (d["deals_closed"]["year"], "עסקאות שנסגרו השנה"), (calls["month"], "שיחות נכנסות החודש")))
-    def _kpi(title, c, sub, accent):
-        small = " · ".join(f"{h} <b>{c.get(p, 0)}</b>" for p, h in (PH[0], PH[1], PH[3]))
-        return (f"<td width='20%' valign='top' style='padding:5px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#fff;border-radius:16px'><tr><td style='padding:12px 12px 10px;{F}'>"
+    def _kpi(title, c, sub, accent, width):
+        small = "".join(f"<tr><td style='{F};font-size:11.5px;color:#5B6472;padding:1px 0'>{h}</td><td align='left' style='{F};font-size:11.5px;color:#1E3A5F;font-weight:800;padding:1px 0'>{c.get(p, 0)}</td></tr>" for p, h in (PH[0], PH[1], PH[3]))
+        return (f"<td width='{width}' valign='top' style='padding:5px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#fff;border-radius:16px'><tr><td style='padding:12px 14px 10px;{F};height:150px' valign='top'>"
                 f"<div style='font-size:12px;color:#6B7280;font-weight:600'>{_e(title)} <span style='color:#C29435;font-size:10px;font-weight:800'>החודש</span></div>"
-                f"<div style='font-size:34px;font-weight:800;color:{accent};line-height:1.1;margin:4px 0'>{c.get('month', 0)}</div>"
-                f"<div style='font-size:11.5px;color:#5B6472'>{small}</div>" + (f"<div style='font-size:11px;color:#6B7280;margin-top:5px;border-top:1px solid #EFEAE0;padding-top:5px'>{_e(sub)}</div>" if sub else "") + "</td></tr></table></td>")
-    kpis = "".join([
-        _kpi("שיחות נכנסות", calls, f"נענו החודש {ans['month']}" + (f" ({100.0 * ans['month'] / calls['month']:.0f}%)" if calls['month'] else ""), "#1E3A5F"),
-        _kpi("החתמות", sig, f"קונים {lab['קונים']['month']} · מוכרים {lab['מוכר']['month']} · בלעדיות {lab['בלעדיות']['month']}", "#7A5E1C"),
-        _kpi("נכסים חדשים שלנו", o_all, f"בבלעדיות החודש {d.get('office_new_excl', {}).get('month', 0)}", "#C29435"),
-        _kpi("קונים חדשים", d["buyers"], "", "#157A43"),
-        _kpi("עסקאות שנסגרו", d["deals_closed"], f"פתוחים {d['open_now']} · אצל עו\"ד {d['lawyer_now']}", "#2E6BD6")])
+                f"<div style='font-size:36px;font-weight:800;color:{accent};line-height:1.1;margin:4px 0 6px'>{c.get('month', 0)}</div>"
+                f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0'>{small}</table>"
+                + (f"<div style='font-size:11px;color:#6B7280;margin-top:6px;border-top:1px solid #EFEAE0;padding-top:5px'>{_e(sub)}</div>" if sub else "") + "</td></tr></table></td>")
+    row1 = "".join([
+        _kpi("שיחות נכנסות", calls, f"נענו החודש {ans['month']}" + (f" ({100.0 * ans['month'] / calls['month']:.0f}%)" if calls['month'] else ""), "#1E3A5F", "33%"),
+        _kpi("החתמות", sig, f"קונים {lab['קונים']['month']} · מוכרים {lab['מוכר']['month']} · בלעדיות {lab['בלעדיות']['month']}", "#7A5E1C", "33%"),
+        _kpi("נכסים חדשים שלנו", o_all, f"בבלעדיות החודש {d.get('office_new_excl', {}).get('month', 0)}", "#C29435", "34%")])
+    row2 = "".join([
+        _kpi("קונים חדשים", d["buyers"], "", "#157A43", "50%"),
+        _kpi("עסקאות שנסגרו", d["deals_closed"], f"פתוחים {d['open_now']} · אצל עו\"ד {d['lawyer_now']}", "#2E6BD6", "50%")])
+    kpis = f"<tr>{row1}</tr></table><table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>{row2}"
     def _bar(v, m, color):
         w = max(2, int(100 * v / m)) if m else 2
         return (f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr><td width='34' style='{F};font-size:13px;font-weight:800;color:#1E3A5F;text-align:center'>{v}</td>"
@@ -10084,9 +10090,38 @@ def render_office_report_email(rep):
             + f"<tr><td style='padding:10px;{F};font-size:11.5px;color:#6B7280;text-align:center'>סריקות אחרונות — נכסי המשרד {_e(sc_.get('office'))} · שת\"פ {_e(sc_.get('shtaf'))} · נכס נולד {_e(sc_.get('newborn'))} · הופק על ידי אפי</td></tr>"
             "</table></div>")
 
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
+def _report_recipients():
+    """נמעני הדוח: רשימת המיילים מניהול (קונפיג v2_report_emails); ריק → REPORT_TO (env / ברירת מחדל)."""
+    try:
+        lst = (_load_config() or {}).get("v2_report_emails") or []
+    except Exception:
+        lst = []
+    out = [str(x).strip().lower() for x in lst if isinstance(x, str) and _EMAIL_RE.match(str(x).strip())]
+    return out or ([REPORT_TO] if REPORT_TO else [])
+
+def _report_recipients_set(emails):
+    """עדכון הרשימה (מנהל): ולידציה, ניקוי כפילויות, עד 10. מחזיר (ok, רשימה_או_שגיאה)."""
+    clean, bad = [], []
+    for e in (emails or []):
+        e = str(e or "").strip().lower()
+        if not e: continue
+        if not _EMAIL_RE.match(e): bad.append(e); continue
+        if e not in clean: clean.append(e)
+    if bad:
+        return False, "כתובת לא תקינה: " + ", ".join(bad[:3])
+    if len(clean) > 10:
+        return False, "עד 10 נמענים"
+    def _mut(cfg):
+        cfg["v2_report_emails"] = clean
+        return True
+    ok, _ = _config_mutate(_mut)
+    return bool(ok), clean
+
 def _report_send_email(subject, html, text, to=None):
     """שליחת הדוח במייל דרך SMTP (Gmail app password ב-env). מחזיר (ok, הודעה)."""
-    to = (to or REPORT_TO or "").strip()
+    to = (to or ",".join(_report_recipients()) or "").strip()
     if not (SMTP_USER and SMTP_PASS and to):
         # אייל 15/09 "באותה דרך, בלי Environment": המסלול הקיים של 'דיווח תקלה' — Apps Script של
         # ה-CRM (action=sendhelp → MailApp.sendEmail, טקסט). נושא: '[Family Bot] <kind> — <agent>'.
@@ -10155,7 +10190,7 @@ def api_daily_report_status():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     d = (_load_config() or {}).get("v2_daily_report") or {}
     th = _REPORT_THREAD[0]
-    return jsonify({"ok": True, "to": REPORT_TO, "hour": REPORT_HOUR,
+    return jsonify({"ok": True, "to": ", ".join(_report_recipients()), "recipients": _report_recipients(), "hour": REPORT_HOUR,
                     "channel": "smtp" if (SMTP_USER and SMTP_PASS) else ("apps_script" if (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN) else "none"),
                     "thread_alive": bool(th is not None and th.is_alive()),
                     "thread_started": th is not None, "pid": os.getpid(),
@@ -10210,6 +10245,19 @@ def _report_build_and_send(day, to=""):
         log.warning(f"daily report manual {key} crashed: {e}", exc_info=True)
         _REPORT_LAST.update({"state": "done", "ok": False, "msg": f"קריסה: {type(e).__name__}: {str(e)[:100]}", "secs": round(time.time() - t0, 1)})
         _report_record(key, False, _REPORT_LAST["msg"], {"secs": round(time.time() - t0, 1)})
+
+@app.route("/api/daily-report/recipients", methods=["POST"])
+def api_daily_report_recipients():
+    """עדכון נמעני הדוח מניהול (אייל 15/09): {emails: [...]} — מנהל/מפתח בלבד."""
+    s = _web_auth()
+    if not (s and (s.get("role") == "admin" or _is_dev(s.get("phone", "")))):
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    b = request.get_json(silent=True) or {}
+    ok, res = _report_recipients_set(b.get("emails") or [])
+    if not ok:
+        return jsonify({"ok": False, "msg": res if isinstance(res, str) else "השמירה נכשלה"})
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "נמעני דוח יומי", ", ".join(res)[:120])
+    return jsonify({"ok": True, "recipients": _report_recipients()})
 
 @app.route("/api/daily-report/send", methods=["POST", "GET"])
 def api_daily_report_send():

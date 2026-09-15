@@ -1692,6 +1692,12 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <div class="card" id="repCard">
       <div class="cardTitle">דוח יומי במייל</div>
       <div id="repStatus" style="font-size:12px;color:#6B7280;line-height:1.5">טוען…</div>
+      <div style="margin-top:10px;font-size:12.5px;font-weight:700;color:#1E3A5F">נמענים</div>
+      <div id="repTo" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <input id="repEmail" type="email" inputmode="email" placeholder="כתובת מייל להוספה" autocomplete="off" style="flex:1;font-size:16px;padding:10px 12px;border:1px solid #E9E4D8;border-radius:12px;background:#fff;direction:ltr;text-align:right" onkeydown="if(event.key==='Enter')repAddEmail()">
+        <button onclick="repAddEmail()" style="padding:10px 14px;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">הוסף</button>
+      </div>
       <div style="display:flex;gap:8px;margin-top:10px">
         <button onclick="repSend('')" style="flex:1;padding:12px 0;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">שלח עכשיו (אתמול)</button>
         <button onclick="repOpen()" style="flex:1;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">הצג דוח</button>
@@ -1925,6 +1931,7 @@ function repLoad(){
   GET('/api/daily-report/status').then(function(j){
     var b = el('repStatus'); if (!b) return;
     if (!j || !j.ok){ b.textContent = 'אין הרשאה / לא זמין'; return; }
+    REP_TO = j.recipients || []; renderRepTo();
     var days = j.days || {}, ks = Object.keys(days).sort().reverse();
     var ch = j.channel === 'smtp' ? 'SMTP' : j.channel === 'apps_script' ? 'Apps Script (כמו דיווח תקלה)' : 'אין ערוץ מייל';
     var e = j.env || {};
@@ -1944,6 +1951,26 @@ function repLoad(){
     b.innerHTML = h;
   }).catch(function(){ var b = el('repStatus'); if (b) b.textContent = 'שגיאה בטעינת המצב'; });
 }
+var REP_TO = [];
+function renderRepTo(){
+  var box = el('repTo'); if (!box) return;
+  box.innerHTML = REP_TO.length ? REP_TO.map(function(e, i){
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:#F7F5EE;border:1px solid #E9E4D8;border-radius:999px;padding:5px 10px;font-size:12.5px;direction:ltr">' + esc(e) +
+      '<button onclick="repRemoveEmail(' + i + ')" aria-label="הסר" style="border:none;background:none;color:#C24040;font-weight:800;cursor:pointer;font-size:14px;padding:0 2px">×</button></span>';
+  }).join('') : '<span style="font-size:12px;color:#6B7280">אין נמענים — הדוח לא יישלח</span>';
+}
+function repSaveTo(list){
+  POST('/api/daily-report/recipients', {emails: list}).then(function(j){
+    if (j && j.ok){ REP_TO = j.recipients || []; renderRepTo(); toast('נמענים עודכנו'); }
+    else toast((j && j.msg) || 'השמירה נכשלה');
+  }).catch(function(){ toast('שגיאה'); });
+}
+function repAddEmail(){
+  var v = String((el('repEmail') || {}).value || '').trim().toLowerCase(); if (!v) return;
+  if (REP_TO.indexOf(v) >= 0){ toast('כבר ברשימה'); return; }
+  el('repEmail').value = ''; repSaveTo(REP_TO.concat([v]));
+}
+function repRemoveEmail(i){ if (!confirm('להסיר את ' + REP_TO[i] + ' מהנמענים?')) return; repSaveTo(REP_TO.filter(function(_, k){ return k !== i; })); }
 var _repPoll = null;
 function repSend(d){
   toast('מפיק ושולח ברקע… התוצאה תופיע כאן בעוד רגע');
