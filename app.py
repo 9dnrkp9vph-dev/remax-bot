@@ -5880,6 +5880,11 @@ def api_history():
             _sa = _sdt.get(_lk.rsplit("/s/", 1)[-1].strip("/ "))
             if _sa:
                 _r0["signed_time"] = _fmt_il_dt(_sa) or _sa
+                _r0["ts_eff"] = _excl_epoch(_sa) or _r0.get("ts") or 0
+    # 17/09 (אייל: "למה החתימה לא לפי השעה?"): הכרטיס מציג לנחתם את שעת החתימה ולממתין את שעת
+    # השליחה — המיון היה לפי received_at (שמתעדכן בכל עדכון מפיירברי) → סדר שלא תואם לשעה שרואים.
+    # עכשיו: מיון לפי השעה המוצגת — חתימה כשנחתם, שליחה כשממתין.
+    sig_out.sort(key=lambda r: -float(r.get("ts_eff") or r.get("ts") or 0))
     vphone = _vphone_for_name(eff["name"])
     return _etag_wrap({"ok": True, "role": eff["role"], "name": eff["name"],
                        "dev": bool(s.get("dev", False)),
