@@ -4817,6 +4817,7 @@ def api_sign_submit():
     s_name, s_role, s_phone = s.get("name", ""), s.get("role", ""), s.get("phone", "")
     def _sign_submit_bg():
         try:
+            _sign_rows_to_supabase(recs)   # 22/09: כל טופס בשורה משלו ב-Supabase (הזוג לא נבלע בסנכרון)
             for _r in recs:
                 _buyers_apps_post("addsigning", _r)
             _cache_clear("signings_sheet")
@@ -5265,6 +5266,7 @@ def api_sign_send_remote():
     s_name, s_role, s_phone = s.get("name", ""), s.get("role", ""), s.get("phone", "")
     def _send_remote_bg():
         try:
+            _sign_rows_to_supabase(recs)   # 22/09: כל טופס בשורה משלו ב-Supabase (הזוג לא נבלע בסנכרון)
             for _r in recs:
                 _buyers_apps_post("addsigning", _r)
             _cache_clear("signings_sheet")
@@ -8153,6 +8155,31 @@ def _web_num(v):
     if v is None or v == "": return None
     try: return float(v)
     except: return None
+
+def _sign_rows_to_supabase(recs):
+    """22/09 (אייל: 'למה לא רואים את טופס המוכר, רק את הבלעדיות?'): זוג מוכר+בלעדיות מהאפליקציה
+    חולק event_id; Apps Script `sbSyncRecent` מסנכרן חתימות ל-Supabase במפתח event_id בלבד
+    ('אחרון מנצח בתוך החלון') → הטופס השני נבלע. לכן האפליקציה כותבת בעצמה כל טופס ב-source_key
+    נפרד `app:<event_id>:<deal_type>` (כמו `fb:id:TYPE` בקליטה מפיירברי). שורת הסנכרון (מפתח eid)
+    נבלעת בדדופ התצוגה (סוכן+לקוח+יום+תווית+כתובת; שורה עם קישור חתום גוברת). best-effort."""
+    if not (_sbdb and _sbdb.enabled()):
+        return 0
+    n = 0
+    for r in (recs or []):
+        try:
+            eid = str(r.get("event_id", "") or "").strip()
+            if not eid:
+                continue
+            dt = re.sub(r"[^A-Za-z0-9_]", "", str(r.get("deal_type", "") or "")) or "X"
+            riso = str(r.get("received_at", "") or "")[:10] or time.strftime("%Y-%m-%d")
+            _sbdb.upsert_signature_row(f"app:{eid}:{dt}", riso, dict(r))
+            n += 1
+        except Exception as e:
+            log.warning(f"sign rows → supabase: {e}")
+    if n:
+        try: _cache_clear("raw:חתימות:01/01/2020:31/12/2099")
+        except Exception: pass
+    return n
 
 def _dedupe_exclusives(rows):
     """אם אותו נכס מופיע כמה פעמים (לפי הכתובת) — להשאיר רק את החדש ביותר."""
