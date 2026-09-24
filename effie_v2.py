@@ -5151,26 +5151,54 @@ function fmtPrice(p){
 
 var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''}, UPD = {office:'', shtaf:''};
 var HOT = {};   // property_key → true עבור הנכס החם של הסוכן (אחד בלבד)
+var HOT_ORPHANS = {};   // 24/09: סימון שהמודעה שלו כבר לא ב'שלי' (אין כרטיס להסרה) — לא נספר במכסה
+var HOT_TITLES = {};    // property_key → כותרת (לבאנר היתום)
+function hotCount(){ var c = 0; for (var k in HOT) if (HOT[k] && !HOT_ORPHANS[k]) c++; return c; }
 function toggleHot(i){
   var p = el('list')._src[i]; if (!p) return;
   var hk = String(p.id || p.address || ''); if (!hk) return;
   var on = !HOT[hk];
-  if (on){ var c = 0; for (var k in HOT) if (HOT[k]) c++; if (c >= 1){ toast('אפשר לסמן נכס חם אחד בלבד — הסר אותו קודם'); return; } }
+  if (on && hotCount() >= 1){ toast('אפשר לסמן נכס חם אחד בלבד — הסר אותו קודם'); return; }
   HOT[hk] = on; if (!on) delete HOT[hk]; render();   // אופטימי
   var det = [p.type, p.rooms ? p.rooms + ' חד׳' : '', p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
   POST('/v2/api/hot', {property_key: hk, on: on, title: [p.address, p.city].filter(Boolean).join(', '), details: det, price: String(p.price || ''), description: String(p.desc || '')}).then(function(j){
     if (!j || !j.ok){ if (on) delete HOT[hk]; else HOT[hk] = true; render();
       toast(j && j.reason === 'limit' ? 'אפשר נכס חם אחד בלבד' : 'השמירה נכשלה'); return; }
+    if (on && j.replaced && j.replaced.length){   // השרת החליף סימון יתום — מרעננים את הבאנר
+      toast('הנכס סומן כחם — הסימון הקודם (' + j.replaced.join(', ') + ') הוסר, המודעה כבר לא ברשימה שלך');
+      loadHot(); return;
+    }
+    if (!on && HOT_ORPHANS[hk]){ delete HOT_ORPHANS[hk]; render(); }
     toast(on ? 'הנכס סומן כחם — יופיע בבריף' : 'הוסר מהבריף');
   }).catch(function(){ if (on) delete HOT[hk]; else HOT[hk] = true; render(); toast('שגיאה'); });
+}
+function removeOrphanHot(k){   // "הסר" מהבאנר — הסימון היתום (אין לו כרטיס)
+  delete HOT[k]; delete HOT_ORPHANS[k]; render();
+  POST('/v2/api/hot', {property_key: k, on: false}).then(function(j){
+    toast(j && j.ok ? 'הוסר מהבריף — אפשר לסמן נכס חם חדש' : 'ההסרה נכשלה'); if (!(j && j.ok)) loadHot();
+  }).catch(function(){ toast('שגיאה'); loadHot(); });
+}
+function orphanBanner(){
+  if (MODE !== 'mine' || MINE_MULTI) return '';
+  var ks = Object.keys(HOT_ORPHANS).filter(function(k){ return HOT[k]; });
+  if (!ks.length) return '';
+  return ks.map(function(k){
+    return '<div class="card" style="border:1.5px solid #E4C56B;background:#FBF3DD">' +
+      '<div style="font-weight:700;color:#1E3A5F">הנכס החם שלך כבר לא ברשימת הנכסים שלך</div>' +
+      '<div style="font-size:13px;color:#5B6472;margin:4px 0 10px">' + esc(HOT_TITLES[k] || k) +
+      ' — המודעה ירדה מפרסום, הוסרה או עברה לסוכן אחר. הסימון עדיין תופס את המכסה; סימון נכס חדש יחליף אותו אוטומטית.</div>' +
+      '<button class="btn btn-sec" style="min-height:44px" onclick="removeOrphanHot(' + JSON.stringify(k).replace(/"/g, '&quot;') + ')">הסר מהבריף</button></div>';
+  }).join('');
 }
 var HOT_BY = {};   // property_key → שם הסוכן שסימן (לתצוגת מנהל: "נכס חם · שם")
 function loadHot(tries){
   // מנהל/מתאמת רואים את הנכסים של כל הסוכנים ב"שלי" → טוענים את הנכסים החמים הכלל-משרדיים
   GET('/v2/api/hot' + (MINE_MULTI ? '?all=1' : '')).then(function(j){
     if (j && j.ok){
-      HOT = {}; HOT_BY = {};
+      HOT = {}; HOT_BY = {}; HOT_ORPHANS = {}; HOT_TITLES = {};
       (j.keys || []).forEach(function(k){ HOT[String(k)] = true; });
+      (j.orphans || []).forEach(function(k){ HOT_ORPHANS[String(k)] = true; });
+      var tt = j.titles || {}; for (var k in tt) HOT_TITLES[String(k)] = tt[k];
       var by = j.byAgent || {}; for (var k in by) HOT_BY[String(k)] = by[k];
       render();
     } else if ((tries || 0) < 2){ setTimeout(function(){ loadHot((tries || 0) + 1); }, 1500); }
@@ -5244,6 +5272,7 @@ function render(){
   el('sumLine').textContent = _sumTxt;
   src.slice(0, 40).forEach(function(p, i){ h += propCard(p, i); });
   if (src.length > 40) h += '<div class="more">מוצגים 40 מתוך ' + src.length + ' — חדד את החיפוש</div>';
+  var _ob = orphanBanner(); if (_ob) h = _ob + h;   // 24/09: סימון נכס-חם יתום — באנר עם "הסר"
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#C29435" stroke-width="1.4" stroke-linejoin="round"/></svg></div>' +
     '<div class="t">' + (MODE === 'mine' ? 'אין לך נכסים פעילים' : 'לא נמצאו נכסים') + '</div>' +
@@ -9224,6 +9253,27 @@ def y2_hot_owner_filter(phone, name):
 
 Y2_HOT_MISSING_SCANS = 3
 
+def y2_hot_orphan_keys(hot_rows, prow, owns, removed=None):
+    """סימוני נכס-חם 'יתומים' של סוכן (אייל 24/09, חי אלבז: "הנכס החם הוסר מהמערכת ועכשיו
+    לא ניתן לסמן נכס חדש"): המודעה כבר לא בין 'הנכסים שלי' שלו — נעלמה מנכסי המשרד, ירדה
+    מפרסום, הוסרה ע"י הסוכן (v2_removed_listings) או עברה לסוכן אחר — ולכן אין כרטיס עם
+    כפתור להסרה, אבל הסימון עדיין תופס את המכסה. מחזיר את מפתחות הסימונים היתומים."""
+    removed = set(str(x) for x in (removed or ()))
+    pmap = {}
+    for r in prow or []:
+        lid = str(r.get("מספר מודעה", "") or "").strip()
+        if lid:
+            pmap[lid] = r
+    out = []
+    for hr in hot_rows or []:
+        k = str(hr.get("property_key") or hr.get("key") or "").strip()
+        if not k:
+            continue
+        r = pmap.get(k)
+        if r is None or k in removed or str(r.get("ירד מפרסום", "") or "").strip() or not owns(r):
+            out.append(k)
+    return out
+
 def y2_hot_missing_update(state, hot_props, rows, stamp, n=Y2_HOT_MISSING_SCANS):
     """נכס חם שהמודעה שלו נעלמה מנכסי המשרד (אייל 11/09: "אם הנכס לא זמין בנכסים של הסוכן —
     שיסיר אותו מהסטורי לאחר 3 סריקות משרדים"). state = {key: [חותמות-סריקה נבדלות שבהן חסר]}.
@@ -9866,7 +9916,7 @@ def register(app, G):
         # הרב-סוכנית ידלקו גם לנכסים שסוכנים אחרים סימנו (תיקון 19/07). אחרת רק שלי.
         want_all = request.args.get("all") == "1" and s.get("role") in ("admin", "coordinator")
         params = {"office_id": "eq." + _sb.SB_OFFICE_ID, "active": "eq.true",
-                  "select": "property_key,agent_name"}
+                  "select": "property_key,agent_name,title"}
         if not want_all:
             # 🐞 11/09: המכסה נאכפת לפי שם הסוכן, אבל הרשימה נטענה לפי טלפון — סוכן שסימן מטלפון
             # אחר (או שם/טלפון שהשתנו) לא ראה את הסימון, לא יכול להסיר, ונחסם ב"אחד בלבד"
@@ -9880,10 +9930,30 @@ def register(app, G):
             # מפת key→סוכן — להצגת שם הסוכן על כפתור של נכס חם שאינו שלי (בתצוגת מנהל)
             by = {row.get("property_key"): (row.get("agent_name") or "")
                   for row in rows if row.get("property_key")}
-            return jsonify({"ok": True, "keys": keys, "byAgent": by})
+            titles = {row.get("property_key"): (row.get("title") or "")
+                      for row in rows if row.get("property_key")}
+            # 24/09: סימונים יתומים (המודעה כבר לא ב'שלי' — אין כרטיס להסרה) — הקליינט מציג
+            # באנר עם "הסר" ולא סופר אותם במכסה
+            orphans = []
+            if not want_all and keys:
+                try:
+                    orphans = _hot_orphans_for(s, rows)
+                except Exception as _oe:
+                    if log: log.warning(f"effie hot orphans: {_oe}")
+            return jsonify({"ok": True, "keys": keys, "byAgent": by, "titles": titles, "orphans": orphans})
         except Exception as e:
             if log: log.warning(f"effie hot get: {e}")
-            return jsonify({"ok": True, "keys": [], "byAgent": {}})
+            return jsonify({"ok": True, "keys": [], "byAgent": {}, "titles": {}, "orphans": []})
+
+    def _hot_orphans_for(s, hot_rows):
+        """מפתחות הסימונים היתומים של הסוכן בסשן (ראה y2_hot_orphan_keys)."""
+        name = (s.get("name") or "").strip()
+        phones = set(G["_last9"](x) for x in (G["_phones_for_name"](name) or []) if G["_last9"](x))
+        if s.get("phone"):
+            phones.add(G["_last9"](s["phone"]))
+        prow = G["fetch_sheet_rows"]() or []
+        return y2_hot_orphan_keys(hot_rows, prow, lambda r: G["_agent_owns_row"](r, name, phones),
+                                  G["_removed_listing_ids"]())
 
     @app.route("/v2/api/hot", methods=["POST"])
     def v2_api_hot_post():
@@ -9910,20 +9980,35 @@ def register(app, G):
                 r.raise_for_status()
                 _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "הסרת נכס חם", key)
                 return jsonify({"ok": True, "on": False})
-            # הפעלה — אכיפת "1 לסוכן" לפי שם הסוכן (לא טלפון — סוכן עם כמה טלפונים = אחד)
+            # הפעלה — אכיפת "1 לסוכן" לפי שם הסוכן *או* טלפון (סוכן עם כמה טלפונים = אחד;
+            # אותו פילטר כמו ב-GET כדי שמה שהסוכן רואה = מה שנספר)
             name = (s.get("name") or "").strip()
-            rc = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
-                               headers={**_sb._headers(), "Prefer": "count=exact"},
+            rc = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories", headers=_sb._headers(),
                                params={"office_id": "eq." + _sb.SB_OFFICE_ID,
-                                       "agent_name": "eq." + name,
+                                       "or": y2_hot_owner_filter(s.get("phone", ""), name),
                                        "active": "eq.true", "property_key": "neq." + key,
-                                       "select": "id"}, timeout=10)
-            cnt = 0
-            cr = rc.headers.get("Content-Range", "")
-            if "/" in cr:
-                try: cnt = int(cr.split("/")[-1])
-                except Exception: cnt = 0
-            if cnt >= 1:
+                                       "select": "property_key,title"}, timeout=10)
+            rc.raise_for_status()
+            others = [x for x in (rc.json() or []) if x.get("property_key")]
+            # 24/09 (חי אלבז): סימון על מודעה שכבר לא ב'שלי' (נעלמה/ירדה/הוסרה/עברה לסוכן אחר)
+            # אין לו כרטיס להסרה — במקום לחסום, סימון חדש מפורש של הסוכן מחליף אותו
+            replaced = []
+            try:
+                orphans = set(_hot_orphans_for(s, others))
+            except Exception as _oe:
+                if log: log.warning(f"effie hot orphans (post): {_oe}")
+                orphans = set()
+            for x in others:
+                if x["property_key"] in orphans:
+                    _requests.patch(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
+                                    headers={**_sb._headers(), "Content-Type": "application/json"},
+                                    params={"office_id": "eq." + _sb.SB_OFFICE_ID,
+                                            "property_key": "eq." + x["property_key"],
+                                            "or": y2_hot_owner_filter(s.get("phone", ""), name)},
+                                    json={"active": False}, timeout=10).raise_for_status()
+                    replaced.append(x.get("title") or x["property_key"])
+                    if log: log.info(f"hot story replaced (orphan): {x['property_key']} by {key} ({name})")
+            if len(others) - len(replaced) >= 1:
                 return jsonify({"ok": False, "reason": "limit"})
             r = _requests.post(_sb.SUPABASE_URL + "/rest/v1/hot_stories?on_conflict=office_id,agent_phone,property_key",
                                headers={**_sb._headers(), "Content-Type": "application/json",
@@ -9934,8 +10019,9 @@ def register(app, G):
                                      "price": (b.get("price") or "")[:40],
                                      "description": (b.get("description") or "")[:600], "active": True}, timeout=10)
             r.raise_for_status()
-            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "סימון נכס חם", key)
-            return jsonify({"ok": True, "on": True})
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "סימון נכס חם",
+                          key + ((" (החליף: " + ", ".join(replaced) + ")") if replaced else ""))
+            return jsonify({"ok": True, "on": True, "replaced": replaced})
         except Exception as e:
             if log: log.warning(f"effie hot post: {e}")
             return jsonify({"ok": False, "reason": "write_failed"})
