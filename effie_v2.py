@@ -9268,10 +9268,15 @@ def y2_fix_created(listing_date, existing, now_il):
     (סריקה חוזרת לא מוחקת), (ב) מודעה שנולדה היום מקבלת את שעת הקליטה
     (הסריקות רצות כל 8-30 דק' — דיוק אמיתי), (ג) תאריך ישן נשאר תאריך-בלבד."""
     t = str(listing_date or '').strip()
-    if not t or _Y2_TIME_RE.search(t):
+    ex = str(existing or '').strip()
+    # 24/09 (אייל: "למה הנכס לא מופיע באפליקציה?"): מודעה טרייה מגיעה מיד2 בלי תאריך בכלל
+    # (modified ריק) → 'נוצר בתאריך' ריק → הפיד מסנן אותה (rows בלי epoch נזרקות). בלי תאריך
+    # מהמקור: שומרים מה שכבר נקבע, אחרת שעת הקליטה — הסריקות רצות כל 8-30 דק', זו הפרסום בפועל.
+    if not t:
+        return ex if ex else str(now_il or '')
+    if _Y2_TIME_RE.search(t):
         return t
     d = y2_date_part(t)
-    ex = str(existing or '').strip()
     if ex and _Y2_TIME_RE.search(ex) and y2_date_part(ex) == d:
         return ex
     if d and y2_date_part(now_il) == d:
