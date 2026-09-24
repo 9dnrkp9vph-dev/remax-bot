@@ -6922,15 +6922,17 @@ def api_my_properties():
                 s["role"], eff_name, eff_phones, s.get("agents"), s.get("agent_names"))
         rows = fetch_sheet_rows()
         mine = [r for r in rows if _row_owned(r, keys, phones)]
+        # 24/09: מפות המחירים נבנות *לפני* המיון — המיון המדורג משתמש ב-_pd_map
+        # (24/09 ערב: 'שלי' הציג 0 לכולם — UnboundLocalError שנתפס ב-except → 500 → המסך ריק)
+        _scan_price_changes()
+        _pc_map = _price_changed_map()      # תג "עדכון מחיר" (7 ימים, לכולם)
+        _pd_map = _price_dropped_map()      # תג "ירידת מחיר"
         mine.sort(key=_prop_epoch, reverse=True)   # החדש למעלה (אייל 09/09)
         mine.sort(key=lambda r: _tier_new_drop_rest(_prop_is_new(r), _prop_price_key(r) in _pd_map,
                                                     bool(str(r.get("ירד מפרסום", "") or "").strip())))   # 24/09
         phones_map = fetch_agents_phones()
         pending = _fetch_pending_listings()
         removed = _removed_listing_ids()   # נכסים שהסוכן ביקש להסיר — יורדים מיד מהתצוגה והספירה
-        _scan_price_changes()
-        _pc_map = _price_changed_map()      # תג "עדכון מחיר" (7 ימים, לכולם)
-        _pd_map = _price_dropped_map()      # תג "ירידת מחיר"
         out = []
         for r in mine:
             ag = (r.get("סוכן 1", "") or "").strip()
