@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.1
+// @version      13.30
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,8 +25,12 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.1'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='13.30'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
+// v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
+// ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
+// "לא נשמר" בעוד שהכל נשמר (delistpreview 14/09: 17:40:36 + 17:42:16, אותן 1777 שורות).
+var POST_TIMEOUT_MS=170000; // Apps Script מותר לו עד 6 דק׳; פסק-זמן = כנראה נשמר, לא שולחים שוב
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
 const OFFICES_PER_RUN=6;        // כמה משרדים בסריקה אחת — יד2 חוסם (ShieldSquare) כשסורקים הרבה ברצף
@@ -194,6 +198,71 @@ function latestApiTemplate(){
 // אוספים ממילא (הוא לא חוסם את הבקשות של עצמו). נופלים למשיכה הישנה אם אין פגינציה בדף.
 var UI_PAGES_MAX=25, UI_PAGE_WAIT_MS=12000, UI_TOTAL_MS=720000;   // 12 דק': 4 עצרו ב-5/9, גם 7 עצרו ב-5/9 (01/09)
 var UI_PAGER_WAIT_MS=20000;  // כמה לחכות שהטבלה של יד2 תיבנה לפני שמתייאשים מהפגינציה
+// 🐞 v13.2 · יד2 מרנדר לפעמים פגינציה זמנית קטנה ("מתוך 2" = 155 מודעות המשרד) לפני
+//    שהחיפוש המלא נפתר ("מתוך 9" = 851). התחלה מוקדמת סורקת 2 עמודים ומדווחת "הושלמה".
+//    ממתינים ש-total יפסיק לגדול לפני שצועדים.
+var PAGER_SETTLE_READS=3, PAGER_SETTLE_STEP_MS=1200, PAGER_SETTLE_MAX_MS=16000;
+// טהור: מעדכן מצב-התייצבות בהינתן total חדש. st.done=true כש-total לא גדל שלוש קריאות ברצף.
+function pagerSettleStep(st, total){
+  st = st || {best:0, streak:0, done:false};
+  if(typeof total==='number' && total>st.best){ st.best=total; st.streak=1; }   // גדל — סופרים מחדש
+  else if(total===st.best){ st.streak++; }                                       // אותו total — עוד קריאה יציבה
+  // total<best (רעד ירידה זמני) — שומרים best ולא מאפסים streak
+  st.done = st.streak>=PAGER_SETTLE_READS;
+  return st;
+}
+// אסינכרוני: מריץ pagerSettleStep עד יציבות או תקרת-זמן, ואז cb עם pageInfo טרי (ה-total הגדול)
+function settlePager(info, cb){
+  cb=once(cb);
+  var st=pagerSettleStep(null, info.total), t0=Date.now();
+  (function poll(){
+    if(st.done || Date.now()-t0>=PAGER_SETTLE_MAX_MS){
+      // שומרים את cur המקורי (ההמתנה לא משנה עמוד) ומחילים רק את ה-total שהתייצב;
+      // uiWalkPages קורא ממילא pageInfo() טרי בכל עמוד. (מונע החזרת cur מיושן/מוקדם)
+      cb({cur:info.cur, total:(st.best||info.total), el:info.el, curKnown:info.curKnown}); return;
+    }
+    setTimeout(function(){
+      try{ var h=location.hash, hn=normalizeScanHash(h); if(hn!==h){ location.hash=hn; } }catch(e){}  // v13.4: יד2 מחזיר lastUpdate — מסירים שוב
+      var pi=pageInfo();
+      pagerSettleStep(st, pi?pi.total:st.best);
+      poll();
+    }, PAGER_SETTLE_STEP_MS);
+  })();
+}
+// 🐞 v13.3 · יד2 טוען לפעמים סט חלקי (155 = "מתוך 2") במקום המלא (855 = "מתוך 9").
+//    זו לא גדילה הדרגתית — הטעינה החלקית יציבה, וצריך *רענון* כדי לקבל טעינה מלאה
+//    (אייל: "רק אחרי כמה פעמים של רענן הוא נתפס על 9"). מאטמטים את הרענון הידני:
+//    זוכרים את מספר העמודים הגבוה שנראה (פר-מקור), ומרעננים כשטעינה נראית חלקית.
+var PAGER_GOOD_KEY='yad2_pager_good_v1';     // {src: maxTotal} — הכי גבוה שהתקבל
+var PAGER_RELOAD_KEY='yad2_pager_reload_v1'; // {n,ts} — מונה רענונים למניעת לולאה אינסופית
+var PAGER_RELOAD_MAX=3, PAGER_RELOAD_TTL_MS=15*60000;
+// טהור: האם total נראה "חלקי" מול המקסימום הידוע? (רק אם כבר ראינו לפחות 4 עמודים)
+function pagerLooksShort(total, good){
+  good=good||0; total=total||0;
+  return good>=4 && total < Math.ceil(good*0.5);
+}
+// טהור: החלטת רענון בהינתן מונה קודם. מחזיר {reload,n,ts} — reload=false כשמיצינו/פג תוקף.
+function pagerReloadDecide(state, nowTs){
+  state = (state && state.ts && (nowTs-state.ts)<PAGER_RELOAD_TTL_MS) ? state : {n:0, ts:nowTs};
+  if(state.n>=PAGER_RELOAD_MAX) return {reload:false, n:state.n, ts:state.ts};
+  return {reload:true, n:state.n+1, ts:nowTs};
+}
+function pagerGoodGet(src){ try{var m=JSON.parse(localStorage.getItem(PAGER_GOOD_KEY)||'{}');return m[src]||0;}catch(e){return 0;} }
+function pagerGoodSet(src,v){ try{var m=JSON.parse(localStorage.getItem(PAGER_GOOD_KEY)||'{}');m[src]=v;localStorage.setItem(PAGER_GOOD_KEY,JSON.stringify(m));}catch(e){} }
+function pagerReloadGet(){ try{return JSON.parse(localStorage.getItem(PAGER_RELOAD_KEY)||'null');}catch(e){return null;} }
+function pagerReloadSet(s){ try{localStorage.setItem(PAGER_RELOAD_KEY,JSON.stringify(s));}catch(e){} }
+function pagerReloadClear(){ try{localStorage.removeItem(PAGER_RELOAD_KEY);}catch(e){} }
+// 🐞 v13.4 · יד2 מחיל פילטר ברירת-מחדל lastUpdate=24h על new-properties (855→158, 9→2 עמ׳),
+//    ומחזיר אותו לכתובת גם אחרי מחיקה ידנית (אין חיפוש שמור למחוק). מנטרלים אותו כדי
+//    לתפוס את כל המלאי — הכרחי לזיהוי 'ירד מפרסום' (מבט 24ש' לא מבחין בין ירד לבין ישן).
+//    טהור: מסיר lastUpdate ומאפס def_skip=0. פועל רק על new-properties. אידמפוטנטי.
+function normalizeScanHash(h){
+  h=String(h||'');
+  if(h.indexOf('new-properties')===-1) return h;      // רק דף השוק הפרטי
+  h=h.replace(/;lastUpdate=[^;]*/gi,'');               // הסר פילטר 24 שעות
+  if(/;def_skip=\d+/i.test(h)) h=h.replace(/;def_skip=\d+/i,';def_skip=0');
+  return h;
+}
 var PAGER_BACK_KEY='yad2_pager_back_v1';
 var PAGER_KEY='yad2_pager_v1';   // זוכרים איזה חץ הוא "הבא" אחרי שהוכח
 function lastTableSig(){
@@ -338,6 +407,31 @@ function uiPaginateAll(onProg, done){
   var _d=once(done||function(){});
   done=function(rows,full){ uiPagingBusy=false; _d(rows,full); };
   pgDiag='';
+  // v13.4: נטרל את פילטר lastUpdate=24h לפני שמתחילים — כך יד2 טוען את המבט המלא (9 עמ׳)
+  var hashNorm=false;
+  try{ var _h0=location.hash, _h1=normalizeScanHash(_h0); if(_h1!==_h0){ location.hash=_h1; hashNorm=true; } }catch(e){}
+  // מה לעשות אחרי שהמחוון יציב: מזהה טעינה מלאה/חלקית, מרענן בעת הצורך, וצועד.
+  function proceed(settled){
+    var src=srcKey(), good=pagerGoodGet(src);
+    if(settled.total>=good){ pagerGoodSet(src, settled.total); pagerReloadClear(); }        // טעינה מלאה
+    else if(pagerLooksShort(settled.total, good)){                                            // v13.3: טעינה חלקית
+      var dec=pagerReloadDecide(pagerReloadGet(), Date.now());
+      if(dec.reload){
+        pagerReloadSet(dec);
+        pgDiag='טעינה חלקית ('+settled.total+'/'+good+' עמ׳) — מרענן ('+dec.n+'/'+PAGER_RELOAD_MAX+')';
+        try{postHB('reload');}catch(e){}
+        scanStart=0; paused=false;
+        setTimeout(function(){try{location.reload();}catch(e){}},1200);   // רענון → סריקה חדשה
+        done(null,false); return;
+      }
+      pagerGoodSet(src, settled.total); pagerReloadClear();               // מיצינו רענונים — מקבלים את המציאות
+      if(onProg)onProg(settled.cur, settled.total, 0);
+      uiWalkPages(settled, onProg, done, true);                           // חלקי → לא לסמן "ירד מפרסום"
+      return;
+    }
+    if(onProg)onProg(settled.cur, settled.total, 0);
+    uiWalkPages(settled, onProg, done);
+  }
   // 🐞 הסריקה מתחילה עם טעינת הדף, כשהטבלה של יד2 עוד לא נבנתה — ואז "אין מחוון עמודים"
   //    והסריקה נופלת לתקרת ה-100. מחכים שהמחוון יופיע לפני שמתייאשים (v7.4).
   var waited=0;
@@ -351,13 +445,16 @@ function uiPaginateAll(onProg, done){
     }
     if(!info.total||info.total<2){ pgDiag='עמוד אחד'; done(null,false); return; }
     if(!info.curKnown){ pgDiag='המחוון נמצא (מתוך '+info.total+') אך מספר העמוד לא נקרא · '+pagerInside(info.el); done(null,false); return; }
-    if(onProg)onProg(info.cur, info.total, 0);
-    uiWalkPages(info, onProg, done);
+    // v13.7: ההמתנה לייצוב (async) נחוצה רק כשיד2 עומד לגדול — כלומר נוטרל lastUpdate,
+    //   או שה-total נראה חלקי מול מה שכבר ראינו. אחרת צועדים מיד (סינכרוני, כמו לפני v13.2).
+    if(hashNorm || pagerLooksShort(info.total, pagerGoodGet(srcKey()))) settlePager(info, proceed);
+    else proceed(info);
   })();
 }
 // הצעידה עצמה: מעמוד 1 עד האחרון, אוספת לפי orderId
-function uiWalkPages(info, onProg, done){
-  var acc={}, pages=0, t0=Date.now(), partial=false, startedAt=info.cur, pgPrefix='', stepId=0;
+function uiWalkPages(info, onProg, done, forcePartial){
+  var acc={}, pages=0, t0=Date.now(), partial=!!forcePartial, startedAt=info.cur, pgPrefix='', stepId=0;
+  if(forcePartial)pgPrefix='טעינה חלקית · ';
   var learned=null; try{learned=JSON.parse(localStorage.getItem(PAGER_KEY)||'null');}catch(e){}
   function absorb(){
     harvestApiRows().forEach(function(r){ var k=r._orderId||r.link||r.address; if(k&&!acc[k])acc[k]=r; });
@@ -493,10 +590,8 @@ function harvestApiRows(net){
 
 // ===== שליפת token+טלפון עדינה מ-office/{משרד}/ads/{orderId} (בחירת אייל: כל המודעות) =====
 var OFFICE_DEFAULT='5628636';
-function officeId(){
-  for(var i=NET.length-1;i>=0;i--){var m=String(NET[i].url).match(/\/office\/(\d+)\/ads\//);if(m)return m[1];}
-  return OFFICE_DEFAULT;
-}
+// v13.16: המשרד של הפרופיל הפעיל — לא ברירת המחדל. ראה officeIdSeen.
+function officeId(){ return officeIdSeen()||OFFICE_DEFAULT; }
 function tokCache(){try{return JSON.parse(localStorage.getItem('yad2_tokens_v1')||'{}');}catch(e){return {};}}
 function tokCacheSave(c){try{localStorage.setItem('yad2_tokens_v1',JSON.stringify(c));}catch(e){}}
 // פענוח מחרוזת JSON גולמית (\n, \", \/, \uXXXX) לטקסט קריא
@@ -651,7 +746,7 @@ function findDetails(net){
   });
   return out.slice(-4);
 }
-try{window.__ysScore=scoreListingCandidates;window.__ysNet=NET;window.__ysMapApi=mapApiRow;window.__ysPickDesc=pickDesc;window.__ysApiUrls=buildApiUrls;window.__ysTokens=findTokens;window.__ysDetails=findDetails;window.__ysHarvest=harvestApiRows;window.__ysMergePhones=mergeDomPhones;window.__ysItemUrls=findItemUrls;window.__ysFirstItem=firstItemDump;window.__ysHarvestTokens=harvestTokens;window.__ysCityArea=cityArea;window.__ysHarvestPhones=harvestPhones;window.__ysMergePhones=mergeDomPhones;window.__ysParseAd=parseAd;window.__ysAdDesc=adDesc;window.__ysCleanAdDesc=cleanAdDesc;window.__ysDescHunt=descHunt;window.__ysNeedTokens=needTokens;window.__ysFetchTokens=fetchTokens;window.__ysTokCache=tokCache;window.__ysActiveFetch=activeFetchAllPages;window.__ysLatestTpl=latestApiTemplate;}catch(e){} // לדיבוג/בדיקות
+try{window.__ysScore=scoreListingCandidates;window.__ysNet=NET;window.__ysMapApi=mapApiRow;window.__ysPickDesc=pickDesc;window.__ysApiUrls=buildApiUrls;window.__ysTokens=findTokens;window.__ysDetails=findDetails;window.__ysHarvest=harvestApiRows;window.__ysMergePhones=mergeDomPhones;window.__ysItemUrls=findItemUrls;window.__ysFirstItem=firstItemDump;window.__ysHarvestTokens=harvestTokens;window.__ysCityArea=cityArea;window.__ysHarvestPhones=harvestPhones;window.__ysMergePhones=mergeDomPhones;window.__ysParseAd=parseAd;window.__ysAdDesc=adDesc;window.__ysCleanAdDesc=cleanAdDesc;window.__ysDescHunt=descHunt;window.__ysNeedTokens=needTokens;window.__ysFetchTokens=fetchTokens;window.__ysTokCache=tokCache;window.__ysActiveFetch=activeFetchAllPages;window.__ysLatestTpl=latestApiTemplate;window.__ysPagerSettle=pagerSettleStep;window.__ysPagerShort=pagerLooksShort;window.__ysPagerReload=pagerReloadDecide;window.__ysNormHash=normalizeScanHash;}catch(e){} // לדיבוג/בדיקות
 // ציד תיאור: כל צמד "שדה":"טקסט עברי ארוך" בכל תשובה שנתפסה — חושף איפה יושב התיאור ובאיזה endpoint
 function descHunt(net){
   var out=[],seen={};
@@ -673,13 +768,77 @@ function adSampleBodies(net){
   (net||NET).forEach(function(rec){ if(/\/office\/\d+\/ads\/\d+/.test(String(rec.url))) out.push({url:String(rec.url).slice(0,120),len:rec.text.length,body:rec.text.slice(0,3000)}); });
   return out.slice(-2);
 }
+// v13.14 · רשימת כל בקשות הרשת שנתפסו — לאיתור ה-endpoint שמגיש את חיפה (שאין לו /property/table).
+function netUrlList(){
+  var seen={}, out=[];
+  (NET||[]).forEach(function(rec){
+    var u=String(rec.url||''); if(!u)return;
+    if(/\.(png|jpe?g|gif|webp|svg|css|woff2?|ttf|ico|mp4)(\?|$)/i.test(u))return;   // דלג על נכסים סטטיים
+    var short=u.replace(/^https?:\/\//,'').slice(0,150);
+    if(seen[short])return; seen[short]=1;
+    var txt=String(rec.text||''), isJson=false, hasArr=false, hasTok=false;
+    try{ var j=JSON.parse(txt); isJson=true; var s=txt.slice(0,20000); hasArr=/\[\s*{/.test(s); hasTok=/"[a-z_]*token[a-z_]*"\s*:\s*"[A-Za-z0-9]{5,14}"/i.test(s); }catch(e){}
+    out.push({url:short, bytes:txt.length, json:isJson, arr:hasArr, tok:hasTok});
+  });
+  return out.slice(0,40);
+}
+// v13.18: אבחון החלפת הפרופיל — מה הסורק רואה בכותרת ("0 מועמדים" בפרופיל חיפה, 14-15/09):
+// המועמדים לפרופיל הפעיל, מה נלמד (store/second), שרשרת האבות של הפעיל, וכל הכפתורים/תמונות בכותרת.
+function profileDiag(){
+  var out={};
+  try{
+    var cands=profileCandidates();
+    out.candidates=cands.slice(0,8).map(function(c){return {label:c.label,score:c.score,tag:c.el.tagName,cls:String(c.el.className||'').slice(0,60)};});
+    out.active=profileLabel();
+    try{out.store=profStore();}catch(e){}
+    out.second=gmGet('ysProfileSecond',''); out.profCand=gmGet('ysProfCand','');
+    out.triggers=accountTriggerCandidates().length;
+    try{ out.switchLog=JSON.parse(gmGet('ysSwitchLog','[]')); }catch(e){}          // v13.27
+    try{ out.scanMenuDump=JSON.parse(gmGet('ysMenuDump','null')); }catch(e){}       // v13.27: מה נראה בתפריט בזמן הסריקה
+    // v13.25: כשהתפריט פתוח — מבנה הפריטים שלו (מה בדיוק יש בשורת המשרד ומי לחיץ)
+    try{
+      var mr=accountMenuRoot();
+      if(mr){
+        out.menuDump=[]; var me=mr.querySelectorAll('*');
+        for(var mi=0; mi<me.length && out.menuDump.length<45; mi++){
+          var x=me[mi]; var xc=''; try{ xc=getComputedStyle(x).cursor; }catch(e){}
+          var d=0, q=x; while(q&&q!==mr){ q=q.parentElement; d++; }
+          var xa=[]; try{ for(var ai=0; ai<x.attributes.length&&ai<8; ai++){ var an=x.attributes[ai].name; if(an!=='class'&&an!=='style')xa.push(an+'='+String(x.attributes[ai].value).slice(0,25)); } }catch(e){}
+          out.menuDump.push({d:d,tag:x.tagName,cls:String(x.className||'').slice(0,60),cursor:xc,attrs:xa,text:(x.textContent||'').trim().replace(/\s+/g,' ').slice(0,40)});
+        }
+        out.menuItems=profileItems().map(function(x){ return {label:x.label,tag:x.el.tagName,cls:String(x.el.className||'').slice(0,60),targets:profileClickTargets(x.el,x.label).map(function(t){return t.tagName+'.'+String(t.className||'').slice(0,30);})}; });
+      }
+    }catch(e){ out.menuErr=String(e); }
+    out.menuOpen=!!accountMenuRoot();
+    var a=activeProfile();
+    if(a&&a.el){ var chain=[],el=a.el; for(var up=0;up<7&&el;up++){
+      var cur=''; try{ cur=getComputedStyle(el).cursor; }catch(e){}
+      var attrs=[]; try{ for(var ai=0;ai<el.attributes.length&&ai<12;ai++){ var an=el.attributes[ai].name; if(an!=='class'&&an!=='style')attrs.push(an+(el.attributes[ai].value?('='+String(el.attributes[ai].value).slice(0,30)):'')); } }catch(e){}
+      chain.push({tag:el.tagName,cls:String(el.className||'').slice(0,80),cursor:cur,attrs:attrs,text:(el.textContent||'').trim().replace(/\s+/g,' ').slice(0,60),kids:el.children?el.children.length:0}); el=el.parentElement; } out.chain=chain; }
+    // אחים של הכפתור (למשל תמונת הפרופיל / חץ) — לפעמים המאזין יושב עליהם
+    try{ var pp=accountPill(); if(pp&&pp.parentElement){ out.siblings=[]; var sb=pp.parentElement.children; for(var si=0;si<sb.length&&si<8;si++){ var s=sb[si]; var sc=''; try{ sc=getComputedStyle(s).cursor; }catch(e){} out.siblings.push({tag:s.tagName,cls:String(s.className||'').slice(0,60),cursor:sc,text:(s.textContent||'').trim().slice(0,30)}); } } }catch(e){}
+    var hdr=document.querySelector('header')||document.body;
+    var btns=hdr.querySelectorAll('button,[role="button"],img,a');
+    out.headerButtons=[];
+    for(var i=0;i<btns.length&&out.headerButtons.length<25;i++){ var b=btns[i]; if(b.offsetParent===null)continue;
+      out.headerButtons.push({tag:b.tagName,cls:String(b.className||'').slice(0,60),text:(b.textContent||'').trim().replace(/\s+/g,' ').slice(0,40),aria:b.getAttribute('aria-label')||'',alt:b.getAttribute('alt')||'',src:b.tagName==='IMG'?String(b.getAttribute('src')||'').slice(-40):''}); }
+  }catch(e){ out.err=String(e); }
+  return out;
+}
 function copyNetReport(){
-  var cands=scoreListingCandidates(NET);
-  var report={note:'yad2 network capture',candidates:cands.slice(0,1),domTable:domDump(),itemUrls:findItemUrls(NET),firstItemFull:firstItemDump(NET),tokens:findTokens(NET),details:findDetails(NET),descHunt:descHunt(NET),adSampleBodies:adSampleBodies(NET)};
-  var txt=JSON.stringify(report,null,1);
-  if(txt.length>80000)txt=txt.slice(0,80000)+'\n...[קוצץ]';
-  try{GM_setClipboard(txt);status('✓ הועתק (אבחון טבלה+API) — הדבק בצ׳אט של קלוד');}
-  catch(e){console.log(txt);status('העתקה נכשלה — הדוח בקונסול (F12)');}
+  // v13.26: הלחיצה על הכפתור סוגרת את תפריט Kendo (לחיצה מחוץ לתפריט) — ולכן הדוח מעולם לא תפס אותו
+  // פתוח. פותחים אותו בעצמנו (עובד מאז 13.21), ממתינים לאנימציה, ואז מצלמים.
+  status('פותח את תפריט החשבון לצילום…');
+  var build=function(opened){
+    var cands=scoreListingCandidates(NET);
+    var report={note:'yad2 network capture',ver:VER,menuOpenedForReport:!!opened,profileDiag:profileDiag(),netUrls:netUrlList(),candidates:cands.slice(0,1),domTable:domDump(),itemUrls:findItemUrls(NET),firstItemFull:firstItemDump(NET),tokens:findTokens(NET),details:findDetails(NET),descHunt:descHunt(NET),adSampleBodies:adSampleBodies(NET)};
+    var txt=JSON.stringify(report,null,1);
+    if(txt.length>80000)txt=txt.slice(0,80000)+'\n...[קוצץ]';
+    try{GM_setClipboard(txt);status('✓ הועתק (אבחון טבלה+API'+(opened?'+תפריט':'')+') — הדבק בצ׳אט של קלוד');}
+    catch(e){console.log(txt);status('העתקה נכשלה — הדוח בקונסול (F12)');}
+  };
+  try{ openAccountMenu(function(opened){ setTimeout(function(){ build(opened); }, 1200); }); }
+  catch(e){ build(false); }
 }
 
 // ===== schedule: active 08:00-23:00 with random daily edges =====
@@ -736,8 +895,19 @@ function extractRows(){
 // מזהה המלאי שנסרק — מתוך פרמטרי תבנית ה-API. שני פרופילים = שני מזהים,
 // וכך "ירד מפרסום" בשרת לא חוצה בין המלאים.
 // מזהה המשרד שנתפס בפועל מקריאות yad2 (לא ברירת המחדל) — משתנה בין פרופילים
+// 🐞 15/09 (חיפה בלי קישור/תיאור): הפרופיל של חיפה קיבל את 5628636 (המשרד של הקריות/ברירת המחדל),
+//    כל 27 שליפות ה-token החזירו {"message":"Invalid office id"} — והשליפות הכושלות *שלנו* נרשמו
+//    ב-NET והנציחו את המזהה השגוי. עכשיו: (1) קריאת ads שהצליחה (יש token בתשובה) — מוכח;
+//    (2) office_id= בקריאות הממשק של יד2 עצמו (searches/…) — המשרד שהפרופיל באמת עובד מולו; (3) ריק.
 function officeIdSeen(){
-  for(var i=NET.length-1;i>=0;i--){var m=String(NET[i].url).match(/\/office\/(\d+)\/ads\//);if(m)return m[1];}
+  var i,m,t;
+  for(i=NET.length-1;i>=0;i--){
+    m=String(NET[i].url).match(/\/office\/(\d+)\/ads\//); if(!m)continue;
+    t=String(NET[i].text||'');
+    if(/Invalid office id/i.test(t))continue;                       // הכשל שלנו — לא ראיה
+    return m[1];                                                     // קריאת ads שלא נדחתה — המשרד של הפרופיל
+  }
+  for(i=NET.length-1;i>=0;i--){ m=String(NET[i].url).match(/[?&]office_id=(\d+)/); if(m)return m[1]; }
   return '';
 }
 // ⚠️ אסור לזהות את הפרופיל הפעיל לפי מילות-מפתח ("פמילי"/"קריות") — כך זיהינו בטעות
@@ -762,7 +932,14 @@ function profileCandidates(){
   out.sort(function(a,b){return b.score-a.score||a.i-b.i;});
   return out;
 }
-function activeProfile(){ var c=profileCandidates(); return c.length?c[0]:null; }
+// v13.19 · כפתור החשבון של יד2 מזוהה לפי מבנה — SPAN.main_menu_name (מהדוח של אייל, 15/09) — ולא לפי
+// ניחוש טקסט: כותרת הדף "נכסים חדשים" (שתי מילים, קודמת ב-DOM) נבחרה כ"פרופיל הפעיל" והלחיצות הלכו אליה.
+function accountPill(){ try{ return (document.querySelector&&document.querySelector('.main_menu_name'))||null; }catch(e){ return null; } }
+function activeProfile(){
+  var p=accountPill();
+  if(p){ var t=(p.textContent||'').trim().replace(/\s+/g,' '); if(t) return {el:p,label:t,score:9,i:-1}; }
+  var c=profileCandidates(); return c.length?c[0]:null;
+}
 function profileLabel(){ var a=activeProfile(); return a?a.label:''; }
 // מזהה המלאי שנסרק. ⚠️ החלפת פרופיל ביד2 *אינה* משנה את כתובת ה-API (נבדק 03/08),
 // ולכן הזהות נשענת קודם על מזהה המשרד שנתפס, ואז על שם הפרופיל בדף.
@@ -799,14 +976,16 @@ function postRows(rows,cb,scanFull){
     setTimeout(send,w);
   };
   var send=function(){
-    GM_xmlhttpRequest({method:'POST',url:WEBHOOK,data:body.toString(),headers:{'Content-Type':'application/x-www-form-urlencoded'},timeout:60000,
+    GM_xmlhttpRequest({method:'POST',url:WEBHOOK,data:body.toString(),headers:{'Content-Type':'application/x-www-form-urlencoded'},timeout:POST_TIMEOUT_MS,
       onload:function(res){
         var t=res&&res.responseText;
         if(isJson(t)){log('POSTed '+rows.length+' → '+t);cb(t);return;}
         console.error('[yad2-sync] POST got HTML instead of JSON');again(t);
       },
       onerror:function(e){console.error('[yad2-sync] POST failed',e);again('שגיאה');},
-      ontimeout:function(){console.error('[yad2-sync] POST timeout');again('פסק זמן');}});
+      // פסק-זמן ≠ תקלה: הבקשה הגיעה לשרת והוא עדיין עובד עליה. שליחה חוזרת רק מכפילה את העומס
+      // (ומאריכה את התור לנעילה). מדווחים "כנראה נשמר" — הסריקה הבאה מאמתת ממילא.
+      ontimeout:function(){console.error('[yad2-sync] POST timeout after '+POST_TIMEOUT_MS+'ms');cb(JSON.stringify({timeout:1,ms:POST_TIMEOUT_MS}));}});
   };
   send();
 }
@@ -833,16 +1012,25 @@ function buildPanel(){
   box.appendChild(mk('ys-reveal','#2563eb','📞 חשוף מספרים',revealAll));
   box.appendChild(mk('ys-save','#16a34a','💾 שמור לגיליון',manualSave));
   box.appendChild(mk('ys-net','#7c3aed','🔎 JSON לניתוח',copyNetReport,';font-size:13px;padding:9px'));
+  box.appendChild(mk('ys-rec','#b45309','🎥 הקלטת החלפה (90ש׳)',switchRecordStart,';font-size:13px;padding:9px'));
   box.appendChild(mk('ys-prof','#475569','👤 בחר פרופיל שני',function(){
-    var cands=[]; try{cands=JSON.parse(gmGet('ysProfCand','[]'))||[];}catch(e){}
-    var cur=gmGet('ysProfileSecond','');
-    var list=cands.length?cands.map(function(l,i){return (i+1)+'. '+l;}).join('\n'):'(עדיין לא נראו פריטים — הרץ סריקה אחת קודם)';
-    var ans=prompt('מה השם המדויק של הפרופיל השני?\n\nמה שנראה בתפריט:\n'+list+'\n\nהקלד מספר או שם מלא (ריק = ביטול הקיבוע):', cur||'');
-    if(ans===null)return;
-    ans=String(ans).trim();
-    if(/^\d+$/.test(ans)&&cands[Number(ans)-1])ans=cands[Number(ans)-1];
-    gmSet('ysProfileSecond',ans);
-    status(ans?('✓ הפרופיל השני נקבע: '+ans):'✓ הקיבוע בוטל — חזרה לזיהוי אוטומטי');
+    // v13.6: פותחים את תפריט החשבון בפועל ומרעננים את הרשימה חי — כדי שמה שמוצג הוא מה
+    //        שהסורק *באמת* רואה עכשיו (לא ysProfCand ישן), וכדי לאבחן אם התפריט בכלל נפתח.
+    status('פותח את תפריט החשבון…');
+    openAccountMenu(function(opened){
+      var all=profileItems();
+      var cands=all.map(function(x){return x.label;}).slice(0,12);
+      try{gmSet('ysProfCand',JSON.stringify(cands));}catch(e){}
+      var cur=gmGet('ysProfileSecond','');
+      var head = opened ? 'תפריט החשבון נפתח ✓' : '⚠️ תפריט החשבון לא נפתח (רואים אולי את תפריט הפעמון)';
+      var list=cands.length?cands.map(function(l,i){return (i+1)+'. '+l;}).join('\n'):'(לא נמצאו פריטי פרופיל)';
+      var ans=prompt(head+'\n\nמה השם המדויק של הפרופיל השני?\n\nמה שנראה עכשיו בתפריט:\n'+list+'\n\nהקלד מספר או שם מלא (ריק = ביטול הקיבוע):', cur||'');
+      if(ans===null){ status('בוטל'); return; }
+      ans=String(ans).trim();
+      if(/^\d+$/.test(ans)&&cands[Number(ans)-1])ans=cands[Number(ans)-1];
+      gmSet('ysProfileSecond',ans);
+      status(ans?('✓ הפרופיל השני נקבע: '+ans):'✓ הקיבוע בוטל — חזרה לזיהוי אוטומטי');
+    });
   },';font-size:12px;padding:7px'));
   box.appendChild(mk('ys-fam','#0f766e','🏠 סרוק רימקס פמילי',function(){
     var r=exclScanFamilyNow(exclForceArmed());
@@ -913,8 +1101,11 @@ function saveRows(rows,dom,full,done){
   status('שומר '+rows.length+' נכסים ('+withPhone+' טל׳, '+withLink+' קישורים)...');
   postRows(rows,function(resp){
     var m,ok=false;
-    try{var j=JSON.parse(resp);m='נוספו '+j.added+' · פרטים '+(j.extras||0)+' · ירדו '+(j.delisted||0)+' · טל׳ '+withPhone+'/'+rows.length+' · קישורים '+withLink+' · מקור '+(j.src||'?');ok=true;}
+    try{var j=JSON.parse(resp);
+      if(j&&j.timeout){ m='השרת לא ענה תוך '+Math.round((j.ms||POST_TIMEOUT_MS)/1000)+'ש׳ — כנראה נשמר (אימות בסריקה הבאה)'; lastScanMsg=m; try{postHB('ok');}catch(e2){} throw new Error('timeout'); } // v13.15: לא שולחים שוב, לא "לא נשמר"
+      m='נוספו '+j.added+' · פרטים '+(j.extras||0)+' · ירדו '+(j.delisted||0)+' · טל׳ '+withPhone+'/'+rows.length+' · קישורים '+withLink+' · מקור '+(j.src||'?');ok=true;}
     catch(e){
+      if(e&&e.message==='timeout'){ if(pgDiag)m+=' · '+pgDiag; if(profSwitchNote)m+=profSwitchNote; status('⏳ '+m); if(done)done(m); return; }
       // הפאנל נשאר נקי; הפירוט (מה גוגל באמת החזיר) נשלח בסימן-החיים ונקרא מרחוק ב-?health=1
       var snip=String(resp||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,110);
       lastScanMsg='שגיאת שרת · '+(snip||'(תשובה ריקה)');
@@ -931,7 +1122,13 @@ function saveRows(rows,dom,full,done){
 function runFullScan(statusFn, done){
   var W=(typeof unsafeWindow!=='undefined')?unsafeWindow:window;
   var fetchFn=function(u){return fetchT(W,u);}; // עם תקרת זמן — בקשה תקועה לא מקפיאה את הסריקה
-  // fin נקרא בדיוק פעם אחת בכל מסלול (כולל חריגה) — כך ה-paused של הלופ משוחרר תמיד
+  // v13.17: סריקה אחת בכל רגע. 15/09: לחיצה על "סרוק" בזמן שהסריקה האוטומטית (שמתחילה לבד
+  // אחרי F5) כבר רצה → שתי סריקות במקביל, שתי שמירות (15:56 + 15:57). הסריקה השנייה מוותרת.
+  if(scanStart && (Date.now()-scanStart) < SCAN_MAX_MIN*60000){
+    var _since=Math.round((Date.now()-scanStart)/60000);
+    statusFn('⏳ סריקה כבר רצה ('+_since+' דק׳) — ממתין לסיומה');
+    if(done)done(); return;
+  }
   scanStart=Date.now(); lastScanMsg='רץ מ-'+new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
   var fin=once(function(msg){ scanStart=0; if(msg)lastScanMsg=msg; if(done)done(); });
   try{
@@ -990,6 +1187,127 @@ var exclHbTimer=null, exclHbStart=0;   // דופק טאב הסריקה — חי�
 var PROFILE_KEY='yad2_profiles_v1';   // {labels:[...], last:'<label>'}
 var SWITCH_TIMEOUT_MS=25000;
 function profStore(){try{return JSON.parse(localStorage.getItem(PROFILE_KEY)||'{}');}catch(e){return {};}}
+// v13.23 · תוויות פרופיל: "פ פמילי קרית ים" ← אות-אווטאר + שם. משווים בלי האות ובלי רווחים כפולים.
+function normLabel(l){ return String(l||'').replace(/^[א-ת]\s+/,'').replace(/\s+/g,' ').trim(); }
+// byArea[area] = קבוצת תוויות שנצפו כ"הפעיל" באזור (מחרוזת ישנה → קבוצה)
+function byAreaSet(st, area){ var v=st&&st.byArea&&area?st.byArea[area]:null; if(!v)return []; return Array.isArray(v)?v.slice():[String(v)]; }
+function byAreaAdd(st, area, label){ if(!area||!label)return; st.byArea=st.byArea||{}; var s=byAreaSet(st, area); if(!inLabelSet(s,label)){ s.push(label); } st.byArea[area]=s.slice(-4); }
+function inLabelSet(set, label){ var n=normLabel(label); for(var i=0;i<set.length;i++){ if(normLabel(set[i])===n)return true; } return false; }
+var swTried=[];   // v13.24: תוויות שנלחצו בסבב ההחלפה הנוכחי ולא הגיבו
+// v13.25 · כל יעדי הלחיצה האפשריים בשורת פרופיל, לפי סדר סבירות: הפנימי (k-link/a/button/טקסט) → השורה
+// → ההורה → הסבא (עד שורש התפריט) → כל צאצא עם cursor:pointer. ייחודיים, בלי שורש התפריט עצמו.
+function profileClickTargets(el, label){
+  var out=[], seen=[];
+  var add=function(x){ if(x&&typeof x.click==='function'&&seen.indexOf(x)<0){ seen.push(x); out.push(x); } };
+  var root=null; try{ root=accountMenuRoot(); }catch(e){}
+  try{ add(itemClickTarget(el,label)); }catch(e){}
+  add(el);
+  try{ var p=el.parentElement; for(var up=0; p&&p!==root&&up<2; up++){ if((p.textContent||'').indexOf('יציאה')>-1)break; add(p); p=p.parentElement; } }catch(e){}
+  try{
+    if(el.querySelectorAll){ var ds=el.querySelectorAll('*'); for(var i=0;i<ds.length&&i<12;i++){ var cur=''; try{ cur=getComputedStyle(ds[i]).cursor; }catch(e){} if(cur==='pointer'||/k-link|k-item|k-menu-link/.test(String(ds[i].className||'')))add(ds[i]); } }
+  }catch(e){}
+  return out;
+}
+// v13.27 · יומן החלפה (12 שורות אחרונות, ב-GM) — נקרא דרך "JSON לניתוח"; הפאנל מציג רק את השורה האחרונה
+function switchLog(msg){
+  try{ var a=[]; try{ a=JSON.parse(gmGet('ysSwitchLog','[]'))||[]; }catch(e){} a.push(new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' '+String(msg).slice(0,220)); gmSet('ysSwitchLog', JSON.stringify(a.slice(-12))); }catch(e){}
+}
+// v13.27 · תמונת מבנה של תפריט פתוח: כל אלמנט עם עומק/תג/מחלקה/סמן/attrs/טקסט (עד 45)
+function menuDump(mr){
+  var out=[]; try{
+    var me=mr.querySelectorAll('*');
+    for(var mi=0; mi<me.length && out.length<45; mi++){
+      var x=me[mi]; var xc=''; try{ xc=getComputedStyle(x).cursor; }catch(e){}
+      var d=0, q=x; while(q&&q!==mr){ q=q.parentElement; d++; }
+      var xa=[]; try{ for(var ai=0; ai<x.attributes.length&&ai<8; ai++){ var an=x.attributes[ai].name; if(an!=='class'&&an!=='style')xa.push(an+'='+String(x.attributes[ai].value).slice(0,25)); } }catch(e){}
+      out.push({d:d,tag:x.tagName,cls:String(x.className||'').slice(0,60),cursor:xc,attrs:xa,text:(x.textContent||'').trim().replace(/\s+/g,' ').slice(0,40)});
+    }
+  }catch(e){}
+  return out;
+}
+// v13.28 · אחרי לחיצה על פרופיל: דיאלוג שנפתח (אישור מעבר?) — מתועד ביומן ונלחץ בו כפתור האישור;
+// שינוי כתובת — מתועד. מחזיר true אם משהו זוהה (כדי לעדכן את נקודת הייחוס).
+var _dlgSeen={};
+function switchDialogProbe(hrefBefore){
+  var found=false;
+  try{
+    if(hrefBefore && location.href!==hrefBefore){ switchLog('URL השתנה: '+String(location.href).slice(0,120)); found=true; }
+    var sels='[role="dialog"],[role="alertdialog"],.modal.show,.modal.in,.k-dialog,.k-window,.swal2-container,.cdk-overlay-pane,.mat-dialog-container,.modal-dialog,.popup,.ys-none';
+    var ds=document.querySelectorAll(sels);
+    for(var i=0;i<ds.length;i++){
+      var d=ds[i]; if(d.offsetParent===null)continue;
+      var txt=(d.textContent||'').trim().replace(/\s+/g,' ');
+      if(!txt||txt.length<3)continue;
+      var key=txt.slice(0,80);
+      if(_dlgSeen[key])continue; _dlgSeen[key]=1; found=true;
+      switchLog('דיאלוג: '+txt.slice(0,160));
+      // v13.30: דיאלוג של יציאה/סשן/כניסה — לעולם לא מאשרים אוטומטית (אישור = ניתוק)
+      if(/יציאה|התנתק|להתנתק|פג|פקע|התחבר|כניסה|קוד אימות/.test(txt)){ switchLog('⛔ דיאלוג יציאה/סשן — לא נוגעים'); continue; }
+      var btns=d.querySelectorAll('button,a,[role="button"]'), hit=null;
+      for(var b=0;b<btns.length;b++){ var bt=(btns[b].textContent||'').trim(); if(/^(אישור|כן|המשך|עבור|החלף|מעבר|אשר|אוקיי|OK|Ok|ok|Yes)/.test(bt)){ hit=btns[b]; break; } }
+      if(hit){ switchLog('לוחץ בדיאלוג: "'+(hit.textContent||'').trim().slice(0,30)+'"'); realClick(hit); }
+      else switchLog('בדיאלוג כפתורים: '+Array.prototype.map.call(btns,function(x){return (x.textContent||'').trim().slice(0,20);}).filter(Boolean).slice(0,6).join('|'));
+    }
+  }catch(e){}
+  return found;
+}
+// v13.29 · תוויות "פרופיל/סניף" שנראות כרגע על המסך (בכל הדף — רשימת הסניפים נפתחת מחוץ לתפריט):
+// טקסט עברי 3-40 תווים, לא פקודה/התראה, אלמנט קטן (≤2 ילדים), נראה. ייחודי לפי תווית.
+function visibleLabelList(){
+  var out=[], seen={};
+  try{
+    var els=document.querySelectorAll('li,div,span,button,a,p');
+    for(var i=0;i<els.length;i++){
+      var el=els[i]; if(el.offsetParent===null)continue;
+      if(el.children&&el.children.length>2)continue;
+      var t=(el.textContent||'').trim().replace(/\s+/g,' ');
+      if(!t||t.length<3||t.length>40)continue;
+      if(!/[֐-׿]/.test(t))continue;
+      if(notProfile(t))continue;
+      if(/\d/.test(t))continue;   // מחירים/תאריכים/כתובות עם מספר — לא סניף
+      var n=normLabel(t); if(seen[n])continue; seen[n]=1;
+      out.push({el:el,label:t});
+      if(out.length>=400)break;
+    }
+  }catch(e){}
+  return out;
+}
+// v13.29 · סגירת תפריט החשבון אחרי ניסיון החלפה (אייל 17/09: "זה קורה ישר שאני פותח את הקישור" —
+// התפריט נשאר פתוח על המסך שלו). Escape סוגר פופאפ של Kendo; אם עדיין פתוח — לחיצה על הכפתור (toggle).
+function closeAccountMenu(){
+  try{
+    if(!accountMenuRoot())return;
+    var host=accountPill()||document.body;
+    var esc=function(t){ try{ t.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,which:27,bubbles:true,cancelable:true})); }catch(e){} };
+    esc(host); esc(document.body);
+    setTimeout(function(){ try{ if(accountMenuRoot()){ var c=accountTriggerCandidates(); if(c.length) realClick(c[0],{noKeys:true}); /* v13.30: בלי מקשים — Enter היה מפעיל את הפריט הממוקד */ } }catch(e){} }, 500);
+  }catch(e){}
+}
+// v13.27 · בחירה במקלדת בתפריט Kendo פתוח: חץ למטה עד שהפריט הממוקד נושא את התווית, ואז Enter.
+function keyboardPick(label){
+  var n=normLabel(label), host=accountPill(); for(var u=0; host&&u<5; u++){ if(/k-menu-item|k-item/.test(String(host.className||'')))break; host=host.parentElement; }
+  host=host||document.body;
+  var kd=function(key,code){ try{ host.dispatchEvent(new KeyboardEvent('keydown',{key:key,code:key,keyCode:code,which:code,bubbles:true,cancelable:true})); }catch(e){} };
+  var focusedEl=function(){ return document.querySelector('.k-focus,.k-state-focused,.k-item.k-hover,[aria-selected="true"]'); };
+  var focused=function(){ var f=focusedEl(); return f?normLabel((f.textContent||'').trim()):''; };
+  for(var i=0;i<6;i++){ if(focused()===n)break; kd('ArrowDown',40); }
+  // v13.30: Enter רק כשהממוקד הוא באמת היעד ואינו פריט-פקודה (יציאה/הגדרות…); אחרת מחזירים את המיקוד
+  // להתחלה (Home) כדי שלא יישאר על "יציאה" — כל Enter מאוחר יותר היה מפעיל אותו
+  var f=focusedEl();
+  if(focused()===n && f && !isLogoutish(f) && !notProfile(String(f.textContent||'').trim())) kd('Enter',13);
+  else { kd('Home',36); try{ switchLog('מקלדת: היעד לא נמצא (ממוקד: "'+focused().slice(0,25)+'") — בלי Enter'); }catch(e){} }
+}
+// v13.24 · יעד הלחיצה בשורת פרופיל: האלמנט הפנימי שנושא את הטקסט/הקישור (k-link, a, button), ולא השורה
+function itemClickTarget(el, label){
+  try{
+    if(!el||!el.querySelector)return el;
+    var inner=el.querySelector('.k-link, a, button, [role="menuitem"], [role="button"]');
+    if(inner)return inner;
+    var n=normLabel(label), els=el.querySelectorAll('span,div,p,b,strong');
+    for(var i=0;i<els.length;i++){ if(normLabel(els[i].textContent)===n && (!els[i].children||els[i].children.length<=1)) return els[i]; }
+  }catch(e){}
+  return el;
+}
 function profSave(o){try{localStorage.setItem(PROFILE_KEY,JSON.stringify(o));}catch(e){}}
 // פריטי תפריט שאינם פרופיל. "עדכונים" נתפס בשטח (31/08) — הסורק לחץ עליו וההחלפה
 // "לא הגיבה". כל מילה כאן היא פריט אמיתי מתפריט החשבון של יד2.
@@ -998,14 +1316,58 @@ function notProfile(t){
   // פקודות תפריט מתחילות בפועל ציווי ("סמנו הכל כנקרא" נתפס 01/09). שם פרופיל אינו פקודה.
   if(/^(סמנו|סמן|הצג|הצגת|ראה|צפה|מחק|נקה|בחר|עבור|הוסף|ערוך|שמור|שלח|פתח|סגור)(\s|$)/.test(t))return true;
   if(/כנקרא|כל ההתראות|כל ההודעות/.test(t))return true;
+  // 🐞 v13.5 · פריטי הפעמון (התראות) דלפו לרשימת הפרופילים והוקדמו לפני "פמילי קרית ים"
+  //    → הסורק "החליף" להתראה ולא לפרופיל השני (אייל, 10/09). מסננים תבניות התראה:
+  //    "נכסים חדשים מחכים לך" · "לפני 12 שעות" · "ספטמבר 9 04:00" (חודש+יום / שעה HH:MM).
+  if(/מחכים לך|^לפני\s+\d|\d{1,2}:\d{2}/.test(t))return true;
+  if(/(ינואר|פברואר|מרץ|אפריל|מאי|יוני|יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר)\s+\d/.test(t))return true;
   return false;
 }
-// כפתור החשבון בכותרת (מציג את שם הפרופיל הפעיל)
-function accountButton(){ var a=activeProfile(); return a?a.el:null; }
-// פריטי הפרופילים בתפריט הפתוח
+// כפתור החשבון בכותרת (מציג את שם הפרופיל הפעיל). v13.6: שם הפרופיל יושב לרוב ב-span
+// לא-לחיץ בתוך הכפתור — מטפסים לאב הלחיץ (button/a/role=button) כדי שהלחיצה באמת תפתח תפריט.
+function accountButton(){
+  var a=activeProfile(); if(!a)return null;
+  var el=a.el;
+  for(var up=0; up<5 && el; up++){
+    var tag=(el.tagName||'').toUpperCase();
+    var role=el.getAttribute?el.getAttribute('role'):null;
+    if(tag==='BUTTON'||tag==='A'||role==='button')return el;
+    el=el.parentElement||el.parentNode;
+  }
+  return a.el;
+}
+// v13.6 · שורש התפריט של החשבון — מזוהה לפי החתימה "לצפייה בפרופיל שלך". הבלימה מכאן
+// מבטיחה ש-profileItems קורא את תפריט החשבון (שם "פמילי קרית ים") ולא את תפריט הפעמון.
+// האלמנט שנושא את החתימה "לצפייה בפרופיל שלך" — הוא יושב בשורה של הפרופיל *הנוכחי* (v13.22)
+function accountMenuSig(){
+  var els=document.querySelectorAll('div,span,p,li,a,button');
+  for(var i=0;i<els.length;i++){ if(/לצפייה בפרופיל שלך|לצפיה בפרופיל שלך/.test(ownText(els[i]))) return els[i]; }
+  return null;
+}
+function accountMenuRoot(){
+  var sig=accountMenuSig();
+  if(!sig){
+    // v13.21: הפופאפ של Kendo נפתח מחוץ לכותרת (.k-animation-container / .k-menu-popup) — אם הוא
+    // מכיל 'יציאה' (פריט קבוע בתפריט החשבון) זה תפריט החשבון גם בלי החתימה.
+    try{
+      var pops=document.querySelectorAll('.k-menu-popup,.k-animation-container,.k-popup');
+      for(var p=0;p<pops.length;p++){ var pt=pops[p].textContent||''; if(pt.indexOf('יציאה')>-1 && /[֐-׿]/.test(pt) && pops[p].offsetParent!==null)return pops[p]; }
+    }catch(e){}
+    return null;
+  }
+  var root=sig;
+  for(var up=0; up<7 && root.parentElement; up++){ root=root.parentElement; if((root.textContent||'').indexOf('יציאה')>-1)break; }
+  return root;
+}
+// פריטי הפרופילים בתפריט הפתוח. v13.6: אם נמצא שורש תפריט החשבון — סורקים רק בתוכו
+// (מבטל דליפת התראות הפעמון). אחרת נופלים לסריקת כל הדף (עם סינון notProfile).
 function profileItems(){
   var out=[],seen={};
-  var els=document.querySelectorAll('button,[role="button"],a,li,div');
+  var root=accountMenuRoot();
+  // v13.21: בלי שורש תפריט אין פריטים. הנפילה הישנה ל"כל הדף" למדה כפרופילים את מסנני הדף
+  //   ("סוג עסקהמכירהסוג עסקה") ואת הכתובות בטבלה — 1,603 "פרופילים" (16/09).
+  if(!root)return out;
+  var els=(root.querySelectorAll?root:document).querySelectorAll('button,[role="button"],a,li,div');
   for(var i=0;i<els.length;i++){
     var t=(els[i].textContent||'').trim().replace(/\s+/g,' ');
     if(!t||t.length<4||t.length>40)continue;
@@ -1018,6 +1380,122 @@ function profileItems(){
   }
   return out;
 }
+// v13.7 · שם הפרופיל בכותרת אינו הטריגר — התפריט נפתח מהאווטאר. אוספים מועמדים ללחיצה
+// (שם הפרופיל, אבותיו, וכל img/button בכותרת החשבון) ומנסים כל אחד עד שהתפריט נפתח.
+// 🐞 v13.10 · תפריט החשבון של יד2 נפתח על mousedown/pointerdown, לא על click. el.click()
+//   התוכנתי שולח רק "click" → התפריט לא נפתח ("תפריט החשבון לא נפתח"). שולחים רצף מלא.
+// v13.30 · שומר-יציאה (אייל 24/09: "מסך הכניסה חוזר על עצמו בימים האחרונים"): אף לחיצה/מקש סינתטי
+// לא נוחת על "יציאה"/"התנתקות" — לא על האלמנט, לא על ההורים הקרובים שלו (3 רמות; מיכל התפריט עצמו מוחרג
+// כי הוא תמיד מכיל "יציאה").
+var LOGOUT_RE=/יציאה|התנתק|logout|log out|sign ?out/i;
+function isLogoutish(el){
+  try{
+    var e=el;
+    for(var up=0; e&&up<4; up++){
+      var t=String(e.textContent||'').trim();
+      if(t && t.length<=40 && LOGOUT_RE.test(t)) return true;   // אלמנט קטן שכל תוכנו "יציאה" (או הורה קרוב שלו)
+      if(up===0 && LOGOUT_RE.test(t) && t.length<=80) return true;
+      e=e.parentElement||null;
+    }
+  }catch(e){}
+  return false;
+}
+function realClick(el, opts){
+  if(!el)return;
+  opts=opts||{};
+  if(isLogoutish(el)){ try{ switchLog('⛔ נחסם: יעד לחיצה הוא יציאה ("'+String(el.textContent||'').trim().slice(0,30)+'")'); }catch(e){} return; }
+  try{
+    if(typeof el.dispatchEvent==='function' && typeof MouseEvent!=='undefined'){
+      // v13.20: גם אירועי ריחוף — תפריטים בכותרות Angular נפתחים לא פעם על hover ולא על לחיצה
+      var seq=['pointerover','mouseover','mouseenter','pointerdown','mousedown','pointerup','mouseup','click'];
+      for(var i=0;i<seq.length;i++){
+        var type=seq[i];
+        var Ev=(type.indexOf('pointer')===0 && typeof PointerEvent!=='undefined')?PointerEvent:MouseEvent;
+        try{ el.dispatchEvent(new Ev(type,{bubbles:true,cancelable:true,view:(typeof window!=='undefined'?window:null)})); }catch(e){}
+      }
+      // v13.21: פריט Kendo Menu (aria-haspopup) נפתח גם מהמקלדת — חץ למטה — מסלול דטרמיניסטי
+      // שלא תלוי ב-hoverDelay ובמיקום עכבר אמיתי.
+      // v13.30: **בלי Enter ובלי מקשים כשהתפריט כבר פתוח** — Kendo מפעיל ב-Enter את הפריט הממוקד (לא את
+      // הכפתור שקיבל את האירוע), ואחרי 6 חיצים-למטה של הבחירה-במקלדת הממוקד הוא הפריט האחרון = "יציאה".
+      // זה המסלול שהתנתק את הסשן (17/09→24/09: keyboardPick + סגירת התפריט בלחיצה על הכפתור).
+      try{
+        var hp=el.getAttribute&&el.getAttribute('aria-haspopup');
+        var menuOpen=false; try{ menuOpen=!!accountMenuRoot(); }catch(e){}
+        if(hp==='true' && !opts.noKeys && !menuOpen && typeof KeyboardEvent!=='undefined'){
+          try{ el.focus&&el.focus(); }catch(e){}
+          try{ el.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',keyCode:40,which:40,bubbles:true,cancelable:true})); }catch(e){}
+        }
+      }catch(e){}
+      return;
+    }
+  }catch(e){}
+  try{ el.click(); }catch(e){}
+}
+function accountTriggerCandidates(){
+  var out=[], seen=[];
+  // 🐞 v13.8: המועמדים כללו גם את שורות הפרופילים עצמן → לחיצה עליהן החליפה יוזר כל שנייה.
+  //    לעולם לא לוחצים על אלמנט שמכיל שם של פרופיל אחר; ומטפסים 3 רמות בלבד (לא עד מיכל התפריט).
+  var active=profileLabel();
+  var others=(profStore().labels||[]).concat([gmGet('ysProfileSecond','')]).filter(function(l){return l&&l!==active;});
+  function isProfileRow(el){
+    var t=(el.textContent||'').trim().replace(/\s+/g,' ');
+    for(var i=0;i<others.length;i++){ if(others[i]&&t.indexOf(others[i])>-1)return true; }
+    return false;
+  }
+  function add(el){ if(el&&typeof el.click==='function'&&seen.indexOf(el)<0&&!isProfileRow(el)){ seen.push(el); out.push(el); } }
+  // v13.19: הכפתור המבני — הוא ואבותיו (עד 4), בלי סינון שמות (הסינון הישן פסל את הכפתור עצמו כי
+  // "אייל שמול" נלמד בטעות כ"פרופיל אחר"). לא מטפסים לתוך מיכל שכולל את התפריט הפתוח ('יציאה').
+  var pill=accountPill();
+  if(pill){
+    // v13.21 (מהדוח של אייל, 16/09): הכותרת היא Kendo Menu — SPAN.main_menu_name ← DIV[role=button] ←
+    // SPAN.k-link ← LI.k-menu-item[aria-haspopup]. הפריט (LI) הוא מה ש-Kendo מאזין לו (ריחוף/מקלדת),
+    // ולכן הוא ראשון; אחריו הכפתור הפנימי, הקישור, והשם עצמו.
+    var chain=[], pe=pill;
+    for(var pu=0; pu<5 && pe; pu++){
+      if((pe.textContent||'').indexOf('יציאה')>-1)break;
+      if(typeof pe.click==='function')chain.push(pe);
+      pe=pe.parentElement||pe.parentNode;
+    }
+    var ga=function(el,a){ try{ return el.getAttribute?String(el.getAttribute(a)||''):''; }catch(e){ return ''; } };
+    var rank=function(el){
+      if(ga(el,'aria-haspopup')==='true'||ga(el,'role')==='menuitem'||/k-menu-item/.test(String(el.className||'')))return 0;
+      if(ga(el,'role')==='button')return 1;
+      if(/k-link/.test(String(el.className||'')))return 2;
+      return 3;
+    };
+    chain.forEach(function(el,i){ el.__ysRank=rank(el)*10+i; });
+    chain.sort(function(a,b){ return a.__ysRank-b.__ysRank; });
+    return chain;
+  }
+  var a=activeProfile();
+  if(a&&a.el){
+    var el=a.el;
+    for(var up=0; up<3 && el; up++){
+      add(el);
+      if(el.querySelectorAll){ var kids=el.querySelectorAll('img,button,[role="button"]'); for(var i=0;i<kids.length&&i<3;i++)add(kids[i]); }
+      el=el.parentElement||el.parentNode;
+    }
+  }
+  return out;
+}
+// v13.8 · קירור: החלפה מוצלחת עלולה לטעון את הדף מחדש, ואז הלולאה מחליפה שוב מיד → פינג-פונג.
+// אחרי החלפה לא מחליפים שוב עד שעוברות SWITCH_COOLDOWN_MS (הסריקה הבאה, 8-30 דק', כבר מעבר לזה).
+var SWITCH_COOLDOWN_MS=5*60000, SWITCH_TS_KEY='yad2_last_switch_v1';
+function switchInCooldown(){ try{ return (Date.now()-Number(localStorage.getItem(SWITCH_TS_KEY)||0)) < SWITCH_COOLDOWN_MS; }catch(e){ return false; } }
+function switchMark(){ try{ localStorage.setItem(SWITCH_TS_KEY, String(Date.now())); }catch(e){} }
+// פותח את תפריט החשבון: מנסה מועמד-מועמד עד ש-accountMenuRoot() מופיע. done(true/false).
+function openAccountMenu(done){
+  done=once(done);
+  if(accountMenuRoot()){ done(true); return; }
+  var cands=accountTriggerCandidates(), i=0;
+  (function tryNext(){
+    if(accountMenuRoot()){ done(true); return; }
+    if(i>=cands.length){ done(false); return; }
+    realClick(cands[i]);   // v13.10: רצף mousedown/pointerdown — לא רק click · v13.21: + ריחוף + מקלדת
+    i++;
+    setTimeout(tryNext, 900);   // Kendo פותח אחרי hoverDelay + אנימציה
+  })();
+}
 // מחליף לפרופיל שאינו הפעיל. done(true/false) — כשל לא מפיל כלום.
 // profSwitchWhy — באיזה שלב בדיוק נכשלה ההחלפה. "נכשלה" לבד לא אומר כלום (v9.0).
 var profSwitchWhy='';
@@ -1029,13 +1507,49 @@ function profileSwitch(done){
   profSwitchWhy='';
   var btn=accountButton();
   if(!btn){ profSwitchWhy='אין כפתור חשבון'; log('👤 לא נמצא כפתור החשבון — סורקים את הפרופיל הפעיל'); done(false); return; }
-  try{btn.click();}catch(e){ profSwitchWhy='לחיצה על החשבון נכשלה'; done(false); return; }
+  openAccountMenu(function(opened){    // v13.7: מנסה כמה טריגרים עד שהתפריט נפתח
+    if(!opened){ profSwitchWhy='תפריט החשבון לא נפתח ('+accountTriggerCandidates().length+' מועמדים)'; log('👤 תפריט החשבון לא נפתח'); switchLog('תפריט לא נפתח · '+before); done(false); return; }
+    // v13.27: התפריט פתוח *עכשיו* (בזמן סריקה — הכפתור בפאנל לא הצליח לפתוח אותו) — שומרים את מבנהו
+    // ל-"JSON לניתוח", כדי לראות סוף-סוף מה יש בשורת המשרד ומי בה לחיץ.
+    try{ var _mr=accountMenuRoot(); if(_mr){ gmSet('ysMenuDump', JSON.stringify({at:new Date().toLocaleTimeString('he-IL'), src:before, dump:menuDump(_mr), items:profileItems().map(function(x){ return {label:x.label,tag:x.el.tagName,cls:String(x.el.className||'').slice(0,60),targets:profileClickTargets(x.el,x.label).map(function(t){return t.tagName+'.'+String(t.className||'').slice(0,30);})}; })})); } }catch(e){}
   setTimeout(function(){
     var all=profileItems();
-    var items=all.filter(function(x){return !active||x.label!==active;});
+    // v13.19: "מי הפרופיל הפעיל" נקבע מהתפריט עצמו — השורה שלידה "לצפייה בפרופיל שלך" (מהצילום של
+    // אייל, 15/09), לא מטקסט הכותרת: הכותרת מציגה "אייל שמול" בשני הפרופילים, ולכן הסינון לפי
+    // active פסל תמיד את אותו פרופיל. נפילה: מה שנלמד לאזור הזה (byArea), ואז הכותרת כמו פעם.
+    var current='', mroot=accountMenuRoot();
+    // v13.22 (16/09: נלחץ "פ פמילי קרית ים" ולא הגיב — זה היה הנוכחי): הנוכחי = הפריט שחולק שורה עם
+    // אלמנט החתימה — הפריט מכיל את החתימה, או שהשורה של החתימה (עד 3 אבות, לא השורש) מכילה את הפריט.
+    var sig=accountMenuSig();
+    if(sig){
+      var srow=sig, su=0; while(srow.parentElement&&srow.parentElement!==mroot&&su<3){ srow=srow.parentElement; su++; }
+      all.forEach(function(x){ if(current)return; try{
+        if(x.el===sig||(x.el.contains&&x.el.contains(sig))||(srow!==mroot&&srow.contains&&srow.contains(x.el))) current=x.label;
+      }catch(e){} });
+    }
+    // מטפסים מהפריט לשורה שלו — אבל לא עד שורש התפריט (הוא מכיל את הסימון תמיד)
+    if(!current) all.forEach(function(x){ if(current)return; var pe=x.el, up=0; while(pe&&pe!==mroot&&up<3){ if(pe!==x.el&&/לצפי+ה בפרופיל/.test(pe.textContent||'')){ current=x.label; break; } pe=pe.parentElement||null; up++; } });
+    // v13.23 (16/09 17:27, שוב "נלחץ פ פמילי קרית ים ולא הגיב"): החתימה "לצפייה בפרופיל שלך" יושבת
+    //   *תמיד* על שורת החשבון האישי ("אייל שמול") — היא לא מסמנת את הפעיל. לכן: **מה שנלמד לאזור גובר**
+    //   על החתימה. הנלמד הוא קבוצה (אותו משרד מופיע כ"פ פמילי קרית ים" בקריות וכ"רי/מקס פמילי קריות"
+    //   בחיפה); השוואה אחרי הסרת אות-האווטאר ("פ "). כישלון-לחיצה מוסיף לקבוצה, הצלחה מוסיפה לאזור החדש.
+    var stA=profStore(); stA.byArea=stA.byArea||{};
+    var learned=byAreaSet(stA, before);
+    if(learned.length){
+      var hit=all.filter(function(x){ return inLabelSet(learned, x.label); });
+      // v13.24: קבוצה שמתאימה ליותר מפריט אחד = ידע מורעל (20:00: כישלון-לחיצה לימד את המשרד כ"נוכחי"
+      // בחיפה) — לא סומכים עליה, נופלים לחתימה/כותרת; הצלחה הבאה מחליפה את הקבוצה.
+      if(hit.length===1) current=hit[0].label;
+    }
+    if(!current) current=active;
+    var items=all.filter(function(x){return !current||normLabel(x.label)!==normLabel(current);});
+    // v13.24: מה שכבר נלחץ בסריקה הזו ולא הגיב — לא לוחצים שוב; מנסים את האחר
+    var untried=items.filter(function(x){ return !inLabelSet(swTried, x.label); });
+    if(untried.length) items=untried;
     // נבחר ידנית פעם אחת? זה גובר על כל ניחוש (v9.7 — אחרי שיד2 הציג פריטי תפריט
     // משתנים: "עדכונים", "סמנו הכל כנקרא"...).
     var pinned=gmGet('ysProfileSecond','');
+    if(pinned && (notProfile(pinned)||/\d/.test(pinned)||normLabel(pinned)===normLabel(current)||inLabelSet(learned,pinned))){ pinned=''; try{gmSet('ysProfileSecond','');}catch(e){} }  // v13.10: קיבוע-זבל — מבטלים · v13.21/23: גם קיבוע של הפרופיל הנוכחי/הנלמד
     if(pinned){
       var exact=items.filter(function(x){return x.label===pinned;});
       if(exact.length)items=exact;
@@ -1043,40 +1557,95 @@ function profileSwitch(done){
     // שומרים מה נראה בתפריט — כדי שאפשר יהיה לבחור, ולראות מרחוק מה יד2 מציג
     try{gmSet('ysProfCand',JSON.stringify(all.map(function(x){return x.label;}).slice(0,12)));}catch(e){}
     // מכירים כבר את שמות הפרופילים? הם קודמים לכל ניחוש מהתפריט.
-    var known=(profStore().labels||[]).filter(function(l){return l&&l!==active;});
+    var known=(profStore().labels||[]).filter(function(l){return l&&l!==current;});
     if(known.length){
       var pref=items.filter(function(x){return known.indexOf(x.label)>-1;});
       if(pref.length)items=pref.concat(items.filter(function(x){return known.indexOf(x.label)===-1;}));
     }
-    if(!items.length){ profSwitchWhy='אין פרופיל שני בתפריט ('+all.length+' פריטים)'; log('👤 לא נמצא פרופיל אחר בתפריט'); try{btn.click();}catch(e){} done(false); return; }
-    var st=profStore(); st.labels=(st.labels||[]);
-    items.concat(active?[{label:active}]:[]).forEach(function(x){ if(st.labels.indexOf(x.label)===-1)st.labels.push(x.label); });
+    if(!items.length){ profSwitchWhy='אין פרופיל שני בתפריט ('+all.length+' פריטים)'; log('👤 לא נמצא פרופיל אחר בתפריט'); try{ closeAccountMenu(); }catch(e){} done(false); return; }
+    // v13.19: התפריט הוא מקור האמת לשמות — מחליפים, לא צוברים (המאגר הישן צבר 1,603 "פרופילים":
+    // כתובות, שמות, תאריכים — והם פסלו את כפתור החשבון עצמו). לא לומדים את טקסט הכותרת.
+    var st=profStore(); st.labels=all.map(function(x){return x.label;}).filter(function(l){return !notProfile(l)&&!/\d/.test(l);}).slice(0,6);
     profSave(st);
     log('👤 מחליף פרופיל ל-'+items[0].label);
-    try{items[0].el.click();}catch(e){ done(false); return; }
-    var t0=Date.now(), tries=0;
+    swTried.push(items[0].label);
+    try{ gmSet('ysSwitchAttemptAt', String(Date.now())); }catch(e){}   // v13.30: חותמת לראיה בדף הכניסה
+    // v13.24: הלחיצה על האלמנט *הפנימי* של השורה (k-link / קישור / הטקסט עצמו) — המאזין של Kendo יושב
+    // שם; אירוע על השורה החיצונית לא יורד אליו (בקריות "אייל שמול" נבחר כ-span פנימי ועבד, בחיפה
+    // "רי/מקס פמילי קריות" נבחר כשורה חיצונית ולא הגיב).
+    // v13.25 (20:19: גם היעד הפנימי "לא הגיב"): לא יודעים על איזה אלמנט בשורה יושב המאזין — לוחצים על
+    // כל היעדים האפשריים בזה אחר זה (פנימי → השורה → ההורה → הסבא → כל צאצא עם סמן-יד), עם
+    // בדיקת החלפה בין לבין. הלחיצה הראשונה שתופסת מסיימת.
+    var targets=profileClickTargets(items[0].el, items[0].label), ti=0;
+    var kbDone=false;
+    var clickNext=function(){
+      if(ti<targets.length){ var tg=targets[ti]; try{ realClick(tg); }catch(e){} switchLog('לחיצה '+(ti+1)+'/'+targets.length+' על '+tg.tagName+'.'+String(tg.className||'').slice(0,30)+' ← "'+items[0].label+'"'); ti++; return; }
+      // v13.27: מיצינו לחיצות — מקלדת: חץ למטה עד שהפריט הממוקד הוא היעד, ואז Enter (מסלול Kendo)
+      if(!kbDone){ kbDone=true; try{ keyboardPick(items[0].label); switchLog('מקלדת ← "'+items[0].label+'"'); }catch(e){} }
+    };
+    switchLog('פותח: '+before+' · נוכחי="'+current+'" · יעד="'+items[0].label+'" · פריטים='+all.map(function(x){return x.label;}).join('|'));
+    // v13.29 (אייל 17/09: "המסך לא מתחלף — הוא רק נפתח לבחירת סניף"): לחיצה על שורת המשרד פותחת רשימת
+    // סניפים, וצריך לחיצה שנייה על הסניף. תמונת התוויות הנראות לפני הלחיצה — כל תווית חדשה שמופיעה
+    // אחריה היא מועמדת-סניף. מעדיפים סניף שנלמד לאזור אחר; אחרת הראשון.
+    var baseLabels={}; try{ visibleLabelList().forEach(function(x){ baseLabels[normLabel(x.label)]=1; }); }catch(e){}
+    var menuLabels=all.map(function(x){return x.label;});
+    var otherAreaLabels=[]; try{ var stO=profStore(); Object.keys(stO.byArea||{}).forEach(function(a){ if(a!==before) otherAreaLabels=otherAreaLabels.concat(byAreaSet(stO,a)); }); }catch(e){}
+    var branchPicked='', usedLearned=!!(learned.length && current && inLabelSet(learned,current));
+    try{ clickNext(); }catch(e){ done(false); return; }
+    var t0=Date.now(), tries=0, hrefBefore='', sigOnly=false; try{ hrefBefore=location.href; }catch(e){}
     (function wait(){
-      // שלושה סימנים להצלחה — di שלושתם אומרים "המלאי שמול העיניים התחלף":
-      // (1) מפתח המקור השתנה · (2) מזהה המשרד השתנה · (3) הגיעה תשובת טבלה חדשה.
-      // בעבר נבדק רק (1), והוא נגזר ממסנן האזור — ולכן החלפה מוצלחת בין שני פרופילים
-      // באותו אזור דווחה ככישלון (אייל, 31/08).
+      // סימני הצלחה: (1) מפתח המקור (אזור) השתנה · (2) מזהה המשרד השתנה. v13.29: תשובת-טבלה חדשה לבדה
+      // *אינה* הצלחה — הטבלה מתרעננת גם מדפדוף/מסננים (11:01: "הוחלף → area:6" מאזור 6 → ידע הפוך).
       var nowSrc=srcKey();
       var nowOffice=(function(){try{return officeIdSeen()||'';}catch(e){return '';}})();
       var nowSig=(function(){try{return lastTableSig();}catch(e){return '';}})();
-      if(nowSrc!==before || (nowOffice&&nowOffice!==beforeOffice) || (nowSig&&nowSig!==beforeSig)){
-        var st2=profStore(); st2.last=items[0].label; profSave(st2);
+      if(nowSrc!==before || (nowOffice&&beforeOffice&&nowOffice!==beforeOffice)){
+        // v13.24: הצלחה *מחליפה* את הידע (לא מוסיפה) — מרפאת קבוצה שהורעלה מכישלון
+        var st2=profStore(); st2.last=items[0].label; st2.byArea=st2.byArea||{};
+        // v13.29: אם נבחר סניף — הוא התווית של האזור החדש (בתפריט של האזור הזה המשרד מופיע בשם הסניף)
+        st2.byArea[nowSrc]=[branchPicked||items[0].label];
+        // שני פריטים בלבד → האחר היה הפעיל באזור שממנו יצאנו
+        if(all.length===2 && before && before!==nowSrc){ all.forEach(function(x){ if(normLabel(x.label)!==normLabel(items[0].label)) st2.byArea[before]=[x.label]; }); }
+        profSave(st2);
         profSwitchWhy='';
-        log('👤 הוחלף בהצלחה ל-'+items[0].label+' ('+nowSrc+')');
+        switchMark();   // v13.8: מתחיל קירור — לא מחליפים שוב מיד גם אם הדף נטען מחדש
+        log('👤 הוחלף בהצלחה ל-'+items[0].label+' ('+nowSrc+')'); switchLog('✓ הוחלף '+before+' → '+nowSrc+(branchPicked?' דרך סניף "'+branchPicked+'"':'')+' (אחרי '+ti+' לחיצות'+(kbDone?'+מקלדת':'')+')');
         done(true); return;
       }
+      if(nowSig&&nowSig!==beforeSig&&!sigOnly){ sigOnly=true; switchLog('טבלה התרעננה אבל המלאי לא התחלף — ממשיכים להמתין'); }
+      // v13.29: רשימת סניפים שנפתחה אחרי הלחיצה על המשרד → בוחרים סניף
+      if(!branchPicked){
+        try{
+          var fresh=visibleLabelList().filter(function(x){ var n=normLabel(x.label); return !baseLabels[n] && !inLabelSet(menuLabels,x.label) && n!==normLabel(active); });
+          if(fresh.length){
+            var want=fresh.filter(function(x){ return inLabelSet(otherAreaLabels,x.label); });
+            var pick=(want[0]||fresh[0]);
+            branchPicked=pick.label;
+            switchLog('סניפים: '+fresh.map(function(x){return x.label;}).slice(0,6).join('|')+' → בוחר "'+pick.label+'"');
+            try{ realClick(itemClickTarget(pick.el,pick.label)); }catch(e){}
+            setTimeout(wait,1500); return;   // נותנים לסניף להיטען לפני היעד הבא
+          }
+        }catch(e){}
+      }
+      // v13.28: אחרי לחיצה — האם נפתח דיאלוג אישור / השתנתה הכתובת?
+      try{ var dlg=switchDialogProbe(hrefBefore); if(dlg){ hrefBefore=location.href; } }catch(e){}
+      // v13.25: כל שתי בדיקות (3ש׳) בלי שינוי — היעד הבא בשורה (לא אחרי בחירת סניף — מחכים לה)
+      if(tries%2===1 && !branchPicked) clickNext();
       // תקרה כפולה: זמן *וגם* מספר נסיונות (מכשיר שנרדם מקפיא את השעון ותוקע את הלופ)
       if(++tries>=16 || Date.now()-t0>SWITCH_TIMEOUT_MS){
         profSwitchWhy='נלחץ "'+items[0].label+'" ולא הגיב · בתפריט: '+(gmGet('ysProfCand','[]')||'').slice(0,120);
-        log('👤 ההחלפה לא נקלטה — ממשיכים עם מה שיש'); done(false); return;
+        switchLog('✗ לא הגיב אחרי '+ti+' לחיצות'+(kbDone?'+מקלדת':'')+(branchPicked?' + סניף "'+branchPicked+'"':'')+' · src='+srcKey()+' office='+(officeIdSeen()||''));
+        // v13.29: אם היעד נבחר על סמך ידע נלמד והלחיצה לא הגיבה — הידע היה שגוי (11:01 למד הפוך) → נמחק
+        if(usedLearned && before){ try{ var stX=profStore(); if(stX.byArea){ delete stX.byArea[before]; profSave(stX); switchLog('ידע שגוי ל-'+before+' נמחק'); } }catch(e){} }
+        // v13.22 · למידה מכישלון: פריט שנלחץ והמלאי לא השתנה הוא כמעט בוודאות הפרופיל *הנוכחי*
+        // v13.24: רק כשאין ידע לאזור — כישלון שני באותו אזור לא מוסיף (זה מה שהרעיל את חיפה ב-20:00)
+        else if(all.length>=2 && before && !byAreaSet(profStore(), before).length){ try{ var stF=profStore(); byAreaAdd(stF, before, items[0].label); profSave(stF); }catch(e){} }
+        log('👤 ההחלפה לא נקלטה — ממשיכים עם מה שיש'); try{ closeAccountMenu(); }catch(e){} done(false); return;
       }
       setTimeout(wait,1500);
     })();
   },1200);
+  });   // סוגר את openAccountMenu (v13.7)
 }
 // ===== auto loop — סריקה מלאה אוטומטית (זהה לידני, בלי מגע יד) =====
 function waitScrape(attempt){
@@ -1084,7 +1653,13 @@ function waitScrape(attempt){
   if(attempt>30){log('rows never appeared');scheduleNext();return;}
   if(!latestApiTemplate()){ setTimeout(function(){waitScrape(attempt+1);},1000); return; } // ממתין שהטבלה/API ייטענו
   paused=true; // חוסם ריענון אוטומטי בזמן הסריקה הארוכה
+  swTried=[];   // v13.24: מחזור החלפה חדש — הניסיון השני של הסבב הזה לא יחזור על מה שלא הגיב
   log('auto full scan starting…');
+  // v13.8: בתוך חלון הקירור (החלפה קרתה זה עתה, אולי הדף נטען מחדש) — לא מחליפים, סורקים.
+  if(switchInCooldown()){ log('👤 קירור אחרי החלפה — סורקים את הפרופיל הנוכחי'); runFullScan(log, function(){ paused=false; scheduleNext(); }); return; }
+  // v13.29 (אייל 17/09: "זה קורה ישר אחרי שאני עובר לקרית ים"): כשאייל עובד בלשונית — לא נוגעים
+  // בפרופיל (לא פותחים תפריט, לא מחליפים) — סורקים את מה שמולו. רק אחרי 10 דק׳ בלי מגע אמיתי.
+  if(userActive()){ log('👤 המשתמש פעיל בלשונית — לא מחליפים פרופיל'); profSwitchNote=''; runFullScan(log, function(){ paused=false; scheduleNext(); }); return; }
   // סירוגין בין הפרופילים: מחליפים ואז סורקים. בסריקה הבאה נחליף חזרה.
   profileSwitch(function(ok){
     // ההחלפה נכשלה? ניסיון שני (התפריט לפעמים נטען לאט), ואז מדווחים לשרת —
@@ -1452,7 +2027,11 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
   var officePhone=''; // טלפון המשרד מדף הסוכנות — נופל אליו כשאין טלפון סוכן
   // דיאגנוסטיקה: התפלגות דגל הבלעדיות + דגימת שדות של מודעה ראשונה (לניתוח מרחוק דרך action=diag)
   var diag={id:office.id,name:office.name,items:0,exclTrue:0,exclFalse:0,noInProp:0,phones:0,sample:null};
+  // v13.9: מחזיר כמה מודעות העמוד באמת הוסיף (חדשות או שודרגו). 0 = העמוד האחרון חוזר על
+  //   עצמו — יד2 מחזיר את אותן מודעות אחרי הסוף האמיתי, והלולאות רצו עד עמוד 60 ("עמ׳ 43")
+  //   ומתו. הלולאות עוצרות עכשיו על 0 במקום על "ריק".
   function addItems(items,agent,phone){
+    var touched=0;
     items.forEach(function(it){
       if(!it||!it.token)return;
       diag.items++;
@@ -1469,6 +2048,7 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
           ex.agent=agent;
           if(phone)ex.phone=phone;
           diag.upgraded=(diag.upgraded||0)+1;
+          touched++;
         }
         return;
       }
@@ -1477,7 +2057,9 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
       r.phone=phone||officePhone||''; if(r.phone)diag.phones++;
       if(!diag.sampleItemKeys)diag.sampleItemKeys=Object.keys(it); // לאימות שדות הסוכן במודעה עצמה
       rows[it.token]=r;order.push(it.token);
+      touched++;
     });
+    return touched;
   }
   function pages(url,cb,collect){ // עובר עמודים עד עמוד ריק (תקרה 60)
     var p=1;
@@ -1507,9 +2089,9 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
         (function nextOfficePage(){
           fetchFn(base+'/forsale?page='+p).then(function(h){
             var nd2=exclParseNextData(h);var items=nd2?exclFindListings(nd2):[];
-            addItems(items,office.name+' (לא משויך)','');
+            var added=addItems(items,office.name+' (לא משויך)','');
             if(onProg)onProg(office.name,'forsale',p,items.length);
-            if(items.length&&p<60){p++;setTimeout(nextOfficePage,humanGap(1800,2200));}
+            if(added>0&&p<60){p++;setTimeout(nextOfficePage,humanGap(1800,2200));}   // v13.9: 0 חדשות = סוף אמיתי
             else done(order.map(function(t){return rows[t];}),diag);
           }).catch(function(){done(order.map(function(t){return rows[t];}),diag);});
         })();
@@ -1526,9 +2108,9 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
         (function nextBp(){
           fetchFn(base+'/broker/'+bid+'/forsale?page='+p).then(function(h){
             var ndp=exclParseNextData(h);var items=ndp?exclFindListings(ndp):[];
-            addItems(items,name,bPhone);
+            var added=addItems(items,name,bPhone);
             if(onProg)onProg(office.name,'broker/'+bid,p,items.length);
-            if(items.length&&p<40){p++;setTimeout(nextBp,1500+Math.random()*1500);}
+            if(added>0&&p<40){p++;setTimeout(nextBp,1500+Math.random()*1500);}   // v13.9: 0 חדשות = סוף אמיתי
             else setTimeout(nextBroker,2500+Math.random()*2000);
           }).catch(function(){setTimeout(nextBroker,1200);});
         })();
@@ -1642,7 +2224,7 @@ function exclSchedTick(){
     var quietStr=' · 🤫 שקט '+('0'+qs).slice(-2)+':'+('0'+qm).slice(-2)+'-'+('0'+qe).slice(-2)+':'+('0'+qem).slice(-2)+(inQuiet(new Date(now))?' (עכשיו)':'');
     el.textContent='🏢 בלעדיות: בוקר '+fmt(st.m.t)+(st.m.done?' ✓':'')+' · ערב '+fmt(st.e.t)+(st.e.done?' ✓':'')+quietStr+(last?' · '+String(last).slice(0,200):'');
   }
-  if(!due.length)return;
+  if(!due.length){ famTick(now,st); return; }   // v13.17: בין הריצות המלאות — Family כל שעתיים
   if(!mayScan()){ lastScanMsg=scanOwnerMsg(); return; }
   // מכאן: סריקה אמורה לרוץ. אם היא לא רצה — רושמים למה, ומדווחים לשרת (v9.9).
   var skip='';
@@ -1666,10 +2248,42 @@ function exclSchedTick(){
   // מת באמצע (חניקת טיימרים/קריסה)? אחרי 3 דק' בלי דופק משגרים מחדש — וההתקדמות נשמרת (resume).
   if(!exclDeadNow(now))return;
   leaseOpen(now,'full');
+  gmSet('ysFamLast',String(now));   // ריצה מלאה מכסה גם את Family — מאפסת את שעון השעתיים
   // active:true — טאב רקע נחנק ע"י כרום אחרי 5 דק' (טיימר פעם בדקה) והסריקה לא מסתיימת לעולם.
   // במכונת המשרד אין משתמש ליד המסך, אז טאב קדמי לא מפריע — והסריקה רצה במלוא הקצב עד הסוף.
   try{GM_openInTab(EXCL_DIRECTORY+'#'+EXCL_FLAG,{active:true,insert:true});log('🏢 נפתח טאב סריקת בלעדיות ('+due.join('+')+')');}
   catch(e){log('GM_openInTab נכשל: '+e);}
+}
+// ═══ Family כל שעתיים (v13.17, אייל 15/09: "לוקח המון זמן לנכסים לעלות") ═══
+// הריצות המלאות (בוקר/ערב, 21 משרדים) נשארות; ביניהן רצה סריקת 3 סניפי Family בלבד (~15 דק')
+// כל שעתיים בשעות הפעילות — כך מודעה של סוכן שלנו עולה לאפליקציה תוך שעתיים ולא למחרת.
+// famDue טהורה (נבדקת ב-node): כל התנאים שמונעים ריצה, ואז השעון.
+var FAM_EVERY_MS=2*3600000, FAM_GUARD_MS=25*60000;
+function famDue(now, lastFam, opts){
+  opts=opts||{};
+  if(!opts.active)return {ok:false,why:'מחוץ לשעות'};
+  if(opts.quiet)return {ok:false,why:'חלון שקט'};
+  if(!opts.mayScan)return {ok:false,why:'לא הבעלים'};
+  if(now<Number(opts.cool||0))return {ok:false,why:'מנוחה אחרי חסימה'};
+  if(!opts.leaseDead)return {ok:false,why:'סריקה פעילה'};
+  // ריצה מלאה מתקרבת (עד 25 דק') — לא פותחים Family שתתנגש בה
+  if(opts.nextFull && opts.nextFull-now>0 && opts.nextFull-now<FAM_GUARD_MS)return {ok:false,why:'ריצה מלאה בקרוב'};
+  if(now-Number(lastFam||0)<FAM_EVERY_MS)return {ok:false,why:'עוד לא שעתיים'};
+  return {ok:true,why:''};
+}
+function famTick(now,st){
+  try{
+    var nextFull=0;
+    if(st){ ['m','e'].forEach(function(k){ if(st[k]&&!st[k].done&&st[k].t>now&&(!nextFull||st[k].t<nextFull))nextFull=st[k].t; }); }
+    var d=famDue(now, gmGet('ysFamLast','0'), {active:isActive(), quiet:inQuiet(new Date(now)), mayScan:mayScan(),
+      cool:gmGet('ysExclCool','0'), leaseDead:exclDeadNow(now), nextFull:nextFull});
+    if(!d.ok)return;
+    gmSet('ysFamLast',String(now));
+    try{ exclRunClear(); }catch(e){}
+    leaseOpen(now,'fam');
+    GM_openInTab(EXCL_DIRECTORY+'#'+EXCL_FLAG+'-'+EXCL_FAM_FLAG,{active:true,insert:true});
+    log('🏠 נפתח טאב סריקת Family (כל שעתיים)');
+  }catch(e){ log('famTick: '+e); }
 }
 // ═══ חכירת ריצה (v11.0) ═══════════════════════════════════════════════
 // מחליפה את ysExclLaunch + ysExclScanHB + ysExclDone. שלוש החותמות ההן היו
@@ -2104,7 +2718,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
     });
   })();
 }
-try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysSaveRows=saveRows;window.__ysPostHB=postHB;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysLeaseOwn=leaseOwn;window.__ysExclFetchFn=exclFetchFn;window.__ysExclForceArmed=exclForceArmed;window.__ysExclForceArmSet=function(t){exclForceArm=t;};window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysExclRollup=exclRollup;window.__ysNavCollectAdvance=navCollectAdvance;window.__ysNavUrl=navUrl;window.__ysNavState=navState;window.__ysNavSave=navSave;window.__ysNavCollectStart=navCollectStart;window.__ysNavArrange=navArrange;window.__ysNavDirUrl=navDirUrl;window.__ysNavCollectStep=navCollectStep;window.__ysExclPostOffice=exclPostOffice;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
+try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysFamDue=famDue;window.__ysFamTick=famTick;window.__ysSaveRows=saveRows;window.__ysPostHB=postHB;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysLeaseOwn=leaseOwn;window.__ysExclFetchFn=exclFetchFn;window.__ysExclForceArmed=exclForceArmed;window.__ysExclForceArmSet=function(t){exclForceArm=t;};window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysExclRollup=exclRollup;window.__ysNavCollectAdvance=navCollectAdvance;window.__ysNavUrl=navUrl;window.__ysNavState=navState;window.__ysNavSave=navSave;window.__ysNavCollectStart=navCollectStart;window.__ysNavArrange=navArrange;window.__ysNavDirUrl=navDirUrl;window.__ysNavCollectStep=navCollectStep;window.__ysExclPostOffice=exclPostOffice;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
 
 // ===== סימן-חיים + התאוששות SMS אוטומטית =====
 var LOGIN_PHONE='0505709865';  // הנייד שממלאים אוטומטית בכניסה מחדש
@@ -2185,12 +2799,17 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitch;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitch;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
 function step(name, fn){ try{ fn(); }catch(e){ log('⚠️ אתחול "'+name+'" נכשל: '+(e&&e.message||e)); } }
+// v13.29 · מגע אמיתי של המשתמש (isTrusted בלבד — האירועים הסינתטיים שלנו לא נספרים)
+var USER_IDLE_MS=10*60000, lastUserInput=0;
+function noteUserInput(e){ try{ if(e&&e.isTrusted) lastUserInput=Date.now(); }catch(err){} }
+function userActive(){ return !!lastUserInput && (Date.now()-lastUserInput) < USER_IDLE_MS; }
 function init(){
+  try{ ['mousemove','mousedown','keydown','wheel','touchstart'].forEach(function(t){ document.addEventListener(t,noteUserInput,{passive:true,capture:true}); }); }catch(e){}
   step('פאנל', function(){ buildPanel(); setInterval(panelKeeper,5000); }); // גם אם הדף לא מוכן — יחזור תוך 5ש'
   log('starting Yad2 Plus sync v6.9 (active 08:00-23:00)');
   step('סימן-חיים', function(){ postHB('ok'); setInterval(healthTick,60000); });
@@ -2208,7 +2827,9 @@ function initPublic(){ // www.yad2.co.il — סורקים רק כשהטאב נפ
 var IS_PLUS=location.host==='plus.yad2.co.il';
 var booted=false;
 function boot(){
-  if(booted)return;                      // הגנה מאתחול כפול (טיימרים כפולים = סריקות כפולות)
+  if(booted)return;
+  // v13.30 · ראיה: דף כניסה נפתח — כמה זמן אחרי ניסיון ההחלפה האחרון? (נקרא ב"JSON לניתוח" → switchLog)
+  try{ if(/login/i.test(location.pathname||'')){ var la=Number(gmGet('ysSwitchAttemptAt','0')||0); switchLog('⚠️ דף כניסה: '+String(location.pathname).slice(0,40)+(la?' · '+Math.round((Date.now()-la)/60000)+' דק׳ אחרי ניסיון החלפה':' · בלי ניסיון החלפה רשום')); } }catch(e){}                      // הגנה מאתחול כפול (טיימרים כפולים = סריקות כפולות)
   booted=true;
   try{ IS_PLUS?init():initPublic(); }catch(e){ log('🔴 boot נכשל: '+(e&&e.message||e)); }
 }
