@@ -4572,8 +4572,15 @@ function nbCard(r, i){
   return '<div class="nb">' +
     '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
     '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' + fam + '</div>' + chip + '</div>' +
-    '<div style="display:flex;align-items:center;justify-content:space-between">' +
-    '<div class="pr">' + esc(fmtPrice(r.price)) + '</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
+    // 24/09 (אייל): ירידת מחיר גם בנכס נולד — מחיר ישן מחוק + תג ירוק (אותו מראה כמו במשרד)
+    '<div style="display:flex;align-items:center;gap:8px">' +
+    ((r.priceDropped && r.priceOld)
+      ? '<span style="text-decoration:line-through;color:#8B8F99;font-size:14px;font-weight:600">' + esc(fmtPrice(r.priceOld)) + '</span>' +
+        '<div class="pr" style="font-size:1.18em">' + esc(fmtPrice(r.price)) + '</div>'
+      : '<div class="pr">' + esc(fmtPrice(r.price)) + '</div>') +
+    (r.priceDropped ? '<span style="font-size:11px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>' : '') +
+    '</div>' +
     '<div style="font-size:11.5px;color:#6B7280">' + esc(r.date || '') + '</div></div>' +
     owner + contacted +
     '<div class="stActs">' +

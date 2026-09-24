@@ -6866,6 +6866,9 @@ def api_search_properties():
             rows = [r for r in fetch_sheet_rows()
                     if (r.get("סטטוס", "") or "").strip() in ("", "פעילה")]
             rows.sort(key=_prop_epoch, reverse=True)
+            # 24/09 (אייל): חדשים → ירידות מחיר → השאר → ירד מפרסום (כמו ב-CRM; מיון יציב)
+            rows.sort(key=lambda r: _tier_new_drop_rest(_prop_is_new(r), _prop_price_key(r) in _pd_map,
+                                                        bool(str(r.get("ירד מפרסום", "") or "").strip())))
             out = [_row_out(r) for r in rows]
             return _etag_wrap({"ok": True,   # [SWR 14/09] המסך מצייר מהעותק השמור ומרענן ברקע
                                "summary": f"כל הנכסים הפעילים ({len(out)}) — מהחדש לישן",
@@ -6920,6 +6923,8 @@ def api_my_properties():
         rows = fetch_sheet_rows()
         mine = [r for r in rows if _row_owned(r, keys, phones)]
         mine.sort(key=_prop_epoch, reverse=True)   # החדש למעלה (אייל 09/09)
+        mine.sort(key=lambda r: _tier_new_drop_rest(_prop_is_new(r), _prop_price_key(r) in _pd_map,
+                                                    bool(str(r.get("ירד מפרסום", "") or "").strip())))   # 24/09
         phones_map = fetch_agents_phones()
         pending = _fetch_pending_listings()
         removed = _removed_listing_ids()   # נכסים שהסוכן ביקש להסיר — יורדים מיד מהתצוגה והספירה
@@ -7035,6 +7040,21 @@ def _scan_price_changes():
         k = _prop_price_key(r); pn = _price_digits(r.get("מחיר", ""))
         if k and pn:
             cur[k] = pn
+    # 24/09 (אייל): ירידות מחיר גם בשת"פ ובנכס נולד — אותו סנאפשוט, מפתחות עם קידומת משלהם
+    try:
+        for r in fetch_external_exclusives():
+            k = _excl_price_key(r); pn = _price_digits(r.get("price", ""))
+            if k and pn:
+                cur[k] = pn
+    except Exception as _e:
+        log.warning(f"price scan (shtaf) skipped: {_e}")
+    try:
+        for r in fetch_newborn():
+            k = _nb_price_key(r); pn = _price_digits(r.get("מחיר", ""))
+            if k and pn:
+                cur[k] = pn
+    except Exception as _e:
+        log.warning(f"price scan (newborn) skipped: {_e}")
     if not cur:
         return
     def _mut(cfg):
@@ -7065,6 +7085,34 @@ def _scan_price_changes():
         _config_mutate(_mut)
     except Exception as _e:
         log.warning(f"price scan failed: {_e}")
+
+def _excl_price_key(r):
+    """מפתח יציב למודעת שת"פ לאורך סריקות — טוקן יד2 מהקישור, ובלעדיו כתובת+משרד."""
+    m = re.search(r"/item/([A-Za-z0-9]+)", str(r.get("link", "") or ""))
+    if m:
+        return "X:" + m.group(1)
+    st = re.sub(r"\s+", " ", str(r.get("street", "") or "")).strip().lower()
+    return ("XA:" + st + "|" + str(r.get("office", "") or "").strip().lower()) if st else ""
+
+def _nb_price_key(r):
+    """מפתח יציב למודעת נכס נולד — אותו מפתח כמו מעקב הפניות (_nb_key)."""
+    k = _nb_key(r)
+    return ("N:" + k) if k else ""
+
+def _excl_is_new(r, days=3):
+    """שת"פ 'חדש' = נראה לראשונה ב-3 הימים האחרונים (first_seen מהסורק; נפילה לקליטה)."""
+    e = _excl_epoch(r.get("first_seen", "") or r.get("received_at", ""))
+    return bool(e) and (time.time() - e) < days * 86400
+
+def _tier_new_drop_rest(is_new, dropped, delisted=False):
+    """סדר אחיד לשלושת הזרמים (אייל 24/09, כמו ב-CRM): חדשים → ירידות מחיר → השאר → ירד מפרסום."""
+    if delisted:
+        return 3
+    if is_new:
+        return 0
+    if dropped:
+        return 1
+    return 2
 
 def _price_changed_map():
     """{key: ts} של נכסים שהמחיר שלהם השתנה ב-7 הימים האחרונים."""
@@ -7721,6 +7769,8 @@ def api_newborn():
         fam_list = _famexcl_addr_list()
         rows = [r for r in fetch_newborn() if _newborn_created_epoch(r)]
         rows.sort(key=_newborn_created_epoch, reverse=True)
+        _scan_price_changes()                 # 24/09: ירידות מחיר גם בנכס נולד
+        _pd_map = _price_dropped_map()
         out = []
         bucket_counts = [0] * len(_NB_BUCKETS)
         for r in rows:
@@ -7785,10 +7835,14 @@ def api_newborn():
                 "stat": _vstat or None,
                 "unotes": _nb_notes_for(_k, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", "")))),
                 "ageDays": ad,
-                "delisted": _nb(r.get("delisted_at", "")),   # ירד מיד2 — תווית 3 ימים
+                "delisted": _nb(r.get("delisted_at", "")),   # ירד מיד2 — תווית; 24/09: המודעה נשארת (אייל)
                 "famexcl": (_famv is not None),
                 "famexclAgent": (_famv or ""),
+                "priceDropped": _nb_price_key(r) in _pd_map,   # 24/09: תג ירידת מחיר בנכס נולד
+                "priceOld": _pd_map.get(_nb_price_key(r), ""),
             })
+        # 24/09 (אייל): חדשים (עד יומיים) → ירידות מחיר → השאר → ירד מפרסום; בתוך כל קבוצה מהחדש לישן
+        out.sort(key=lambda o: _tier_new_drop_rest(o["ageDays"] <= 2, o["priceDropped"], bool(o["delisted"])))
         _res = {"ok": True, "count": len(out), "released": len(out), "delay": delay,
                 "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts)}
         # [PERF-3] טביעת-אצבע לתוצאה — מחושבת פעם אחת בבנייה (לא פר-בקשה)
@@ -8182,12 +8236,17 @@ def _sign_rows_to_supabase(recs):
     return n
 
 def _dedupe_exclusives(rows):
-    """אם אותו נכס מופיע כמה פעמים (לפי הכתובת) — להשאיר רק את החדש ביותר."""
+    """אם אותו נכס מופיע כמה פעמים — להשאיר רק את החדש ביותר.
+    24/09 (אייל: "ברכה פולד של דניאל שקד לא מופיע בשת\"פ"): המפתח היה הכתובת בלבד, ושתי מודעות
+    שונות באותו רחוב (RICH 1.95M מ-22/09 ודניאל שקד 2.27M מ-17/09, 'פולד ברכה, חיפה') נבלעו לאחת.
+    עכשיו: כתובת + מחיר + משרד — אותה מודעה שנקלטה שוב מתאחדת, דירה אחרת באותו בניין נשארת."""
     best = {}
     for r in rows:
         key = re.sub(r"\s+", " ", str(r.get("street", "") or "")).strip().lower()
         if not key:
             key = "id:" + str(r.get("event_id", ""))
+        else:
+            key += "|" + _price_digits(r.get("price", "")) + "|" + str(r.get("office", "") or "").strip().lower()
         cur = best.get(key)
         if cur is None or _excl_epoch(r.get("received_at", "")) > _excl_epoch(cur.get("received_at", "")):
             best[key] = r
@@ -8223,10 +8282,15 @@ def api_search_exclusives():
         parsed["budget_max"] = _web_num(parsed.get("budget_max"))   # מנע TypeError בכפל
         parsed["rooms"]      = _web_num(parsed.get("rooms"))
         rows = _dedupe_exclusives(fetch_external_exclusives())
+        _scan_price_changes()                 # 24/09: ירידות מחיר גם בשת"פ
+        _pd_map = _price_dropped_map()
         if not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords") or parsed.get("property_type")):
             # "כל הבלעדיות" (בלי חיפוש) — כל השת"פ, כמו שהמשרד מציג את כל 471 (בלי
             # חיתוך ל-30 שהסתיר נכסים; תיקון "רק 27 בשת\"פ", 19/07). ממויין מהחדש לישן.
             rows = sorted(rows, key=lambda r: _excl_epoch(r.get("received_at", "")), reverse=True)
+            # 24/09 (אייל): חדשים → ירידות מחיר → השאר → ירד מפרסום (מיון יציב על הסדר שלמעלה)
+            rows.sort(key=lambda r: _tier_new_drop_rest(_excl_is_new(r), _excl_price_key(r) in _pd_map,
+                                                        bool(str(r.get("delisted_at", "") or "").strip())))
             matches = [(1, r) for r in rows]
         else:
             scored = [(score_exclusivity_match(r, parsed), r) for r in rows]
@@ -8249,6 +8313,9 @@ def api_search_exclusives():
                 "date": str(r.get("received_at", "") or "")[:10],
                 "link": str(r.get("link", "") or "").strip(),
                 "delisted": str(r.get("delisted_at", "") or "").strip(),
+                "isNew": _excl_is_new(r),                                   # 24/09
+                "priceDropped": _excl_price_key(r) in _pd_map,               # 24/09: תג ירידת מחיר בשת"פ
+                "priceOld": _pd_map.get(_excl_price_key(r), ""),
                 "lat": round(_ll[0], 6) if _ll else None,
                 "lng": round(_ll[1], 6) if _ll else None,
             })
