@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.34
+// @version      13.35
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.34'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='13.35'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -1055,6 +1055,7 @@ function buildPanel(){
   box.appendChild(mk('ys-reveal','#2563eb','📞 חשוף מספרים',revealAll));
   box.appendChild(mk('ys-save','#16a34a','💾 שמור לגיליון',manualSave));
   box.appendChild(mk('ys-net','#7c3aed','🔎 JSON לניתוח',copyNetReport,';font-size:13px;padding:9px'));
+  box.appendChild(mk('ys-dswitch','#0e7490','🔁 החלפת פרופיל ישירה',function(){ status('מחליף פרופיל דרך ה-API…'); directSwitch(function(ok,why){ status(ok?'✓ הוחלף — הדף נטען מחדש':('⚠️ לא הוחלף: '+why)); }); },';font-size:13px;padding:9px'));
   // v13.31: הוסר כפתור 'הקלטת החלפה' — הפנה לפונקציה שלא קיימת (switchRecordStart) → buildPanel קרס והפאנל נעלם (אייל 24/09)
   box.appendChild(mk('ys-prof','#475569','👤 בחר פרופיל שני',function(){
     // v13.6: פותחים את תפריט החשבון בפועל ומרעננים את הרשימה חי — כדי שמה שמוצג הוא מה
@@ -1539,10 +1540,110 @@ function openAccountMenu(done){
     setTimeout(tryNext, 900);   // Kendo פותח אחרי hoverDelay + אנימציה
   })();
 }
+
+// ── v13.35 · החלפת פרופיל ישירה — בלי תפריט Kendo (אייל 26/09: "איך מטפלים בזה סופית?") ─────────
+// מהקלטות 13.32-13.34: כל קריאה של יד2 נושאת Authorization: Bearer <mipo_token של הפרופיל הפעיל>;
+// user/ping מחזיר ב-offices[] את הפרופיל השני עם access_token משלו; ההחלפה בתפריט = GET
+// /api/v1/user/switch-office?loginBy=phone ואז reload, ואחריה mipo_token = הטוקן של היעד,
+// access/refresh מונפקים מחדש, currentYad2PlusUser מתעדכן. כאן: אותה קריאה עם Bearer של היעד, בלי DOM.
+// רשת ביטחון: גיבוי cookies+localStorage לפני; אחרי הריענון בודקים שהוחלף ושלא נפלנו לדף כניסה —
+// אחרת משחזרים את הגיבוי, מרעננים, ומשביתים את המסלול הישיר ל-24 שעות (המסלול הישן נשאר כגיבוי).
+var DS_COOKIES=['access_token','refresh_token','mipo_token','mipo_phone_token','UserID'];
+var DS_PING='https://plus.yad2.co.il/api/v1/user/ping?cv=3.64&loginBy=phone';
+var DS_SWITCH='https://plus.yad2.co.il/api/v1/user/switch-office?loginBy=phone';
+function dsCookieSet(k,v){ try{ var exp=new Date(Date.now()+365*86400000).toUTCString(); document.cookie=k+'='+v+'; path=/; expires='+exp+'; domain=.yad2.co.il'; document.cookie=k+'='+v+'; path=/; expires='+exp; }catch(e){} }
+function dsCookieDel(k){ try{ var past='Thu, 01 Jan 1970 00:00:00 GMT'; document.cookie=k+'=; path=/; expires='+past+'; domain=.yad2.co.il'; document.cookie=k+'=; path=/; expires='+past; }catch(e){} }
+function dsCurrentUser(){ try{ return JSON.parse(localStorage.getItem('currentYad2PlusUser')||'null'); }catch(e){ return null; } }
+function dsCookiesNow(){ var m=cookieMap(), out={}; DS_COOKIES.forEach(function(k){ if(m[k]!==undefined) out[k]=m[k]; }); return out; }
+// היעד: הפרופיל ב-offices[] שאינו הנוכחי ויש לו טוקן
+function dsPickTarget(ping, curCustId){
+  var offs=(ping&&ping.data&&ping.data.offices)||[]; if(!Array.isArray(offs))return null;
+  for(var i=0;i<offs.length;i++){ var o=offs[i]; if(o&&o.access_token&&String(o.custId||o.UserID)!==String(curCustId)) return o; }
+  return null;
+}
+function dsIsJwt(v){ return /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(String(v||'')); }
+// מה לכתוב אחרי switch-office: מה שהשרת כבר שינה (Set-Cookie) לא נוגעים; מה שלא — משלימים
+// מהתשובה (JWT-ים) ומהיעד (mipo). המשתמש הפעיל = data מהתשובה אם יש בה custId, אחרת אובייקט היעד.
+function dsPlan(resp, target, before, after){
+  var set={}, d=(resp&&typeof resp==='object')?(resp.data&&typeof resp.data==='object'?resp.data:resp):{};
+  var changed=function(k){ return String(before[k]||'')!==String(after[k]||''); };
+  var tok=String(target.access_token||'');
+  if(!changed('mipo_token') && after.mipo_token!==tok) set.mipo_token=tok;
+  if(!changed('mipo_phone_token') && after.mipo_phone_token!==tok+'_') set.mipo_phone_token=tok+'_';
+  var jwts=[]; (function walk(x,depth){ if(!x||typeof x!=='object'||depth>3)return; Object.keys(x).forEach(function(k){ var v=x[k]; if(typeof v==='string'&&dsIsJwt(v)) jwts.push({k:k.toLowerCase(),v:v}); else if(v&&typeof v==='object') walk(v,depth+1); }); })(resp,0);
+  var pick=function(name){ var hit=jwts.filter(function(j){ return j.k.indexOf(name)>-1; })[0]; return hit?hit.v:''; };
+  if(!changed('access_token')){ var a=pick('access')||(jwts.length===1?jwts[0].v:''); if(a) set.access_token=a; }
+  if(!changed('refresh_token')){ var r=pick('refresh'); if(r) set.refresh_token=r; }
+  var user=(d&&(d.custId||d.UserID))?d:target;
+  var uid=String(user.UserID||user.custId||''); if(uid && !changed('UserID') && after.UserID!==uid) set.UserID=uid;
+  return {set:set, user:user, jwtsFound:jwts.length, serverSetCookies:DS_COOKIES.filter(changed)};
+}
+function dsEnabled(){ try{ var until=Number(gmGet('ysDirectSwitchOff','0')||0); return !(until&&Date.now()<until); }catch(e){ return true; } }
+function dsDisable(why){ try{ gmSet('ysDirectSwitchOff', String(Date.now()+24*3600000)); switchLog('⛔ החלפה ישירה הושבתה ל-24ש׳: '+why); }catch(e){} }
+function dsFetch(url, bearer){
+  var h={'Accept':'application/json, text/plain, */*','Client-Version':'3.64'}; if(bearer) h['Authorization']='Bearer '+bearer;
+  return fetch(url,{method:'GET',headers:h,credentials:'include'}).then(function(r){ return r.text().then(function(t){ var j=null; try{ j=JSON.parse(t); }catch(e){} return {status:r.status,json:j,text:t}; }); });
+}
+function directSwitch(done){
+  done=once(done);
+  try{
+    if(typeof fetch!=='function'){ done(false,'אין fetch'); return; }
+    if(!dsEnabled()){ done(false,'מושבת'); return; }
+    var cur=dsCurrentUser(); var curId=cur?(cur.custId||cur.UserID):'';
+    var before=dsCookiesNow(); var bearer=before.mipo_token||'';
+    if(!curId||!bearer){ done(false,'אין פרופיל/טוקן נוכחי'); return; }
+    switchLog('🔁 ישירה: ping מ-'+curId);
+    dsFetch(DS_PING, bearer).then(function(p){
+      if(p.status!==200||!p.json){ done(false,'ping '+p.status); return; }
+      var target=dsPickTarget(p.json, curId);
+      if(!target){ done(false,'אין פרופיל שני ב-ping'); return; }
+      try{ sessionStorage.setItem('ysSwitchBackup', JSON.stringify({cookies:before,user:localStorage.getItem('currentYad2PlusUser')||'',t:Date.now()})); }catch(e){}
+      switchLog('🔁 ישירה: switch-office → '+(target.officeName||'')+' ('+(target.custId||'')+')');
+      return dsFetch(DS_SWITCH, target.access_token).then(function(r){
+        if(r.status<200||r.status>=300){ done(false,'switch-office '+r.status+' '+String(r.text||'').slice(0,80)); return; }
+        var after=dsCookiesNow(); var plan=dsPlan(r.json, target, before, after);
+        Object.keys(plan.set).forEach(function(k){ dsCookieSet(k, plan.set[k]); });
+        try{ localStorage.setItem('currentYad2PlusUser', JSON.stringify(plan.user)); }catch(e){}
+        try{ sessionStorage.setItem('ysSwitchPending', JSON.stringify({target:String(target.custId||target.UserID||''),from:String(curId),srcBefore:srcKey(),t:Date.now()})); }catch(e){}
+        switchLog('🔁 ישירה: תשובה '+r.status+' · השרת שינה: '+(plan.serverSetCookies.join(',')||'-')+' · נכתבו: '+(Object.keys(plan.set).join(',')||'-')+' · JWT בתשובה: '+plan.jwtsFound);
+        switchMark();
+        setTimeout(function(){ try{ location.reload(); }catch(e){} }, 300);
+        done(true,'reload');
+      });
+    }).catch(function(e){ done(false,'שגיאה: '+(e&&e.message||e)); });
+  }catch(e){ done(false,'שגיאה: '+(e&&e.message||e)); }
+}
+// אחרי הריענון: אימות (הוחלף ולא נותקנו) או שחזור
+function dsVerifyAfterReload(){
+  var pend=null; try{ pend=JSON.parse(sessionStorage.getItem('ysSwitchPending')||'null'); }catch(e){}
+  if(!pend)return;
+  try{ sessionStorage.removeItem('ysSwitchPending'); }catch(e){}
+  var cur=dsCurrentUser(); var nowId=cur?String(cur.custId||cur.UserID||''):'';
+  var lo=false; try{ lo=looksLoggedOut(); }catch(e){}
+  if(!lo && nowId===String(pend.target)){ switchLog('✓ ישירה: הוחלף '+pend.from+' → '+pend.target+' (src '+pend.srcBefore+' → '+srcKey()+')'); try{ sessionStorage.removeItem('ysSwitchBackup'); }catch(e){} return; }
+  switchLog('✗ ישירה: אחרי ריענון '+(lo?'דף כניסה':'עדיין '+nowId)+' — משחזרים');
+  dsRestoreBackup(); dsDisable('לא הוחלף / ניתוק'); setTimeout(function(){ try{ location.reload(); }catch(e){} }, 500);
+}
+function dsRestoreBackup(){
+  var b=null; try{ b=JSON.parse(sessionStorage.getItem('ysSwitchBackup')||'null'); }catch(e){}
+  if(!b)return false;
+  try{ DS_COOKIES.forEach(function(k){ dsCookieDel(k); if(b.cookies&&b.cookies[k]!==undefined) dsCookieSet(k,b.cookies[k]); }); if(b.user) localStorage.setItem('currentYad2PlusUser', b.user); sessionStorage.removeItem('ysSwitchBackup'); }catch(e){}
+  return true;
+}
+
 // מחליף לפרופיל שאינו הפעיל. done(true/false) — כשל לא מפיל כלום.
 // profSwitchWhy — באיזה שלב בדיוק נכשלה ההחלפה. "נכשלה" לבד לא אומר כלום (v9.0).
 var profSwitchWhy='';
 function profileSwitch(done){
+  done=once(done);
+  // v13.35: קודם המסלול הישיר (API); רק אם לא יצא לדרך — התפריט הישן
+  if(typeof fetch==='function' && dsEnabled()){
+    directSwitch(function(ok,why){ if(ok){ done(true); return; } switchLog('ישירה לא יצאה לדרך ('+why+') — תפריט'); profileSwitchMenu(done); });
+    return;
+  }
+  profileSwitchMenu(done);
+}
+function profileSwitchMenu(done){
   done=once(done);
   var before=srcKey(), active=profileLabel();
   var beforeOffice=(function(){try{return officeIdSeen()||'';}catch(e){return '';}})();
@@ -2842,7 +2943,7 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitch;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
@@ -2871,6 +2972,7 @@ var IS_PLUS=location.host==='plus.yad2.co.il';
 var booted=false;
 function boot(){
   if(booted)return;
+  try{ if(IS_PLUS) setTimeout(dsVerifyAfterReload, 6000); }catch(e){}   // v13.35: אימות/שחזור אחרי החלפה ישירה
   // v13.30 · ראיה: דף כניסה נפתח — כמה זמן אחרי ניסיון ההחלפה האחרון? (נקרא ב"JSON לניתוח" → switchLog)
   try{ if(/login/i.test(location.pathname||'')){ var la=Number(gmGet('ysSwitchAttemptAt','0')||0); switchLog('⚠️ דף כניסה: '+String(location.pathname).slice(0,40)+(la?' · '+Math.round((Date.now()-la)/60000)+' דק׳ אחרי ניסיון החלפה':' · בלי ניסיון החלפה רשום')); } }catch(e){}                      // הגנה מאתחול כפול (טיימרים כפולים = סריקות כפולות)
   booted=true;
