@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.35
+// @version      13.36
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.35'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='13.36'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -1792,6 +1792,29 @@ function profileSwitchMenu(done){
   });   // סוגר את openAccountMenu (v13.7)
 }
 // ===== auto loop — סריקה מלאה אוטומטית (זהה לידני, בלי מגע יד) =====
+// v13.36 (אייל 27/09: "מסיים ולא עובר לפרופיל השני אוטומטית"): אחרי סריקה — אם הפרופיל השני לא נסרק
+// ב-PAIR_MIN הדקות האחרונות, מחליפים אליו מיד (ההחלפה הישירה מרעננת, והקירור גורם לסריקה מיידית
+// של הפרופיל החדש). כך שני האזורים טריים באותו סבב, ואין פינג-פונג: אחרי הזוג ממתינים כרגיל.
+var PAIR_MIN=15;
+function scanStampSave(src){ try{ var m=JSON.parse(localStorage.getItem('ysScanBySrc')||'{}')||{}; m[src||'?']=Date.now(); localStorage.setItem('ysScanBySrc',JSON.stringify(m)); }catch(e){} }
+function pairDecision(src, stamps, now, active, enabled){
+  if(!enabled||active)return false;
+  var other=0; Object.keys(stamps||{}).forEach(function(k){ if(k!==src&&Number(stamps[k])>other) other=Number(stamps[k]); });
+  return !other || (now-other) > PAIR_MIN*60000;
+}
+function afterAutoScan(){
+  paused=false;
+  var src=srcKey(); scanStampSave(src);
+  var stamps={}; try{ stamps=JSON.parse(localStorage.getItem('ysScanBySrc')||'{}')||{}; }catch(e){}
+  var act=userActive();
+  if(pairDecision(src, stamps, Date.now(), act, dsEnabled()&&typeof fetch==='function')){
+    log('🔁 סיימנו '+src+' — עוברים לפרופיל השני לסריקה מיידית');
+    directSwitch(function(ok,why){ if(!ok){ log('לא הוחלף ('+why+') — ממתינים כרגיל'); scheduleNext(); } });
+    return;
+  }
+  if(act) log('👤 המשתמש פעיל בלשונית — ההחלפה לפרופיל השני תחכה לסריקה הבאה');
+  scheduleNext();
+}
 function waitScrape(attempt){
   attempt=attempt||0;
   if(attempt>30){log('rows never appeared');scheduleNext();return;}
@@ -1800,19 +1823,19 @@ function waitScrape(attempt){
   swTried=[];   // v13.24: מחזור החלפה חדש — הניסיון השני של הסבב הזה לא יחזור על מה שלא הגיב
   log('auto full scan starting…');
   // v13.8: בתוך חלון הקירור (החלפה קרתה זה עתה, אולי הדף נטען מחדש) — לא מחליפים, סורקים.
-  if(switchInCooldown()){ log('👤 קירור אחרי החלפה — סורקים את הפרופיל הנוכחי'); runFullScan(log, function(){ paused=false; scheduleNext(); }); return; }
+  if(switchInCooldown()){ log('👤 קירור אחרי החלפה — סורקים את הפרופיל הנוכחי'); runFullScan(log, afterAutoScan); return; }
   // v13.29 (אייל 17/09: "זה קורה ישר אחרי שאני עובר לקרית ים"): כשאייל עובד בלשונית — לא נוגעים
   // בפרופיל (לא פותחים תפריט, לא מחליפים) — סורקים את מה שמולו. רק אחרי 10 דק׳ בלי מגע אמיתי.
-  if(userActive()){ log('👤 המשתמש פעיל בלשונית — לא מחליפים פרופיל'); profSwitchNote=''; runFullScan(log, function(){ paused=false; scheduleNext(); }); return; }
+  if(userActive()){ log('👤 המשתמש פעיל בלשונית — לא מחליפים פרופיל'); profSwitchNote=''; runFullScan(log, afterAutoScan); return; }
   // סירוגין בין הפרופילים: מחליפים ואז סורקים. בסריקה הבאה נחליף חזרה.
   profileSwitch(function(ok){
     // ההחלפה נכשלה? ניסיון שני (התפריט לפעמים נטען לאט), ואז מדווחים לשרת —
     // אחרת פרופיל אחד נסרק שוב ושוב ואיש לא יודע (אייל: "לא סורק את היוזר השני").
-    if(ok){ profSwitchNote=''; runFullScan(log, function(){ paused=false; scheduleNext(); }); return; }
+    if(ok){ profSwitchNote=''; runFullScan(log, afterAutoScan); return; }
     setTimeout(function(){
       profileSwitch(function(ok2){
         profSwitchNote = ok2 ? '' : (' · ⚠️ החלפת פרופיל: '+(profSwitchWhy||'נכשלה'));
-        runFullScan(log, function(){ paused=false; scheduleNext(); });
+        runFullScan(log, afterAutoScan);
       });
     }, 3000);
   });
@@ -2943,13 +2966,13 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
 function step(name, fn){ try{ fn(); }catch(e){ log('⚠️ אתחול "'+name+'" נכשל: '+(e&&e.message||e)); } }
 // v13.29 · מגע אמיתי של המשתמש (isTrusted בלבד — האירועים הסינתטיים שלנו לא נספרים)
-var USER_IDLE_MS=10*60000, lastUserInput=0;
+var USER_IDLE_MS=3*60000, lastUserInput=0;   // v13.36: 3 דק׳ (ההחלפה הישירה = ריענון בלבד, בלי תפריט על המסך)
 function noteUserInput(e){ try{ if(e&&e.isTrusted) lastUserInput=Date.now(); }catch(err){} }
 function userActive(){ return !!lastUserInput && (Date.now()-lastUserInput) < USER_IDLE_MS; }
 function init(){
