@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.31
+// @version      13.32
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -25,7 +25,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.31'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='13.32'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -66,6 +66,8 @@ function parsePrice(s){return s?s.replace(/[₪,\s]/g,''):'';}
 // ===== network recorder (runs at document-start, before the app loads) =====
 // תופס כל תשובת JSON שהאתר מקבל — כדי לאתר את ה-API הפנימי של רשימת הנכסים.
 var NET=[];         // כללי (אבחון) — 40 אחרונים
+var REQS=[];        // v13.32 · בקשות יוצאות (method+url+body) — לצוד את קריאת החלפת-הפרופיל (גם כשהתשובה אינה JSON)
+function noteReq(m,u,body){ try{ m=String(m||'GET').toUpperCase(); u=String(u||''); if(/\.(png|jpe?g|gif|webp|svg|css|woff2?|ttf|ico|mp4)(\?|$)/i.test(u))return; var b=''; try{ b=(body==null)?'':(typeof body==='string'?body:(body&&body.toString?body.toString():'')); }catch(e){} REQS.push({m:m,url:u.slice(0,220),body:String(b).slice(0,600),t:Date.now()}); if(REQS.length>60)REQS.shift(); }catch(e){} }
 var LISTINGS=[];    // תשובות property/table — נשמרות בנפרד, לא נדרסות ע"י שיטפון חשיפות
 var ADS={};         // orderId → תשובת office/ads (token+טלפון) — נשמרות פר-מודעה
 function tap(url,text){
@@ -100,6 +102,7 @@ try{window.__ysNative=nativeToString;}catch(e){}
       W.fetch=nativeToString(function(){
         var args=arguments;
         try{noteUrl(args[0]&&args[0].url?args[0].url:args[0]);}catch(e){}
+        try{ var _u=args[0]&&args[0].url?args[0].url:args[0], _i=args[1]||{}; noteReq((_i.method||(args[0]&&args[0].method)||'GET'),_u,_i.body); }catch(e){}
         return of.apply(this,args).then(function(res){
           try{res.clone().text().then(function(t){tap(res.url||args[0],t);}).catch(function(){});}catch(e){}
           return res;
@@ -108,9 +111,10 @@ try{window.__ysNative=nativeToString;}catch(e){}
     }
     if(W.XMLHttpRequest){
       var oo=W.XMLHttpRequest.prototype.open, os=W.XMLHttpRequest.prototype.send;
-      W.XMLHttpRequest.prototype.open=nativeToString(function(m,u){this.__ysUrl=u;try{noteUrl(u);}catch(e){}return oo.apply(this,arguments);},'open');
+      W.XMLHttpRequest.prototype.open=nativeToString(function(m,u){this.__ysUrl=u;this.__ysMethod=m;try{noteUrl(u);}catch(e){}return oo.apply(this,arguments);},'open');
       W.XMLHttpRequest.prototype.send=nativeToString(function(){
         var x=this;
+        try{ noteReq(x.__ysMethod,x.__ysUrl,arguments[0]); }catch(e){}
         try{x.addEventListener('load',function(){try{if(typeof x.responseText==='string')tap(x.__ysUrl,x.responseText);}catch(e){}});}catch(e){}
         return os.apply(this,arguments);
       },'send');
@@ -769,6 +773,28 @@ function adSampleBodies(net){
   return out.slice(-2);
 }
 // v13.14 · רשימת כל בקשות הרשת שנתפסו — לאיתור ה-endpoint שמגיש את חיפה (שאין לו /property/table).
+// v13.32 · ציד קריאת ההחלפה: (א) כל הבקשות הלא-GET האחרונות + GET עם office/user/profile בכתובת,
+// (ב) גופי התשובות של קריאות החשבון/המשרד (מי המשרד הנבחר ואיפה זה נשמר), (ג) localStorage/sessionStorage/cookies
+function recentRequests(){
+  return (REQS||[]).filter(function(r){ return r.m!=='GET' || /office|user|profile|broker|login|switch|select|token|auth/i.test(r.url); })
+    .slice(-30).map(function(r){ return {t:new Date(r.t).toLocaleTimeString('he-IL'),m:r.m,url:r.url.replace(/^https?:\/\//,''),body:r.body}; });
+}
+function switchHunt(){
+  var out=[];
+  (NET||[]).forEach(function(rec){
+    var u=String(rec.url||'');
+    if(/user\/ping|gw\.yad2\.co\.il\/office\/?(\?|$)|office-broker|office\/packages|account-manager|switch|select-office|profile|login|token/i.test(u))
+      out.push({url:u.replace(/^https?:\/\//,'').slice(0,160),text:String(rec.text||'').slice(0,2500)});
+  });
+  return out.slice(-8);
+}
+function storageDump(){
+  var out={local:[],session:[],cookies:[]};
+  try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(/^(gm_|yad2_|ys)/.test(k))continue; var v=String(localStorage.getItem(k)||''); out.local.push({k:k,len:v.length,v:v.slice(0,200)}); } }catch(e){}
+  try{ for(var j=0;j<sessionStorage.length;j++){ var k2=sessionStorage.key(j); var v2=String(sessionStorage.getItem(k2)||''); out.session.push({k:k2,len:v2.length,v:v2.slice(0,200)}); } }catch(e){}
+  try{ out.cookies=String(document.cookie||'').split(';').map(function(c){ c=c.trim(); var i2=c.indexOf('='); return {k:c.slice(0,i2),v:c.slice(i2+1,i2+81),len:c.length-i2-1}; }).filter(function(c){return c.k;}); }catch(e){}
+  return out;
+}
 function netUrlList(){
   var seen={}, out=[];
   (NET||[]).forEach(function(rec){
@@ -831,7 +857,7 @@ function copyNetReport(){
   status('פותח את תפריט החשבון לצילום…');
   var build=function(opened){
     var cands=scoreListingCandidates(NET);
-    var report={note:'yad2 network capture',ver:VER,menuOpenedForReport:!!opened,profileDiag:profileDiag(),netUrls:netUrlList(),candidates:cands.slice(0,1),domTable:domDump(),itemUrls:findItemUrls(NET),firstItemFull:firstItemDump(NET),tokens:findTokens(NET),details:findDetails(NET),descHunt:descHunt(NET),adSampleBodies:adSampleBodies(NET)};
+    var report={note:'yad2 network capture',ver:VER,menuOpenedForReport:!!opened,profileDiag:profileDiag(),recentRequests:recentRequests(),switchHunt:switchHunt(),storage:storageDump(),netUrls:netUrlList(),candidates:cands.slice(0,1),domTable:domDump(),itemUrls:findItemUrls(NET),firstItemFull:firstItemDump(NET),tokens:findTokens(NET),details:findDetails(NET),descHunt:descHunt(NET),adSampleBodies:adSampleBodies(NET)};
     var txt=JSON.stringify(report,null,1);
     if(txt.length>80000)txt=txt.slice(0,80000)+'\n...[קוצץ]';
     try{GM_setClipboard(txt);status('✓ הועתק (אבחון טבלה+API'+(opened?'+תפריט':'')+') — הדבק בצ׳אט של קלוד');}
