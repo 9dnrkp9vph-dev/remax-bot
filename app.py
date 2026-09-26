@@ -7456,7 +7456,9 @@ def _nb_cal_create(rec, date, organizer_email):
     return cal
 
 def _newborn_created_epoch(r):
-    raw = (r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "") or "").strip()
+    # 26/09 (אייל): 'נראה לראשונה' (הפתיחה אצלנו/בגיליון הסורק, לא משתנה) גובר על 'נוצר בתאריך'
+    # (modified של יד2 — מתעדכן בכל עריכת מודעה ומקפיץ מודעה ישנה ל"חדש"). שורות ישנות בלי השדה — כמו קודם.
+    raw = (r.get("נראה לראשונה", "") or r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "") or "").strip()
     if not raw:
         return 0
     raw = raw.replace("-", "/").split(",")[0].strip()

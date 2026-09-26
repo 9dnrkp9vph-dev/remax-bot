@@ -9105,7 +9105,10 @@ def y2_norm_private(row):
            "עודכן בתאריך": g("price_update"), "מחיר": y2_num_str(g("price")), "תיאור נכס": desc,
            "קישור": g("link"), "הערות חדש": "", "משתמש": "", "עיר": g("city") or g("_city"),
            "שכונה": g("neighborhood"), "מזהה": oid, "סוג עסקה": g("deal_type"),
-           "קומה": y2_num_str(g("floor")), "מקור": "yad2"}
+           "קומה": y2_num_str(g("floor")), "מקור": "yad2",
+           # 26/09 (אייל: "רק מה שפורסם לראשונה עכשיו למעלה"): 'נראה לראשונה' = תאריך הפתיחה בגיליון הסורק
+           # (imported_at); לא משתנה לעולם אחרי הקליטה הראשונה (ראה y2_nb_first_seen). 'נוצר בתאריך' = modified של יד2.
+           "נראה לראשונה": y2_first_seen_str(g("imported_at"))}
     # created_at_source הוא timestamptz — פורמט לא-ISO (למשל 31/08/2026 10:22 מ-modified
     # של יד2) החזיר 400 מ-Supabase (אומת חי 31/08). inv_parse_dt מנרמל; לא-פריס → None.
     _cs = inv_parse_dt(g("listing_date"))
@@ -9318,6 +9321,15 @@ _Y2_TIME_RE = _re.compile(r'\d{1,2}:\d{2}')
 def y2_date_part(s):
     m = _re.search(r'(\d{1,2})[./](\d{1,2})[./](\d{4})', str(s or ''))
     return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+def y2_nb_first_seen(existing_fs, scanner_fs, now_il):
+    """'נראה לראשונה' של מודעה בנכס נולד: מה שכבר נשמר ב-DB גובר (לא משתנה לעולם — גם כש-modified
+    של יד2 מתעדכן בעריכת מחיר); אחרת תאריך הפתיחה מהסורק (imported_at); אחרת שעת הקליטה."""
+    ex = str(existing_fs or '').strip()
+    if ex:
+        return ex
+    sc = y2_first_seen_str(scanner_fs)
+    return sc or str(now_il or '')
 
 def y2_fix_created(listing_date, existing, now_il):
     """שעה מלאה ל'נוצר בתאריך' (בקשת אייל 01/09) — יד2 שולח לרוב תאריך בלבד.
@@ -10811,9 +10823,11 @@ def register(app, G):
             if stream == "private":
                 norm = [y2_norm_private(r) for r in rows]
                 try:   # שעות קיימות ב-DB — שסריקה חוזרת (תאריך-בלבד) לא תמחק שעה שכבר נקבעה
-                    existing = sb.newborn_dates([sk for sk, _ in norm]) if norm else {}
+                    _meta = sb.newborn_meta([sk for sk, _ in norm]) if norm else {}
                 except Exception:
-                    existing = {}
+                    _meta = {}
+                existing = {k: v.get("d", "") for k, v in _meta.items()}
+                existing_fs = {k: v.get("fs", "") for k, v in _meta.items()}
                 import datetime as _dy2
                 from zoneinfo import ZoneInfo as _ZY2
                 now_il = _dy2.datetime.now(_ZY2("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
@@ -10822,6 +10836,7 @@ def register(app, G):
                     fixed = y2_fix_created(rec["raw"].get("נוצר בתאריך", ""), existing.get(sk, ""), now_il)
                     rec["raw"]["נוצר בתאריך"] = fixed
                     rec["created_at_source"] = inv_parse_dt(fixed)
+                    rec["raw"]["נראה לראשונה"] = y2_nb_first_seen(existing_fs.get(sk, ""), rec["raw"].get("נראה לראשונה", ""), now_il)
                     _items.append((sk, rec))
                 # 15/09: upsert במנות של 100 במקום קריאה לכל שורה — 200 שורות ירדו מ-~50ש׳ לשניות
                 out["nbN"] += sb.newborn_upsert_rows(_items)

@@ -563,9 +563,9 @@ def avatar_get(phone):
         return ""
 
 
-def newborn_dates(source_keys):
-    """'נוצר בתאריך' הקיים לכל source_key — לשימור שעה שכבר נקבעה (ingest יד2).
-    מחזיר {source_key: המחרוזת הקיימת} רק לשורות שנמצאו."""
+def newborn_meta(source_keys):
+    """'נוצר בתאריך' + 'נראה לראשונה' הקיימים לכל source_key (ingest יד2): לשימור שעה שכבר נקבעה,
+    ולשימור 'נראה לראשונה' שלעולם אינו משתנה (26/09). מחזיר {source_key: {"d":..., "fs":...}}."""
     out = {}
     if not (enabled() and source_keys):
         return out
@@ -573,16 +573,21 @@ def newborn_dates(source_keys):
         chunk = source_keys[i:i + 100]
         try:
             r = requests.get(SUPABASE_URL + "/rest/v1/newborn_listings", headers=_headers(),
-                             params={"select": "source_key,d:raw->>נוצר בתאריך",
+                             params={"select": "source_key,d:raw->>נוצר בתאריך,fs:raw->>נראה לראשונה",
                                      "office_id": "eq." + SB_OFFICE_ID,
                                      "source_key": "in.(" + ",".join('"%s"' % k for k in chunk) + ")"},
                              timeout=_TIMEOUT)
             r.raise_for_status()
             for rec in (r.json() or []):
-                out[str(rec.get("source_key") or "")] = str(rec.get("d") or "")
+                out[str(rec.get("source_key") or "")] = {"d": str(rec.get("d") or ""), "fs": str(rec.get("fs") or "")}
         except Exception:
             continue   # best-effort: בלי שעה קיימת פשוט לא משמרים
     return out
+
+
+def newborn_dates(source_keys):
+    """תאימות: {source_key: 'נוצר בתאריך'} — ראה newborn_meta."""
+    return {k: v.get("d", "") for k, v in newborn_meta(source_keys).items()}
 
 
 def mark_delisted(table, source_keys, stamp):
