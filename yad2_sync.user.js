@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.36
+// @version      13.37
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -17,15 +17,41 @@
 // @run-at       document-start
 // ==/UserScript==
 
+// ═══ v13.37 · טיימרים חסיני-רקע (אייל 27/09: "תחקור את המשרדים") ═══════════════════════════════════
+// האבחון מיומן הריצות: סריקת המשרדים רצה בטאב www.yad2 שנפתח קדמי, אבל ברגע שעוברים לטאב אחר כרום
+// חונק את הטיימרים של טאב מוסתר (אחרי 5 דק׳: פעם בדקה לשרשרת setTimeout) → כל עמוד ≈ דקה,
+// משרד של 30 עמודים ≈ 30 דק׳, 9 משרדים ≈ 7 שעות ("cap" 426 דק׳ ב-26/09), והדופק (12 דק׳) נשבר → "died".
+// טיימרים שרצים ב-Web Worker אינם נחנקים (הטריק המוכר של HackTimer). השים חי מחוץ ל-IIFE כדי
+// לתפוס את ה-setTimeout הגלובלי לפני ההצללה; בלי Worker (בדיקות, CSP) — נופל לטיימרים הרגילים.
+var __ysTimers=(function(){
+  // נפילה: עטיפות שנפתרות בזמן הקריאה (לא בזמן הטעינה) — כך גם מנגנוני-בדיקה שמחליפים setTimeout אחרי הטעינה עובדים
+  var G=(typeof globalThis!=='undefined')?globalThis:(typeof window!=='undefined'?window:this);
+  var dyn=function(n){ return function(){ var f=G&&G[n]; return (typeof f==='function')?f.apply(G,arguments):undefined; }; };
+  var nat={st:dyn('setTimeout'),ct:dyn('clearTimeout'),si:dyn('setInterval'),ci:dyn('clearInterval')};
+  try{
+    if(typeof Worker==='undefined'||typeof Blob==='undefined'||typeof URL==='undefined'||!URL.createObjectURL) return nat;
+    var src="var T={};onmessage=function(e){var d=e.data;if(d.op==='set'){T[d.id]=setTimeout(function(){delete T[d.id];postMessage(d.id);},d.ms);}else if(d.op==='rep'){T[d.id]=setInterval(function(){postMessage(d.id);},d.ms);}else if(d.op==='clear'){clearTimeout(T[d.id]);clearInterval(T[d.id]);delete T[d.id];}};";
+    var w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    var cbs={}, seq=0;
+    w.onmessage=function(e){ var id=e.data, c=cbs[id]; if(!c)return; if(!c.rep)delete cbs[id]; try{ c.fn.apply(null,c.args); }catch(err){ try{console.error('[yad2-sync] timer cb',err);}catch(x){} } };
+    w.onerror=function(){};
+    var st=function(fn,ms){ var id=++seq; cbs[id]={fn:fn,args:Array.prototype.slice.call(arguments,2),rep:false}; w.postMessage({op:'set',id:id,ms:Math.max(0,Number(ms)||0)}); return id; };
+    var si=function(fn,ms){ var id=++seq; cbs[id]={fn:fn,args:Array.prototype.slice.call(arguments,2),rep:true}; w.postMessage({op:'rep',id:id,ms:Math.max(1,Number(ms)||1)}); return id; };
+    var cl=function(id){ if(id==null)return; delete cbs[id]; try{ w.postMessage({op:'clear',id:id}); }catch(e){} };
+    return {st:st,ct:cl,si:si,ci:cl,worker:true};
+  }catch(e){ return nat; }
+})();
 (function(){
 'use strict';
+// v13.37: כל setTimeout/setInterval בסקריפט עובר דרך ה-Worker (הצללה בסקופ ה-IIFE)
+var setTimeout=__ysTimers.st, clearTimeout=__ysTimers.ct, setInterval=__ysTimers.si, clearInterval=__ysTimers.ci;
 
 const WEBHOOK='https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec';
 const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.36'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='13.37'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -2966,7 +2992,7 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
