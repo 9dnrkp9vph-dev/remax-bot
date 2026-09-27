@@ -978,16 +978,20 @@ function sbSyncRecent() {
       var last2 = sh2.getLastRow(), first2 = Math.max(2, last2 - N + 1);
       var hd2 = sh2.getRange(1, 1, 1, sh2.getLastColumn()).getValues()[0];
       var v2 = sh2.getRange(first2, 1, last2 - first2 + 1, sh2.getLastColumn()).getValues();
-      var seen2 = {}, recs2 = [];
+      var seen2 = {}, cnt2 = {}, recs2 = [];
       // ספירת מופעים גלובלית נדרשת רק ב-backfill המלא; בסוף הגיליון סיומת #n
-      // עלולה לא להתאים, לכן משתמשים כאן במפתח פשוט (event_id) — הכפילויות
-      // (אם יש) יתאחדו, וה-backfill המלא הלילי מיישר במדויק.
+      // עלולה לא להתאים, לכן משתמשים כאן במפתח פשוט (event_id).
+      // 27/09: מפתח שמופיע יותר מפעם אחת בחלון (זוג מוכר+בלעדיות שנחתם — שתי השורות
+      // מקבלות את ת"ז הלקוח כ-event_id) — לא נוגעים בו כאן. קודם "אחרון מנצח" דרס
+      // כל דקה את שורת המוכר (המפתח הנקי) בשורת הבלעדיות, וה-backfill המלא (#2) לא
+      // החזיק מעמד דקה. את הכפילויות מיישר רק sbBackfillSignatures (ראשון=נקי, שני=#2).
       for (var j = 0; j < v2.length; j++) {
         if (!v2[j].some(function (x) { return String(x == null ? '' : x).trim(); })) continue;
         var rec2 = _sbSigRecord_(conf, hd2, v2[j], first2 + j);
-        seen2[rec2.source_key] = rec2;   // אחרון מנצח בתוך החלון
+        cnt2[rec2.source_key] = (cnt2[rec2.source_key] || 0) + 1;
+        seen2[rec2.source_key] = rec2;
       }
-      recs2 = Object.keys(seen2).map(function (k) { return seen2[k]; });
+      recs2 = Object.keys(seen2).filter(function (k) { return cnt2[k] === 1; }).map(function (k) { return seen2[k]; });
       if (recs2.length) _sbFetch_(conf, '/rest/v1/signatures?on_conflict=office_id,source_key', recs2, 'resolution=merge-duplicates');
     }
   } catch (e) { Logger.log('syncRecent sigs: ' + e); }
