@@ -624,17 +624,26 @@ window.c2cDial = c2cDial;
   }
   window.waWebUrl = waWebUrl; window.waIsDesktop = waIsDesktop;
   if (!waIsDesktop()) return;
+  /* טאב אחד קבוע (אייל 27/09: "כל פעם פותח חלון חדש"): שם-חלון קבוע → הדפדפן מנווט את אותו
+     טאב במקום לפתוח חדש, ומביאים אותו לחזית. (טאב וואטסאפ ווב שנפתח ידנית הדפדפן לא חושף לנו.) */
+  var WA_TAB = 'effie_wa_web';
   var _open = window.open;
   window.open = function(u){
     var w = waWebUrl(u);
-    if (w){ var a = Array.prototype.slice.call(arguments); a[0] = w; return _open.apply(window, a); }
-    return _open.apply(window, arguments);
+    if (!w) return _open.apply(window, arguments);
+    var r = _open.call(window, w, WA_TAB);
+    try{ if (r && r.focus) r.focus(); }catch(_e){}
+    return r;
   };
   document.addEventListener('click', function(ev){
     var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
     if (!a) return;
     var w = waWebUrl(a.getAttribute('href'));
-    if (w){ a.setAttribute('href', w); a.setAttribute('target', '_blank'); }
+    if (!w) return;
+    /* noopener מנתק את הקשר לטאב הפתוח והדפדפן לא ימצא אותו בשם — מסירים */
+    a.setAttribute('href', w); a.setAttribute('target', WA_TAB);
+    var rel = (a.getAttribute('rel') || '').replace(/\bnoopener\b/g, '').trim();
+    if (rel) a.setAttribute('rel', rel); else a.removeAttribute('rel');
   }, true);
 })();
 /* end wa-web */
