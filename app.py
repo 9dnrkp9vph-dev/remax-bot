@@ -7835,7 +7835,7 @@ def api_newborn():
                 "wa": _wa_phone(ophone),
                 "agent": lister,
                 "link": _nb(r.get("קישור", "")),
-                "date": _nb(r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),
+                "date": _nb(r.get("נראה לראשונה", "") or r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),   # 26/09: נראה לראשונה (כמו המיון)
                 "stat": _vstat or None,
                 "unotes": _nb_notes_for(_k, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", "")))),
                 "ageDays": ad,
