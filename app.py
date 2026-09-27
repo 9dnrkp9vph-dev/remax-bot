@@ -6851,6 +6851,8 @@ def api_search_properties():
                 "desc": (row.get("_desc_ae", "") or "").strip(),
                 "link": (row.get("קישור", "") or "").strip(),   # מודעת יד2 (בקשת אייל 01/09)
                 "delisted": (row.get("ירד מפרסום", "") or "").strip(),   # תווית 3 ימים (09/09)
+                "excl": _y2_excl_flag(row.get("בלעדיות", "")),          # 27/09: בלעדי/רגיל גם במשרד (רשימת בלעדיות מול רגילות לאייל)
+                "branch": str(row.get("_y2_office_id", "") or ""),
             }
             if score is not None:
                 d["score"] = min(100, int(score))
