@@ -591,6 +591,53 @@ function c2cDial(tel){
 }
 window.c2cDial = c2cDial;
 /* end c2cDial */
+/* [wa-web 27/09] בקשת אייל: "שאפי יפתח את הוואטסאפ ווב ולא את הוואטסאפ של האפליקציה".
+   בדסקטופ (דפדפן רגיל, לא Capacitor ולא מכשיר נייד) כל קישור wa.me / api.whatsapp.com
+   מנותב ל-web.whatsapp.com/send — במקום שהדפדפן יקפיץ את אפליקציית WhatsApp השולחנית.
+   בטלפון אין וואטסאפ ווב, לכן שם הכול נשאר כמו היום. מכסה את כל 19 נקודות הקריאה בלי לגעת
+   בהן: עטיפת window.open + האזנה ללחיצות על <a href="https://wa.me/…"> (capture). */
+(function(){
+  function waIsDesktop(){
+    try{
+      if (window.Capacitor) return false;
+      var ua = navigator.userAgent || '';
+      if (/Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(ua)) return false;
+      /* iPad במצב "אתר שולחני" מזדהה כ-Mac אבל עם מגע */
+      if (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1) return false;
+      return true;
+    }catch(_e){ return false; }
+  }
+  function waWebUrl(u){
+    var s = String(u || '');
+    var m = /^https?:\/\/(?:wa\.me\/?([0-9]*)|api\.whatsapp\.com\/send\/?)(?:\?([^#]*))?/i.exec(s);
+    if (!m) return null;
+    var phone = m[1] || '', text = '', q = m[2] || '';
+    q.split('&').forEach(function(kv){
+      var i = kv.indexOf('='), k = i < 0 ? kv : kv.slice(0, i), v = i < 0 ? '' : kv.slice(i + 1);
+      if (k === 'phone' && !phone) phone = v.replace(/[^0-9]/g, '');
+      if (k === 'text') text = v;
+    });
+    var out = 'https://web.whatsapp.com/send?';
+    if (phone) out += 'phone=' + phone + '&';
+    out += 'text=' + text;   /* כבר מקודד ע"י המקור (encodeURIComponent) — לא מקודדים פעמיים */
+    return out;
+  }
+  window.waWebUrl = waWebUrl; window.waIsDesktop = waIsDesktop;
+  if (!waIsDesktop()) return;
+  var _open = window.open;
+  window.open = function(u){
+    var w = waWebUrl(u);
+    if (w){ var a = Array.prototype.slice.call(arguments); a[0] = w; return _open.apply(window, a); }
+    return _open.apply(window, arguments);
+  };
+  document.addEventListener('click', function(ev){
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+    if (!a) return;
+    var w = waWebUrl(a.getAttribute('href'));
+    if (w){ a.setAttribute('href', w); a.setAttribute('target', '_blank'); }
+  }, true);
+})();
+/* end wa-web */
 </script>"""
 
 # ── שכבת דסקטופ/טאבלט (עיצוב §13): סרגל צד מימין, תוכן רחב, בית בגריד ─────────
