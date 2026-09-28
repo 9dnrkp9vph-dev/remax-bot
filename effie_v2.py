@@ -8593,6 +8593,7 @@ var SECTIONS = [
     ['vphone', 'מספר וירטואלי (מרכזיה)', 'המספר שהלקוחות מחייגים אליו; ה-webhook של המרכזיה שולח את השיחות והתמלולים לשרת'],
     ['sms', 'ספק SMS (sms.deals)', 'טוקן + שם שולח מאושר — קוד כניסה, קישורי חתימה, התראות לסוכן']]},
   {t: 'וואטסאפ', items: [
+    ['d360', 'WhatsApp API רשמי (360dialog)', 'המספר הרשמי של המשרד — WA_PROVIDER=360dialog + D360_API_KEY; תבנית WA_TPL_NAME להודעות מחוץ לחלון 24 שעות'],
     ['maytapi', 'חיבור Maytapi', 'מופע וואטסאפ של המשרד — הודעות אוטומטיות לסוכנים וללקוחות'],
     ['wa_groups', 'קבוצות מנהלים', 'קבוצת "שיחות" וקבוצת "חתימות" — עדכונים שוטפים להנהלה']]},
   {t: 'נתונים', items: [
@@ -9788,6 +9789,7 @@ def register(app, G):
             "links": bool(v2o.get("instagram") or v2o.get("madlan")),
             "vphone": bool(v2o.get("vphone") or env("VIRTUAL_PHONE_DISPLAY")),
             "sms": _has("SMS_DEALS_TOKEN", "SMS_DEALS_SENDER"),
+            "d360": _has("D360_API_KEY") and (env("WA_PROVIDER") or "").strip().lower() in ("360dialog", "360", "d360"),
             "maytapi": _has("MAYTAPI_TOKEN", "MAYTAPI_PHONE_ID", "MAYTAPI_PRODUCT_ID"),
             "wa_groups": _has("WA_GROUP_CALLS") or _has("WA_GROUP_SIGNATURES"),
             "supabase": sb_on,
