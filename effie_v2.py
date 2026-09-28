@@ -5301,6 +5301,16 @@ function load(q){
     if (c && c.o){ OFFICE = c.o; SUM.office = c.so || ''; SHTAF = c.s || []; SUM.shtaf = c.ss || ''; MINE = c.m || []; MINE_MULTI = !!c.mm; }
   }catch(e){}
 })();
+// בלעדי/רגיל לפי סימון יד2 (p.excl מהסורק: true/false; null = לא ידוע, לא נספר)
+function exclSplit(list){
+  var ex = 0, rg = 0;
+  (list || []).forEach(function(p){ if (p && p.excl === true) ex++; else if (p && p.excl === false) rg++; });
+  return {ex: ex, rg: rg};
+}
+function exclSplitHtml(xs, sep){
+  if (!xs || !(xs.ex + xs.rg)) return '';
+  return (sep || '') + '<span style="color:#7A5E1C;font-weight:700">בלעדי ' + xs.ex + '</span> · <span style="font-weight:700">רגיל ' + xs.rg + '</span>';
+}
 function render(){
   var shtafShown = SHTAF.filter(function(s){   // דדופ מול המשרד — נכס שקיים גם אצלנו מוצג רק ב"המשרד שלנו"
     var sk = pStreetKey(s.street || s.address), sp = pPriceNum(s.price);
@@ -5325,7 +5335,9 @@ function render(){
   var _sumTxt = (MODE === 'office' ? SUM.office : MODE === 'shtaf' ? SUM.shtaf : '') || '';
   var _updTxt = (MODE === 'shtaf') ? UPD.shtaf : UPD.office;   // "שלי" = אותו מקור כמו המשרד
   if (_updTxt) _sumTxt = (_sumTxt ? _sumTxt + ' · ' : '') + 'עדכון אחרון: ' + _updTxt;
-  el('sumLine').textContent = _sumTxt;
+  // 28/09 (אייל: "כמו ב-CRM — בלעדי/רגיל"): מונה בלעדי/רגיל של הרשימה כולה (לא של החיפוש), משרד ושלי; שת"פ בלי
+  var _xs = exclSplit(MODE === 'office' ? OFFICE : MODE === 'mine' ? MINE : []);
+  el('sumLine').innerHTML = esc(_sumTxt) + exclSplitHtml(_xs, _sumTxt ? ' · ' : '');
   src.slice(0, 40).forEach(function(p, i){ h += propCard(p, i); });
   if (src.length > 40) h += '<div class="more">מוצגים 40 מתוך ' + src.length + ' — חדד את החיפוש</div>';
   var _ob = orphanBanner(); if (_ob) h = _ob + h;   // 24/09: סימון נכס-חם יתום — באנר עם "הסר"
