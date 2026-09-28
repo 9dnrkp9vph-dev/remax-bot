@@ -23,9 +23,18 @@ try:
 except Exception:
     app.config["JSON_AS_ASCII"] = False
 # ── Config from env vars ───────────────────────────────────────────────────────
-MAYTAPI_TOKEN    = os.environ["MAYTAPI_TOKEN"]
-MAYTAPI_PHONE_ID = os.environ["MAYTAPI_PHONE_ID"]
-MAYTAPI_PRODUCT  = os.environ["MAYTAPI_PRODUCT_ID"]
+# Maytapi — אופציונלי מאז המעבר ל-360dialog (נשאר לקבוצות וואטסאפ ולחזרה מהירה)
+MAYTAPI_TOKEN    = os.environ.get("MAYTAPI_TOKEN", "")
+MAYTAPI_PHONE_ID = os.environ.get("MAYTAPI_PHONE_ID", "")
+MAYTAPI_PRODUCT  = os.environ.get("MAYTAPI_PRODUCT_ID", "")
+# ── WhatsApp Business API רשמי דרך 360dialog (Coexistence על 054-2060001) ─────
+# WA_PROVIDER=360dialog + D360_API_KEY ב-Render מפעילים. ברירת מחדל maytapi = אין שינוי התנהגות.
+WA_PROVIDER  = (os.environ.get("WA_PROVIDER") or "maytapi").strip().lower()
+D360_API_KEY = os.environ.get("D360_API_KEY", "").strip()
+D360_BASE    = (os.environ.get("D360_BASE") or "https://waba-v2.360dialog.io").strip().rstrip("/")
+# תבנית UTILITY מאושרת עם פרמטר גוף אחד {{1}} — להודעות מחוץ לחלון 24 השעות
+WA_TPL_NAME  = os.environ.get("WA_TPL_NAME", "").strip()
+WA_TPL_LANG  = (os.environ.get("WA_TPL_LANG") or "he").strip()
 CLAUDE_API_KEY   = os.environ["CLAUDE_API_KEY"]
 TRIGGER_WORD     = os.environ.get("TRIGGER_WORD", "מצגת")
 GOOGLE_SHEETS_API_KEY  = os.environ.get("GOOGLE_SHEETS_API_KEY", "")
@@ -163,7 +172,7 @@ def _wa_auto_on():
     except Exception:
         return False
 
-def send_text(to: str, text: str):
+def _maytapi_send_text(to: str, text: str):
     """שולח הודעת WhatsApp דרך Maytapi. מחזיר True/False לפי הצלחה אמיתית (success מ-Maytapi)."""
     global _WA_LAST
     if _quiet_mode():   # מתג השתקה כללי (שבת/חג/תחזוקה) — env או כפתור בקונסולה
@@ -230,7 +239,7 @@ def download_profile_pic(phone: str, dest: Path) -> bool:
     except Exception as e:
         log.error(f"Download profile pic error: {e}")
     return False
-def send_document(to: str, file_path: str, filename: str, caption: str = ""):
+def _maytapi_send_document(to: str, file_path: str, filename: str, caption: str = ""):
     with open(file_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
     r = requests.post(f"{MAYTAPI_BASE}/sendMessage",
@@ -244,7 +253,7 @@ def send_document(to: str, file_path: str, filename: str, caption: str = ""):
         })
     log.info(f"send_document → {r.status_code} {r.text[:120]}")
     return r.status_code == 200
-def download_media(url: str, dest: Path) -> bool:
+def _maytapi_download_media(url: str, dest: Path) -> bool:
     try:
         r = requests.get(url, headers={"x-maytapi-key": MAYTAPI_TOKEN}, timeout=30)
         if r.status_code == 200:
@@ -255,6 +264,174 @@ def download_media(url: str, dest: Path) -> bool:
     except Exception as e:
         log.error(f"Download error: {e}")
         return False
+# ══════════════════════════════════════════════════════════════════════════════
+# 360dialog — WhatsApp Business API רשמי + מתג ספק (send_text / send_document / download_media)
+# ══════════════════════════════════════════════════════════════════════════════
+_WA_STATUS_LOG = []   # סטטוסים אחרונים מ-webhook של 360 (נמסר/נקרא/נכשל) — לאבחון ב-/api/wa/test
+_WA_WINDOW_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)),
+                               "wa_window.json")
+_wa_window = None      # wa_id → חותמת זמן של ההודעה הנכנסת האחרונה (חלון 24 שעות של Meta)
+_wa_window_lock = threading.Lock()
+
+def _d360_on():
+    return WA_PROVIDER in ("360dialog", "360", "d360") and bool(D360_API_KEY)
+
+def _maytapi_on():
+    return bool(MAYTAPI_TOKEN and MAYTAPI_PHONE_ID and MAYTAPI_PRODUCT)
+
+def _d360_headers(json_body=True):
+    h = {"D360-API-KEY": D360_API_KEY}
+    if json_body: h["Content-Type"] = "application/json"
+    return h
+
+def _wa_digits(to):
+    return re.sub(r"\D", "", str(to or "").split("@")[0])
+
+def _wa_window_get():
+    global _wa_window
+    if _wa_window is None:
+        try:
+            with open(_WA_WINDOW_PATH, encoding="utf-8") as f: _wa_window = json.load(f) or {}
+        except Exception:
+            _wa_window = {}
+    return _wa_window
+
+def _wa_window_mark(wa_id):
+    d = _wa_digits(wa_id)
+    if not d: return
+    with _wa_window_lock:
+        w = _wa_window_get(); w[d] = time.time()
+        cutoff = time.time() - 2 * 86400   # ניקוי רשומות ישנות
+        for k in [k for k, v in w.items() if v < cutoff]: w.pop(k, None)
+        try:
+            with open(_WA_WINDOW_PATH, "w", encoding="utf-8") as f: json.dump(w, f)
+        except Exception as e:
+            log.warning(f"wa_window save: {e}")
+
+def _wa_window_open(to):
+    """האם הנמען כתב לנו ב-24 השעות האחרונות (מותר טקסט חופשי). מרווח ביטחון של 10 דק'."""
+    ts = _wa_window_get().get(_wa_digits(to))
+    return bool(ts and time.time() - ts < 24 * 3600 - 600)
+
+def _tpl_param(text):
+    """Meta אוסרת ירידות שורה/טאבים/4+ רווחים בפרמטר תבנית — משטחים לשורה אחת."""
+    t = str(text or "").replace("\r", "")
+    t = " | ".join(x.strip() for x in t.split("\n") if x.strip())
+    t = re.sub(r"[\t ]{2,}", " ", t)
+    return t[:1000]
+
+def _d360_post_message(payload):
+    r = requests.post(f"{D360_BASE}/messages", headers=_d360_headers(), json=payload, timeout=20)
+    try: j = r.json()
+    except Exception: j = {}
+    ok = bool(r.ok and isinstance(j, dict) and j.get("messages"))
+    return ok, r
+
+def _d360_send_text(to: str, text: str, force_template=False):
+    global _WA_LAST
+    num = _wa_digits(to)
+    use_tpl = bool(WA_TPL_NAME) and (force_template or not _wa_window_open(num))
+    if use_tpl:
+        payload = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": num,
+                   "type": "template",
+                   "template": {"name": WA_TPL_NAME, "language": {"code": WA_TPL_LANG},
+                                "components": [{"type": "body", "parameters": [
+                                    {"type": "text", "text": _tpl_param(text)}]}]}}
+    else:
+        payload = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": num,
+                   "type": "text", "text": {"body": text[:4096], "preview_url": True}}
+    try:
+        ok, r = _d360_post_message(payload)
+        _WA_LAST = {"ok": ok, "provider": "360dialog", "mode": "template" if use_tpl else "text",
+                    "status": r.status_code, "to": num, "resp": (r.text or "")[:400]}
+        if not use_tpl and not WA_TPL_NAME and not _wa_window_open(num):
+            _WA_LAST["warning"] = "מחוץ לחלון 24ש' ואין WA_TPL_NAME — Meta צפויה לדחות (שגיאה 131047 ב-webhook)"
+        log.info(f"send_text[360] → {num} · {r.status_code} ok={ok} mode={_WA_LAST['mode']} · {(r.text or '')[:150]}")
+        return ok
+    except Exception as e:
+        _WA_LAST = {"ok": False, "provider": "360dialog", "to": num, "reason": str(e)[:200]}
+        log.error(f"send_text[360] error: {e}")
+        return False
+
+def send_text(to: str, text: str):
+    """שולח וואטסאפ דרך הספק הפעיל. קבוצות (@g.us) — רק דרך Maytapi (ה-API הרשמי לא שולח לקבוצות קיימות)."""
+    global _WA_LAST
+    is_group = "@g.us" in str(to or "")
+    if not _d360_on() or is_group:
+        if is_group and _d360_on() and not _maytapi_on():
+            _WA_LAST = {"ok": False, "to": to, "reason": "group_unsupported_on_360"}
+            log.info(f"send_text: group {to} skipped (360dialog, no Maytapi)")
+            return False
+        return _maytapi_send_text(to, text)
+    if _quiet_mode():
+        _WA_LAST = {"ok": False, "reason": "QUIET_MODE"}
+        log.info("QUIET_MODE — WhatsApp suppressed")
+        return False
+    with _wa_throttle_lock:   # ב-API הרשמי אין סכנת חסימה — מרווח קטן בלבד
+        _gap = time.time() - _wa_throttle["ts"]
+        if _gap < 0.3: time.sleep(0.3 - _gap)
+        _wa_throttle["ts"] = time.time()
+    return _d360_send_text(to, text)
+
+def send_document(to: str, file_path: str, filename: str, caption: str = ""):
+    if not _d360_on():
+        return _maytapi_send_document(to, file_path, filename, caption)
+    try:
+        import mimetypes
+        mime = mimetypes.guess_type(filename)[0] or "application/pdf"
+        with open(file_path, "rb") as f:
+            up = requests.post(f"{D360_BASE}/media", headers=_d360_headers(False),
+                               data={"messaging_product": "whatsapp"},
+                               files={"file": (filename, f, mime)}, timeout=60)
+        mid = (up.json() or {}).get("id") if up.ok else None
+        if not mid:
+            log.error(f"send_document[360] upload failed {up.status_code} {up.text[:200]}")
+            return False
+        doc = {"id": mid, "filename": filename}
+        if caption: doc["caption"] = caption[:1024]
+        ok, r = _d360_post_message({"messaging_product": "whatsapp", "recipient_type": "individual",
+                                    "to": _wa_digits(to), "type": "document", "document": doc})
+        log.info(f"send_document[360] → {r.status_code} ok={ok} {r.text[:120]}")
+        return ok
+    except Exception as e:
+        log.error(f"send_document[360] error: {e}")
+        return False
+
+def download_media(url: str, dest: Path) -> bool:
+    """360: מקבל media id (או קישור lookaside) ומוריד. Maytapi: קישור ישיר."""
+    if not _d360_on():
+        return _maytapi_download_media(url, dest)
+    try:
+        link = url
+        if not str(url).startswith("http"):
+            m = requests.get(f"{D360_BASE}/{url}", headers=_d360_headers(False), timeout=15)
+            link = (m.json() or {}).get("url", "") if m.ok else ""
+        if not link: return False
+        link = link.replace("\\", "").replace("https://lookaside.fbsbx.com", D360_BASE)
+        r = requests.get(link, headers=_d360_headers(False), timeout=30)
+        if r.status_code == 200:
+            dest.write_bytes(r.content); return True
+        log.warning(f"download_media[360] failed: {r.status_code}")
+    except Exception as e:
+        log.error(f"download_media[360] error: {e}")
+    return False
+
+def _d360_webhook(body):
+    """webhook בפורמט Cloud API: מסמן חלון 24ש' לכל שולח ושומר סטטוסים (כולל כישלונות) לאבחון."""
+    for entry in body.get("entry") or []:
+        for ch in entry.get("changes") or []:
+            v = ch.get("value") or {}
+            for m in v.get("messages") or []:
+                _wa_window_mark(m.get("from", ""))
+            for st in v.get("statuses") or []:
+                rec = {"to": st.get("recipient_id"), "status": st.get("status"), "ts": st.get("timestamp")}
+                if st.get("errors"):
+                    e0 = st["errors"][0]
+                    rec["error"] = f"{e0.get('code')}: {e0.get('title') or e0.get('message')}"
+                    log.warning(f"WA status failed → {rec}")
+                _WA_STATUS_LOG.append(rec)
+                del _WA_STATUS_LOG[:-30]
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CLAUDE API — פירסור טקסט
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2393,6 +2570,12 @@ def is_exclusivity_search_query(text: str) -> bool:
 def webhook():
     if request.method == "GET":
         return jsonify({"status": "ok", "message": "RE/MAX Bot Webhook Active"}), 200
+    # 360dialog (Cloud API) — חלון 24ש' + סטטוסי מסירה. לא מפעיל את הבוט הנכנס (עדיין מושבת).
+    _b = request.get_json(silent=True) or {}
+    if isinstance(_b, dict) and (_b.get("object") == "whatsapp_business_account" or "entry" in _b):
+        try: _d360_webhook(_b)
+        except Exception as e: log.error(f"360 webhook error: {e}")
+        return jsonify({"ok": True})
     # הבוט הנכנס בוואטסאפ (חיפוש דירה/קונה/בלעדיות + מצגת PDF) הושבת לבקשת המשתמש —
     # Maytapi משמש ליציאה בלבד (תמלול שיחה + חתימות). מתעלמים מכל הודעה נכנסת.
     return jsonify({"ok": True, "message": "inbound disabled"})
@@ -8606,17 +8789,24 @@ def api_push_test():
 
 @app.route("/api/wa/test", methods=["GET", "POST"])
 def api_wa_test():
-    """בדיקת WhatsApp (Maytapi) — למפתח בלבד. /api/wa/test?to=0501234567"""
+    """בדיקת WhatsApp (360dialog/Maytapi) — למפתח בלבד. /api/wa/test?to=0501234567"""
     s = _web_auth()
     if not s or not _is_dev(s.get("phone", "")):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
     to = (request.args.get("to") or s.get("phone", "")).strip()
     wa = _wa_phone(to)
-    ok = send_text(wa, "בדיקת WhatsApp ✅ — Family Bot") if wa else False
-    # אבחון התצורה (בלי לחשוף את הטוקן)
-    cfg = {"phone_id": MAYTAPI_PHONE_ID, "product": MAYTAPI_PRODUCT,
-           "token_set": bool(MAYTAPI_TOKEN), "base": MAYTAPI_BASE}
-    return jsonify({"ok": ok, "to": wa, "config": cfg, "maytapi": _WA_LAST})
+    msg = "בדיקת WhatsApp ✅ — Family Bot"
+    if wa and _d360_on() and request.args.get("tpl"):   # ?tpl=1 — בדיקת התבנית גם בתוך החלון
+        ok = _d360_send_text(wa, msg, force_template=True)
+    else:
+        ok = send_text(wa, msg) if wa else False
+    # אבחון התצורה (בלי לחשוף טוקנים)
+    cfg = {"provider": "360dialog" if _d360_on() else "maytapi",
+           "d360_key_set": bool(D360_API_KEY), "template": WA_TPL_NAME or None,
+           "window_open": _wa_window_open(wa) if wa else None,
+           "maytapi_set": _maytapi_on(), "phone_id": MAYTAPI_PHONE_ID}
+    return jsonify({"ok": ok, "to": wa, "config": cfg, "last": _WA_LAST,
+                    "maytapi": _WA_LAST, "statuses": _WA_STATUS_LOG[-10:]})
 
 @app.route("/api/my/buyers", methods=["GET", "POST"])
 def api_my_buyers():
