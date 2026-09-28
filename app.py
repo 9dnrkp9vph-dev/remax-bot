@@ -8796,13 +8796,24 @@ def api_wa_test():
     to = (request.args.get("to") or s.get("phone", "")).strip()
     wa = _wa_phone(to)
     msg = "בדיקת WhatsApp ✅ — Family Bot"
-    if wa and _d360_on() and request.args.get("tpl"):   # ?tpl=1 — בדיקת התבנית גם בתוך החלון
+    if wa and request.args.get("call"):   # ?call=1 — התראת שיחה לדוגמה (call=tpl מכריח תבנית)
+        _sample = {"caller_phone": "0525640615", "agent": "בדיקה", "status": "ANSWER",
+                   "received_at": "", "transcript_summary": "סיכום השיחה:\n• לקוח מחפש 4 חדרים בקריית ביאליק\n• תקציב עד 2.3 מיליון"}
+        if request.args.get("call") == "tpl":
+            _saved = _wa_window_open
+            globals()["_wa_window_open"] = lambda _t: False
+            try: ok = send_call_notice(wa, _sample)
+            finally: globals()["_wa_window_open"] = _saved
+        else:
+            ok = send_call_notice(wa, _sample)
+    elif wa and _d360_on() and request.args.get("tpl"):   # ?tpl=1 — בדיקת התבנית גם בתוך החלון
         ok = _d360_send_text(wa, msg, force_template=True)
     else:
         ok = send_text(wa, msg) if wa else False
     # אבחון התצורה (בלי לחשוף טוקנים)
     cfg = {"provider": "360dialog" if _d360_on() else "maytapi",
            "d360_key_set": bool(D360_API_KEY), "template": WA_TPL_NAME or None,
+           "template_call": WA_TPL_CALL or None,
            "window_open": _wa_window_open(wa) if wa else None,
            "maytapi_set": _maytapi_on(), "phone_id": MAYTAPI_PHONE_ID}
     return jsonify({"ok": ok, "to": wa, "config": cfg, "last": _WA_LAST,
@@ -9628,8 +9639,8 @@ def ab_short_link(tok):
             "try{location.href='" + native + "';}catch(e){}setTimeout(go,1400);"
             "}else{go();}</script></body></html>")
 
-def _wa_call_message(c):
-    """בונה את הודעת הוואטסאפ לסוכן: תמלול/סיכום השיחה + קישור עמוק להוספת הקונה."""
+def _wa_call_parts(c):
+    """חלקי הודעת השיחה לסוכן — משותף להודעה החופשית ולתבנית call_summary."""
     disp, tel = _il_phone(c.get("caller_phone", ""))
     raw = str(c.get("transcript_summary", "") or "")
     text = re.sub(r"https?://\S+", "", raw)
@@ -9645,17 +9656,59 @@ def _wa_call_message(c):
     import base64 as _b64c
     payload = json.dumps({"phone": (disp or tel or ""), "summary": text[:600]}, ensure_ascii=False)
     tok = _b64c.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
-    link = base + "/l/" + _ab_link_make(tok)   # קישור קצר — וואטסאפ שובר URL ארוך
-    _ag = str(c.get("agent", "") or "").strip()
-    lines = ["📞 *שיחה חדשה* — " + (disp or "מספר לא ידוע")]
-    if _ag: lines.append("👤 " + _ag)
-    if when: lines.append("🕐 " + when + " · " + st_he)
+    code = _ab_link_make(tok)   # קישור קצר — וואטסאפ שובר URL ארוך
+    return {"disp": disp, "agent": str(c.get("agent", "") or "").strip(), "when": when,
+            "status": st_he, "text": text, "code": code, "link": base + "/l/" + code}
+
+def _wa_call_message(c):
+    """בונה את הודעת הוואטסאפ לסוכן: תמלול/סיכום השיחה + קישור עמוק להוספת הקונה."""
+    p = _wa_call_parts(c)
+    lines = ["📞 *שיחה חדשה* — " + (p["disp"] or "מספר לא ידוע")]
+    if p["agent"]: lines.append("👤 " + p["agent"])
+    if p["when"]: lines.append("🕐 " + p["when"] + " · " + p["status"])
     lines.append("")
-    lines.append("📝 " + (text if text else "אין סיכום לשיחה זו"))
+    lines.append("📝 " + (p["text"] if p["text"] else "אין סיכום לשיחה זו"))
     lines.append("")
     lines.append('➕ להוספת הקונה ל"קונים שלי":')
-    lines.append(link)
+    lines.append(p["link"])
     return "\n".join(lines)
+
+# תבנית UTILITY ייעודית לסיכום שיחה (5 פרמטרים בגוף + כפתור URL דינמי /l/{{1}}).
+# ריק = לא בשימוש (נופלים ל-send_text → WA_TPL_NAME הכללית). להגדיר רק אחרי אישור Meta.
+WA_TPL_CALL = os.environ.get("WA_TPL_CALL", "").strip()
+
+def send_call_notice(to, c):
+    """התראת שיחה לסוכן: בחלון 24ש' (או ב-Maytapi) — ההודעה המלאה; מחוצה לו — תבנית call_summary."""
+    global _WA_LAST
+    if not (_d360_on() and WA_TPL_CALL) or "@g.us" in str(to) or _wa_window_open(to):
+        return send_text(to, _wa_call_message(c))
+    if _quiet_mode():
+        _WA_LAST = {"ok": False, "reason": "QUIET_MODE"}
+        return False
+    p = _wa_call_parts(c)
+    def _v(x, dflt="—"):   # Meta דוחה פרמטר ריק
+        x = _tpl_param(x)
+        return x if x.strip() else dflt
+    _t = re.sub(r"^\s*סיכום השיחה:?\s*", "", p["text"])   # בתבנית כבר יש 📝
+    summary = _v(re.sub(r"\s*\n\s*[•\-]?\s*", " • ", _t).strip(" •"), "אין סיכום לשיחה זו")
+    params = [_v(p["disp"], "מספר לא ידוע"), _v(p["agent"]), _v(p["when"]), _v(p["status"]), summary[:700]]
+    payload = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": _wa_digits(to),
+               "type": "template",
+               "template": {"name": WA_TPL_CALL, "language": {"code": WA_TPL_LANG},
+                            "components": [
+                                {"type": "body", "parameters": [{"type": "text", "text": x} for x in params]},
+                                {"type": "button", "sub_type": "url", "index": "0",
+                                 "parameters": [{"type": "text", "text": p["code"]}]}]}}
+    try:
+        ok, r = _d360_post_message(payload)
+        _WA_LAST = {"ok": ok, "provider": "360dialog", "mode": "template:" + WA_TPL_CALL,
+                    "status": r.status_code, "to": _wa_digits(to), "resp": (r.text or "")[:400]}
+        log.info(f"send_call_notice[360] → {_wa_digits(to)} · {r.status_code} ok={ok} · {(r.text or '')[:150]}")
+        return ok
+    except Exception as e:
+        _WA_LAST = {"ok": False, "provider": "360dialog", "reason": str(e)[:200]}
+        log.error(f"send_call_notice error: {e}")
+        return False
 
 def build_daily_digest(now_ts=None):
     """מייל סיכום 12:00 (10/09, פיילוט אוצר): פגישות/פולו-אפ שתואמו ב-24 השעות האחרונות,
@@ -10687,7 +10740,7 @@ def check_new_calls():
             for _t9 in _agent_targets:
                 _w = _wa_phone(_t9)
                 if _w:
-                    try: send_text(_w, _cmsg)
+                    try: send_call_notice(_w, r)   # תבנית call_summary מחוץ לחלון 24ש'
                     except Exception: pass
             if WA_GROUP_CALLS:
                 send_text(WA_GROUP_CALLS, _cmsg)           # לקבוצת "שיחות" של המנהלים
