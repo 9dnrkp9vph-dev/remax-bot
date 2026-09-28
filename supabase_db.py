@@ -107,6 +107,21 @@ def delisted_visible(stamp):
     return (_dt.date.today() - d).days < DELISTED_GRACE_DAYS
 
 
+# רשימת ערים סגורה (החלטת אייל 01/09 לנכס נולד; 28/09 גם לשת"פ): רק 4 הקריות + קרית חיים
+# מזרחית/מערבית (חלק מעיריית חיפה — מזוהה לפי שכונה/רחוב/כתובת). כל השאר נשאר ב-DB, לא מוצג.
+_KRAYOT_CITIES = ("קרית אתא", "קרית מוצקין", "קרית ביאליק", "קרית ים")
+
+def krayot_city_ok(city, zone_text=""):
+    """True = מוצג. עיר ריקה → מוצג (הצינור הישן). חיפה/קרית חיים → רק אם zone_text
+    (שכונה+רחוב+כתובת+עיר) מכיל 'קרית חיים'. ערים אחרות → רק מרשימת הקריות."""
+    _city = str(city or "").strip().replace("קריית", "קרית")
+    if not _city:
+        return True
+    if "חיפה" in _city or "קרית חיים" in _city:
+        return bool(re.search(r"קרי+ת חיים", str(zone_text or "").replace("קריית", "קרית")))
+    return any(w in _city for w in _KRAYOT_CITIES)
+
+
 def fetch_newborn_rows():
     """שורות 'נכס נולד' — אותו פורמט בדיוק כמו listnewborn מה-Apps Script:
     list של dicts עם מפתחות עבריים (העמודה raw שנשמרה 1:1 מהגיליון),
@@ -130,16 +145,10 @@ def fetch_newborn_rows():
             continue
         # 24/09 (אייל): בנכס נולד מודעה שירדה מיד2 *נשארת* עם התווית "ירד מפרסום" (לא נעלמת אחרי 3 ימים);
         # הפיד ממיין אותה לסוף. (במשרד/שת"פ נשאר חלון 3 הימים.)
-        # רשימת ערים סגורה (החלטת אייל 01/09): רק 4 הקריות + קרית חיים מזרחית/מערבית
-        # (חלק מעיריית חיפה — מזוהה לפי שכונה/רחוב). כל השאר — נשאר ב-DB, לא מוצג.
-        _city = str(raw.get("עיר") or raw.get("עיר / ישוב") or "").strip().replace("קריית", "קרית")
-        if _city:
-            if "חיפה" in _city or "קרית חיים" in _city:
-                _zone = " ".join(str(raw.get(k) or "") for k in ("שכונה", "רחוב", "רחוב1", "כתובת", "עיר"))
-                if not re.search(r"קרי+ת חיים", _zone.replace("קריית", "קרית")):
-                    continue
-            elif not any(w in _city for w in ("קרית אתא", "קרית מוצקין", "קרית ביאליק", "קרית ים")):
-                continue   # עיר מחוץ לרשימה (נשר/עכו/חריש/בת ים...) — מוסתר
+        # רשימת ערים סגורה (החלטת אייל 01/09) — krayot_city_ok (משותף עם השת"פ מ-28/09)
+        if not krayot_city_ok(raw.get("עיר") or raw.get("עיר / ישוב"),
+                              " ".join(str(raw.get(k) or "") for k in ("שכונה", "רחוב", "רחוב1", "כתובת", "עיר"))):
+            continue   # עיר מחוץ לרשימה (נשר/עכו/חריש/בת ים/חיפה-שאינה-קרית-חיים) — מוסתר
         rows.append(raw)
     return rows
 
@@ -301,7 +310,11 @@ def fetch_excl_rows():
     ביד2 (raw.delisted_at, מסומנת רק בסריקה מלאה) לא מוזרמת לאפליקציה — נשארת ב-DB
     (החלטת אייל 09/09: סנכרון מלא, בלי למחוק היסטוריה)."""
     rows = _fetch_raw_tab("external_exclusives", "01/01/2020", "31/12/2099")
-    return [r for r in rows if delisted_visible(r.get("delisted_at"))]
+    # 28/09 (אייל: "למה אני רואה בשת\"פ את חיפה"): אותה רשימת ערים סגורה כמו בנכס נולד —
+    # הקריות + קרית חיים מזרחית/מערבית; חיפה (כרמל/נווה שאנן…) ונשר/חריש/טירת כרמל נשארים ב-DB בלבד.
+    return [r for r in rows
+            if delisted_visible(r.get("delisted_at"))
+            and krayot_city_ok(r.get("city"), " ".join(str(r.get(k) or "") for k in ("neighborhood", "street", "city")))]
 
 
 def signatures_delete(event_id="", received_at="", client_name=""):
