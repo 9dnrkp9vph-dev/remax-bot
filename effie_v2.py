@@ -8594,8 +8594,7 @@ var SECTIONS = [
     ['sms', 'ספק SMS (sms.deals)', 'טוקן + שם שולח מאושר — קוד כניסה, קישורי חתימה, התראות לסוכן']]},
   {t: 'וואטסאפ', items: [
     ['d360', 'WhatsApp API רשמי (360dialog)', 'המספר הרשמי של המשרד — WA_PROVIDER=360dialog + D360_API_KEY; תבנית WA_TPL_NAME להודעות מחוץ לחלון 24 שעות'],
-    ['maytapi', 'חיבור Maytapi', 'מופע וואטסאפ של המשרד — הודעות אוטומטיות לסוכנים וללקוחות'],
-    ['wa_groups', 'קבוצות מנהלים', 'קבוצת "שיחות" וקבוצת "חתימות" — עדכונים שוטפים להנהלה']]},
+    ['wa_groups', 'עדכונים למנהלים', 'שיחות וחתימות נשלחים אישית לכל מנהל (תפקיד admin) דרך המספר הרשמי']]},
   {t: 'נתונים', items: [
     ['supabase', 'Supabase', 'מסד הנתונים המהיר — שיחות, חתימות, קונים, נכס נולד, קונפיג'],
     ['apps_script', 'Apps Script + גיליון', 'הכתיבות (הוספת קונה, חתימות) והגיליון התפעולי של המזכירה'],
@@ -9791,7 +9790,7 @@ def register(app, G):
             "sms": _has("SMS_DEALS_TOKEN", "SMS_DEALS_SENDER"),
             "d360": _has("D360_API_KEY") and (env("WA_PROVIDER") or "").strip().lower() in ("360dialog", "360", "d360"),
             "maytapi": _has("MAYTAPI_TOKEN", "MAYTAPI_PHONE_ID", "MAYTAPI_PRODUCT_ID"),
-            "wa_groups": _has("WA_GROUP_CALLS") or _has("WA_GROUP_SIGNATURES"),
+            "wa_groups": (_has("D360_API_KEY") and (env("WA_PROVIDER") or "").strip().lower() in ("360dialog", "360", "d360")) or _has("WA_GROUP_CALLS") or _has("WA_GROUP_SIGNATURES"),
             "supabase": sb_on,
             "apps_script": _has("APPS_SCRIPT_URL", "APPS_SCRIPT_TOKEN"),
             "sheets_api": _has("GOOGLE_SHEETS_API_KEY", "PROPERTIES_SHEET_ID"),
