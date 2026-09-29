@@ -269,6 +269,7 @@ def _maytapi_download_media(url: str, dest: Path) -> bool:
 # ══════════════════════════════════════════════════════════════════════════════
 # 360dialog — WhatsApp Business API רשמי + מתג ספק (send_text / send_document / download_media)
 # ══════════════════════════════════════════════════════════════════════════════
+_WA_CALL_LOG = []     # אבחון: לאן נשלחה כל התראת שיחה ומה חזר (29/09)
 _WA_STATUS_LOG = []   # סטטוסים אחרונים מ-webhook של 360 (נמסר/נקרא/נכשל) — לאבחון ב-/api/wa/test
 _WA_WINDOW_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)),
                                "wa_window.json")
@@ -8827,6 +8828,16 @@ def api_push_test():
     return jsonify({"ok": ok, "configured": bool(ONESIGNAL_REST_KEY),
                     "targeted_ids": ids, "onesignal": _PUSH_LAST})
 
+@app.route("/api/wa/log", methods=["GET"])
+def api_wa_log():
+    """אבחון בלי שליחה — התראות שיחה אחרונות + סטטוסי מסירה מ-webhook. למפתח בלבד."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    return jsonify({"ok": True, "wa_auto": _wa_auto_on(), "provider": "360dialog" if _d360_on() else "maytapi",
+                    "template_call": WA_TPL_CALL or None, "calls": _WA_CALL_LOG[-15:],
+                    "statuses": _WA_STATUS_LOG[-30:]})
+
 @app.route("/api/wa/test", methods=["GET", "POST"])
 def api_wa_test():
     """בדיקת WhatsApp (360dialog/Maytapi) — למפתח בלבד. /api/wa/test?to=0501234567"""
@@ -10777,11 +10788,18 @@ def check_new_calls():
                     _agent_targets.add(_l)
             if not _agent_targets and _vphone9:   # אין נייד ידוע — ננסה את מה שיש
                 _agent_targets.add(_vphone9)
+            _res = []
             for _t9 in _agent_targets:
                 _w = _wa_phone(_t9)
                 if _w:
-                    try: send_call_notice(_w, r)   # תבנית call_summary מחוץ לחלון 24ש'
-                    except Exception: pass
+                    try: _ok = bool(send_call_notice(_w, r))   # תבנית call_summary מחוץ לחלון 24ש'
+                    except Exception: _ok = False
+                    _res.append({"to": _w, "ok": _ok, "mode": (_WA_LAST or {}).get("mode"),
+                                 "resp": str((_WA_LAST or {}).get("resp", ""))[:160]})
+            _WA_CALL_LOG.append({"at": time.strftime("%d/%m %H:%M"), "agent": str(r.get("agent", "")),
+                                 "caller": str(r.get("caller_phone", "")), "vphone": _vphone9,
+                                 "targets": sorted(_agent_targets), "sent": _res})
+            del _WA_CALL_LOG[:-30]
             if _d360_on():
                 pass   # 29/09 (אייל): התראת שיחה — לנייד של הסוכן בלבד, לא למנהלים
             elif WA_GROUP_CALLS:
