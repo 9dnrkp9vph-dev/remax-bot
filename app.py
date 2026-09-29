@@ -5030,14 +5030,8 @@ def api_sign_submit():
             _sms_agent_signing(client, agent, address, link)
             # עותק ללקוח (החתמה במקום — בקשת אייל 05/08): קישור להסכם החתום שלו.
             # בהחתמה מרחוק הלקוח כבר מחזיק את הקישור; כאן הוא חתם על מכשיר הסוכן.
-            try:
-                _cl9 = _last9(phone)
-                if _cl9:
-                    _first = (client or "").split()[0] if (client or "").strip() else ""
-                    web_send_sms(_cl9, "שלום" + ((" " + _first) if _first else "") +
-                                 ", ההסכם שחתמת מטעם RE/MAX Family זמין לצפייה ולשמירה:\n" + link)
-            except Exception:
-                pass
+            try: _send_client_signed_copy(phone, client, link)   # SMS + וואטסאפ
+            except Exception: pass
         except Exception as _bge:
             log.error(f"sign submit bg error: {_bge}")
     if doc_saved:   # נכשל = הסוכן ינסה שוב — לא כותבים שורות שיוכפלו בניסיון הבא
@@ -5581,6 +5575,12 @@ def api_sign_complete():
             _notify_managers_signing("נחתם", _cl, _ag, _addr)
             _sms_agent_signing(_cl, _ag, _addr, link)
             _wa_signing(_cl, _ag, _addr, link)
+            # 29/09 (אייל): גם בהחתמה מרחוק — עותק חתום ללקוח (SMS + וואטסאפ)
+            try:
+                _ph = _parse_sign_header(header).get("phone", "")
+                _send_client_signed_copy(_ph, _cl, link)
+            except Exception as _ce:
+                log.warning(f"sign complete: client copy failed: {_ce}")
         except Exception:
             pass
     if upd_ok:
@@ -5623,6 +5623,20 @@ def api_sign_share():
     try: sms_ok = bool(web_send_sms(last9, msg))
     except Exception: sms_ok = False
     return jsonify({"ok": (wa_ok or sms_ok), "wa": wa_ok, "sms": sms_ok})
+
+def _send_client_signed_copy(phone, client, link):
+    """עותק ההסכם החתום ללקוח — SMS + וואטסאפ רשמי (29/09, אייל). משמש בהחתמה במקום ובמרחוק."""
+    _cl9 = _last9(phone or "")
+    if not (_cl9 and link):
+        return
+    _first = (client or "").split()[0] if (client or "").strip() else ""
+    _msg = ("שלום" + ((" " + _first) if _first else "") +
+            ", ההסכם שחתמת מטעם RE/MAX Family זמין לצפייה ולשמירה:\n" + link)
+    try: web_send_sms(_cl9, _msg)
+    except Exception: pass
+    if _d360_on():
+        try: send_text(_wa_phone(_cl9), _msg)
+        except Exception as _e: log.error(f"client signed copy wa error: {_e}")
 
 def _parse_sign_header(header):
     """מפרק את מחרוזת הכותרת המובנית (תאריך/סוכן/לקוח/נכסים) לשדות לרינדור נקי בעמוד ההסכם."""
@@ -10768,13 +10782,8 @@ def check_new_calls():
                 if _w:
                     try: send_call_notice(_w, r)   # תבנית call_summary מחוץ לחלון 24ש'
                     except Exception: pass
-            if _d360_on():                                 # API רשמי — לכל מנהל אישית (תבנית מחוץ לחלון)
-                for _m9 in _manager_push_ids():
-                    _m9 = _last9(_m9)
-                    if _m9 and _m9 not in _agent_targets:
-                        _agent_targets.add(_m9)
-                        try: send_call_notice(_wa_phone(_m9), r)
-                        except Exception: pass
+            if _d360_on():
+                pass   # 29/09 (אייל): התראת שיחה — לנייד של הסוכן בלבד, לא למנהלים
             elif WA_GROUP_CALLS:
                 send_text(WA_GROUP_CALLS, _cmsg)           # Maytapi — לקבוצת "שיחות" של המנהלים
         except Exception:
