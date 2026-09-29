@@ -203,7 +203,9 @@ def _maytapi_send_text(to: str, text: str):
         log.error(f"send_text error: {e}")
         return False
 def download_profile_pic(phone: str, dest: Path) -> bool:
-    """הורד תמונת פרופיל ושמור לקובץ — מנסה כמה endpoints"""
+    """הורד תמונת פרופיל ושמור לקובץ — מנסה כמה endpoints (Maytapi בלבד; ב-API הרשמי אין תמונת פרופיל)"""
+    if _d360_on() or not MAYTAPI_TOKEN:
+        return False
     try:
         number = phone.replace("+","").replace("-","").strip()
         number_at = f"{number}@c.us"
@@ -357,11 +359,11 @@ def send_text(to: str, text: str):
     """שולח וואטסאפ דרך הספק הפעיל. קבוצות (@g.us) — רק דרך Maytapi (ה-API הרשמי לא שולח לקבוצות קיימות)."""
     global _WA_LAST
     is_group = "@g.us" in str(to or "")
-    if not _d360_on() or is_group:
-        if is_group and _d360_on() and not _maytapi_on():
-            _WA_LAST = {"ok": False, "to": to, "reason": "group_unsupported_on_360"}
-            log.info(f"send_text: group {to} skipped (360dialog, no Maytapi)")
-            return False
+    if is_group and _d360_on():   # ה-API הרשמי לא שולח לקבוצות — מנהלים מקבלים אישית (_send_managers)
+        _WA_LAST = {"ok": False, "to": to, "reason": "group_unsupported_on_360"}
+        log.info(f"send_text: group {to} skipped (360dialog)")
+        return False
+    if not _d360_on():
         return _maytapi_send_text(to, text)
     if _quiet_mode():
         _WA_LAST = {"ok": False, "reason": "QUIET_MODE"}
@@ -372,6 +374,19 @@ def send_text(to: str, text: str):
         if _gap < 0.3: time.sleep(0.3 - _gap)
         _wa_throttle["ts"] = time.time()
     return _d360_send_text(to, text)
+
+def _send_managers(msg, exclude9=None):
+    """הודעה אישית לכל מנהל (במקום קבוצת וואטסאפ — ה-API הרשמי לא תומך בקבוצות).
+    exclude9 = סט 9 ספרות אחרונות שכבר קיבלו (למשל הסוכן עצמו) — שלא יקבלו פעמיים."""
+    sent = set(_last9(x) for x in (exclude9 or ()) if _last9(x))
+    for m9 in _manager_push_ids():
+        m9 = _last9(m9)
+        if not m9 or m9 in sent: continue
+        sent.add(m9)
+        w = _wa_phone(m9)
+        if w:
+            try: send_text(w, msg)
+            except Exception: pass
 
 def send_document(to: str, file_path: str, filename: str, caption: str = ""):
     if not _d360_on():
@@ -5327,7 +5342,9 @@ def _wa_signing(client, agent, address, link):
                 if wa:
                     try: send_text(wa, msg)
                     except Exception: pass
-            if WA_GROUP_SIGNATURES:                                    # לקבוצת "חתימות" של המנהלים
+            if _d360_on():                                             # API רשמי — לכל מנהל אישית
+                _send_managers(msg, exclude9=agent_phones)
+            elif WA_GROUP_SIGNATURES:                                  # Maytapi — לקבוצת "חתימות" של המנהלים
                 try: send_text(WA_GROUP_SIGNATURES, msg)
                 except Exception: pass
         if _wa_auto_on():   # מושהה כברירת מחדל — בקשת אייל 06/07
@@ -5434,7 +5451,7 @@ def api_sign_send_remote():
         return jsonify({"ok": False, "reason": "doc_save_failed"})
     for _r in recs:
         _recent_signs_add(_r)   # נראות מיידית ב"ממתין לחתימה" — עד שהכתיבה ברקע נוחתת
-    # שליחה אוטומטית ב-SMS בלבד. וואטסאפ = אופציה ידנית לסוכן (כפתור בצד הלקוח, נשלח מהוואטסאפ של הסוכן — לא אוטומטית מהשרת)
+    # שליחה אוטומטית ב-SMS + וואטסאפ רשמי (כש-360dialog פעיל). כפתור הוואטסאפ הידני של הסוכן נשאר.
     if token2:
         # זוג בלעדיות (בקשת אייל 05/08): שני הקישורים כבר ב-SMS הראשון — מוכר + בלעדיות
         msg = ("שלום %s,\nהתבקשת לחתום על 2 מסמכים מטעם RE/MAX Family (%s).\n"
@@ -5445,7 +5462,16 @@ def api_sign_send_remote():
     sms_ok = False
     try: sms_ok = bool(web_send_sms(last9, msg))
     except Exception: sms_ok = False
-    wa_link = _wa_phone(phone)   # מספר wa.me לכפתור השיתוף הידני (בלי שליחה אוטומטית)
+    wa_link = _wa_phone(phone)   # מספר wa.me לכפתור השיתוף הידני
+    # וואטסאפ רשמי (29/09, אייל): בנוסף ל-SMS — ברקע, כדי לא לעכב את הסוכן.
+    # מחוץ לחלון 24ש' יוצא דרך התבנית המאושרת (family_update).
+    wa_queued = False
+    if _d360_on() and wa_link:
+        wa_queued = True
+        def _wa_remote():
+            try: send_text(wa_link, msg)
+            except Exception as _we: log.error(f"sign send_remote wa error: {_we}")
+        threading.Thread(target=_wa_remote, daemon=True).start()
     s_name, s_role, s_phone = s.get("name", ""), s.get("role", ""), s.get("phone", "")
     def _send_remote_bg():
         try:
@@ -5463,7 +5489,7 @@ def api_sign_send_remote():
             log.error(f"sign send_remote bg error: {_bge}")
     import threading as _thr
     _thr.Thread(target=_send_remote_bg, daemon=True).start()
-    return jsonify({"ok": True, "sms": sms_ok, "phone": last9, "link": link, "waPhone": wa_link})
+    return jsonify({"ok": True, "sms": sms_ok, "wa": wa_queued, "phone": last9, "link": link, "waPhone": wa_link})
 
 @app.route("/api/sign/complete", methods=["POST"])
 def api_sign_complete():
@@ -10742,8 +10768,15 @@ def check_new_calls():
                 if _w:
                     try: send_call_notice(_w, r)   # תבנית call_summary מחוץ לחלון 24ש'
                     except Exception: pass
-            if WA_GROUP_CALLS:
-                send_text(WA_GROUP_CALLS, _cmsg)           # לקבוצת "שיחות" של המנהלים
+            if _d360_on():                                 # API רשמי — לכל מנהל אישית (תבנית מחוץ לחלון)
+                for _m9 in _manager_push_ids():
+                    _m9 = _last9(_m9)
+                    if _m9 and _m9 not in _agent_targets:
+                        _agent_targets.add(_m9)
+                        try: send_call_notice(_wa_phone(_m9), r)
+                        except Exception: pass
+            elif WA_GROUP_CALLS:
+                send_text(WA_GROUP_CALLS, _cmsg)           # Maytapi — לקבוצת "שיחות" של המנהלים
         except Exception:
             pass
         _seen_calls.add(k)
