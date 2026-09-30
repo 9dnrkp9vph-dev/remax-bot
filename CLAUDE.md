@@ -647,3 +647,5 @@
 - 2026-09-29: התראת שיחה חדשה (API רשמי) — לנייד האישי של הסוכן בלבד, **לא למנהלים** (אייל). חתימות ממשיכות לסוכן + לכל מנהל.
 - 2026-09-29: עותק הסכם חתום ללקוח — `_send_client_signed_copy` (SMS + וואטסאפ רשמי) גם בהחתמה במקום וגם בהחתמה מרחוק (/api/sign/complete; הטלפון מכותרת ההסכם 'לקוח: … · טל').
 - 2026-09-30: /l/<קוד> (כפתור 'הוסף לקונים' בוואטסאפ) — באייפון/אנדרואיד לא קופץ יותר אוטומטית ל-web: מנסה remaxfamily:// (אנדרואיד: intent://), ואם לא נפתח מציג 'פתח באפליקציה' / 'המשך בדפדפן'. נוסף /.well-known/apple-app-site-association (paths /l/*) — פעיל כש-APPLE_TEAM_ID מוגדר ב-Render; דורש Associated Domains applinks:remax-bot.onrender.com בגרסת האפליקציה.
+- 2026-09-30: הודעת 'חתימה חדשה' בוואטסאפ — לסוכן בלבד (+ עותק ללקוח), **לא למנהלים** (אייל: הוא רואה הכל בביזנס). גם שיחות — לסוכן בלבד. `_send_managers` נשאר בקוד אך לא בשימוש.
+- 2026-09-30: יומן אבחון וואטסאפ קבוע — wa_diag.json ב-MAP_CACHE_DIR (שורד דיפלוי). כל שיחה חדשה נרשמת עם reason: sent / no_phone_for_agent / only_virtual_phone / send_failed / skipped: quiet_hours|wa_auto_off / burst_guard / seeded; + סטטוסי delivered/failed מ-webhook. צפייה: /api/wa/log (מפתח בלבד), החדש ראשון.
