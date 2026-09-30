@@ -274,6 +274,15 @@ _WA_DIAG_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirn
                              "wa_diag.json")   # 30/09: יומן אבחון על הדיסק — שורד דיפלוי
 _wa_diag_lock = threading.Lock()
 
+def _il_now_hm():
+    """שעה בשעון ישראל ליומן האבחון (השרת רץ ב-UTC)."""
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        return datetime.now(ZoneInfo("Asia/Jerusalem")).strftime("%d/%m %H:%M")
+    except Exception:
+        return time.strftime("%d/%m %H:%M")
+
 def _wa_diag_load():
     try:
         with open(_WA_DIAG_PATH, encoding="utf-8") as f:
@@ -294,7 +303,7 @@ def _wa_diag_save():
 def _wa_call_diag(r, reason, targets=None, sent=None, vphone=""):
     """רישום כל שיחה חדשה + למה נשלחה/לא נשלחה התראה."""
     try:
-        _WA_CALL_LOG.append({"at": time.strftime("%d/%m %H:%M"), "reason": reason,
+        _WA_CALL_LOG.append({"at": _il_now_hm(), "reason": reason,
                              "agent": str((r or {}).get("agent", "")),
                              "caller": str((r or {}).get("caller_phone", "")),
                              "call_time": str((r or {}).get("received_at", ""))[:16],
@@ -479,7 +488,7 @@ def _d360_webhook(body):
                     rec["error"] = f"{e0.get('code')}: {e0.get('title') or e0.get('message')}"
                     log.warning(f"WA status failed → {rec}")
                 if st.get("status") in ("failed", "delivered") or rec.get("error"):
-                    rec["at"] = time.strftime("%d/%m %H:%M")
+                    rec["at"] = _il_now_hm()
                     _WA_STATUS_LOG.append(rec)
                     del _WA_STATUS_LOG[:-60]
                     _wa_diag_save()
