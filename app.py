@@ -8057,11 +8057,15 @@ def api_newborn():
             try: return int(str(request.args.get(nm) or ((request.get_json(silent=True) or {}).get(nm)) or "").strip())
             except Exception: return None
         min_days = _intp("minDays"); max_days = _intp("maxDays")
+        # [PERF-NB 30/09] limit: רק N הראשונים בסדר התצוגה (המסך מצייר אותם מיד, והרשימה המלאה ~2MB
+        # נטענת אחריו ברקע; הבית צריך רק את המונה ואת החדשים של היום). הספירות תמיד על הכל.
+        _lim = _intp("limit")
+        _lim = _lim if (_lim and _lim > 0) else None
         # [PERF-3] etag: הקליינט שולח את טביעת-האצבע של התוצאה הקודמת; אם אין שינוי —
         # מוחזרת תשובה זעירה (unchanged) במקום מאות KB. חוסך דאטה/סוללה ברענון של כל דקה.
         _etag_in = (request.args.get("etag", "") or ((request.get_json(silent=True) or {}).get("etag", "")) or "").strip()
         # מטמון תוצאה לפי סקופ — פתיחה חוזרת של הטאב מיידית (מתבטל בכל שינוי דרך _NB_RESULT_VER)
-        _nbkey = "nbres:%d:%s:%s:%s:%s:%s" % (_NB_RESULT_VER[0], _last9(s.get("phone", "")), as_name, q, min_days, max_days)
+        _nbkey = "nbres:%d:%s:%s:%s:%s:%s:%s" % (_NB_RESULT_VER[0], _last9(s.get("phone", "")), as_name, q, min_days, max_days, _lim)
         _nbc = _cache_get(_nbkey, _src_ttl(NEWBORN_SOURCE, 90, 12))
         if _nbc is not None:
             if _etag_in and _etag_in == _nbc.get("etag"):
@@ -8088,6 +8092,7 @@ def api_newborn():
         _scan_price_changes()                 # 24/09: ירידות מחיר גם בנכס נולד
         _pd_map = _price_dropped_map()
         out = []
+        _cand = []
         bucket_counts = [0] * len(_NB_BUCKETS)
         for r in rows:
             created = _newborn_created_epoch(r)
@@ -8120,8 +8125,14 @@ def api_newborn():
                     break
             if min_days is not None and max_days is not None and not (min_days <= ad < max_days):
                 continue   # לא בדלי הוותק שנבחר
-            if len(out) >= 5000:   # תקרת בטיחות גבוהה; כל הנכסים חוזרים בטעינה אחת לסינון חודשים בצד הלקוח
+            if len(_cand) >= 5000:   # תקרת בטיחות גבוהה; כל הנכסים חוזרים בטעינה אחת לסינון חודשים בצד הלקוח
                 continue
+            # [PERF-NB 30/09] מעבר זול: רק מה שנדרש לסדר; השדות הכבדים (famexcl/פניות/הערות) — אחרי החיתוך
+            _cand.append((r, ad, city, _addr, _owner, lister,
+                          _nb_price_key(r) in _pd_map, bool(_nb(r.get("delisted_at", "")))))
+        # 24/09 (אייל): חדשים (עד יומיים) → ירידות מחיר → השאר → ירד מפרסום; בתוך כל קבוצה מהחדש לישן
+        _cand.sort(key=lambda c: _tier_new_drop_rest(c[1] <= 2, c[6], c[7]))
+        for (r, ad, city, _addr, _owner, lister, _dropped, _dl) in (_cand[:_lim] if _lim else _cand):
             _k = _nb_key(r)
             _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
             ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
@@ -8154,13 +8165,12 @@ def api_newborn():
                 "delisted": _nb(r.get("delisted_at", "")),   # ירד מיד2 — תווית; 24/09: המודעה נשארת (אייל)
                 "famexcl": (_famv is not None),
                 "famexclAgent": (_famv or ""),
-                "priceDropped": _nb_price_key(r) in _pd_map,   # 24/09: תג ירידת מחיר בנכס נולד
-                "priceOld": _pd_map.get(_nb_price_key(r), ""),
+                "priceDropped": _dropped,   # 24/09: תג ירידת מחיר בנכס נולד
+                "priceOld": _pd_map.get(_nb_price_key(r), "") if _dropped else "",
             })
-        # 24/09 (אייל): חדשים (עד יומיים) → ירידות מחיר → השאר → ירד מפרסום; בתוך כל קבוצה מהחדש לישן
-        out.sort(key=lambda o: _tier_new_drop_rest(o["ageDays"] <= 2, o["priceDropped"], bool(o["delisted"])))
-        _res = {"ok": True, "count": len(out), "released": len(out), "delay": delay,
-                "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts)}
+        _res = {"ok": True, "count": len(_cand), "released": len(_cand), "delay": delay,
+                "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts),
+                "partial": bool(_lim and len(_cand) > len(out))}
         # [PERF-3] טביעת-אצבע לתוצאה — מחושבת פעם אחת בבנייה (לא פר-בקשה)
         import zlib as _zl
         _res["etag"] = format(_zl.crc32(_json.dumps(

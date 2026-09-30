@@ -1620,7 +1620,8 @@ el('story').addEventListener('touchmove', function(e){
       var b = el('dealsBadge');
       if (b && n > 0){ b.textContent = n; b.style.display = 'flex'; }
     }).catch(function(){});
-    GET('/api/newborn').then(function(nb){
+    // [PERF-NB 30/09] הבית צריך רק את המונה ואת החדשים של היום (הם ראשונים בסדר) — לא 2MB
+    GET('/api/newborn?limit=120').then(function(nb){
       M.nb = (nb && (nb.total || (nb.results || []).length)) || 0;
       // נולדו ביממה האחרונה (ageDays=0) — לכרטיס הסיום של הבריף, כולל כתובות
       M.nbNew = ((nb && nb.results) || []).filter(function(r){ return r.ageDays === 0; })
@@ -4565,21 +4566,48 @@ var BUCKET_RANGES = [[0,30],[30,60],[60,90],[90,120],[120,150],[150,180],[180,99
 var ST_LABEL = {meeting:'פגישה', followup:'פולו-אפ', not_interested:'לא מעוניין'};
 
 var NB_ETAG = '';   // [PERF-3] טביעת-אצבע מהשרת — רענון של כל דקה בלי שינוי = תשובה זעירה
+/* [PERF-NB 30/09] "נכס נולד כמה שניות" (אייל): כל פתיחה חיכתה לרשימה המלאה (~2,600 נכסים,
+   2MB, 2-3ש' בשרת). עכשיו בטעינה הראשונה: 80 הראשונים בסדר התצוגה (לפי הוותק שנבחר) —
+   ~0.5ש' — מצוירים מיד, והרשימה המלאה נטענת ברקע (חיפוש/החלפת חודש עובדים עליה כמו קודם).
+   הרענון של כל דקה ממשיך על הרשימה המלאה עם etag. */
+var NB_FULL = false;
+function _nbApply(nb, full){
+  if (nb.etag && full) NB_ETAG = nb.etag;
+  if (nb.unchanged) return false;
+  if (!nb.results) return false;
+  ROWS = nb.results;
+  BUCKETS = nb.bucketCounts || [];
+  TOTAL = nb.total || ROWS.length;
+  if (full){
+    NB_FULL = true;
+    try{ localStorage.setItem('v2c:nb', JSON.stringify(
+      {r: ROWS.slice(0, 150), b: BUCKETS, t: TOTAL, m: MEETS.slice(0, 40)})); }catch(e){}
+  }
+  return true;
+}
+function _nbFull(){
+  return GET('/api/newborn' + (NB_ETAG ? '?etag=' + encodeURIComponent(NB_ETAG) : ''))
+    .catch(function(){ return {}; })
+    .then(function(nb){ _nbApply(nb || {}, true); render(); });
+}
 function load(){
+  if (NB_FULL) return Promise.all([   // רענון רגיל — הרשימה המלאה כבר בזיכרון
+    _nbFull(),
+    GET('/api/newborn/meetings').catch(function(){ return {}; }).then(function(m){
+      MEETS = (m && (m.results || m.meetings)) || [];
+    })
+  ]).then(function(){ render(); });
+  var qs = '?limit=80', byAge = AGE >= 0;
+  if (byAge){ var rg = BUCKET_RANGES[AGE]; qs += '&minDays=' + rg[0] + '&maxDays=' + rg[1]; }
   return Promise.all([
-    GET('/api/newborn' + (NB_ETAG ? '?etag=' + encodeURIComponent(NB_ETAG) : '')).catch(function(){ return {}; }),
+    GET('/api/newborn' + qs).catch(function(){ return {}; }),
     GET('/api/newborn/meetings').catch(function(){ return {}; })
   ]).then(function(rs){
-    var nb = rs[0] || {};
-    if (nb.etag) NB_ETAG = nb.etag;
     MEETS = (rs[1] && (rs[1].results || rs[1].meetings)) || [];
-    if (!nb.unchanged){   // שינוי אמיתי — מעדכנים רשימה ו-cache מקומי
-      ROWS = nb.results || [];
-      BUCKETS = nb.bucketCounts || [];
-      TOTAL = nb.total || ROWS.length;
-      try{ localStorage.setItem('v2c:nb', JSON.stringify(
-        {r: ROWS.slice(0, 150), b: BUCKETS, t: TOTAL, m: MEETS.slice(0, 40)})); }catch(e){}
-    }
+    var nb = rs[0] || {};
+    // "מלא" רק כשלא סוננו לפי חודש ולא נחתך — אחרת זו רק תצוגה ראשונה
+    if (!NB_FULL && nb.results){ _nbApply(nb, !byAge && !nb.partial); render(); }
+    if (!NB_FULL) return _nbFull();                                       // השאר ברקע
     render();
   });
 }
