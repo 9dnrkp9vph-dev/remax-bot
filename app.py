@@ -3037,6 +3037,28 @@ def _name_for_phone(last9):
     return (web_phone_name_map().get(last9) or web_contacts_phone_name().get(last9)
             or _config_agent_phones().get(last9) or "")
 
+_GENERIC_NAMES = ("מנהל", "סוכן", "")
+def _display_name_for(name, phone):
+    """[USAGE 30/09] שם לתצוגה ביומנים. מי שמוגדר 'מנהל' בניהול מקבל בכניסה את השם הגנרי 'מנהל'
+    (_login_name — במכוון, צפייה כמשרד), ולכן ביומן השימוש 5 טלפונים שונים התמזגו לשורה אחת
+    ('מתן ביטון לא מופיע' — אייל). כאן: שם גנרי → השם האמיתי לפי הטלפון; בלי שם ידוע → גנרי + 4 ספרות.
+    חשבון הביקורת (בדיקות המהירות שלי) מסומן במפורש."""
+    nm = str(name or "").strip()
+    if nm not in _GENERIC_NAMES:
+        return nm
+    l9 = _last9(phone or "")
+    if not l9:
+        return nm
+    if l9 in _BYPASS_LOGINS:
+        return "חשבון בדיקה"
+    try:
+        real = str(_name_for_phone(l9) or "").strip()
+    except Exception:
+        real = ""
+    if real and real not in _GENERIC_NAMES:
+        return real
+    return (nm or "משתמש") + " · " + l9[-4:]
+
 def _resolve_roles(last9):
     """מחזיר (scope_role, display_role). scope ל-data (admin/coordinator/agent), display ל-UI/טאבים.
     אם אין תפקיד בקונפיג — נופל בדיוק להתנהגות הקיימת (web_role_for)."""
@@ -6677,6 +6699,9 @@ def api_activity():
         _cache_put("activity_today", c)
     seen = set(); merged = []
     for it in (list(c) + list(_activity[-400:])):
+        _gn = str(it.get("name", "") or "").strip()
+        if _gn in _GENERIC_NAMES:   # [USAGE 30/09] 'מנהל' גנרי → השם האמיתי לפי הטלפון
+            it = dict(it); it["name"] = _display_name_for(_gn, it.get("phone", ""))
         try: tsr = round(float(it.get("ts", 0)))
         except Exception: tsr = 0
         k = (tsr, str(it.get("name", "")), str(it.get("action", "")), str(it.get("detail", "")))

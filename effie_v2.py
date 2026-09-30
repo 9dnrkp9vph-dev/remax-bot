@@ -11396,7 +11396,8 @@ def register(app, G):
         by = {}
         for p in pings:
             ph = str(p.get("phone", "") or "")
-            nm = str(p.get("name", "") or "").strip()
+            # [USAGE 30/09] 'מנהל' גנרי (כל מי שמוגדר מנהל) → השם האמיתי לפי הטלפון — אחרת כולם שורה אחת
+            nm = G["_display_name_for"](str(p.get("name", "") or "").strip(), ph)
             # איחוד לפי שם הסוכן (canon) — סוכן עם כמה טלפונים (רגיל+וירטואלי) נספר
             # פעם אחת, לא שורה לכל מספר (תיקון "יאיר/מנהל פעמיים", 19/07). בלי שם — לפי טלפון.
             gk = ("n:" + _ckey(nm)) if nm else ("p:" + ph)
