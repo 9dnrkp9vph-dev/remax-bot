@@ -270,6 +270,39 @@ def _maytapi_download_media(url: str, dest: Path) -> bool:
 # 360dialog — WhatsApp Business API רשמי + מתג ספק (send_text / send_document / download_media)
 # ══════════════════════════════════════════════════════════════════════════════
 _WA_CALL_LOG = []     # אבחון: לאן נשלחה כל התראת שיחה ומה חזר (29/09)
+_WA_DIAG_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)),
+                             "wa_diag.json")   # 30/09: יומן אבחון על הדיסק — שורד דיפלוי
+_wa_diag_lock = threading.Lock()
+
+def _wa_diag_load():
+    try:
+        with open(_WA_DIAG_PATH, encoding="utf-8") as f:
+            d = json.load(f) or {}
+        _WA_CALL_LOG[:] = list(d.get("calls") or [])[-60:]
+        _WA_STATUS_LOG[:] = list(d.get("statuses") or [])[-60:]
+    except Exception:
+        pass
+
+def _wa_diag_save():
+    with _wa_diag_lock:
+        try:
+            with open(_WA_DIAG_PATH, "w", encoding="utf-8") as f:
+                json.dump({"calls": _WA_CALL_LOG[-60:], "statuses": _WA_STATUS_LOG[-60:]}, f, ensure_ascii=False)
+        except Exception as e:
+            log.warning(f"wa_diag save: {e}")
+
+def _wa_call_diag(r, reason, targets=None, sent=None, vphone=""):
+    """רישום כל שיחה חדשה + למה נשלחה/לא נשלחה התראה."""
+    try:
+        _WA_CALL_LOG.append({"at": time.strftime("%d/%m %H:%M"), "reason": reason,
+                             "agent": str((r or {}).get("agent", "")),
+                             "caller": str((r or {}).get("caller_phone", "")),
+                             "call_time": str((r or {}).get("received_at", ""))[:16],
+                             "vphone": vphone, "targets": sorted(targets or []), "sent": sent or []})
+        del _WA_CALL_LOG[:-60]
+        _wa_diag_save()
+    except Exception:
+        pass
 _WA_STATUS_LOG = []   # סטטוסים אחרונים מ-webhook של 360 (נמסר/נקרא/נכשל) — לאבחון ב-/api/wa/test
 _WA_WINDOW_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)),
                                "wa_window.json")
@@ -445,8 +478,11 @@ def _d360_webhook(body):
                     e0 = st["errors"][0]
                     rec["error"] = f"{e0.get('code')}: {e0.get('title') or e0.get('message')}"
                     log.warning(f"WA status failed → {rec}")
-                _WA_STATUS_LOG.append(rec)
-                del _WA_STATUS_LOG[:-30]
+                if st.get("status") in ("failed", "delivered") or rec.get("error"):
+                    rec["at"] = time.strftime("%d/%m %H:%M")
+                    _WA_STATUS_LOG.append(rec)
+                    del _WA_STATUS_LOG[:-60]
+                    _wa_diag_save()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CLAUDE API — פירסור טקסט
@@ -5397,8 +5433,8 @@ def _wa_signing(client, agent, address, link):
                 if wa:
                     try: send_text(wa, msg)
                     except Exception: pass
-            if _d360_on():                                             # API רשמי — לכל מנהל אישית
-                _send_managers(msg, exclude9=agent_phones)
+            if _d360_on():
+                pass   # 30/09 (אייל): חתימה — ללקוח ולסוכן בלבד; המנהל רואה בביזנס מה נשלח
             elif WA_GROUP_SIGNATURES:                                  # Maytapi — לקבוצת "חתימות" של המנהלים
                 try: send_text(WA_GROUP_SIGNATURES, msg)
                 except Exception: pass
@@ -8956,8 +8992,10 @@ def api_wa_log():
     if not s or not _is_dev(s.get("phone", "")):
         return jsonify({"ok": False, "reason": "forbidden"}), 403
     return jsonify({"ok": True, "wa_auto": _wa_auto_on(), "provider": "360dialog" if _d360_on() else "maytapi",
-                    "template_call": WA_TPL_CALL or None, "calls": _WA_CALL_LOG[-15:],
-                    "statuses": _WA_STATUS_LOG[-30:]})
+                    "template_call": WA_TPL_CALL or None,
+                    "persistent_disk": bool(os.environ.get("MAP_CACHE_DIR")),
+                    "seen_calls": len(_seen_calls), "calls": _WA_CALL_LOG[-25:][::-1],
+                    "statuses": _WA_STATUS_LOG[-30:][::-1]})
 
 @app.route("/api/wa/test", methods=["GET", "POST"])
 def api_wa_test():
@@ -10909,9 +10947,11 @@ def check_new_calls():
         _seen_calls = set(keymap.keys())
         _seen_calls_seeded = True
         _calls_seen_save()
+        _wa_call_diag({}, f"seeded: {len(keymap)} existing calls marked seen (no seen-file found) — none sent")
         return
     new_keys = [k for k in keymap.keys() if k not in _seen_calls]
     if len(new_keys) > _CALLS_WA_MAX_BURST:
+        _wa_call_diag({}, f"burst_guard: {len(new_keys)} new at once — none sent")
         _seen_calls |= set(keymap.keys())
         _calls_seen_save()
         log.error(f"calls WA burst guard: {len(new_keys)} new at once — suppressed")
@@ -10919,6 +10959,7 @@ def check_new_calls():
     for k in new_keys:
         r = keymap[k]
         if not _wa_auto_on():   # מושהה — מסמנים כנצפה בלי לשלוח (אין הצפת עבר בהפעלה מחדש)
+            _wa_call_diag(r, "skipped: quiet_hours" if _quiet_hours() else "skipped: wa_auto_off")
             _seen_calls.add(k)
             continue
         try:
@@ -10942,16 +10983,16 @@ def check_new_calls():
                     except Exception: _ok = False
                     _res.append({"to": _w, "ok": _ok, "mode": (_WA_LAST or {}).get("mode"),
                                  "resp": str((_WA_LAST or {}).get("resp", ""))[:160]})
-            _WA_CALL_LOG.append({"at": time.strftime("%d/%m %H:%M"), "agent": str(r.get("agent", "")),
-                                 "caller": str(r.get("caller_phone", "")), "vphone": _vphone9,
-                                 "targets": sorted(_agent_targets), "sent": _res})
-            del _WA_CALL_LOG[:-30]
+            _reason = ("no_phone_for_agent" if not _agent_targets else
+                       "only_virtual_phone (אין נייד אישי לסוכן — נשלח למרכזיה)" if _agent_targets == {_vphone9} else
+                       "sent" if any(x.get("ok") for x in _res) else "send_failed")
+            _wa_call_diag(r, _reason, _agent_targets, _res, _vphone9)
             if _d360_on():
                 pass   # 29/09 (אייל): התראת שיחה — לנייד של הסוכן בלבד, לא למנהלים
             elif WA_GROUP_CALLS:
                 send_text(WA_GROUP_CALLS, _cmsg)           # Maytapi — לקבוצת "שיחות" של המנהלים
-        except Exception:
-            pass
+        except Exception as _ce:
+            _wa_call_diag(r, "error: " + str(_ce)[:120])
         _seen_calls.add(k)
     if new_keys:
         _calls_seen_save()
@@ -10991,6 +11032,7 @@ except Exception:
 def _calls_wa_loop():
     import time as _t
     _calls_seen_load()
+    _wa_diag_load()
     _t.sleep(200)
     while True:
         try: check_new_calls()
