@@ -10438,145 +10438,144 @@ def register(app, G):
         # cache פר-משתמש (90ש') — הבריף רץ על שיחות שנה שלמה; בלי cache כל פתיחת
         # בית/סבב TV בנתה אותו מחדש (נמדד: עד 6ש') ותפסה thread — מקור גלי האיטיות
         _bck = "v2brief:" + (me or "_viewer_") + ":" + str(s.get("role", ""))
-        _bc = G["_cache_get"](_bck, 90)
-        if _bc is not None:
-            return jsonify(_bc)
-        week_ago = time.time() - 7 * 86400
-        import datetime as _dty
-        _yr = _dty.date.today().year
-        year_start = time.mktime(_dty.date(_yr, 1, 1).timetuple())   # מתחילת השנה
-        buyers_all = buyers_me = buyers_total = 0
-        try:
-            for r in G["_fetch_manual_buyers"]():
-                buyers_total += 1   # סה"כ קונים במערכת (ללא סינון תאריך)
-                dt = str(r.get("date", "") or "")
-                m = _re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", dt)
-                if not m:
-                    continue
-                import datetime as _dt2
-                try:
-                    e = _dt2.datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).timestamp()
-                except Exception:
-                    continue
-                if e < week_ago:
-                    continue
-                buyers_all += 1
-                if _canon(r.get("agent", "")) == me:
-                    buyers_me += 1
-        except Exception as _be:
-            if log: log.warning(f"brief buyers failed (tile will show 0): {_be}")
-        calls_all = calls_me = calls_ans_all = 0
-        try:
-            my_phones = set(G["_last9"](x) for x in G["_phones_for_name"](s.get("name", "")))
-            for c in G["web_fetch_raw"]("שיחות"):
-                e = G["_epoch_from_iso"](c.get("received_at", ""))
-                if not e or e < year_start:   # שיחות מתחילת השנה
-                    continue
-                calls_all += 1
-                st = str(c.get("status", "") or "").upper()
-                if ("ANSWER" in st and "NOANSWER" not in st and "NO ANSWER" not in st) or "CALL2CALL" in st:
-                    calls_ans_all += 1
-                if _canon(c.get("agent", "")) == me or G["_last9"](c.get("agent_phone", "")) in my_phones:
-                    calls_me += 1
-        except Exception as _be:
-            if log: log.warning(f"brief calls failed (tile will show 0): {_be}")
-        sigb_all = sigb_me = excl_all = excl_me = 0
-        try:
-            import datetime as _dt3
-            frm = _dt3.date(_dt3.date.today().year, 1, 1).strftime("%d/%m/%Y")   # מתחילת השנה
-            to = _dt3.date.today().strftime("%d/%m/%Y")
-            for g in G["get_signings"](frm, to):
-                lb = G["_deal_label"](g.get("deal_type", ""))
-                mine = _canon(g.get("agent", "")) == me
-                if lb == "קונים":
-                    sigb_all += 1
-                    if mine: sigb_me += 1
-                elif lb == "בלעדיות":
-                    excl_all += 1
-                    if mine: excl_me += 1
-        except Exception as _be:
-            if log: log.warning(f"brief signings failed (tile will show 0): {_be}")
-        # עסקאות שנסגרו מתחילת השנה (מוכר/קונה) — דרך _deals_load של app.py
-        deals_year = 0
-        try:
-            for it in (G["_deals_load"]() or []):
-                if not it.get("deal"):
-                    continue
-                cd = str(it.get("close_date", "") or "")
-                m = _re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", cd)
-                if m and int(m.group(3)) == _yr:
-                    deals_year += 1
-        except Exception as _be:
-            if log: log.warning(f"brief deals failed (tile will show 0): {_be}")
-        # נכסים חמים כלל-משרדיים (כל הסוכנים) — כרטיסי הסטורי אחרי הסיכום
-        hot_props = []
-        hot_buyers = 0
-        try:
-            _sb = _sb_mod()
-            if _sb:
-                rh = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories", headers=_sb._headers(),
-                                   params={"office_id": "eq." + _sb.SB_OFFICE_ID, "active": "eq.true",
-                                           "select": "property_key,title,details,price,description,agent_name,agent_phone,created_at",
-                                           "order": "created_at.desc"}, timeout=10)
-                rh.raise_for_status()
-                for r in (rh.json() or []):
-                    hot_props.append({"key": r.get("property_key") or "", "title": r.get("title") or "",
-                                      "details": r.get("details") or "", "price": r.get("price") or "",
-                                      "desc": r.get("description") or "", "agent": r.get("agent_name") or "",
-                                      "agentPhone": r.get("agent_phone") or "", "ts": r.get("created_at") or ""})
-                # העשרה חיה מנכסי המשרד (01/09) + התאמה למודעה חיה (09/09): ירדה מפרסום או
-                # עברה לסוכן אחר → לא בסטורי, והסימון מנוטרל (best-effort) כדי לפנות מקום ל-2.
-                try:
-                    # 11/09: בלי ניטרול ב-DB — הסתרה בלבד (ירד מפרסום); הסימון של הסוכן נשאר שלו
-                    _prow = G["fetch_sheet_rows"]() or []
-                    hot_props, _stale = y2_hot_reconcile(hot_props, _prow, G["_canon_key"])
-                    # 11/09 (אייל): מודעה שנעלמה מנכסי המשרד ל-3 סריקות משרדים → הסימון מנוטרל
-                    # (מפנה את המכסה לסוכן; ספירה לפי חותמות-סריקה נבדלות, לא לפי בריפים)
-                    _stamp = G["_props_updated"](_prow)
-                    _deact = []
-                    def _hm(cfg):
-                        nonlocal _deact
-                        st, _deact, ch = y2_hot_missing_update(cfg.get("v2_hot_missing") or {}, hot_props, _prow, _stamp)
-                        if ch:
-                            cfg["v2_hot_missing"] = st
-                        return ch
-                    # בדיקה יבשה על הקונפיג מהקאש — נועלים וכותבים רק כשיש מה לשנות
-                    _st0 = (G["_load_config"]().get("v2_hot_missing") or {})
-                    if y2_hot_missing_update(_st0, hot_props, _prow, _stamp)[2]:
-                        _config_mutate(_hm)
-                    if _deact:
-                        for _k in _deact:
-                            _requests.patch(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
-                                            headers={**_sb._headers(), "Content-Type": "application/json"},
-                                            params={"office_id": "eq." + _sb.SB_OFFICE_ID, "property_key": "eq." + _k},
-                                            json={"active": False}, timeout=10)
-                            if log: log.info(f"hot story deactivated (missing {Y2_HOT_MISSING_SCANS} scans): {_k}")
-                        hot_props = [hp for hp in hot_props if str(hp.get("key") or "") not in set(_deact)]
-                except Exception as _he:
-                    if log: log.warning(f"effie brief hot reconcile: {_he}")
-                # קונים חמים (buyers.status=hot) — לסלייד הסיכום
-                try:
-                    rb = _requests.get(_sb.SUPABASE_URL + "/rest/v1/buyers",
-                                       headers={**_sb._headers(), "Prefer": "count=exact"},
-                                       params={"office_id": "eq." + _sb.SB_OFFICE_ID, "status": "eq.hot",
-                                               "select": "id"}, timeout=10)
-                    _cr = rb.headers.get("Content-Range", "")
-                    if "/" in _cr:
-                        hot_buyers = int(_cr.split("/")[-1])
-                except Exception as _be:
-                    if log: log.warning(f"brief hot-buyers count failed: {_be}")
-        except Exception as e:
-            if log: log.warning(f"effie brief hot: {e}")
-        _bout = {"ok": True, "buyersMe": buyers_me, "buyersAll": buyers_all,
-                 "sigBMe": sigb_me, "sigBAll": sigb_all,
-                 "exclMe": excl_me, "exclAll": excl_all,
-                 "callsMe": calls_me, "callsAll": calls_all,
-                 "callsAnsAll": calls_ans_all, "hotBuyers": hot_buyers,
-                 "buyersTotal": buyers_total,
-                 "dealsYear": deals_year,
-                 "hotProps": hot_props}
-        G["_cache_put"](_bck, _bout)
-        return jsonify(_bout)
+        # [PERF-SWR 30/09] ישן אבל מיידי: פג → מוחזר מיד ונבנה מחדש ברקע (נמדד: 7-11ש׳ לבנייה)
+        def _build_brief():
+            week_ago = time.time() - 7 * 86400
+            import datetime as _dty
+            _yr = _dty.date.today().year
+            year_start = time.mktime(_dty.date(_yr, 1, 1).timetuple())   # מתחילת השנה
+            buyers_all = buyers_me = buyers_total = 0
+            try:
+                for r in G["_fetch_manual_buyers"]():
+                    buyers_total += 1   # סה"כ קונים במערכת (ללא סינון תאריך)
+                    dt = str(r.get("date", "") or "")
+                    m = _re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", dt)
+                    if not m:
+                        continue
+                    import datetime as _dt2
+                    try:
+                        e = _dt2.datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).timestamp()
+                    except Exception:
+                        continue
+                    if e < week_ago:
+                        continue
+                    buyers_all += 1
+                    if _canon(r.get("agent", "")) == me:
+                        buyers_me += 1
+            except Exception as _be:
+                if log: log.warning(f"brief buyers failed (tile will show 0): {_be}")
+            calls_all = calls_me = calls_ans_all = 0
+            try:
+                my_phones = set(G["_last9"](x) for x in G["_phones_for_name"](s.get("name", "")))
+                for c in G["web_fetch_raw"]("שיחות"):
+                    e = G["_epoch_from_iso"](c.get("received_at", ""))
+                    if not e or e < year_start:   # שיחות מתחילת השנה
+                        continue
+                    calls_all += 1
+                    st = str(c.get("status", "") or "").upper()
+                    if ("ANSWER" in st and "NOANSWER" not in st and "NO ANSWER" not in st) or "CALL2CALL" in st:
+                        calls_ans_all += 1
+                    if _canon(c.get("agent", "")) == me or G["_last9"](c.get("agent_phone", "")) in my_phones:
+                        calls_me += 1
+            except Exception as _be:
+                if log: log.warning(f"brief calls failed (tile will show 0): {_be}")
+            sigb_all = sigb_me = excl_all = excl_me = 0
+            try:
+                import datetime as _dt3
+                frm = _dt3.date(_dt3.date.today().year, 1, 1).strftime("%d/%m/%Y")   # מתחילת השנה
+                to = _dt3.date.today().strftime("%d/%m/%Y")
+                for g in G["get_signings"](frm, to):
+                    lb = G["_deal_label"](g.get("deal_type", ""))
+                    mine = _canon(g.get("agent", "")) == me
+                    if lb == "קונים":
+                        sigb_all += 1
+                        if mine: sigb_me += 1
+                    elif lb == "בלעדיות":
+                        excl_all += 1
+                        if mine: excl_me += 1
+            except Exception as _be:
+                if log: log.warning(f"brief signings failed (tile will show 0): {_be}")
+            # עסקאות שנסגרו מתחילת השנה (מוכר/קונה) — דרך _deals_load של app.py
+            deals_year = 0
+            try:
+                for it in (G["_deals_load"]() or []):
+                    if not it.get("deal"):
+                        continue
+                    cd = str(it.get("close_date", "") or "")
+                    m = _re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", cd)
+                    if m and int(m.group(3)) == _yr:
+                        deals_year += 1
+            except Exception as _be:
+                if log: log.warning(f"brief deals failed (tile will show 0): {_be}")
+            # נכסים חמים כלל-משרדיים (כל הסוכנים) — כרטיסי הסטורי אחרי הסיכום
+            hot_props = []
+            hot_buyers = 0
+            try:
+                _sb = _sb_mod()
+                if _sb:
+                    rh = _requests.get(_sb.SUPABASE_URL + "/rest/v1/hot_stories", headers=_sb._headers(),
+                                       params={"office_id": "eq." + _sb.SB_OFFICE_ID, "active": "eq.true",
+                                               "select": "property_key,title,details,price,description,agent_name,agent_phone,created_at",
+                                               "order": "created_at.desc"}, timeout=10)
+                    rh.raise_for_status()
+                    for r in (rh.json() or []):
+                        hot_props.append({"key": r.get("property_key") or "", "title": r.get("title") or "",
+                                          "details": r.get("details") or "", "price": r.get("price") or "",
+                                          "desc": r.get("description") or "", "agent": r.get("agent_name") or "",
+                                          "agentPhone": r.get("agent_phone") or "", "ts": r.get("created_at") or ""})
+                    # העשרה חיה מנכסי המשרד (01/09) + התאמה למודעה חיה (09/09): ירדה מפרסום או
+                    # עברה לסוכן אחר → לא בסטורי, והסימון מנוטרל (best-effort) כדי לפנות מקום ל-2.
+                    try:
+                        # 11/09: בלי ניטרול ב-DB — הסתרה בלבד (ירד מפרסום); הסימון של הסוכן נשאר שלו
+                        _prow = G["fetch_sheet_rows"]() or []
+                        hot_props, _stale = y2_hot_reconcile(hot_props, _prow, G["_canon_key"])
+                        # 11/09 (אייל): מודעה שנעלמה מנכסי המשרד ל-3 סריקות משרדים → הסימון מנוטרל
+                        # (מפנה את המכסה לסוכן; ספירה לפי חותמות-סריקה נבדלות, לא לפי בריפים)
+                        _stamp = G["_props_updated"](_prow)
+                        _deact = []
+                        def _hm(cfg):
+                            nonlocal _deact
+                            st, _deact, ch = y2_hot_missing_update(cfg.get("v2_hot_missing") or {}, hot_props, _prow, _stamp)
+                            if ch:
+                                cfg["v2_hot_missing"] = st
+                            return ch
+                        # בדיקה יבשה על הקונפיג מהקאש — נועלים וכותבים רק כשיש מה לשנות
+                        _st0 = (G["_load_config"]().get("v2_hot_missing") or {})
+                        if y2_hot_missing_update(_st0, hot_props, _prow, _stamp)[2]:
+                            _config_mutate(_hm)
+                        if _deact:
+                            for _k in _deact:
+                                _requests.patch(_sb.SUPABASE_URL + "/rest/v1/hot_stories",
+                                                headers={**_sb._headers(), "Content-Type": "application/json"},
+                                                params={"office_id": "eq." + _sb.SB_OFFICE_ID, "property_key": "eq." + _k},
+                                                json={"active": False}, timeout=10)
+                                if log: log.info(f"hot story deactivated (missing {Y2_HOT_MISSING_SCANS} scans): {_k}")
+                            hot_props = [hp for hp in hot_props if str(hp.get("key") or "") not in set(_deact)]
+                    except Exception as _he:
+                        if log: log.warning(f"effie brief hot reconcile: {_he}")
+                    # קונים חמים (buyers.status=hot) — לסלייד הסיכום
+                    try:
+                        rb = _requests.get(_sb.SUPABASE_URL + "/rest/v1/buyers",
+                                           headers={**_sb._headers(), "Prefer": "count=exact"},
+                                           params={"office_id": "eq." + _sb.SB_OFFICE_ID, "status": "eq.hot",
+                                                   "select": "id"}, timeout=10)
+                        _cr = rb.headers.get("Content-Range", "")
+                        if "/" in _cr:
+                            hot_buyers = int(_cr.split("/")[-1])
+                    except Exception as _be:
+                        if log: log.warning(f"brief hot-buyers count failed: {_be}")
+            except Exception as e:
+                if log: log.warning(f"effie brief hot: {e}")
+            _bout = {"ok": True, "buyersMe": buyers_me, "buyersAll": buyers_all,
+                     "sigBMe": sigb_me, "sigBAll": sigb_all,
+                     "exclMe": excl_me, "exclAll": excl_all,
+                     "callsMe": calls_me, "callsAll": calls_all,
+                     "callsAnsAll": calls_ans_all, "hotBuyers": hot_buyers,
+                     "buyersTotal": buyers_total,
+                     "dealsYear": deals_year,
+                     "hotProps": hot_props}
+            return _bout
+        return jsonify(G["_swr"](_bck, 90, _build_brief))
 
     # ── הנהלת חשבונות: חשבוניות (Supabase) + איתור לקוח→סוכן ────────────────
     _INV_ROLES = ("accountant", "manager", "developer")

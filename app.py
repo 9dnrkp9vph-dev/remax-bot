@@ -1537,6 +1537,44 @@ def _cache_clear(key):
     with _TTL_LOCK:
         _TTL_CACHE.pop(key, None)
 
+# [PERF-SWR 30/09] "ישן אבל מיידי" לבניות כבדות (דוח שבועי 5-73ש׳, בריף 7-11ש׳ — נמדד 29-30/09).
+# טרי → מוחזר. פג אבל לא ישן מדי → מוחזר מיד + בנייה חדשה ב-thread רקע (לכל היותר אחת לכל מפתח).
+# אין עותק בכלל (או ישן מ-max_stale) → בנייה רגילה בתוך הבקשה, כמו קודם.
+_SWR_BUSY = set()
+_SWR_LOCK = _threading.Lock()
+def _swr(key, ttl, build, max_stale=1800):
+    with _TTL_LOCK:
+        e = _TTL_CACHE.get(key)
+    now = time.time()
+    if e and (now - e[0]) < ttl:
+        return e[1]
+    if e and (now - e[0]) < max_stale:
+        with _SWR_LOCK:
+            start = key not in _SWR_BUSY
+            if start:
+                _SWR_BUSY.add(key)
+        if start:
+            def _bg():
+                try:
+                    v = build()
+                    if v is not None:
+                        _cache_put(key, v)
+                except Exception as _e:
+                    log.warning(f"swr rebuild failed ({key}): {_e}")
+                finally:
+                    with _SWR_LOCK:
+                        _SWR_BUSY.discard(key)
+            try:
+                _threading.Thread(target=_bg, daemon=True, name="swr").start()
+            except Exception:
+                with _SWR_LOCK:
+                    _SWR_BUSY.discard(key)
+        return e[1]
+    v = build()
+    if v is not None:
+        _cache_put(key, v)
+    return v
+
 def fetch_sheet_rows() -> list:
     c = _cache_get('sheet_rows', _src_ttl(PROPS_SOURCE, 60, 90))
     if c is not None:
@@ -6882,162 +6920,165 @@ def api_report():
         eff_phones = (eff_phones or set()) | tphones
         eff_keys = tkeys
         scope = scope + " (צוות)"
-    _rk = "report:%s:%s:%s" % (period, sel_month, scope)
-    _rc = _cache_get(_rk, 120)
-    if _rc is not None:
-        return jsonify(_rc)
-    insights = []
-    try:
-        # שליפות מקבילות: הסיכום המרכזי והמקורות האיטיים (נכסים/בלעדויות/נכס נולד)
-        # רצים יחד — הזמן הכולל הוא האיטי שבהם, לא הסכום של כולם
-        from concurrent.futures import ThreadPoolExecutor as _TPE
-        with _TPE(max_workers=3) as _rex:
-            _f_sheet = _rex.submit(fetch_sheet_rows)
-            _f_excl = _rex.submit(fetch_external_exclusives) if s["role"] in ("admin", "coordinator") else None
-            _f_nb = _rex.submit(fetch_newborn) if s["role"] in ("admin", "coordinator") else None
-            sm = _web_org_summary(frm, to, eff_name, eff_phones, eff_keys)
-        try:   # ספירת "מודעות" — אותו מקור של "נכסים במשרד" (יד2): סוכן=שלו, מנהל=סה"כ
-            _lr = _f_sheet.result()
-            if eff_keys:
-                listings_total = sum(1 for r in _lr if _row_owned(r, eff_keys, eff_phones or set()))
-            elif eff_name:
-                listings_total = sum(1 for r in _lr if _agent_owns_row(r, eff_name, eff_phones or set()))
-            else:
-                listings_total = len(_lr)
-        except Exception:
-            listings_total = 0
-        shtaf = []; shtaf_total = 0; shtaf_offices = 0   # גיוס נכסים בשת״פ — פילוח לפי משרד (למנהל/רכז)
-        if s["role"] in ("admin", "coordinator"):
-            try:
-                _se = start.timestamp(); _ee = end.timestamp() + 86400
-                _by = {}
-                for _r in _dedupe_exclusives(_f_excl.result() if _f_excl else []):
-                    _ep = _excl_epoch(_r.get("received_at", ""))
-                    if _ep and _se <= _ep < _ee:
-                        _raw = (str(_r.get("office", "") or "").strip() or "ללא שם משרד")
-                        _off = "RE/MAX Family" if _is_our_office(_raw) else _raw   # אחד את כל הווריאציות שלנו
-                        _by[_off] = _by.get(_off, 0) + 1
-                _full = sorted([{"office": k, "count": v} for k, v in _by.items()], key=lambda x: -x["count"])
-                shtaf_total = sum(o["count"] for o in _full)
-                shtaf_offices = len(_full)
-                shtaf = _full[:10]   # רק 10 המובילים
-            except Exception:
-                shtaf = []; shtaf_total = 0; shtaf_offices = 0
-        nb_cities = []; nb_total = 0   # נכס נולד — פילוח לפי ערים לפי התקופה שנבחרה (למנהל/רכז)
-        if s["role"] in ("admin", "coordinator"):
-            try:
-                _nse = start.timestamp(); _nee = end.timestamp() + 86400
-                _bc = {}
-                for _r in (_f_nb.result() if _f_nb else []):
-                    _ep = _newborn_created_epoch(_r)
-                    if _ep and _nse <= _ep < _nee:
-                        nb_total += 1
-                        _ct = _detect_city(_r.get("רחוב1", "") or _r.get("רחוב", "") or _r.get("עיר", ""))
-                        _bc[_ct] = _bc.get(_ct, 0) + 1
-                nb_cities = sorted(({"city": k, "n": v} for k, v in _bc.items()), key=lambda x: -x["n"])
-            except Exception:
-                nb_cities = []; nb_total = 0
-        if eff_name:
-            _delta = end - start
-            _pe = start - timedelta(days=1)
-            _ps = _pe - _delta
-            insights = _agent_insights(frm, to, _ps.strftime("%d/%m/%Y"), _pe.strftime("%d/%m/%Y"), eff_name, eff_phones, sm, eff_keys)
-        wa = _report_wa_text(sm, label + " · " + scope, frm, to)
-        if listings_total:
-            wa = wa + "\n\n📋 *מודעות פעילות:* " + str(listings_total)
-        if insights:
-            wa = "📊 *תובנות:*\n" + "\n".join(insights) + "\n\n" + wa
-        if shtaf:
-            _lines = "\n".join((("🏠 " if _is_our_office(o["office"]) else "• ") + o["office"] + ": " + str(o["count"]))
-                               for o in shtaf)
-            _note = (' · מציג 10 מובילים' if shtaf_offices > 10 else '')
-            wa = wa + '\n\n🤝 *גיוס נכסים בשת"פ — ' + label + '* (סה"כ ' + str(shtaf_total) + ' נכסים, ' + str(shtaf_offices) + ' משרדים' + _note + ')\n' + _lines
-        if nb_cities:
-            _ncl = "\n".join("• " + cc["city"] + ": " + str(cc["n"]) for cc in nb_cities)
-            wa = wa + '\n\n🏙️ *נכס נולד לפי ערים* (סה"כ ' + str(nb_total) + ' נכסים)\n' + _ncl
-        wa = wa + "\n\n_הופק מ-Family Bot 🏠_"
-        # טבלת פגישות ופולו-אפ מ"נכס נולד" — לפי הסטטוסים שנשמרו, בהתאם להיקף הדוח
-        meetings = []
+    # [PERF-SWR 30/09] התפקיד במפתח: מנהל ומתאמת חלקו את "כל המשרד" (לתוכן שונה — meetMgr למנהל בלבד)
+    _rk = "report:%s:%s:%s:%s" % (period, sel_month, scope, s.get("role", ""))
+    def _build_report():
+        insights = []
         try:
-            _allowed = None
-            if eff_name:
-                _allowed = {_canon_key(eff_name)}
-                if eff_keys: _allowed |= set(eff_keys)
-            for _st in (_nb_statuses() or {}).values():
-                if _st.get("status") not in ("meeting", "followup"): continue
-                if _allowed is not None and _canon_key(_st.get("agent", "")) not in _allowed: continue
-                meetings.append({"status": _st.get("status"),
-                                 "label": _NB_STATUS_LABELS.get(_st.get("status"), ""),
-                                 "date": _st.get("date", ""), "agent": _st.get("agent", ""),
-                                 "addr": _st.get("addr", "")})
-            meetings.sort(key=lambda x: str(x.get("date", "")))
-        except Exception:
-            meetings = []
-        # חתך מנהל: פגישות בלבד (בלי פולו-אפ) של כל המשרד, מקובצות לפי מי שתיאם
-        # (המתאם ב-'by' — נופל לסוכן ברשומות ישנות). מספרים + נכסים לפירוט בלחיצה.
-        # רק בדוח מלא (מנהל/כל המשרד); מסונן לפי תאריך הפגישה בתוך התקופה. בקשת אייל 13/07.
-        meet_mgr = []
-        if s["role"] == "admin" and not eff_name:   # דוח מנהל מלא בלבד (לא דרך "as", לא מתאמת)
-            try:
-                _grp = {}
-                for _st in (_nb_statuses() or {}).values():
-                    if _st.get("status") != "meeting":   # פגישות בלבד
-                        continue
-                    _md = None
-                    _mm = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", str(_st.get("date", "") or ""))
-                    if _mm:
-                        try:
-                            from datetime import date as _date
-                            _md = _date(int(_mm.group(1)), int(_mm.group(2)), int(_mm.group(3)))
-                        except Exception:
-                            _md = None
-                    if _md is not None and not (start.date() <= _md <= end.date()):
-                        continue   # פגישה מחוץ לתקופה (רשומה בלי תאריך תקין — נכללת)
-                    _who = (str(_st.get("by", "") or "").strip()
-                            or str(_st.get("agent", "") or "").strip() or "—")
-                    g = _grp.setdefault(_who, {"by": _who, "count": 0, "items": []})
-                    g["count"] += 1
-                    g["items"].append({"addr": _st.get("addr", ""), "date": _st.get("date", ""),
-                                       "agent": _st.get("agent", "")})
-                for g in _grp.values():
-                    g["items"].sort(key=lambda x: str(x.get("date", "")))
-                meet_mgr = sorted(_grp.values(), key=lambda x: -x["count"])
-            except Exception:
-                meet_mgr = []
-        # 5 המובילים בעסקאות (מהמאגר המקומי) — לפי מספר צדדים, עסקאות שנסגרו בתקופה
-        top_deals = []
-        try:
-            from collections import Counter as _Counter
-            _dc = _Counter()
-            _office_keys = _office_agent_keys()
-            for _it in _deals_load():
-                if not _it.get("deal"): continue
-                try:
-                    _dd = datetime.strptime(str(_it.get("close_date", "") or "")[:10], "%d/%m/%Y").date()
-                except Exception:
-                    continue
-                if not (start.date() <= _dd <= end.date()): continue
-                _ags = [a for a in (_it.get("agents") or []) if a and _canon_key(a) in _office_keys]
-                if not _ags: continue   # רק סוכני המשרד — מתווך חיצוני לא נספר
-                if _it.get("side1") == "מוכר וקונה":
-                    _dc[_ags[0]] += 2
+            # שליפות מקבילות: הסיכום המרכזי והמקורות האיטיים (נכסים/בלעדויות/נכס נולד)
+            # רצים יחד — הזמן הכולל הוא האיטי שבהם, לא הסכום של כולם
+            from concurrent.futures import ThreadPoolExecutor as _TPE
+            with _TPE(max_workers=3) as _rex:
+                _f_sheet = _rex.submit(fetch_sheet_rows)
+                _f_excl = _rex.submit(fetch_external_exclusives) if s["role"] in ("admin", "coordinator") else None
+                _f_nb = _rex.submit(fetch_newborn) if s["role"] in ("admin", "coordinator") else None
+                sm = _web_org_summary(frm, to, eff_name, eff_phones, eff_keys)
+            try:   # ספירת "מודעות" — אותו מקור של "נכסים במשרד" (יד2): סוכן=שלו, מנהל=סה"כ
+                _lr = _f_sheet.result()
+                if eff_keys:
+                    listings_total = sum(1 for r in _lr if _row_owned(r, eff_keys, eff_phones or set()))
+                elif eff_name:
+                    listings_total = sum(1 for r in _lr if _agent_owns_row(r, eff_name, eff_phones or set()))
                 else:
-                    for _a in _ags:
-                        _dc[_a] += 1
-            top_deals = [{"name": n, "n": c} for n, c in _dc.most_common(10)]
-        except Exception:
+                    listings_total = len(_lr)
+            except Exception:
+                listings_total = 0
+            shtaf = []; shtaf_total = 0; shtaf_offices = 0   # גיוס נכסים בשת״פ — פילוח לפי משרד (למנהל/רכז)
+            if s["role"] in ("admin", "coordinator"):
+                try:
+                    _se = start.timestamp(); _ee = end.timestamp() + 86400
+                    _by = {}
+                    for _r in _dedupe_exclusives(_f_excl.result() if _f_excl else []):
+                        _ep = _excl_epoch(_r.get("received_at", ""))
+                        if _ep and _se <= _ep < _ee:
+                            _raw = (str(_r.get("office", "") or "").strip() or "ללא שם משרד")
+                            _off = "RE/MAX Family" if _is_our_office(_raw) else _raw   # אחד את כל הווריאציות שלנו
+                            _by[_off] = _by.get(_off, 0) + 1
+                    _full = sorted([{"office": k, "count": v} for k, v in _by.items()], key=lambda x: -x["count"])
+                    shtaf_total = sum(o["count"] for o in _full)
+                    shtaf_offices = len(_full)
+                    shtaf = _full[:10]   # רק 10 המובילים
+                except Exception:
+                    shtaf = []; shtaf_total = 0; shtaf_offices = 0
+            nb_cities = []; nb_total = 0   # נכס נולד — פילוח לפי ערים לפי התקופה שנבחרה (למנהל/רכז)
+            if s["role"] in ("admin", "coordinator"):
+                try:
+                    _nse = start.timestamp(); _nee = end.timestamp() + 86400
+                    _bc = {}
+                    for _r in (_f_nb.result() if _f_nb else []):
+                        _ep = _newborn_created_epoch(_r)
+                        if _ep and _nse <= _ep < _nee:
+                            nb_total += 1
+                            _ct = _detect_city(_r.get("רחוב1", "") or _r.get("רחוב", "") or _r.get("עיר", ""))
+                            _bc[_ct] = _bc.get(_ct, 0) + 1
+                    nb_cities = sorted(({"city": k, "n": v} for k, v in _bc.items()), key=lambda x: -x["n"])
+                except Exception:
+                    nb_cities = []; nb_total = 0
+            if eff_name:
+                _delta = end - start
+                _pe = start - timedelta(days=1)
+                _ps = _pe - _delta
+                insights = _agent_insights(frm, to, _ps.strftime("%d/%m/%Y"), _pe.strftime("%d/%m/%Y"), eff_name, eff_phones, sm, eff_keys)
+            wa = _report_wa_text(sm, label + " · " + scope, frm, to)
+            if listings_total:
+                wa = wa + "\n\n📋 *מודעות פעילות:* " + str(listings_total)
+            if insights:
+                wa = "📊 *תובנות:*\n" + "\n".join(insights) + "\n\n" + wa
+            if shtaf:
+                _lines = "\n".join((("🏠 " if _is_our_office(o["office"]) else "• ") + o["office"] + ": " + str(o["count"]))
+                                   for o in shtaf)
+                _note = (' · מציג 10 מובילים' if shtaf_offices > 10 else '')
+                wa = wa + '\n\n🤝 *גיוס נכסים בשת"פ — ' + label + '* (סה"כ ' + str(shtaf_total) + ' נכסים, ' + str(shtaf_offices) + ' משרדים' + _note + ')\n' + _lines
+            if nb_cities:
+                _ncl = "\n".join("• " + cc["city"] + ": " + str(cc["n"]) for cc in nb_cities)
+                wa = wa + '\n\n🏙️ *נכס נולד לפי ערים* (סה"כ ' + str(nb_total) + ' נכסים)\n' + _ncl
+            wa = wa + "\n\n_הופק מ-Family Bot 🏠_"
+            # טבלת פגישות ופולו-אפ מ"נכס נולד" — לפי הסטטוסים שנשמרו, בהתאם להיקף הדוח
+            meetings = []
+            try:
+                _allowed = None
+                if eff_name:
+                    _allowed = {_canon_key(eff_name)}
+                    if eff_keys: _allowed |= set(eff_keys)
+                for _st in (_nb_statuses() or {}).values():
+                    if _st.get("status") not in ("meeting", "followup"): continue
+                    if _allowed is not None and _canon_key(_st.get("agent", "")) not in _allowed: continue
+                    meetings.append({"status": _st.get("status"),
+                                     "label": _NB_STATUS_LABELS.get(_st.get("status"), ""),
+                                     "date": _st.get("date", ""), "agent": _st.get("agent", ""),
+                                     "addr": _st.get("addr", "")})
+                meetings.sort(key=lambda x: str(x.get("date", "")))
+            except Exception:
+                meetings = []
+            # חתך מנהל: פגישות בלבד (בלי פולו-אפ) של כל המשרד, מקובצות לפי מי שתיאם
+            # (המתאם ב-'by' — נופל לסוכן ברשומות ישנות). מספרים + נכסים לפירוט בלחיצה.
+            # רק בדוח מלא (מנהל/כל המשרד); מסונן לפי תאריך הפגישה בתוך התקופה. בקשת אייל 13/07.
+            meet_mgr = []
+            if s["role"] == "admin" and not eff_name:   # דוח מנהל מלא בלבד (לא דרך "as", לא מתאמת)
+                try:
+                    _grp = {}
+                    for _st in (_nb_statuses() or {}).values():
+                        if _st.get("status") != "meeting":   # פגישות בלבד
+                            continue
+                        _md = None
+                        _mm = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", str(_st.get("date", "") or ""))
+                        if _mm:
+                            try:
+                                from datetime import date as _date
+                                _md = _date(int(_mm.group(1)), int(_mm.group(2)), int(_mm.group(3)))
+                            except Exception:
+                                _md = None
+                        if _md is not None and not (start.date() <= _md <= end.date()):
+                            continue   # פגישה מחוץ לתקופה (רשומה בלי תאריך תקין — נכללת)
+                        _who = (str(_st.get("by", "") or "").strip()
+                                or str(_st.get("agent", "") or "").strip() or "—")
+                        g = _grp.setdefault(_who, {"by": _who, "count": 0, "items": []})
+                        g["count"] += 1
+                        g["items"].append({"addr": _st.get("addr", ""), "date": _st.get("date", ""),
+                                           "agent": _st.get("agent", "")})
+                    for g in _grp.values():
+                        g["items"].sort(key=lambda x: str(x.get("date", "")))
+                    meet_mgr = sorted(_grp.values(), key=lambda x: -x["count"])
+                except Exception:
+                    meet_mgr = []
+            # 5 המובילים בעסקאות (מהמאגר המקומי) — לפי מספר צדדים, עסקאות שנסגרו בתקופה
             top_deals = []
-        _resp = {"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
-                 "insights": insights, "summary": sm, "listings": listings_total,
-                 "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices,
-                 "top_deals": top_deals,
-                 "nbCities": nb_cities, "nbTotal": nb_total, "meetings": meetings,
-                 "meetMgr": meet_mgr, "meetMgrTotal": sum(g["count"] for g in meet_mgr), "wa_text": wa}
-        _cache_put(_rk, _resp)
-        return jsonify(_resp)
+            try:
+                from collections import Counter as _Counter
+                _dc = _Counter()
+                _office_keys = _office_agent_keys()
+                for _it in _deals_load():
+                    if not _it.get("deal"): continue
+                    try:
+                        _dd = datetime.strptime(str(_it.get("close_date", "") or "")[:10], "%d/%m/%Y").date()
+                    except Exception:
+                        continue
+                    if not (start.date() <= _dd <= end.date()): continue
+                    _ags = [a for a in (_it.get("agents") or []) if a and _canon_key(a) in _office_keys]
+                    if not _ags: continue   # רק סוכני המשרד — מתווך חיצוני לא נספר
+                    if _it.get("side1") == "מוכר וקונה":
+                        _dc[_ags[0]] += 2
+                    else:
+                        for _a in _ags:
+                            _dc[_a] += 1
+                top_deals = [{"name": n, "n": c} for n, c in _dc.most_common(10)]
+            except Exception:
+                top_deals = []
+            _resp = {"ok": True, "label": label, "scope": scope, "from": frm, "to": to,
+                     "insights": insights, "summary": sm, "listings": listings_total,
+                     "shtaf": shtaf, "shtaf_total": shtaf_total, "shtaf_offices": shtaf_offices,
+                     "top_deals": top_deals,
+                     "nbCities": nb_cities, "nbTotal": nb_total, "meetings": meetings,
+                     "meetMgr": meet_mgr, "meetMgrTotal": sum(g["count"] for g in meet_mgr), "wa_text": wa}
+            return _resp
+        except Exception as e:
+            log.error(f"report error: {e}", exc_info=True)
+            raise
+    try:
+        return jsonify(_swr(_rk, 120, _build_report))   # ישן אבל מיידי; בנייה חדשה ברקע
     except Exception as e:
-        log.error(f"report error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
 
 # ── Property search ────────────────────────────────────────────────────────────
 @app.route("/api/search/properties", methods=["POST"])
