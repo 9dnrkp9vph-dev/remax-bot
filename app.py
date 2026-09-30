@@ -7251,14 +7251,76 @@ def _price_digits(p):
 # שנרשמו לפני הרגע הזה נזרקים. תגים אמיתיים מכאן והלאה חיים 7 ימים כרגיל.
 _PC_FLUSH_BEFORE = 1788260400   # 01/09/2026 14:00 IL
 CONFIG_SHEET_BACKUP = (os.environ.get("CONFIG_SHEET_BACKUP", "1") or "1").strip() not in ("0", "false", "off")
-_PRICE_SCAN = {"ts": 0.0}
+_PRICE_SCAN = {"ts": 0.0, "running": False, "last_s": None, "last_write": None}
+_PRICE_SCAN_LOCK = _threading.Lock()
+PRICE_SCAN_INTERVAL = 120
+
 def _scan_price_changes():
-    """משווה מחירי נכסים נוכחיים לסנאפשוט הקודם (בקונפיג); מחיר שהשתנה → רושם חותמת זמן.
-    Throttle 120ש' (עומס זניח); כתיבה durable רק כשמשהו באמת השתנה. תג 'עדכון מחיר' 7 ימים."""
+    """[PERF 30/09] הפעלה לא-חוסמת של סריקת המחירים. נקרא מתוך בקשות (נכסים/שלי/שת"פ/נכס נולד).
+    עד היום הסריקה רצה *בתוך* הבקשה: כל 2 דק' משתמש אחד חיכה 4-21ש' (סריקת ~3,600 נכסים,
+    קריאה טרייה של כל הקונפיג, deepcopy, כתיבה, ולפעמים גיבוי לגיליון) — נמדד 29/09 ב'נכסים שלי'
+    שממנו הבית ממתין. עכשיו: מתוזמן ב-thread רקע (לכל היותר אחד בכל רגע, לכל היותר פעם ב-2 דק'),
+    והבקשה ממשיכה מיד עם התגים הקיימים. תג חדש מופיע בבקשה שאחרי הסריקה (שניות)."""
     now = time.time()
-    if now - _PRICE_SCAN["ts"] < 120:
-        return
-    _PRICE_SCAN["ts"] = now
+    with _PRICE_SCAN_LOCK:
+        if _PRICE_SCAN["running"] or now - _PRICE_SCAN["ts"] < PRICE_SCAN_INTERVAL:
+            return False
+        _PRICE_SCAN["ts"] = now
+        _PRICE_SCAN["running"] = True
+    def _bg():
+        t0 = time.time()
+        try:
+            _price_scan_run(t0)
+        except Exception as _e:
+            log.warning(f"price scan bg failed: {_e}")
+        finally:
+            _PRICE_SCAN["last_s"] = round(time.time() - t0, 2)
+            _PRICE_SCAN["running"] = False
+    try:
+        _threading.Thread(target=_bg, daemon=True, name="price-scan").start()
+    except Exception as _te:
+        _PRICE_SCAN["running"] = False
+        log.warning(f"price scan thread start failed: {_te}")
+        return False
+    return True
+
+def _price_scan_merge(cfg, cur, now):
+    """הלוגיקה הטהורה של הסריקה: מעדכן snap/changes/drops ב-cfg לפי המחירים הנוכחיים cur."""
+    snap = dict(cfg.get("v2_price_snap") or {})
+    changes = dict(cfg.get("v2_price_changes") or {})
+    drops = dict(cfg.get("v2_price_drops") or {})   # ירידת מחיר (אייל 09/09) — תג נפרד
+    for k, pn in cur.items():
+        old = snap.get(k)
+        if old is not None and old != pn:   # מחיר השתנה (לא מופע ראשון) → תג
+            changes[k] = int(now)
+            try:
+                if int(pn) < int(old):
+                    prev = drops.get(k)
+                    # ירידה על ירידה בתוך החלון — המחיר "לפני" נשאר המקורי (הגבוה)
+                    drops[k] = {"ts": int(now), "old": (prev.get("old") if isinstance(prev, dict) else None) or old}
+                else:
+                    drops.pop(k, None)   # עלייה — מבטלת תג ירידה קודם
+            except Exception:
+                pass
+        snap[k] = pn
+    cutoff = max(int(now) - 7 * 86400, _PC_FLUSH_BEFORE)
+    changes = {k: v for k, v in changes.items() if (v or 0) >= cutoff}   # גיזום >7 יום + שטיפת גל-השווא
+    drops = {k: v for k, v in drops.items() if ((v.get("ts") if isinstance(v, dict) else v) or 0) >= cutoff}
+    cfg["v2_price_snap"] = snap
+    cfg["v2_price_changes"] = changes
+    cfg["v2_price_drops"] = drops
+
+def _price_scan_needs_write(cfg, cur, now):
+    """בדיקה יבשה על הקונפיג שבמטמון: האם הסריקה תשנה משהו? בלי שינוי → אין קריאה טרייה,
+    אין deepcopy ואין כתיבה (רוב הסבבים בין מודעה חדשה לבאה)."""
+    probe = {k: cfg.get(k) for k in ("v2_price_snap", "v2_price_changes", "v2_price_drops")}
+    before = {k: (dict(v) if isinstance(v, dict) else v) for k, v in probe.items()}
+    _price_scan_merge(probe, cur, now)
+    return any((probe.get(k) or {}) != (before.get(k) or {}) for k in probe)
+
+def _price_scan_run(now=None):
+    """הסריקה עצמה (רצה ב-thread רקע מ-_scan_price_changes)."""
+    now = now or time.time()
     try:
         rows = fetch_sheet_rows()
     except Exception:
@@ -7285,32 +7347,15 @@ def _scan_price_changes():
         log.warning(f"price scan (newborn) skipped: {_e}")
     if not cur:
         return
-    def _mut(cfg):
-        snap = dict(cfg.get("v2_price_snap") or {})
-        changes = dict(cfg.get("v2_price_changes") or {})
-        drops = dict(cfg.get("v2_price_drops") or {})   # ירידת מחיר (אייל 09/09) — תג נפרד
-        for k, pn in cur.items():
-            old = snap.get(k)
-            if old is not None and old != pn:   # מחיר השתנה (לא מופע ראשון) → תג
-                changes[k] = int(now)
-                try:
-                    if int(pn) < int(old):
-                        prev = drops.get(k)
-                        # ירידה על ירידה בתוך החלון — המחיר "לפני" נשאר המקורי (הגבוה)
-                        drops[k] = {"ts": int(now), "old": (prev.get("old") if isinstance(prev, dict) else None) or old}
-                    else:
-                        drops.pop(k, None)   # עלייה — מבטלת תג ירידה קודם
-                except Exception:
-                    pass
-            snap[k] = pn
-        cutoff = max(int(now) - 7 * 86400, _PC_FLUSH_BEFORE)
-        changes = {k: v for k, v in changes.items() if (v or 0) >= cutoff}   # גיזום >7 יום + שטיפת גל-השווא
-        drops = {k: v for k, v in drops.items() if ((v.get("ts") if isinstance(v, dict) else v) or 0) >= cutoff}
-        cfg["v2_price_snap"] = snap
-        cfg["v2_price_changes"] = changes
-        cfg["v2_price_drops"] = drops
     try:
-        _config_mutate(_mut)
+        if not _price_scan_needs_write(_load_config() or {}, cur, now):
+            _PRICE_SCAN["last_write"] = False
+            return
+    except Exception as _pe:
+        log.warning(f"price scan dry-check failed (writing anyway): {_pe}")
+    try:
+        _config_mutate(lambda cfg: _price_scan_merge(cfg, cur, now))
+        _PRICE_SCAN["last_write"] = True
     except Exception as _e:
         log.warning(f"price scan failed: {_e}")
 

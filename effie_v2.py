@@ -1227,63 +1227,110 @@ var M = {ready:false, name:'', calls:0, sigs:0, sigSample:null, buyersNew:0, buy
    (הבית טוען פעם אחת; ב-iOS חזרה מהרקע לא טוענת את הדף מחדש). התיקון: כשל → עד
    3 ניסיונות חוזרים כל 6ש'; חזרה מהרקע כשהנתונים בני 90ש'+ → רענון שקט. */
 var LD_TRY = 0, LD_TS = 0;
-function loadData(){
-  var ldFailed = false;
-  var LDF = function(){ ldFailed = true; return {}; };
-  return Promise.all([
-    GET('/api/report?period=week').catch(LDF),
-    GET('/api/my/buyers').catch(LDF),
-    GET('/api/my/properties').catch(LDF),
-    GET('/api/signatures').catch(LDF),
-    GET('/api/newborn/meetings').catch(LDF),
-    GET('/v2/api/sign/drafts').catch(LDF)
-  ]).then(function(rs){
-    if (ldFailed && LD_TRY < 3){ LD_TRY++; setTimeout(loadData, 6000); }
-    else if (!ldFailed){ LD_TRY = 0; LD_TS = Date.now(); }
-    // גיוסים ב-7 הימים האחרונים — כל החתמת בעל נכס (בלעדיות או מוכר), בלי כפילויות
-    var wk7 = Math.floor(Date.now() / 1000) - 7 * 86400;
-    var seen = {};
-    M.exclWeek = (((rs[3] || {}).signatures) || []).filter(function(g){
-      var t = g.type || '';
-      if (!((t.indexOf('בלעדיות') >= 0 || t.indexOf('מוכר') >= 0) && (g.ts || 0) >= wk7)) return false;
-      var k = (g.address || '') + '|' + (g.client || '');
-      if (seen[k]) return false;
-      seen[k] = 1;
-      return true;
-    });
-    var rep = rs[0] || {}, sm = rep.summary || {};
-    M.calls = (sm.calls || {}).total || 0;
-    M.sigs = (sm.sigs || {}).total || 0;
-    M.sigSample = (sm.sigsList && sm.sigsList[0]) || null;
-    M.excl = (sm.exclusives || []).length;   // נכסים שגויסו בבלעדיות בתקופת הדוח
-    M.repLabel = rep.label || 'השבוע';
-    M.listings = rep.listings || 0;
-    // אותו סינון של מסך היומן — לדוח יש סקופ אחר למתאמת (כל המשרד) והבריף היה מציג יותר מדי
-    M.meets = ((rs[4] || {}).results) || rep.meetings || [];
-    M.drafts = ((rs[5] || {}).drafts) || [];   // טיוטות החתמה — נכנסות ל"דורש טיפול"
-    var _ms = el('meetsSum');
-    if (_ms) _ms.textContent = M.meets.length ? (M.meets.length + ' פגישות ופולו-אפ פתוחים') : 'אין משימות פתוחות';
-    M.meetToday = 0; M.meetLate = 0;
-    M.meets.forEach(function(m){
-      var d = parseDMY(m.date);
-      if (!d) return;
-      var dd = dayDiff(d);
-      if (dd === 0) M.meetToday++;
-      else if (dd < 0) M.meetLate++;
-    });
-    var buyers = (rs[1] && rs[1].results) || [];
-    M.buyersTot = buyers.length;
-    M.buyersUn = buyers.filter(function(b){ return !(b.agent || '').trim(); }).length;
-    M.buyersNew = buyers.filter(function(b){
-      var d = parseDMY(b.date);
-      return d && dayDiff(d) > -7;
-    }).length;
-    M.props = (rs[2] && rs[2].count) || 0;
+/* [HOME-SWR 30/09] "המסך הראשי לוקח 17 שניות" (אייל): הבית חיכה לכל שש הקריאות
+   (Promise.all) — והאיטית שבהן (הדוח השבועי נבנה מחדש כל 2 דק', 20-70ש') קבעה.
+   עכשיו: (1) ציור מיידי מהמספרים של הביקור הקודם (v2c:home, רק לאותו טוקן — לא דולף
+   בין משתמשים/התחזות), (2) כל קריאה מעדכנת את החלק שלה ברגע שהיא מגיעה,
+   (3) קריאה שנכשלה לא מאפסת את המספר הקיים — רק מסמנת ניסיון חוזר. */
+var HOME_SNAP_KEYS = ['role', 'calls', 'sigs', 'sigSample', 'excl', 'repLabel', 'listings', 'meets',
+                      'drafts', 'exclWeek', 'buyersTot', 'buyersUn', 'buyersNew', 'props', 'nb', 'nbNew'];
+function _homeTk(){ return String(TOK || '').slice(-16); }
+function homeSnapSave(){
+  try{
+    var o = {tk: _homeTk(), ts: Date.now(), m: {}};
+    HOME_SNAP_KEYS.forEach(function(k){ if (M[k] !== undefined) o.m[k] = M[k]; });
+    localStorage.setItem('v2c:home', JSON.stringify(o));
+  }catch(e){}
+}
+function homeSnapLoad(){
+  try{
+    var o = JSON.parse(localStorage.getItem('v2c:home') || 'null');
+    if (!o || !o.m || !o.tk || o.tk !== _homeTk()) return false;   // משתמש אחר / כניסה חדשה
+    if (Date.now() - (o.ts || 0) > 3 * 86400000) return false;       // ישן מדי — לא מציגים
+    HOME_SNAP_KEYS.forEach(function(k){ if (o.m[k] !== undefined) M[k] = o.m[k]; });
+    _homeMeetCounts();
     M.ready = true;
-    renderDash();
-    var ld = el('storyLoad');
-    if (ld) ld.innerHTML = '<i></i><span>הכל טעון — הדשבורד מוכן</span>';
-    if (STORY.open) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי
+    return true;
+  }catch(e){ return false; }
+}
+function _homeMeetCounts(){
+  var _ms = el('meetsSum');
+  if (_ms) _ms.textContent = (M.meets || []).length ? (M.meets.length + ' פגישות ופולו-אפ פתוחים') : 'אין משימות פתוחות';
+  M.meetToday = 0; M.meetLate = 0;
+  (M.meets || []).forEach(function(m){
+    var d = parseDMY(m.date);
+    if (!d) return;
+    var dd = dayDiff(d);
+    if (dd === 0) M.meetToday++;
+    else if (dd < 0) M.meetLate++;
+  });
+}
+function _homeNbBadge(){
+  if (!(M.nb > 0)) return;
+  var bd = el('nbBadge');
+  if (bd){ bd.textContent = M.nb.toLocaleString(); bd.style.display = 'block'; }
+}
+function loadData(){
+  var ldFailed = false, meetsOk = false;
+  function step(url, apply){
+    return GET(url).then(function(j){
+      if (!j || j.ok === false){ ldFailed = true; return; }   // שגיאה — משאירים את המספר הקיים
+      apply(j);
+      M.ready = true;
+      renderDash();
+      homeSnapSave();
+      if (STORY.open) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי
+    }).catch(function(){ ldFailed = true; });
+  }
+  return Promise.all([
+    step('/api/report?period=week', function(rep){
+      var sm = rep.summary || {};
+      M.calls = (sm.calls || {}).total || 0;
+      M.sigs = (sm.sigs || {}).total || 0;
+      M.sigSample = (sm.sigsList && sm.sigsList[0]) || null;
+      M.excl = (sm.exclusives || []).length;   // נכסים שגויסו בבלעדיות בתקופת הדוח
+      M.repLabel = rep.label || 'השבוע';
+      M.listings = rep.listings || 0;
+      // המקור המועדף לפגישות הוא מסך היומן; הדוח רק גיבוי כשהיומן לא הגיע
+      if (!meetsOk && rep.meetings){ M.meets = rep.meetings; _homeMeetCounts(); }
+    }),
+    step('/api/my/buyers', function(j){
+      var buyers = j.results || [];
+      M.buyersTot = buyers.length;
+      M.buyersUn = buyers.filter(function(b){ return !(b.agent || '').trim(); }).length;
+      M.buyersNew = buyers.filter(function(b){
+        var d = parseDMY(b.date);
+        return d && dayDiff(d) > -7;
+      }).length;
+    }),
+    step('/api/my/properties', function(j){ M.props = j.count || 0; }),
+    step('/api/signatures', function(j){
+      // גיוסים ב-7 הימים האחרונים — כל החתמת בעל נכס (בלעדיות או מוכר), בלי כפילויות
+      var wk7 = Math.floor(Date.now() / 1000) - 7 * 86400;
+      var seen = {};
+      M.exclWeek = (j.signatures || []).filter(function(g){
+        var t = g.type || '';
+        if (!((t.indexOf('בלעדיות') >= 0 || t.indexOf('מוכר') >= 0) && (g.ts || 0) >= wk7)) return false;
+        var k = (g.address || '') + '|' + (g.client || '');
+        if (seen[k]) return false;
+        seen[k] = 1;
+        return true;
+      }).map(function(g){ return {address: g.address || '', client: g.client || '', type: g.type || '', ts: g.ts || 0}; });
+    }),
+    step('/api/newborn/meetings', function(j){
+      // אותו סינון של מסך היומן — לדוח יש סקופ אחר למתאמת (כל המשרד) והבריף היה מציג יותר מדי
+      meetsOk = true;
+      M.meets = j.results || [];
+      _homeMeetCounts();
+    }),
+    step('/v2/api/sign/drafts', function(j){ M.drafts = j.drafts || []; })   // טיוטות החתמה → "דורש טיפול"
+  ]).then(function(){
+    if (ldFailed && LD_TRY < 3){ LD_TRY++; setTimeout(loadData, 6000); }
+    else if (!ldFailed){
+      LD_TRY = 0; LD_TS = Date.now();
+      var ld = el('storyLoad');
+      if (ld) ld.innerHTML = '<i></i><span>הכל טעון — הדשבורד מוכן</span>';
+    }
   });
 }
 document.addEventListener('visibilitychange', function(){
@@ -1537,6 +1584,8 @@ el('story').addEventListener('touchmove', function(e){
 
 /* ── אתחול ── */
 (function(){
+  // [HOME-SWR 30/09] המספרים של הביקור הקודם — מיד, לפני כל קריאה לשרת
+  if (homeSnapLoad()){ try{ renderDash(); _homeNbBadge(); }catch(e){} }
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
     M.name = j.name || '';
@@ -1576,11 +1625,9 @@ el('story').addEventListener('touchmove', function(e){
       // נולדו ביממה האחרונה (ageDays=0) — לכרטיס הסיום של הבריף, כולל כתובות
       M.nbNew = ((nb && nb.results) || []).filter(function(r){ return r.ageDays === 0; })
         .map(function(r){ return {a: r.address || '', c: r.city || ''}; });
-      if (M.nb > 0){
-        var bd = el('nbBadge');
-        bd.textContent = M.nb.toLocaleString(); bd.style.display = 'block';
-      }
+      _homeNbBadge();
       renderDash();
+      homeSnapSave();
       if (STORY.open && STORY.i === 3) renderCard(3);
     }).catch(function(){});
   }).catch(function(){ location.replace('/v2'); });
