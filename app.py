@@ -9711,29 +9711,54 @@ def _ab_link_make(payload_b64):
         pass
     return tok
 
+APPLE_TEAM_ID = (os.environ.get("APPLE_TEAM_ID") or "").strip()
+
+@app.route("/.well-known/apple-app-site-association")
+@app.route("/apple-app-site-association")
+def apple_app_site_association():
+    """Universal Links (30/09, אייל): קישור https://…/l/<קוד> נפתח ישר באפליקציה באייפון.
+    דורש APPLE_TEAM_ID ב-Render + Associated Domains (applinks:remax-bot.onrender.com) באפליקציה."""
+    app_id = (APPLE_TEAM_ID + "." + APPLE_BUNDLE_ID) if APPLE_TEAM_ID else ""
+    body = {"applinks": {"apps": [], "details": ([{"appID": app_id, "appIDs": [app_id],
+                                                   "paths": ["/l/*"],
+                                                   "components": [{"/": "/l/*"}]}] if app_id else [])}}
+    return Response(json.dumps(body), mimetype="application/json")
+
 @app.route("/l/<tok>")
 def ab_short_link(tok):
-    """קישור מקוצר להוספת קונה: מנסה לפתוח את האפליקציה הנייטיבית (remaxfamily://),
-    ואם אין — נופל לדפדפן. ?in=1 = ניווט מתוך האפליקציה עצמה (בלי ניסיון נייטיב)."""
+    """קישור מקוצר להוספת קונה. אייפון/אנדרואיד: מנסה לפתוח את האפליקציה (remaxfamily://);
+    אם לא נפתחה — מציג שני כפתורים (אפליקציה / דפדפן) במקום לקפוץ אוטומטית לדפדפן (30/09, אייל:
+    הקפיצה האוטומטית שלחה משתמשי אייפון ל-web). ?in=1 = ניווט מתוך האפליקציה עצמה."""
     v = _ab_links().get(str(tok)[:16], "")
     if not v:
         return redirect("/app")
     target = "/app#ab=" + v
     if request.args.get("in"):
         return redirect(target)
-    native = NATIVE_URL_SCHEME + "://ab?t=" + str(tok)[:16]
+    t16 = str(tok)[:16]
+    native = NATIVE_URL_SCHEME + "://ab?t=" + t16
+    base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    android = ("intent://ab?t=" + t16 + "#Intent;scheme=" + NATIVE_URL_SCHEME + ";package=" +
+               NATIVE_ANDROID_PACKAGE + ";S.browser_fallback_url=" +
+               _urlencode({"u": base + target})[2:] + ";end")
+    btn = ("display:block;margin:12px auto;max-width:320px;padding:15px 18px;border-radius:14px;"
+           "font-weight:700;text-decoration:none;font-size:16px;")
     return ("<!doctype html><html dir=rtl lang=he><head><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
-            "<title>Family Bot</title></head>"
+            "<title>RE/MAX Family</title></head>"
             "<body style='font-family:-apple-system,Arial,sans-serif;text-align:center;"
-            "padding:56px 16px;background:#0D1B2A;color:#fff'>"
-            "<div style='font-size:44px'>🏠</div>"
-            "<div style='margin:12px 0 24px;font-weight:600'>פותח את Family Bot…</div>"
-            "<a href='" + target + "' style='color:#E4B34A'>לחץ כאן אם לא נפתח אוטומטית</a>"
-            "<script>var T='" + target + "';function go(){location.replace(T);}"
-            "if(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)){"
-            "try{location.href='" + native + "';}catch(e){}setTimeout(go,1400);"
-            "}else{go();}</script></body></html>")
+            "padding:48px 16px;background:#0E1D33;color:#fff'>"
+            "<div id=msg style='margin:0 0 22px;font-weight:600;font-size:17px'>פותח את האפליקציה…</div>"
+            "<div id=btns style='display:none'>"
+            "<a id=appbtn href='" + native + "' style='" + btn + "background:#2E6BD6;color:#fff'>פתח באפליקציה</a>"
+            "<a href='" + target + "' style='" + btn + "background:#fff;color:#1E3A5F'>המשך בדפדפן</a></div>"
+            "<script>var T='" + target + "',N='" + native + "',A='" + android + "';"
+            "var ua=navigator.userAgent,ios=/iPhone|iPad|iPod/i.test(ua),and=/Android/i.test(ua);"
+            "function show(){document.getElementById('msg').textContent='איך לפתוח?';"
+            "document.getElementById('btns').style.display='block';}"
+            "if(and){document.getElementById('appbtn').href=A;location.href=A;setTimeout(show,1500);}"
+            "else if(ios){try{location.href=N;}catch(e){}setTimeout(show,1200);}"
+            "else{location.replace(T);}</script></body></html>")
 
 def _wa_call_parts(c):
     """חלקי הודעת השיחה לסוכן — משותף להודעה החופשית ולתבנית call_summary."""
