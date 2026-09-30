@@ -2077,12 +2077,13 @@ def _row_feature_state(row, col, feature):
             return True
     return None
 
-def search_listings_in_sheet(query: dict) -> list:
-    rows = fetch_sheet_rows()
+def search_listings_in_sheet(query: dict, rows=None, cap=None) -> list:
+    # [NB-SEARCH 30/09] rows/cap אופציונליים — אותו סולם flex משמש גם לנכס נולד (rows=שורות ממופות)
+    rows = fetch_sheet_rows() if rows is None else rows
     if not rows:
         return []
     _has_nb = bool((query.get("neighborhoods")) or (query.get("neighborhood") or "").strip())
-    cap = 40 if _has_nb else 25   # תקרת תוצאות
+    cap = cap or (40 if _has_nb else 25)   # תקרת תוצאות
     for flex in [0, 1, 2]:
         scored = []
         for row in rows:
@@ -7151,6 +7152,29 @@ def api_report():
 
 
 # ── Property search ────────────────────────────────────────────────────────────
+_PARSE_Q_TTL = 600
+def _parse_props_query(q):
+    """[NB-SEARCH 30/09] פירוק חיפוש נכסים (AI) משותף למשרד ולנכס נולד: מטמון 10 דק' לפי הטקסט +
+    single-flight — שתי הבקשות שהמסך שולח במקביל עושות קריאת AI אחת. נעילה תקועה (_SF_WAIT) →
+    פירוק ישיר, בלי המתנה אינסופית. מחזיר עותק ({} בכשל; כשל לא נשמר במטמון)."""
+    import copy as _copy
+    text = q if q.startswith("מחפש") else ("מחפש דירה " + q)
+    key = "pq:" + text
+    c = _cache_get(key, _PARSE_Q_TTL)
+    if c is None:
+        _lk = _sf_lock(key)
+        _got = _lk.acquire(timeout=_SF_WAIT)
+        try:
+            c = _cache_get(key, _PARSE_Q_TTL)
+            if c is None:
+                c = parse_search_query(text) or {}
+                if c:
+                    _cache_put(key, c)
+        finally:
+            if _got:
+                _lk.release()
+    return _copy.deepcopy(c)
+
 @app.route("/api/search/properties", methods=["POST"])
 def api_search_properties():
     s = _web_auth()
@@ -7212,7 +7236,7 @@ def api_search_properties():
                                "updated": _props_updated(rows),
                                "results": out})
 
-        parsed = parse_search_query(q if q.startswith("מחפש") else ("מחפש דירה " + q))
+        parsed = _parse_props_query(q)   # [NB-SEARCH 30/09] משותף עם /api/search/newborn (AI פעם אחת)
         matches = search_listings_in_sheet(parsed) if parsed else []
         out = [_row_out(row, score) for score, row, flex in matches]
         return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "ptype": (parsed or {}).get("property_type", ""),
@@ -8031,6 +8055,65 @@ def _famexcl_floor_txt(v):
     m = re.search(r"קומה\s*(-?\d+)", str(v or ""))
     return int(m.group(1)) if m else None
 
+def _nb_clean(v):
+    """ערך שורת נכס נולד — '-'/'—'/ריק → ''."""
+    v = str(v or "").strip()
+    return "" if v in ("-", "—", "") else v
+
+def _nb_as_office_row(r):
+    """[NB-SEARCH 30/09] שורת נכס נולד → מבנה שורת משרד, כדי ש-score_match ינקד אותה כמו נכס משרד.
+    חדרים/מ"ר/קומה: מהשדה אם יש, אחרת מהתיאור ('דירה · 4 חד' · 100 מ"ר · קומה 2')."""
+    desc = _nb_clean(r.get("תיאור נכס", ""))
+    _ro, _sq, _fl = _famexcl_rooms(desc), _famexcl_sqm(desc), _famexcl_floor_txt(desc)
+    rooms = _nb_clean(r.get("חדרים", "")) or (("%g" % _ro) if _ro is not None else "")
+    sqm = _nb_clean(r.get('מ"ר', "")) or (str(_sq) if _sq is not None else "")
+    floor = _nb_clean(r.get("קומה", "")) or (str(_fl) if _fl is not None else "")
+    ptype = desc.split(" · ", 1)[0].strip() if " · " in desc else ""
+    return {"סוג עסקה": "מכירה",   # נכס נולד = מכירה בלבד (31/08)
+            "עיר / ישוב": _nb_clean(r.get("עיר", "") or r.get("עיר / ישוב", "")),
+            "שכונה": _nb_clean(r.get("שכונה", "")),
+            "כתובת": _nb_clean(r.get("רחוב1", "") or r.get("רחוב", "")), "מספר בית": "",
+            "חדרים": rooms, 'מ"ר': sqm, "קומה": floor, "מחיר": _nb_clean(r.get("מחיר", "")),
+            "סוג נכס": ptype, "תיאור": desc}
+
+def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
+    """[NB-SEARCH 30/09] כרטיס נכס נולד לקליינט — משותף ל-/api/newborn ול-/api/search/newborn.
+    ctx: contacts, statuses, fam_list, pd_map, eff_name, phone9, notes_admin."""
+    _k = _nb_key(r)
+    _vstat = ctx["statuses"].get(_canon_key(ctx["eff_name"]) + "::" + _k)
+    ophone = _nb_clean(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
+    _fl = _famexcl_floor(r.get("קומה", ""))
+    if _fl is None:   # שורות ישנות בלי שדה קומה — מהתיאור ("קומה N")
+        _m_fl = re.search(r"קומה\s*(-?\d+)", str(r.get("תיאור נכס", "") or ""))
+        _fl = int(_m_fl.group(1)) if _m_fl else None
+    _dsc = str(r.get("תיאור נכס", "") or "")
+    _famv = _is_famexcl(addr, city, ctx["fam_list"], _famexcl_price(r.get("מחיר", "")), _fl,
+                        _famexcl_rooms(_dsc), _famexcl_sqm(_dsc))   # שם הסוכן שבבלעדיות / '' / None
+    return {
+        # [SWR-2] "released"/"own" הוסרו — אף מסך לא קורא אותם (נסרק 24/08)
+        "key": _k,
+        "contacted": ctx["contacts"].get(_k, []),
+        "city": city,
+        "address": addr,
+        "desc": _nb_clean(r.get("תיאור נכס", "")),
+        "price": _newborn_price(r.get("מחיר", "")),
+        "notes": _nb_clean(r.get("הערות חדש", ""))[:160],
+        "owner": owner,
+        "phone": _fmt_vphone(ophone),
+        "wa": _wa_phone(ophone),
+        "agent": lister,
+        "link": _nb_clean(r.get("קישור", "")),
+        "date": _nb_clean(r.get("נראה לראשונה", "") or r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),   # 26/09: נראה לראשונה
+        "stat": _vstat or None,
+        "unotes": _nb_notes_for(_k, ctx["phone9"], ctx["notes_admin"]),
+        "ageDays": ad,
+        "delisted": _nb_clean(r.get("delisted_at", "")),   # ירד מיד2 — תווית; 24/09: המודעה נשארת (אייל)
+        "famexcl": (_famv is not None),
+        "famexclAgent": (_famv or ""),
+        "priceDropped": dropped,   # 24/09: תג ירידת מחיר בנכס נולד
+        "priceOld": ctx["pd_map"].get(_nb_price_key(r), "") if dropped else "",
+    }
+
 def _famexcl_addr_list():
     """כתובות שכבר בבלעדיות/טיפול RE/MAX Family — לסימון ב'נכס נולד', עם שם הסוכן.
     11/09 (אייל: "רק אם בטוח"): מקור יחיד — נכסי המשרד מיד2 (רחוב/בית/עיר בנפרד + מחיר/חדרים/
@@ -8202,42 +8285,11 @@ def api_newborn():
                           _nb_price_key(r) in _pd_map, bool(_nb(r.get("delisted_at", "")))))
         # 24/09 (אייל): חדשים (עד יומיים) → ירידות מחיר → השאר → ירד מפרסום; בתוך כל קבוצה מהחדש לישן
         _cand.sort(key=lambda c: _tier_new_drop_rest(c[1] <= 2, c[6], c[7]))
+        _ctx = {"contacts": contacts, "statuses": nbstatuses, "fam_list": fam_list, "pd_map": _pd_map,
+                "eff_name": eff_name, "phone9": _last9(s.get("phone", "")),
+                "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", "")))}
         for (r, ad, city, _addr, _owner, lister, _dropped, _dl) in (_cand[:_lim] if _lim else _cand):
-            _k = _nb_key(r)
-            _vstat = nbstatuses.get(_canon_key(eff_name) + "::" + _k)
-            ophone = _nb(r.get("טלפון בעל הנכס-", "") or r.get("טלפון בעל הנכס", ""))
-            _nb_fl = _famexcl_floor(r.get("קומה", ""))
-            if _nb_fl is None:   # שורות ישנות בלי שדה קומה — מהתיאור ("קומה N")
-                _m_fl = re.search(r"קומה\s*(-?\d+)", str(r.get("תיאור נכס", "") or ""))
-                _nb_fl = int(_m_fl.group(1)) if _m_fl else None
-            _dsc_ = str(r.get("תיאור נכס", "") or "")
-            _famv = _is_famexcl(_addr, city, fam_list,
-                                _famexcl_price(r.get("מחיר", "")), _nb_fl,
-                                _famexcl_rooms(_dsc_), _famexcl_sqm(_dsc_))   # שם הסוכן שבבלעדיות / '' / None
-            out.append({
-                # [SWR-2] "released"/"own" הוסרו — אף מסך לא קורא אותם (נסרק 24/08)
-                "key": _k,
-                "contacted": contacts.get(_k, []),
-                "city": city,
-                "address": _addr,
-                "desc": _nb(r.get("תיאור נכס", "")),
-                "price": _newborn_price(r.get("מחיר", "")),
-                "notes": _nb(r.get("הערות חדש", ""))[:160],
-                "owner": _owner,
-                "phone": _fmt_vphone(ophone),
-                "wa": _wa_phone(ophone),
-                "agent": lister,
-                "link": _nb(r.get("קישור", "")),
-                "date": _nb(r.get("נראה לראשונה", "") or r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),   # 26/09: נראה לראשונה (כמו המיון)
-                "stat": _vstat or None,
-                "unotes": _nb_notes_for(_k, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", "")))),
-                "ageDays": ad,
-                "delisted": _nb(r.get("delisted_at", "")),   # ירד מיד2 — תווית; 24/09: המודעה נשארת (אייל)
-                "famexcl": (_famv is not None),
-                "famexclAgent": (_famv or ""),
-                "priceDropped": _dropped,   # 24/09: תג ירידת מחיר בנכס נולד
-                "priceOld": _pd_map.get(_nb_price_key(r), "") if _dropped else "",
-            })
+            out.append(_nb_row_out(r, ad, city, _addr, _owner, lister, _dropped, _ctx))   # [NB-SEARCH 30/09] בונה משותף
         _res = {"ok": True, "count": len(_cand), "released": len(_cand), "delay": delay,
                 "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts),
                 "partial": bool(_lim and len(_cand) > len(out))}
@@ -8252,6 +8304,52 @@ def api_newborn():
         return jsonify(_res)
     except Exception as e:
         log.error(f"newborn error: {e}", exc_info=True)
+        return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+@app.route("/api/search/newborn", methods=["POST"])
+def api_search_newborn():
+    """[NB-SEARCH 30/09] חיפוש נכס — טאב נכס נולד: אותה הבנה של חיפוש המשרד (_parse_props_query),
+    אותו ניקוד (score_match דרך _nb_as_office_row), בלי השהיה (החלטת אייל 30/09), עד 30 תוצאות."""
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    q = ((request.get_json(silent=True) or {}).get("q", "") or "").strip()
+    if not q:
+        return jsonify({"ok": True, "results": [], "count": 0, "summary": "", "rent": False})
+    try:
+        _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכס נולד", q)
+        parsed = _parse_props_query(q)
+        if not parsed:
+            return jsonify({"ok": True, "results": [], "count": 0, "summary": "", "rent": False})
+        now = time.time()
+        pseudo = []
+        for r in fetch_newborn():
+            c = _newborn_created_epoch(r)
+            if not c or (now - c) / 86400 > NEWBORN_WINDOW_DAYS:
+                continue
+            pr = _nb_as_office_row(r)
+            pr["_nb"] = r; pr["_age"] = int((now - c) / 86400)
+            pseudo.append(pr)
+        matches = search_listings_in_sheet(parsed, rows=pseudo, cap=30)
+        _scan_price_changes()
+        _pd = _price_dropped_map()
+        _ctx = {"contacts": _fetch_newborn_contacts(), "statuses": _nb_statuses(), "fam_list": _famexcl_addr_list(),
+                "pd_map": _pd, "eff_name": s.get("name", ""), "phone9": _last9(s.get("phone", "")),
+                "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", "")))}
+        out = []
+        for sc, pr, _fx in matches:
+            r = pr["_nb"]
+            try:
+                o = _nb_row_out(r, pr["_age"], pr["עיר / ישוב"], pr["כתובת"], _nb_clean(r.get("שם בעל הנכס", "")),
+                                _nb_clean(r.get("משתמש", "") or r.get("סוכן 1", "")), _nb_price_key(r) in _pd, _ctx)
+            except Exception as _re:
+                log.warning(f"newborn search: row skipped ({_nb_key(r)}): {_re}")
+                continue   # שורה פגומה לא מפילה את החיפוש
+            o["score"] = min(100, int(sc))
+            out.append(o)
+        return jsonify({"ok": True, "results": out, "count": len(out),
+                        "summary": parsed.get("summary_he", ""), "rent": parsed.get("deal_type") == "השכרה"})
+    except Exception as e:
+        log.error(f"newborn search error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
 @app.route("/api/newborn/contact", methods=["POST"])
