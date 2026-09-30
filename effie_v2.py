@@ -4339,6 +4339,256 @@ render = function(){
 
 
 # ── מסך נכס נולד (עיצוב 19a) — מונה חי, צ'יפי ותק, בעל הנכס, סטטוסים, פגישות ──
+# ── [NB-KIT 30/09] כרטיס נכס נולד משותף (מסך נכס נולד + טאב נכס נולד בחיפוש הנכסים) ──────────
+# CSS תחום ב-.nbk (אותן הצהרות בדיוק כמו במסך נכס נולד) + הגיליון; JS: הכרטיס והפעולות.
+V2_NB_KIT = r"""<style>
+  .nbk .nb{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
+      display:flex;flex-direction:column;gap:9px;margin-bottom:12px}
+  .nbk .nb .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .nbk .nb .ad{font-size:16px;font-weight:700;line-height:1.3}
+  .nbk .nb .dt{font-size:12.5px;color:#6B7280}
+  .nbk .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .nbk .chip.new{color:#7A5E1C;background:#F6EEDB}
+  .nbk .chip.age{color:#6B7280;background:#F0EDE3}
+  .nbk .nb .pr{font-size:21px;font-weight:800}
+  .nbk .owner{display:flex;align-items:center;gap:10px;background:#F7F5EE;border-radius:12px;padding:9px 12px}
+  .nbk .owner .ic{width:30px;height:30px;border-radius:50%;background:#EAF0FA;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .nbk .owner .nm{font-size:13.5px;font-weight:800}
+  .nbk .owner .sb{font-size:10.5px;color:#6B7280}
+  .nbk .oActs{display:flex;gap:8px}
+  .nbk .oActs .a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:11px;
+      padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;text-decoration:none}
+  .nbk .oActs .call{background:#EAF0FA;color:#2E6BD6}
+  .nbk .oActs .wa{background:#E7F7EE;color:#1FAF5E}
+  .nbk .oActs .view{flex:1.2;background:#1E3A5F;color:#fff}
+  .nbk .contacted{display:flex;align-items:center;gap:6px;background:#E7F7EE;border-radius:999px;
+      padding:5px 12px;align-self:flex-start;font-size:11.5px;font-weight:700;color:#1FAF5E}
+  .nbk .stActs{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px}
+  .nbk .stActs .s{display:flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #DCD6C8;
+      border-radius:11px;padding:9px 0;font-size:11px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit}
+  .nbk .stActs .s.red{color:#C24040}
+  .nbk .stActs .s.on{background:#C29435;border-color:#C29435;color:#231700;box-shadow:0 3px 10px rgba(194,148,53,.25)}
+  .nbk .stActs .s.red.on{background:#C24040;border-color:#C24040;color:#fff;box-shadow:0 3px 10px rgba(194,64,64,.25)}
+  .nbk .stLine{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#6B7280}
+  .nbk .stLine i{width:6px;height:6px;border-radius:50%;background:#C29435;display:block;flex-shrink:0}
+  .nbk .notes{font-size:11.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
+  #sheet .notes{font-size:11.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
+  #sheet .fld{display:flex;flex-direction:column;gap:5px}
+  #sheet .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  #sheet .fld input,#sheet .fld textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;
+      font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;resize:vertical}
+  #sheet .btn-gold{background:#C29435;color:#231700;box-shadow:0 4px 12px rgba(194,148,53,.25)}
+  #sheet .btn-blue{background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25)}
+</style>
+<script>
+/* [NB-KIT 30/09] כרטיס נכס נולד ופעולותיו — משותף למסך נכס נולד ולמסך הנכסים (טאב נכס נולד בחיפוש).
+   הדף המארח מגדיר: el/esc/GET/POST/toast/openSheet/closeSheet (+ c2cDial מ-V2_BOOST), ו-
+   nbKitRows() — המערך שהאינדקס i בכרטיסים מצביע עליו; nbKitRefresh() — רענון אחרי פעולה.
+   אין קוד שרץ בטעינה — nbKitInit() נקרא מהדף אחרי שהעוזרים שלו מוגדרים. */
+var MGR = false;
+var ST_LABEL = {meeting:'פגישה', followup:'פולו-אפ', not_interested:'לא מעוניין'};
+function nbFmtPrice(p){
+  p = String(p || '').trim();
+  if (!p) return '';
+  return (/^[\d,.]+$/.test(p) ? '₪' : '') + p;
+}
+function nbCard(r, i){
+  var chip = (r.ageDays === 0) ? '<div class="chip new">חדש היום</div>'
+    : '<div class="chip age">' + (r.ageDays < 180 ? 'חודש ' + (Math.floor(r.ageDays / 30) + 1) : '7+ חודשים') + '</div>';
+  var st = r.stat;
+  var owner = (r.owner || r.phone)
+    ? '<div class="owner"><div class="ic"><svg width="13" height="13" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>' +
+      '<div style="flex:1"><div class="nm">' + esc([r.owner, r.phone].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="sb">בעל הנכס · מתעדכן יומית</div></div></div>' +
+      '<div class="oActs">' +
+      '<a class="a call" href="tel:' + esc((r.phone || '').replace(/\D/g, '')) + '" onclick="return nbDial(' + i + ')">' +
+      '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7"/></svg>חייג</a>' +
+      '<button class="a wa" onclick="waOwner(' + i + ')">' +
+      '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5"/></svg>וואטסאפ</button>' +
+      (r.link ? '<a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">צפייה במודעה</a>' : '') +
+      '</div>'
+    // אין שם/טלפון של בעל הנכס — עדיין מציגים את הקישור למודעה
+    : (r.link ? '<div class="oActs"><a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">צפייה במודעה</a></div>' : '');
+  var contacted = (MGR && r.contacted && r.contacted.length)
+    ? '<div class="contacted">כבר פנו: ' + esc(r.contacted[0]) +
+      (r.contacted.length > 1 ? ' +' + (r.contacted.length - 1) : '') + ' · ' + r.contacted.length + ' פניות</div>'
+    : '';
+  var stLine = st ? '<div class="stLine"><i></i>' + esc((ST_LABEL[st.status] || st.status) +
+      (st.date ? ' · ' + st.date.replace('T', ' ') : '') + (st.agent ? ' · ' + st.agent : '')) + '</div>' : '';
+  var notes = (r.unotes && r.unotes.length)
+    ? '<div class="notes">' + esc(r.unotes[r.unotes.length - 1].name + ': ' + r.unotes[r.unotes.length - 1].text) + '</div>' : '';
+  // כבר בבלעדיות/טיפול RE/MAX Family — מקורות: בלעדויות/נכסי המשרד/חתימות בלעדיות.
+  // r.famexcl מהשרת; r.famexclAgent = שם הסוכן שבבלעדיות (אם ידוע).
+  var fam = r.famexcl
+    ? '<div style="display:inline-flex;align-items:center;gap:5px;background:#FBEDED;color:#C24040;' +
+      'border:1px solid #F0B8B8;font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px">' +
+      '🔴 כבר בבלעדיות RE/MAX Family' + (r.famexclAgent ? ' · ' + esc(r.famexclAgent) : '') + '</div>'
+    : '';
+  // ירד מפרסום ביד2 — תווית 3 ימים ואז נעלם מהמסך (החלטת אייל 09/09)
+  if (r.delisted) fam += '<div style="display:inline-flex;align-items:center;background:#EBE8DD;color:#5B6472;' +
+    'font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-start:6px">' +
+    'ירד מפרסום · ' + esc(r.delisted) + '</div>';
+  return '<div class="nb">' +
+    '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
+    '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' + fam + '</div>' + chip + '</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
+    // 24/09 (אייל): ירידת מחיר גם בנכס נולד — מחיר ישן מחוק + תג ירוק (אותו מראה כמו במשרד)
+    '<div style="display:flex;align-items:center;gap:8px">' +
+    ((r.priceDropped && r.priceOld)
+      ? '<span style="text-decoration:line-through;color:#8B8F99;font-size:14px;font-weight:600">' + esc(nbFmtPrice(r.priceOld)) + '</span>' +
+        '<div class="pr" style="font-size:1.18em">' + esc(nbFmtPrice(r.price)) + '</div>'
+      : '<div class="pr">' + esc(nbFmtPrice(r.price)) + '</div>') +
+    (r.priceDropped ? '<span style="font-size:11px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>' : '') +
+    '</div>' +
+    '<div style="font-size:11.5px;color:#6B7280">' + esc(r.date || '') + '</div></div>' +
+    owner + contacted +
+    '<div class="stActs">' +
+    '<button class="s' + (st && st.status === 'meeting' ? ' on' : '') + '" onclick="stDate(' + i + ',\'meeting\')">פגישה</button>' +
+    '<button class="s' + (st && st.status === 'followup' ? ' on' : '') + '" onclick="stDate(' + i + ',\'followup\')">פולו-אפ</button>' +
+    '<button class="s red' + (st && st.status === 'not_interested' ? ' on' : '') + '" onclick="stToggleNI(' + i + ')">לא מעוניין</button>' +
+    '<button class="s" onclick="noteSheet(' + i + ')">הערה</button></div>' +
+    stLine + notes + '</div>';
+}
+function nbDial(i){   // חיוג לבעל הנכס (10/09): רישום 'מי פנה' + click2call בפיילוט, אחרת tel:
+  markContact(i);
+  var r = nbKitRows()[i];
+  c2cDial(String(r.phone || '').replace(/\D/g, ''));
+  return false;
+}
+function markContact(i){
+  var r = nbKitRows()[i];
+  POST('/api/newborn/contact', {key: r.key, addr: r.address}).catch(function(){});
+}
+var NB_WA_T = '';   // נוסח אישי מהאזור האישי; ריק → ברירת המחדל
+function waOwner(i){
+  var r = nbKitRows()[i];
+  markContact(i);
+  var addr = (r.address || '') + (r.city ? ', ' + r.city : '');
+  var t = NB_WA_T || 'שלום [שם], ראיתי את המודעה שלך ב[כתובת]. אשמח לדבר איתך לגבי הנכס.';
+  t = t.split('[שם]').join(r.owner || '').split('[כתובת]').join(addr)
+       .replace(/ +,/g, ',').replace(/ {2,}/g, ' ').trim();
+  window.open('https://wa.me/' + (r.wa || '') + '?text=' + encodeURIComponent(t), '_blank');
+}
+var MYNAME = '';
+var AG_OPTS = [];      // מתאמת: הסוכנים שלה (מהשרת); מנהל: כל סוכני המשרד
+var IS_COORD = false;  // למתאמת נוספת אופציית "אחר במשרד…" — כל סוכני המשרד
+var OFFICE_AG = [];
+function agOpts(list, withMore){
+  return '<option value="">עליי (' + esc(MYNAME || '') + ')</option>' +
+    list.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
+    (withMore ? '<option value="__more">אחר במשרד…</option>' : '');
+}
+function agOther(sel){
+  if (sel.value !== '__more') return;
+  var fill = function(){
+    var mine = {};
+    AG_OPTS.forEach(function(a){ mine[a] = 1; });
+    var rest = OFFICE_AG.filter(function(a){ return !mine[a] && a !== MYNAME; });
+    sel.innerHTML = agOpts(AG_OPTS.concat(rest), false);
+    sel.value = '';
+    sel.focus();
+  };
+  if (OFFICE_AG.length){ fill(); return; }
+  GET('/api/agents').then(function(d){   // רשימת המשרד הקנונית — בלי כפילויות איות
+    OFFICE_AG = ((d && d.agents) || []).map(function(a){ return a.name; });
+    fill();
+  }).catch(function(){ sel.value = ''; });
+}
+function dt15Opts(sel){
+  var ts = [], h, m;
+  for (h = 0; h < 24; h++) for (m = 0; m < 60; m += 15)
+    ts.push(('0' + h).slice(-2) + ':' + ('0' + m).slice(-2));
+  if (sel && ts.indexOf(sel) < 0){ ts.push(sel); ts.sort(); }   // מועד קיים שאינו על רבע שעה — נשמר
+  return ts.map(function(t){
+    return '<option value="' + t + '"' + (t === sel ? ' selected' : '') + '>' + t + '</option>';
+  }).join('');
+}
+function dtNextQ(){
+  var d = new Date();
+  d.setMinutes(d.getMinutes() + ((15 - d.getMinutes() % 15) % 15), 0, 0);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+function dtJoin(dId, tId){
+  var dv = el(dId).value;
+  return dv ? dv + 'T' + (el(tId).value || '10:00') : '';
+}
+function stDate(i, status){
+  var r = nbKitRows()[i];
+  var agSel = AG_OPTS.length
+    ? '<div class="fld"><span>עבור סוכן</span><select id="stAg" onchange="agOther(this)" style="width:100%;padding:12px 13px;' +
+      'border:1.5px solid #DCD6C8;border-radius:13px;font-size:14px;font-family:inherit;background:#fff;color:#1E3A5F">' +
+      agOpts(AG_OPTS, IS_COORD) +
+      '</select></div>'
+    : '';
+  openSheet('<h3>' + (status === 'meeting' ? 'קביעת פגישה' : 'קביעת פולו-אפ') + '</h3>' +
+    '<div style="font-size:12px;color:#6B7280">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
+    agSel +
+    '<div class="fld"><span>מועד</span><div style="display:flex;gap:8px">' +
+    '<input id="stDtD" type="date" style="flex:1.2;min-width:0;-webkit-appearance:none;appearance:none;display:block;min-height:44px;text-align:right">' +
+    '<select id="stDtT" style="flex:1;min-width:0;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;' +
+    'font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none">' + dt15Opts(dtNextQ()) + '</select>' +
+    '</div></div>' +
+    '<div class="fld"><span>הערה</span><textarea id="stNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)" ' +
+    'style="background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:14px;' +
+    'font-family:inherit;outline:none;color:#1E3A5F;width:100%;resize:vertical"></textarea></div>' +
+    '<div style="font-size:11.5px;color:#6B7280">נשמר גם ביומן Google שלך (אם מחובר)</div>' +
+    '<button class="btn btn-gold" onclick="stSave(' + i + ',\'' + status + '\')">שמירה</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function stSave(i, status){
+  stSet(i, status, dtJoin('stDtD', 'stDtT'));
+}
+function stToggleNI(i){
+  var r = nbKitRows()[i];
+  if (r.stat && r.stat.status === 'not_interested'){
+    // לחיצה נוספת — מחזירה למצב רגיל (מסיר את הסטטוס)
+    POST('/api/newborn/status/delete', {key: r.key}).then(function(j){
+      if (!j.ok){ toast('שגיאה בהסרה'); return; }
+      toast('הסטטוס הוסר'); nbKitRefresh();
+    });
+  } else stSet(i, 'not_interested', '');
+}
+function stSet(i, status, date){
+  var r = nbKitRows()[i];
+  if ((status === 'meeting' || status === 'followup') && !date){ toast('בחר מועד'); return; }
+  var forAg = (el('stAg') && el('stAg').value) || '';   // מתאמת/מנהל — הפגישה נרשמת על הסוכן הנבחר
+  if (forAg === '__more') forAg = '';
+  POST('/api/newborn/status', {key: r.key, addr: [r.address, r.city].filter(Boolean).join(', '),
+    price: r.price || '', phone: r.phone || '', owner: r.owner || '', status: status, date: date || '',
+    agent: forAg, note: (el('stNote') && el('stNote').value.trim()) || ''})
+    .then(function(j){
+      if (!j.ok){ toast('שגיאה בשמירה'); return; }
+      closeSheet();
+      toast(status === 'not_interested' ? 'סומן: לא מעוניין' :
+        (ST_LABEL[status] + ' נקבע' + (j.calendar ? ' + נשמר ביומן' : '')));
+      nbKitRefresh();
+    });
+}
+function noteSheet(i){
+  var r = nbKitRows()[i];
+  var prev = (r.unotes || []).map(function(n){
+    return '<div class="notes">' + esc(n.name + ': ' + n.text) + '</div>';
+  }).join('');
+  openSheet('<h3>הערות · ' + esc(r.address || '') + '</h3>' + prev +
+    '<div class="fld"><span>הערה חדשה (כולם רואים)</span><textarea id="ntTx" rows="3"></textarea></div>' +
+    '<button class="btn btn-blue" onclick="noteSave(' + i + ')">שמירה</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function noteSave(i){
+  var r = nbKitRows()[i];
+  var tx = el('ntTx').value.trim();
+  if (!tx){ toast('כתוב הערה'); return; }
+  POST('/api/newborn/note', {key: r.key, addr: r.address || '', text: tx}).then(function(j){
+    if (!j.ok){ toast('שגיאה בשמירה'); return; }
+    closeSheet(); toast('ההערה נשמרה'); nbKitRefresh();
+  });
+}
+function nbKitInit(){
+  GET('/v2/api/me/nbtext').then(function(j){ if (j && j.ok) NB_WA_T = j.text || ''; }).catch(function(){});
+}
+</script>
+"""
+
 V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>נכס נולד</title>
@@ -4385,36 +4635,6 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       border-radius:13px;padding:0 14px}
   .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
       color:#1E3A5F;padding:11px 0}
-  .nb{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
-      display:flex;flex-direction:column;gap:9px;margin-bottom:12px}
-  .nb .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-  .nb .ad{font-size:16px;font-weight:700;line-height:1.3}
-  .nb .dt{font-size:12.5px;color:#6B7280}
-  .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
-  .chip.new{color:#7A5E1C;background:#F6EEDB}
-  .chip.age{color:#6B7280;background:#F0EDE3}
-  .nb .pr{font-size:21px;font-weight:800}
-  .owner{display:flex;align-items:center;gap:10px;background:#F7F5EE;border-radius:12px;padding:9px 12px}
-  .owner .ic{width:30px;height:30px;border-radius:50%;background:#EAF0FA;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  .owner .nm{font-size:13.5px;font-weight:800}
-  .owner .sb{font-size:10.5px;color:#6B7280}
-  .oActs{display:flex;gap:8px}
-  .oActs .a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:11px;
-      padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;text-decoration:none}
-  .oActs .call{background:#EAF0FA;color:#2E6BD6}
-  .oActs .wa{background:#E7F7EE;color:#1FAF5E}
-  .oActs .view{flex:1.2;background:#1E3A5F;color:#fff}
-  .contacted{display:flex;align-items:center;gap:6px;background:#E7F7EE;border-radius:999px;
-      padding:5px 12px;align-self:flex-start;font-size:11.5px;font-weight:700;color:#1FAF5E}
-  .stActs{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px}
-  .stActs .s{display:flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #DCD6C8;
-      border-radius:11px;padding:9px 0;font-size:11px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit}
-  .stActs .s.red{color:#C24040}
-  .stActs .s.on{background:#C29435;border-color:#C29435;color:#231700;box-shadow:0 3px 10px rgba(194,148,53,.25)}
-  .stActs .s.red.on{background:#C24040;border-color:#C24040;color:#fff;box-shadow:0 3px 10px rgba(194,64,64,.25)}
-  .stLine{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#6B7280}
-  .stLine i{width:6px;height:6px;border-radius:50%;background:#C29435;display:block;flex-shrink:0}
-  .notes{font-size:11.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
   .more{display:flex;align-items:center;justify-content:center;padding:13px 0;font-size:13px;font-weight:700;
       color:#2E6BD6;cursor:pointer;width:100%;background:#fff;border:1.5px solid #DCE6F5;border-radius:14px;
       font-family:inherit}
@@ -4495,7 +4715,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
         </button>
       </div>
     </div>
-    <div id="list"></div>
+    <div id="list" class="nbk"></div>
   </main>
 
   <nav>
@@ -4512,6 +4732,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   <div id="sheet"></div>
   <div id="toast"></div>
 
+<!--NB_KIT-->
 <script>
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
@@ -4561,9 +4782,8 @@ function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.displ
   document.body.style.overflow = '';
   (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
-var ROWS = [], BUCKETS = [], TOTAL = 0, AGE = -1, MGR = false, MEETS = [];
+var ROWS = [], BUCKETS = [], TOTAL = 0, AGE = -1, MEETS = [];   // MGR — ברכיב המשותף
 var BUCKET_RANGES = [[0,30],[30,60],[60,90],[90,120],[120,150],[150,180],[180,99999]];
-var ST_LABEL = {meeting:'פגישה', followup:'פולו-אפ', not_interested:'לא מעוניין'};
 
 var NB_ETAG = '';   // [PERF-3] טביעת-אצבע מהשרת — רענון של כל דקה בלי שינוי = תשובה זעירה
 /* [PERF-NB 30/09] "נכס נולד כמה שניות" (אייל): כל פתיחה חיכתה לרשימה המלאה (~2,600 נכסים,
@@ -4664,201 +4884,11 @@ function render(){
     '<div class="t">אין נכסים להצגה</div><div class="s">נסה ותק אחר או חיפוש שונה — מודעות חדשות עולות כל היום</div></div>';
   el('list')._src = src;
 }
-function nbCard(r, i){
-  var chip = (r.ageDays === 0) ? '<div class="chip new">חדש היום</div>'
-    : '<div class="chip age">' + (r.ageDays < 180 ? 'חודש ' + (Math.floor(r.ageDays / 30) + 1) : '7+ חודשים') + '</div>';
-  var st = r.stat;
-  var owner = (r.owner || r.phone)
-    ? '<div class="owner"><div class="ic"><svg width="13" height="13" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>' +
-      '<div style="flex:1"><div class="nm">' + esc([r.owner, r.phone].filter(Boolean).join(' · ')) + '</div>' +
-      '<div class="sb">בעל הנכס · מתעדכן יומית</div></div></div>' +
-      '<div class="oActs">' +
-      '<a class="a call" href="tel:' + esc((r.phone || '').replace(/\D/g, '')) + '" onclick="return nbDial(' + i + ')">' +
-      '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7"/></svg>חייג</a>' +
-      '<button class="a wa" onclick="waOwner(' + i + ')">' +
-      '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5"/></svg>וואטסאפ</button>' +
-      (r.link ? '<a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">צפייה במודעה</a>' : '') +
-      '</div>'
-    // אין שם/טלפון של בעל הנכס — עדיין מציגים את הקישור למודעה
-    : (r.link ? '<div class="oActs"><a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">צפייה במודעה</a></div>' : '');
-  var contacted = (MGR && r.contacted && r.contacted.length)
-    ? '<div class="contacted">כבר פנו: ' + esc(r.contacted[0]) +
-      (r.contacted.length > 1 ? ' +' + (r.contacted.length - 1) : '') + ' · ' + r.contacted.length + ' פניות</div>'
-    : '';
-  var stLine = st ? '<div class="stLine"><i></i>' + esc((ST_LABEL[st.status] || st.status) +
-      (st.date ? ' · ' + st.date.replace('T', ' ') : '') + (st.agent ? ' · ' + st.agent : '')) + '</div>' : '';
-  var notes = (r.unotes && r.unotes.length)
-    ? '<div class="notes">' + esc(r.unotes[r.unotes.length - 1].name + ': ' + r.unotes[r.unotes.length - 1].text) + '</div>' : '';
-  // כבר בבלעדיות/טיפול RE/MAX Family — מקורות: בלעדויות/נכסי המשרד/חתימות בלעדיות.
-  // r.famexcl מהשרת; r.famexclAgent = שם הסוכן שבבלעדיות (אם ידוע).
-  var fam = r.famexcl
-    ? '<div style="display:inline-flex;align-items:center;gap:5px;background:#FBEDED;color:#C24040;' +
-      'border:1px solid #F0B8B8;font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px">' +
-      '🔴 כבר בבלעדיות RE/MAX Family' + (r.famexclAgent ? ' · ' + esc(r.famexclAgent) : '') + '</div>'
-    : '';
-  // ירד מפרסום ביד2 — תווית 3 ימים ואז נעלם מהמסך (החלטת אייל 09/09)
-  if (r.delisted) fam += '<div style="display:inline-flex;align-items:center;background:#EBE8DD;color:#5B6472;' +
-    'font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-start:6px">' +
-    'ירד מפרסום · ' + esc(r.delisted) + '</div>';
-  return '<div class="nb">' +
-    '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
-    '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' + fam + '</div>' + chip + '</div>' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
-    // 24/09 (אייל): ירידת מחיר גם בנכס נולד — מחיר ישן מחוק + תג ירוק (אותו מראה כמו במשרד)
-    '<div style="display:flex;align-items:center;gap:8px">' +
-    ((r.priceDropped && r.priceOld)
-      ? '<span style="text-decoration:line-through;color:#8B8F99;font-size:14px;font-weight:600">' + esc(fmtPrice(r.priceOld)) + '</span>' +
-        '<div class="pr" style="font-size:1.18em">' + esc(fmtPrice(r.price)) + '</div>'
-      : '<div class="pr">' + esc(fmtPrice(r.price)) + '</div>') +
-    (r.priceDropped ? '<span style="font-size:11px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>' : '') +
-    '</div>' +
-    '<div style="font-size:11.5px;color:#6B7280">' + esc(r.date || '') + '</div></div>' +
-    owner + contacted +
-    '<div class="stActs">' +
-    '<button class="s' + (st && st.status === 'meeting' ? ' on' : '') + '" onclick="stDate(' + i + ',\'meeting\')">פגישה</button>' +
-    '<button class="s' + (st && st.status === 'followup' ? ' on' : '') + '" onclick="stDate(' + i + ',\'followup\')">פולו-אפ</button>' +
-    '<button class="s red' + (st && st.status === 'not_interested' ? ' on' : '') + '" onclick="stToggleNI(' + i + ')">לא מעוניין</button>' +
-    '<button class="s" onclick="noteSheet(' + i + ')">הערה</button></div>' +
-    stLine + notes + '</div>';
-}
 var NB_SHOWN = 40;   // כמה כרטיסים מוצגים; "הצג עוד" מגדיל. מתאפס בשינוי ותק/חיפוש.
 function nbMore(){ NB_SHOWN += 40; render(); }
 function setAge(i){ AGE = (AGE === i) ? -1 : i; NB_SHOWN = 40; render(); }
-function nbDial(i){   // חיוג לבעל הנכס (10/09): רישום 'מי פנה' + click2call בפיילוט, אחרת tel:
-  markContact(i);
-  var r = el('list')._src[i];
-  c2cDial(String(r.phone || '').replace(/\D/g, ''));
-  return false;
-}
-function markContact(i){
-  var r = el('list')._src[i];
-  POST('/api/newborn/contact', {key: r.key, addr: r.address}).catch(function(){});
-}
-var NB_WA_T = '';   // נוסח אישי מהאזור האישי; ריק → ברירת המחדל
-GET('/v2/api/me/nbtext').then(function(j){ if (j && j.ok) NB_WA_T = j.text || ''; }).catch(function(){});
-function waOwner(i){
-  var r = el('list')._src[i];
-  markContact(i);
-  var addr = (r.address || '') + (r.city ? ', ' + r.city : '');
-  var t = NB_WA_T || 'שלום [שם], ראיתי את המודעה שלך ב[כתובת]. אשמח לדבר איתך לגבי הנכס.';
-  t = t.split('[שם]').join(r.owner || '').split('[כתובת]').join(addr)
-       .replace(/ +,/g, ',').replace(/ {2,}/g, ' ').trim();
-  window.open('https://wa.me/' + (r.wa || '') + '?text=' + encodeURIComponent(t), '_blank');
-}
-var MYNAME = '';
-var AG_OPTS = [];      // מתאמת: הסוכנים שלה (מהשרת); מנהל: כל סוכני המשרד
-var IS_COORD = false;  // למתאמת נוספת אופציית "אחר במשרד…" — כל סוכני המשרד
-var OFFICE_AG = [];
-function agOpts(list, withMore){
-  return '<option value="">עליי (' + esc(MYNAME || '') + ')</option>' +
-    list.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
-    (withMore ? '<option value="__more">אחר במשרד…</option>' : '');
-}
-function agOther(sel){
-  if (sel.value !== '__more') return;
-  var fill = function(){
-    var mine = {};
-    AG_OPTS.forEach(function(a){ mine[a] = 1; });
-    var rest = OFFICE_AG.filter(function(a){ return !mine[a] && a !== MYNAME; });
-    sel.innerHTML = agOpts(AG_OPTS.concat(rest), false);
-    sel.value = '';
-    sel.focus();
-  };
-  if (OFFICE_AG.length){ fill(); return; }
-  GET('/api/agents').then(function(d){   // רשימת המשרד הקנונית — בלי כפילויות איות
-    OFFICE_AG = ((d && d.agents) || []).map(function(a){ return a.name; });
-    fill();
-  }).catch(function(){ sel.value = ''; });
-}
-function dt15Opts(sel){
-  var ts = [], h, m;
-  for (h = 0; h < 24; h++) for (m = 0; m < 60; m += 15)
-    ts.push(('0' + h).slice(-2) + ':' + ('0' + m).slice(-2));
-  if (sel && ts.indexOf(sel) < 0){ ts.push(sel); ts.sort(); }   // מועד קיים שאינו על רבע שעה — נשמר
-  return ts.map(function(t){
-    return '<option value="' + t + '"' + (t === sel ? ' selected' : '') + '>' + t + '</option>';
-  }).join('');
-}
-function dtNextQ(){
-  var d = new Date();
-  d.setMinutes(d.getMinutes() + ((15 - d.getMinutes() % 15) % 15), 0, 0);
-  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-}
-function dtJoin(dId, tId){
-  var dv = el(dId).value;
-  return dv ? dv + 'T' + (el(tId).value || '10:00') : '';
-}
-function stDate(i, status){
-  var r = el('list')._src[i];
-  var agSel = AG_OPTS.length
-    ? '<div class="fld"><span>עבור סוכן</span><select id="stAg" onchange="agOther(this)" style="width:100%;padding:12px 13px;' +
-      'border:1.5px solid #DCD6C8;border-radius:13px;font-size:14px;font-family:inherit;background:#fff;color:#1E3A5F">' +
-      agOpts(AG_OPTS, IS_COORD) +
-      '</select></div>'
-    : '';
-  openSheet('<h3>' + (status === 'meeting' ? 'קביעת פגישה' : 'קביעת פולו-אפ') + '</h3>' +
-    '<div style="font-size:12px;color:#6B7280">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
-    agSel +
-    '<div class="fld"><span>מועד</span><div style="display:flex;gap:8px">' +
-    '<input id="stDtD" type="date" style="flex:1.2;min-width:0;-webkit-appearance:none;appearance:none;display:block;min-height:44px;text-align:right">' +
-    '<select id="stDtT" style="flex:1;min-width:0;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;' +
-    'font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none">' + dt15Opts(dtNextQ()) + '</select>' +
-    '</div></div>' +
-    '<div class="fld"><span>הערה</span><textarea id="stNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)" ' +
-    'style="background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:14px;' +
-    'font-family:inherit;outline:none;color:#1E3A5F;width:100%;resize:vertical"></textarea></div>' +
-    '<div style="font-size:11.5px;color:#6B7280">נשמר גם ביומן Google שלך (אם מחובר)</div>' +
-    '<button class="btn btn-gold" onclick="stSave(' + i + ',\'' + status + '\')">שמירה</button>' +
-    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
-}
-function stSave(i, status){
-  stSet(i, status, dtJoin('stDtD', 'stDtT'));
-}
-function stToggleNI(i){
-  var r = el('list')._src[i];
-  if (r.stat && r.stat.status === 'not_interested'){
-    // לחיצה נוספת — מחזירה למצב רגיל (מסיר את הסטטוס)
-    POST('/api/newborn/status/delete', {key: r.key}).then(function(j){
-      if (!j.ok){ toast('שגיאה בהסרה'); return; }
-      toast('הסטטוס הוסר'); load();
-    });
-  } else stSet(i, 'not_interested', '');
-}
-function stSet(i, status, date){
-  var r = el('list')._src[i];
-  if ((status === 'meeting' || status === 'followup') && !date){ toast('בחר מועד'); return; }
-  var forAg = (el('stAg') && el('stAg').value) || '';   // מתאמת/מנהל — הפגישה נרשמת על הסוכן הנבחר
-  if (forAg === '__more') forAg = '';
-  POST('/api/newborn/status', {key: r.key, addr: [r.address, r.city].filter(Boolean).join(', '),
-    price: r.price || '', phone: r.phone || '', owner: r.owner || '', status: status, date: date || '',
-    agent: forAg, note: (el('stNote') && el('stNote').value.trim()) || ''})
-    .then(function(j){
-      if (!j.ok){ toast('שגיאה בשמירה'); return; }
-      closeSheet();
-      toast(status === 'not_interested' ? 'סומן: לא מעוניין' :
-        (ST_LABEL[status] + ' נקבע' + (j.calendar ? ' + נשמר ביומן' : '')));
-      load();
-    });
-}
-function noteSheet(i){
-  var r = el('list')._src[i];
-  var prev = (r.unotes || []).map(function(n){
-    return '<div class="notes">' + esc(n.name + ': ' + n.text) + '</div>';
-  }).join('');
-  openSheet('<h3>הערות · ' + esc(r.address || '') + '</h3>' + prev +
-    '<div class="fld"><span>הערה חדשה (כולם רואים)</span><textarea id="ntTx" rows="3"></textarea></div>' +
-    '<button class="btn btn-blue" onclick="noteSave(' + i + ')">שמירה</button>' +
-    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
-}
-function noteSave(i){
-  var r = el('list')._src[i];
-  var tx = el('ntTx').value.trim();
-  if (!tx){ toast('כתוב הערה'); return; }
-  POST('/api/newborn/note', {key: r.key, addr: r.address || '', text: tx}).then(function(j){
-    if (!j.ok){ toast('שגיאה בשמירה'); return; }
-    closeSheet(); toast('ההערה נשמרה'); load();
-  });
-}
+function nbKitRows(){ return el('list')._src || []; }   // [NB-KIT 30/09] הכרטיסים מצביעים לרשימה המוצגת
+function nbKitRefresh(){ load(); }
 function openMeetings(){
   var h = MEETS.map(function(m){
     var d = String(m.date || '').replace('T', ' ');
@@ -4937,6 +4967,7 @@ render = function(){
 })();
 
 (function(){
+  nbKitInit();   // [NB-KIT] נוסח הוואטסאפ האישי
   GET('/api/auth/whoami').then(function(j){
     MYNAME = j.name || '';
     if (j.role === 'coordinator' || j.role === 'admin'){
@@ -9921,7 +9952,7 @@ def register(app, G):
 
     @app.route("/v2/newborn", methods=["GET"])
     def v2_newborn():
-        return _page(V2_NB_HTML)
+        return _page(V2_NB_HTML.replace("<!--NB_KIT-->", V2_NB_KIT, 1))
 
     @app.route("/v2/props", methods=["GET"])
     def v2_props():
