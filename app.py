@@ -9791,7 +9791,9 @@ def _calls_seen_load():
 def _calls_seen_save():
     try:
         with open(_CALLS_SEEN_PATH, "w", encoding="utf-8") as f:
-            json.dump(sorted(_seen_calls)[-4000:], f, ensure_ascii=False)
+            # 30/09: בלי קיצוץ ל-4000 ממוינים — הקיצוץ השמיט מזהים שעדיין בגיליון, ואחרי כל
+            # הפעלה-מחדש הם נראו "חדשים" → שסתום הפרץ דיכא גם שיחות אמיתיות. גיזום לפי הגיליון.
+            json.dump(sorted(_seen_calls), f, ensure_ascii=False)
     except Exception:
         pass
 
@@ -10951,11 +10953,22 @@ def check_new_calls():
         return
     new_keys = [k for k in keymap.keys() if k not in _seen_calls]
     if len(new_keys) > _CALLS_WA_MAX_BURST:
-        _wa_call_diag({}, f"burst_guard: {len(new_keys)} new at once — none sent")
-        _seen_calls |= set(keymap.keys())
+        # 30/09: במקום לדכא הכל — שולחים רק שיחות מ-20 הדקות האחרונות (עד 8), השאר מסומנות כנראו
+        _now = time.time()
+        def _ep(rr):
+            try:
+                from datetime import datetime, timezone
+                d = datetime.fromisoformat(str(rr.get("received_at", "")).replace("Z", "+00:00"))
+                if d.tzinfo is None: d = d.replace(tzinfo=timezone.utc)
+                return d.timestamp()
+            except Exception:
+                return 0
+        fresh = [k for k in new_keys if 0 <= _now - _ep(keymap[k]) <= 20 * 60][:_CALLS_WA_MAX_BURST]
+        _wa_call_diag({}, f"burst_guard: {len(new_keys)} new at once — sending only {len(fresh)} recent")
+        log.error(f"calls WA burst guard: {len(new_keys)} new at once — sending {len(fresh)} recent")
+        _seen_calls |= (set(keymap.keys()) - set(fresh))
         _calls_seen_save()
-        log.error(f"calls WA burst guard: {len(new_keys)} new at once — suppressed")
-        return
+        new_keys = fresh
     for k in new_keys:
         r = keymap[k]
         if not _wa_auto_on():   # מושהה — מסמנים כנצפה בלי לשלוח (אין הצפת עבר בהפעלה מחדש)
@@ -10994,7 +11007,10 @@ def check_new_calls():
         except Exception as _ce:
             _wa_call_diag(r, "error: " + str(_ce)[:120])
         _seen_calls.add(k)
-    if new_keys:
+    if len(_seen_calls) > len(keymap) + 500:   # גיזום: רק מזהים שעדיין בגיליון
+        _seen_calls &= set(keymap.keys())
+        _calls_seen_save()
+    elif new_keys:
         _calls_seen_save()
 
 def _sync_signing_buyers():
