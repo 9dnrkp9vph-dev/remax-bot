@@ -3156,6 +3156,13 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .stChoice .d{width:9px;height:9px;border-radius:50%}
   /* תוצאות התאמה */
   .grpTitle{font-size:13px;font-weight:800;color:#7A5E1C;letter-spacing:.05em;padding:2px 2px 0}
+  /* [MATCH-TABS 01/10] טאבים בחלון התאמת נכסים — נשארים למעלה (בתוך הכותרת הדביקה) */
+  .mtabs{display:flex;gap:3px;background:#EBE8DD;border-radius:12px;padding:4px;margin-top:9px;overflow-x:auto;scrollbar-width:none}
+  .mtabs::-webkit-scrollbar{display:none}
+  .mtabs .t{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;padding:0 7px;
+      min-height:40px;border-radius:9px;font-size:12px;font-weight:700;color:#5B6472;cursor:pointer}
+  .mtabs .t b{font-size:11px;font-weight:800}
+  .mtabs .t.on{background:#2E6BD6;color:#fff;box-shadow:0 2px 8px rgba(46,107,214,.3)}
   .prop{background:#fff;border-radius:18px;box-shadow:0 4px 14px rgba(30,58,95,.05);padding:13px 15px;
       display:flex;flex-direction:column;gap:8px;flex-shrink:0}
   .prop.shtaf{background:#F7F5EE;border:1.5px dashed #DCD6C8;box-shadow:none}
@@ -3249,6 +3256,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   <div id="sheet"></div>
   <div id="toast"></div>
 
+<!--NB_KIT-->
 <script>
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
@@ -3300,6 +3308,16 @@ function closeSheet(){ el('sheet').style.display = 'none'; el('ovl').style.displ
   document.body.style.overflow = '';
   (function(){ var m = document.querySelector('main'); if (m) m.style.overflow = ''; })(); }
 
+var _openSheetBase = openSheet, _closeSheetBase = closeSheet;
+openSheet = function(html, small){   // [MATCH-TABS] גיליון שנפתח מתוך חלון ההתאמות (פגישה/הערה בנכס נולד)
+  if (_MATCH_OPEN && !_OPENING_MATCH) _SUB_FROM_MATCH = true;
+  _openSheetBase(html, small);
+};
+closeSheet = function(){
+  if (_SUB_FROM_MATCH){ _SUB_FROM_MATCH = false; reopenMatches(); return; }   // חזרה לחלון ההתאמות
+  _MATCH_OPEN = false;
+  _closeSheetBase();
+};
 var BUYERS = [], STATUSES = {}, FILTER = 'active', OFFICE = '', MULTI = false, SMART = null;
 function qChanged(){ if (SMART) SMART = null; render(); }
 function smartSearch(){
@@ -3612,29 +3630,50 @@ function matchQuery(b){
   return {q: [base, b.budget ? 'עד ' + b.budget : ''].filter(Boolean).join(' ').slice(0, 160),
           hasNeeds: !!base};
 }
-function matchProps(i){
-  var b = el('list')._src[i];
-  var mq = matchQuery(b);
-  MQ_NEEDS = mq.hasNeeds;
-  openSheet('<div style="display:flex;align-items:flex-start;gap:10px;position:sticky;top:-12px;z-index:2;' +
+function _matchShell(){
+  var b = CUR_BUYER || {}, mq = MQ_CUR;
+  return '<div style="position:sticky;top:-12px;z-index:2;' +
     'background:#F7F5EE;margin:0 -18px;padding:10px 18px 8px;box-shadow:0 8px 14px -10px rgba(30,58,95,.22)">' +
-    '<div style="flex:1"><h3 style="margin:0">התאמת נכסים · ' + esc(b.name || '') + '</h3>' +
-    '<div style="font-size:12px;color:#6B7280;margin-top:3px">מחפש: ' + esc(mq.q || '—') + '</div>' +
-    (mq.hasNeeds ? '' : '<div style="font-size:11.5px;color:#7A5E1C;font-weight:700;margin-top:2px">אין דרישות לקונה — ההתאמה לפי תקציב בלבד. הוסף "מה מחפש" בעריכת הקונה לדיוק</div>') +
+    '<div style="display:flex;align-items:flex-start;gap:10px">' +
+    '<div style="flex:1;min-width:0"><h3 style="margin:0">התאמת נכסים · ' + esc(b.name || '') + '</h3>' +
+    '<div style="font-size:12px;color:#6B7280;margin-top:3px">מחפש: ' + esc(mq || '—') + '</div>' +
+    (MQ_NEEDS ? '' : '<div style="font-size:11.5px;color:#7A5E1C;font-weight:700;margin-top:2px">אין דרישות לקונה — ההתאמה לפי תקציב בלבד. הוסף "מה מחפש" בעריכת הקונה לדיוק</div>') +
     '</div>' +
     '<button onclick="closeSheet()" aria-label="סגירה" style="width:36px;height:36px;border-radius:50%;background:#F5F3EC;' +
     'border:none;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer">' +
     '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
+    '<div class="mtabs" id="mTabs"></div>' +   // שורה מלאה מתחת לכותרת — 4 הטאבים נכנסים ב-375px
+    '</div>' +
     '<div id="mRes" style="display:flex;flex-direction:column;gap:10px">' +
     '<div style="text-align:center;color:#6B7280;font-size:13px;padding:20px 0">מחפש התאמות…</div></div>' +
-    '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
+    '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>';
+}
+/* [MATCH-TABS 01/10] אייל: "שיעבוד גם בהתאמת קונים — המשרד שלנו / שת"פ / נכס נולד / שלי למעלה, לעבור
+   בלי לגלול". 4 בקשות במקביל; נכס נולד = כרטיס מלא מהרכיב המשותף (בלי "שלח לקונה" — נכס פרטי שטרם גויס). */
+var MQ_CUR = '', MTAB = 'office', MG = null, MNB = [];
+var _MATCH_OPEN = false, _SUB_FROM_MATCH = false, _OPENING_MATCH = false;
+function _openMatchSheet(){
+  _OPENING_MATCH = true;
+  try{ openSheet(_matchShell()); } finally { _OPENING_MATCH = false; }
+  _MATCH_OPEN = true;
+}
+function matchProps(i){
+  var b = el('list')._src[i];
+  var mq = matchQuery(b);
+  MQ_NEEDS = mq.hasNeeds;
+  CUR_BUYER = b; MQ_CUR = mq.q; MG = null; MNB = [];
+  _openMatchSheet();
   Promise.all([
     POST('/api/search/properties', {q: mq.q, nosave: true}).catch(function(){ return {}; }),
-    POST('/api/search/exclusives', {q: mq.q, nosave: true}).catch(function(){ return {}; })
+    POST('/api/search/exclusives', {q: mq.q, nosave: true}).catch(function(){ return {}; }),
+    mq.q ? POST('/api/search/newborn', {q: mq.q}).catch(function(){ return {}; }) : Promise.resolve({}),
+    GET('/api/my/properties').catch(function(){ return {}; })
   ]).then(function(rs){
     var bySc = function(a, c){ return (c.score || 0) - (a.score || 0); };
     renderMatches(b, ((rs[0] && rs[0].results) || []).sort(bySc),
-                     ((rs[1] && rs[1].results) || []).sort(bySc));
+                     ((rs[1] && rs[1].results) || []).sort(bySc),
+                     ((rs[2] && rs[2].results) || []).sort(bySc),
+                     (rs[3] && rs[3].results) || []);
   });
 }
 function scoreChip(sc){
@@ -3660,8 +3699,7 @@ function msgLine(p, shtaf){
   return where + (dt ? '\n' + dt : '') + (p.price ? '\nמחיר: ₪' + p.price : '');
 }
 function propCard(p, b, shtaf){
-  var mi = MITEMS.length;
-  MITEMS.push({p: p, shtaf: shtaf});
+  var mi = (p._mi != null) ? p._mi : (p._mi = MITEMS.push({p: p, shtaf: shtaf}) - 1);   // [MATCH-TABS] אותו נכס = אותו אינדקס בכל טאב
   // שת"פ באותו פורמט של המשרד: שורת פרטים קצרה; התיאור המלא נפתח באייקון "הרחב לתיאור"
   var dt = shtaf
     ? [(p.dest || ''), p.date ? 'פורסם ' + p.date : '', p.office || 'משרד שותף'].filter(Boolean).join(' · ')
@@ -3747,40 +3785,80 @@ function dedupeShtaf(office, shtaf){
     });
   });
 }
-function renderMatches(b, office, shtaf){
-  CUR_BUYER = b;
-  MITEMS = []; MSEL = {};
+function _budgetOk(b){
   // תקציב 2 מיליון לא מקבל נכס של 1.35/2.6 מיליון — עד 20% הפרש; נכס בלי מחיר לא נפסל
   var bd = _budgetNum(b.budget);
-  if (bd >= 10000){
-    var bok = function(p){ var pr = _priceNum(p.price); return !pr || Math.abs(pr - bd) <= bd * 0.2; };
-    office = office.filter(bok); shtaf = shtaf.filter(bok);
-  }
-  shtaf = dedupeShtaf(office, shtaf);
+  if (bd < 10000) return function(){ return true; };
+  return function(p){ var pr = _priceNum(p.price); return !pr || Math.abs(pr - bd) <= bd * 0.2; };
+}
+function _splitSW(list){
   // חזקות (60%+) קודם; כל השאר תחת "התאמות נוספות" — שום דבר לא נחתך ל-5
+  if (!MQ_NEEDS) return {s: list, w: []};
   var strong = function(p){ return (p.score || 0) >= 60; };
-  var oS = office, oW = [], sS = shtaf, sW = [];
-  if (MQ_NEEDS){
-    oS = office.filter(strong); oW = office.filter(function(p){ return !strong(p); });
-    sS = shtaf.filter(strong);  sW = shtaf.filter(function(p){ return !strong(p); });
+  return {s: list.filter(strong), w: list.filter(function(p){ return !strong(p); })};
+}
+function _nbGroup(nb){ var g = _splitSW(nb.filter(_budgetOk(CUR_BUYER || {}))); MNB = g.s.concat(g.w); return g; }
+function renderMatches(b, office, shtaf, nb, my){
+  CUR_BUYER = b;
+  MITEMS = []; MSEL = {};
+  var bok = _budgetOk(b);
+  office = office.filter(bok); shtaf = shtaf.filter(bok);
+  shtaf = dedupeShtaf(office, shtaf);
+  // "שלי" — ההתאמות מתוך הנכסים של הסוכן (כמו הטאב "שלי" במסך הנכסים): לפי קישור המודעה, אחרת כתובת+מחיר
+  var myK = {};
+  (my || []).forEach(function(p){
+    if (p.link) myK['L' + p.link] = 1;
+    myK['A' + _streetKey(p.address || p.street) + '|' + _priceNum(p.price)] = 1;
+  });
+  var mine = office.filter(function(p){
+    return (p.link && myK['L' + p.link]) || myK['A' + _streetKey(p.address || p.street) + '|' + _priceNum(p.price)];
+  });
+  MG = {office: _splitSW(office), shtaf: _splitSW(shtaf), nb: _nbGroup(nb || []), mine: _splitSW(mine)};
+  var order = ['office', 'shtaf', 'nb', 'mine'];
+  MTAB = 'office';
+  for (var i = 0; i < order.length; i++){
+    var g = MG[order[i]];
+    if (g.s.length + g.w.length){ MTAB = order[i]; break; }
   }
-  var h = '';
-  if (oS.length){
-    h += '<div class="grpTitle">המשרד שלנו · ' + oS.length + '</div>';
-    oS.slice(0, 25).forEach(function(p){ h += propCard(p, b, false); });
+  renderMatchTabs(); renderMatchTab();
+}
+var MTAB_LBL = {office: 'המשרד שלנו', shtaf: 'שת"פ', nb: 'נכס נולד', mine: 'שלי'};
+function renderMatchTabs(){
+  var t = el('mTabs'); if (!t || !MG) return;
+  t.innerHTML = ['office', 'shtaf', 'nb', 'mine'].map(function(k){
+    var g = MG[k];
+    return '<div class="t' + (k === MTAB ? ' on' : '') + '" onclick="setMatchTab(\'' + k + '\')">' +
+      MTAB_LBL[k] + ' <b>' + (g.s.length + g.w.length) + '</b></div>';
+  }).join('');
+}
+function setMatchTab(k){
+  MTAB = k; renderMatchTabs(); renderMatchTab();
+  var s = el('sheet'); if (s && s.scrollTo) s.scrollTo(0, 0); else if (s) s.scrollTop = 0;
+}
+function renderMatchTab(){
+  if (!MG || !el('mRes')) return;
+  var b = CUR_BUYER || {}, g = MG[MTAB], h = '';
+  if (MTAB === 'nb'){
+    var nh = '';
+    MNB.slice(0, 30).forEach(function(r, i){
+      if (i === g.s.length && i > 0) nh += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + g.w.length + '</div>';
+      try{ nh += nbCard(r, i); }catch(e){}
+    });
+    if (nh) h = '<div class="nbk">' + nh + '</div>';
+  } else {
+    var sh = MTAB === 'shtaf';
+    var capS = sh ? 15 : 25, capW = sh ? 10 : 15;
+    g.s.slice(0, capS).forEach(function(p){ h += propCard(p, b, sh); });
+    if (g.w.length){
+      h += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + g.w.length + '</div>';
+      g.w.slice(0, capW).forEach(function(p){ h += propCard(p, b, sh); });
+    }
   }
-  if (sS.length){
-    h += '<div class="grpTitle">שת"פ · ' + sS.length + '</div>';
-    sS.slice(0, 15).forEach(function(p){ h += propCard(p, b, true); });
-  }
-  if (oW.length || sW.length){
-    h += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + (oW.length + sW.length) + '</div>';
-    oW.slice(0, 15).forEach(function(p){ h += propCard(p, b, false); });
-    sW.slice(0, 10).forEach(function(p){ h += propCard(p, b, true); });
-  }
+  var emptyTx = {office: 'לא נמצאו התאמות במשרד', shtaf: 'לא נמצאו התאמות בשת"פ',
+                 nb: 'לא נמצאו התאמות בנכס נולד (מכירה בלבד)', mine: 'אין התאמות מתוך הנכסים שלך'}[MTAB];
   el('mRes').innerHTML = (h ||
-    '<div style="text-align:center;color:#6B7280;font-size:13px;padding:16px 0">' +
-    'לא נמצאו התאמות — נסה לעדכן את הדרישות של הקונה</div>') +
+    '<div style="text-align:center;color:#6B7280;font-size:13px;padding:16px 0">' + emptyTx +
+    ' — נסה טאב אחר או לעדכן את הדרישות של הקונה</div>') +
     '<div id="selBar" style="display:none;position:sticky;bottom:0;padding:8px 0">' +
     '<div style="display:flex;gap:8px">' +
     '<button class="btn" style="flex:1;background:#157A43;color:#fff;box-shadow:0 4px 14px rgba(31,175,94,.3)" ' +
@@ -3790,6 +3868,19 @@ function renderMatches(b, office, shtaf){
     '</div></div>';
   updateSelBar();
 }
+/* כרטיס נכס נולד בתוך החלון: פעולה שפותחת גיליון (פגישה/הערה) מחליפה את חלון ההתאמות —
+   סגירה/שמירה מחזירה לחלון, באותו טאב. */
+function nbKitRows(){ return MNB; }
+function nbKitRefresh(){
+  if (!MQ_CUR) return;
+  POST('/api/search/newborn', {q: MQ_CUR}).then(function(j){
+    if (!(j && j.ok) || !MG) return;
+    var bySc = function(a, c){ return (c.score || 0) - (a.score || 0); };
+    MG.nb = _nbGroup((j.results || []).sort(bySc));
+    if (_MATCH_OPEN && !_SUB_FROM_MATCH && el('mRes')){ renderMatchTabs(); renderMatchTab(); }
+  }).catch(function(){});
+}
+function reopenMatches(){ _openMatchSheet(); renderMatchTabs(); renderMatchTab(); }
 function toggleSel(mi){
   if (MSEL[mi]) delete MSEL[mi]; else MSEL[mi] = 1;
   document.querySelectorAll('#mRes .sel').forEach(function(btn){
@@ -3885,9 +3976,18 @@ render = function(){
 })();
 
 (function(){
+  nbKitInit();   // [NB-KIT] נוסח הוואטסאפ האישי לכרטיסי נכס נולד
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
     el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
+    MYNAME = j.name || '';   // [MATCH-TABS] כרטיסי נכס נולד: "מי פנה" למנהל/מתאמת, בחירת סוכן בסטטוס
+    MGR = (j.role === 'admin' || j.role === 'coordinator');
+    if (MGR){
+      IS_COORD = j.role === 'coordinator';
+      GET('/api/my/agents').then(function(d){
+        AG_OPTS = ((d && d.agents) || []).map(function(a){ return a.name; }).filter(function(a){ return a && a !== j.name; });
+      }).catch(function(){});
+    }
   }).catch(function(){ location.replace('/v2'); });
   fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
     OFFICE = o.name || '';
@@ -5125,7 +5225,8 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .hd h1{font-size:21px;font-weight:800}
   .mapChip{display:flex;align-items:center;gap:6px;background:#EAF0FA;color:#2E6BD6;border-radius:999px;
       padding:6px 13px;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
-  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px;overflow-x:auto}   /* [NB-SEARCH] 4 סגמנטים */
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px;overflow-x:auto;scrollbar-width:none}   /* [NB-SEARCH] 4 סגמנטים */
+  .segs::-webkit-scrollbar{display:none}
   .segs .sg{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 0;
       font-size:13px;font-weight:600;color:#6B7280;border-radius:10px;cursor:pointer;white-space:nowrap}
   .segs .sg b{font-size:11px;font-weight:700}
@@ -9977,7 +10078,7 @@ def register(app, G):
 
     @app.route("/v2/buyers", methods=["GET"])
     def v2_buyers():
-        return _page(V2_BUYERS_HTML)
+        return _page(V2_BUYERS_HTML.replace("<!--NB_KIT-->", V2_NB_KIT, 1))
 
     @app.route("/v2/sigs", methods=["GET"])
     def v2_sigs():
