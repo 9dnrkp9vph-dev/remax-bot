@@ -9919,6 +9919,8 @@ def bai_budget(s):
     best = 0
     for m in _re.finditer(r"\d[\d,\.]*", s):
         tok = m.group().rstrip(".,")
+        if _re.fullmatch(r"\d{1,3}(?:\.\d{3})+", tok):
+            tok = tok.replace(".", "")             # "2.500.000" — נקודות כמפריד אלפים
         try:
             v = float(tok.replace(",", ""))
         except ValueError:
@@ -10832,7 +10834,9 @@ def register(app, G):
                     buyer_ph.add(p9)
                 text = " ".join(str(r.get(k, "") or "") for k in ("search", "summary"))
                 ep = G["_excl_epoch"](r.get("date", "")) or 0
-                sc, why = bai_score(parsed, text, bai_budget(r.get("budget", "")), bool(ep) and (now - ep) < 30 * 86400, area)
+                # [01/10] שדה התקציב ריק אצל רבים — התקציב כתוב ב"מה מחפש" ("… · עד 3,550,000")
+                rb = bai_budget(r.get("budget", "")) or bai_budget(r.get("search", ""))
+                sc, why = bai_score(parsed, text, rb, bool(ep) and (now - ep) < 30 * 86400, area)
                 if sc < 40:
                     continue
                 row = r.get("row", "")
@@ -10841,14 +10845,14 @@ def register(app, G):
                 if own(r):
                     disp, tel = G["_il_phone"](r.get("phone", ""))
                     o = {"own": True, "name": name, "phone": disp, "tel": tel, "wa": G["_wa_phone"](r.get("phone", "")),
-                         "budget": str(r.get("budget", "") or "").strip(), "summary": str(r.get("summary", "") or "").strip(),
+                         "budget": str(r.get("budget", "") or "").strip() or (G["format_price_il"](rb) if rb else ""), "summary": str(r.get("summary", "") or "").strip(),
                          "date": G["_fmt_buyer_date"](r.get("date", "")), "agent": str(r.get("agent", "") or "").strip(),
                          "row": row, "search": str(r.get("search", "") or "").strip()}
                 else:   # קונה של סוכן אחר — פרטיות מבנית (החלטת אייל 01/10, כמו "שאל את אפי")
                     ag = str(r.get("agent", "") or "").strip()
                     o = {"own": False, "first": (name.split()[0] if name else ""), "agent": ag,
                          "agentWa": G["_wa_phone"](ag_ph.get(ag, "")) if ag_ph.get(ag) else "",
-                         "budget": str(r.get("budget", "") or "").strip(),
+                         "budget": str(r.get("budget", "") or "").strip() or (G["format_price_il"](rb) if rb else ""),
                          "search": str(r.get("search", "") or "").strip(), "row": row}
                 o.update(score=sc, why=why, status=st)
                 out_b.append(o)
