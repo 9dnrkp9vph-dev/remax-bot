@@ -10263,7 +10263,9 @@ def sig_ingest_norm(b):
            "agent": agent, "client_name": client,
            "address": f("address", "כתובת"), "city": f("city", "עיר"),
            "commission_pct": f("commission_pct", "עמלה"), "notes": f("notes", "הערות"),
-           "phone": f("phone", "טלפון"), "received_at": rcv}
+           # 01/10: הטלפון של הלקוח בפיירברי הוא "סלולרי" — כל הכינויים
+           "phone": f("phone", "טלפון", "סלולרי", "טלפון נייד", "נייד", "mobile", "cellular", "client_phone"),
+           "received_at": rcv}
     if event_id:
         # 🐞 09/09: שני מסמכי זוג מוכר+בלעדיות חולקים את אותו event_id בפיירברי —
         # מפתח לפי event_id בלבד גרם לשני לדרוס את הראשון ("נעלמה הבלעדיות").
@@ -11831,6 +11833,32 @@ def register(app, G):
     # ── חתימות מפיירברי — webhook ישיר (מתכון החשבוניות; ספק 2026-08-13) ──────
     _SIGN_INGEST_KEY = (os.environ.get("SIGN_INGEST_KEY") or "").strip()
 
+    def _sig_buyer_async(raw):
+        """[01/10] חתימת מתעניין מפיירברי → קונה מיד (כמו החתמה באפי), עם הטלפון; בלי לחכות ללולאה.
+        הדדופ (סוכן+טלפון/שם) ב-_add_buyer_from_signing — "נוצרה או עודכנה" לא מכפיל."""
+        dt_ = str(raw.get("deal_type") or "")
+        try:
+            is_buyer = G["_deal_label"](dt_) == "קונים" or "מתעניין" in dt_
+        except Exception:
+            is_buyer = "CLIENT_SALE" in dt_.upper()
+        agent, client = str(raw.get("agent") or "").strip(), str(raw.get("client_name") or "").strip()
+        if not (is_buyer and agent and client):
+            return False
+        if _re.fullmatch(r"[\d\-\s+]{8,}", agent):   # הסוכן הגיע כטלפון — לשם
+            try:
+                agent = G["_name_for_phone"](_re.sub(r"\D", "", agent)[-9:]) or agent
+            except Exception:
+                pass
+        addr = ", ".join(x for x in (str(raw.get("address") or "").strip(), str(raw.get("city") or "").strip()) if x)
+        def _run():
+            try:
+                G["_add_buyer_from_signing"](agent, client, str(raw.get("phone") or "").strip(), addr, "מהחתמת מתעניין")
+            except Exception as e:
+                if log: log.error(f"fireberry signing → buyer error: {e}", exc_info=True)
+        import threading as _sth
+        _sth.Thread(target=_run, daemon=True, name="sig-buyer").start()
+        return True
+
     @app.route("/v2/api/signatures/ingest", methods=["POST"])
     def v2_api_signatures_ingest():
         import hmac as _hmac
@@ -11854,7 +11882,8 @@ def register(app, G):
                 pass
             _log_activity("Fireberry", "system", "", "חתימה מפיירברי",
                           ((raw.get("client_name") or "") + " " + (raw.get("address") or ""))[:60].strip())
-            return jsonify({"ok": True, "source_key": sk})
+            buyer_q = _sig_buyer_async(raw)
+            return jsonify({"ok": True, "source_key": sk, "buyer": buyer_q})
         except Exception as e:
             if log: log.error(f"v2 signatures ingest error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
