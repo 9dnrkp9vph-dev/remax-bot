@@ -9964,9 +9964,29 @@ def ab_short_link(tok):
     android = ("intent://ab?t=" + t16 + "#Intent;scheme=" + NATIVE_URL_SCHEME + ";package=" +
                NATIVE_ANDROID_PACKAGE + ";S.browser_fallback_url=" +
                _urlencode({"u": base + target})[2:] + ";end")
-    store = (os.environ.get("APP_STORE_URL") or "").strip()   # 01/10: קישור הורדת האפליקציה (App Store)
-    store_html = ("<a href='" + store + "' style='display:block;margin:18px auto 0;color:#E4C56B;font-size:15px'>"
-                  "אין לך את האפליקציה? להורדה מה-App Store</a>") if store else ""
+    store = (os.environ.get("APP_STORE_URL") or "").strip().strip("'\"")   # 01/10: קישור הורדת האפליקציה
+    if store.upper().startswith("APP_STORE_URL="): store = store.split("=", 1)[1].strip()
+    if store and not store.lower().startswith(("http://", "https://", "itms-apps://")):
+        store = "https://" + store.lstrip("/")   # בלי https:// הקישור נהיה יחסי → Not Found בשרת שלנו
+    if "'" in store or "<" in store: store = ""
+    # 01/10 (אייל): כרטיס שיווקי גדול להורדת אפי מה-App Store (עיצוב: נייבי + זהב, בלי אימוג'י)
+    _feat = ("<li style='margin:7px 0'><b style='color:#E4C56B'>פוש מיידי</b> על כל נכס נולד באזור שלך</li>"
+             "<li style='margin:7px 0'><b style='color:#E4C56B'>תמלול וסיכום חכם</b> של כל שיחה, ישר לנייד</li>"
+             "<li style='margin:7px 0'><b style='color:#E4C56B'>חתימה דיגיטלית</b> ללקוח בשניות, גם מרחוק</li>"
+             "<li style='margin:7px 0'><b style='color:#E4C56B'>כניסה בזיהוי פנים</b> בלי סיסמאות וקודים</li>")
+    store_html = ("<div style='margin:30px auto 0;max-width:340px;padding:22px 18px 20px;border-radius:22px;"
+                  "background:linear-gradient(160deg,#1E3A5F,#0E1D33);border:1px solid #C29435;"
+                  "box-shadow:0 10px 28px rgba(0,0,0,.35);text-align:right'>"
+                  "<div style='font-size:20px;font-weight:800;color:#fff;text-align:center;margin-bottom:4px'>"
+                  "יש לך אייפון? מצוין.</div>"
+                  "<div style='font-size:15px;color:#DCD6C8;text-align:center;margin-bottom:14px'>"
+                  "הורד את אפי וקבל את כל המשרד בכיס</div>"
+                  "<ul style='list-style:none;padding:0;margin:0 0 18px;font-size:15px;color:#fff;line-height:1.45'>"
+                  + _feat + "</ul>"
+                  "<a href='" + store + "' style='display:block;padding:17px 18px;border-radius:16px;"
+                  "background:linear-gradient(135deg,#E4C56B,#C29435);color:#0E1D33;font-size:18px;"
+                  "font-weight:800;text-decoration:none;text-align:center;box-shadow:0 6px 18px rgba(194,148,53,.45)'>"
+                  "הורדה חינם מה-App Store</a></div>") if store else ""
     btn = ("display:block;margin:12px auto;max-width:320px;padding:15px 18px;border-radius:14px;"
            "font-weight:700;text-decoration:none;font-size:16px;")
     return ("<!doctype html><html dir=rtl lang=he><head><meta charset=utf-8>"
