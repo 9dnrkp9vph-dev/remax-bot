@@ -117,6 +117,10 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div id="err"></div>
     </div>
     <div class="foot">הכניסה לחברי צוות מוזמנים בלבד · For invited team members only · תנאי שימוש ופרטיות</div>
+    <!-- 01/10 (אייל): הורדה מה-App Store — בדפדפן בלבד (באפליקציה עצמה מוסתר); הקישור מ-APP_STORE_URL -->
+    <a id="storeBtn" href="__APP_STORE_URL__" style="display:none;margin:22px auto 0;max-width:320px;padding:15px 18px;
+       border-radius:16px;background:linear-gradient(135deg,#E4C56B,#C29435);color:#0E1D33;font-size:17px;
+       font-weight:800;text-decoration:none;text-align:center;box-shadow:0 6px 18px rgba(194,148,53,.35)">הורדה חינם מה-App Store</a>
   </div>
 
 <script>
@@ -217,6 +221,12 @@ function appleGo(){
     if (code.indexOf('1001') < 0 && code.toLowerCase().indexOf('cancel') < 0) fail('apple_failed');
   });
 }
+(function(){   // כפתור App Store — רק בדפדפן (לא בתוך האפליקציה) וכשהקישור מוגדר
+  try{
+    var sb = el('storeBtn');
+    if (sb && !window.Capacitor && /^https?:\/\//.test(sb.getAttribute('href') || '')) sb.style.display = 'block';
+  }catch(e){}
+})();
 (function(){   // חשיפת הכפתור רק כשהפלאגין באמת קיים (build 12+ של האפליקציה)
   try{
     if (window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'ios'
@@ -10256,7 +10266,11 @@ def register(app, G):
 
     @app.route("/v2", methods=["GET"])
     def v2_login():
-        return _page(V2_LOGIN_HTML)
+        _st = (os.environ.get("APP_STORE_URL") or "").strip().strip("'\"")
+        if _st.upper().startswith("APP_STORE_URL="): _st = _st.split("=", 1)[1].strip()
+        if _st and not _st.lower().startswith(("http://", "https://")): _st = "https://" + _st.lstrip("/")
+        if any(c in _st for c in "'\"<> "): _st = ""
+        return _page(V2_LOGIN_HTML.replace("__APP_STORE_URL__", _st))
 
     @app.route("/v2/home", methods=["GET"])
     def v2_home():
