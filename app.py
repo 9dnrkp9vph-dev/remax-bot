@@ -9964,6 +9964,9 @@ def ab_short_link(tok):
     android = ("intent://ab?t=" + t16 + "#Intent;scheme=" + NATIVE_URL_SCHEME + ";package=" +
                NATIVE_ANDROID_PACKAGE + ";S.browser_fallback_url=" +
                _urlencode({"u": base + target})[2:] + ";end")
+    store = (os.environ.get("APP_STORE_URL") or "").strip()   # 01/10: קישור הורדת האפליקציה (App Store)
+    store_html = ("<a href='" + store + "' style='display:block;margin:18px auto 0;color:#E4C56B;font-size:15px'>"
+                  "אין לך את האפליקציה? להורדה מה-App Store</a>") if store else ""
     btn = ("display:block;margin:12px auto;max-width:320px;padding:15px 18px;border-radius:14px;"
            "font-weight:700;text-decoration:none;font-size:16px;")
     return ("<!doctype html><html dir=rtl lang=he><head><meta charset=utf-8>"
@@ -9974,15 +9977,20 @@ def ab_short_link(tok):
             "<div id=msg style='margin:0 0 22px;font-weight:600;font-size:17px'>פותח את האפליקציה…</div>"
             "<div id=btns style='display:none'>"
             "<a id=appbtn href='" + native + "' style='" + btn + "background:#2E6BD6;color:#fff'>פתח באפליקציה</a>"
-            "<a href='" + target + "' style='" + btn + "background:#fff;color:#1E3A5F'>המשך בדפדפן</a></div>"
-            "<script>var T='" + target + "',N='" + native + "',A='" + android + "';"
+            "<a href='" + target + "' style='" + btn + "background:#fff;color:#1E3A5F'>המשך בדפדפן</a>" + store_html + "</div>"
+            "<script>var T='" + target + "',N='" + native + "',A='" + android + "',S='" + store + "';"
             "var ua=navigator.userAgent,and=/Android/i.test(ua),"
             "ios=/iPhone|iPad|iPod/i.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1)||"
             "((('ontouchstart' in window)||navigator.maxTouchPoints>0)&&!and);"
             "function show(){document.getElementById('msg').textContent='איך לפתוח?';"
             "document.getElementById('btns').style.display='block';}"
             "if(and){document.getElementById('appbtn').href=A;location.href=A;setTimeout(show,1500);}"
-            "else if(ios){try{location.href=N;}catch(e){}setTimeout(show,1200);}"
+            "else if(ios){try{location.href=N;}catch(e){}setTimeout(show,1200);"
+            # לחיצה על 'פתח באפליקציה': אם האפליקציה לא נפתחה תוך 2.5ש' (הדף לא איבד פוקוס/לא הוסתר) → App Store
+            "if(S){document.getElementById('appbtn').addEventListener('click',function(){var gone=false;"
+            "function g(){gone=true;}window.addEventListener('blur',g);window.addEventListener('pagehide',g);"
+            "document.addEventListener('visibilitychange',function(){if(document.hidden)g();});"
+            "setTimeout(function(){if(!gone&&!document.hidden)location.href=S;},2500);});}}"
             "else{location.replace(T);}</script></body></html>")
 
 def _wa_call_parts(c):
