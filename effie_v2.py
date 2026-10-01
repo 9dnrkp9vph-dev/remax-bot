@@ -5125,7 +5125,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .hd h1{font-size:21px;font-weight:800}
   .mapChip{display:flex;align-items:center;gap:6px;background:#EAF0FA;color:#2E6BD6;border-radius:999px;
       padding:6px 13px;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
-  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px;overflow-x:auto}   /* [NB-SEARCH] 4 סגמנטים */
   .segs .sg{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 0;
       font-size:13px;font-weight:600;color:#6B7280;border-radius:10px;cursor:pointer;white-space:nowrap}
   .segs .sg b{font-size:11px;font-weight:700}
@@ -5227,7 +5227,9 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <div class="sg on" data-m="office" onclick="setMode(this)">המשרד שלנו <b id="cOffice"></b></div>
         <div class="sg" data-m="shtaf" onclick="setMode(this)">שת"פ <b id="cShtaf"></b></div>
         <div class="sg" data-m="mine" onclick="setMode(this)">שלי <b id="cMine"></b></div>
+        <div class="sg" data-m="nb" id="sgNb" onclick="setMode(this)" style="display:none;white-space:nowrap">נכס נולד <b id="cNb"></b></div>
       </div>
+      <a id="nbAll" href="/v2/newborn" style="text-align:start;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none">לכל נכס נולד ←</a>
       <div class="srch">
         <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input id="q" placeholder="דירת 4 חדרים בקרית ביאליק עד 2 מיליון" oninput="qChanged();qClearBtn()">
@@ -5256,6 +5258,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   <div id="sheet"></div>
   <div id="toast"></div>
 
+<!--NB_KIT-->
 <script>
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
@@ -5312,6 +5315,14 @@ function fmtPrice(p){
 }
 
 var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''}, UPD = {office:'', shtaf:''};
+var NBRES = [], NB_SUM = '', NB_RENT = false;   // [NB-SEARCH 30/09] טאב נכס נולד (רק כשיש חיפוש)
+function _applyNb(j){ NBRES = (j && j.results) || []; NB_SUM = (j && j.summary) || ''; NB_RENT = !!(j && j.rent); }
+function nbKitRows(){ return NBRES; }   // הכרטיסים של הרכיב המשותף מצביעים לתוצאות נכס נולד
+function nbKitRefresh(){                 // אחרי פעולה בכרטיס (סטטוס/הערה) — חיפוש נכס נולד מחדש
+  var q = el('q').value.trim();
+  if (!q) return;
+  POST('/api/search/newborn', {q: q}).then(function(j){ if (j && j.ok){ _applyNb(j); render(); } }).catch(function(){});
+}
 var HOT = {};   // property_key → true עבור הנכס החם של הסוכן (אחד בלבד)
 var HOT_ORPHANS = {};   // 24/09: סימון שהמודעה שלו כבר לא ב'שלי' (אין כרטיס להסרה) — לא נספר במכסה
 var HOT_TITLES = {};    // property_key → כותרת (לבאנר היתום)
@@ -5387,10 +5398,12 @@ function load(q){
       if (!_hotOnce){ _hotOnce = true; loadHot(); }   // מצב כפתורי "נכס חם" — פעם אחת
     });
   }
+  if (!q){ NBRES = []; NB_SUM = ''; NB_RENT = false; }
   return Promise.all([
     step(POST(base ? swrU('/api/search/properties', 'props:o') : '/api/search/properties', {q: q || '', nosave: true}), 'props:o', _applyOffice),
     step(POST(base ? swrU('/api/search/exclusives', 'props:s') : '/api/search/exclusives', {q: q || '', nosave: true}), 'props:s', _applyShtaf),
-    step(GET(base ? swrU('/api/my/properties', 'props:m') : '/api/my/properties'), 'props:m', _applyMine)
+    step(GET(base ? swrU('/api/my/properties', 'props:m') : '/api/my/properties'), 'props:m', _applyMine),
+    q ? step(POST('/api/search/newborn', {q: q}), 'props:nb', _applyNb) : Promise.resolve()   // [NB-SEARCH] בנפרד — לא מעכב
   ]);
 }
 (function(){
@@ -5429,6 +5442,29 @@ function render(){
   el('cOffice').textContent = OFFICE.length;
   el('cShtaf').textContent = shtafShown.length;   // תואם למה שמוצג בפועל (אחרי הדדופ) — לא הגולמי
   el('cMine').textContent = MINE.length;
+  // [NB-SEARCH 30/09] טאב נכס נולד — רק כשיש טקסט בחיפוש; בלי חיפוש: קישור "לכל נכס נולד"
+  var _hasQ = !!el('q').value.trim();
+  if (el('cNb')) el('cNb').textContent = NBRES.length;
+  if (el('sgNb')) el('sgNb').style.display = _hasQ ? '' : 'none';
+  if (el('nbAll')) el('nbAll').style.display = _hasQ ? 'none' : '';
+  if (MODE === 'nb' && !_hasQ){   // נמחק החיפוש בטאב נכס נולד → חזרה ל"המשרד שלנו"
+    MODE = 'office';
+    var _sgO = document.querySelector('#modes .sg[data-m="office"]');
+    if (_sgO){ var _cs = _sgO.parentNode.children; for (var _i = 0; _i < _cs.length; _i++) _cs[_i].classList.toggle('on', _cs[_i] === _sgO); }
+  }
+  if (MODE === 'nb'){
+    if (el('qSpin')) el('qSpin').style.display = 'none';
+    el('sumLine').style.color = ''; el('sumLine').style.fontWeight = '';
+    el('sumLine').textContent = NB_SUM ? NB_SUM + ' · נכס נולד' : 'נכס נולד';
+    var _nh = '';
+    NBRES.slice(0, 30).forEach(function(r, i){ try{ _nh += nbCard(r, i); }catch(e){} });
+    el('list').innerHTML = _nh ? '<div class="nbk">' + _nh + '</div>' :
+      '<div class="card empty"><div class="ic"><svg width="30" height="27" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg></div>' +
+      '<div class="t">לא נמצאו נכסים בנכס נולד</div>' +
+      '<div class="s">' + (NB_RENT ? 'נכס נולד מציג נכסים למכירה בלבד' : 'נסה ניסוח אחר — החיפוש מבין תקציב, חדרים ואזור') + '</div></div>';
+    el('list')._src = NBRES;
+    return;
+  }
   var q = el('q').value.trim().toLowerCase();
   var src, h = '';
   if (MODE === 'office') src = OFFICE;
@@ -5694,9 +5730,18 @@ render = function(){
 })();
 
 (function(){
+  nbKitInit();   // [NB-KIT] נוסח הוואטסאפ האישי לכרטיסי נכס נולד
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
     el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
+    MYNAME = j.name || '';   // [NB-SEARCH] כרטיסי נכס נולד: "מי פנה" למנהל/מתאמת, בחירת סוכן בסטטוס
+    MGR = (j.role === 'admin' || j.role === 'coordinator');
+    if (MGR){
+      IS_COORD = j.role === 'coordinator';
+      GET('/api/my/agents').then(function(d){
+        AG_OPTS = ((d && d.agents) || []).map(function(a){ return a.name; }).filter(function(a){ return a && a !== j.name; });
+      }).catch(function(){});
+    }
   }).catch(function(){ location.replace('/v2'); });
   fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
     document.title = 'נכסים · ' + (o.name || '');
@@ -9956,7 +10001,7 @@ def register(app, G):
 
     @app.route("/v2/props", methods=["GET"])
     def v2_props():
-        return _page(V2_PROPS_HTML)
+        return _page(V2_PROPS_HTML.replace("<!--NB_KIT-->", V2_NB_KIT, 1))
 
     @app.route("/v2/map", methods=["GET"])
     def v2_map():
