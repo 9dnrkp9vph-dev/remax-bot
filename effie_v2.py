@@ -2056,7 +2056,7 @@ function snapRestore(i){
 }
 /* [IMPORT-BUYERS 01/10] */
 var IBS_FILE = null, IBS_TIMER = null;
-var IBS_LBL = {new: 'קונים חדשים', fill_phone: 'קונים קיימים שיקבלו טלפון', budget: 'קונים קיימים שהתקציב שלהם יתעדכן', seen: 'קונים קיימים שיקבלו את רשימת הנכסים שראו', exists: 'כבר קיימים — בלי שינוי', unknown_agent: 'דולגו — סוכן שלא קיים במערכת'};
+var IBS_LBL = {new: 'קונים חדשים', fill_phone: 'קונים קיימים שיקבלו טלפון', budget: 'קונים קיימים שהתקציב שלהם יתעדכן', seen: 'קונים קיימים שיקבלו את רשימת הנכסים שראו', stamp: 'יירשם תאריך התקציב (הסכום כבר נכון)', exists: 'כבר קיימים — בלי שינוי', unknown_agent: 'דולגו — סוכן שלא קיים במערכת'};
 var IBS_SKIP = {not_buyer: 'לא חתימת קונה (בעל נכס/השכרה)', no_client: 'בלי שם לקוח', no_agent: 'בלי סוכן', before_since: 'לפני התאריך'};
 function ibsRead(cb){
   var f = (el('ibsFile').files || [])[0];
@@ -10400,12 +10400,16 @@ def ibs_plan(sigs, buyers, canon, last9):
             if p9 and not last9(ex.get("phone", "")):
                 upd["phone"] = phone
             if budget and bday and bday > str(ex.get("budget_day", "") or ""):
-                upd["budget"] = "{:,}".format(budget); upd["budget_day"] = bday
+                if _re.sub(r"\D", "", str(ex.get("budget", "") or "")) == str(budget):
+                    upd["budget_day"] = bday              # הסכום כבר נכון — רק רישום היום
+                else:
+                    upd["budget"] = "{:,}".format(budget); upd["budget_day"] = bday
             ns_ = ibs_seen_summary(ex.get("summary", ""), seen)
             if ns_:
                 upd["summary"] = ns_
             item["update"] = upd
-            item["action"] = ("fill_phone" if "phone" in upd else "budget" if "budget" in upd else "seen") if upd else "exists"
+            item["action"] = ("fill_phone" if "phone" in upd else "budget" if "budget" in upd else "seen" if "summary" in upd
+                              else "stamp") if upd else "exists"
         plan.append(item)
     return plan
 
@@ -12188,7 +12192,7 @@ def register(app, G):
                       "unknown_agents": sorted(unknown.items(), key=lambda x: -x[1])[:15]}, ""
 
     def _ibs_apply(plan, who):
-        done = {"new": 0, "fill_phone": 0, "budget": 0, "seen": 0, "failed": 0}
+        done = {"new": 0, "fill_phone": 0, "budget": 0, "seen": 0, "stamp": 0, "failed": 0}
         _IBS_JOB.update(state="running", total=len(plan), i=0, done=done, started=time.time())
         bw = G["_buyers_write"]
         for i, it in enumerate(plan):
@@ -12206,7 +12210,7 @@ def register(app, G):
                             bw("updatebuyer", {"row": j.get("row"), "budget_day": it["budget_day"]})
                     else:
                         done["failed"] += 1
-                elif it["action"] in ("fill_phone", "budget", "seen") and it.get("row"):
+                elif it["action"] in ("fill_phone", "budget", "seen", "stamp") and it.get("row"):
                     j = bw("updatebuyer", dict(it["update"], row=it["row"]))
                     if j and j.get("ok"):
                         done[it["action"]] += 1
@@ -12243,7 +12247,7 @@ def register(app, G):
         sample = {}
         for it in plan:
             a = it["action"]
-            if a not in ("exists", "unknown_agent") and len(sample.setdefault(a, [])) < 12:
+            if a not in ("exists", "unknown_agent", "stamp") and len(sample.setdefault(a, [])) < 12:
                 sample[a].append({"client": it["client"], "agent": it["agent"], "date": it["date"],
                                   "budget": it["budget"], "phone": bool(it["phone"])})
         if not b.get("apply"):

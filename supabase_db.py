@@ -247,6 +247,9 @@ def fetch_buyers_rows():
 
 
 _BUYER_KEYS = ("date", "name", "phone", "budget", "summary", "agent", "agent_phone", "search")
+# 01/10: שדות עזר שנשמרים ב-raw בעדכון (לא חלק ממבנה listbuyers) — budget_day = יום החתימה שממנה
+# נלקח התקציב; בלעדיו כל סבב (ייבוא/לולאה/פיירברי) "מעדכן" שוב ודורס עריכה ידנית של הסוכן
+_BUYER_EXTRA_KEYS = ("budget_day",)
 
 def buyers_insert(raw):
     """קונה חדש — כתיבה ישירה (23/08: הקונים מוזנים רק מהאפליקציה; הגיליון קפא).
@@ -286,7 +289,7 @@ def buyers_update(row, fields):
         return False
     raw = dict(cur[0].get("raw") or {})
     for k, v in (fields or {}).items():
-        if k in _BUYER_KEYS and v is not None:
+        if (k in _BUYER_KEYS or k in _BUYER_EXTRA_KEYS) and v is not None:
             raw[k] = str(v)
     r = requests.patch(SUPABASE_URL + "/rest/v1/buyers",
                        headers={**_headers(), "Prefer": "return=minimal"},
