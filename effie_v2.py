@@ -2086,7 +2086,7 @@ function ibsPoll(){
     if (!j || !j.ok) return;
     var d = j.done || {};
     el('ibsOut').innerHTML = (j.state === 'done' ? '<b>הייבוא הסתיים</b>' : 'מייבא… ' + (j.i || 0) + ' מתוך ' + (j.total || 0)) +
-      '<br>חדשים ' + (d.new || 0) + ' · טלפון ' + (d.fill_phone || 0) + ' · תקציב ' + (d.budget || 0) + ' · נכסים ' + (d.seen || 0) + (d.failed ? ' · <span style="color:#C24040">נכשלו ' + d.failed + '</span>' : '');
+      '<br>חדשים ' + (d.new || 0) + ' · טלפון ' + (d.fill_phone || 0) + ' · תקציב ' + (d.budget || 0) + ' · נכסים ' + (d.seen || 0) + (d.stamp ? ' · תאריך תקציב ' + d.stamp : '') + (d.failed ? ' · <span style="color:#C24040">נכשלו ' + d.failed + '</span>' : '');
     if (j.state === 'done'){ clearInterval(IBS_TIMER); IBS_TIMER = null; toast('הייבוא הסתיים'); }
   }).catch(function(){});
 }

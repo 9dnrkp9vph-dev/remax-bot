@@ -5616,7 +5616,9 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
                         # 01/10: חתימה מיום חדש → התקציב מתעדכן לחתימה האחרונה (עריכה ידנית של הסוכן
                         # נשמרת עד החתימה הבאה — budget_day מסמן מאיזה יום הגיע התקציב)
                         _upd = {}
-                        if budget_txt and budget_day and str(r.get("budget_day", "") or "") != budget_day:
+                        # רק חתימה *חדשה יותר* מזו שהתקציב נלקח ממנה — אחרת הלולאה (מטבלת החתימות, שחסרות בה
+                        # חתימות ישנות בלי מחיר) מחזירה תקציב ישן מעל מה שהייבוא קבע (נתפס 01/10: 4 קונים מתנדנדים)
+                        if budget_txt and budget_day and budget_day > str(r.get("budget_day", "") or ""):
                             _upd.update(budget=budget_txt, budget_day=budget_day)
                         # 01/10 (אייל): רשימת הנכסים שהלקוח ראה אצל הסוכן — רק בסיכום אוטומטי ("מהחתמת…")
                         _sm = _summary_add_seen(r.get("summary", ""), [a.strip() for a in str(address or "").split("|")])
