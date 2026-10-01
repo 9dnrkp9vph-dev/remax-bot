@@ -1310,6 +1310,204 @@ _NB_TO_CITY = {
 }
 # שכונות עמומות (אותו שם בכמה ערים) — לא אוכפים: גבעת הרקפות, מרכז, ותיק, בנה ביתך, שביט, גבעה א'
 
+# ── [BUYER-AI-AREA 01/10] "אותו מוח" של חיפוש הנכסים לחיפוש קונה (אייל): כינויי שכונות/ערים מתוך
+# _CITY_NB_MAP_HE (אפקה/נאות אפק/הברושים = אפק), ורחוב → שכונה לפי נכסי המשרד ונכס נולד ──────────────
+_NB_GENERIC = {"מרכז", "מרכז העיר", "ותיק", "ותיקה"}
+
+def _nb_alias_index(text):
+    """מפת השכונות (טקסט הפרומפט) → {"city": {עיר: [כינויים]}, "nb": {שכונה: {"city", "aliases"}},
+    "ambiguous": {כינויים שמופיעים ביותר מעיר אחת / כלליים}}."""
+    norm = lambda t: re.sub(r"\s+", " ", str(t or "").replace("קריית", "קרית")).strip()
+    cities, nbs, seen_city = {}, {}, {}
+    cur = None
+    for ln in str(text or "").splitlines():
+        h = re.search(r"\*\*(.+?)\*\*", ln)
+        if "🏙" in ln and h:
+            cur = norm(h.group(1)); continue
+        if "→" not in ln:
+            continue
+        left, right = ln.split("→", 1)
+        left = re.sub(r"\(.*?\)", "", left)
+        als = [norm(a) for a in re.findall(r'"([^"]+)"', left)]
+        mc = re.search(r'city\s*=\s*"([^"]+)"', right)
+        if mc and "neighborhood" not in right:
+            c = norm(mc.group(1))
+            cities.setdefault(c, set()).update(als + [c])
+            continue
+        canons = [norm(x) for x in re.findall(r'"([^"]+)"', right.split("neighborhood", 1)[-1])] if "neighborhood" in right else []
+        if not cur or not canons:
+            continue
+        for cn in canons:
+            e = nbs.setdefault(cn, {"city": cur, "aliases": set(), "cities": set()})
+            e["cities"].add(cur)
+            e["aliases"].update(als + [cn])
+            for a in als + [cn]:
+                seen_city.setdefault(a, set()).add(cur)
+    amb = {a for a, cs in seen_city.items() if len(cs) > 1} | set(_NB_GENERIC)
+    for cn, e in nbs.items():
+        if len(e["cities"]) > 1:
+            amb.add(cn)
+    for c in cities:
+        cities[c] = sorted(a for a in cities[c] if len(a) >= 3)
+    return {"city": cities,
+            "nb": {cn: {"city": e["city"], "aliases": sorted(a for a in e["aliases"] if len(a) >= 3)} for cn, e in nbs.items()},
+            "ambiguous": amb}
+
+def _street_key(s):
+    """שם רחוב בלי מספר בית ('נעמי שמר 12' → 'נעמי שמר')."""
+    t = re.sub(r"\s+", " ", str(s or "").replace("קריית", "קרית")).strip()
+    return re.sub(r"\s*\d.*$", "", t).strip()
+
+def _street_nb_pick(rows, street, city):
+    """רחוב → השכונה הנפוצה בנתונים (rows = [(רחוב, שכונה, עיר)]); פחות מ-2 עדויות → ''."""
+    sk = _street_key(street); ck = re.sub(r"\s+", " ", str(city or "").replace("קריית", "קרית")).strip()
+    if len(sk) < 3:
+        return ""
+    from collections import Counter as _C
+    cnt = _C()
+    for st, nb, c in rows or []:
+        c2 = re.sub(r"\s+", " ", str(c or "").replace("קריית", "קרית")).strip()
+        if _street_key(st) == sk and nb and (not ck or not c2 or c2 == ck):
+            cnt[str(nb).strip()] += 1
+    if not cnt:
+        return ""
+    top, k = cnt.most_common(1)[0]
+    return top if k >= 2 else ""
+
+def _street_nb_rows():
+    """(רחוב, שכונה, עיר) מנכסי המשרד ומנכס נולד — מטמון שעה."""
+    c = _cache_get("street_nb_rows", 3600)
+    if c is not None:
+        return c
+    rows = []
+    try:
+        for r in fetch_sheet_rows() or []:
+            if (r.get("שכונה") or "").strip():
+                rows.append((r.get("כתובת", ""), r.get("שכונה", ""), r.get("עיר / ישוב", "")))
+    except Exception:
+        pass
+    try:
+        for r in fetch_newborn() or []:
+            if (r.get("שכונה") or "").strip():
+                rows.append((r.get("רחוב1", "") or r.get("רחוב", ""), r.get("שכונה", ""), r.get("עיר", "")))
+    except Exception:
+        pass
+    if rows:
+        _cache_put("street_nb_rows", rows)
+    return rows
+
+def _buyer_parse_to_query(raw):
+    """פלט המפרק (מאפייני הנכס למכירה) → המבנה שהניקוד (bai_score) מצפה לו."""
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    def _num(v):
+        try:
+            return float(str(v).replace(",", "")) if v not in (None, "") else None
+        except Exception:
+            return None
+    rooms = _num(raw.get("rooms"))
+    rooms = int(rooms) if rooms is not None and rooms == int(rooms) else rooms
+    price = _num(raw.get("price"))
+    q = {"city": raw.get("city") or None, "cities": raw.get("cities") or None,
+         "neighborhood": raw.get("neighborhood") or None, "neighborhoods": raw.get("neighborhoods") or None,
+         "street": _street_key(raw.get("street") or "") or None,
+         "rooms_min": rooms, "rooms_max": rooms,
+         "budget_max": int(price) if price else None,
+         "property_type": raw.get("property_type") or None,
+         "must_have": [str(f) for f in (raw.get("features") or []) if str(f or "").strip()],
+         "deal_type": raw.get("deal_type") or "מכירה",
+         "summary_he": raw.get("summary_he") or ""}
+    return q
+
+def _buyer_query_enrich(q, rows, idx):
+    """רחוב בלי שכונה → השכונה הנפוצה ברחוב בנתונים (נכסי המשרד/נכס נולד), מנורמלת לשם הקנוני במפה;
+    עיר חסרה → העיר של השכונה. שכונה מפורשת גוברת."""
+    if not q or q.get("neighborhood") or q.get("neighborhoods") or not q.get("street"):
+        return q
+    raw_nb = _street_nb_pick(rows, q.get("street"), q.get("city") or "")
+    if not raw_nb:
+        return q
+    norm = lambda t: re.sub(r"\s+", " ", str(t or "").replace("קריית", "קרית")).strip()
+    rn = norm(raw_nb)
+    canon = ""
+    for cn, e in ((idx or {}).get("nb") or {}).items():
+        if rn == cn or rn in e.get("aliases", []) or any(len(a) >= 3 and a in rn for a in e.get("aliases", [])):
+            canon = cn
+            break
+    q["neighborhood"] = canon or rn
+    if not q.get("city") and canon:
+        q["city"] = ((idx or {}).get("nb") or {}).get(canon, {}).get("city")
+    return q
+
+def parse_property_for_buyers(text):
+    """[BUYER-AI-AREA 01/10] מפרק ייעודי לחיפוש קונה (אייל: "אנחנו מחפשים קונים, לא מוכרים"): הטקסט הוא
+    *נכס למכירה* — המחיר הוא מחיר הנכס, החדרים/התכונות הם מה שיש בנכס, וקוטג' נשאר קוטג'.
+    אותו מוח של ערים/שכונות (_CITY_NB_MAP_HE) כמו חיפוש הנכסים."""
+    prompt = f"""אתה עוזר לסוכן נדל"ן. לסוכן יש נכס למכירה (או תיאור של נכס) והוא מחפש לו **קונים** מתאימים במאגר הקונים.
+חלץ את מאפייני **הנכס** ל-JSON בלבד (ללא markdown, ללא backticks).
+{_CITY_NB_MAP_HE}
+שדות JSON:
+- city: עיר הנכס (מהרשימה למעלה) או null
+- neighborhood: שכונה קנונית מהמיפוי (לפי השכונה שצוינה) או null — רחוב לבד לא מספיק, אל תנחש
+- street: שם הרחוב בלי מספר בית, או null
+- house_number: מספר הבית, או null
+- rooms: מספר החדרים בנכס (מספר עשרוני) או null
+- price: מחיר הנכס בש"ח (מספר) — "2.1 מיליון" → 2100000, "1,950,000" → 1950000. מספר בודד הוא מחיר הנכס, לא תקציב
+- size: מ"ר או null
+- floor: קומה או null
+- property_type: סוג הנכס בדיוק: "דירה" / "דירת גן" / "פנטהאוז" / "דופלקס" / "קוטג'" / "וילה" / "דו משפחתי" / "מגרש" / "חנות" / "משרד" — קוטג' נשאר "קוטג'"; ברירת מחדל "דירה"
+- features: מה שיש בנכס (מערך): "מעלית" / "חניה" / "ממ\\"ד" / "מרפסת" / "גינה" / "מחסן"
+- deal_type: "מכירה" / "השכרה" — ברירת מחדל "מכירה"
+- summary_he: משפט אחד שמתאר את הנכס, מתחיל ב"נכס:"
+דוגמאות:
+- "נעמי שמר 12 קרית ביאליק 4 חדרים 2.1 מיליון עם מעלית" → city="קרית ביאליק", street="נעמי שמר", house_number="12", rooms=4, price=2100000, property_type="דירה", features=["מעלית"]
+- "קוטג' בקרית ים 3 מיליון" → city="קרית ים", property_type="קוטג'", price=3000000
+- "4 חדרים באפקה 1.9" → city="קרית ביאליק", neighborhood="אפק", rooms=4, price=1900000
+טקסט:
+{text}"""
+    r = requests.post("https://api.anthropic.com/v1/messages",
+        headers={"anthropic-version": "2023-06-01", "x-api-key": CLAUDE_API_KEY, "content-type": "application/json"},
+        json={"model": "claude-sonnet-4-5", "max_tokens": 600, "messages": [{"role": "user", "content": prompt}]},
+        timeout=20)
+    if r.status_code != 200:
+        log.error(f"buyer-ai parse error: {r.text[:200]}")
+        return {}
+    out = re.sub(r"```(?:json)?\s*", "", r.json()["content"][0]["text"].strip()).strip("` \n")
+    m = re.search(r"\{.*\}", out, re.DOTALL)
+    try:
+        return json.loads(m.group() if m else out)
+    except Exception as e:
+        log.error(f"buyer-ai JSON parse error: {e}")
+        return {}
+
+def _parse_buyer_ai_query(q):
+    """פירוק לחיפוש קונה — מטמון 10 דק' + single-flight; → מבנה bai_score + העשרת רחוב→שכונה. עותק."""
+    import copy as _copy
+    key = "bq:" + q
+    c = _cache_get(key, _PARSE_Q_TTL)
+    if c is None:
+        _lk = _sf_lock(key)
+        _got = _lk.acquire(timeout=_SF_WAIT)
+        try:
+            c = _cache_get(key, _PARSE_Q_TTL)
+            if c is None:
+                c = _buyer_parse_to_query(parse_property_for_buyers(q))
+                if c:
+                    c = _enforce_nb_city(c)
+                    c = _buyer_query_enrich(c, _street_nb_rows(), _nb_alias_idx())
+                    _cache_put(key, c)
+        finally:
+            if _got:
+                _lk.release()
+    return _copy.deepcopy(c or {})
+
+_NB_ALIAS_IDX = None
+def _nb_alias_idx():
+    global _NB_ALIAS_IDX
+    if _NB_ALIAS_IDX is None:
+        _NB_ALIAS_IDX = _nb_alias_index(_CITY_NB_MAP_HE)
+    return _NB_ALIAS_IDX
+
 def _enforce_nb_city(parsed):
     """אם צוינה שכונה אחת חד-משמעית — אוכפים את העיר שלה (מונע דליפת נכסים מעיר אחרת)."""
     try:

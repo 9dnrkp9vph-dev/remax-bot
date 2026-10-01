@@ -9913,7 +9913,7 @@ def bai_rooms(text):
     return None
 
 # סוג נכס (01/10, בדיקה חיה: קונים של מגרש/חנות עלו ב-95% לחיפוש דירה): לפי הקטע הראשון בטקסט הקונה
-BAI_NONRES = ("מגרש", "חנות", "משרד", "מסחרי", "מחסן", "בנה ביתך", "חקלאי")
+BAI_NONRES = ("מגרש", "חנות", "משרד", "מסחרי", "מחסן", "חקלאי")   # "בנה ביתך" = גם שם שכונה (מוצקין/ים) — לא כאן
 BAI_HOUSE = ("קוטג", "וילה", "דו משפחתי", "דו-משפחתי", "בית פרטי")
 BAI_FLAT = ("דירה", "דירות", "דירת", "פנטהאוז", "דופלקס", "מיני פנטהאוז")
 
@@ -9928,7 +9928,40 @@ def bai_kind(t, head_only=True):
             return kind
     return None
 
-def bai_score(parsed, text, budget, recent):
+def bai_area_terms(parsed, idx):
+    """[BUYER-AI-AREA 01/10] מונחי אזור לחיפוש קונה, מ"מוח" חיפוש הנכסים (idx = _nb_alias_index):
+    ours — העיר + כינוייה ('ביאליק'), השכונה + כל כינוייה ('אפקה', 'הברושים'), שם הרחוב;
+    others — כינויים ייחודיים (4+ תווים, לא עמומים) של ערים/שכונות אחרות — קונה שמזכיר רק אותם לא מוצג."""
+    q = parsed or {}
+    idx = idx or {}
+    cmap, nmap, amb = idx.get("city") or {}, idx.get("nb") or {}, set(idx.get("ambiguous") or ())
+    def _lst(one, many):
+        out = [x for x in (q.get(many) or []) if str(x or "").strip()]
+        if str(q.get(one) or "").strip():
+            out.append(q.get(one))
+        return [_bai_norm(x) for x in out]
+    cities, nbs = _lst("city", "cities"), _lst("neighborhood", "neighborhoods")
+    ours = set()
+    for c in cities:
+        ours.add(c); ours.update(cmap.get(c, []))
+    for nb in nbs:
+        ours.add(nb); ours.update((nmap.get(nb) or {}).get("aliases", []))
+    st = _bai_norm(_re.sub(r"\s*\d.*$", "", str(q.get("street") or "")))
+    if len(st) >= 3:
+        ours.add(st)
+    ours = {t for t in ours if len(t) >= 3}
+    others = set()
+    if cities:
+        for c, als in cmap.items():
+            if c not in cities:
+                others.update(a for a in als if len(a) >= 4)
+        for nb, e in nmap.items():
+            if e.get("city") not in cities:
+                others.update(a for a in e.get("aliases", []) if len(a) >= 4 and a not in amb)
+    others = {t for t in others if t not in ours and not any(t in o or o in t for o in ours)}
+    return {"ours": sorted(ours), "others": sorted(others)}
+
+def bai_score(parsed, text, budget, recent, area=None):
     """קונה מול תיאור הנכס (parsed מ-_parse_props_query) → (ציון 0-100, למה[]). 0 = לא מוצג."""
     q = parsed or {}
     tx = _bai_norm(text)
@@ -9950,7 +9983,17 @@ def bai_score(parsed, text, budget, recent):
     cities = _lst("city", "cities")
     areas = cities + _lst("neighborhood", "neighborhoods") + ([_bai_norm(q.get("street"))] if str(q.get("street") or "").strip() else [])
     areas = [a for a in areas if len(a) >= 2]
-    if areas:
+    if area is not None:   # [BUYER-AI-AREA] מוח האזורים (כינויים + רחוב→שכונה); בלעדיו — ההתנהגות הקודמת
+        if area.get("ours"):
+            if any(a in tx for a in area["ours"]):
+                sc += 40; why.append("אזור")
+            elif any(o in tx for o in area.get("others") or []):
+                return 0, []                               # הקונה מחפש בעיר/שכונה אחרת
+            else:
+                sc += 10
+        else:
+            sc += 20
+    elif areas:
         if any(a in tx for a in areas):
             sc += 40; why.append("אזור")
         elif cities and any(c in tx for c in BAI_CITIES if c not in cities):
@@ -10685,10 +10728,15 @@ def register(app, G):
             return jsonify({"ok": True, "buyers": [], "calls": [], "summary": ""})
         try:
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "חיפוש קונה AI", q[:60])
-            parsed = G["_parse_props_query"](q)
+            # [BUYER-AI-AREA 01/10] מפרק ייעודי: הטקסט = נכס למכירה (לא דרישת קונה) + רחוב→שכונה מהנתונים
+            parsed = G["_parse_buyer_ai_query"](q)
             if not parsed:
                 return jsonify({"ok": True, "buyers": [], "calls": [], "summary": "", "failed": True})
             parsed["_qtext"] = q   # לזיהוי סוג הנכס מהמילים שהוקלדו (bai_score)
+            try:   # מוח האזורים של חיפוש הנכסים: כינויי שכונות/ערים, ומה נחשב "אזור אחר"
+                area = bai_area_terms(parsed, G["_nb_alias_idx"]())
+            except Exception:
+                area = None
             now = time.time()
             ck, l9 = G["_canon_key"], G["_last9"]
             role = s.get("role", "")
@@ -10713,7 +10761,7 @@ def register(app, G):
                     buyer_ph.add(p9)
                 text = " ".join(str(r.get(k, "") or "") for k in ("search", "summary"))
                 ep = G["_excl_epoch"](r.get("date", "")) or 0
-                sc, why = bai_score(parsed, text, bai_budget(r.get("budget", "")), bool(ep) and (now - ep) < 30 * 86400)
+                sc, why = bai_score(parsed, text, bai_budget(r.get("budget", "")), bool(ep) and (now - ep) < 30 * 86400, area)
                 if sc < 40:
                     continue
                 row = r.get("row", "")
@@ -10749,7 +10797,7 @@ def register(app, G):
                 if not cp or cp in buyer_ph:
                     continue
                 summ = str(c.get("transcript_summary", "") or "")
-                sc, why = bai_score(parsed, summ, G["extract_budget_from_transcript"](summ) or 0, False)
+                sc, why = bai_score(parsed, summ, G["extract_budget_from_transcript"](summ) or 0, False, area)
                 if sc < 40:
                     continue
                 if cp not in best or sc > best[cp][0]:
