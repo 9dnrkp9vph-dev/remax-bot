@@ -1802,6 +1802,20 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <button onclick="snapTake()" style="margin-top:10px;width:100%;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">צור גיבוי עכשיו</button>
     </div>
 
+    <!-- [IMPORT-BUYERS 01/10] ייבוא קונים מחתימות פיירברי -->
+    <div class="card" id="ibsCard">
+      <div class="cardTitle">ייבוא קונים מחתימות פיירברי</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.6">ייצוא מפיירברי (תצוגת "מתעניינים") לאקסל או CSV עם העמודות:
+        שם לקוח · סלולרי · סוכן · כתובת · עיר · סוג הסכם · תקציב · תאריך חתימה.
+        קודם בדיקה בלי לשמור; קונה חדש נרשם בתאריך החתימה, קונה קיים מקבל טלפון חסר, התקציב = החתימה האחרונה.</div>
+      <input type="file" id="ibsFile" accept=".xlsx,.csv" style="margin-top:10px;width:100%;font-size:16px;font-family:inherit">
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12.5px;color:#5B6472">
+        מתאריך <input type="date" id="ibsSince" value="2026-01-01" style="font-size:16px;font-family:inherit;border:1px solid #E9E4D8;border-radius:10px;padding:6px 8px"></div>
+      <div id="ibsOut" style="margin-top:10px;font-size:12.5px;line-height:1.7;color:#1E3A5F"></div>
+      <button onclick="ibsRun(false)" style="margin-top:10px;width:100%;min-height:44px;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">בדיקה (בלי לשמור)</button>
+      <button id="ibsGo" onclick="ibsRun(true)" disabled style="margin-top:8px;width:100%;min-height:44px;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer;opacity:.45">ייבא עכשיו</button>
+    </div>
+
     <!-- דוח יומי במייל (אייל 15/09) -->
     <div class="card" id="repCard">
       <div class="cardTitle">דוח יומי במייל</div>
@@ -2039,6 +2053,52 @@ function snapRestore(i){
     if (j && j.ok){ toast('שוחזרו ' + j.n + ' נכסים'); loadSnaps(); }
     else toast('השחזור נכשל' + (j && j.reason ? ' (' + j.reason + ')' : ''));
   }).catch(function(){ toast('שגיאה'); });
+}
+/* [IMPORT-BUYERS 01/10] */
+var IBS_FILE = null, IBS_TIMER = null;
+var IBS_LBL = {new: 'קונים חדשים', fill_phone: 'קונים קיימים שיקבלו טלפון', budget: 'קונים קיימים שהתקציב שלהם יתעדכן', exists: 'כבר קיימים — בלי שינוי'};
+var IBS_SKIP = {not_buyer: 'לא חתימת קונה (בעל נכס/השכרה)', no_client: 'בלי שם לקוח', no_agent: 'בלי סוכן', before_since: 'לפני התאריך'};
+function ibsRead(cb){
+  var f = (el('ibsFile').files || [])[0];
+  if (!f){ toast('בחר קובץ מפיירברי'); return; }
+  var r = new FileReader();
+  r.onload = function(){ IBS_FILE = {name: f.name, data: r.result}; cb(); };
+  r.readAsDataURL(f);
+}
+function ibsRender(j){
+  var o = el('ibsOut'), m = j.meta || {}, h = '';
+  h += '<b>' + (m.rows || 0) + '</b> שורות בקובץ · <b>' + (m.signings || 0) + '</b> חתימות קונים<br>';
+  Object.keys(IBS_LBL).forEach(function(k){ if ((j.counts || {})[k]) h += IBS_LBL[k] + ': <b>' + j.counts[k] + '</b><br>'; });
+  var sk = m.skip || {};
+  Object.keys(sk).forEach(function(k){ h += '<span style="color:#6B7280">דולגו — ' + esc(IBS_SKIP[k] || k) + ': ' + sk[k] + '</span><br>'; });
+  var miss = Object.keys(m.cols || {}).filter(function(k){ return !(m.cols || {})[k]; });
+  var CN = {client: 'שם לקוח', phone: 'סלולרי', agent: 'סוכן', address: 'כתובת', city: 'עיר', deal: 'סוג הסכם', budget: 'תקציב', date: 'תאריך'};
+  if (miss.length) h += '<span style="color:#C24040">עמודות שלא נמצאו בקובץ: ' + esc(miss.map(function(k){ return CN[k] || k; }).join(', ')) + '</span><br>';
+  ((j.sample || {}).new || []).slice(0, 6).forEach(function(x){
+    h += '<span style="color:#5B6472">· ' + esc(x.client) + ' — ' + esc(x.agent) + (x.budget ? ' · ' + x.budget.toLocaleString('he-IL') + ' ₪' : '') + (x.phone ? '' : ' · בלי טלפון') + '</span><br>';
+  });
+  o.innerHTML = h;
+}
+function ibsPoll(){
+  GET('/v2/api/admin/import_buyer_signings/status').then(function(j){
+    if (!j || !j.ok) return;
+    var d = j.done || {};
+    el('ibsOut').innerHTML = (j.state === 'done' ? '<b>הייבוא הסתיים</b>' : 'מייבא… ' + (j.i || 0) + ' מתוך ' + (j.total || 0)) +
+      '<br>חדשים ' + (d.new || 0) + ' · טלפון ' + (d.fill_phone || 0) + ' · תקציב ' + (d.budget || 0) + (d.failed ? ' · <span style="color:#C24040">נכשלו ' + d.failed + '</span>' : '');
+    if (j.state === 'done'){ clearInterval(IBS_TIMER); IBS_TIMER = null; toast('הייבוא הסתיים'); }
+  }).catch(function(){});
+}
+function ibsRun(apply){
+  ibsRead(function(){
+    if (apply && !confirm('לייבא עכשיו? (קונים חדשים ייווצרו וקונים קיימים יתעדכנו)')) return;
+    el('ibsOut').textContent = apply ? 'מתחיל…' : 'בודק…';
+    POST('/v2/api/admin/import_buyer_signings', {name: IBS_FILE.name, data: IBS_FILE.data, since: el('ibsSince').value, apply: !!apply}).then(function(j){
+      if (!j || !j.ok){ el('ibsOut').textContent = 'נכשל: ' + ((j && (j.detail || j.reason)) || 'שגיאה'); return; }
+      if (j.dry){ ibsRender(j); var g = el('ibsGo'); g.disabled = false; g.style.opacity = 1; return; }
+      if (IBS_TIMER) clearInterval(IBS_TIMER);
+      IBS_TIMER = setInterval(ibsPoll, 2000); ibsPoll();
+    }).catch(function(){ el('ibsOut').textContent = 'שגיאה'; });
+  });
 }
 var L0;
 function repLoad(){
@@ -10180,6 +10240,144 @@ def inv_client_message(row, office):
     head = "מצורף קישור ל" + doc + ((" מס' " + num) if num else "") + " מ" + office + ((", על סך " + amt + " ₪") if amt else "") + ":"
     return "\n".join(["שלום" + ((" " + first) if first else "") + ",", head, str(row.get("link") or ""), "תודה!"])
 
+# ── [IMPORT-BUYERS 01/10] ייבוא חד-פעמי: קונים מחתימות מתעניינים בפיירברי (ייצוא אקסל/CSV) ──────────
+# אייל: "להעביר מתחילת השנה את כל הקונים שלא עברו כולל הניידים". בדיקה קודם (בלי כתיבה), ואז ייבוא:
+# קונה חדש בתאריך החתימה (לא "היום"); קונה קיים — משלים טלפון; תקציב = החתימה האחרונה (ממוצע אם כמה נכסים).
+IBS_COLS = {
+    "client": ("שם לקוח", "לקוח", "client_name", "שם הלקוח"),
+    "phone": ("סלולרי", "טלפון נייד", "נייד", "טלפון", "phone", "mobilephone"),
+    "agent": ("סוכן", "agent", "שם סוכן"),
+    "address": ("כתובת", "address", "רחוב", "כתובת הנכס"),
+    "city": ("עיר", "city", "ישוב", "יישוב"),
+    "deal": ("סוג הסכם", "deal_type", "סוג עסקה"),
+    "budget": ("תקציב", "budget", "מחיר"),
+    "date": ("תאריך חתימה", "נוצר בתאריך", "תאריך", "date", "created"),
+}
+
+def ibs_parse_table(name, data):
+    """קובץ (bytes) → [{כותרת: ערך}] — xlsx (openpyxl) או csv (utf-8 / windows-1255)."""
+    rows = []
+    if str(name or "").lower().endswith((".xlsx", ".xlsm")):
+        import io as _io
+        import openpyxl as _ox
+        wb = _ox.load_workbook(_io.BytesIO(data), read_only=True, data_only=True)
+        rows = [list(r) for r in wb.worksheets[0].iter_rows(values_only=True)]
+    else:
+        import csv as _csv, io as _io
+        txt = None
+        for enc in ("utf-8-sig", "cp1255"):
+            try:
+                txt = data.decode(enc); break
+            except UnicodeDecodeError:
+                continue
+        rows = list(_csv.reader(_io.StringIO(txt or "")))
+    rows = [r for r in rows if any(str(c or "").strip() for c in r)]
+    if not rows:
+        return []
+    head = [str(c or "").strip() for c in rows[0]]
+    return [{head[i]: r[i] for i in range(min(len(head), len(r))) if head[i]} for r in rows[1:]]
+
+def ibs_col(headers, key):
+    """הכותרת בקובץ לשדה: התאמה מדויקת לפי סדר הכינויים (כך 'תאריך' לא נתפס כ'עד תאריך')."""
+    hs = {str(h).strip(): h for h in headers}
+    for a in IBS_COLS[key]:
+        if a in hs:
+            return hs[a]
+    return None
+
+def ibs_date(v):
+    """תא תאריך (datetime מאקסל / 'DD/MM/YYYY [HH:MM]' / ISO) → datetime או None."""
+    import datetime as _di
+    if isinstance(v, _di.datetime):
+        return v
+    if isinstance(v, _di.date):
+        return _di.datetime(v.year, v.month, v.day)
+    t = str(v or "").strip().replace(".", "/").replace("T", " ")
+    for f in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%d/%m/%y"):
+        try:
+            return _di.datetime.strptime(t[:19] if "-" in t[:5] else t, f)
+        except ValueError:
+            continue
+    return None
+
+def ibs_signings(table, since="2026-01-01"):
+    """שורות הקובץ → חתימות קונים מנורמלות (בלי בעלי נכס/השכרה, מתאריך since). מחזיר (חתימות, דילוגים)."""
+    import datetime as _di
+    if not table:
+        return [], {"no_rows": 1}
+    hd = list(table[0].keys())
+    col = {k: ibs_col(hd, k) for k in IBS_COLS}
+    lo = _di.datetime.strptime(since, "%Y-%m-%d") if since else None
+    out, skip = [], {}
+    def sk(k):
+        skip[k] = skip.get(k, 0) + 1
+    for r in table:
+        g = lambda k: (str(r.get(col[k]) if r.get(col[k]) is not None else "").strip() if col[k] else "")
+        deal = g("deal").upper()
+        if deal and ("OWNER" in deal or "RENT" in deal or "שכיר" in deal or "בעל" in deal):
+            sk("not_buyer"); continue
+        client, agent = g("client"), g("agent")
+        if not client:
+            sk("no_client"); continue
+        if not agent:
+            sk("no_agent"); continue
+        d = ibs_date(r.get(col["date"])) if col["date"] else None
+        if lo and d and d < lo:
+            sk("before_since"); continue
+        b = _re.sub(r"[^\d.]", "", g("budget"))
+        try:
+            b = int(float(b)) if b else 0
+        except ValueError:
+            b = 0
+        out.append({"client": client, "agent": agent, "phone": g("phone"), "address": g("address"), "city": g("city"),
+                    "budget": b if b >= 10000 else 0, "dt": d})
+    return out, skip
+
+def ibs_plan(sigs, buyers, canon, last9):
+    """קבוצה לכל (סוכן, טלפון — אחרת שם) → פעולה מול הקונים הקיימים:
+    new / fill_phone / budget / exists. תקציב = היום האחרון עם מחיר (ממוצע הנכסים בו)."""
+    groups, order = {}, []
+    for x in sigs:
+        p9 = last9(x["phone"]) if len(last9(x["phone"])) == 9 else ""
+        k = (canon(x["agent"]), p9 or "n:" + canon(x["client"]))
+        if k not in groups:
+            groups[k] = []; order.append(k)
+        groups[k].append(x)
+    plan = []
+    for k in order:
+        xs = sorted(groups[k], key=lambda x: x["dt"] or __import__("datetime").datetime.min)
+        last = xs[-1]
+        days = {}
+        for x in xs:
+            if x["budget"] and x["dt"]:
+                days.setdefault(x["dt"].strftime("%Y-%m-%d"), set()).add(x["budget"])
+        bday = max(days) if days else ""
+        budget = (sum(days[bday]) // len(days[bday])) if bday else 0
+        phone = next((x["phone"] for x in reversed(xs) if len(last9(x["phone"])) == 9), "")
+        ak, ck, p9 = canon(last["agent"]), canon(last["client"]), last9(phone) if phone else ""
+        ex = None
+        for b in buyers:
+            if canon(b.get("agent", "")) != ak:
+                continue
+            if (p9 and last9(b.get("phone", "")) == p9) or (ck and canon(b.get("name", "")) == ck):
+                ex = b; break
+        item = {"client": last["client"], "agent": last["agent"], "phone": phone, "budget": budget, "budget_day": bday,
+                "address": ", ".join(v for v in (last["address"], last["city"]) if v),
+                "date": last["dt"].strftime("%d/%m/%Y %H:%M") if last["dt"] else ""}
+        if ex is None:
+            item["action"] = "new"
+        else:
+            item["row"] = ex.get("row")
+            upd = {}
+            if p9 and not last9(ex.get("phone", "")):
+                upd["phone"] = phone
+            if budget and bday and bday > str(ex.get("budget_day", "") or ""):
+                upd["budget"] = "{:,}".format(budget); upd["budget_day"] = bday
+            item["update"] = upd
+            item["action"] = ("fill_phone" if "phone" in upd else "budget") if upd else "exists"
+        plan.append(item)
+    return plan
+
 def ef_tokens(q):
     """טוקני חיפוש מהשאלה: מילים באורך 2+ (ומספרים בכל אורך), קריית→קרית, lowercase."""
     t = str(q or "").lower().replace("קריית", "קרית")
@@ -11924,6 +12122,95 @@ def register(app, G):
             "invites": invites,
             "gauth_phones": sorted(gauth),
         })
+
+    # ── [IMPORT-BUYERS 01/10] ייבוא קונים מחתימות פיירברי — מפתח בלבד; בדיקה קודם, ייבוא ברקע ──
+    _IBS_JOB = {"state": "idle"}
+
+    def _ibs_prepare(b):
+        import base64 as _b64m
+        raw = _b64m.b64decode(str(b.get("data") or "").split(",")[-1] or b"")
+        if not raw:
+            return None, None, "no_file"
+        table = ibs_parse_table(b.get("name", ""), raw)
+        sigs, skip = ibs_signings(table, since=str(b.get("since") or "2026-01-01"))
+        G["_cache_clear"]("buyers")
+        plan = ibs_plan(sigs, G["_fetch_manual_buyers"]() or [], G["_canon_key"], G["_last9"])
+        cols = {k: ibs_col(list(table[0].keys()), k) for k in IBS_COLS} if table else {}
+        return plan, {"rows": len(table), "signings": len(sigs), "skip": skip, "cols": cols}, ""
+
+    def _ibs_apply(plan, who):
+        done = {"new": 0, "fill_phone": 0, "budget": 0, "failed": 0}
+        _IBS_JOB.update(state="running", total=len(plan), i=0, done=done, started=time.time())
+        bw = G["_buyers_write"]
+        for i, it in enumerate(plan):
+            _IBS_JOB["i"] = i + 1
+            try:
+                if it["action"] == "new":
+                    ps = list(G["_phones_for_name"](it["agent"]) or [])
+                    j = bw("addbuyer", {"date": it["date"], "name": it["client"], "phone": it["phone"],
+                                        "budget": "{:,}".format(it["budget"]) if it["budget"] else "",
+                                        "summary": "מהחתמת מתעניין (ייבוא מפיירברי)" + ((" · " + it["address"]) if it["address"] else ""),
+                                        "agent": it["agent"], "agent_phone": ps[0] if ps else "", "search": "", "_noscan": True})
+                    if j and j.get("ok"):
+                        done["new"] += 1
+                        if it["budget_day"] and j.get("row"):
+                            bw("updatebuyer", {"row": j.get("row"), "budget_day": it["budget_day"]})
+                    else:
+                        done["failed"] += 1
+                elif it["action"] in ("fill_phone", "budget") and it.get("row"):
+                    j = bw("updatebuyer", dict(it["update"], row=it["row"]))
+                    if j and j.get("ok"):
+                        done[it["action"]] += 1
+                    else:
+                        done["failed"] += 1
+            except Exception as e:
+                done["failed"] += 1
+                if log: log.warning(f"import buyers: {it.get('client')}: {e}")
+        G["_cache_clear"]("buyers")
+        _IBS_JOB.update(state="done", finished=time.time())
+        _log_activity(who.get("name", ""), who.get("role", ""), who.get("phone", ""), "ייבוא קונים מפיירברי",
+                      "חדשים %d · טלפון %d · תקציב %d · נכשלו %d" % (done["new"], done["fill_phone"], done["budget"], done["failed"]))
+        try:
+            _bs_scan_async("buyer")   # בדיקת "קונה שמפרסם נכס" פעם אחת בסוף
+        except Exception:
+            pass
+
+    @app.route("/v2/api/admin/import_buyer_signings", methods=["POST"])
+    def v2_api_import_buyer_signings():
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        try:
+            plan, meta, err = _ibs_prepare(b)
+        except Exception as e:
+            if log: log.error(f"import buyers parse: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": "parse_failed", "detail": str(e)[:160]})
+        if err:
+            return jsonify({"ok": False, "reason": err})
+        counts = {}
+        for it in plan:
+            counts[it["action"]] = counts.get(it["action"], 0) + 1
+        sample = {}
+        for it in plan:
+            a = it["action"]
+            if a != "exists" and len(sample.setdefault(a, [])) < 12:
+                sample[a].append({"client": it["client"], "agent": it["agent"], "date": it["date"],
+                                  "budget": it["budget"], "phone": bool(it["phone"])})
+        if not b.get("apply"):
+            return jsonify({"ok": True, "dry": True, "meta": meta, "counts": counts, "sample": sample})
+        if _IBS_JOB.get("state") == "running":
+            return jsonify({"ok": False, "reason": "running"})
+        todo = [it for it in plan if it["action"] != "exists"]
+        import threading as _ith2
+        _ith2.Thread(target=_ibs_apply, args=(todo, dict(s)), daemon=True, name="import-buyers").start()
+        return jsonify({"ok": True, "started": True, "total": len(todo), "counts": counts})
+
+    @app.route("/v2/api/admin/import_buyer_signings/status", methods=["GET"])
+    def v2_api_import_buyer_signings_status():
+        if not _dev_guard():
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        return jsonify(dict(_IBS_JOB, ok=True))
 
     # ── גיבוי/שחזור נכסי המשרד (אייל 11/09) — מפתח בלבד ─────────────────────────
     @app.route("/v2/api/admin/props/snapshots", methods=["GET"])

@@ -9232,7 +9232,7 @@ def _buyers_write(action, payload):
             row = _sbdb.buyers_insert(p)
             try:   # [BUYER-SELLER 01/10] קונה חדש — האם הוא מפרסם נכס בנכס נולד (הודעה לסוכן שלו)
                 _bsa = globals().get("_bs_scan_async")
-                if _bsa:
+                if _bsa and not p.get("_noscan"):   # ייבוא מרוכז — סריקה אחת בסוף
                     _bsa("buyer")
             except Exception:
                 pass
