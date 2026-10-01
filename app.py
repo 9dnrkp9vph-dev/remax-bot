@@ -5534,6 +5534,16 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
                     # התאמה לפי טלפון או לפי שם (טלפון בפורמט שונה לא יוצר כפיל)
                     if (ln and _last9(r.get("phone", "")) == ln) or (ck and _canon_key(r.get("name", "")) == ck):
                         _merge_buyer_search(r, info_desc, budget_txt)
+                        # 01/10: קונה שנכנס מחתימה בלי טלפון — משלימים מהחתימה (ובודקים "קונה שמפרסם נכס")
+                        if ln and len(ln) == 9 and not _last9(r.get("phone", "")) and r.get("row"):
+                            try:
+                                if (_buyers_write("updatebuyer", {"row": r.get("row"), "phone": phone}) or {}).get("ok"):
+                                    _cache_clear("buyers")
+                                    _bsa = globals().get("_bs_scan_async")
+                                    if _bsa:
+                                        _bsa("buyer")
+                            except Exception as _pe:
+                                log.warning(f"add_buyer_from_signing: phone backfill failed: {_pe}")
                         return False
                 break
             except Exception:
@@ -11372,7 +11382,10 @@ def _sync_signing_buyers():
             if not (ag and cl):
                 continue
             addr = ", ".join([x for x in [g.get("address", ""), g.get("city", "")] if x])
-            _add_buyer_from_signing(ag, cl, "", addr, "מהחתמת מתעניין")
+            # 01/10: גם הטלפון (חתימות פיירברי נושאות אותו ב-raw.phone) — עד היום הקונה נכנס בלי טלפון,
+            # ולכן לא הייתה לסוכן דרך ליצור קשר מהכרטיס ולא נבדק "קונה שמפרסם נכס".
+            ph = str(g.get("phone", "") or g.get("טלפון", "") or "").strip()
+            _add_buyer_from_signing(ag, cl, ph, addr, "מהחתמת מתעניין")
     except Exception as _e:
         log.error(f"sync_signing_buyers: {_e}")
 
