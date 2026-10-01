@@ -10265,6 +10265,7 @@ def sig_ingest_norm(b):
            "commission_pct": f("commission_pct", "עמלה"), "notes": f("notes", "הערות"),
            # 01/10: הטלפון של הלקוח בפיירברי הוא "סלולרי" — כל הכינויים
            "phone": f("phone", "טלפון", "סלולרי", "טלפון נייד", "נייד", "mobile", "cellular", "client_phone"),
+           "budget": f("budget", "תקציב", "price", "מחיר"),   # 01/10: מחיר הנכס בחתימה (תקציב הקונה)
            "received_at": rcv}
     if event_id:
         # 🐞 09/09: שני מסמכי זוג מוכר+בלעדיות חולקים את אותו event_id בפיירברי —
@@ -11852,7 +11853,8 @@ def register(app, G):
         addr = ", ".join(x for x in (str(raw.get("address") or "").strip(), str(raw.get("city") or "").strip()) if x)
         def _run():
             try:
-                G["_add_buyer_from_signing"](agent, client, str(raw.get("phone") or "").strip(), addr, "מהחתמת מתעניין")
+                G["_add_buyer_from_signing"](agent, client, str(raw.get("phone") or "").strip(), addr, "מהחתמת מתעניין",
+                                             price=str(raw.get("budget") or ""))
             except Exception as e:
                 if log: log.error(f"fireberry signing → buyer error: {e}", exc_info=True)
         import threading as _sth

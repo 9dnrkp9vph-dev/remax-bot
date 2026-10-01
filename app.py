@@ -5466,6 +5466,64 @@ def _client_view_prices(client, kind="sale", idx=None, excl=None, sigs=None):
                 prices.append(info["price"])
     return prices
 
+def _price_int(v):
+    d = re.sub(r"[^\d.]", "", str(v or ""))
+    try:
+        n = int(float(d)) if d else 0
+    except ValueError:
+        return 0
+    return n if n >= 10000 else 0
+
+def _sign_row_prices(g, idx=None, excl=None):
+    """מחירי הנכסים בשורת חתימה: התקציב שפיירברי שולח (budget), אחרת זיהוי הכתובות בנכסי המשרד/שת"פ."""
+    b = _price_int(g.get("budget") or g.get("תקציב"))
+    if b:
+        return [b]
+    out = []
+    for part in str(g.get("address", "") or "").split("|"):
+        info = _sign_prop_lookup(part.strip(), g.get("city", ""), idx=idx, excl=excl)
+        if info and _price_int(info.get("price")):
+            out.append(_price_int(info.get("price")))
+    return out
+
+def _client_last_sign_budget(client, kind="sale", idx=None, excl=None, extra=None, sigs=None):
+    """[01/10 אייל] תקציב הקונה = החתימה האחרונה שלו: המחיר, ואם היו בה כמה נכסים — הממוצע.
+    "החתימה האחרונה" = כל חתימות הקונים של הלקוח ביום האחרון שיש בו מחיר. extra = מחירי החתימה
+    הנוכחית (היום), למקרה שעוד לא הגיעה לרשימה. → (ממוצע או 0, 'YYYY-MM-DD' או '')."""
+    import datetime as _dtb
+    ck = _canon_key(client)
+    days = {}
+    if ck:
+        if sigs is None:
+            try:
+                sigs = get_signings()
+            except Exception:
+                sigs = []
+        for g in sigs or []:
+            dt = str(g.get("deal_type", "") or "").upper()
+            if not dt.startswith("CLIENT") or (("RENT" in dt) != (kind == "rent")):
+                continue
+            if _canon_key(g.get("client_name", "")) != ck:
+                continue
+            e = _excl_epoch(g.get("received_at", ""))
+            if not e:
+                continue
+            for p in _sign_row_prices(g, idx, excl):
+                days.setdefault(_dtb.datetime.fromtimestamp(e).strftime("%Y-%m-%d"), set()).add(p)
+    cur = [p for p in (_price_int(x) for x in (extra or [])) if p]
+    if cur:
+        try:
+            from zoneinfo import ZoneInfo as _ZB
+            today = _dtb.datetime.now(_ZB("Asia/Jerusalem")).strftime("%Y-%m-%d")
+        except Exception:
+            today = _dtb.datetime.now().strftime("%Y-%m-%d")
+        days.setdefault(today, set()).update(cur)
+    if not days:
+        return 0, ""
+    d = max(days)
+    vals = sorted(days[d])
+    return sum(vals) // len(vals), d
+
 def _merge_buyer_search(r, desc, budget_txt=""):
     """קונה קיים שחתם על נכס נוסף — מוסיף את תיאור הנכס ל'מה מחפש' (בלי לדרוס טקסט של הסוכן)."""
     try:
@@ -5483,7 +5541,7 @@ def _merge_buyer_search(r, desc, budget_txt=""):
     except Exception:
         pass
 
-def _add_buyer_from_signing(agent, client, phone="", address="", origin="החתמה דיגיטלית", deal_kind="sale"):
+def _add_buyer_from_signing(agent, client, phone="", address="", origin="החתמה דיגיטלית", deal_kind="sale", price=""):
     """כל מתעניין שחותם / שנשלחה לו חתימה — נכנס אוטומטית כקונה אצל הסוכן (אם עוד לא קיים).
     אם הנכס מזוהה בנכסי המשרד/שת"פ — הקונה נכנס עם תיאור הנכס (search) ותקציב = ממוצע הנצפים;
     ואם הקונה כבר קיים — התיאור החדש מתווסף ל'מה מחפש' שלו (להתאמות נוספות)."""
@@ -5497,7 +5555,7 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
         agent_phone = ps[0] if ps else ""
         ln = _last9(phone)
         # זיהוי הנכס/ים שנחתמו בנכסי המשרד/שת"פ — תיאור לקונה + ממוצע הנצפים כתקציב
-        info_desc, budget_txt = "", ""
+        info_desc, budget_txt, budget_day = "", "", ""
         try:
             idx = _office_prop_index()
             excl = fetch_external_exclusives() or []
@@ -5505,14 +5563,14 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
                                  for a in str(address or "").split("|")) if x]
             if infos:
                 info_desc = next((x["desc"] for x in infos if x.get("desc")), "")
-                vals = _client_view_prices(client, kind=deal_kind, idx=idx, excl=excl)
-                for p in [x["price"] for x in infos if x.get("price")]:
-                    if p not in vals:   # החתימה הנוכחית אולי טרם נחתה בגיליון — צירוף בלי כפל
-                        vals.append(p)
-                if vals:
-                    budget_txt = "{:,}".format(sum(vals) // len(vals))
+            # 01/10 (אייל): התקציב = החתימה האחרונה (ממוצע אם היו בה כמה נכסים), לא ממוצע כל ההיסטוריה.
+            # מחיר מפיירברי (budget) גובר על זיהוי הכתובת; החתימה הנוכחית נספרת גם אם טרם ברשימה.
+            cur = [_price_int(price)] if _price_int(price) else [x["price"] for x in infos if x.get("price")]
+            _avg, budget_day = _client_last_sign_budget(client, kind=deal_kind, idx=idx, excl=excl, extra=cur)
+            if _avg:
+                budget_txt = "{:,}".format(_avg)
         except Exception:
-            pass
+            budget_day = ""
         # מניעת כפילות — אם כבר קיים קונה לאותו סוכן עם אותו טלפון (או אותו שם כשאין טלפון);
         # קונה קיים שחתם על נכס נוסף — מקבל את התיאור החדש ל"מה מחפש" (התאמות נוספות).
         # קריטי: אם קריאת הקונים נכשלת — לא יוצרים חדש (למנוע כפילות מדיווח אייל 19/07),
@@ -5533,7 +5591,16 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
                         continue
                     # התאמה לפי טלפון או לפי שם (טלפון בפורמט שונה לא יוצר כפיל)
                     if (ln and _last9(r.get("phone", "")) == ln) or (ck and _canon_key(r.get("name", "")) == ck):
-                        _merge_buyer_search(r, info_desc, budget_txt)
+                        _merge_buyer_search(r, info_desc, "")
+                        # 01/10: חתימה מיום חדש → התקציב מתעדכן לחתימה האחרונה (עריכה ידנית של הסוכן
+                        # נשמרת עד החתימה הבאה — budget_day מסמן מאיזה יום הגיע התקציב)
+                        if budget_txt and budget_day and str(r.get("budget_day", "") or "") != budget_day and r.get("row"):
+                            try:
+                                if (_buyers_write("updatebuyer", {"row": r.get("row"), "budget": budget_txt,
+                                                                  "budget_day": budget_day}) or {}).get("ok"):
+                                    _cache_clear("buyers")
+                            except Exception as _be:
+                                log.warning(f"add_buyer_from_signing: budget update failed: {_be}")
                         # 01/10: קונה שנכנס מחתימה בלי טלפון — משלימים מהחתימה (ובודקים "קונה שמפרסם נכס")
                         if ln and len(ln) == 9 and not _last9(r.get("phone", "")) and r.get("row"):
                             try:
@@ -5566,6 +5633,11 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
         j = _buyers_write("addbuyer", payload)
         if j and j.get("ok"):
             _cache_clear("buyers")
+            if budget_day and j.get("row"):
+                try:
+                    _buyers_write("updatebuyer", {"row": j.get("row"), "budget_day": budget_day})
+                except Exception:
+                    pass
             # addbuyer עשוי להתעלם מ-search (תלוי בגרסת ה-Apps Script) — מוודאים שהתיאור
             # נכתב דרך updatebuyer (עמודה 'חיפוש' — מסלול מוכח). no-op אם כבר נקלט.
             if info_desc:
@@ -11385,7 +11457,7 @@ def _sync_signing_buyers():
             # 01/10: גם הטלפון (חתימות פיירברי נושאות אותו ב-raw.phone) — עד היום הקונה נכנס בלי טלפון,
             # ולכן לא הייתה לסוכן דרך ליצור קשר מהכרטיס ולא נבדק "קונה שמפרסם נכס".
             ph = str(g.get("phone", "") or g.get("טלפון", "") or "").strip()
-            _add_buyer_from_signing(ag, cl, ph, addr, "מהחתמת מתעניין")
+            _add_buyer_from_signing(ag, cl, ph, addr, "מהחתמת מתעניין", price=str(g.get("budget", "") or ""))
     except Exception as _e:
         log.error(f"sync_signing_buyers: {_e}")
 
