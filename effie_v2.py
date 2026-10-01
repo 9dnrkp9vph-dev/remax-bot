@@ -9892,6 +9892,11 @@ def bai_budget(s):
         elif elf and v < 10000:
             v *= 1000
         best = max(best, v)
+    if not best:   # 01/10: "עד מיליון" / "חצי מיליון" — בלי מספר
+        if "חצי מיליון" in s:
+            best = 500000
+        elif mil:
+            best = 1000000
     return int(best)
 
 def bai_rooms(text):
@@ -9907,11 +9912,32 @@ def bai_rooms(text):
         return (v, v)
     return None
 
+# סוג נכס (01/10, בדיקה חיה: קונים של מגרש/חנות עלו ב-95% לחיפוש דירה): לפי הקטע הראשון בטקסט הקונה
+BAI_NONRES = ("מגרש", "חנות", "משרד", "מסחרי", "מחסן", "בנה ביתך", "חקלאי")
+BAI_HOUSE = ("קוטג", "וילה", "דו משפחתי", "דו-משפחתי", "בית פרטי")
+BAI_FLAT = ("דירה", "דירות", "דירת", "פנטהאוז", "דופלקס", "מיני פנטהאוז")
+
+def bai_kind(t):
+    """'nonres' / 'house' / 'flat' / None — מהקטע הראשון ('מגרש, 1000 מ"ר · …' / 'דירה · 4 חד׳ · …')."""
+    head = _bai_norm(t).split("·")[0].split(",")[0]
+    for kind, words in (("nonres", BAI_NONRES), ("house", BAI_HOUSE), ("flat", BAI_FLAT)):
+        if any(w in head for w in words):
+            return kind
+    return None
+
 def bai_score(parsed, text, budget, recent):
     """קונה מול תיאור הנכס (parsed מ-_parse_props_query) → (ציון 0-100, למה[]). 0 = לא מוצג."""
     q = parsed or {}
     tx = _bai_norm(text)
     why, sc = [], 0
+    qk = bai_kind(q.get("property_type") or "") or "flat"   # ברירת המחדל של הפירוק = דירה
+    bk = bai_kind(tx)
+    if bk == "nonres" and qk != "nonres":
+        return 0, []                                       # קונה של מגרש/חנות/משרד — לא לדירה/בית
+    if bk and bk == qk:
+        sc += 5; why.append("סוג נכס")
+    elif bk and {bk, qk} == {"flat", "house"}:
+        sc -= 15                                           # דירה מול קוטג' — נמוך, לא נפסל
     def _lst(one, many):
         out = [x for x in (q.get(many) or []) if str(x or "").strip()]
         if str(q.get(one) or "").strip():
