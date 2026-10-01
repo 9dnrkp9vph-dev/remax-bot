@@ -9917,9 +9917,12 @@ BAI_NONRES = ("מגרש", "חנות", "משרד", "מסחרי", "מחסן", "ב�
 BAI_HOUSE = ("קוטג", "וילה", "דו משפחתי", "דו-משפחתי", "בית פרטי")
 BAI_FLAT = ("דירה", "דירות", "דירת", "פנטהאוז", "דופלקס", "מיני פנטהאוז")
 
-def bai_kind(t):
-    """'nonres' / 'house' / 'flat' / None — מהקטע הראשון ('מגרש, 1000 מ"ר · …' / 'דירה · 4 חד׳ · …')."""
-    head = _bai_norm(t).split("·")[0].split(",")[0]
+def bai_kind(t, head_only=True):
+    """'nonres' / 'house' / 'flat' / None — מהקטע הראשון ('מגרש, 1000 מ"ר · …' / 'דירה · 4 חד׳ · …');
+    head_only=False — בכל הטקסט (המילים שהמשתמש הקליד בחיפוש)."""
+    head = _bai_norm(t)
+    if head_only:
+        head = head.split("·")[0].split(",")[0]
     for kind, words in (("nonres", BAI_NONRES), ("house", BAI_HOUSE), ("flat", BAI_FLAT)):
         if any(w in head for w in words):
             return kind
@@ -9930,7 +9933,8 @@ def bai_score(parsed, text, budget, recent):
     q = parsed or {}
     tx = _bai_norm(text)
     why, sc = [], 0
-    qk = bai_kind(q.get("property_type") or "") or "flat"   # ברירת המחדל של הפירוק = דירה
+    # הסוג מהמילים שהוקלדו קודם (הפירוק ממפה קוטג' ל"דירת גן"), אחר כך מהפירוק; ברירת מחדל = דירה
+    qk = bai_kind(q.get("_qtext") or "", head_only=False) or bai_kind(q.get("property_type") or "") or "flat"
     bk = bai_kind(tx)
     if bk == "nonres" and qk != "nonres":
         return 0, []                                       # קונה של מגרש/חנות/משרד — לא לדירה/בית
@@ -10684,6 +10688,7 @@ def register(app, G):
             parsed = G["_parse_props_query"](q)
             if not parsed:
                 return jsonify({"ok": True, "buyers": [], "calls": [], "summary": "", "failed": True})
+            parsed["_qtext"] = q   # לזיהוי סוג הנכס מהמילים שהוקלדו (bai_score)
             now = time.time()
             ck, l9 = G["_canon_key"], G["_last9"]
             role = s.get("role", "")
