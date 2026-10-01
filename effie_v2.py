@@ -5542,7 +5542,8 @@ function render(){
   });
   el('cOffice').textContent = OFFICE.length;
   el('cShtaf').textContent = shtafShown.length;   // תואם למה שמוצג בפועל (אחרי הדדופ) — לא הגולמי
-  el('cMine').textContent = MINE.length;
+  var mineShown = mineFiltered();   // [MINE-SEARCH 01/10] עם חיפוש — ההתאמות מתוך הנכסים שלי
+  el('cMine').textContent = mineShown.length;
   // [NB-SEARCH 30/09] טאב נכס נולד — רק כשיש טקסט בחיפוש; בלי חיפוש: קישור "לכל נכס נולד"
   var _hasQ = !!el('q').value.trim();
   if (el('cNb')) el('cNb').textContent = NBRES.length;
@@ -5570,9 +5571,7 @@ function render(){
   var src, h = '';
   if (MODE === 'office') src = OFFICE;
   else if (MODE === 'shtaf') src = shtafShown;
-  else src = MINE.filter(function(p){
-    return !q || ((p.address || '') + ' ' + (p.city || '') + ' ' + (p.desc || '')).toLowerCase().indexOf(q) >= 0;
-  });
+  else src = mineShown;
   if (el('qSpin')) el('qSpin').style.display = 'none';
   el('sumLine').style.color = ''; el('sumLine').style.fontWeight = '';
   var _sumTxt = (MODE === 'office' ? SUM.office : MODE === 'shtaf' ? SUM.shtaf : '') || '';
@@ -5683,12 +5682,35 @@ function setMode(node){
 var _qT = null;
 function qChanged(){
   clearTimeout(_qT);
-  if (MODE === 'mine'){ render(); return; }
   if (el('qSpin')) el('qSpin').style.display = 'block';
   if (el('sumLine')){ el('sumLine').textContent = 'מחפש…'; el('sumLine').style.color = '#2E6BD6'; el('sumLine').style.fontWeight = '700'; }
   _qT = setTimeout(function(){ load(el('q').value.trim()); }, 500);
 }
 function qClearBtn(){ var b = el('qClear'); if (b) b.style.display = el('q').value ? 'flex' : 'none'; }
+/* [MINE-SEARCH 01/10] אייל: "לאלעד לוי יש 5 נכסים שתואמים את החיפוש ומופיעים ב'המשרד שלנו' — למה ב'שלי' לא?"
+   "שלי" סינן מקומית את כל המשפט ("5 חדרים באפקה") כטקסט בכתובת → 0. עכשיו, עם חיפוש: הנכסים שלי מתוך
+   תוצאות החיפוש החכם של המשרד (קישור המודעה, אחרת כתובת+מחיר), בסדר ההתאמה; פירוק שלא החזיר כלום →
+   נפילה לסינון הטקסט הישן (חיפוש רחוב). בלי חיפוש — כל הנכסים שלי כמו קודם. */
+function mineFiltered(){
+  var q = el('q').value.trim().toLowerCase();
+  if (!q) return MINE;
+  var ord = {};
+  OFFICE.forEach(function(o, k){
+    if (o.link && ord['L' + o.link] == null) ord['L' + o.link] = k;
+    var ak = 'A' + pStreetKey(o.address || o.street) + '|' + pPriceNum(o.price);
+    if (ord[ak] == null) ord[ak] = k;
+  });
+  var rank = function(p){
+    var r = p.link ? ord['L' + p.link] : null;
+    if (r == null) r = ord['A' + pStreetKey(p.address || p.street) + '|' + pPriceNum(p.price)];
+    return r;
+  };
+  var hit = MINE.filter(function(p){ return rank(p) != null; });
+  if (hit.length) return hit.sort(function(a, b){ return rank(a) - rank(b); });
+  return MINE.filter(function(p){
+    return ((p.address || '') + ' ' + (p.city || '') + ' ' + (p.desc || '')).toLowerCase().indexOf(q) >= 0;
+  });
+}
 function pStreetKey(s){
   var m = /([א-ת"'\.\- ]+?\s?\d+[א-ת]?)/.exec(String(s || ''));
   return (m ? m[1] : String(s || '')).replace(/[^א-ת0-9]/g, '');
