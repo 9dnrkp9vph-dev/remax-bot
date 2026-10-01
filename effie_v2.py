@@ -2056,7 +2056,7 @@ function snapRestore(i){
 }
 /* [IMPORT-BUYERS 01/10] */
 var IBS_FILE = null, IBS_TIMER = null;
-var IBS_LBL = {new: 'קונים חדשים', fill_phone: 'קונים קיימים שיקבלו טלפון', budget: 'קונים קיימים שהתקציב שלהם יתעדכן', exists: 'כבר קיימים — בלי שינוי'};
+var IBS_LBL = {new: 'קונים חדשים', fill_phone: 'קונים קיימים שיקבלו טלפון', budget: 'קונים קיימים שהתקציב שלהם יתעדכן', seen: 'קונים קיימים שיקבלו את רשימת הנכסים שראו', exists: 'כבר קיימים — בלי שינוי'};
 var IBS_SKIP = {not_buyer: 'לא חתימת קונה (בעל נכס/השכרה)', no_client: 'בלי שם לקוח', no_agent: 'בלי סוכן', before_since: 'לפני התאריך'};
 function ibsRead(cb){
   var f = (el('ibsFile').files || [])[0];
@@ -2084,7 +2084,7 @@ function ibsPoll(){
     if (!j || !j.ok) return;
     var d = j.done || {};
     el('ibsOut').innerHTML = (j.state === 'done' ? '<b>הייבוא הסתיים</b>' : 'מייבא… ' + (j.i || 0) + ' מתוך ' + (j.total || 0)) +
-      '<br>חדשים ' + (d.new || 0) + ' · טלפון ' + (d.fill_phone || 0) + ' · תקציב ' + (d.budget || 0) + (d.failed ? ' · <span style="color:#C24040">נכשלו ' + d.failed + '</span>' : '');
+      '<br>חדשים ' + (d.new || 0) + ' · טלפון ' + (d.fill_phone || 0) + ' · תקציב ' + (d.budget || 0) + ' · נכסים ' + (d.seen || 0) + (d.failed ? ' · <span style="color:#C24040">נכשלו ' + d.failed + '</span>' : '');
     if (j.state === 'done'){ clearInterval(IBS_TIMER); IBS_TIMER = null; toast('הייבוא הסתיים'); }
   }).catch(function(){});
 }
@@ -10333,6 +10333,22 @@ def ibs_signings(table, since="2026-01-01"):
                     "budget": b if b >= 10000 else 0, "dt": d})
     return out, skip
 
+def ibs_addr_norm(a):
+    t = str(a or "").replace("קריית", "קרית")
+    return _re.sub(r"\s+", " ", _re.sub(r"[^\w\s]", " ", t)).strip()
+
+def ibs_seen_summary(summary, seen):
+    """[01/10 אייל] רשימת הנכסים שהלקוח ראה אצל הסוכן — רק בסיכום אוטומטי ("מהחתמת…");
+    מוסיף כתובות שעוד לא מופיעות. → הסיכום החדש, או None כשאין שינוי / סיכום שהסוכן כתב."""
+    sm = str(summary or "").strip()
+    if not sm.startswith("מהחתמת"):
+        return None
+    have = ibs_addr_norm(sm)
+    add = [a for a in seen if ibs_addr_norm(a) and ibs_addr_norm(a) not in have]
+    if not add:
+        return None
+    return (sm + (" · ראה גם: " if "ראה" in sm else " · ראה: ") + "; ".join(add))[:480]
+
 def ibs_plan(sigs, buyers, canon, last9):
     """קבוצה לכל (סוכן, טלפון — אחרת שם) → פעולה מול הקונים הקיימים:
     new / fill_phone / budget / exists. תקציב = היום האחרון עם מחיר (ממוצע הנכסים בו)."""
@@ -10361,8 +10377,14 @@ def ibs_plan(sigs, buyers, canon, last9):
                 continue
             if (p9 and last9(b.get("phone", "")) == p9) or (ck and canon(b.get("name", "")) == ck):
                 ex = b; break
+        seen, _sk = [], set()
+        for x in xs:   # כל הנכסים שהלקוח ראה אצל הסוכן, לפי סדר החתימות
+            ad, ct = x["address"], x["city"]
+            a = (ad if (not ct or ct in ad) else (ad + " " + ct).strip()) if ad else ct
+            if a and ibs_addr_norm(a) not in _sk:
+                _sk.add(ibs_addr_norm(a)); seen.append(a)
         item = {"client": last["client"], "agent": last["agent"], "phone": phone, "budget": budget, "budget_day": bday,
-                "address": ", ".join(v for v in (last["address"], last["city"]) if v),
+                "address": ", ".join(v for v in (last["address"], last["city"]) if v), "seen": seen,
                 "date": last["dt"].strftime("%d/%m/%Y %H:%M") if last["dt"] else ""}
         if ex is None:
             item["action"] = "new"
@@ -10373,8 +10395,11 @@ def ibs_plan(sigs, buyers, canon, last9):
                 upd["phone"] = phone
             if budget and bday and bday > str(ex.get("budget_day", "") or ""):
                 upd["budget"] = "{:,}".format(budget); upd["budget_day"] = bday
+            ns_ = ibs_seen_summary(ex.get("summary", ""), seen)
+            if ns_:
+                upd["summary"] = ns_
             item["update"] = upd
-            item["action"] = ("fill_phone" if "phone" in upd else "budget") if upd else "exists"
+            item["action"] = ("fill_phone" if "phone" in upd else "budget" if "budget" in upd else "seen") if upd else "exists"
         plan.append(item)
     return plan
 
@@ -12139,7 +12164,7 @@ def register(app, G):
         return plan, {"rows": len(table), "signings": len(sigs), "skip": skip, "cols": cols}, ""
 
     def _ibs_apply(plan, who):
-        done = {"new": 0, "fill_phone": 0, "budget": 0, "failed": 0}
+        done = {"new": 0, "fill_phone": 0, "budget": 0, "seen": 0, "failed": 0}
         _IBS_JOB.update(state="running", total=len(plan), i=0, done=done, started=time.time())
         bw = G["_buyers_write"]
         for i, it in enumerate(plan):
@@ -12149,7 +12174,7 @@ def register(app, G):
                     ps = list(G["_phones_for_name"](it["agent"]) or [])
                     j = bw("addbuyer", {"date": it["date"], "name": it["client"], "phone": it["phone"],
                                         "budget": "{:,}".format(it["budget"]) if it["budget"] else "",
-                                        "summary": "מהחתמת מתעניין (ייבוא מפיירברי)" + ((" · " + it["address"]) if it["address"] else ""),
+                                        "summary": ("מהחתמת מתעניין (ייבוא מפיירברי)" + ((" · ראה: " + "; ".join(it["seen"])) if it.get("seen") else ""))[:480],
                                         "agent": it["agent"], "agent_phone": ps[0] if ps else "", "search": "", "_noscan": True})
                     if j and j.get("ok"):
                         done["new"] += 1
@@ -12157,7 +12182,7 @@ def register(app, G):
                             bw("updatebuyer", {"row": j.get("row"), "budget_day": it["budget_day"]})
                     else:
                         done["failed"] += 1
-                elif it["action"] in ("fill_phone", "budget") and it.get("row"):
+                elif it["action"] in ("fill_phone", "budget", "seen") and it.get("row"):
                     j = bw("updatebuyer", dict(it["update"], row=it["row"]))
                     if j and j.get("ok"):
                         done[it["action"]] += 1
@@ -12169,7 +12194,7 @@ def register(app, G):
         G["_cache_clear"]("buyers")
         _IBS_JOB.update(state="done", finished=time.time())
         _log_activity(who.get("name", ""), who.get("role", ""), who.get("phone", ""), "ייבוא קונים מפיירברי",
-                      "חדשים %d · טלפון %d · תקציב %d · נכשלו %d" % (done["new"], done["fill_phone"], done["budget"], done["failed"]))
+                      "חדשים %d · טלפון %d · תקציב %d · נכסים %d · נכשלו %d" % (done["new"], done["fill_phone"], done["budget"], done["seen"], done["failed"]))
         try:
             _bs_scan_async("buyer")   # בדיקת "קונה שמפרסם נכס" פעם אחת בסוף
         except Exception:

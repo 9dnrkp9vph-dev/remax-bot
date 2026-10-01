@@ -5466,24 +5466,45 @@ def _client_view_prices(client, kind="sale", idx=None, excl=None, sigs=None):
                 prices.append(info["price"])
     return prices
 
-def _price_int(v):
+def _seen_norm(a):
+    t = str(a or "").replace("קריית", "קרית")
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", t)).strip()
+
+def _summary_add_seen(summary, seen):
+    """[01/10 אייל] מוסיף לסיכום האוטומטי ("מהחתמת…") כתובות שהלקוח ראה ושעוד לא מופיעות בו.
+    סיכום שהסוכן כתב / סיכום שיחה — לא נוגעים. → סיכום חדש או None. (תאום של ibs_seen_summary)"""
+    sm = str(summary or "").strip()
+    if not sm.startswith("מהחתמת"):
+        return None
+    have = _seen_norm(sm)
+    add, _k = [], set()
+    for a in seen or []:
+        k = _seen_norm(a)
+        if k and k not in have and k not in _k:
+            _k.add(k); add.append(str(a).strip())
+    if not add:
+        return None
+    return (sm + (" · ראה גם: " if "ראה" in sm else " · ראה: ") + "; ".join(add))[:480]
+
+def _sig_price(v):
+    """מחיר מחתימה ("1,220,000" / "1220000.0" / "4,000") → int; לא-מספר → 0.
+    (שם נפרד: _price_int המקורי משמש את זיהוי נכסי המשרד — לא לדרוס אותו.)"""
     d = re.sub(r"[^\d.]", "", str(v or ""))
     try:
-        n = int(float(d)) if d else 0
+        return max(0, int(float(d))) if d else 0
     except ValueError:
         return 0
-    return n if n >= 10000 else 0
 
 def _sign_row_prices(g, idx=None, excl=None):
     """מחירי הנכסים בשורת חתימה: התקציב שפיירברי שולח (budget), אחרת זיהוי הכתובות בנכסי המשרד/שת"פ."""
-    b = _price_int(g.get("budget") or g.get("תקציב"))
+    b = _sig_price(g.get("budget") or g.get("תקציב"))
     if b:
         return [b]
     out = []
     for part in str(g.get("address", "") or "").split("|"):
         info = _sign_prop_lookup(part.strip(), g.get("city", ""), idx=idx, excl=excl)
-        if info and _price_int(info.get("price")):
-            out.append(_price_int(info.get("price")))
+        if info and _sig_price(info.get("price")):
+            out.append(_sig_price(info.get("price")))
     return out
 
 def _client_last_sign_budget(client, kind="sale", idx=None, excl=None, extra=None, sigs=None):
@@ -5510,7 +5531,7 @@ def _client_last_sign_budget(client, kind="sale", idx=None, excl=None, extra=Non
                 continue
             for p in _sign_row_prices(g, idx, excl):
                 days.setdefault(_dtb.datetime.fromtimestamp(e).strftime("%Y-%m-%d"), set()).add(p)
-    cur = [p for p in (_price_int(x) for x in (extra or [])) if p]
+    cur = [p for p in (_sig_price(x) for x in (extra or [])) if p]
     if cur:
         try:
             from zoneinfo import ZoneInfo as _ZB
@@ -5565,7 +5586,7 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
                 info_desc = next((x["desc"] for x in infos if x.get("desc")), "")
             # 01/10 (אייל): התקציב = החתימה האחרונה (ממוצע אם היו בה כמה נכסים), לא ממוצע כל ההיסטוריה.
             # מחיר מפיירברי (budget) גובר על זיהוי הכתובת; החתימה הנוכחית נספרת גם אם טרם ברשימה.
-            cur = [_price_int(price)] if _price_int(price) else [x["price"] for x in infos if x.get("price")]
+            cur = [_sig_price(price)] if _sig_price(price) else [x["price"] for x in infos if x.get("price")]
             _avg, budget_day = _client_last_sign_budget(client, kind=deal_kind, idx=idx, excl=excl, extra=cur)
             if _avg:
                 budget_txt = "{:,}".format(_avg)
@@ -5594,13 +5615,19 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
                         _merge_buyer_search(r, info_desc, "")
                         # 01/10: חתימה מיום חדש → התקציב מתעדכן לחתימה האחרונה (עריכה ידנית של הסוכן
                         # נשמרת עד החתימה הבאה — budget_day מסמן מאיזה יום הגיע התקציב)
-                        if budget_txt and budget_day and str(r.get("budget_day", "") or "") != budget_day and r.get("row"):
+                        _upd = {}
+                        if budget_txt and budget_day and str(r.get("budget_day", "") or "") != budget_day:
+                            _upd.update(budget=budget_txt, budget_day=budget_day)
+                        # 01/10 (אייל): רשימת הנכסים שהלקוח ראה אצל הסוכן — רק בסיכום אוטומטי ("מהחתמת…")
+                        _sm = _summary_add_seen(r.get("summary", ""), [a.strip() for a in str(address or "").split("|")])
+                        if _sm:
+                            _upd["summary"] = _sm
+                        if _upd and r.get("row"):
                             try:
-                                if (_buyers_write("updatebuyer", {"row": r.get("row"), "budget": budget_txt,
-                                                                  "budget_day": budget_day}) or {}).get("ok"):
+                                if (_buyers_write("updatebuyer", dict(_upd, row=r.get("row"))) or {}).get("ok"):
                                     _cache_clear("buyers")
                             except Exception as _be:
-                                log.warning(f"add_buyer_from_signing: budget update failed: {_be}")
+                                log.warning(f"add_buyer_from_signing: update failed: {_be}")
                         # 01/10: קונה שנכנס מחתימה בלי טלפון — משלימים מהחתימה (ובודקים "קונה שמפרסם נכס")
                         if ln and len(ln) == 9 and not _last9(r.get("phone", "")) and r.get("row"):
                             try:
