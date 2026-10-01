@@ -5226,8 +5226,8 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div class="segs" id="modes">
         <div class="sg on" data-m="office" onclick="setMode(this)">המשרד שלנו <b id="cOffice"></b></div>
         <div class="sg" data-m="shtaf" onclick="setMode(this)">שת"פ <b id="cShtaf"></b></div>
-        <div class="sg" data-m="mine" onclick="setMode(this)">שלי <b id="cMine"></b></div>
         <div class="sg" data-m="nb" id="sgNb" onclick="setMode(this)" style="display:none;white-space:nowrap">נכס נולד <b id="cNb"></b></div>
+        <div class="sg" data-m="mine" onclick="setMode(this)">שלי <b id="cMine"></b></div>
       </div>
       <a id="nbAll" href="/v2/newborn" style="text-align:start;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none">לכל נכס נולד ←</a>
       <div class="srch">
