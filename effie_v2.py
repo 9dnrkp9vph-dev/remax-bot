@@ -2056,7 +2056,7 @@ function snapRestore(i){
 }
 /* [IMPORT-BUYERS 01/10] */
 var IBS_FILE = null, IBS_TIMER = null;
-var IBS_LBL = {new: 'קונים חדשים', fill_phone: 'קונים קיימים שיקבלו טלפון', budget: 'קונים קיימים שהתקציב שלהם יתעדכן', seen: 'קונים קיימים שיקבלו את רשימת הנכסים שראו', exists: 'כבר קיימים — בלי שינוי'};
+var IBS_LBL = {new: 'קונים חדשים', fill_phone: 'קונים קיימים שיקבלו טלפון', budget: 'קונים קיימים שהתקציב שלהם יתעדכן', seen: 'קונים קיימים שיקבלו את רשימת הנכסים שראו', exists: 'כבר קיימים — בלי שינוי', unknown_agent: 'דולגו — סוכן שלא קיים במערכת'};
 var IBS_SKIP = {not_buyer: 'לא חתימת קונה (בעל נכס/השכרה)', no_client: 'בלי שם לקוח', no_agent: 'בלי סוכן', before_since: 'לפני התאריך'};
 function ibsRead(cb){
   var f = (el('ibsFile').files || [])[0];
@@ -2069,6 +2069,8 @@ function ibsRender(j){
   var o = el('ibsOut'), m = j.meta || {}, h = '';
   h += '<b>' + (m.rows || 0) + '</b> שורות בקובץ · <b>' + (m.signings || 0) + '</b> חתימות קונים<br>';
   Object.keys(IBS_LBL).forEach(function(k){ if ((j.counts || {})[k]) h += IBS_LBL[k] + ': <b>' + j.counts[k] + '</b><br>'; });
+  if (m.new_no_phone) h += '<span style="color:#6B7280">מתוך החדשים — בלי טלפון: ' + m.new_no_phone + '</span><br>';
+  if ((m.unknown_agents || []).length) h += '<span style="color:#C24040">סוכנים שלא זוהו: ' + esc(m.unknown_agents.map(function(x){ return x[0] + ' (' + x[1] + ')'; }).join(', ')) + '</span><br>';
   var sk = m.skip || {};
   Object.keys(sk).forEach(function(k){ h += '<span style="color:#6B7280">דולגו — ' + esc(IBS_SKIP[k] || k) + ': ' + sk[k] + '</span><br>'; });
   var miss = Object.keys(m.cols || {}).filter(function(k){ return !(m.cols || {})[k]; });
@@ -10254,6 +10256,8 @@ IBS_COLS = {
     "date": ("תאריך חתימה", "נוצר בתאריך", "תאריך", "date", "created"),
 }
 
+IBS_EMPTY = {"-", "--", "—", "–", "0", "null", "None", "none", "NULL", "לא ידוע"}
+
 def ibs_parse_table(name, data):
     """קובץ (bytes) → [{כותרת: ערך}] — xlsx (openpyxl) או csv (utf-8 / windows-1255)."""
     rows = []
@@ -10312,7 +10316,9 @@ def ibs_signings(table, since="2026-01-01"):
     def sk(k):
         skip[k] = skip.get(k, 0) + 1
     for r in table:
-        g = lambda k: (str(r.get(col[k]) if r.get(col[k]) is not None else "").strip() if col[k] else "")
+        def g(k):
+            v = (str(r.get(col[k]) if r.get(col[k]) is not None else "").strip() if col[k] else "")
+            return "" if (v in IBS_EMPTY or not _re.search(r"[\w\u0590-\u05FF]", v)) else v   # "-" / "—" / "null" = ריק
         deal = g("deal").upper()
         if deal and ("OWNER" in deal or "RENT" in deal or "שכיר" in deal or "בעל" in deal):
             sk("not_buyer"); continue
@@ -12160,8 +12166,26 @@ def register(app, G):
         sigs, skip = ibs_signings(table, since=str(b.get("since") or "2026-01-01"))
         G["_cache_clear"]("buyers")
         plan = ibs_plan(sigs, G["_fetch_manual_buyers"]() or [], G["_canon_key"], G["_last9"])
+        # קונה חדש רק לסוכן שקיים במערכת (לא נמחק) — אחרת אף אחד לא יראה אותו; הרשימה מוצגת לבדיקה
+        canon, known, unknown = G["_canon_key"], {}, {}
+        try:
+            removed = G["_removed_agent_keys"]() or set()
+            nk = G["_name_key"]
+        except Exception:
+            removed, nk = set(), (lambda x: x)
+        for it in plan:
+            if it["action"] != "new":
+                continue
+            k = canon(it["agent"])
+            if k not in known:
+                known[k] = bool(G["_phones_for_name"](it["agent"])) and nk(it["agent"]) not in removed
+            if not known[k]:
+                it["action"] = "unknown_agent"
+                unknown[it["agent"]] = unknown.get(it["agent"], 0) + 1
         cols = {k: ibs_col(list(table[0].keys()), k) for k in IBS_COLS} if table else {}
-        return plan, {"rows": len(table), "signings": len(sigs), "skip": skip, "cols": cols}, ""
+        new_no_phone = sum(1 for it in plan if it["action"] == "new" and not it["phone"])
+        return plan, {"rows": len(table), "signings": len(sigs), "skip": skip, "cols": cols, "new_no_phone": new_no_phone,
+                      "unknown_agents": sorted(unknown.items(), key=lambda x: -x[1])[:15]}, ""
 
     def _ibs_apply(plan, who):
         done = {"new": 0, "fill_phone": 0, "budget": 0, "seen": 0, "failed": 0}
@@ -12219,14 +12243,14 @@ def register(app, G):
         sample = {}
         for it in plan:
             a = it["action"]
-            if a != "exists" and len(sample.setdefault(a, [])) < 12:
+            if a not in ("exists", "unknown_agent") and len(sample.setdefault(a, [])) < 12:
                 sample[a].append({"client": it["client"], "agent": it["agent"], "date": it["date"],
                                   "budget": it["budget"], "phone": bool(it["phone"])})
         if not b.get("apply"):
             return jsonify({"ok": True, "dry": True, "meta": meta, "counts": counts, "sample": sample})
         if _IBS_JOB.get("state") == "running":
             return jsonify({"ok": False, "reason": "running"})
-        todo = [it for it in plan if it["action"] != "exists"]
+        todo = [it for it in plan if it["action"] not in ("exists", "unknown_agent")]
         import threading as _ith2
         _ith2.Thread(target=_ibs_apply, args=(todo, dict(s)), daemon=True, name="import-buyers").start()
         return jsonify({"ok": True, "started": True, "total": len(todo), "counts": counts})
