@@ -3112,7 +3112,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .srch input{flex:1;min-width:0;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
       color:#1E3A5F;padding:11px 0}
   .addBtn{display:flex;align-items:center;justify-content:center;gap:5px;background:#2E6BD6;color:#fff;
-      border-radius:14px;padding:0 11px;font-size:13px;font-weight:700;border:0;cursor:pointer;
+      border-radius:14px;padding:0 13px;min-height:40px;font-size:13px;font-weight:700;border:0;cursor:pointer;
       font-family:inherit;box-shadow:0 4px 12px rgba(46,107,214,.25);white-space:nowrap;flex-shrink:0}
   /* [BUYER-AI-BTN 01/10] כפתור "חפש" (זהב = AI) — אייל: Enter לא מספיק, צריך כפתור */
   .srch input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
@@ -3235,7 +3235,13 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
           <div class="ic"><svg width="16" height="16" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
           <h1>הקונים שלי</h1>
         </div>
-        <div class="cnt" id="cnt">—</div>
+        <div style="display:flex;align-items:center;gap:8px">   <!-- [01/10] "+ קונה" עבר לכותרת — שורת החיפוש הייתה צפופה -->
+          <div class="cnt" id="cnt">—</div>
+          <button class="addBtn" onclick="openAdd()">
+            <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+            קונה
+          </button>
+        </div>
       </div>
       <div class="srchRow">
         <div class="srch">
@@ -3251,10 +3257,6 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
         <button class="aiBtn" id="aiBtn" onclick="aiSearch()" aria-label="חיפוש קונה AI">
           <svg width="13" height="13" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#231700" stroke-width="2"/><path d="M11 11l3.4 3.4" stroke="#231700" stroke-width="2" stroke-linecap="round"/></svg>
           חפש
-        </button>
-        <button class="addBtn" onclick="openAdd()">
-          <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
-          קונה
         </button>
       </div>
       <div class="segs" id="filters">
@@ -9910,24 +9912,37 @@ def _bai_norm(t):
     return _re.sub(r"\s+", " ", str(t or "").replace("קריית", "קרית")).strip()
 
 def bai_budget(s):
-    """תקציב מטקסט חופשי → int (הגבוה בטווח): "1,500,000" / "2 מיליון" / "1.5-2 מיליון" / "800 אלף"."""
+    """תקציב/מחיר מטקסט חופשי → int (הגבוה בטווח): "1,500,000" / "2 מיליון" / "1.5-2 מיליון" / "800 אלף".
+    [01/10] רק מספר שצמוד ליחידה (מיליון/אלף) או מחיר מלא נספר — "4 חדרים … 2.1 מיליון" = 2.1M (לא 4M);
+    מספר של חדרים/מ"ר/קומה לא נספר; שבר קטן בלי יחידה ("באפקה 1.9") = מיליונים."""
     s = str(s or "")
-    mil = bool(_re.search(r"מי?ליון", s)); elf = "אלף" in s
     best = 0
-    for tok in _re.findall(r"\d[\d,\.]*", s):
+    for m in _re.finditer(r"\d[\d,\.]*", s):
+        tok = m.group().rstrip(".,")
         try:
             v = float(tok.replace(",", ""))
         except ValueError:
             continue
-        if mil and v < 100:
-            v *= 1000000
-        elif elf and v < 10000:
-            v *= 1000
+        after, before = s[m.end():m.end() + 16], s[max(0, m.start() - 6):m.start()]
+        if _re.match(r"\s*(?:חד|חדר|מ\"ר|מ״ר|מר\b|מטר|קומה|קומות)", after) or "קומה" in before:
+            continue
+        if _re.match(r"\s*(?:[-–]|עד)\s*\d[\d,\.]*\s*מי?ליון", after) or _re.match(r"\s*מי?ליון", after):
+            if v < 100:
+                v *= 1000000
+        elif _re.match(r"\s*(?:[-–]|עד)\s*\d[\d,\.]*\s*אלף", after) or _re.match(r"\s*אלף", after):
+            if v < 10000:
+                v *= 1000
+        elif v >= 10000:
+            pass                                   # מחיר מלא: 1,950,000
+        elif "." in tok and 0.3 <= v < 20:
+            v *= 1000000                           # "באפקה 1.9"
+        else:
+            continue                               # מספר קטן בלי יחידה — לא תקציב
         best = max(best, v)
     if not best:   # 01/10: "עד מיליון" / "חצי מיליון" — בלי מספר
         if "חצי מיליון" in s:
             best = 500000
-        elif mil:
+        elif _re.search(r"מי?ליון", s):
             best = 1000000
     return int(best)
 
@@ -9948,6 +9963,17 @@ def bai_rooms(text):
 BAI_NONRES = ("מגרש", "חנות", "משרד", "מסחרי", "מחסן", "חקלאי")   # "בנה ביתך" = גם שם שכונה (מוצקין/ים) — לא כאן
 BAI_HOUSE = ("קוטג", "וילה", "דו משפחתי", "דו-משפחתי", "בית פרטי")
 BAI_FLAT = ("דירה", "דירות", "דירת", "פנטהאוז", "דופלקס", "מיני פנטהאוז")
+# [01/10] תת-סוג מדויק — "פנטהאוז" מעדיף קונים שמחפשים פנטהאוז/גג על פני "דירה" רגילה
+BAI_SUB = (("פנטהאוז", ("פנטהאוז", "פנטהאוס", "גג")), ("דירת גן", ("דירת גן", "גארדן")), ("דופלקס", ("דופלקס",)),
+           ("קוטג'", ("קוטג",)), ("וילה", ("וילה",)), ("דו משפחתי", ("דו משפחתי", "דו-משפחתי")))
+
+def bai_sub(t):
+    """תת-הסוג שמוזכר בטקסט ('פנטהאוז' / 'דירת גן' / …) או None."""
+    t = _bai_norm(t)
+    for name, words in BAI_SUB:
+        if any(w in t for w in words):
+            return name
+    return None
 
 def bai_kind(t, head_only=True):
     """'nonres' / 'house' / 'flat' / None — מהקטע הראשון ('מגרש, 1000 מ"ר · …' / 'דירה · 4 חד׳ · …');
@@ -10003,7 +10029,12 @@ def bai_score(parsed, text, budget, recent, area=None):
     bk = bai_kind(tx)
     if bk == "nonres" and qk != "nonres":
         return 0, []                                       # קונה של מגרש/חנות/משרד — לא לדירה/בית
-    if bk and bk == qk:
+    qsub = bai_sub(q.get("_qtext") or "") or bai_sub(q.get("property_type") or "")
+    if qsub and bai_sub(tx) == qsub:
+        sc += 12; why.append(qsub)                         # מחפש בדיוק את תת-הסוג (פנטהאוז/דירת גן/…)
+    elif qsub and bk == qk:
+        pass                                               # אותה משפחה (דירה רגילה מול פנטהאוז) — בלי בונוס
+    elif bk and bk == qk:
         sc += 5; why.append("סוג נכס")
     elif bk and {bk, qk} == {"flat", "house"}:
         sc -= 15                                           # דירה מול קוטג' — נמוך, לא נפסל
@@ -10769,6 +10800,10 @@ def register(app, G):
             if not parsed:
                 return jsonify({"ok": True, "buyers": [], "calls": [], "summary": "", "failed": True})
             parsed["_qtext"] = q   # לזיהוי סוג הנכס מהמילים שהוקלדו (bai_score)
+            if not parsed.get("budget_max"):   # [01/10] המפרק לא החזיר מחיר ("מחפש פנטהאוז עד 5 מיליון") — מהטקסט
+                _b = bai_budget(q)
+                if _b >= 100000:
+                    parsed["budget_max"] = _b
             try:   # מוח האזורים של חיפוש הנכסים: כינויי שכונות/ערים, ומה נחשב "אזור אחר"
                 area = bai_area_terms(parsed, G["_nb_alias_idx"]())
             except Exception:
@@ -10846,7 +10881,8 @@ def register(app, G):
                               "agent": (c.get("agent", "") or "").strip(), "date": G["_fmt_il_dt"](c.get("received_at", "")),
                               "budget": G["format_price_il"](G["extract_budget_from_transcript"](summ)),
                               "summary": _re.sub(r"https?://\S+", "", summ).strip(), "score": sc, "why": why})
-            return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "buyers": out_b[:40], "calls": out_c})
+            _sm = _re.sub(r"^\s*נכס\s*:\s*", "", str(parsed.get("summary_he") or ""))
+            return jsonify({"ok": True, "summary": _sm, "buyers": out_b[:40], "calls": out_c})
         except Exception as e:
             if log: log.error(f"buyer ai search error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
