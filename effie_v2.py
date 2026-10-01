@@ -3104,6 +3104,11 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .addBtn{display:flex;align-items:center;justify-content:center;gap:5px;background:#2E6BD6;color:#fff;
       border-radius:14px;padding:0 11px;font-size:13px;font-weight:700;border:0;cursor:pointer;
       font-family:inherit;box-shadow:0 4px 12px rgba(46,107,214,.25);white-space:nowrap;flex-shrink:0}
+  /* [BUYER-AI-BTN 01/10] כפתור "חפש" (זהב = AI) — אייל: Enter לא מספיק, צריך כפתור */
+  .srch input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+  .aiBtn{display:flex;align-items:center;justify-content:center;gap:5px;background:#C29435;color:#231700;
+      border-radius:14px;padding:0 13px;min-height:44px;font-size:13px;font-weight:800;border:0;cursor:pointer;
+      font-family:inherit;box-shadow:0 4px 12px rgba(194,148,53,.28);white-space:nowrap;flex-shrink:0}
   .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
   .segs .sg{flex:1;text-align:center;padding:7px 0;font-size:12.5px;font-weight:700;color:#5B6472;
       border-radius:10px;cursor:pointer}
@@ -3225,9 +3230,18 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
       <div class="srchRow">
         <div class="srch">
           <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
-          <input id="q" placeholder="שם, טלפון · או תיאור נכס + Enter = AI" oninput="qChanged()"
-                 onkeydown="if(event.key==='Enter')aiSearch()">
+          <input id="q" type="search" enterkeyhint="search" autocomplete="off"
+                 placeholder="שם, טלפון · או תיאור נכס" oninput="qChanged()"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();aiSearch()}">
+          <button id="qClear" onclick="aiClear()" aria-label="ניקוי חיפוש"
+            style="display:none;width:28px;height:28px;border-radius:50%;background:#EBE8DD;border:none;flex-shrink:0;align-items:center;justify-content:center;cursor:pointer;padding:0">
+            <svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
         </div>
+        <button class="aiBtn" id="aiBtn" onclick="aiSearch()" aria-label="חיפוש קונה AI">
+          <svg width="13" height="13" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#231700" stroke-width="2"/><path d="M11 11l3.4 3.4" stroke="#231700" stroke-width="2" stroke-linecap="round"/></svg>
+          חפש
+        </button>
         <button class="addBtn" onclick="openAdd()">
           <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
           קונה
@@ -3320,13 +3334,15 @@ closeSheet = function(){
   _closeSheetBase();
 };
 var BUYERS = [], STATUSES = {}, FILTER = 'active', OFFICE = '', MULTI = false;
-function qChanged(){ if (AIRES) AIRES = null; render(); }
+function qClearBtn(){ var b = el('qClear'); if (b) b.style.display = el('q').value ? 'flex' : 'none'; }
+function qChanged(){ if (AIRES) AIRES = null; qClearBtn(); render(); }
 /* [BUYER-AI 01/10] חיפוש קונה AI (אייל): תיאור נכס/דרישה + Enter → קונים שמורים (כל המשרד; של אחרים —
    מצומצם) + שיחות שנענו (שלי), לפי התאמה. החליף את החיפוש החכם הישן (שיחות בלבד, ונפל ל"10 אחרונות"). */
 var AIRES = null, AITAB = 'buyers';
 function aiSearch(){
   var q = el('q').value.trim();
   if (!q){ toast('תאר נכס — למשל "דירת 4 חדרים באפק עד 2.1 מיליון"'); return; }
+  try{ el('q').blur(); }catch(e){}
   el('list').innerHTML = '<div class="card empty"><div class="s" style="padding:10px 0">מחפש קונים מתאימים…</div></div>';
   POST('/v2/api/buyers/ai_search', {q: q}).then(function(j){
     AIRES = (j && j.ok) ? j : {buyers: [], calls: [], summary: '', failed: true};
@@ -3334,7 +3350,7 @@ function aiSearch(){
     render();
   }).catch(function(){ AIRES = {buyers: [], calls: [], summary: '', failed: true}; render(); });
 }
-function aiClear(){ AIRES = null; el('q').value = ''; render(); }
+function aiClear(){ AIRES = null; el('q').value = ''; qClearBtn(); render(); }
 function setAiTab(k){ AITAB = k; render(); }
 function aiWhy(b){
   return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px">' + scoreChip(b.score) +
@@ -3485,6 +3501,12 @@ function render(){
     '<div class="s">קונים חדשים נוספים מהשיחות ("הוסף כקונה") או מכפתור "+ קונה" למעלה</div>' +
     '<button class="btn btn-blue" style="max-width:220px" onclick="openAdd()">+ הוסף קונה</button></div>';
   el('list')._src = src;
+  if (!h && q){   // [BUYER-AI-BTN] הוקלד טקסט ואין קונה בשם/טלפון כזה — כנראה תיאור נכס
+    el('list').innerHTML = '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#C29435" stroke-width="1.6"/><path d="M11 11l3.4 3.4" stroke="#C29435" stroke-width="1.6" stroke-linecap="round"/></svg></div>' +
+      '<div class="t">אין קונה בשם או בטלפון הזה</div>' +
+      '<div class="s">מחפשים קונה לנכס? לחצו "חפש" ונמצא את הקונים המתאימים מכל המשרד ומהשיחות</div>' +
+      '<button class="btn" style="max-width:240px;background:#C29435;color:#231700;font-weight:800" onclick="aiSearch()">חפש קונה AI</button></div>';
+  }
 }
 function setFilter(node){
   FILTER = node.getAttribute('data-f');
@@ -4036,7 +4058,7 @@ render = function(){
     if (location.search.indexOf('add=1') >= 0) openAdd();
   });
   if (location.search.indexOf('ai=1') >= 0){   // [BUYER-AI] מאריח "חיפוש קונה AI" בבית
-    el('q').placeholder = 'תאר נכס: 4 חדרים באפק עד 2.1 מיליון + Enter';
+    el('q').placeholder = 'תאר נכס: 4 חדרים באפק עד 2.1 מיליון';
     try{ el('q').focus(); }catch(e){}
   }
 })();
