@@ -965,9 +965,9 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#231700" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
         <div class="l">חתימות</div>
       </div>
-      <div class="a lite" onclick="location.href='/v2/props'">
-        <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#2E6BD6" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg></div>
-        <div class="l">חיפוש נכס</div>
+      <div class="a lite" onclick="location.href='/v2/buyers?ai=1'">   <!-- [BUYER-AI 01/10] החליף את "חיפוש נכס" (נגיש מ"נכסי המשרד") -->
+        <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="6.5" cy="5.5" r="2.6" fill="none" stroke="#C29435" stroke-width="1.6"/><path d="M2 13.5c.5-2.5 2.3-3.9 4.5-3.9 1 0 1.9.3 2.6.8" fill="none" stroke="#C29435" stroke-width="1.6" stroke-linecap="round"/><path d="M12.5 8.5l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z" fill="#C29435"/></svg></div>
+        <div class="l">חיפוש קונה AI</div>
       </div>
       <div class="a lite" onclick="location.href='/v2/effie'">
         <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 2a4.5 4.5 0 0 1 4.5 4.5c0 2.6-2.1 4.4-4.5 4.4-.5 0-1-.06-1.4-.2L4 12l.7-2.3A4.4 4.4 0 0 1 3.5 6.5 4.5 4.5 0 0 1 8 2z" fill="none" stroke="#C29435" stroke-width="1.6" stroke-linejoin="round"/><circle cx="6.3" cy="6.5" r=".8" fill="#C29435"/><circle cx="9.7" cy="6.5" r=".8" fill="#C29435"/></svg></div>
@@ -3159,6 +3159,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   /* [MATCH-TABS 01/10] טאבים בחלון התאמת נכסים — נשארים למעלה (בתוך הכותרת הדביקה) */
   .mtabs{display:flex;gap:3px;background:#EBE8DD;border-radius:12px;padding:4px;margin-top:9px;overflow-x:auto;scrollbar-width:none}
   .mtabs::-webkit-scrollbar{display:none}
+  .whyc{font-size:11px;font-weight:700;color:#5B6472;background:#F0EDE3;border-radius:999px;padding:3px 9px}
   .mtabs .t{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;padding:0 7px;
       min-height:40px;border-radius:9px;font-size:12px;font-weight:700;color:#5B6472;cursor:pointer}
   .mtabs .t b{font-size:11px;font-weight:800}
@@ -3224,8 +3225,8 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
       <div class="srchRow">
         <div class="srch">
           <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
-          <input id="q" placeholder="שם, טלפון או חיפוש חופשי (Enter לחיפוש חכם)" oninput="qChanged()"
-                 onkeydown="if(event.key==='Enter')smartSearch()">
+          <input id="q" placeholder="שם, טלפון · או תיאור נכס + Enter = AI" oninput="qChanged()"
+                 onkeydown="if(event.key==='Enter')aiSearch()">
         </div>
         <button class="addBtn" onclick="openAdd()">
           <svg width="12" height="12" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
@@ -3318,27 +3319,99 @@ closeSheet = function(){
   _MATCH_OPEN = false;
   _closeSheetBase();
 };
-var BUYERS = [], STATUSES = {}, FILTER = 'active', OFFICE = '', MULTI = false, SMART = null;
-function qChanged(){ if (SMART) SMART = null; render(); }
-function smartSearch(){
+var BUYERS = [], STATUSES = {}, FILTER = 'active', OFFICE = '', MULTI = false;
+function qChanged(){ if (AIRES) AIRES = null; render(); }
+/* [BUYER-AI 01/10] חיפוש קונה AI (אייל): תיאור נכס/דרישה + Enter → קונים שמורים (כל המשרד; של אחרים —
+   מצומצם) + שיחות שנענו (שלי), לפי התאמה. החליף את החיפוש החכם הישן (שיחות בלבד, ונפל ל"10 אחרונות"). */
+var AIRES = null, AITAB = 'buyers';
+function aiSearch(){
   var q = el('q').value.trim();
-  if (!q){ toast('כתוב מה לחפש — למשל "קונה בתקציב 3 מיליון בגושן"'); return; }
-  el('list').innerHTML = '<div class="card empty"><div class="s" style="padding:10px 0">מחפש בשיחות שנענו…</div></div>';
-  POST('/api/search/buyers', {q: q}).then(function(j){
-    SMART = (j && j.results) || [];
+  if (!q){ toast('תאר נכס — למשל "דירת 4 חדרים באפק עד 2.1 מיליון"'); return; }
+  el('list').innerHTML = '<div class="card empty"><div class="s" style="padding:10px 0">מחפש קונים מתאימים…</div></div>';
+  POST('/v2/api/buyers/ai_search', {q: q}).then(function(j){
+    AIRES = (j && j.ok) ? j : {buyers: [], calls: [], summary: '', failed: true};
+    AITAB = ((AIRES.buyers || []).length || !(AIRES.calls || []).length) ? 'buyers' : 'calls';
     render();
-  }).catch(function(){ SMART = []; render(); });
+  }).catch(function(){ AIRES = {buyers: [], calls: [], summary: '', failed: true}; render(); });
 }
-function renderSmart(){
-  el('cnt').textContent = SMART.length;
-  var h = '<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px 10px">' +
-    '<div style="font-size:13px;font-weight:800;color:#7A5E1C">חיפוש חכם · מהשיחות שנענו</div>' +
-    '<div style="font-size:12.5px;font-weight:700;color:#2E6BD6;cursor:pointer" onclick="SMART=null;el(\'q\').value=\'\';render()">נקה חיפוש</div></div>';
-  SMART.slice(0, 15).forEach(function(b, i){
-    h += '<div class="buyer">' +
+function aiClear(){ AIRES = null; el('q').value = ''; render(); }
+function setAiTab(k){ AITAB = k; render(); }
+function aiWhy(b){
+  return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px">' + scoreChip(b.score) +
+    (b.why || []).map(function(w){ return '<span class="whyc">' + esc(w) + '</span>'; }).join('') + '</div>';
+}
+function maskedCardHtml(b){   // קונה של סוכן אחר — שם פרטי, הסוכן המטפל, תקציב, מה מחפש (בלי טלפון/סיכום)
+  var msg = 'היי ' + ((b.agent || '').split(' ')[0] || '') + ', יש לי נכס שאולי מתאים לקונה שלך ' + (b.first || '') +
+    ': ' + el('q').value.trim();
+  return '<div class="buyer">' +
+    '<div class="top"><div><div class="nm">' + esc(b.first || 'קונה') + '</div>' +
+    '<div class="sb">' + esc('קונה של ' + (b.agent || 'סוכן אחר')) + '</div></div>' +
+    (b.budget ? '<div class="bdg">עד ' + esc(fmtBd(b.budget)) + '</div>' : '') + '</div>' +
+    aiWhy(b) +
+    (b.search ? '<div style="font-size:12.5px;color:#5B6472;line-height:1.5">' + esc(b.search) + '</div>' : '') +
+    (b.agentWa ? '<div class="acts"><a class="main" style="background:#157A43;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/' +
+      esc(b.agentWa) + '?text=' + encodeURIComponent(msg) + '">וואטסאפ לסוכן המטפל</a></div>' : '') +
+    '</div>';
+}
+function renderAI(){
+  var B = AIRES.buyers || [], C = AIRES.calls || [];
+  el('cnt').textContent = (AITAB === 'calls' ? C : B).length;
+  var h = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 2px">' +
+    '<div style="font-size:13px;font-weight:800;color:#7A5E1C">חיפוש קונה AI' + (AIRES.summary ? ' · ' + esc(AIRES.summary) : '') + '</div>' +
+    '<div style="font-size:12.5px;font-weight:700;color:#2E6BD6;cursor:pointer;white-space:nowrap" onclick="aiClear()">נקה חיפוש</div></div>' +
+    '<div class="mtabs" style="margin:0 0 4px">' +
+    '<div class="t' + (AITAB === 'buyers' ? ' on' : '') + '" onclick="setAiTab(\'buyers\')">קונים שמורים <b>' + B.length + '</b></div>' +
+    '<div class="t' + (AITAB === 'calls' ? ' on' : '') + '" onclick="setAiTab(\'calls\')">משיחות שנענו <b>' + C.length + '</b></div></div>';
+  var own = [], list = AITAB === 'calls' ? C : B;
+  list.forEach(function(b, i){
+    if (AITAB === 'calls') h += callCardHtml(b, i, aiWhy(b));
+    else if (b.own){ h += buyerCardHtml(b, own.length, aiWhy(b)); own.push(b); }
+    else h += maskedCardHtml(b);
+  });
+  if (!list.length)
+    h += '<div class="card empty"><div class="t">לא נמצאו קונים מתאימים</div><div class="s">' +
+      (AIRES.failed ? 'לא הצלחנו להבין את החיפוש — נסה לנסח כתיאור נכס: אזור, חדרים ומחיר'
+                    : 'אין ' + (AITAB === 'calls' ? 'שיחות' : 'קונים') + ' שמתאימים לתיאור — נסה טאב אחר או ניסוח רחב יותר') + '</div></div>';
+  el('list').innerHTML = h;
+  el('list')._src = own;      // כרטיסי הקונים שלי — הכפתורים לפי אינדקס (התאם/עריכה/חם)
+  el('list')._smart = C;      // "הוסף כקונה" בטאב השיחות
+}
+function buyerCardHtml(b, i, extra){   // [BUYER-AI 01/10] כרטיס קונה — משותף לרשימה ולתוצאות AI (extra = שורת התאמה)
+    var st = stOf(b);
+    var hot = st === 'hot';
+    var sub = [b.phone, MULTI ? b.agent : '', b.date].filter(Boolean).join(' · ');
+    return '<div class="buyer' + (hot ? ' hot' : '') + '">' +
+      '<div class="top"><div>' +
+      '<div class="nm">' + esc(b.name || b.phone || 'ללא שם') + (hot ? '<span class="tag">חם</span>' : '') + '</div>' +
+      '<div class="sb">' + esc(sub) + '</div></div>' +
+      '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">' +
+      (b.budget ? '<div class="bdg" onclick="pickStatus(' + i + ')">עד ' + esc(fmtBd(b.budget)) + '</div>' :
+        '<div class="bdg" onclick="pickStatus(' + i + ')">' + ST_LABEL[st] + '</div>') +
+      (b.search ? '<div class="req">' + esc(b.search.slice(0, 30)) + '</div>' : '') + '</div></div>' +
+      (extra || '') +
+      (b.summary ? '<div class="ai"><div class="t">' +
+        '<svg width="14" height="13" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>' +
+        'סיכום חכם</div><div class="x">' + esc(b.summary) + '</div></div>' : '') +
+      '<div class="acts">' +
+      '<button class="main" onclick="matchProps(' + i + ')">' +
+      '<svg width="13" height="13" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
+      'התאם</button>' +
+      '<button class="sq" style="background:' + (hot ? '#C29435' : '#F6EEDB') + '" onclick="toggleHot(' + i + ')" aria-label="קונה חם">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1.5c.4 2.2-.8 3.2-1.8 4.4C5 7.3 4.3 8.6 4.5 10.3c.3 2.3 2 3.9 3.7 4.2-.8-.9-1-2-.5-3 .4-.8 1.1-1.3 1.4-2.2 1 .8 1.7 2 1.5 3.3-.1.7-.4 1.3-.9 1.8 2-.5 3.6-2.2 3.8-4.5.2-3.2-2.3-4.6-3.1-6.9-.3-.6-.4-1.1-.4-1.5z" fill="' + (hot ? '#fff' : 'none') + '" stroke="' + (hot ? '#fff' : '#7A5E1C') + '" stroke-width="1.3" stroke-linejoin="round"/></svg></button>' +
+      '<button class="sq" style="background:#F5F3EC" onclick="openEdit(' + i + ')" aria-label="עריכה">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#5B6472" stroke-width="1.5" stroke-linejoin="round"/></svg></button>' +
+      '<button class="sq" style="background:#E7F7EE" onclick="window.open(\'https://wa.me/' + esc(b.wa || '') + '\',\'_blank\')">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+      '<button class="sq" style="background:#EAF0FA" onclick="c2cDial(\'' + esc(b.tel || '') + '\')">' +
+      '<svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7" stroke-linejoin="round"/></svg></button>' +
+      '</div></div>';
+}
+function callCardHtml(b, i, extra){   // [BUYER-AI 01/10] כרטיס מתקשר מהשיחות (+ "הוסף כקונה")
+    return '<div class="buyer">' +
       '<div class="top"><div><div class="nm">' + esc(b.phone || '') + '</div>' +
       '<div class="sb">' + esc([b.agent, b.date].filter(Boolean).join(' · ')) + '</div></div>' +
       (b.budget ? '<div class="bdg">' + esc(fmtBd(b.budget)) + '</div>' : '') + '</div>' +
+      (extra || '') +
       (b.summary ? '<div class="ai"><div class="t">' +
         '<svg width="14" height="13" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>' +
         'סיכום חכם</div><div class="x">' + esc(b.summary) + '</div></div>' : '') +
@@ -3351,12 +3424,6 @@ function renderSmart(){
       (b.tel ? '<button class="sq" style="background:#EAF0FA" onclick="c2cDial(\'' + esc(b.tel) + '\')">' +
       '<svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7"/></svg></button>' : '') +
       '</div></div>';
-  });
-  if (!SMART.length)
-    h += '<div class="card empty"><div class="t">לא נמצאו קונים מתאימים</div>' +
-      '<div class="s">חיפשנו בשיחות שנענו לפי תקציב ומילות מפתח — נסה ניסוח אחר</div></div>';
-  el('list').innerHTML = h;
-  el('list')._smart = SMART;
 }
 function smartAdd(i){
   var b = el('list')._smart[i];
@@ -3397,7 +3464,7 @@ function load(){
 })();
 
 function render(){
-  if (SMART){ renderSmart(); return; }
+  if (AIRES){ renderAI(); return; }
   var q = el('q').value.trim().toLowerCase();
   var src = BUYERS.filter(function(b){
     var st = stOf(b);
@@ -3411,35 +3478,7 @@ function render(){
   });
   el('cnt').textContent = src.length;
   var h = '';
-  src.forEach(function(b, i){
-    var st = stOf(b);
-    var hot = st === 'hot';
-    var sub = [b.phone, MULTI ? b.agent : '', b.date].filter(Boolean).join(' · ');
-    h += '<div class="buyer' + (hot ? ' hot' : '') + '">' +
-      '<div class="top"><div>' +
-      '<div class="nm">' + esc(b.name || b.phone || 'ללא שם') + (hot ? '<span class="tag">חם</span>' : '') + '</div>' +
-      '<div class="sb">' + esc(sub) + '</div></div>' +
-      '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">' +
-      (b.budget ? '<div class="bdg" onclick="pickStatus(' + i + ')">עד ' + esc(fmtBd(b.budget)) + '</div>' :
-        '<div class="bdg" onclick="pickStatus(' + i + ')">' + ST_LABEL[st] + '</div>') +
-      (b.search ? '<div class="req">' + esc(b.search.slice(0, 30)) + '</div>' : '') + '</div></div>' +
-      (b.summary ? '<div class="ai"><div class="t">' +
-        '<svg width="14" height="13" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>' +
-        'סיכום חכם</div><div class="x">' + esc(b.summary) + '</div></div>' : '') +
-      '<div class="acts">' +
-      '<button class="main" onclick="matchProps(' + i + ')">' +
-      '<svg width="13" height="13" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M10.5 10.5l3 3" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' +
-      'התאם</button>' +
-      '<button class="sq" style="background:' + (hot ? '#C29435' : '#F6EEDB') + '" onclick="toggleHot(' + i + ')" aria-label="קונה חם">' +
-      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1.5c.4 2.2-.8 3.2-1.8 4.4C5 7.3 4.3 8.6 4.5 10.3c.3 2.3 2 3.9 3.7 4.2-.8-.9-1-2-.5-3 .4-.8 1.1-1.3 1.4-2.2 1 .8 1.7 2 1.5 3.3-.1.7-.4 1.3-.9 1.8 2-.5 3.6-2.2 3.8-4.5.2-3.2-2.3-4.6-3.1-6.9-.3-.6-.4-1.1-.4-1.5z" fill="' + (hot ? '#fff' : 'none') + '" stroke="' + (hot ? '#fff' : '#7A5E1C') + '" stroke-width="1.3" stroke-linejoin="round"/></svg></button>' +
-      '<button class="sq" style="background:#F5F3EC" onclick="openEdit(' + i + ')" aria-label="עריכה">' +
-      '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#5B6472" stroke-width="1.5" stroke-linejoin="round"/></svg></button>' +
-      '<button class="sq" style="background:#E7F7EE" onclick="window.open(\'https://wa.me/' + esc(b.wa || '') + '\',\'_blank\')">' +
-      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
-      '<button class="sq" style="background:#EAF0FA" onclick="c2cDial(\'' + esc(b.tel || '') + '\')">' +
-      '<svg width="14" height="14" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7" stroke-linejoin="round"/></svg></button>' +
-      '</div></div>';
-  });
+  src.forEach(function(b, i){ h += buyerCardHtml(b, i, ''); });
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#C29435" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#C29435" stroke-width="1.7" stroke-linecap="round"/></svg></div>' +
     '<div class="t">אין קונים להצגה</div>' +
@@ -3996,6 +4035,10 @@ render = function(){
   load().then(function(){
     if (location.search.indexOf('add=1') >= 0) openAdd();
   });
+  if (location.search.indexOf('ai=1') >= 0){   // [BUYER-AI] מאריח "חיפוש קונה AI" בבית
+    el('q').placeholder = 'תאר נכס: 4 חדרים באפק עד 2.1 מיליון + Enter';
+    try{ el('q').focus(); }catch(e){}
+  }
 })();
 </script></body></html>'''
 
@@ -9827,6 +9870,96 @@ def ef_week_trends(sigs, now):
                 W[w][kind] += 1
     return W
 
+# ── [BUYER-AI 01/10] חיפוש קונה AI — ניקוד טהור (בקשת אייל): תיאור נכס/דרישה → קונים מתאימים ──
+BAI_CITIES = ("קרית ביאליק", "קרית מוצקין", "קרית ים", "קרית אתא", "קרית חיים", "קרית שמואל",
+              "חיפה", "נשר", "עכו", "טירת כרמל", "נהריה", "קרית טבעון", "רכסים", "שפרעם")
+
+def _bai_norm(t):
+    return _re.sub(r"\s+", " ", str(t or "").replace("קריית", "קרית")).strip()
+
+def bai_budget(s):
+    """תקציב מטקסט חופשי → int (הגבוה בטווח): "1,500,000" / "2 מיליון" / "1.5-2 מיליון" / "800 אלף"."""
+    s = str(s or "")
+    mil = bool(_re.search(r"מי?ליון", s)); elf = "אלף" in s
+    best = 0
+    for tok in _re.findall(r"\d[\d,\.]*", s):
+        try:
+            v = float(tok.replace(",", ""))
+        except ValueError:
+            continue
+        if mil and v < 100:
+            v *= 1000000
+        elif elf and v < 10000:
+            v *= 1000
+        best = max(best, v)
+    return int(best)
+
+def bai_rooms(text):
+    """חדרים מטקסט הקונה → (מ, עד) או None: "4 חדרים", "3-4 חד'", "4.5 חדרים"."""
+    t = str(text or "")
+    m = _re.search(r"(\d+(?:\.\d)?)\s*(?:-|–|עד|או)\s*(\d+(?:\.\d)?)\s*(?:חד|חדר)", t)
+    if m:
+        a, b = float(m.group(1)), float(m.group(2))
+        return (min(a, b), max(a, b))
+    m = _re.search(r"(\d+(?:\.\d)?)\s*(?:חד|חדר)", t)
+    if m:
+        v = float(m.group(1))
+        return (v, v)
+    return None
+
+def bai_score(parsed, text, budget, recent):
+    """קונה מול תיאור הנכס (parsed מ-_parse_props_query) → (ציון 0-100, למה[]). 0 = לא מוצג."""
+    q = parsed or {}
+    tx = _bai_norm(text)
+    why, sc = [], 0
+    def _lst(one, many):
+        out = [x for x in (q.get(many) or []) if str(x or "").strip()]
+        if str(q.get(one) or "").strip():
+            out.append(q.get(one))
+        return [_bai_norm(x) for x in out]
+    cities = _lst("city", "cities")
+    areas = cities + _lst("neighborhood", "neighborhoods") + ([_bai_norm(q.get("street"))] if str(q.get("street") or "").strip() else [])
+    areas = [a for a in areas if len(a) >= 2]
+    if areas:
+        if any(a in tx for a in areas):
+            sc += 40; why.append("אזור")
+        elif cities and any(c in tx for c in BAI_CITIES if c not in cities):
+            return 0, []                                   # הקונה מחפש במפורש עיר אחרת
+        else:
+            sc += 10                                       # לא ציין אזור — לא ידוע
+    else:
+        sc += 20
+    price = int(q.get("budget_max") or q.get("budget_min") or 0)
+    if price and budget:
+        if budget < price * 0.85:
+            return 0, []                                   # התקציב נמוך מדי לנכס
+        if budget <= price * 1.35:
+            sc += 30; why.append("תקציב")
+        else:
+            sc += 12
+    else:
+        sc += 8
+    qlo, qhi = q.get("rooms_min"), q.get("rooms_max")
+    qlo = qlo if qlo is not None else qhi; qhi = qhi if qhi is not None else qlo
+    br = bai_rooms(tx)
+    if qlo is not None and br:
+        if br[0] <= float(qhi) and br[1] >= float(qlo):
+            sc += 20; why.append("חדרים")
+        else:
+            sc -= 20
+    else:
+        sc += 6
+    feat = 0
+    for f in (q.get("must_have") or []):
+        f = str(f or "").replace('"', "").replace("״", "")
+        syn = {"חנייה": ("חניה", "חנייה"), "חניה": ("חניה", "חנייה"), "ממד": ("ממד", "ממ\"ד", "ממ״ד")}.get(f, (f,))
+        if f and any(x in tx for x in syn):
+            feat += 3; why.append(f)
+    sc += min(10, feat)
+    if recent:
+        sc += 5
+    return max(0, min(100, sc)), why
+
 def ef_tokens(q):
     """טוקני חיפוש מהשאלה: מילים באורך 2+ (ומספרים בכל אורך), קריית→קרית, lowercase."""
     t = str(q or "").lower().replace("קריית", "קרית")
@@ -10508,6 +10641,100 @@ def register(app, G):
                                      if not (d.get("id") == did and (is_admin or d.get("phone") == me))]
         ok, _ = _config_mutate(_mut)
         return jsonify({"ok": bool(ok)})
+
+    @app.route("/v2/api/buyers/ai_search", methods=["POST"])
+    def v2_api_buyers_ai_search():
+        """[BUYER-AI 01/10] חיפוש קונה AI (אייל): תיאור נכס/דרישה → קונים שמורים + שיחות שנענו, לפי התאמה.
+        סוכן מחפש בקונים של כל המשרד; קונה של סוכן אחר — שם פרטי/סוכן מטפל/תקציב/מה מחפש בלבד (בלי טלפון
+        וסיכום); מנהל — הכל. שיחות — באותו סקופ של /api/search/buyers. אין 'שיחות אחרונות' כשאין התאמה."""
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        q = ((request.get_json(silent=True) or {}).get("q", "") or "").strip()[:200]
+        if not q:
+            return jsonify({"ok": True, "buyers": [], "calls": [], "summary": ""})
+        try:
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "חיפוש קונה AI", q[:60])
+            parsed = G["_parse_props_query"](q)
+            if not parsed:
+                return jsonify({"ok": True, "buyers": [], "calls": [], "summary": "", "failed": True})
+            now = time.time()
+            ck, l9 = G["_canon_key"], G["_last9"]
+            role = s.get("role", "")
+            if role == "admin":
+                own = lambda r: True
+            else:
+                _nm = s.get("name", "")
+                _ph = set(G["_phones_for_name"](_nm) or [])
+                if s.get("phone"):
+                    _ph.add(l9(s["phone"]))
+                _keys, _phones, _m = G["_scope_keys_phones"](role, _nm, _ph, s.get("agents"), s.get("agent_names"))
+                own = lambda r: (ck(r.get("agent", "")) in _keys) or (l9(r.get("agent_phone", "")) in _phones)
+            try:
+                stat = _bstat_load() or {}
+            except Exception:
+                stat = {}
+            ag_ph = G["fetch_agents_phones"]() or {}
+            out_b, buyer_ph = [], set()
+            for r in (G["_fetch_manual_buyers"]() or []):
+                p9 = l9(r.get("phone", ""))
+                if p9:
+                    buyer_ph.add(p9)
+                text = " ".join(str(r.get(k, "") or "") for k in ("search", "summary"))
+                ep = G["_excl_epoch"](r.get("date", "")) or 0
+                sc, why = bai_score(parsed, text, bai_budget(r.get("budget", "")), bool(ep) and (now - ep) < 30 * 86400)
+                if sc < 40:
+                    continue
+                row = r.get("row", "")
+                st = stat.get(p9) or stat.get("r" + str(row)) or stat.get(str(row)) or "active"
+                name = str(r.get("name", "") or "").strip()
+                if own(r):
+                    disp, tel = G["_il_phone"](r.get("phone", ""))
+                    o = {"own": True, "name": name, "phone": disp, "tel": tel, "wa": G["_wa_phone"](r.get("phone", "")),
+                         "budget": str(r.get("budget", "") or "").strip(), "summary": str(r.get("summary", "") or "").strip(),
+                         "date": G["_fmt_buyer_date"](r.get("date", "")), "agent": str(r.get("agent", "") or "").strip(),
+                         "row": row, "search": str(r.get("search", "") or "").strip()}
+                else:   # קונה של סוכן אחר — פרטיות מבנית (החלטת אייל 01/10, כמו "שאל את אפי")
+                    ag = str(r.get("agent", "") or "").strip()
+                    o = {"own": False, "first": (name.split()[0] if name else ""), "agent": ag,
+                         "agentWa": G["_wa_phone"](ag_ph.get(ag, "")) if ag_ph.get(ag) else "",
+                         "budget": str(r.get("budget", "") or "").strip(),
+                         "search": str(r.get("search", "") or "").strip(), "row": row}
+                o.update(score=sc, why=why, status=st)
+                out_b.append(o)
+            out_b.sort(key=lambda o: (o["status"] == "closed", -o["score"]))
+            # שיחות שנענו — אותו סקופ של /api/search/buyers; בלי מי שכבר קונה; התאמה אחת לכל מתקשר
+            if role == "admin":
+                cands = [c for c in (G["web_fetch_raw"]("שיחות") or []) if G["_is_answered_status"](c.get("status", ""))]
+            elif role == "coordinator":
+                _ag = set(s.get("agents") or [])
+                cands = [c for c in (G["web_fetch_raw"]("שיחות") or [])
+                         if G["_is_answered_status"](c.get("status", "")) and l9(c.get("agent_phone", "")) in _ag]
+            else:
+                cands = G["fetch_calls_for_agent"](s.get("phone", "")) or []
+            best = {}
+            for c in cands:
+                cp = l9(c.get("caller_phone", ""))
+                if not cp or cp in buyer_ph:
+                    continue
+                summ = str(c.get("transcript_summary", "") or "")
+                sc, why = bai_score(parsed, summ, G["extract_budget_from_transcript"](summ) or 0, False)
+                if sc < 40:
+                    continue
+                if cp not in best or sc > best[cp][0]:
+                    best[cp] = (sc, why, c)
+            out_c = []
+            for cp, (sc, why, c) in sorted(best.items(), key=lambda kv: -kv[1][0])[:20]:
+                disp, tel = G["_il_phone"](c.get("caller_phone", ""))
+                summ = str(c.get("transcript_summary", "") or "")
+                out_c.append({"phone": disp, "tel": tel, "wa": G["_wa_phone"](c.get("caller_phone", "")),
+                              "agent": (c.get("agent", "") or "").strip(), "date": G["_fmt_il_dt"](c.get("received_at", "")),
+                              "budget": G["format_price_il"](G["extract_budget_from_transcript"](summ)),
+                              "summary": _re.sub(r"https?://\S+", "", summ).strip(), "score": sc, "why": why})
+            return jsonify({"ok": True, "summary": parsed.get("summary_he", ""), "buyers": out_b[:40], "calls": out_c})
+        except Exception as e:
+            if log: log.error(f"buyer ai search error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
     @app.route("/v2/api/buyers/statuses", methods=["GET"])
     def v2_api_buyers_statuses():
