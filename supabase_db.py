@@ -738,13 +738,24 @@ def signdoc_times():
 
 
 def insert_invoice_row(row):
-    """הוספת חשבונית בודדת (קליטה מ-Fireberry). כפילות row_hash נבלעת בשקט."""
+    """הוספת חשבונית בודדת (קליטה מ-Fireberry). כפילות row_hash נבלעת בשקט.
+    מחזיר True רק כשנוספה שורה חדשה (01/10: שליחת החשבונית ללקוח — לא פעמיים על ניסיון חוזר)."""
     r = requests.post(SUPABASE_URL + "/rest/v1/invoices",
-                      headers={**_headers(), "Prefer": "resolution=ignore-duplicates"},
+                      headers={**_headers(), "Prefer": "resolution=ignore-duplicates,return=representation"},
                       params={"on_conflict": "row_hash"},
                       json=[{**row, "office_id": SB_OFFICE_ID}], timeout=_TIMEOUT)
     r.raise_for_status()
-    return True
+    try:
+        return bool(r.json())
+    except Exception:
+        return True
+
+
+def fetch_newborn_raw_all():
+    """[01/10] כל שורות נכס נולד (raw) בלי סינוני התצוגה (ערים/השכרות) — לבדיקת "קונה שמפרסם נכס"."""
+    return [rec.get("raw") for rec in _get_all("newborn_listings", "source_key,raw")
+            if isinstance(rec.get("raw"), dict) and rec.get("raw")
+            and not str(rec.get("source_key") or "").startswith("test:")]
 
 
 def fetch_invoices_rows(q="", limit=400):

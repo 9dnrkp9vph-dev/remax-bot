@@ -10098,6 +10098,88 @@ def bai_score(parsed, text, budget, recent, area=None):
         sc += 5
     return max(0, min(100, sc)), why
 
+# ── [BUYER-SELLER 01/10] קונה שמפרסם נכס בנכס נולד → וואטסאפ רשמי לסוכן של הקונה (אייל) ─────────
+# בדיקה על 100 הקונים האחרונים: 3 מוכרים, ו-2 מהם פרסמו *אחרי* שנכנסו כקונים — לכן בודקים בשני
+# הכיוונים: קונה חדש (מול המודעות) ומודעה חדשה (מול כל הקונים). "חדש" = 3 ימים אחרונים.
+BS_PHONE_KEYS = ("טלפון בעל הנכס-", "טלפון בעל הנכס-:", "טלפון בעל הנכס", "טלפון", "owner_phone")
+
+def bs_p9(p):
+    """9 ספרות אחרונות של נייד (5XXXXXXXX) או '' — קווי/קצר לא נחשב (מונע התאמות שווא)."""
+    d = _re.sub(r"\D", "", str(p or ""))[-9:]
+    return d if len(d) == 9 and d.startswith("5") else ""
+
+def bs_owner_index(raws, include_rent=False):
+    """שורות נכס נולד (raw) → {p9: [מודעה]} — רק מודעות פעילות (בלי 'ירד מפרסום'); השכרות לפי include_rent."""
+    idx = {}
+    for raw in raws or []:
+        if not isinstance(raw, dict) or raw.get("delisted_at"):
+            continue
+        rent = "שכר" in str(raw.get("סוג עסקה") or "")
+        if rent and not include_rent:
+            continue
+        p9 = ""
+        for k in BS_PHONE_KEYS:
+            p9 = bs_p9(raw.get(k))
+            if p9:
+                break
+        if not p9:
+            continue
+        street = str(raw.get("כתובת") or raw.get("רחוב1") or raw.get("רחוב") or "").strip()
+        city = str(raw.get("עיר") or "").strip()
+        addr = street if (not city or city in street) else (street + " " + city).strip()
+        key = str(raw.get("מזהה") or raw.get("קישור") or addr).strip()
+        idx.setdefault(p9, []).append({"key": key, "addr": addr, "price": str(raw.get("מחיר") or "").strip(),
+                                       "rent": rent, "link": str(raw.get("קישור") or "").strip(), "raw": raw})
+    return idx
+
+def bs_find_matches(buyers, idx, now, buyer_ep, listing_ep, fresh_days=3, closed=None):
+    """קונה ↔ מודעה לפי הטלפון; רק כשאחד הצדדים חדש (fresh_days) — קונה שנכנס עכשיו או מודעה שעלתה עכשיו."""
+    out, win = [], fresh_days * 86400
+    for b in buyers or []:
+        p9 = bs_p9(b.get("phone"))
+        if not p9 or p9 not in idx or (closed and closed(b)):
+            continue
+        bep = buyer_ep(b.get("date", "")) or 0
+        for L in idx[p9]:
+            lep = listing_ep(L["raw"]) or 0
+            if not ((bep and now - bep < win) or (lep and now - lep < win)):
+                continue
+            out.append({"key": p9 + "|" + L["key"], "buyer": b, "listing": L, "lep": lep,
+                        "after": bool(lep and bep and lep > bep)})
+    return out
+
+def bs_money(v):
+    d = _re.sub(r"[^\d.]", "", str(v or ""))
+    try:
+        n = int(float(d)) if d else 0
+    except ValueError:
+        return ""
+    return "{:,}".format(n) if n > 0 else ""
+
+def bs_message(m):
+    """הודעת הוואטסאפ לסוכן של הקונה."""
+    b, L = m["buyer"], m["listing"]
+    name = str(b.get("name") or "").strip() or "הקונה"
+    lines = ["הקונה שלך " + name + " מפרסם נכס " + ("להשכרה" if L["rent"] else "למכירה") + " בנכס נולד:"]
+    pr = bs_money(L["price"])
+    lines.append(L["addr"] + ((" · " + pr + " ₪" + (" לחודש" if L["rent"] else "")) if pr else ""))
+    if m.get("lep"):
+        import datetime as _dbs
+        lines.append("פורסם ב-" + _dbs.datetime.fromtimestamp(m["lep"]).strftime("%d/%m"))
+    if L["link"]:
+        lines.append(L["link"])
+    lines.append("לקוח שגם קונה וגם מוכר — כדאי לדבר איתו.")
+    return "\n".join(lines)
+
+def inv_client_message(row, office):
+    """[INVOICE-WA 01/10] הודעת החשבונית ללקוח (וואטסאפ רשמי; מחוץ לחלון 24ש' — תבנית family_update)."""
+    first = (str(row.get("client_name") or "").split() or [""])[0]
+    doc = str(row.get("doc_type") or "").strip() or "המסמך"
+    num = str(row.get("doc_num") or "").strip()
+    amt = bs_money(row.get("amount"))
+    head = "מצורף קישור ל" + doc + ((" מס' " + num) if num else "") + " מ" + office + ((", על סך " + amt + " ₪") if amt else "") + ":"
+    return "\n".join(["שלום" + ((" " + first) if first else "") + ",", head, str(row.get("link") or ""), "תודה!"])
+
 def ef_tokens(q):
     """טוקני חיפוש מהשאלה: מילים באורך 2+ (ומספרים בכל אורך), קריית→קרית, lowercase."""
     t = str(q or "").lower().replace("קריית", "קרית")
@@ -10964,6 +11046,73 @@ def register(app, G):
         with open(_BSTAT_PATH, "w", encoding="utf-8") as f:
             _json.dump(m, f, ensure_ascii=False)
 
+    # ── [BUYER-SELLER 01/10] קונה שמפרסם נכס → וואטסאפ רשמי לסוכן של הקונה בלבד (החלטת אייל) ──
+    import threading as _bsth
+    _BS_LOCK = _bsth.Lock()
+    _BS_RAW = {"ts": 0, "rows": None}
+
+    def _bs_scan(trigger=""):
+        """סריקה: קונים × מודעות נכס נולד לפי טלפון; שולח רק התאמות חדשות (v2_bs_sent בקונפיג).
+        רק דרך 360dialog; לא בשעות השקט (ההתאמה נשארת "חדשה" 3 ימים ותישלח בסריקה של הבוקר)."""
+        if os.environ.get("BS_ALERTS", "1") == "0" or not G["_d360_on"]() or G["_quiet_hours"]():
+            return 0
+        if not _BS_LOCK.acquire(blocking=False):
+            return 0
+        try:
+            sb = G.get("_sbdb")
+            if not (sb and sb.enabled()):
+                return 0
+            if _BS_RAW["rows"] is None or trigger == "listing" or time.time() - _BS_RAW["ts"] > 300:
+                _BS_RAW.update(rows=sb.fetch_newborn_raw_all(), ts=time.time())
+            idx = bs_owner_index(_BS_RAW["rows"], include_rent=os.environ.get("BS_INCLUDE_RENT", "0") == "1")
+            st, l9 = _bstat_load(), G["_last9"]
+            closed = lambda b: (st.get(l9(b.get("phone", ""))) or st.get("r" + str(b.get("row", "")))
+                                or st.get(str(b.get("row", "")))) == "closed"
+            ms = bs_find_matches(G["_fetch_manual_buyers"]() or [], idx, time.time(),
+                                 G["_excl_epoch"], G["_newborn_created_epoch"], closed=closed)
+            sent = (_load_config().get("v2_bs_sent") or {})
+            new = [m for m in ms if m["key"] not in sent]
+            if not new:
+                return 0
+            ag_ph = G["fetch_agents_phones"]() or {}
+            done = {}
+            for m in new[:10]:
+                b = m["buyer"]
+                ag = str(b.get("agent") or "").strip()
+                wa = G["_wa_phone"](b.get("agent_phone") or ag_ph.get(ag, ""))
+                if not wa:
+                    done[m["key"]] = "no_agent"
+                    if log: log.warning(f"buyer-seller: no phone for agent {ag!r}")
+                    continue
+                if G["send_text"](wa, bs_message(m)):
+                    done[m["key"]] = "sent"
+                    _log_activity("אפי", "system", "", "קונה שמפרסם נכס — הודעה לסוכן",
+                                  (ag + " · " + str(b.get("name") or "") + " · " + m["listing"]["addr"])[:60])
+            if done:
+                now = time.time()
+                def _mark(cfg):
+                    d = cfg.setdefault("v2_bs_sent", {})
+                    for k, v in done.items():
+                        d[k] = {"ts": now, "r": v}
+                    for k in [k for k, v in d.items() if now - float((v or {}).get("ts", 0)) > 60 * 86400]:
+                        d.pop(k, None)
+                G["_config_mutate"](_mark)
+            if log: log.info(f"buyer-seller scan ({trigger}): matches={len(ms)} new={len(new)} sent={sum(1 for v in done.values() if v == 'sent')}")
+            return len(done)
+        except Exception as e:
+            if log: log.error(f"buyer-seller scan error: {e}", exc_info=True)
+            return 0
+        finally:
+            _BS_LOCK.release()
+
+    def _bs_scan_async(trigger=""):
+        def _run():
+            if trigger == "buyer":
+                time.sleep(12)   # מטמון הקונים (10ש') — שהקונה החדש ייכלל
+            _bs_scan(trigger)
+        _bsth.Thread(target=_run, daemon=True, name="buyer-seller").start()
+    G["_bs_scan_async"] = _bs_scan_async   # app.py: אחרי הוספת קונה (_buyers_write)
+
     @app.route("/v2/api/avatar", methods=["GET", "POST"])
     def v2_api_avatar():
         """תמונת פרופיל של סוכן: GET לפי ?p=<טלפון> (ציבורי, כמו הלוגו); POST — המשתמש לעצמו."""
@@ -11299,6 +11448,36 @@ def register(app, G):
     # רשומת מקבלי-מסמכים). אימות במפתח סודי (env INVOICES_INGEST_KEY) — לא בסשן.
     _INGEST_KEY = (os.environ.get("INVOICES_INGEST_KEY") or "").strip()
 
+    # ── [INVOICE-WA 01/10] כל חשבונית חדשה נשלחת ללקוח בוואטסאפ הרשמי (אייל) ──
+    def _inv_wa_send_async(row):
+        """שולח רק דרך 360dialog, רק לנייד, רק כשיש קישור; פעם אחת לכל מסמך (v2_inv_wa_sent)."""
+        if os.environ.get("INVOICE_WA", "1") == "0" or not G["_d360_on"]():
+            return False
+        p9, link = bs_p9(row.get("phone9") or row.get("phone")), str(row.get("link") or "").strip()
+        if not (p9 and link):
+            return False
+        key = p9 + "|" + (str(row.get("doc_num") or "").strip() or link)
+        if key in ((_load_config().get("v2_inv_wa_sent") or {})):
+            return False
+        def _run():
+            try:
+                ok = G["send_text"]("972" + p9, inv_client_message(row, _office_name()))
+                now = time.time()
+                def _mark(cfg):
+                    d = cfg.setdefault("v2_inv_wa_sent", {})
+                    d[key] = {"ts": now, "ok": bool(ok)}
+                    for k in [k for k, v in d.items() if now - float((v or {}).get("ts", 0)) > 120 * 86400]:
+                        d.pop(k, None)
+                if ok:
+                    G["_config_mutate"](_mark)
+                _log_activity("אפי", "system", "", "חשבונית נשלחה ללקוח בוואטסאפ" if ok else "חשבונית — שליחה בוואטסאפ נכשלה",
+                              (str(row.get("client_name") or "") + " " + str(row.get("doc_num") or ""))[:60].strip())
+            except Exception as e:
+                if log: log.error(f"invoice wa send error: {e}", exc_info=True)
+        import threading as _ith
+        _ith.Thread(target=_run, daemon=True, name="invoice-wa").start()
+        return True
+
     @app.route("/v2/api/invoices/ingest", methods=["POST"])
     def v2_api_invoices_ingest():
         import hmac as _hmac
@@ -11340,10 +11519,11 @@ def register(app, G):
             sb = G.get("_sbdb")
             if not (sb and sb.enabled()):
                 return jsonify({"ok": False, "reason": "no_supabase"}), 500
-            sb.insert_invoice_row(row)
+            inserted = sb.insert_invoice_row(row)
             _log_activity("Fireberry", "system", "", "חשבונית חדשה מפיירברי",
                           (nm + " " + amount)[:60].strip())
-            return jsonify({"ok": True})
+            wa_q = bool(inserted) and _inv_wa_send_async(row)
+            return jsonify({"ok": True, "new": bool(inserted), "wa": wa_q})
         except Exception as e:
             if log: log.error(f"v2 invoices ingest error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -11564,6 +11744,11 @@ def register(app, G):
                     _items.append((sk, rec))
                 # 15/09: upsert במנות של 100 במקום קריאה לכל שורה — 200 שורות ירדו מ-~50ש׳ לשניות
                 out["nbN"] += sb.newborn_upsert_rows(_items)
+                try:
+                    if _items:
+                        _bs_scan_async("listing")   # [BUYER-SELLER] מודעה חדשה של מי שכבר קונה אצלנו
+                except Exception:
+                    pass
             elif stream == "agency":
                 if log and rows:   # אבחון מבנה ה-payload (09/09: המשרד לא הגיע בשום מפתח)
                     log.info(f"yad2 agency payload: batch_keys={sorted(k for k in b.keys() if k != 'rows')} "

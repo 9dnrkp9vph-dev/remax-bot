@@ -9148,6 +9148,12 @@ def _buyers_write(action, payload):
         p = payload or {}
         if action == "addbuyer":
             row = _sbdb.buyers_insert(p)
+            try:   # [BUYER-SELLER 01/10] קונה חדש — האם הוא מפרסם נכס בנכס נולד (הודעה לסוכן שלו)
+                _bsa = globals().get("_bs_scan_async")
+                if _bsa:
+                    _bsa("buyer")
+            except Exception:
+                pass
             return {"ok": True, "row": row}
         if action == "updatebuyer":
             fields = {k: v for k, v in p.items() if k != "row"}
