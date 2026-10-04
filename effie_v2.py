@@ -913,6 +913,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M11 6.5V11l3 2" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
       יומן שימוש</a>
+    <a id="menuLoginAs" href="#" onclick="closeMenu();loginAsOpen();return false" style="display:none;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="9" cy="7.5" r="3.5" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M2.5 19c.8-3.6 3.4-5.5 6.5-5.5 1.6 0 3 .5 4.1 1.4" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/><path d="M15 13l4 3-4 3M12 16h7" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      כניסה כסוכן</a>
     <a href="/v2/reports" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
        color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M3.5 18.5v-5M8.5 18.5v-9M13.5 18.5V5.5M18.5 18.5v-7" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round"/></svg>
@@ -1074,13 +1078,55 @@ function toast(msg){
 function openMenu(){ el('menuOvl').style.display = 'block'; el('menu').style.display = 'flex'; }
 function closeMenu(){ el('menuOvl').style.display = 'none'; el('menu').style.display = 'none'; }
 function impBack(){   // חזרה מסשן בדיקה לחשבון המנהל
+  var back = '/v2/admin';
   try{
     var t = localStorage.getItem('fbTokAdmin');
-    if (t){ localStorage.setItem('fbTok', t); localStorage.setItem('fbDev', '1'); }
+    var dev = localStorage.getItem('fbDevAdmin');   // [LOGINAS-MGR] מנהל שאינו בעל המשרד — לא מקבל fbDev=1
+    back = localStorage.getItem('fbImpBack') || back;
+    if (t){ localStorage.setItem('fbTok', t); localStorage.setItem('fbDev', dev === '0' ? '0' : '1'); }
     try{ localStorage.removeItem('v2who'); }catch(e){}
-    localStorage.removeItem('fbTokAdmin');
+    localStorage.removeItem('fbTokAdmin'); localStorage.removeItem('fbDevAdmin'); localStorage.removeItem('fbImpBack');
   }catch(e){}
-  location.href = '/v2/admin';
+  location.href = back;
+}
+/* [LOGINAS-MGR 04/10] מנהל: "כניסה כסוכן" מהתפריט — רשימת סוכנים ומתאמות, חזרה דרך הפס הזהוב */
+var LA_LIST = [];
+function loginAsRender(){
+  var q = ((el('laQ') || {}).value || '').trim();
+  var rows = LA_LIST.map(function(x, i){ return [x, i]; }).filter(function(p){ return !q || p[0].name.indexOf(q) >= 0; });
+  el('laList').innerHTML = rows.length ? rows.map(function(p){
+    return '<button onclick="loginAsGo(' + p[1] + ')" style="display:flex;justify-content:space-between;align-items:center;width:100%;min-height:48px;padding:0 14px;border:1px solid #E9E4D8;border-radius:13px;background:#fff;color:#1E3A5F;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer">' +
+      '<span>' + esc(p[0].name) + '</span><span style="font-size:12px;color:#6B7280;font-weight:600">' + (p[0].role === 'coordinator' ? 'מתאמת' : 'סוכן') + '</span></button>';
+  }).join('') : '<div style="text-align:center;color:#6B7280;font-size:13px;padding:14px 0">לא נמצא סוכן בשם הזה</div>';
+}
+function loginAsOpen(){
+  openSheet('<div style="font-size:17px;font-weight:800;color:#1E3A5F">כניסה כסוכן</div>' +
+    '<div style="font-size:12.5px;color:#5B6472;line-height:1.5">רואים את האפליקציה בדיוק כמו הסוכן. חוזרים לחשבון שלך מהפס הזהוב למעלה.</div>' +
+    '<input id="laQ" placeholder="חיפוש סוכן" oninput="loginAsRender()" style="width:100%;font-size:16px;font-family:inherit;padding:11px 13px;border:1px solid #E9E4D8;border-radius:13px;background:#F5F3EC;outline:none">' +
+    '<div id="laList" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto"><div style="text-align:center;color:#6B7280;font-size:13px;padding:14px 0">טוען…</div></div>');
+  GET('/v2/api/loginas/targets').then(function(j){
+    if (!j || !j.ok){ el('laList').innerHTML = '<div style="text-align:center;color:#C24040;font-size:13px;padding:14px 0">אין הרשאה</div>'; return; }
+    LA_LIST = j.targets || []; loginAsRender();
+  }).catch(function(){ el('laList').innerHTML = '<div style="text-align:center;color:#C24040;font-size:13px;padding:14px 0">שגיאה בטעינה</div>'; });
+}
+function loginAsGo(i){
+  var p = LA_LIST[i]; if (!p) return;
+  POST('/api/admin/loginas', {name: p.name}).then(function(j){
+    if (!j || !j.ok){ toast(j && j.reason === 'not_agent' ? 'אפשר להיכנס רק כסוכן או מתאמת' : 'לא ניתן להיכנס כ' + p.name); return; }
+    try{
+      localStorage.setItem('fbTokAdmin', TOK);
+      localStorage.setItem('fbDevAdmin', '0');
+      localStorage.setItem('fbImpBack', '/v2/home');
+      localStorage.setItem('fbTok', j.token);
+      try{ localStorage.removeItem('v2who'); }catch(e){}
+      localStorage.setItem('fbName', j.name || '');
+      localStorage.setItem('fbRole', j.role || '');
+      localStorage.setItem('fbDrole', j.drole || '');
+      localStorage.setItem('fbDev', '0');
+      localStorage.setItem('fbTabs', JSON.stringify(j.tabs || null));
+    }catch(e){}
+    location.href = '/v2/home';
+  }).catch(function(){ toast('שגיאה'); });
 }
 function openSheet(html){
   el('meSheet').innerHTML = '<div style="width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center"></div>' + html;
@@ -1611,6 +1657,8 @@ el('story').addEventListener('touchmove', function(e){
         (j.role === 'admin') ? 'מנהל' : (j.role === 'coordinator') ? 'מתאמת' : 'סוכן';
     if (j.dev) el('menuAdmin').style.display = 'flex';
     if (j.role === 'admin') el('menuActivity').style.display = 'flex';
+    var _inImp = false; try{ _inImp = !!localStorage.getItem('fbTokAdmin'); }catch(e){}
+    if (j.role === 'admin' && !j.dev && !_inImp) el('menuLoginAs').style.display = 'flex';   // [LOGINAS-MGR] בעל המשרד — מהניהול
     if (['accountant','manager','developer'].indexOf(j.drole) >= 0) el('menuInvoices').style.display = 'flex';
     var impTok = null;
     try{ impTok = localStorage.getItem('fbTokAdmin'); }catch(e){}
@@ -12264,6 +12312,39 @@ def register(app, G):
         if not _dev_guard():
             return jsonify({"ok": False, "reason": "forbidden"}), 403
         return jsonify(dict(_IBS_JOB, ok=True))
+
+    # ── [LOGINAS-MGR 04/10] "כניסה כסוכן" גם למנהלים (אייל): רשימת היעדים המותרים ──────────────
+    @app.route("/v2/api/loginas/targets", methods=["GET"])
+    def v2_api_loginas_targets():
+        """מנהל: סוכנים ומתאמות שאפשר להיכנס בשמם (לא מנהלים ולא בעל המשרד — נאכף גם ב-/api/admin/loginas)."""
+        s = _web_auth()
+        if not s or s.get("role") != "admin":
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        canon, norm, l9 = G["_canon_key"], G["_norm_name"], G["_last9"]
+        try:
+            removed = G["_removed_agent_keys"]() or set()
+            nk = G["_name_key"]
+        except Exception:
+            removed, nk = set(), (lambda x: x)
+        by_canon = {}
+        for n in (list((G["web_contacts_phone_name"]() or {}).values())
+                  + [ag.get("name", "") for ag in (_load_config().get("agents") or [])]
+                  + list((G["web_phone_name_map"]() or {}).values())):
+            nn = norm(n)
+            if nn and canon(nn) not in by_canon:
+                by_canon[canon(nn)] = nn
+        me = l9(s.get("phone", ""))
+        out = []
+        for nn in sorted(by_canon.values()):
+            if nk(nn) in removed:
+                continue
+            phones = [l9(p) for p in (G["_phones_for_name"](nn) or []) if l9(p)]
+            if not phones or me in phones or any(G["_is_dev"](p) for p in phones):
+                continue
+            _scope, drole = G["_resolve_roles"](phones[0])
+            if drole in ("agent", "coordinator"):
+                out.append({"name": nn, "role": drole})
+        return jsonify({"ok": True, "targets": out})
 
     # ── גיבוי/שחזור נכסי המשרד (אייל 11/09) — מפתח בלבד ─────────────────────────
     @app.route("/v2/api/admin/props/snapshots", methods=["GET"])

@@ -4589,6 +4589,11 @@ def api_admin_loginas():
     phone = next(iter(phones)) if phones else ""
     # פתרון התפקיד והסקופ של הנבדק — כדי שהטאבים *וגם הנתונים* יוצגו בדיוק כמו בכניסה אמיתית שלו
     _scope, drole = _resolve_roles(_last9(phone)) if phone else ("agent", "agent")
+    # 04/10 (אייל: "שמי שמוגדר מנהל יוכל להתחזות לסוכן"): מנהל שאינו בעל המשרד נכנס רק כסוכן/מתאמת —
+    # לא כמנהל אחר ולא כבעל המשרד (שם היה מקבל הרשאות מפתח: עריכת הקונפיג, קונסולת המפתח)
+    if not _is_dev(s.get("phone", "")):
+        if drole not in ("agent", "coordinator") or any(_is_dev(p) for p in phones):
+            return jsonify({"ok": False, "reason": "not_agent"}), 403
     token = _secrets.token_urlsafe(24)
     sess = {"phone": phone, "role": _scope, "drole": drole, "name": name, "exp": time.time() + _SESS_TTL}
     # סינון שיחות/נתונים לפי *כל* הטלפונים של הסוכן (כמו ב"צפה כסוכן") — לא רק טלפון אחד שרירותי
