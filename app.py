@@ -292,13 +292,54 @@ def _wa_diag_load():
     except Exception:
         pass
 
+_WA_HEART = {}   # 04/10: דופק לולאת השיחות (מתי רצה, כמה שורות, מאיזה תהליך)
+
+def _wa_diag_read():
+    try:
+        with open(_WA_DIAG_PATH, encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
 def _wa_diag_save():
+    """04/10: שמירה עם מיזוג מול הדיסק — בטוח גם כשיותר מתהליך אחד כותב (לולאה/ווב-הוק)."""
     with _wa_diag_lock:
         try:
+            d = _wa_diag_read()
+            def _merge(old, new, key):
+                seen, out = set(), []
+                for x in list(old or []) + list(new or []):
+                    k = key(x)
+                    if k in seen: continue
+                    seen.add(k); out.append(x)
+                return out[-60:]
+            calls = _merge(d.get("calls"), _WA_CALL_LOG,
+                           lambda x: (x.get("at"), x.get("reason"), x.get("caller"), x.get("call_time")))
+            sts = _merge(d.get("statuses"), _WA_STATUS_LOG,
+                         lambda x: (x.get("to"), x.get("ts"), x.get("status")))
+            heart = dict(d.get("heartbeat") or {})
+            if _WA_HEART: heart.update(_WA_HEART)
             with open(_WA_DIAG_PATH, "w", encoding="utf-8") as f:
-                json.dump({"calls": _WA_CALL_LOG[-60:], "statuses": _WA_STATUS_LOG[-60:]}, f, ensure_ascii=False)
+                json.dump({"calls": calls, "statuses": sts, "heartbeat": heart}, f, ensure_ascii=False)
         except Exception as e:
             log.warning(f"wa_diag save: {e}")
+
+def _agent_vphones9():
+    """04/10: כל המספרים הווירטואליים (מרכזיה) של הסוכנים — אין להם וואטסאפ, לא שולחים אליהם."""
+    out = set()
+    try:
+        for ag in (_load_config().get("agents") or []):
+            v = _last9(ag.get("vphone", ""))
+            if v: out.add(v)
+    except Exception:
+        pass
+    try:
+        for vp in (fetch_agent_virtual_phones() or {}).values():
+            v = _last9(vp)
+            if v: out.add(v)
+    except Exception:
+        pass
+    return out
 
 def _wa_call_diag(r, reason, targets=None, sent=None, vphone=""):
     """רישום כל שיחה חדשה + למה נשלחה/לא נשלחה התראה."""
@@ -5752,7 +5793,8 @@ def _wa_signing(client, agent, address, link):
         if agent:   msg += "סוכן: " + agent + "\n"
         if address: msg += "נכס: " + address + "\n"
         if link:    msg += "למסמך החתום:\n" + link
-        agent_phones = set(p for p in _phones_for_name(agent) if p)   # לסוכן האישי
+        _allv = _agent_vphones9()   # 04/10: לא לשלוח למספר מרכזיה (131026 — אין וואטסאפ)
+        agent_phones = set(p for p in _phones_for_name(agent) if p and _last9(p) not in _allv)   # לסוכן האישי
         def _send():
             for last9 in agent_phones:
                 wa = _wa_phone(last9)
@@ -9423,8 +9465,10 @@ def api_wa_log():
     return jsonify({"ok": True, "wa_auto": _wa_auto_on(), "provider": "360dialog" if _d360_on() else "maytapi",
                     "template_call": WA_TPL_CALL or None,
                     "persistent_disk": bool(os.environ.get("MAP_CACHE_DIR")),
-                    "seen_calls": len(_seen_calls), "calls": _WA_CALL_LOG[-25:][::-1],
-                    "statuses": _WA_STATUS_LOG[-30:][::-1]})
+                    "seen_calls": len(_seen_calls), "pid": os.getpid(),
+                    "heartbeat": (_wa_diag_read().get("heartbeat") or {}),
+                    "calls": (_wa_diag_read().get("calls") or _WA_CALL_LOG)[-25:][::-1],
+                    "statuses": (_wa_diag_read().get("statuses") or _WA_STATUS_LOG)[-30:][::-1]})
 
 @app.route("/api/wa/test", methods=["GET", "POST"])
 def api_wa_test():
@@ -11402,7 +11446,13 @@ def check_new_calls():
         except Exception:
             u = ""
         if u: keymap[u] = r
+    try:
+        _WA_HEART.update({"last_run": _il_now_hm(), "rows": len(keymap), "seen": len(_seen_calls),
+                          "pid": os.getpid(), "wa_auto": _wa_auto_on()})
+    except Exception:
+        pass
     if not keymap:
+        _wa_diag_save()
         return
     if not _seen_calls_seeded:
         _seen_calls = set(keymap.keys())
@@ -11411,6 +11461,9 @@ def check_new_calls():
         _wa_call_diag({}, f"seeded: {len(keymap)} existing calls marked seen (no seen-file found) — none sent")
         return
     new_keys = [k for k in keymap.keys() if k not in _seen_calls]
+    _WA_HEART["new_last_run"] = len(new_keys)
+    if not new_keys:
+        _wa_diag_save()
     if len(new_keys) > _CALLS_WA_MAX_BURST:
         # 30/09: במקום לדכא הכל — שולחים רק שיחות מ-20 הדקות האחרונות (עד 8), השאר מסומנות כנראו
         _now = time.time()
@@ -11440,10 +11493,11 @@ def check_new_calls():
             # המספר הווירטואלי של המרכזיה, שאין לו וואטסאפ
             # יעד: הנייד האישי של הסוכן — לא המספר הווירטואלי (מרכזייה) שבשורת השיחה
             _vphone9 = _last9(r.get("agent_phone", ""))
+            _allv = _agent_vphones9() | ({_vphone9} if _vphone9 else set())   # 04/10: אף מספר מרכזיה
             _agent_targets = set()
             for _p9 in _phones_for_name(str(r.get("agent", "") or "").strip()):
                 _l = _last9(_p9)
-                if _l and _l != _vphone9:
+                if _l and _l not in _allv:
                     _agent_targets.add(_l)
             if not _agent_targets and _vphone9:   # אין נייד ידוע — ננסה את מה שיש
                 _agent_targets.add(_vphone9)
