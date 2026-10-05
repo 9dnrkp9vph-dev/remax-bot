@@ -9915,6 +9915,29 @@ def y2_row_office(row, office="", office_id=""):
         oid = "family"   # תג-סניף כללי לשלנו כשאין מזהה (merge פר-תג; הסריקה מביאה את כולם)
     return name, oid
 
+def y2_delisted_plan(stream, rows, delisted, scan_full, office_id, is_ours):
+    """אילו טבלאות לסמן "ירד מפרסום" במנת ingest. מחזיר {טבלה: [מזהים]}.
+    🐞 05/10 (אייל: "נכסים שירדו מזמן ועדיין מופיעים"): Code.gs שולח את אירועי הירידה במנה
+    נפרדת (appForwardDelisted_) — key/stream/machine/delisted בלבד, בלי scanFull, בלי שורות ובלי
+    officeId — והקליטה דרשה scanFull, אז אף אירוע לא סומן מעולם (0 תוויות בשלושת הזרמים).
+    מנת ירידה-בלבד היא האות המגודר של הסורק (שערי הכיסוי שלו: סריקה יומית + 60% לכל משרד;
+    בפרטי — שער לפי סוג עסקה), ולכן מסומנת. בזרם המשרדים המזהה הוא טוקן יד2 — יכול להיות
+    שת"פ או סניף שלנו, אז מסמנים בשתי הטבלאות (מה שלא קיים פשוט לא מתעדכן).
+    מנה עם שורות: כמו קודם — רק ב-scanFull; סניף שלנו מסומן בתוך merge_office_props."""
+    ids = [str(x).strip() for x in (delisted or []) if str(x).strip()]
+    if not ids:
+        return {}
+    only = not rows
+    if not (scan_full or only):
+        return {}
+    if stream == "private":
+        return {"newborn": ids}
+    if stream == "agency":
+        if only:
+            return {"excl": ids, "props": ids}
+        return {} if is_ours(office_id) else {"excl": ids}
+    return {}
+
 def y2_split_batch(b):
     """batch משרדים → (ours: {oid: [rows]}, others: [(row, name, oid)], batch_oid).
     batch_oid = officeId של ה-batch, ובלעדיו — של השורה הראשונה (batch = משרד אחד)."""
@@ -12082,18 +12105,27 @@ def register(app, G):
                     G["_cache_clear"]("famexcl_index")
                     G["_cache_clear"]("map_props")   # המפה בונה מ-fetch_sheet_rows — שתראה את החדש מיד
                 office_id = batch_oid
-            # "ירד מפרסום" — תווית בלבד (לא מחיקה), ורק בסריקה מלאה (שערי הכיסוי בצד הסורק)
-            delisted = [str(x) for x in (b.get("delisted") or []) if str(x).strip()]
-            if delisted and scan_full:
+            # "ירד מפרסום" — תווית בלבד (לא מחיקה). שערי הכיסוי בצד הסורק; 05/10: גם מנת
+            # ירידה-בלבד (כך Code.gs שולח בפועל) — ראה y2_delisted_plan
+            _plan = y2_delisted_plan(stream, rows, b.get("delisted"), scan_full,
+                                     office_id if stream == "agency" else "", y2_is_ours)
+            if _plan:
                 import datetime as _dy
                 from zoneinfo import ZoneInfo as _ZY
                 stamp = _dy.datetime.now(_ZY("Asia/Jerusalem")).strftime("%d/%m/%Y")
-                if stream == "private":
-                    out["delistedN"] = sb.mark_delisted("newborn_listings",
-                                                        ["id:" + d for d in delisted], stamp)
-                elif stream == "agency" and not y2_is_ours(office_id):
-                    out["delistedN"] = sb.mark_delisted("external_exclusives",
-                                                        ["y2x:" + d for d in delisted], stamp)
+                if _plan.get("newborn"):
+                    out["delistedN"] += sb.mark_delisted("newborn_listings",
+                                                         ["id:" + d for d in _plan["newborn"]], stamp)
+                if _plan.get("excl"):
+                    out["delistedN"] += sb.mark_delisted("external_exclusives",
+                                                         ["y2x:" + d for d in _plan["excl"]], stamp)
+                if _plan.get("props"):
+                    _pn = sb.mark_props_delisted(_plan["props"], stamp)
+                    out["delistedN"] += _pn
+                    if _pn:
+                        G["_cache_clear"]("sheet_rows")
+                        G["_cache_clear"]("famexcl_index")
+                        G["_cache_clear"]("map_props")
             out["n"] = len(rows)
             # רעננות: גרסת נכס-נולד + מטמון השת"פ — שהמסכים יראו את החדש מיד
             try:

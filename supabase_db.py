@@ -632,6 +632,34 @@ def mark_delisted(table, source_keys, stamp):
     return n
 
 
+def mark_props_delisted(tokens, stamp):
+    """תווית "ירד מפרסום" לנכסי המשרד (טבלת properties) לפי טוקן יד2 ('מספר מודעה') —
+    לאירועי ירידה שמגיעים מהסורק במנה נפרדת, בלי שורות הסניף (05/10). אותו מבנה כמו
+    merge_office_props: raw['ירד מפרסום']=stamp + סטטוס. שורה שכבר מסומנת לא נדרסת;
+    מודעה שחוזרת בסריקה מוחלפת בגרסה הטרייה ב-merge (בלי התווית). מחזיר כמה עודכנו."""
+    toks = set(str(t).strip() for t in (tokens or ()) if str(t).strip())
+    if not enabled() or not toks:
+        return 0
+    current = _get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"})
+    n = 0
+    for rec in current:
+        raw = rec.get("raw")
+        if not isinstance(raw, dict) or raw.get("ירד מפרסום"):
+            continue
+        if str(raw.get("מספר מודעה") or "").strip() not in toks:
+            continue
+        raw = dict(raw)
+        raw["ירד מפרסום"] = stamp
+        raw["סטטוס"] = "ירד מפרסום"
+        r = requests.patch(SUPABASE_URL + "/rest/v1/properties",
+                           headers={**_headers(), "Content-Type": "application/json"},
+                           params={"office_id": "eq." + SB_OFFICE_ID, "sheet_row": "eq.%s" % rec.get("sheet_row")},
+                           json={"raw": raw}, timeout=_TIMEOUT)
+        r.raise_for_status()
+        n += 1
+    return n
+
+
 def upsert_signature_row(source_key, received_iso, raw):
     """שורת חתימה מ-webhook פיירברי — upsert לפי (office_id, source_key):
     הטריגר "נוצרה או עודכנה" מעדכן שורה קיימת במקום להכפיל; retry לא מכפיל.
