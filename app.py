@@ -8298,10 +8298,14 @@ def _newborn_created_epoch(r):
         return 0
     raw = raw.replace("-", "/").split(",")[0].strip()
     import datetime as _dt
+    from zoneinfo import ZoneInfo as _ZIL
     for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%Y", "%d.%m.%Y %H:%M", "%d.%m.%Y",
                 "%Y/%m/%d %H:%M", "%Y/%m/%d", "%d/%m/%y %H:%M", "%d/%m/%y"):
         try:
-            return _dt.datetime.strptime(raw, fmt).timestamp()
+            # 🐞 05/10 (אייל: "קיבלתי פוש והנכס לא נמצא"): הזמנים נשמרים בשעון ישראל בלי אזור-זמן,
+            # והשרת (Render, UTC) קרא אותם כ-UTC → נכס חדש נראה "3 שעות בעתיד" (2 בחורף), נחשב
+            # לא-נחשף ונעלם מהמסך עד אז, בזמן שהפוש כבר יצא. קוראים אותם כשעון ישראל.
+            return _dt.datetime.strptime(raw, fmt).replace(tzinfo=_ZIL("Asia/Jerusalem")).timestamp()
         except Exception:
             pass
     try:
