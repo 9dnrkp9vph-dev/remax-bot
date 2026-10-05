@@ -12029,7 +12029,9 @@ def register(app, G):
                 return jsonify({"ok": False, "reason": "no_supabase"}), 500
             stream = str(b.get("stream", "") or "").strip()
             scan_full = bool(b.get("scanFull"))
-            out = {"ok": True, "stream": stream, "n": 0, "ourN": 0, "shtafN": 0, "nbN": 0, "delistedN": 0}
+            # dlv=2 (05/10): הגרסה שמסמנת גם מנת ירידה-בלבד — appResendDelistedOnce ב-Code.gs
+            # בודק אותה ועוצר אם השרת עדיין ישן (אחרת היה רושם 'נשלח' על אירועים שנזרקו)
+            out = {"ok": True, "stream": stream, "n": 0, "ourN": 0, "shtafN": 0, "nbN": 0, "delistedN": 0, "dlv": 2}
             rows = b.get("rows") or []
             if stream == "private":
                 norm = [y2_norm_private(r) for r in rows]
