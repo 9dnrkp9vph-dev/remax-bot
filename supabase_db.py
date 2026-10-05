@@ -820,6 +820,58 @@ def fetch_properties_rows():
             if isinstance(rec.get("raw"), dict) and delisted_visible(rec["raw"].get("ירד מפרסום"))]
 
 
+# ── [STALE-PROPS 05/10] נכס שהסורק הפסיק לשלוח → "ירד מפרסום" (אייל: "3 סריקות + 24 שעות") ──────
+# הרקע: נכס יורד רק באות 'ירד מפרסום' מפורש מהסורק, וזה לא נקלט עד 05/10 — נשארו נכסים מתחילת ספטמבר.
+# מאז 15/09 הסורק שולח בעיקר שינויים + סבב מלא בחלקים, ולכן "לא הופיע במנה" לבדו אינו אות. הכלל:
+#   (1) 3 מנות לפחות של הסניף שבהן הנכס לא הופיע (מנות בהפרש 30 דק' ומעלה = סריקות נפרדות);
+#   (2) 24 שעות לפחות מאז שהסורק שלח אותו לאחרונה (_y2_ingested; אחרת _y2_first_seen; אחרת "מזמן");
+#   (3) שער כיסוי: לפחות 60% מהנכסים הפעילים של הסניף הגיעו מהסורק ב-24 השעות האחרונות — הוכחה שהסבב
+#       המלא באמת רץ. סורק תקוע / רק-שינויים → אף נכס לא יורד. סניף עם פחות מ-5 נכסים — לא נוגעים.
+# הנכס לא נמחק: תווית 'ירד מפרסום' (3 ימים ואז נעלם); חוזר לפעיל כשהסורק שולח אותו שוב.
+STALE_MISSES, STALE_HOURS, STALE_COVERAGE, STALE_MIN_BRANCH, STALE_MISS_GAP = 3, 24, 0.6, 5, 1800
+
+def _il_epoch(s):
+    """'DD/MM/YYYY[ HH:MM]' (שעון ישראל) → epoch; לא-פריס → 0."""
+    m = re.match(r"^\s*(\d{1,2})[/.](\d{1,2})[/.](\d{4})(?:[ T](\d{1,2}):(\d{2}))?", str(s or ""))
+    if not m:
+        return 0.0
+    try:
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo("Asia/Jerusalem")
+        except Exception:
+            tz = _dt.timezone(_dt.timedelta(hours=3))
+        return _dt.datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)),
+                            int(m.group(4) or 0), int(m.group(5) or 0), tzinfo=tz).timestamp()
+    except Exception:
+        return 0.0
+
+def stale_office_update(branch_rows, incoming, now_ts):
+    """[STALE-PROPS] branch_rows = שורות הסניף הקיימות שלא הגיעו במנה ולא מסומנות 'ירד מפרסום' (dicts
+    שמתעדכנים במקום); incoming = השורות שהגיעו במנה. מעדכן מוני החמצה; מחזיר רשימת שורות שנעשו ישנות
+    (הקורא מסמן אותן). פונקציה טהורה — נבדקת בלי רשת."""
+    total = len(branch_rows) + len(incoming)
+    if total < STALE_MIN_BRANCH:
+        return []
+    day = STALE_HOURS * 3600
+    def _last(r):
+        return _il_epoch(r.get("_y2_ingested")) or _il_epoch(r.get("_y2_first_seen"))
+    recent = len(incoming) + sum(1 for r in branch_rows if now_ts - _last(r) < day)
+    for r in branch_rows:   # מונה החמצות — פעם אחת לכל סריקה (מנות צמודות = אותה סריקה)
+        try:
+            at = float(r.get("_y2_miss_ts") or 0)
+        except (TypeError, ValueError):
+            at = 0.0
+        if now_ts - at >= STALE_MISS_GAP:
+            try:
+                r["_y2_miss"] = int(r.get("_y2_miss") or 0) + 1
+            except (TypeError, ValueError):
+                r["_y2_miss"] = 1
+            r["_y2_miss_ts"] = str(int(now_ts))
+    if recent < STALE_COVERAGE * total:
+        return []   # הסבב המלא לא מוכח — לא מורידים כלום
+    return [r for r in branch_rows if int(r.get("_y2_miss") or 0) >= STALE_MISSES and now_ts - _last(r) >= day]
+
 def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now_full=""):
     """נכסי המשרד מיד2 (שלב ב', החלטת אייל 01/09): מחליף את שורות הסניף office_tag
     ברשימה החדשה ושומר את שאר הסניפים. שורה של הסניף שנעדרת מהסריקה: ב-delisted →
@@ -897,6 +949,17 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
                 raw["ירד מפרסום"] = stamp
             raw["סטטוס"] = "ירד מפרסום"
         keep.append(raw)
+    # [STALE-PROPS 05/10] נכסי הסניף שלא הגיעו — מוני החמצה, ו"ירד מפרסום" לפי הכלל (3 סריקות + 24ש' + כיסוי)
+    try:
+        import time as _time
+        _absent = [r for r in keep if str(r.get("_y2_office_id") or "").strip() == office_tag
+                   and not r.get("ירד מפרסום")]
+        for r in stale_office_update(_absent, list(raw_rows), _time.time()):
+            r["ירד מפרסום"] = stamp or _il_today().strftime("%d/%m/%Y")
+            r["סטטוס"] = "ירד מפרסום"
+            r["_y2_auto_delist"] = r["ירד מפרסום"]   # סימון: ירד לפי הכלל (לא אות מהסורק)
+    except Exception:
+        pass   # הכלל לעולם לא מפיל את הקליטה
     ok, n = replace_properties(keep + list(raw_rows))
     return ok, n, new_rows
 
