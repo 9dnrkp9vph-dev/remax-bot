@@ -11430,16 +11430,44 @@ def _report_recipients_set(emails):
     ok, _ = _config_mutate(_mut)
     return bool(ok), clean
 
-def _report_send_email(subject, html, text, to=None):
-    """שליחת הדוח במייל דרך SMTP (Gmail app password ב-env). מחזיר (ok, הודעה)."""
+def _logo_file():
+    """קובץ הלוגו של המשרד (אותו חיפוש כמו /assets/logo) או None."""
+    for d in (Path(__file__).parent, Path("."), Path("/app")):
+        for n in ("family-logo.png", "family-logo.webp", "family-logo.jpg", "family-logo.jpeg",
+                  "family-logo.png.jpg", "logo.png", "logo.jpg"):
+            if (d / n).exists():
+                return str(d / n)
+    return None
+
+def _report_story_files(rep):
+    """[REPORT-STORY 05/10] תמונות סטורי מהדוח (אייל: 'באותו מייל כמה תמונות לסטורי, אם ארצה להשתמש').
+    כשל בציור לא מפיל את המייל — הוא יוצא בלי תמונות. כיבוי: REPORT_STORIES=0."""
+    if (os.environ.get("REPORT_STORIES", "1") or "1").strip() == "0":
+        return []
+    try:
+        import report_story as _rs
+        return _rs.rs_story_files((rep or {}).get("data") or {}, _logo_file())
+    except Exception as e:
+        log.warning(f"daily report: story images failed: {e}")
+        return []
+
+def _report_send_email(subject, html, text, to=None, attachments=None):
+    """שליחת הדוח במייל דרך SMTP (Gmail app password ב-env). מחזיר (ok, הודעה).
+    attachments = [(שם, bytes)] — תמונות JPEG מצורפות (סטורי, 05/10)."""
     to = (to or ",".join(_report_recipients()) or "").strip()
+    attachments = attachments or []
     if not (SMTP_USER and SMTP_PASS and to):
         # אייל 15/09 "באותה דרך, בלי Environment": המסלול הקיים של 'דיווח תקלה' — Apps Script של
         # ה-CRM (action=sendhelp → MailApp.sendEmail, טקסט). נושא: '[Family Bot] <kind> — <agent>'.
         if not (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN and to):
             return False, "אין ערוץ מייל (SMTP / Apps Script)"
-        j = _buyers_apps_post("sendhelp", {"to": to, "kind": subject, "message": text, "agent": "אפי", "phone": "",
-                                           "html": html})   # 15/09: htmlBody — נדרשת שורה אחת ב-Apps Script של ה-CRM
+        payload = {"to": to, "kind": subject, "message": text, "agent": "אפי", "phone": "",
+                   "html": html}   # 15/09: htmlBody — נדרשת שורה אחת ב-Apps Script של ה-CRM
+        if attachments:   # 05/10: התמונות כמחרוזת JSON אחת (ה-POST הוא טופס) — Apps Script מפענח ל-blobs
+            import base64 as _b64r
+            payload["attachments_json"] = json.dumps([{"name": n, "mime": "image/jpeg", "b64": _b64r.b64encode(b).decode("ascii")}
+                                                      for n, b in attachments])
+        j = _buyers_apps_post("sendhelp", payload)
         ok = bool(j and j.get("ok"))
         return ok, ("נשלח דרך Apps Script" if ok else f"Apps Script סירב: {str(j)[:120]}")
     try:
@@ -11447,12 +11475,22 @@ def _report_send_email(subject, html, text, to=None):
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
         from email.utils import formataddr
-        msg = MIMEMultipart("alternative")
+        from email.mime.image import MIMEImage
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(text, "plain", "utf-8"))
+        alt.attach(MIMEText(html, "html", "utf-8"))
+        if attachments:
+            msg = MIMEMultipart("mixed")
+            msg.attach(alt)
+            for n, b in attachments:
+                im = MIMEImage(b, _subtype="jpeg")
+                im.add_header("Content-Disposition", "attachment", filename=n)
+                msg.attach(im)
+        else:
+            msg = alt
         msg["Subject"] = subject
         msg["From"] = formataddr(("אפי", SMTP_USER))
         msg["To"] = to
-        msg.attach(MIMEText(text, "plain", "utf-8"))
-        msg.attach(MIMEText(html, "html", "utf-8"))
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as sm:
             sm.ehlo(); sm.starttls(); sm.login(SMTP_USER, SMTP_PASS)
             sm.sendmail(SMTP_USER, [x.strip() for x in to.split(",") if x.strip()], msg.as_string())
@@ -11548,7 +11586,7 @@ def _report_build_and_send(day, to=""):
         tm = rep["data"].get("timing") or {}
         subj = rep["subject"] + " · נשלח " + _dt.datetime.now(_rep_tz()).strftime("%H:%M")   # נושא ייחודי — לא נבלע בשרשור הקודם ב-Gmail
         _REPORT_LAST.update({"state": "sending", "timing": tm, "subject": subj})
-        ok, msg = _report_send_email(subj, render_office_report_email(rep), rep["text"], to)
+        ok, msg = _report_send_email(subj, render_office_report_email(rep), rep["text"], to, attachments=_report_story_files(rep))
         _REPORT_LAST.update({"state": "done", "ok": bool(ok), "msg": msg, "secs": round(time.time() - t0, 1)})
         _report_record(key, ok, msg, {"secs": round(time.time() - t0, 1), "timing": tm})
         log.info(f"daily report manual {key}: {msg} in {round(time.time() - t0, 1)}s timing={tm}")
@@ -11612,7 +11650,8 @@ def _report_daily_loop_body(_dt):
                     _REPORT_LAST.update({"state": "running", "day": key, "started": time.time(), "ok": None, "msg": "", "secs": None, "timing": {}, "auto": True})
                     _t0 = time.time()
                     rep = build_office_report()
-                    ok, msg = _report_send_email(rep["subject"], render_office_report_email(rep), rep["text"])
+                    ok, msg = _report_send_email(rep["subject"], render_office_report_email(rep), rep["text"],
+                                                 attachments=_report_story_files(rep))
                     _REPORT_LAST.update({"state": "done", "ok": bool(ok), "msg": msg, "secs": round(time.time() - _t0, 1), "timing": rep["data"].get("timing") or {}})
                     log.info(f"daily report {key}: {msg} (try {int(rec.get('tries') or 0) + 1})")
                     def _mark(cfg, _k=key, _ok=ok, _msg=msg):
