@@ -12643,46 +12643,8 @@ def register(app, G):
                 _sb.prune_pings(60)
             except Exception:
                 pass
-        pings = _sb.fetch_pings_today(_from.isoformat())
-        _ckey = G["_canon_key"]
-        by = {}
-        for p in pings:
-            ph = str(p.get("phone", "") or "")
-            # [USAGE 30/09] 'מנהל' גנרי (כל מי שמוגדר מנהל) → השם האמיתי לפי הטלפון — אחרת כולם שורה אחת
-            nm = G["_display_name_for"](str(p.get("name", "") or "").strip(), ph)
-            # איחוד לפי שם הסוכן (canon) — סוכן עם כמה טלפונים (רגיל+וירטואלי) נספר
-            # פעם אחת, לא שורה לכל מספר (תיקון "יאיר/מנהל פעמיים", 19/07). בלי שם — לפי טלפון.
-            gk = ("n:" + _ckey(nm)) if nm else ("p:" + ph)
-            if not gk or gk in ("n:", "p:"):
-                continue
-            try:
-                dt = _dt2.datetime.fromisoformat(str(p.get("ts", "")).replace("Z", "+00:00")).astimezone(_tz)
-            except Exception:
-                continue
-            if no_weekend and dt.weekday() in (4, 5):   # שישי=4, שבת=5
-                continue
-            d = by.setdefault(gk, {"name": "", "ts": [], "days": set()})
-            if nm:
-                d["name"] = nm
-            d["ts"].append(dt.timestamp())
-            d["days"].add(dt.date().isoformat())
-        rows = []
-        for ph, d in by.items():
-            ts = sorted(d["ts"])
-            if not ts:
-                continue
-            mins = 0.0
-            start = prev = ts[0]
-            for i in range(1, len(ts) + 1):
-                if i == len(ts) or ts[i] - prev > 90:   # פער > 90 שנ' = סשן חדש
-                    mins += max((prev - start) / 60.0, 0.75)   # פעימה בודדת ≈ 45 שנ'
-                    if i < len(ts):
-                        start = ts[i]
-                if i < len(ts):
-                    prev = ts[i]
-            rows.append({"name": d["name"] or ph, "min": int(round(mins)),
-                         "pings": len(ts), "days": len(d["days"])})
-        rows.sort(key=lambda x: -x["min"])
+        # [USAGE-REPORT 05/10] אותו חישוב בדיוק כמו הדוח היומי — עוזר משותף ב-app.py
+        rows = G["_usage_rows"](_from, None, no_weekend)
         _uout = {"ok": True, "rows": rows}
         G["_cache_put"](_uck, _uout)
         return jsonify(_uout)

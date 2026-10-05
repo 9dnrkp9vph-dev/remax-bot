@@ -7081,26 +7081,23 @@ def api_my_agents():
         return jsonify({"ok": True, "agents": [{"name": n} for n in sorted(by_canon.values())]})
     return jsonify({"ok": True, "agents": []})
 
-@app.route("/api/activity", methods=["GET"])
-def api_activity():
-    s = _web_auth()
-    if not s: return jsonify({"ok": False, "auth": False}), 401
-    if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
-    c = _cache_get("activity_today", 45)
-    if c is None:
-        if ACTIVITY_WRITE == "supabase" and _sbdb is not None and _sbdb.enabled():
-            try:
-                import datetime as _dta
-                from zoneinfo import ZoneInfo as _ZIa
-                _mid0 = _dta.datetime.now(_ZIa("Asia/Jerusalem")).replace(hour=0, minute=0, second=0, microsecond=0)
-                c = _sbdb.fetch_activity_today(_mid0.timestamp())
-            except Exception as _ae:
-                log.warning(f"activity supabase read failed — falling back to sheets: {_ae}")
-                c = None
-        if c is None:
-            jj = _buyers_apps_post("listactivity", {})
-            c = jj.get("items", []) if (jj and jj.get("ok")) else []
-        _cache_put("activity_today", c)
+def _activity_fetch(t0, today=True):
+    """[USAGE-REPORT 05/10] רשומות יומן הפעולות מ-t0 (epoch) — Supabase; נפילה ל-Apps Script רק ל"היום"
+    (הוא מחזיר את היום בלבד). משותף למסך יומן השימוש ולדוח היומי."""
+    c = None
+    if ACTIVITY_WRITE == "supabase" and _sbdb is not None and _sbdb.enabled():
+        try:
+            c = _sbdb.fetch_activity_today(t0)
+        except Exception as _ae:
+            log.warning(f"activity supabase read failed — falling back to sheets: {_ae}")
+            c = None
+    if c is None and today:
+        jj = _buyers_apps_post("listactivity", {})
+        c = jj.get("items", []) if (jj and jj.get("ok")) else []
+    return c or []
+
+def _activity_merge(c):
+    """רשומות + הזיכרון המקומי (פעולות שטרם נכתבו) → בלי כפילויות, שמות אמיתיים במקום 'מנהל', מהחדש לישן."""
     seen = set(); merged = []
     for it in (list(c) + list(_activity[-400:])):
         _gn = str(it.get("name", "") or "").strip()
@@ -7112,6 +7109,71 @@ def api_activity():
         if k in seen: continue
         seen.add(k); merged.append(it)
     merged.sort(key=lambda x: float(x.get("ts", 0) or 0), reverse=True)
+    return merged
+
+def _usage_rows(t_from, t_to=None, no_weekend=False):
+    """[USAGE-REPORT 05/10] זמן-פעיל אמיתי לכל סוכן מפעימות usage_pings, בטווח [t_from, t_to) (datetime עם
+    אזור זמן). פער > 90ש' = סשן חדש; פעימה בודדת ≈ 45ש'. משותף ל-/v2/api/usage_today ולדוח היומי."""
+    if not (_sbdb is not None and _sbdb.enabled()):
+        return []
+    tz = t_from.tzinfo
+    pings = _sbdb.fetch_pings_today(t_from.isoformat())
+    import datetime as _dt2
+    by = {}
+    for p in pings:
+        ph = str(p.get("phone", "") or "")
+        # [USAGE 30/09] 'מנהל' גנרי (כל מי שמוגדר מנהל) → השם האמיתי לפי הטלפון — אחרת כולם שורה אחת
+        nm = _display_name_for(str(p.get("name", "") or "").strip(), ph)
+        # איחוד לפי שם הסוכן (canon) — סוכן עם כמה טלפונים (רגיל+וירטואלי) נספר
+        # פעם אחת, לא שורה לכל מספר (תיקון "יאיר/מנהל פעמיים", 19/07). בלי שם — לפי טלפון.
+        gk = ("n:" + _canon_key(nm)) if nm else ("p:" + ph)
+        if not gk or gk in ("n:", "p:"):
+            continue
+        try:
+            dt = _dt2.datetime.fromisoformat(str(p.get("ts", "")).replace("Z", "+00:00")).astimezone(tz)
+        except Exception:
+            continue
+        if t_to is not None and dt >= t_to:
+            continue
+        if no_weekend and dt.weekday() in (4, 5):   # שישי=4, שבת=5
+            continue
+        d = by.setdefault(gk, {"name": "", "ts": [], "days": set()})
+        if nm:
+            d["name"] = nm
+        d["ts"].append(dt.timestamp())
+        d["days"].add(dt.date().isoformat())
+    rows = []
+    for ph, d in by.items():
+        ts = sorted(d["ts"])
+        if not ts:
+            continue
+        mins = 0.0
+        start = prev = ts[0]
+        for i in range(1, len(ts) + 1):
+            if i == len(ts) or ts[i] - prev > 90:   # פער > 90 שנ' = סשן חדש
+                mins += max((prev - start) / 60.0, 0.75)   # פעימה בודדת ≈ 45 שנ'
+                if i < len(ts):
+                    start = ts[i]
+            if i < len(ts):
+                prev = ts[i]
+        rows.append({"name": d["name"] or ph, "min": int(round(mins)),
+                     "pings": len(ts), "days": len(d["days"])})
+    rows.sort(key=lambda x: -x["min"])
+    return rows
+
+@app.route("/api/activity", methods=["GET"])
+def api_activity():
+    s = _web_auth()
+    if not s: return jsonify({"ok": False, "auth": False}), 401
+    if s["role"] != "admin": return jsonify({"ok": False, "reason": "forbidden"}), 403
+    c = _cache_get("activity_today", 45)
+    if c is None:
+        import datetime as _dta
+        from zoneinfo import ZoneInfo as _ZIa
+        _mid0 = _dta.datetime.now(_ZIa("Asia/Jerusalem")).replace(hour=0, minute=0, second=0, microsecond=0)
+        c = _activity_fetch(_mid0.timestamp(), today=True)
+        _cache_put("activity_today", c)
+    merged = _activity_merge(c)
     # יומן שימוש אמין: כל פעולות היום (00:00 שעון ישראל → עכשיו), בלי תקרת 300 שחתכה את הבוקר
     import datetime as _dt
     try:
@@ -10646,6 +10708,155 @@ def _rep_count(items, getdate, periods, key=None):
                     by[p][k] += 1
     return out, by
 
+# ── [USAGE-REPORT 05/10] דוח שימוש יומי (אייל): זמן באפליקציה + פעולות לפי סוכן — אותם נתונים כמו /v2/activity ──
+USAGE_CATS = (("wa_nb", "וואטסאפ לנכס נולד"), ("buyer_add", "קונים שהוכנסו"), ("prop_search", "חיפושי נכסים"),
+              ("buyer_search", "חיפושי קונים"), ("login", "כניסות"), ("other", "אחר"))
+_USAGE_SYSTEM = ("Fireberry", "אפי", "system")
+
+def usage_action_cat(action):
+    """שם פעולה ביומן → עמודה בדוח."""
+    a = str(action or "").strip()
+    if "וואטסאפ — נכס נולד" in a:
+        return "wa_nb"
+    if a == "הוספת קונה":
+        return "buyer_add"
+    if a in ("חיפוש נכסים", "חיפוש נכס נולד", "חיפוש בלעדיות"):
+        return "prop_search"
+    if a in ("חיפוש קונים", "חיפוש קונה AI"):
+        return "buyer_search"
+    if a in ("כניסה", "כניסה (קוד קבוע)"):
+        return "login"
+    return "other"
+
+def usage_report_aggregate(time_rows, items):
+    """זמן (מפעימות) + פעולות (מהיומן) → שורה לכל סוכן, ממוינת לפי זמן; סך הכול; ספירת כל סוגי הפעולות.
+    פעולות מערכת (Fireberry/אפי) לא נכנסות לטבלת הסוכנים — רק לספירת הפעולות."""
+    import collections as _col
+    rows = {}
+    def _row(name):
+        name = re.sub(r"\s+", " ", name).strip()   # "דנה  כהן" (רווח כפול בפעימות) → "דנה כהן"
+        k = _canon_key(name) or name
+        r = rows.get(k)
+        if r is None:
+            r = rows[k] = {"name": name, "min": 0, "actions": 0, **{c: 0 for c, _ in USAGE_CATS}}
+        return r
+    for t in time_rows or []:
+        if str(t.get("name", "")).strip():
+            _row(str(t["name"]).strip())["min"] += int(t.get("min") or 0)
+    acts = _col.Counter()
+    for it in items or []:
+        a = str(it.get("action", "") or "").strip()
+        if not a:
+            continue
+        acts[a] += 1
+        nm = str(it.get("name", "") or "").strip()
+        if not nm or nm in _USAGE_SYSTEM or str(it.get("role", "")) == "system":
+            continue
+        r = _row(nm)
+        r[usage_action_cat(a)] += 1
+        r["actions"] += 1
+    out = sorted(rows.values(), key=lambda r: (-r["min"], -r["actions"], r["name"]))
+    tot = {"name": "סה\"כ", "min": sum(r["min"] for r in out), "actions": sum(r["actions"] for r in out),
+           **{c: sum(r[c] for r in out) for c, _ in USAGE_CATS}}
+    return {"rows": out, "total": tot, "action_counts": acts.most_common()}
+
+def build_usage_report(day=None):
+    """הדוח ליום (date; ברירת מחדל היום, שעון ישראל): מחצות עד חצות."""
+    import datetime as _dt
+    tz = _rep_tz()
+    now = _dt.datetime.now(tz)
+    if day is None:
+        day = now.date()
+    t0 = _dt.datetime(day.year, day.month, day.day, tzinfo=tz)
+    t1 = t0 + _dt.timedelta(days=1)
+    try:
+        trows = _usage_rows(t0, t1)
+    except Exception as e:
+        log.warning(f"usage report: pings failed: {e}")
+        trows = []
+    try:
+        items = _activity_merge(_activity_fetch(t0.timestamp(), today=(day == now.date())))
+        items = [it for it in items if t0.timestamp() <= float(it.get("ts", 0) or 0) < t1.timestamp()]
+    except Exception as e:
+        log.warning(f"usage report: activity failed: {e}")
+        items = []
+    u = usage_report_aggregate(trows, items)
+    u["day"] = day.isoformat()
+    return u
+
+def _fmt_minutes(m):
+    m = int(m or 0)
+    return (f"{m // 60} ש׳" + (f" {m % 60} ד׳" if m % 60 else "")) if m >= 60 else f"{m} ד׳"
+
+def render_usage_table(u):
+    """טבלת הדוח — HTML בטוח למייל (טבלאות, עיצוב מוטמע, RTL; בלי flex/grid)."""
+    import html as _h
+    F = "font-family:Heebo,Arial,sans-serif"
+    th = f"padding:7px 6px;{F};font-size:11.5px;color:#6B7280;font-weight:700;text-align:center;border-bottom:1px solid #E9E4D8"
+    td = f"padding:7px 6px;{F};font-size:13px;color:#1E3A5F;text-align:center;border-bottom:1px solid #F0EDE3"
+    rows = u.get("rows") or []
+    if not rows:
+        return f"<div style='{F};font-size:13px;color:#6B7280;padding:6px 0'>לא נרשם שימוש באפליקציה ביום הזה</div>"
+    head = (f"<tr><th style='{th};text-align:right'>סוכן</th><th style='{th}'>זמן</th>"
+            + "".join(f"<th style='{th}'>{_h.escape(lb)}</th>" for _, lb in USAGE_CATS) + "</tr>")
+    def _tr(r, bold=False):
+        w = "font-weight:800;" if bold else ""
+        bg = "background:#F7F5EE;" if bold else ""
+        return (f"<tr style='{bg}'><td style='{td};{w}text-align:right;white-space:nowrap'>{_h.escape(str(r['name']))}</td>"
+                f"<td style='{td};{w}white-space:nowrap'>{_fmt_minutes(r['min'])}</td>"
+                + "".join(f"<td style='{td};{w}'>{r[c] or '–'}</td>" for c, _ in USAGE_CATS) + "</tr>")
+    tbl = (f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' dir='rtl' style='border-collapse:collapse'>"
+           + head + "".join(_tr(r) for r in rows) + _tr(u["total"], True) + "</table>")
+    ac = u.get("action_counts") or []
+    acts = ""
+    if ac:
+        acts = (f"<div style='{F};font-size:13px;font-weight:800;color:#1E3A5F;margin:14px 0 6px'>כל הפעולות שנרשמו</div>"
+                f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' dir='rtl' style='border-collapse:collapse'>"
+                + "".join(f"<tr><td style='{td};text-align:right'>{_h.escape(a.replace('📲', '').strip())}</td><td style='{td};width:60px;font-weight:800'>{n}</td></tr>" for a, n in ac)
+                + "</table>")
+    return tbl + acts
+
+def render_usage_report_page(u, office):
+    """העמוד העצמאי (/v2/reports/daily) — אותה טבלה עם כותרת, מוכן גם להדבקה במייל."""
+    import html as _h, datetime as _dt
+    F = "font-family:Heebo,Arial,sans-serif"
+    try:
+        dstr = _dt.date.fromisoformat(u.get("day", "")).strftime("%d/%m/%Y")
+    except Exception:
+        dstr = u.get("day", "")
+    t = u.get("total") or {}
+    return ("<!DOCTYPE html><html dir='rtl' lang='he'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>יומן שימוש · {_h.escape(dstr)}</title></head><body style='margin:0;background:#F2EFE7'>"
+            "<div dir='rtl' style='background:#F2EFE7;padding:12px 0'><table role='presentation' width='640' align='center' cellpadding='0' cellspacing='0' style='max-width:640px;margin:0 auto'>"
+            f"<tr><td style='padding:6px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#1E3A5F;border-radius:22px'><tr><td style='padding:18px 20px;{F}'>"
+            f"<div style='font-size:21px;font-weight:800;color:#fff'>יומן שימוש · {_h.escape(office)}</div>"
+            f"<div style='font-size:13px;color:#D9DEE8;margin-top:4px'>יום {_h.escape(dstr)} · {len(u.get('rows') or [])} סוכנים · זמן כולל {_fmt_minutes(t.get('min'))} · {t.get('actions', 0)} פעולות</div>"
+            "</td></tr></table></td></tr>"
+            f"<tr><td style='padding:8px 6px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#fff;border-radius:18px'><tr><td style='padding:14px 16px'>{render_usage_table(u)}</td></tr></table></td></tr>"
+            f"<tr><td style='padding:10px;{F};font-size:11.5px;color:#6B7280;text-align:center'>זמן = זמן פעיל באפליקציה (כמו במסך יומן השימוש) · הופק על ידי אפי</td></tr>"
+            "</table></div></body></html>")
+
+REPORT_KEY = (os.environ.get("REPORT_KEY", "") or "").strip()
+
+@app.route("/v2/reports/daily", methods=["GET"])
+def v2_reports_daily():
+    """דוח שימוש יומי כ-HTML מוכן למייל. ?key=REPORT_KEY (env; ריק = כבוי) · ?d=YYYY-MM-DD (ברירת מחדל: היום)."""
+    import hmac as _hm, datetime as _dt
+    k = (request.args.get("key", "") or "").strip()
+    if not REPORT_KEY or not k or not _hm.compare_digest(k, REPORT_KEY):
+        return Response("forbidden", status=403, mimetype="text/plain")
+    day = None
+    if request.args.get("d"):
+        try:
+            day = _dt.date.fromisoformat(request.args["d"].strip())
+        except Exception:
+            return Response("bad date (YYYY-MM-DD)", status=400, mimetype="text/plain")
+    u = build_usage_report(day)
+    office = ((_load_config() or {}).get("v2_office") or {}).get("name") or "המשרד"
+    resp = Response(render_usage_report_page(u, office), mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
 def build_office_report(day=None):
     """הדוח היומי (אייל 15/09). day = התאריך המדווח (ברירת מחדל: אתמול, שעון ישראל).
     מחזיר {subject, html, text, data}. כל מקור נתונים עטוף — כשל באחד לא מפיל את הדוח."""
@@ -10813,7 +11024,13 @@ def build_office_report(day=None):
                 ins.append(f"סריקת נכסי המשרד האחרונה {scan_office} — לא רצה ביום המדווח.")
     except Exception as e:
         log.warning(f"daily report insights: {e}")
-    data = {"day": day.isoformat(), "office": office,
+    # [USAGE-REPORT 05/10] זמן ופעולות באפליקציה ביום המדווח — אותם נתונים כמו מסך יומן השימוש
+    try:
+        usage = build_usage_report(day)
+    except Exception as e:
+        log.warning(f"daily report: usage failed: {e}")
+        usage = {"rows": [], "total": {}, "action_counts": []}
+    data = {"day": day.isoformat(), "office": office, "usage": usage,
             "calls": c_all, "calls_answered": c_ans, "calls_by_agent": {p: dict(v) for p, v in c_by.items()},
             "signings": s_all, "signings_by_label": s_lab, "signings_by_agent": {p: dict(v) for p, v in s_by.items()},
             "shtaf": x_all, "shtaf_by_office": {p: dict(v) for p, v in x_by.items()},
@@ -10897,6 +11114,10 @@ def build_office_report(day=None):
     L.append("נסגרו לפי סוכן — השבוע: " + _by_list(d_closed_by, "week", 8) + " · החודש: " + _by_list(d_closed_by, "month", 8) + " · השנה: " + _by_list(d_closed_by, "year", 10))
     L.append("נפתחו לפי סוכן (החודש): " + _by_list(d_open_by, "month", 8)); L.append("")
     L.append(f"סריקות אחרונות: נכסי המשרד {scan_office} · שת\"פ {scan_shtaf} · נכס נולד {scan_nb}")
+    _ur = usage.get("rows") or []
+    if _ur:
+        L += ["", "— זמן ופעולות באפליקציה —"]
+        L += [f"{r['name']}: {_fmt_minutes(r['min'])} · " + " · ".join(f"{lb} {r[c]}" for c, lb in USAGE_CATS if r[c]) for r in _ur]
     if ins: L += ["", "— תובנות —"] + ["- " + i for i in ins]
     return {"subject": subject, "html": html, "text": "\n".join(L), "data": data}
 
@@ -11064,6 +11285,7 @@ def render_office_report_page(rep):
             f"<div class='pbox'><div class='n'>{d['open_now']}</div><div class='l'>תהליכים פתוחים</div><div class='w'>נפתחו החודש: {opened_m}</div></div>"
             f"<div class='pbox'><div class='n'>{d['lawyer_now']}</div><div class='l'>אצל עו\"ד</div><div class='w'>{law}</div></div>"
             f"<div class='pbox'><div class='n' style='color:#2E6BD6'>{d['deals_closed']['month']}</div><div class='l'>נסגרו החודש · השנה {d['deals_closed']['year']}</div><div class='w'>{closed_m}</div></div></div></div>"
+            f"<div class='sec'><h2>זמן ופעולות באפליקציה</h2>{render_usage_table(d.get('usage') or {})}</div>"
             f"<div class='sec'><h2>תובנות</h2>{ins}</div>"
             f"<div class='ft'>סריקות אחרונות — נכסי המשרד {_e(sc_.get('office'))} · שת\"פ {_e(sc_.get('shtaf'))} · נכס נולד {_e(sc_.get('newborn'))} · הופק על ידי אפי</div>"
             "</div></body></html>")
@@ -11174,6 +11396,7 @@ def render_office_report_email(rep):
             + _sec("נכס נולד לפי ערים", "מודעות של פרטיים — הזדמנויות לגיוס" + (f" · אחרי ניכוי {d.get('newborn_dupes', 0)} כפילויות" if d.get("newborn_dupes") else ""), cities_tbl)
             + _sec("פודיום הסוכנים", "דירוג משולב: שיחות, החתמות, קונים, סגירות", leaders)
             + _sec("צנרת העסקאות", "", f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>{pipe}</tr></table>")
+            + _sec("זמן ופעולות באפליקציה", "ביום המדווח · לפי סוכן, ממוין לפי זמן", render_usage_table(d.get("usage") or {}))
             + _sec("תובנות", "", ins)
             + f"<tr><td style='padding:10px;{F};font-size:11.5px;color:#6B7280;text-align:center'>סריקות אחרונות — נכסי המשרד {_e(sc_.get('office'))} · שת\"פ {_e(sc_.get('shtaf'))} · נכס נולד {_e(sc_.get('newborn'))} · הופק על ידי אפי</td></tr>"
             "</table></div>")
