@@ -3331,6 +3331,13 @@ def _display_name_for(name, phone):
     ('מתן ביטון לא מופיע' — אייל). כאן: שם גנרי → השם האמיתי לפי הטלפון; בלי שם ידוע → גנרי + 4 ספרות.
     חשבון הביקורת (בדיקות המהירות שלי) מסומן במפורש."""
     nm = str(name or "").strip()
+    # 05/10: שם בלי אף אות עברית ("eyal-shmul" מכניסת Google/Apple) → השם האמיתי לפי הטלפון, אם ידוע
+    if nm and nm not in _GENERIC_NAMES and not re.search(r"[\u0590-\u05FF]", nm):
+        try:
+            real = str(_name_for_phone(_last9(phone or "")) or "").strip() if _last9(phone or "") else ""
+        except Exception:
+            real = ""
+        return real or nm
     if nm not in _GENERIC_NAMES:
         return nm
     l9 = _last9(phone or "")
@@ -7101,8 +7108,10 @@ def _activity_merge(c):
     seen = set(); merged = []
     for it in (list(c) + list(_activity[-400:])):
         _gn = str(it.get("name", "") or "").strip()
-        if _gn in _GENERIC_NAMES:   # [USAGE 30/09] 'מנהל' גנרי → השם האמיתי לפי הטלפון
-            it = dict(it); it["name"] = _display_name_for(_gn, it.get("phone", ""))
+        # [USAGE 30/09] 'מנהל' גנרי → השם האמיתי לפי הטלפון; 05/10: גם שם בלי עברית ("eyal-shmul")
+        _dn = _display_name_for(_gn, it.get("phone", "")) if (_gn in _GENERIC_NAMES or not re.search(r"[\u0590-\u05FF]", _gn)) else _gn
+        if _dn != _gn:
+            it = dict(it); it["name"] = _dn
         try: tsr = round(float(it.get("ts", 0)))
         except Exception: tsr = 0
         k = (tsr, str(it.get("name", "")), str(it.get("action", "")), str(it.get("detail", "")))
@@ -10720,11 +10729,14 @@ def usage_action_cat(action):
         return "wa_nb"
     if a == "הוספת קונה":
         return "buyer_add"
-    if a in ("חיפוש נכסים", "חיפוש נכס נולד", "חיפוש בלעדיות"):
+    # 05/10 (אימות חי): חיפוש אחד במסך הנכסים רושם 3 פעולות במקביל (נכסים + נכס נולד + בלעדיות) —
+    # סופרים רק את "חיפוש נכסים", כדי שחיפוש אחד = 1 (השאר מופיעים בטבלת כל הפעולות)
+    if a == "חיפוש נכסים":
         return "prop_search"
     if a in ("חיפוש קונים", "חיפוש קונה AI"):
         return "buyer_search"
-    if a in ("כניסה", "כניסה (קוד קבוע)"):
+    # "כניסה", "כניסה עם Google/Apple", "(קוד קבוע)", "(קישור ראשון)" — לא "כניסת בדיקה כסוכן"
+    if a.startswith("כניסה"):
         return "login"
     return "other"
 
