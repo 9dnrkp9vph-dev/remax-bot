@@ -3966,11 +3966,11 @@ function bpSend(mis, fb){
   if (!items.length || !b.row){ fb(); return Promise.resolve(); }
   return POST('/v2/api/bpage/send', {row: b.row, q: MQ_CUR, items: items}).then(function(j){
     if (!j || j.off){ fb(); return; }
-    if (!j.ok){ toast(j.reason === 'no_items' ? 'הנכסים לא נמצאו — רענן ונסה שוב' : 'השליחה נכשלה'); return; }
+    if (!j.ok){ toast(j.reason === 'no_items' ? 'הנכסים לא נמצאו — רענן ונסה שוב' : 'השליחה נכשלה' + (j.reason ? ' · ' + j.reason : '')); return; }
     items.forEach(function(x){ if (!Object.prototype.hasOwnProperty.call(BP_STATE.keys, x.key)) BP_STATE.keys[x.key] = ''; });
     window.open('https://wa.me/' + (j.wa || b.wa || '') + '?text=' + encodeURIComponent(j.msg), '_blank');
     if (typeof renderMatchTab === 'function' && typeof MG !== 'undefined' && MG) renderMatchTab();
-  }).catch(function(){ toast('השליחה נכשלה'); });
+  }).catch(function(e){ toast('השליחה נכשלה · ' + String((e && e.message) || e || '').slice(0, 80)); });
 }
 var BP_SUM = {};
 function bpFmtP(p){ p = String(p || '').replace(/\D/g, ''); return p ? '₪' + p.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''; }
@@ -4008,7 +4008,7 @@ function bpSheetHtml(b, j){
   h += '<div id="bpBulk">' + bpBulkHtml() + '</div>';
   var nn = (j.new_matches || []).length;
   h += '<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">' +
-    (nn ? '<button class="btn" style="background:#2E6BD6;color:#fff" onclick="bpNew()">התאמות חדשות (' + nn + ')</button>' : '') +
+    '<button class="btn" style="background:#2E6BD6;color:#fff" onclick="bpNew()">' + (nn ? 'הוסף נכסים · ' + nn + ' התאמות חדשות' : 'הוסף נכסים') + '</button>' +
     '<button class="btn" style="background:#157A43;color:#fff" onclick="bpResend()">שלח שוב את הקישור</button>' +
     '<a class="btn btn-sec" style="text-align:center;text-decoration:none" href="' + esc(P.url || '#') + '" target="_blank" rel="noopener">פתח כמו שהלקוח רואה</a>' +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button></div>';
