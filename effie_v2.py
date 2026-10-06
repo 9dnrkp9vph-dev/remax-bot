@@ -2123,7 +2123,7 @@ function bsRender(j){
     ' מודעות פרטיות פעילות עם נייד' + (t.alerts_on ? '' : ' · ההתראות כבויות') + '</span>';
   if (!rows.length){ el('bsList').innerHTML = '<div style="font-size:13px;color:#6B7280;padding:6px 0">אין כרגע קונה שמפרסם נכס בנכס נולד.</div>'; return; }
   var all = rows.length <= 30 || BS_ALL, shown = all ? rows : rows.slice(0, 30);
-  el('bsList').innerHTML = shown.map(function(r){
+  el('bsList').innerHTML = shown.map(function(r, i){
     var st = BS_ST[r.status] || [r.status, '#6B7280'];
     var when = r.status === 'sent' || r.status === 'no_agent' ? (r.sent_at ? ' · ' + r.sent_at : '') : '';
     var sub = esc(r.addr) + (r.price ? ' · ' + esc(r.price) + ' ₪' : '') + (r.listed ? ' · פורסם ' + esc(r.listed) : '') + (r.gone ? ' · המודעה ירדה' : '');
@@ -2132,9 +2132,20 @@ function bsRender(j){
       '<div class="nm">' + esc(r.buyer || 'קונה') + ' <span style="font-weight:600;color:#5B6472">· ' + esc(r.agent || 'בלי סוכן') + '</span></div>' +
       '<div class="sb">' + sub + '</div>' + (who ? '<div class="sb">' + who + '</div>' : '') +
       '<div class="sb" style="color:' + st[1] + ';font-weight:700">' + st[0] + when + '</div></div>' +
-      (r.link ? '<a href="' + esc(r.link) + '" target="_blank" rel="noopener" style="flex-shrink:0;padding:9px 12px;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none">למודעה</a>' : '') +
-      '</div>';
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">' +
+      (r.gone ? '' : '<button onclick="bsSend(' + i + ')" style="min-height:40px;padding:8px 12px;border:none;border-radius:11px;background:#157A43;color:#fff;font-size:12px;font-weight:800;font-family:inherit;cursor:pointer">' + (r.status === 'sent' ? 'שלח שוב' : 'שלח לסוכן') + '</button>') +
+      (r.link ? '<a href="' + esc(r.link) + '" target="_blank" rel="noopener" style="padding:4px 8px;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none">למודעה</a>' : '') +
+      '</div></div>';
   }).join('') + (all ? '' : '<button onclick="BS_ALL=true;bsRender(BS_LAST)" style="margin-top:8px;width:100%;min-height:44px;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">הצג את כל ' + rows.length + '</button>');
+}
+var BS_ERR = {no_agent: 'אין טלפון לסוכן', no_360: 'הוואטסאפ הרשמי לא פעיל', not_found: 'ההתאמה כבר לא קיימת (המודעה ירדה?)', send_failed: 'השליחה נכשלה', forbidden: 'אין הרשאה'};
+function bsSend(i){
+  var r = ((BS_LAST || {}).rows || [])[i]; if (!r) return;
+  if (!confirm('לשלוח ל' + (r.agent || 'סוכן') + ' הודעת וואטסאפ על הקונה ' + (r.buyer || '') + ' שמפרסם את ' + (r.addr || 'הנכס') + '?')) return;
+  POST('/v2/api/admin/buyer_sellers/send', {key: r.key}).then(function(j){
+    if (j && j.ok){ r.status = 'sent'; r.sent_at = j.sent_at; toast('נשלח ל' + (r.agent || 'סוכן')); bsRender(BS_LAST); }
+    else toast('לא נשלח — ' + ((j && (BS_ERR[j.reason] || j.reason)) || 'שגיאה') + (j && j.detail ? ' (' + j.detail + ')' : ''));
+  }).catch(function(){ toast('שגיאה'); });
 }
 function bsLoad(){
   GET('/v2/api/admin/buyer_sellers').then(function(j){
@@ -11525,6 +11536,48 @@ def register(app, G):
             return jsonify({"ok": True, "stats": stats, "rows": rows[:300]})
         except Exception as e:
             if log: log.error(f"buyer-sellers report: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": "failed"})
+
+    @app.route("/v2/api/admin/buyer_sellers/send", methods=["POST"])
+    def v2_api_admin_buyer_sellers_send():
+        """[BS-CTRL 06/10] שליחה (חוזרת) ידנית של ההודעה לסוכן — רק דרך 360dialog (אייל: "כפתור שליחה מחדש")."""
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        key = str((request.get_json(silent=True) or {}).get("key") or "").strip()
+        sb = G.get("_sbdb")
+        if not key or not (sb and sb.enabled()):
+            return jsonify({"ok": False, "reason": "bad_request"})
+        if not G["_d360_on"]():
+            return jsonify({"ok": False, "reason": "no_360"})
+        try:
+            idx = bs_owner_index(sb.fetch_newborn_raw_all() or [], include_rent=os.environ.get("BS_INCLUDE_RENT", "0") == "1")
+            ms = [m for m in bs_find_matches(G["_fetch_manual_buyers"]() or [], idx, time.time(), G["_excl_epoch"],
+                                             G["_newborn_created_epoch"], fresh_days=36500) if m["key"] == key]
+            if not ms:
+                return jsonify({"ok": False, "reason": "not_found"})
+            m = ms[0]
+            b = m["buyer"]
+            ag = str(b.get("agent") or "").strip()
+            wa = G["_wa_phone"](b.get("agent_phone") or (G["fetch_agents_phones"]() or {}).get(ag, ""))
+            if not wa:
+                return jsonify({"ok": False, "reason": "no_agent"})
+            if not G["send_text"](wa, bs_message(m)):
+                last = G.get("_WA_LAST") or {}
+                return jsonify({"ok": False, "reason": "send_failed", "detail": str(last.get("reason") or last.get("resp") or "")[:160]})
+            now = time.time()
+            info = {"ag": ag, "bn": str(b.get("name") or "").strip(), "ad": m["listing"]["addr"],
+                    "pr": bs_money(m["listing"]["price"]), "ln": m["listing"]["link"]}
+            def _mark(cfg):
+                d = cfg.setdefault("v2_bs_sent", {})
+                d[key] = dict(info, ts=now, r="sent", manual=True)
+            G["_config_mutate"](_mark)
+            _log_activity(s.get("name") or "מנהל", s.get("role") or "admin", s.get("phone") or "",
+                          "קונה שמפרסם נכס — שליחה ידנית לסוכן", (ag + " · " + info["bn"] + " · " + info["ad"])[:60])
+            import datetime as _dbs2
+            return jsonify({"ok": True, "sent_at": _dbs2.datetime.fromtimestamp(now).strftime("%d/%m/%Y")})
+        except Exception as e:
+            if log: log.error(f"buyer-sellers send: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": "failed"})
 
     @app.route("/v2/api/avatar", methods=["GET", "POST"])
