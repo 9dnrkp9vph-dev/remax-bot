@@ -10328,7 +10328,10 @@ def bs_find_matches(buyers, idx, now, buyer_ep, listing_ep, fresh_days=3, closed
             lep = listing_ep(L["raw"]) or 0
             if not ((bep and now - bep < win) or (lep and now - lep < win)):
                 continue
-            out.append({"key": p9 + "|" + L["key"], "buyer": b, "listing": L, "lep": lep,
+            # [BS-CTRL 06/10] הסוכן במפתח: אותו לקוח אצל שני סוכנים = שתי שורות (שרון סנה — דודו ואלי);
+            # "lkey" = המפתח הישן (בלי סוכן) — רשומות v2_bs_sent מלפני התיקון
+            ag = _re.sub(r"\s+", " ", str(b.get("agent") or "")).strip()
+            out.append({"key": p9 + "|" + L["key"] + "|" + ag, "lkey": p9 + "|" + L["key"], "buyer": b, "listing": L, "lep": lep,
                         "after": bool(lep and bep and lep > bep)})
     return out
 
@@ -10366,8 +10369,8 @@ def bs_report(buyers, idx, sent, now, buyer_ep, listing_ep, closed=None, fresh_d
     out, seen, win = [], set(), fresh_days * 86400
     for m in bs_find_matches(buyers, idx, now, buyer_ep, listing_ep, fresh_days=36500):
         b, L, k = m["buyer"], m["listing"], m["key"]
-        seen.add(k)
-        rec = sent.get(k) or {}
+        seen.update((k, m["lkey"]))
+        rec = sent.get(k) or sent.get(m["lkey"]) or {}
         bep = buyer_ep(b.get("date", "")) or 0
         if rec.get("r") in ("sent", "no_agent"):
             st = rec["r"]
@@ -11448,6 +11451,18 @@ def register(app, G):
     _BS_LOCK = _bsth.Lock()
     _BS_RAW = {"ts": 0, "rows": None}
 
+    def _bs_agent_wa(b, ag_ph):
+        """טלפון הוואטסאפ של הסוכן של הקונה: agent_phone בשורה, אחרת אנשי הקשר לפי שם (גם באיות/רווחים שונים)."""
+        ag = str(b.get("agent") or "").strip()
+        ph = b.get("agent_phone") or ag_ph.get(ag, "")
+        if not ph and ag:
+            try:
+                ck = G["_canon_key"](ag)
+                ph = next((v for k, v in ag_ph.items() if v and G["_canon_key"](k) == ck), "")
+            except Exception:
+                ph = ""
+        return G["_wa_phone"](ph) if ph else ""
+
     def _bs_scan(trigger=""):
         """סריקה: קונים × מודעות נכס נולד לפי טלפון; שולח רק התאמות חדשות (v2_bs_sent בקונפיג).
         רק דרך 360dialog; לא בשעות השקט (ההתאמה נשארת "חדשה" 3 ימים ותישלח בסריקה של הבוקר)."""
@@ -11468,7 +11483,7 @@ def register(app, G):
             ms = bs_find_matches(G["_fetch_manual_buyers"]() or [], idx, time.time(),
                                  G["_excl_epoch"], G["_newborn_created_epoch"], closed=closed)
             sent = (_load_config().get("v2_bs_sent") or {})
-            new = [m for m in ms if m["key"] not in sent]
+            new = [m for m in ms if m["key"] not in sent and m["lkey"] not in sent]
             if not new:
                 return 0
             ag_ph = G["fetch_agents_phones"]() or {}
@@ -11478,7 +11493,7 @@ def register(app, G):
                                   "ad": m["listing"]["addr"], "pr": bs_money(m["listing"]["price"]), "ln": m["listing"]["link"]}
                 b = m["buyer"]
                 ag = str(b.get("agent") or "").strip()
-                wa = G["_wa_phone"](b.get("agent_phone") or ag_ph.get(ag, ""))
+                wa = _bs_agent_wa(b, ag_ph)
                 if not wa:
                     done[m["key"]] = "no_agent"
                     if log: log.warning(f"buyer-seller: no phone for agent {ag!r}")
@@ -11559,7 +11574,7 @@ def register(app, G):
             m = ms[0]
             b = m["buyer"]
             ag = str(b.get("agent") or "").strip()
-            wa = G["_wa_phone"](b.get("agent_phone") or (G["fetch_agents_phones"]() or {}).get(ag, ""))
+            wa = _bs_agent_wa(b, G["fetch_agents_phones"]() or {})
             if not wa:
                 return jsonify({"ok": False, "reason": "no_agent"})
             if not G["send_text"](wa, bs_message(m)):
