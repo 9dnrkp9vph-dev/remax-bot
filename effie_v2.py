@@ -3595,7 +3595,7 @@ function buyerCardHtml(b, i, extra){   // [BUYER-AI 01/10] כרטיס קונה �
       (b.budget ? '<div class="bdg" onclick="pickStatus(' + i + ')">עד ' + esc(fmtBd(b.budget)) + '</div>' :
         '<div class="bdg" onclick="pickStatus(' + i + ')">' + ST_LABEL[st] + '</div>') +
       (b.search ? '<div class="req">' + esc(b.search.slice(0, 30)) + '</div>' : '') + '</div></div>' +
-      (extra || '') +
+      (extra || '') + bpLine(b, i) +
       (b.summary ? '<div class="ai"><div class="t">' +
         '<svg width="14" height="13" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>' +
         'סיכום חכם</div><div class="x">' + esc(b.summary) + '</div></div>' : '') +
@@ -3661,6 +3661,7 @@ function load(){
     STATUSES = (rs[1] && rs[1].statuses) || {};
     try{ localStorage.setItem('v2c:buyers', JSON.stringify({b: BUYERS.slice(0, 200), m: MULTI, s: STATUSES})); }catch(e){}
     render();
+    bpSumLoad();   // [BPAGE 06/10] שורת "דף לקוח" בכרטיסים — לא חוסם
   });
 }
 (function(){   // פתיחה מיידית מהעותק האחרון
@@ -3970,6 +3971,73 @@ function bpSend(mis, fb){
     window.open('https://wa.me/' + (j.wa || b.wa || '') + '?text=' + encodeURIComponent(j.msg), '_blank');
     if (typeof renderMatchTab === 'function' && typeof MG !== 'undefined' && MG) renderMatchTab();
   }).catch(function(){ toast('השליחה נכשלה'); });
+}
+var BP_SUM = {};
+function bpFmtP(p){ p = String(p || '').replace(/\D/g, ''); return p ? '₪' + p.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''; }
+function bpLine(b, i){
+  var s = BP_SUM[String(b.row)]; if (!s) return '';
+  var parts = [];
+  if (s.expired) parts.push('פג תוקף');
+  if (s.like) parts.push(s.like + ' מתאים');
+  if (s.visit) parts.push(s.visit + ' רוצה לראות');
+  if (s.dislike) parts.push(s.dislike + ' לא מתאים');
+  if (s.newN) parts.push(s.newN + ' התאמות חדשות');
+  return '<div onclick="bpSheet(' + i + ')" style="display:flex;align-items:center;gap:8px;min-height:44px;margin:8px 0 0;padding:0 12px;' +
+    'background:#F5F8FD;border-radius:14px;cursor:pointer;font-size:13px;font-weight:700;color:#1E3A5F">' +
+    (s.unseen ? '<span class="bpDot" style="width:8px;height:8px;border-radius:50%;background:#2E6BD6;flex-shrink:0"></span>' : '') +
+    '<span>דף לקוח' + (parts.length ? ' · ' + esc(parts.join(' · ')) : ' · ' + s.total + ' נכסים') + '</span></div>';
+}
+function bpSheetHtml(b, j){
+  var it = j.items || [], P = j.page || {};
+  var grp = [['visit', 'רוצה לראות'], ['like', 'מתאים'], ['', 'טרם סומן'], ['dislike', 'לא מתאים']];
+  var h = '<h3>דף הלקוח · ' + esc(b.name || '') + '</h3>' +
+    (P.expired ? '<div style="color:#7A5E1C;font-weight:700;font-size:13px;margin-bottom:8px">הקישור פג תוקף — שליחה חדשה מחדשת אותו ל-90 יום</div>' : '');
+  grp.forEach(function(g){
+    var xs = it.filter(function(x){ return (x.mark || '') === g[0]; });
+    if (!xs.length) return;
+    h += '<div class="grpTitle">' + g[1] + ' · ' + xs.length + '</div>';
+    xs.forEach(function(x){
+      h += '<div style="background:#fff;border-radius:16px;padding:12px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start">' +
+        '<div style="flex:1;min-width:0"><div style="font-weight:800">' + esc([x.street, x.house].filter(Boolean).join(' ')) + (x.city ? ', ' + esc(x.city) : '') + '</div>' +
+        '<div style="font-size:12.5px;color:#6B7280">' + esc(bpFmtP(x.price)) + (x.gone ? ' · כבר לא זמין' : '') + '</div>' +
+        (x.note ? '<div style="font-size:13px;margin-top:4px">"' + esc(x.note) + '"</div>' : '') + '</div>' +
+        '<button onclick="bpRemove(\'' + esc(String(x.key).replace(/'/g, '')) + '\')" aria-label="הסר מהדף" style="width:44px;height:44px;border-radius:12px;border:none;background:#FBEDED;flex-shrink:0">' +
+        '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="#C24040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
+    });
+  });
+  if (!it.length) h += '<div style="text-align:center;color:#6B7280;padding:16px 0">עדיין לא נשלחו נכסים</div>';
+  var nn = (j.new_matches || []).length;
+  h += '<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">' +
+    (nn ? '<button class="btn" style="background:#2E6BD6;color:#fff" onclick="bpNew()">התאמות חדשות (' + nn + ')</button>' : '') +
+    '<button class="btn" style="background:#157A43;color:#fff" onclick="bpResend()">שלח שוב את הקישור</button>' +
+    '<a class="btn btn-sec" style="text-align:center;text-decoration:none" href="' + esc(P.url || '#') + '" target="_blank" rel="noopener">פתח כמו שהלקוח רואה</a>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button></div>';
+  return h;
+}
+var BP_CUR = null;
+function bpSheet(i){
+  var b = el('list')._src[i]; if (!b) return;
+  BP_CUR = {b: b, i: i, j: null};
+  openSheet('<div style="text-align:center;color:#6B7280;padding:20px 0">טוען…</div>');
+  GET('/v2/api/bpage?row=' + encodeURIComponent(b.row)).then(function(j){
+    if (!j || !j.ok || !j.page){ closeSheet(); toast('אין דף לקונה הזה'); return; }
+    BP_CUR.j = j; openSheet(bpSheetHtml(b, j));
+    POST('/v2/api/bpage/seen', {row: b.row}).then(function(){
+      var s = BP_SUM[String(b.row)]; if (s){ s.unseen = false; render(); } }).catch(function(){});
+  }).catch(function(){ closeSheet(); toast('שגיאה בטעינה'); });
+}
+function bpRemove(k){
+  if (!BP_CUR || !confirm('להסיר את הנכס מדף הלקוח?')) return;
+  POST('/v2/api/bpage/remove', {row: BP_CUR.b.row, key: k}).then(function(){ bpSheet(BP_CUR.i); bpSumLoad(); });
+}
+function bpResend(){
+  if (!BP_CUR || !BP_CUR.j) return;
+  var b = BP_CUR.b, first = String(b.name || '').trim().split(/\s+/)[0] || '';
+  window.open('https://wa.me/' + (b.wa || '') + '?text=' + encodeURIComponent('היי' + (first ? ' ' + first : '') + ', הנה רשימת הנכסים שלך:\n' + BP_CUR.j.page.url), '_blank');
+}
+function bpNew(){ if (!BP_CUR) return; closeSheet(); matchProps(BP_CUR.i); }
+function bpSumLoad(){
+  return GET('/v2/api/bpage/summary').then(function(j){ BP_SUM = (j && j.rows) || {}; render(); }).catch(function(){});
 }
 function bpLoad(row){
   BP_STATE = {keys: {}, newK: {}};
