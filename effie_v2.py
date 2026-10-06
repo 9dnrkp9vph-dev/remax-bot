@@ -7896,6 +7896,7 @@ V2_ACTIVITY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta char
     <div class="live"><i></i>חי</div>
   </header>
   <main>
+  <div class="card" id="useNow" style="display:none"></div>
   <div class="card" id="useDash" style="display:none"></div>
   <div class="card" id="list"><div class="empty">טוען…</div></div>
 </main>
@@ -7935,6 +7936,23 @@ function load(){
     }).join('') || '<div class="empty">אין פעילות עדיין היום</div>';
   }).catch(function(){});
 }
+/* [USAGE-NOW 07/10] פעילים עכשיו — מתרענן כל 30 שנ' */
+function nowAgo(s){ return s < 60 ? 'עכשיו' : 'לפני ' + Math.round(s / 60) + ' דק\''; }
+function renderNow(rows){
+  var c = el('useNow'); if (!c) return;
+  c.style.display = 'block';
+  c.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:2px 2px 8px">' +
+    '<span style="width:9px;height:9px;border-radius:50%;background:' + (rows.length ? '#1FAF5E' : '#C9CDD4') + '"></span>' +
+    '<div style="font-size:14.5px;font-weight:800">פעילים עכשיו · ' + rows.length + '</div></div>' +
+    (rows.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + rows.map(function(r){
+      return '<span style="background:#E7F7EE;color:#157A43;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:700">' +
+        esc(r.name) + ' <span style="color:#5B6472;font-weight:600">· ' + nowAgo(r.ago) + '</span></span>';
+    }).join('') + '</div>' : '<div style="font-size:12.5px;color:#6B7280">אף אחד לא באפליקציה ברגע זה</div>');
+}
+function loadNow(){
+  GET('/v2/api/usage_now').then(function(j){ if (j && j.ok) renderNow(j.rows || []); }).catch(function(){});
+}
+loadNow(); setInterval(loadNow, 30000);
 /* זמן שימוש לפי סוכן — נגזר מיומן הפעילות: פעולות ברצף (פער עד 10 דק') = סשן אחד */
 function fmtMin(m){
   if (m >= 60) return Math.floor(m / 60) + ' ש\'' + (m % 60 ? ' ' + (m % 60) + ' דק\'' : '');
@@ -11225,6 +11243,21 @@ def bpage_digest_plan(pages_new):
         o["props"] += len(new)
     return out
 
+def usage_now_rows(pings, now_ep, display, window=150):
+    """[USAGE-NOW 07/10] פעילים עכשיו (אייל): מי ששלח פעימה ב-window השניות האחרונות (פעימה כל 45ש').
+    מקובץ לפי טלפון; display(name, phone) → שם לתצוגה. ממוין לפי הפעימה האחרונה."""
+    last = {}
+    for p in (pings or []):
+        ph = _bp_digits(p.get("phone"))[-9:]
+        ep = bpage_iso_ep(p.get("ts"))
+        if not ph or not ep or now_ep - ep > window:
+            continue
+        if ph not in last or ep > last[ph][0]:
+            last[ph] = (ep, str(p.get("name", "") or "").strip())
+    rows = [{"name": display(nm, ph) or nm or ph, "ago": max(0, int(now_ep - ep))} for ph, (ep, nm) in last.items()]
+    rows.sort(key=lambda r: r["ago"])
+    return rows
+
 _BP_SB = None   # הזרקה לבדיקות; בפרודקשן None → supabase_db
 
 
@@ -13735,6 +13768,24 @@ def register(app, G):
             except Exception:
                 pass
         return jsonify({"ok": True})
+
+    @app.route("/v2/api/usage_now", methods=["GET"])
+    def v2_api_usage_now():
+        """[USAGE-NOW 07/10] מי מחובר עכשיו — פעימה ב-2.5 הדקות האחרונות. מנהל בלבד."""
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": True, "rows": []})
+        import datetime as _dtn
+        now = time.time()
+        try:
+            pings = _sb.fetch_pings_today(_dtn.datetime.fromtimestamp(now - 150, _dtn.timezone.utc).isoformat())
+        except Exception as e:
+            if log: log.warning(f"usage now: {e}")
+            pings = []
+        return jsonify({"ok": True, "rows": usage_now_rows(pings, now, G["_display_name_for"])})
 
     @app.route("/v2/api/usage_today", methods=["GET"])
     def v2_api_usage_today():
