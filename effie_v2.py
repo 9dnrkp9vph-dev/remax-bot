@@ -4009,7 +4009,7 @@ function bpSheetHtml(b, j){
     xs.forEach(function(x){
       h += '<div style="background:#fff;border-radius:16px;padding:12px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start">' +
         '<div style="flex:1;min-width:0">' + bpCatChip(x) + '<div style="font-weight:800">' + esc([x.street, x.house].filter(Boolean).join(' ')) + (x.city ? ', ' + esc(x.city) : '') + '</div>' +
-        '<div style="font-size:12.5px;color:#6B7280">' + esc(bpFmtP(x.price)) + (x.gone ? ' · כבר לא זמין' : '') + '</div>' +
+        '<div style="font-size:12.5px;color:#6B7280">' + esc(bpFmtP(x.price)) + (x.gone ? ' · ' + esc(bpGone(x.goneAt)) : '') + '</div>' +
         (x.note ? '<div style="font-size:13px;margin-top:4px">"' + esc(x.note) + '"</div>' : '') + '</div>' +
         bpDelBtn(it.indexOf(x), !!BP_DEL[x.key]) + '</div>';
     });
@@ -4023,6 +4023,15 @@ function bpSheetHtml(b, j){
     '<a class="btn btn-sec" style="text-align:center;text-decoration:none" href="' + esc(P.url || '#') + '" target="_blank" rel="noopener">פתח כמו שהלקוח רואה</a>' +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button></div>';
   return h;
+}
+function bpGone(at){   // 07/10 (אייל): ממתי הנכס ירד מפרסום — 'ירד מפרסום 05/10 · לפני 2 ימים'
+  var m = /^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/.exec(String(at || '')) || /^(\d{4})-(\d{2})-(\d{2})/.exec(String(at || ''));
+  if (!m) return 'ירד מפרסום';
+  var d = m[1].length === 4 ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(+m[3], +m[2] - 1, +m[1]);
+  var t = new Date(); t.setHours(0, 0, 0, 0);
+  var n = Math.round((t - d) / 86400000);
+  var dd = ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2);
+  return 'ירד מפרסום ' + dd + ' · ' + (n <= 0 ? 'היום' : n === 1 ? 'אתמול' : 'לפני ' + n + ' ימים');
 }
 function bpCatChip(x){   // [BPAGE 07/10] קטגוריה: נכס נולד (זהב) / שת"פ · משרד / המשרד · סוכן
   if (!x.cat) return '';
@@ -10996,6 +11005,7 @@ def bpage_live(item, live):
     if live is not None:
         if str(live.get("ירד מפרסום", "") or "").strip():
             d["gone"] = True
+            d["goneAt"] = str(live.get("ירד מפרסום", "") or "").strip()   # 07/10: מתי ירד (לסוכן)
         cur = _bp_digits(live.get("מחיר"))
         if cur:
             if snap.get("price") and int(cur) < int(snap["price"]):
