@@ -3998,7 +3998,7 @@ function bpSheetHtml(b, j){
     h += '<div class="grpTitle">' + g[1] + ' · ' + xs.length + '</div>';
     xs.forEach(function(x){
       h += '<div style="background:#fff;border-radius:16px;padding:12px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start">' +
-        '<div style="flex:1;min-width:0"><div style="font-weight:800">' + esc([x.street, x.house].filter(Boolean).join(' ')) + (x.city ? ', ' + esc(x.city) : '') + '</div>' +
+        '<div style="flex:1;min-width:0">' + bpCatChip(x) + '<div style="font-weight:800">' + esc([x.street, x.house].filter(Boolean).join(' ')) + (x.city ? ', ' + esc(x.city) : '') + '</div>' +
         '<div style="font-size:12.5px;color:#6B7280">' + esc(bpFmtP(x.price)) + (x.gone ? ' · כבר לא זמין' : '') + '</div>' +
         (x.note ? '<div style="font-size:13px;margin-top:4px">"' + esc(x.note) + '"</div>' : '') + '</div>' +
         bpDelBtn(it.indexOf(x), !!BP_DEL[x.key]) + '</div>';
@@ -4013,6 +4013,12 @@ function bpSheetHtml(b, j){
     '<a class="btn btn-sec" style="text-align:center;text-decoration:none" href="' + esc(P.url || '#') + '" target="_blank" rel="noopener">פתח כמו שהלקוח רואה</a>' +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button></div>';
   return h;
+}
+function bpCatChip(x){   // [BPAGE 07/10] קטגוריה: נכס נולד (זהב) / שת"פ · משרד / המשרד · סוכן
+  if (!x.cat) return '';
+  var st = x.source === 'newborn' ? 'background:#F6EEDB;color:#7A5E1C' : x.source === 'shtaf' ? 'background:#F0EDE3;color:#5B6472' : 'background:#EAF0FA;color:#1E3A5F';
+  return '<span style="display:inline-block;' + st + ';font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px;margin-bottom:4px">' +
+    esc(x.cat + (x.who ? ' · ' + x.who : '')) + '</span>';
 }
 var BP_CUR = null;
 function bpSheet(i){
@@ -11243,6 +11249,16 @@ def bpage_digest_plan(pages_new):
         o["props"] += len(new)
     return out
 
+def bpage_cat(source, live):
+    """[BPAGE 07/10] קטגוריה לתצוגת הסוכן בלבד (אייל): נכס נולד / שת"פ · המשרד המפרסם / המשרד · הסוכן.
+    לא נכנס לצילום ולא לדף הלקוח."""
+    live = live or {}
+    if source == "newborn":
+        return {"cat": "נכס נולד", "who": ""}
+    if source == "shtaf":
+        return {"cat": "שת\"פ", "who": str(live.get("_office", "") or "").strip()}
+    return {"cat": "המשרד", "who": str(live.get("סוכן 1", "") or "").strip()}
+
 def usage_now_rows(pings, now_ep, display, window=150):
     """[USAGE-NOW 07/10] פעילים עכשיו (אייל): מי ששלח פעימה ב-window השניות האחרונות (פעימה כל 45ש').
     מקובץ לפי טלפון; display(name, phone) → שם לתצוגה. ממוין לפי הפעימה האחרונה."""
@@ -11984,6 +12000,7 @@ def register(app, G):
                 k = G["_excl_price_key"](r)
                 if k:
                     o = bpage_excl_as_office_row(r)
+                    o["_office"] = str(r.get("office", "") or "").strip()   # לתצוגת הסוכן בלבד (bpage_cat)
                     o["_ep"] = G["_excl_epoch"](r.get("first_seen") or r.get("received_at", "")) or 0
                     out["shtaf"][k] = o
         except Exception as e:
@@ -12119,7 +12136,12 @@ def register(app, G):
             return jsonify({"ok": True, "page": None, "items": [], "new_matches": []})
         items = sb.bpage_items([page["id"]])
         src = _bp_sources()
-        disp = [bpage_live(i, (src.get(i.get("source")) or {}).get(i.get("prop_key"))) for i in items]
+        disp = []
+        for i in items:
+            lv = (src.get(i.get("source")) or {}).get(i.get("prop_key"))
+            d = bpage_live(i, lv)
+            d.update(bpage_cat(i.get("source"), lv))   # לסוכן בלבד — לא בדף הלקוח
+            disp.append(d)
         return jsonify({"ok": True, "page": {"url": _bp_url(page["token"]), "expires": page.get("expires_at"),
                                              "seen_at": page.get("seen_at"), "last_sent_at": page.get("last_sent_at"),
                                              "expired": bpage_expired(page, time.time())},
