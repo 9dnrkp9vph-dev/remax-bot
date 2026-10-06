@@ -11176,6 +11176,18 @@ def bpage_render_closed(agent, office):
         body = '<div class="wrap"><div class="empty"><div class="t">הקישור אינו פעיל</div></div></div>'
     return _bp_doc((office or {}).get("name") or "נכסים", body, office)
 
+def bpage_digest_plan(pages_new):
+    """[(page, new_matches)] → {טלפון9 של הסוכן: {buyers, props}} — רק דפים עם התאמות וסוכן עם טלפון."""
+    out = {}
+    for page, new in pages_new:
+        d = _bp_digits((page or {}).get("agent_phone"))[-9:]
+        if not new or len(d) < 9:
+            continue
+        o = out.setdefault(d, {"buyers": 0, "props": 0})
+        o["buyers"] += 1
+        o["props"] += len(new)
+    return out
+
 _BP_SB = None   # הזרקה לבדיקות; בפרודקשן None → supabase_db
 
 
@@ -12197,6 +12209,67 @@ def register(app, G):
                         _bp_push(pg, t, "סימן עוד %d נכסים" % n)
                 tm = _bpthr.Timer(600, _flush); tm.daemon = True; tm.start()
         return jsonify({"ok": True})
+
+    _BPAGE_DIGEST = (os.environ.get("BPAGE_DIGEST", "1") or "1").strip() not in ("0", "false", "off")
+    _BPAGE_DIGEST_HOUR = int(os.environ.get("BPAGE_DIGEST_HOUR", "10") or 10)
+
+    def _bp_digest_run(day):
+        """פוש מסכם אחד לכל סוכן: התאמות חזקות שנראו לראשונה ב-24ש' האחרונות, לדפים פעילים. פעם ביום."""
+        if (_load_config() or {}).get("v2_bpage_digest", {}).get(day):
+            return 0
+        sb = _bp_sb()
+        if not sb:
+            return 0
+        now = time.time()
+        pages = [p for p in (sb.bpage_all() or []) if not bpage_expired(p, now)]
+        items = sb.bpage_items([p["id"] for p in pages]) if pages else []
+        by = {}
+        for i in items:
+            by.setdefault(i["page_id"], set()).add(i.get("prop_key"))
+        src = _bp_sources()
+        pn = []
+        for p in pages:
+            q = p.get("query") or {}
+            pn.append((p, bpage_new_matches(q.get("p") or {}, src, by.get(p["id"], set()), now - 86400,
+                                             int(q.get("budget") or 0), lambda r, qq: G["score_match"](r, qq, 0))))
+        plan = bpage_digest_plan(pn)
+        for ph, v in plan.items():
+            G["send_push"]("התאמות חדשות לקונים שלך",
+                           "%d נכסים חדשים מתאימים ל-%d קונים שלך" % (v["props"], v["buyers"]), [ph])
+
+        def _mut(cfg):
+            d = cfg.setdefault("v2_bpage_digest", {})
+            d[day] = {"ts": int(now), "sent": len(plan)}
+            for k in sorted(d)[:-14]:
+                d.pop(k, None)
+        _config_mutate(_mut)
+        return len(plan)
+    G["_bp_digest_run"] = _bp_digest_run
+
+    _bp_thr = {"started": False}
+    _bp_thr_lock = _bpthr.Lock()
+
+    def _bp_digest_loop():
+        from zoneinfo import ZoneInfo as _ZB
+        import datetime as _dtb
+        while True:
+            try:
+                n = _dtb.datetime.now(_ZB("Asia/Jerusalem"))
+                if n.hour >= _BPAGE_DIGEST_HOUR:
+                    _bp_digest_run(n.strftime("%Y-%m-%d"))
+            except Exception as e:
+                if log: log.warning(f"bpage digest: {e}")
+            time.sleep(300)
+
+    @app.before_request
+    def _bp_ensure_thread():
+        if _bp_thr["started"] or not _BPAGE_DIGEST or not _BPAGE_ON:
+            return
+        with _bp_thr_lock:
+            if _bp_thr["started"]:
+                return
+            _bp_thr["started"] = True
+            _bpthr.Thread(target=_bp_digest_loop, name="bpage-digest", daemon=True).start()
 
     @app.route("/v2/api/buyers/statuses", methods=["GET"])
     def v2_api_buyers_statuses():
