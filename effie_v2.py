@@ -10879,6 +10879,180 @@ def bpage_rate_ok(hits, now, limit=30, per=60):
     return True
 
 
+BPAGE_CSS = r"""
+*{box-sizing:border-box}body{margin:0;background:#F2EFE7;font-family:Heebo,system-ui,sans-serif;color:#1E3A5F;-webkit-text-size-adjust:100%}
+.hd{position:sticky;top:0;z-index:5;background:#fff;display:flex;align-items:center;gap:10px;padding:10px 16px;box-shadow:0 2px 12px rgba(30,58,95,.08)}
+.av{width:46px;height:46px;border-radius:50%;object-fit:cover;background:#E4C56B;display:flex;align-items:center;justify-content:center;font-weight:800;color:#231700;flex-shrink:0}
+.hd .nm{font-weight:800;font-size:16px}.hd .of{font-size:12.5px;color:#6B7280}.hd .sp{flex:1}
+.ic{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:none;text-decoration:none}
+.ic.wa{background:#1FAF5E}.ic.ph{background:#EAF0FA}
+.wrap{max-width:560px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:6px 0 8px;font-weight:800}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}.chip{background:#fff;border:1px solid #DCD6C8;border-radius:999px;padding:5px 12px;font-size:13px}
+.card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);margin-bottom:14px;overflow:hidden}
+.gal{position:relative;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;aspect-ratio:4/3;background:#E9E5DA}
+.gal::-webkit-scrollbar{display:none}.gal img{flex:0 0 100%;width:100%;height:100%;object-fit:cover;scroll-snap-align:center;cursor:zoom-in}
+.cnt{position:absolute;bottom:10px;left:10px;background:rgba(14,29,51,.7);color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px}
+.newtag{position:absolute;top:10px;right:10px;background:#2E6BD6;color:#fff;font-size:12px;font-weight:800;border-radius:999px;padding:3px 10px}
+.bd{padding:14px 16px 16px}.ad{font-weight:800;font-size:16px}.ar{font-size:13px;color:#6B7280;margin-top:2px}
+.pr{font-size:22px;font-weight:800;margin-top:8px}.old{display:inline-block;font-size:14px;color:#6B7280;text-decoration:line-through;margin-inline-start:12px;font-weight:600}
+.facts{display:flex;gap:14px;font-size:13.5px;color:#5B6472;margin-top:6px}
+.ds{font-size:14px;line-height:1.55;margin-top:8px;color:#3B4656;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ds.open{-webkit-line-clamp:unset}.more{background:none;border:none;color:#2E6BD6;font-weight:700;font-size:13.5px;padding:6px 0;min-height:32px;font-family:inherit}
+.teaser{background:#F6EEDB;color:#7A5E1C;font-weight:700;font-size:13.5px;border-radius:14px;padding:10px 12px;margin-top:10px}
+.acts{display:flex;gap:8px;margin-top:12px}
+.acts button{flex:1;min-height:44px;border-radius:14px;font-family:inherit;font-weight:800;font-size:14px;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F}
+.acts .lk.on{background:#2E6BD6;border-color:#2E6BD6;color:#fff}.acts .dl.on{background:#5B6472;border-color:#5B6472;color:#fff}
+.acts .vs{background:#157A43;border-color:#157A43;color:#fff}
+.note{display:none;margin-top:8px}.note.open{display:flex;gap:8px}
+.note input{flex:1;font-size:16px;font-family:inherit;border:1.5px solid #DCD6C8;border-radius:12px;padding:10px;min-height:44px}
+.note button{min-height:44px;border-radius:12px;border:none;background:#2E6BD6;color:#fff;font-weight:800;padding:0 16px;font-family:inherit}
+.gone{opacity:.6}.gonetag{display:inline-block;background:#E9E5DA;color:#5B6472;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;margin-top:8px}
+.fold{width:100%;min-height:48px;background:#fff;border:1.5px solid #DCD6C8;border-radius:16px;font-family:inherit;font-weight:800;color:#5B6472;font-size:15px;margin:6px 0 14px}
+.empty{text-align:center;padding:40px 16px}.empty .c{width:64px;height:64px;border-radius:50%;background:#F6EEDB;margin:0 auto 12px;display:flex;align-items:center;justify-content:center}
+.empty .t{font-weight:800;font-size:18px}.empty .s{color:#6B7280;margin-top:6px}
+.btnrow{display:flex;gap:10px;justify-content:center;margin-top:16px}.btnrow a{min-height:44px;padding:0 18px;border-radius:14px;display:flex;align-items:center;font-weight:800;text-decoration:none}
+.btnrow .w{background:#157A43;color:#fff}.btnrow .p{background:#fff;border:1.5px solid #DCD6C8;color:#1E3A5F}
+#fs{display:none;position:fixed;inset:0;background:#0E1D33;z-index:20}#fs.open{display:flex}#fs .gal{aspect-ratio:auto;height:100%;width:100%;background:#0E1D33}
+#fs .gal img{object-fit:contain;cursor:default}#fs .x{position:absolute;top:14px;left:14px;width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:22px}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;border-radius:999px;padding:10px 18px;font-weight:700;display:none;z-index:30}
+"""
+
+BPAGE_JS = r"""
+var D = window.BP || {}, ST = {};
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function fmtP(p){ p = String(p || '').replace(/\D/g, ''); return p ? '₪' + p.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''; }
+function where(it, full){ var st = [it.street, full ? it.house : ''].filter(Boolean).join(' ');
+  return [st, it.neighborhood, it.city].filter(Boolean).join(', '); }
+function visitText(it){ return 'שלום ' + (D.agent.first || '') + ', אשמח לתאם ביקור ב' + where(it, it.source !== 'newborn'); }
+function galHtml(it, i){
+  var im = it.images || [];
+  if (!im.length) return '';
+  return '<div class="gal" id="g' + i + '" onscroll="galCnt(' + i + ')">' + im.map(function(u, k){
+      return '<img loading="lazy" src="' + esc(u) + '" alt="" onclick="fsOpen(' + i + ',' + k + ')">'; }).join('') +
+    (it.isNew ? '<span class="newtag">חדש</span>' : '') +
+    (im.length > 1 ? '<span class="cnt" id="c' + i + '">1/' + im.length + '</span>' : '') + '</div>';
+}
+function galCnt(i){ var g = document.getElementById('g' + i), c = document.getElementById('c' + i);
+  if (!g || !c) return; var n = g.children.length - (g.querySelector('.newtag') ? 1 : 0) - 1;
+  var k = Math.round(Math.abs(g.scrollLeft) / g.clientWidth) + 1; c.textContent = Math.min(k, n) + '/' + n; }
+function cardHtml(it, i){
+  var nb = it.source === 'newborn', facts = [];
+  if (it.rooms) facts.push(it.rooms + ' חדרים'); if (it.floor) facts.push('קומה ' + it.floor); if (it.sqm) facts.push(it.sqm + ' מ"ר');
+  var st = [it.street, nb ? '' : it.house].filter(Boolean).join(' ');
+  return '<div class="card' + (it.gone ? ' gone' : '') + '" id="k' + i + '">' + (nb ? '' : galHtml(it, i)) +
+    '<div class="bd"><div class="ad">' + esc(st) + (nb && it.isNew ? ' <span class="newtag" style="position:static">חדש</span>' : '') + '</div>' +
+    '<div class="ar">' + esc([it.neighborhood, it.city].filter(Boolean).join(', ')) + '</div>' +
+    '<div class="pr">' + esc(fmtP(it.price)) + (it.priceOld ? '<span class="old">' + esc(fmtP(it.priceOld)) + '</span>' : '') + '</div>' +
+    (facts.length ? '<div class="facts">' + esc(facts.join(' · ')) + '</div>' : '') +
+    (it.desc ? '<div class="ds" id="d' + i + '">' + esc(it.desc) + '</div>' + (it.desc.length > 140 ? '<button class="more" onclick="more(' + i + ',this)">קרא עוד</button>' : '') : '') +
+    (nb ? '<div class="teaser">נכס חדש לפני פרסום · פרטים אצל ' + esc(D.agent.first || D.agent.name) + '</div>' : '') +
+    (it.gone ? '<span class="gonetag">כבר לא זמין</span>' :
+      '<div class="acts"><button class="lk' + (it.mark === 'like' || it.mark === 'visit' ? ' on' : '') + '" onclick="mark(' + i + ',\'like\')">מתאים</button>' +
+      '<button class="dl' + (it.mark === 'dislike' ? ' on' : '') + '" onclick="mark(' + i + ',\'dislike\')">לא מתאים</button>' +
+      '<button class="vs" onclick="visit(' + i + ')">רוצה לראות</button></div>' +
+      '<div class="note" id="n' + i + '"><input id="ni' + i + '" maxlength="200" placeholder="למה? (לא חובה)" value="' + esc(it.note || '') + '">' +
+      '<button onclick="saveNote(' + i + ')">שמור</button></div>') +
+    '</div></div>';
+}
+function all(){ return (D.active || []).concat(D.disliked || []); }
+function render(){
+  var A = [], X = [];
+  all().forEach(function(it){ (it.mark === 'dislike' ? X : A).push(it); });
+  D.active = A; D.disliked = X;
+  var h = A.map(function(it, i){ return cardHtml(it, i); }).join('');
+  if (!A.length) h = '<div class="empty"><div class="c"><svg width="28" height="28" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9H4z" fill="none" stroke="#7A5E1C" stroke-width="2" stroke-linejoin="round"/></svg></div>' +
+    '<div class="t">אין כרגע נכסים ברשימה</div><div class="s">' + esc(D.agent.first || '') + ' יוסיף נכסים מתאימים בקרוב</div></div>';
+  if (X.length){
+    h += '<button class="fold" onclick="ST.fold=!ST.fold;render()">לא מתאימים (' + X.length + ')' + (ST.fold ? ' — הסתר' : '') + '</button>';
+    if (ST.fold) h += X.map(function(it, j){ return cardHtml(it, A.length + j); }).join('');
+  }
+  document.getElementById('list').innerHTML = h;
+}
+function itemAt(i){ return all()[i]; }
+function more(i, b){ var d = document.getElementById('d' + i); if (!d) return; d.classList.toggle('open'); b.textContent = d.classList.contains('open') ? 'הצג פחות' : 'קרא עוד'; }
+function toast(t){ var e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(ST.tt); ST.tt = setTimeout(function(){ e.style.display = 'none'; }, 2200); }
+function send(it, m, note){
+  return fetch(location.pathname.replace(/\/$/, '') + '/mark', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({key: it.key, mark: m, note: note || ''})}).then(function(r){ return r.json(); })
+    .then(function(j){ if (!j || !j.ok) toast('לא נשמר — נסה שוב'); return j; })
+    .catch(function(){ toast('לא נשמר — נסה שוב'); });
+}
+function mark(i, m){
+  var it = itemAt(i); if (!it) return;
+  var nm = (it.mark === m || (m === 'like' && it.mark === 'visit')) ? null : m;
+  it.mark = nm || ''; if (nm !== 'dislike') it.note = '';
+  send(it, nm, '');
+  render();
+  if (nm === 'dislike'){ var j = all().indexOf(it); ST.fold = true; render();
+    var n = document.getElementById('n' + j); if (n){ n.classList.add('open'); var inp = document.getElementById('ni' + j); if (inp) inp.focus(); } }
+  else if (nm) toast('נשמר');
+}
+function saveNote(i){ var it = itemAt(i), inp = document.getElementById('ni' + i); if (!it || !inp) return;
+  it.note = inp.value.slice(0, 200); send(it, 'dislike', it.note); toast('תודה, הועבר ל' + (D.agent.first || 'סוכן'));
+  var n = document.getElementById('n' + i); if (n) n.classList.remove('open'); }
+function visit(i){ var it = itemAt(i); if (!it) return;
+  it.mark = 'visit'; send(it, 'visit', ''); render();
+  window.open('https://wa.me/' + D.agent.wa + '?text=' + encodeURIComponent(visitText(it)), '_blank'); }
+function fsOpen(i, k){ var it = itemAt(i); if (!it) return; var fs = document.getElementById('fs');
+  fs.innerHTML = '<div class="gal">' + it.images.map(function(u){ return '<img src="' + esc(u) + '" alt="">'; }).join('') + '</div>' +
+    '<button class="x" aria-label="סגירה" onclick="document.getElementById(\'fs\').classList.remove(\'open\')">×</button>';
+  fs.classList.add('open'); var g = fs.firstChild; g.scrollLeft = -k * g.clientWidth; if (g.scrollLeft === 0 && k) g.scrollLeft = k * g.clientWidth; }
+if (typeof document !== 'undefined' && document.getElementById('list')) render();
+"""
+
+
+def _bp_esc(s):
+    import html as _h
+    return _h.escape(str(s or ""), quote=True)
+
+
+def _bp_head(office, agent):
+    av = ('<img class="av" src="%s" alt="" onerror="this.outerHTML=\'<div class=av>%s</div>\'">' % (_bp_esc(agent.get("avatar")), _bp_esc((agent.get("name") or "?")[:1]))
+          if agent.get("avatar") else '<div class="av">%s</div>' % _bp_esc((agent.get("name") or "?")[:1]))
+    btns = ""
+    if agent.get("wa"):
+        btns += ('<a class="ic wa" href="https://wa.me/%s" target="_blank" rel="noopener" aria-label="וואטסאפ">'
+                 '<svg width="20" height="20" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>') % _bp_esc(agent["wa"])
+    if agent.get("tel"):
+        btns += ('<a class="ic ph" href="tel:%s" aria-label="חיוג">'
+                 '<svg width="18" height="18" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7" stroke-linejoin="round"/></svg></a>') % _bp_esc(agent["tel"])
+    return ('<div class="hd">%s<div><div class="nm">%s</div><div class="of">%s</div></div><div class="sp"></div>%s</div>'
+            % (av, _bp_esc(agent.get("name")), _bp_esc((office or {}).get("name")), btns))
+
+
+def _bp_doc(title, body, office):
+    return ('<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+            '<meta name="robots" content="noindex,nofollow"><title>%s</title>'
+            '<link rel="preconnect" href="https://fonts.googleapis.com">'
+            '<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700;800&display=swap" rel="stylesheet">'
+            '<style>%s</style></head><body>%s</body></html>') % (_bp_esc(title), BPAGE_CSS, body)
+
+
+def bpage_render_public(ctx):
+    data = {"agent": ctx["agent"], "active": ctx["active"], "disliked": ctx["disliked"]}
+    js_data = _json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    chips = "".join('<span class="chip">%s</span>' % _bp_esc(c) for c in (ctx.get("chips") or []) if c)
+    hi = "שלום %s, הנכסים שבחרתי בשבילך" % ctx["buyer_first"] if ctx.get("buyer_first") else "הנכסים שבחרתי בשבילך"
+    body = (_bp_head(ctx.get("office"), ctx["agent"]) +
+            '<div class="wrap"><h1>%s</h1>%s<div id="list"></div></div><div id="fs"></div><div id="toast" role="status" aria-live="polite"></div>'
+            % (_bp_esc(hi), ('<div class="chips">%s</div>' % chips) if chips else "") +
+            '<script>window.BP=%s;</script><script>%s</script>' % (js_data, BPAGE_JS))
+    return _bp_doc((ctx.get("office") or {}).get("name") or "נכסים", body, ctx.get("office"))
+
+
+def bpage_render_closed(agent, office):
+    if agent:
+        inner = ('<div class="empty"><div class="t">הרשימה כבר לא פעילה</div><div class="s">דבר איתי ואשלח לך נכסים מעודכנים</div>'
+                 '<div class="btnrow">%s%s</div></div>') % (
+            ('<a class="w" href="https://wa.me/%s">וואטסאפ</a>' % _bp_esc(agent["wa"])) if agent.get("wa") else "",
+            ('<a class="p" href="tel:%s">חיוג</a>' % _bp_esc(agent["tel"])) if agent.get("tel") else "")
+        body = _bp_head(office, agent) + '<div class="wrap">%s</div>' % inner
+    else:
+        body = '<div class="wrap"><div class="empty"><div class="t">הקישור אינו פעיל</div></div></div>'
+    return _bp_doc((office or {}).get("name") or "נכסים", body, office)
+
 _BP_SB = None   # הזרקה לבדיקות; בפרודקשן None → supabase_db
 
 
@@ -11802,6 +11976,103 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "no_page"}), 404
         sb.bpage_remove_item(page["id"], str(b.get("key") or ""))
         _bp_cache["new"].pop(page["id"], None)
+        return jsonify({"ok": True})
+
+    import threading as _bpthr
+    _bp_rate, _bp_gate, _bp_glock = {}, {}, _bpthr.Lock()
+    _BP_TOKEN_RE = _re.compile(r"^[A-Za-z0-9_-]{10,40}$")
+
+    def _bp_agent_ctx(page):
+        ph = str(page.get("agent_phone", "") or "")
+        nm = str(page.get("agent_name", "") or "").strip()
+        d = "".join(ch for ch in ph if ch.isdigit())
+        tel = ("0" + d[-9:]) if len(d) >= 9 else ""
+        return {"name": nm, "first": nm.split()[0] if nm else "", "phone": tel, "tel": tel,
+                "wa": G["_wa_phone"](ph) if ph else "", "avatar": ("/v2/api/avatar?p=" + d[-9:]) if d else ""}
+
+    def _bp_resp(html, code):
+        return Response(html, status=code, headers={"Cache-Control": "no-store",
+                                                     "X-Robots-Tag": "noindex, nofollow",
+                                                     "Content-Type": "text/html; charset=utf-8"})
+
+    def _bp_page_or_none(token):
+        sb = _bp_sb()
+        if not sb or not _BP_TOKEN_RE.match(str(token or "")):
+            return None
+        try:
+            return sb.bpage_by_token(token)
+        except Exception as e:
+            if log: log.warning(f"bpage token: {e}")
+            return None
+
+    @app.route("/b/<token>", methods=["GET"])
+    def bpage_public(token):
+        office = _sb_office() or {}
+        page = _bp_page_or_none(token)
+        if not page:
+            return _bp_resp(bpage_render_closed(None, office), 404)
+        agent = _bp_agent_ctx(page)
+        if bpage_expired(page, time.time()):
+            return _bp_resp(bpage_render_closed(agent, office), 410)
+        sb = _bp_sb()
+        items = sb.bpage_items([page["id"]])
+        src = _bp_sources()
+        disp = [bpage_live(i, (src.get(i.get("source")) or {}).get(i.get("prop_key"))) for i in items]
+        act, dis = bpage_order(disp)
+        buyer = _bp_buyer(page.get("row")) or {}
+        name = str(buyer.get("name", "") or "").strip()
+        chips = [str(buyer.get("search", "") or "").strip()[:60]]
+        bd = bai_budget(buyer.get("budget", "")) or bai_budget(buyer.get("search", ""))
+        if bd:
+            chips.append("עד ₪{:,}".format(int(bd)))
+        return _bp_resp(bpage_render_public({"office": office, "agent": agent, "buyer_first": name.split()[0] if name else "",
+                                             "chips": chips, "active": act, "disliked": dis}), 200)
+
+    def _bp_push(page, title, body):
+        to = G["_last9"](page.get("agent_phone", ""))
+        if to:
+            _bpthr.Thread(target=lambda: G["send_push"](title, body, [to]), daemon=True).start()
+
+    @app.route("/b/<token>/mark", methods=["POST"])
+    def bpage_public_mark(token):
+        page = _bp_page_or_none(token)
+        if not page:
+            return jsonify({"ok": False}), 404
+        if bpage_expired(page, time.time()):
+            return jsonify({"ok": False, "expired": True}), 410
+        now = time.time()
+        with _bp_glock:
+            if not bpage_rate_ok(_bp_rate.setdefault(page["id"], []), now):
+                return jsonify({"ok": False, "reason": "rate"}), 429
+        b = request.get_json(silent=True) or {}
+        mark = b.get("mark") or None
+        if mark is not None and mark not in BPAGE_MARKS:
+            return jsonify({"ok": False, "reason": "bad_mark"}), 400
+        note = str(b.get("note") or "")[:200] if mark == "dislike" else ""
+        it = _bp_sb().bpage_set_mark(page["id"], str(b.get("key") or ""), mark, note)
+        if not it:
+            return jsonify({"ok": False, "reason": "no_item"}), 404
+        if mark:
+            buyer = _bp_buyer(page.get("row")) or {}
+            bname = str(buyer.get("name", "") or "").strip() or "לקוח"
+            sn = it.get("snapshot") or {}
+            st = " ".join(x for x in (sn.get("street"), sn.get("house")) if x)
+            _log_activity(page.get("agent_name", ""), "client", "", "סימון בדף לקוח",
+                          "%s: %s · %s%s" % (bname, BPAGE_MARKS[mark], st, (" · " + note) if note else ""))
+            with _bp_glock:
+                gst = _bp_gate.setdefault(page["id"], {})
+                g = bpage_push_gate(gst, now)
+            title = "דף לקוח · " + bname
+            if g == "now":
+                _bp_push(page, title, "%s — %s%s" % (BPAGE_MARKS[mark], st, (" · " + note) if note else ""))
+                def _flush(pid=page["id"], pg=page, t=title):
+                    with _bp_glock:
+                        n = _bp_gate.get(pid, {}).get("n", 0)
+                        if pid in _bp_gate:
+                            _bp_gate[pid]["n"] = 0
+                    if n:
+                        _bp_push(pg, t, "סימן עוד %d נכסים" % n)
+                tm = _bpthr.Timer(600, _flush); tm.daemon = True; tm.start()
         return jsonify({"ok": True})
 
     @app.route("/v2/api/buyers/statuses", methods=["GET"])
