@@ -11577,6 +11577,233 @@ def register(app, G):
             if log: log.error(f"buyer ai search error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
+    # ── [BPAGE 06/10] דף קונה — ראוטים (ספק docs/superpowers/specs/2026-10-06-buyer-page-design.md) ──
+    _BPAGE_ON = (os.environ.get("BPAGE", "1") or "1").strip() not in ("0", "false", "off")
+    _bp_cache = {"src": None, "ts": 0.0, "new": {}}
+
+    def _bp_sb():
+        if _BP_SB is not None:
+            return _BP_SB
+        return _sb_mod()
+
+    def _bp_sources():
+        """{source: {key: orow}} מהמקורות החיים; orow במבנה שורת משרד + _ep (נראה לראשונה). cache 120ש'."""
+        if _bp_cache["src"] is not None and time.time() - _bp_cache["ts"] < 120:
+            return _bp_cache["src"]
+        out = {"office": {}, "shtaf": {}, "newborn": {}}
+        try:
+            for r in (G["fetch_sheet_rows"]() or []):
+                if str(r.get("סטטוס", "") or "").strip() not in ("", "פעילה"):
+                    continue
+                k = G["_prop_price_key"](r)
+                if k:
+                    out["office"][k] = dict(r, _ep=G["_prop_epoch"](r) or 0)
+        except Exception as e:
+            if log: log.warning(f"bpage office src: {e}")
+        try:
+            for r in (G["_dedupe_exclusives"](G["fetch_external_exclusives"]() or []) or []):
+                k = G["_excl_price_key"](r)
+                if k:
+                    o = bpage_excl_as_office_row(r)
+                    o["_ep"] = G["_excl_epoch"](r.get("first_seen") or r.get("received_at", "")) or 0
+                    out["shtaf"][k] = o
+        except Exception as e:
+            if log: log.warning(f"bpage shtaf src: {e}")
+        try:
+            for r in (G["fetch_newborn"]() or []):
+                k = G["_nb_key"](r)
+                if k:
+                    o = dict(G["_nb_as_office_row"](r))
+                    o["ירד מפרסום"] = str(r.get("delisted_at", "") or "").strip()
+                    o["_ep"] = G["_newborn_created_epoch"](r) or 0
+                    out["newborn"][k] = o
+        except Exception as e:
+            if log: log.warning(f"bpage newborn src: {e}")
+        _bp_cache.update(src=out, ts=time.time())
+        return out
+
+    def _bp_buyer(row):
+        try:
+            row = int(row)
+        except Exception:
+            return None
+        for b in (G["_fetch_manual_buyers"]() or []):
+            if str(b.get("row", "")) == str(row):
+                return b
+        return None
+
+    def _bp_own(s):
+        if s.get("role") == "admin":
+            return lambda b: True
+        ck, l9 = G["_canon_key"], G["_last9"]
+        nm = s.get("name", "")
+        ph = set(G["_phones_for_name"](nm) or [])
+        if s.get("phone"):
+            ph.add(l9(s["phone"]))
+        keys, phones, _m = G["_scope_keys_phones"](s.get("role", ""), nm, ph, s.get("agents"), s.get("agent_names"))
+        return lambda b: (ck(b.get("agent", "")) in keys) or (l9(b.get("agent_phone", "")) in phones)
+
+    def _bp_url(token):
+        base = (G.get("APP_BASE_URL") or request.url_root or "").rstrip("/")
+        return base + "/b/" + token
+
+    def _bp_auth_buyer(row):
+        """(session, buyer, error_response)."""
+        s = _web_auth()
+        if not s:
+            return None, None, (jsonify({"ok": False, "auth": False}), 401)
+        b = _bp_buyer(row)
+        if not b:
+            return s, None, (jsonify({"ok": False, "reason": "no_buyer"}), 404)
+        if not _bp_own(s)(b):
+            return s, None, (jsonify({"ok": False, "reason": "forbidden"}), 403)
+        return s, b, None
+
+    def _bp_newmatches(page, items):
+        """התאמות חדשות לדף (מטמון 10 דק' לדף)."""
+        ck = _bp_cache["new"].get(page["id"])
+        if ck and time.time() - ck[0] < 600:
+            return ck[1]
+        q = page.get("query") or {}
+        sent = {i.get("prop_key") for i in items}
+        try:
+            res = bpage_new_matches(q.get("p") or {}, _bp_sources(), sent, bpage_iso_ep(page.get("created_at")),
+                                    int(q.get("budget") or 0), lambda r, qq: G["score_match"](r, qq, 0))
+        except Exception as e:
+            if log: log.warning(f"bpage new matches: {e}")
+            res = []
+        _bp_cache["new"][page["id"]] = (time.time(), res)
+        return res
+
+    @app.route("/v2/api/bpage/send", methods=["POST"])
+    def v2_api_bpage_send():
+        if not _BPAGE_ON:
+            return jsonify({"ok": False, "off": True})
+        b = request.get_json(silent=True) or {}
+        s, buyer, err = _bp_auth_buyer(b.get("row"))
+        if err:
+            return err
+        sb = _bp_sb()
+        if not sb:
+            return jsonify({"ok": False, "off": True})
+        try:
+            src = _bp_sources()
+            good, seen = [], set()
+            for it in (b.get("items") or [])[:30]:
+                so = "office" if it.get("source") == "mine" else str(it.get("source") or "")
+                k = str(it.get("key") or "")
+                r = (src.get(so) or {}).get(k)
+                if r is None or k in seen:
+                    continue
+                seen.add(k)
+                good.append({"source": so, "prop_key": k, "snapshot": bpage_snapshot(so, r)})
+            if not good:
+                return jsonify({"ok": False, "reason": "no_items"})
+            import secrets as _secrets, datetime as _dtb
+            now = _dtb.datetime.now(_dtb.timezone.utc)
+            exp = (now + _dtb.timedelta(days=BPAGE_DAYS)).isoformat()
+            agent = str(buyer.get("agent", "") or "").strip()
+            aph = str(buyer.get("agent_phone", "") or "").strip() or str((G["fetch_agents_phones"]() or {}).get(agent, "") or "")
+            qtext = str(b.get("q") or "").strip()[:200]
+            query = {"q": qtext, "p": (G["_parse_props_query"](qtext) or {}) if qtext else {},
+                     "budget": bai_budget(buyer.get("budget", "")) or bai_budget(buyer.get("search", ""))}
+            page = sb.bpage_by_row(buyer["row"])
+            first = page is None
+            if first:
+                page = sb.bpage_create(buyer["row"], _secrets.token_urlsafe(16), agent, aph, exp, query)
+                if not page:
+                    return jsonify({"ok": False, "reason": "create_failed"}), 500
+            else:
+                sb.bpage_update(page["id"], {"last_sent_at": now.isoformat(), "expires_at": exp, "query": query,
+                                             "agent_name": agent, "agent_phone": aph})
+            added = sb.bpage_add_items(page["id"], good)
+            _bp_cache["new"].pop(page["id"], None)
+            name = str(buyer.get("name", "") or "").strip()
+            url = _bp_url(page["token"])
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "דף לקוח — שליחה",
+                          "%s · %d נכסים" % (name, len(added)))
+            return jsonify({"ok": True, "first": first, "added": len(added), "url": url,
+                            "msg": bpage_wa_text(name.split()[0] if name else "", url, len(added), first),
+                            "wa": G["_wa_phone"](buyer.get("phone", ""))})
+        except Exception as e:
+            if log: log.error(f"bpage send: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    @app.route("/v2/api/bpage", methods=["GET"])
+    def v2_api_bpage_get():
+        s, buyer, err = _bp_auth_buyer(request.args.get("row"))
+        if err:
+            return err
+        sb = _bp_sb()
+        page = sb.bpage_by_row(buyer["row"]) if sb else None
+        if not page:
+            return jsonify({"ok": True, "page": None, "items": [], "new_matches": []})
+        items = sb.bpage_items([page["id"]])
+        src = _bp_sources()
+        disp = [bpage_live(i, (src.get(i.get("source")) or {}).get(i.get("prop_key"))) for i in items]
+        return jsonify({"ok": True, "page": {"url": _bp_url(page["token"]), "expires": page.get("expires_at"),
+                                             "seen_at": page.get("seen_at"), "last_sent_at": page.get("last_sent_at"),
+                                             "expired": bpage_expired(page, time.time())},
+                        "items": disp, "new_matches": _bp_newmatches(page, items)})
+
+    @app.route("/v2/api/bpage/summary", methods=["GET"])
+    def v2_api_bpage_summary():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        sb = _bp_sb()
+        if not sb or not _BPAGE_ON:
+            return jsonify({"ok": True, "rows": {}})
+        try:
+            own = _bp_own(s)
+            bys = {str(b.get("row", "")): b for b in (G["_fetch_manual_buyers"]() or [])}
+            pages = [p for p in (sb.bpage_all() or []) if str(p.get("row")) in bys and own(bys[str(p.get("row"))])]
+            items = sb.bpage_items([p["id"] for p in pages]) if pages else []
+            by_page = {}
+            for i in items:
+                by_page.setdefault(i["page_id"], []).append(i)
+            rows = {}
+            for p in pages:
+                its = by_page.get(p["id"], [])
+                seen = bpage_iso_ep(p.get("seen_at"))
+                cnt = {"like": 0, "visit": 0, "dislike": 0}
+                for i in its:
+                    if i.get("mark") in cnt:
+                        cnt[i["mark"]] += 1
+                rows[str(p["row"])] = dict(cnt, total=len(its),
+                                           unseen=any(bpage_iso_ep(i.get("marked_at")) > seen for i in its if i.get("marked_at")),
+                                           newN=len(_bp_newmatches(p, its)), expired=bpage_expired(p, time.time()))
+            return jsonify({"ok": True, "rows": rows})
+        except Exception as e:
+            if log: log.warning(f"bpage summary: {e}")
+            return jsonify({"ok": True, "rows": {}})
+
+    @app.route("/v2/api/bpage/seen", methods=["POST"])
+    def v2_api_bpage_seen():
+        s, buyer, err = _bp_auth_buyer((request.get_json(silent=True) or {}).get("row"))
+        if err:
+            return err
+        sb = _bp_sb()
+        page = sb.bpage_by_row(buyer["row"]) if sb else None
+        if page:
+            import datetime as _dtb
+            sb.bpage_update(page["id"], {"seen_at": _dtb.datetime.now(_dtb.timezone.utc).isoformat()})
+        return jsonify({"ok": True})
+
+    @app.route("/v2/api/bpage/remove", methods=["POST"])
+    def v2_api_bpage_remove():
+        b = request.get_json(silent=True) or {}
+        s, buyer, err = _bp_auth_buyer(b.get("row"))
+        if err:
+            return err
+        sb = _bp_sb()
+        page = sb.bpage_by_row(buyer["row"]) if sb else None
+        if not page:
+            return jsonify({"ok": False, "reason": "no_page"}), 404
+        sb.bpage_remove_item(page["id"], str(b.get("key") or ""))
+        _bp_cache["new"].pop(page["id"], None)
+        return jsonify({"ok": True})
+
     @app.route("/v2/api/buyers/statuses", methods=["GET"])
     def v2_api_buyers_statuses():
         if not _web_auth():
