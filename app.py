@@ -7646,6 +7646,7 @@ def api_search_properties():
                 "delisted": (row.get("ירד מפרסום", "") or "").strip(),   # תווית 3 ימים (09/09)
                 "excl": _y2_excl_flag(row.get("בלעדיות", "")),          # 27/09: בלעדי/רגיל גם במשרד (רשימת בלעדיות מול רגילות לאייל)
                 "branch": str(row.get("_y2_office_id", "") or ""),
+                "pkey": _prop_price_key(row),   # [BPAGE 06/10] מפתח יציב לדף הקונה
             }
             if score is not None:
                 d["score"] = min(100, int(score))
@@ -7754,6 +7755,7 @@ def api_my_properties():
                 "wa": _wa_phone(phones_map.get(ag, r.get("טלפון 1", ""))),
                 "desc": (r.get("_desc_ae", "") or "").strip(),
                 "link": (r.get("קישור", "") or "").strip(),   # מודעת יד2 (בקשת אייל 01/09)
+                "pkey": _prop_price_key(r),   # [BPAGE 06/10]
                 "delisted": (r.get("ירד מפרסום", "") or "").strip(),
                 "date": (r.get("תאריך יצירה", "") or r.get("_y2_first_seen", "") or "").strip(),
                 "isNew": _prop_is_new(r),
@@ -9248,6 +9250,7 @@ def api_search_exclusives():
                 "isNew": _excl_is_new(r),                                   # 24/09
                 "priceDropped": _excl_price_key(r) in _pd_map,               # 24/09: תג ירידת מחיר בשת"פ
                 "priceOld": _pd_map.get(_excl_price_key(r), ""),
+                "pkey": _excl_price_key(r),     # [BPAGE 06/10]
                 "lat": round(_ll[0], 6) if _ll else None,
                 "lng": round(_ll[1], 6) if _ll else None,
             })

@@ -9805,6 +9805,7 @@ def y2_norm_office(row, office_id):
             "בלעדיות": ("1" if g("excl").strip().lower() in ("1", "1.0", "true", "yes", "כן", "בלעדי")
                         else ("0" if g("excl").strip().lower() in ("0", "0.0", "false", "no", "לא") else "")),
             "תגיות": g("tags").replace(";", " · "), "תמונה": g("image"),
+            "תמונות": [str(u) for u in (row.get("images") or []) if str(u).startswith("http")][:30],   # [BPAGE 06/10]
             "סטטוס": "פעילה", "_desc_ae": y2_clean_desc(g("description")),
             "_y2_first_seen": y2_first_seen_str(g("imported_at") or g("listing_date") or g("first_seen")),
             "_y2_office_id": str(office_id or "").strip(), "מקור": "yad2"}
@@ -10046,7 +10047,10 @@ def y2_norm_agency(row, office, office_id):
            "event_id": tok, "city": g("city"), "neighborhood": g("neighborhood"), "מקור": "yad2",
            # 15/09: 'נראה לראשונה' מהסורק (imported_at) — יציב בין סריקות, בניגוד ל-received_at שנדרס בכל upsert;
            # הדוח היומי משווה "נכסים חדשים" בין המשרדים לפיו (ריק = הסורק לא שלח → נופל ל-received_at)
-           "first_seen": y2_first_seen_str(g("imported_at") or g("first_seen"))}
+           "first_seen": y2_first_seen_str(g("imported_at") or g("first_seen")),
+           # [BPAGE 06/10] לדף הקונה: פרטים נפרדים + גלריה (הסורק ישלח images — עד אז image אחת)
+           "rooms": y2_num_str(g("rooms")), "sqm": y2_num_str(g("sqm")), "floor": y2_num_str(g("floor")),
+           "image": g("image"), "images": [str(u) for u in (row.get("images") or []) if str(u).startswith("http")][:30]}
     rec = {"event_id": tok, "street": street_full, "dest": raw["dest"], "link": g("link"),
            "price": y2_num_str(g("price")), "raw": raw}
     return sk, rec
