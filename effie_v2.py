@@ -3378,6 +3378,10 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .prop .sel{flex:0 0 40px;width:40px;border-radius:12px;border:1.5px solid #DCD6C8;background:#fff;color:#C9C4B6;
       display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:40px}
   .prop .sel.on{background:#157A43;border-color:#157A43;color:#fff}
+  /* [BPAGE 07/10] בחירת נכס נולד לדף נכס — היה בלי עיצוב ונראה מסומן תמיד */
+  .nbSel{flex:0 0 44px;width:44px;height:44px;border-radius:12px;border:1.5px solid #DCD6C8;background:#fff;color:#C9C4B6;
+      display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+  .nbSel.on{background:#157A43;border-color:#157A43;color:#fff}
   .prop .a1{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#157A43;color:#fff;
       border-radius:11px;padding:9px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
       box-shadow:0 4px 12px rgba(31,175,94,.25)}
@@ -4246,9 +4250,9 @@ function renderMatchTab(){
       try{
         var _mi = (r._mi != null) ? r._mi : (r._mi = MITEMS.push({p: r, nb: true}) - 1);
         nh += '<div style="display:flex;align-items:center;gap:8px;margin:2px 4px 6px">' +
-          '<button class="sel' + (MSEL[_mi] ? ' on' : '') + '" onclick="toggleSel(' + _mi + ')" aria-label="בחירה לדף הנכס">' +
+          '<button class="sel nbSel' + (MSEL[_mi] ? ' on' : '') + '" onclick="toggleSel(' + _mi + ')" aria-label="בחירה לדף הנכס">' +
           '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7.5l3.5 3.5L12 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
-          '<span style="font-size:12.5px;color:#6B7280">לדף הנכס (בלי כתובת ותמונות)</span>' + bpChip(r.key) + '</div>' + nbCard(r, i);
+          '<span onclick="toggleSel(' + _mi + ')" style="font-size:12.5px;color:#6B7280;cursor:pointer">לדף הנכס (בלי כתובת ותמונות)</span>' + bpChip(r.key) + '</div>' + nbCard(r, i);
       }catch(e){}
     });
     if (nh) h = '<div class="nbk">' + nh + '</div>';
