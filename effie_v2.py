@@ -13155,6 +13155,13 @@ def register(app, G):
             # בודק אותה ועוצר אם השרת עדיין ישן (אחרת היה רושם 'נשלח' על אירועים שנזרקו)
             out = {"ok": True, "stream": stream, "n": 0, "ourN": 0, "shtafN": 0, "nbN": 0, "delistedN": 0, "dlv": 2}
             rows = b.get("rows") or []
+            try:   # [BPAGE 06/10] אבחון גלריה: האם הסורק שולח images (v13.39) — שורה אחת לכל מנה
+                _ni = [len(r.get("images") or []) for r in rows if isinstance(r, dict)]
+                if log and _ni:
+                    log.info("yad2 ingest images: stream=%s rows=%d with_images=%d max=%d"
+                             % (stream, len(_ni), sum(1 for x in _ni if x), max(_ni)))
+            except Exception:
+                pass
             if stream == "private":
                 norm = [y2_norm_private(r) for r in rows]
                 try:   # שעות קיימות ב-DB — שסריקה חוזרת (תאריך-בלבד) לא תמחק שעה שכבר נקבעה
