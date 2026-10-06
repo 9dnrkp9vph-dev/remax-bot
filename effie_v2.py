@@ -10718,6 +10718,166 @@ def sig_ingest_norm(b):
 
 
 
+# ── [BPAGE 06/10] דף קונה עם התאמות נכסים — פונקציות טהורות (ספק 2026-10-06-buyer-page) ──
+# כללי חשיפה (אייל 06/10): נכס נולד — בלי מספר בית/תמונות/תיאור/בעלים; שת"פ — בלי משרד/קישור;
+# אף קישור ליד2 ואף טלפון שאינו של הסוכן המטפל.
+BPAGE_MARKS = {"like": "מתאים", "dislike": "לא מתאים", "visit": "רוצה לראות"}
+BPAGE_DAYS = 90
+
+
+def _bp_digits(x):
+    return _re.sub(r"\D", "", str(x or ""))
+
+
+def bpage_iso_ep(s):
+    import datetime as _dtb
+    try:
+        return _dtb.datetime.fromisoformat(str(s or "").replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+def bpage_expired(page, now_ep):
+    ep = bpage_iso_ep((page or {}).get("expires_at"))
+    return (not ep) or ep < now_ep
+
+
+def bpage_images(row):
+    imgs = (row or {}).get("תמונות") or (row or {}).get("images") or []
+    if isinstance(imgs, str):
+        try:
+            imgs = _json.loads(imgs)
+        except Exception:
+            imgs = [imgs]
+    out = [str(u).strip() for u in (imgs if isinstance(imgs, list) else []) if str(u).strip().startswith("http")]
+    if not out:
+        one = str((row or {}).get("תמונה", "") or (row or {}).get("image", "") or "").strip()
+        if one.startswith("http"):
+            out = [one]
+    return out[:30]
+
+
+def bpage_excl_as_office_row(r):
+    """שורת שת"פ (raw שטוח: street='הרב קוק 33, קרית מוצקין', dest='דירה · 4 חד' · 115 מ"ר') → שורת משרד.
+    במכוון בלי office/link/phone — הם לא יוצאים לדף הלקוח."""
+    g = lambda k: str((r or {}).get(k, "") or "").strip()
+    st = g("street").split(",")[0].strip()
+    m = _re.match(r"^(.*?)\s+(\d+\S*)$", st)
+    street, house = (m.group(1).strip(), m.group(2)) if m else (st, "")
+    parts = [p.strip() for p in g("dest").split("·") if p.strip()]
+    num = lambda p: _re.sub(r"[^\d.]", "", p)
+    rooms = next((num(p) for p in parts if "חד" in p), "") or g("rooms")
+    sqm = next((num(p) for p in parts if 'מ"ר' in p), "") or g("sqm")
+    ptype = parts[0] if parts and "חד" not in parts[0] and 'מ"ר' not in parts[0] else ""
+    return {"סוג עסקה": "מכירה", "עיר / ישוב": g("city"), "שכונה": g("neighborhood"),
+            "כתובת": street, "מספר בית": house, "חדרים": rooms, 'מ"ר': sqm, "קומה": g("floor"),
+            "מחיר": g("price"), "סוג נכס": ptype, "תיאור": g("desti"),
+            "תמונה": g("image"), "תמונות": (r or {}).get("images") or [],
+            "ירד מפרסום": g("delisted_at")}
+
+
+def bpage_snapshot(source, orow):
+    g = lambda k: str((orow or {}).get(k, "") or "").strip()
+    snap = {"street": g("כתובת"), "house": g("מספר בית"), "neighborhood": g("שכונה"), "city": g("עיר / ישוב"),
+            "price": _bp_digits(g("מחיר")), "rooms": g("חדרים"), "floor": g("קומה"),
+            "sqm": g('מ"ר') or g("מ״ר"), "type": g("סוג נכס"),
+            "desc": (g("_desc_ae") or g("תיאור"))[:1200], "images": bpage_images(orow)}
+    if source == "newborn":
+        snap.update(house="", desc="", images=[])
+    return snap
+
+
+def bpage_live(item, live):
+    snap = dict((item or {}).get("snapshot") or {})
+    d = dict(snap)
+    d.update(key=item.get("prop_key", ""), source=item.get("source", ""), mark=item.get("mark") or "",
+             note=item.get("note") or "", added=item.get("added_at") or "", marked=item.get("marked_at") or "",
+             gone=False, priceOld="")
+    d.setdefault("images", [])
+    if live is not None:
+        if str(live.get("ירד מפרסום", "") or "").strip():
+            d["gone"] = True
+        cur = _bp_digits(live.get("מחיר"))
+        if cur:
+            if snap.get("price") and int(cur) < int(snap["price"]):
+                d["priceOld"] = snap["price"]
+            d["price"] = cur
+        if item.get("source") != "newborn":
+            imgs = bpage_images(live)
+            if len(imgs) > len(d["images"]):
+                d["images"] = imgs
+    return d
+
+
+def bpage_order(disp):
+    """active: האצווה האחרונה (isNew) קודם, אחר כך לפי זמן הוספה יורד; disliked — בנפרד."""
+    if not disp:
+        return [], []
+    eps = [bpage_iso_ep(x.get("added")) for x in disp]
+    top, low = max(eps), min(eps)
+    for x, ep in zip(disp, eps):
+        x["isNew"] = (top - low > 120) and (top - ep) <= 120   # שליחה אחת = עד 2 דק'; אצווה יחידה אינה "חדשה"
+    srt = sorted(zip(disp, eps), key=lambda t: (not t[0]["isNew"], -t[1]))
+    act = [x for x, _ in srt if x.get("mark") != "dislike"]
+    dis = [x for x, _ in srt if x.get("mark") == "dislike"]
+    return act, dis
+
+
+def bpage_wa_text(first, url, n, is_first):
+    hi = "היי" + (" " + first if first else "") + ", "
+    if is_first:
+        body = "הכנתי לך רשימת נכסים אישית:"
+    elif n == 1:
+        body = "הוספתי לך נכס חדש:"
+    elif n > 1:
+        body = "הוספתי לך %d נכסים חדשים:" % n
+    else:
+        body = "הנה רשימת הנכסים שלך:"
+    return hi + body + "\n" + url
+
+
+def bpage_new_matches(query, src_rows, sent, since_ep, budget, score_fn, cap=30):
+    """התאמות חזקות (60+, תקציב ±20% כמו בחלון ההתאמות) שעוד לא בדף ונראו לראשונה אחרי since_ep."""
+    out = []
+    for src, rows in (src_rows or {}).items():
+        for k, r in (rows or {}).items():
+            if not k or k in sent or (r.get("_ep") or 0) <= since_ep:
+                continue
+            if str(r.get("ירד מפרסום", "") or "").strip():
+                continue
+            pr = int(_bp_digits(r.get("מחיר")) or 0)
+            if budget >= 10000 and pr and abs(pr - budget) > budget * 0.2:
+                continue
+            try:
+                sc = int(score_fn(r, query) or 0)
+            except Exception:
+                continue
+            if sc >= 60:
+                out.append({"source": src, "key": k, "score": min(100, sc)})
+    out.sort(key=lambda o: -o["score"])
+    return out[:cap]
+
+
+def bpage_push_gate(st, now, window=600):
+    """פוש ראשון מיד; סימונים נוספים בתוך החלון נצברים (st['n']) לפוש מסכם בסוף החלון."""
+    if not st.get("t") or now - st["t"] >= window:
+        st["t"], st["n"] = now, 0
+        return "now"
+    st["n"] = st.get("n", 0) + 1
+    return "pend"
+
+
+def bpage_rate_ok(hits, now, limit=30, per=60):
+    hits[:] = [t for t in hits if now - t < per]
+    if len(hits) >= limit:
+        return False
+    hits.append(now)
+    return True
+
+
+_BP_SB = None   # הזרקה לבדיקות; בפרודקשן None → supabase_db
+
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
