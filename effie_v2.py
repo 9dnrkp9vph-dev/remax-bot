@@ -3752,7 +3752,11 @@ function openEdit(i){
         (st === cur ? 'background:#2E6BD6;color:#fff' : 'background:#F5F3EC;border:1px solid #E9E4D8;color:#5B6472') + '">' +
         ST_LABEL[st] + '</div>';
     }).join('') + '</div></div>' +
-    '<div class="fld"><span>מה מחפש (דרישות) — זה הטקסט שמופיע בכרטיס ומשמש את ההתאמה</span><textarea id="edSearch" rows="3" placeholder="לדוגמה: 4 חדרים בקריות עד 1.5M, קומה נמוכה, מעלית">' + esc(b.search || '') + '</textarea></div>' +
+    '<div class="fld"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
+      '<span>מה מחפש (דרישות) — זה הטקסט שמופיע בכרטיס ומשמש את ההתאמה</span>' +
+      '<button type="button" onclick="var t=el(\'edSearch\');t.value=\'\';t.focus()" style="flex-shrink:0;min-height:44px;padding:0 14px;' +
+      'border-radius:999px;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F;font-weight:700;font-size:13px;font-family:inherit">נקה חיפוש</button></div>' +
+      '<textarea id="edSearch" rows="3" placeholder="לדוגמה: 4 חדרים בקריות עד 1.5M, קומה נמוכה, מעלית">' + esc(b.search || '') + '</textarea></div>' +
     '<div style="font-size:11px;color:#6B7280;line-height:1.5">שם הקונה נערך בינתיים בגיליון.</div>' +
     '<button class="btn btn-blue" onclick="saveEdit(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
