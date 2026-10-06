@@ -1864,6 +1864,15 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <button id="ibsGo" onclick="ibsRun(true)" disabled style="margin-top:8px;width:100%;min-height:44px;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer;opacity:.45">ייבא עכשיו</button>
     </div>
 
+    <!-- [BS-CTRL 06/10] בקרה: קונים שמפרסמים נכס -->
+    <div class="card" id="bsCard">
+      <div class="cardTitle">קונים שמפרסמים נכס</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.6">קונה שהטלפון שלו מופיע כבעל נכס במודעה פעילה בנכס נולד (מכירה).
+        הודעה לסוכן יוצאת רק כשאחד הצדדים חדש (3 ימים) — התאמות ישנות מוצגות כאן לבקרה בלבד.</div>
+      <div id="bsStats" style="margin-top:8px;font-size:12.5px;line-height:1.7;color:#1E3A5F">טוען…</div>
+      <div id="bsList" style="margin-top:6px"></div>
+    </div>
+
     <!-- דוח יומי במייל (אייל 15/09) -->
     <div class="card" id="repCard">
       <div class="cardTitle">דוח יומי במייל</div>
@@ -2033,7 +2042,7 @@ function boot(){
           .concat(((rs[1] && rs[1].unmatchedListings) || []).map(function(u){ return {n: u.name, c: u.count, w: 'נכסים'}; }));
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
-        render(); loadSnaps(); repLoad();
+        render(); loadSnaps(); repLoad(); bsLoad();
       });
   }).catch(function(){ location.replace('/v2'); });
 }
@@ -2101,6 +2110,37 @@ function snapRestore(i){
     if (j && j.ok){ toast('שוחזרו ' + j.n + ' נכסים'); loadSnaps(); }
     else toast('השחזור נכשל' + (j && j.reason ? ' (' + j.reason + ')' : ''));
   }).catch(function(){ toast('שגיאה'); });
+}
+/* [BS-CTRL 06/10] בקרה: קונים שמפרסמים נכס */
+var BS_ST = {pending: ['ממתין לשליחה', '#7A5E1C'], sent: ['נשלח לסוכן', '#157A43'], no_agent: ['לא נשלח — אין טלפון לסוכן', '#C24040'],
+             closed: ['לא נשלח — הקונה סגר', '#6B7280'], old: ['לא נשלח — התאמה ישנה', '#6B7280']};
+var BS_ALL = false, BS_LAST = null;
+function bsRender(j){
+  BS_LAST = j;
+  var t = j.stats || {}, rows = j.rows || [];
+  el('bsStats').innerHTML = '<b>' + (t.matches || 0) + '</b> קונים-מוכרים כרגע · נשלחו ' + rows.filter(function(r){ return r.status === 'sent'; }).length +
+    '<br><span style="color:#6B7280">' + (t.buyers || 0) + ' קונים (' + (t.buyers_mobile || 0) + ' עם נייד) מול ' + (t.listings_phone || 0) +
+    ' מודעות פרטיות פעילות עם נייד' + (t.alerts_on ? '' : ' · ההתראות כבויות') + '</span>';
+  if (!rows.length){ el('bsList').innerHTML = '<div style="font-size:13px;color:#6B7280;padding:6px 0">אין כרגע קונה שמפרסם נכס בנכס נולד.</div>'; return; }
+  var all = rows.length <= 30 || BS_ALL, shown = all ? rows : rows.slice(0, 30);
+  el('bsList').innerHTML = shown.map(function(r){
+    var st = BS_ST[r.status] || [r.status, '#6B7280'];
+    var when = r.status === 'sent' || r.status === 'no_agent' ? (r.sent_at ? ' · ' + r.sent_at : '') : '';
+    var sub = esc(r.addr) + (r.price ? ' · ' + esc(r.price) + ' ₪' : '') + (r.listed ? ' · פורסם ' + esc(r.listed) : '') + (r.gone ? ' · המודעה ירדה' : '');
+    var who = (r.buyer_date ? 'קונה מ-' + esc(r.buyer_date) : '') + (r.after ? ' · פרסם אחרי שנכנס כקונה' : '');
+    return '<div class="setRow" style="cursor:default;align-items:flex-start"><div class="mid">' +
+      '<div class="nm">' + esc(r.buyer || 'קונה') + ' <span style="font-weight:600;color:#5B6472">· ' + esc(r.agent || 'בלי סוכן') + '</span></div>' +
+      '<div class="sb">' + sub + '</div>' + (who ? '<div class="sb">' + who + '</div>' : '') +
+      '<div class="sb" style="color:' + st[1] + ';font-weight:700">' + st[0] + when + '</div></div>' +
+      (r.link ? '<a href="' + esc(r.link) + '" target="_blank" rel="noopener" style="flex-shrink:0;padding:9px 12px;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none">למודעה</a>' : '') +
+      '</div>';
+  }).join('') + (all ? '' : '<button onclick="BS_ALL=true;bsRender(BS_LAST)" style="margin-top:8px;width:100%;min-height:44px;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">הצג את כל ' + rows.length + '</button>');
+}
+function bsLoad(){
+  GET('/v2/api/admin/buyer_sellers').then(function(j){
+    if (j && j.ok) bsRender(j);
+    else el('bsStats').textContent = 'לא נטען' + (j && j.reason ? ' (' + j.reason + ')' : '');
+  }).catch(function(){ el('bsStats').textContent = 'שגיאה בטעינה'; });
 }
 /* [IMPORT-BUYERS 01/10] */
 var IBS_FILE = null, IBS_TIMER = null;
@@ -10304,6 +10344,45 @@ def bs_message(m):
     lines.append("לקוח שגם קונה וגם מוכר — כדאי לדבר איתו.")
     return "\n".join(lines)
 
+def bs_report(buyers, idx, sent, now, buyer_ep, listing_ep, closed=None, fresh_days=3):
+    """[BS-CTRL 06/10] בקרה למנהל: כל ההתאמות הנוכחיות קונה↔מודעה (בלי חלון ה-3 ימים) + מה נשלח.
+    status: sent / no_agent (לא נשלח — אין טלפון לסוכן) / closed (קונה סגר) / old (שני הצדדים ישנים —
+    לפני ההפעלה; לא נשלח במכוון) / pending (חדש ועוד לא נשלח — שעות שקט/בתור). + נשלחו שהמודעה כבר ירדה."""
+    import datetime as _dbr
+    sent = sent or {}
+    def _d(ep):
+        return _dbr.datetime.fromtimestamp(ep).strftime("%d/%m/%Y") if ep else ""
+    out, seen, win = [], set(), fresh_days * 86400
+    for m in bs_find_matches(buyers, idx, now, buyer_ep, listing_ep, fresh_days=36500):
+        b, L, k = m["buyer"], m["listing"], m["key"]
+        seen.add(k)
+        rec = sent.get(k) or {}
+        bep = buyer_ep(b.get("date", "")) or 0
+        if rec.get("r") in ("sent", "no_agent"):
+            st = rec["r"]
+        elif closed and closed(b):
+            st = "closed"
+        elif (bep and now - bep < win) or (m["lep"] and now - m["lep"] < win):
+            st = "pending"
+        else:
+            st = "old"
+        out.append({"key": k, "status": st, "sent_at": _d(float(rec.get("ts") or 0)),
+                    "buyer": str(b.get("name") or "").strip(), "agent": str(b.get("agent") or "").strip(),
+                    "buyer_date": _d(bep), "addr": L["addr"], "price": bs_money(L["price"]), "rent": L["rent"],
+                    "link": L["link"], "listed": _d(m["lep"]), "after": m["after"], "gone": False, "_ts": float(rec.get("ts") or 0)})
+    for k, rec in sent.items():   # נשלח בעבר והמודעה כבר לא פעילה
+        if k in seen or not isinstance(rec, dict):
+            continue
+        out.append({"key": k, "status": rec.get("r") or "sent", "sent_at": _d(float(rec.get("ts") or 0)),
+                    "buyer": rec.get("bn") or "", "agent": rec.get("ag") or "", "buyer_date": "",
+                    "addr": rec.get("ad") or "", "price": rec.get("pr") or "", "rent": False,
+                    "link": rec.get("ln") or "", "listed": "", "after": False, "gone": True, "_ts": float(rec.get("ts") or 0)})
+    rank = {"pending": 0, "no_agent": 1, "sent": 2, "closed": 3, "old": 4}
+    out.sort(key=lambda r: (rank.get(r["status"], 9), -r["_ts"], r["buyer"]))
+    for r in out:
+        r.pop("_ts", None)
+    return out
+
 def inv_client_message(row, office):
     """[INVOICE-WA 01/10] הודעת החשבונית ללקוח (וואטסאפ רשמי; מחוץ לחלון 24ש' — תבנית family_update)."""
     first = (str(row.get("client_name") or "").split() or [""])[0]
@@ -11382,8 +11461,10 @@ def register(app, G):
             if not new:
                 return 0
             ag_ph = G["fetch_agents_phones"]() or {}
-            done = {}
+            done, info = {}, {}
             for m in new[:10]:
+                info[m["key"]] = {"ag": str(m["buyer"].get("agent") or "").strip(), "bn": str(m["buyer"].get("name") or "").strip(),
+                                  "ad": m["listing"]["addr"], "pr": bs_money(m["listing"]["price"]), "ln": m["listing"]["link"]}
                 b = m["buyer"]
                 ag = str(b.get("agent") or "").strip()
                 wa = G["_wa_phone"](b.get("agent_phone") or ag_ph.get(ag, ""))
@@ -11400,7 +11481,7 @@ def register(app, G):
                 def _mark(cfg):
                     d = cfg.setdefault("v2_bs_sent", {})
                     for k, v in done.items():
-                        d[k] = {"ts": now, "r": v}
+                        d[k] = dict(info.get(k) or {}, ts=now, r=v)
                     for k in [k for k, v in d.items() if now - float((v or {}).get("ts", 0)) > 60 * 86400]:
                         d.pop(k, None)
                 G["_config_mutate"](_mark)
@@ -11419,6 +11500,32 @@ def register(app, G):
             _bs_scan(trigger)
         _bsth.Thread(target=_run, daemon=True, name="buyer-seller").start()
     G["_bs_scan_async"] = _bs_scan_async   # app.py: אחרי הוספת קונה (_buyers_write)
+
+    @app.route("/v2/api/admin/buyer_sellers", methods=["GET"])
+    def v2_api_admin_buyer_sellers():
+        """[BS-CTRL 06/10] בקרה: קונים שמפרסמים נכס בנכס נולד — כל ההתאמות ומה נשלח לסוכן (בעל המשרד בלבד)."""
+        if not _dev_guard():
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        sb = G.get("_sbdb")
+        if not (sb and sb.enabled()):
+            return jsonify({"ok": False, "reason": "no_supabase"})
+        try:
+            raws = sb.fetch_newborn_raw_all() or []
+            idx = bs_owner_index(raws, include_rent=os.environ.get("BS_INCLUDE_RENT", "0") == "1")
+            buyers = G["_fetch_manual_buyers"]() or []
+            st, l9 = _bstat_load(), G["_last9"]
+            closed = lambda b: (st.get(l9(b.get("phone", ""))) or st.get("r" + str(b.get("row", "")))
+                                or st.get(str(b.get("row", "")))) == "closed"
+            rows = bs_report(buyers, idx, _load_config().get("v2_bs_sent") or {}, time.time(),
+                             G["_excl_epoch"], G["_newborn_created_epoch"], closed=closed)
+            stats = {"buyers": len(buyers), "buyers_mobile": sum(1 for b in buyers if bs_p9(b.get("phone"))),
+                     "listings": len(raws), "listings_phone": sum(len(v) for v in idx.values()),
+                     "owners": len(idx), "matches": sum(1 for r in rows if not r["gone"]),
+                     "alerts_on": os.environ.get("BS_ALERTS", "1") != "0" and bool(G["_d360_on"]())}
+            return jsonify({"ok": True, "stats": stats, "rows": rows[:300]})
+        except Exception as e:
+            if log: log.error(f"buyer-sellers report: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": "failed"})
 
     @app.route("/v2/api/avatar", methods=["GET", "POST"])
     def v2_api_avatar():
