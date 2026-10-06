@@ -4001,11 +4001,11 @@ function bpSheetHtml(b, j){
         '<div style="flex:1;min-width:0"><div style="font-weight:800">' + esc([x.street, x.house].filter(Boolean).join(' ')) + (x.city ? ', ' + esc(x.city) : '') + '</div>' +
         '<div style="font-size:12.5px;color:#6B7280">' + esc(bpFmtP(x.price)) + (x.gone ? ' · כבר לא זמין' : '') + '</div>' +
         (x.note ? '<div style="font-size:13px;margin-top:4px">"' + esc(x.note) + '"</div>' : '') + '</div>' +
-        '<button onclick="bpRemove(\'' + esc(String(x.key).replace(/'/g, '')) + '\')" aria-label="הסר מהדף" style="width:44px;height:44px;border-radius:12px;border:none;background:#FBEDED;flex-shrink:0">' +
-        '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="#C24040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
+        bpDelBtn(it.indexOf(x), !!BP_DEL[x.key]) + '</div>';
     });
   });
   if (!it.length) h += '<div style="text-align:center;color:#6B7280;padding:16px 0">עדיין לא נשלחו נכסים</div>';
+  h += '<div id="bpBulk">' + bpBulkHtml() + '</div>';
   var nn = (j.new_matches || []).length;
   h += '<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">' +
     (nn ? '<button class="btn" style="background:#2E6BD6;color:#fff" onclick="bpNew()">התאמות חדשות (' + nn + ')</button>' : '') +
@@ -4017,7 +4017,7 @@ function bpSheetHtml(b, j){
 var BP_CUR = null;
 function bpSheet(i){
   var b = el('list')._src[i]; if (!b) return;
-  BP_CUR = {b: b, i: i, j: null};
+  BP_CUR = {b: b, i: i, j: null}; BP_DEL = {};
   openSheet('<div style="text-align:center;color:#6B7280;padding:20px 0">טוען…</div>');
   GET('/v2/api/bpage?row=' + encodeURIComponent(b.row)).then(function(j){
     if (!j || !j.ok || !j.page){ closeSheet(); toast('אין דף לקונה הזה'); return; }
@@ -4026,9 +4026,38 @@ function bpSheet(i){
       var s = BP_SUM[String(b.row)]; if (s){ s.unseen = false; render(); } }).catch(function(){});
   }).catch(function(){ closeSheet(); toast('שגיאה בטעינה'); });
 }
-function bpRemove(k){
-  if (!BP_CUR || !confirm('להסיר את הנכס מדף הלקוח?')) return;
-  POST('/v2/api/bpage/remove', {row: BP_CUR.b.row, key: k}).then(function(){ bpSheet(BP_CUR.i); bpSumLoad(); });
+/* מחיקה מרובה (אייל 06/10): מסמנים כמה נכסים בפח ומאשרים פעם אחת */
+var BP_DEL = {};
+var BP_TRASH = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="#C24040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function bpDelBtn(idx, on){
+  return '<button id="bpd' + idx + '" onclick="bpDelTog(' + idx + ')" aria-label="סימון להסרה" aria-pressed="' + (on ? 'true' : 'false') + '" ' +
+    'style="width:44px;height:44px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;' +
+    (on ? 'background:#FBEDED;border:2px solid #C24040' : 'background:#F5F3EC;border:2px solid transparent;opacity:.75') + '">' + BP_TRASH + '</button>';
+}
+function bpBulkHtml(){
+  var n = Object.keys(BP_DEL).length;
+  if (!n) return '';
+  return '<button class="btn" onclick="bpRemoveSel()" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:6px;' +
+    'background:#fff;border:1.5px solid #C24040;color:#C24040;font-weight:800">' + BP_TRASH +
+    (n === 1 ? 'הסר נכס אחד מהדף' : 'הסר ' + n + ' נכסים מהדף') + '</button>';
+}
+function bpDelTog(idx){
+  if (!BP_CUR || !BP_CUR.j) return;
+  var x = (BP_CUR.j.items || [])[idx]; if (!x) return;
+  if (BP_DEL[x.key]) delete BP_DEL[x.key]; else BP_DEL[x.key] = 1;
+  if (typeof document === 'undefined') return;
+  var b = document.getElementById('bpd' + idx);
+  if (b) b.outerHTML = bpDelBtn(idx, !!BP_DEL[x.key]);
+  var bb = document.getElementById('bpBulk');
+  if (bb) bb.innerHTML = bpBulkHtml();
+}
+function bpRemoveSel(){
+  var ks = Object.keys(BP_DEL);
+  if (!BP_CUR || !ks.length) return Promise.resolve();
+  if (!confirm(ks.length === 1 ? 'להסיר את הנכס מדף הלקוח?' : 'להסיר ' + ks.length + ' נכסים מדף הלקוח?')) return Promise.resolve();
+  return POST('/v2/api/bpage/remove', {row: BP_CUR.b.row, keys: ks}).then(function(){
+    BP_DEL = {}; bpSheet(BP_CUR.i); bpSumLoad();
+  }).catch(function(){ toast('ההסרה נכשלה'); });
 }
 function bpResend(){
   if (!BP_CUR || !BP_CUR.j) return;
@@ -12117,7 +12146,10 @@ def register(app, G):
         page = sb.bpage_by_row(buyer["row"]) if sb else None
         if not page:
             return jsonify({"ok": False, "reason": "no_page"}), 404
-        sb.bpage_remove_item(page["id"], str(b.get("key") or ""))
+        keys = [str(k) for k in (b.get("keys") or [])][:100] or [str(b.get("key") or "")]
+        for k in keys:   # מחיקה מרובה (06/10) — כמה נכסים באישור אחד
+            if k:
+                sb.bpage_remove_item(page["id"], k)
         _bp_cache["new"].pop(page["id"], None)
         return jsonify({"ok": True})
 
