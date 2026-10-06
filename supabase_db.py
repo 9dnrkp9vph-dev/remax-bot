@@ -1174,3 +1174,108 @@ if __name__ == "__main__":
     if rows:
         first = rows[0]
         print("דוגמה:", {k: first.get(k, "") for k in ("רחוב", "עיר", "נוצר בתאריך")})
+
+
+# ── [BPAGE 06/10] דף קונה עם התאמות נכסים — buyer_pages + buyer_page_items ─────────
+# buyer_id = uuid של הקונה (sheet_row זז במחיקה ב-buyers_delete_row); השורה מגיעה מ-embed.
+_BPAGE_COLS = "id,token,buyer_id,agent_name,agent_phone,query,created_at,last_sent_at,expires_at,seen_at"
+
+
+def _bp_now():
+    return _dt.datetime.now(_dt.timezone.utc).isoformat()
+
+
+def _bpage_get(params):
+    p = {"select": _BPAGE_COLS + ",buyers!inner(sheet_row)", "office_id": "eq." + SB_OFFICE_ID}
+    p.update(params)
+    r = requests.get(SUPABASE_URL + "/rest/v1/buyer_pages", headers=_headers(), params=p, timeout=_TIMEOUT)
+    r.raise_for_status()
+    out = []
+    for rec in (r.json() or []):
+        b = rec.pop("buyers", None) or {}
+        rec["row"] = b.get("sheet_row")
+        out.append(rec)
+    return out
+
+
+def bpage_by_token(token):
+    rows = _bpage_get({"token": "eq." + str(token), "limit": "1"})
+    return rows[0] if rows else None
+
+
+def bpage_by_row(row):
+    rows = _bpage_get({"buyers.sheet_row": "eq.%d" % int(row), "limit": "1"})
+    return rows[0] if rows else None
+
+
+def bpage_all():
+    return _bpage_get({"order": "last_sent_at.desc", "limit": "5000"})
+
+
+def bpage_create(row, token, agent_name, agent_phone, expires_iso, query):
+    """דף חדש לקונה בשורה row. קונה לא קיים → None."""
+    g = requests.get(SUPABASE_URL + "/rest/v1/buyers", headers=_headers(),
+                     params={"select": "id", "office_id": "eq." + SB_OFFICE_ID,
+                             "sheet_row": "eq.%d" % int(row), "limit": "1"}, timeout=_TIMEOUT)
+    g.raise_for_status()
+    rows = g.json() or []
+    if not rows:
+        return None
+    rec = {"office_id": SB_OFFICE_ID, "buyer_id": rows[0]["id"], "token": token,
+           "agent_name": agent_name or "", "agent_phone": agent_phone or "",
+           "expires_at": expires_iso, "query": query or {}}
+    r = requests.post(SUPABASE_URL + "/rest/v1/buyer_pages",
+                      headers={**_headers(), "Prefer": "return=minimal"}, json=[rec], timeout=_TIMEOUT)
+    r.raise_for_status()
+    return bpage_by_row(row)
+
+
+def bpage_update(page_id, fields):
+    r = requests.patch(SUPABASE_URL + "/rest/v1/buyer_pages",
+                       headers={**_headers(), "Prefer": "return=minimal"},
+                       params={"id": "eq." + str(page_id)}, json=fields, timeout=_TIMEOUT)
+    r.raise_for_status()
+
+
+def bpage_items(page_ids):
+    if not page_ids:
+        return []
+    r = requests.get(SUPABASE_URL + "/rest/v1/buyer_page_items", headers=_headers(),
+                     params={"select": "page_id,source,prop_key,snapshot,added_at,mark,note,marked_at",
+                             "page_id": "in.(" + ",".join(str(x) for x in page_ids) + ")",
+                             "order": "added_at.desc", "limit": "20000"}, timeout=_TIMEOUT)
+    r.raise_for_status()
+    return r.json() or []
+
+
+def bpage_add_items(page_id, items):
+    """הוספה בלי כפילויות (unique page_id+prop_key). מחזיר את המפתחות שנוספו בפועל."""
+    if not items:
+        return []
+    now = _bp_now()
+    recs = [{"page_id": page_id, "source": it["source"], "prop_key": it["prop_key"],
+             "snapshot": it.get("snapshot") or {}, "added_at": now} for it in items]
+    r = requests.post(SUPABASE_URL + "/rest/v1/buyer_page_items",
+                      headers={**_headers(), "Prefer": "resolution=ignore-duplicates,return=representation"},
+                      params={"on_conflict": "page_id,prop_key"}, json=recs, timeout=_TIMEOUT)
+    r.raise_for_status()
+    return [x.get("prop_key") for x in (r.json() or [])]
+
+
+def bpage_set_mark(page_id, key, mark, note):
+    """סימון הלקוח (mark=None מבטל). מפתח שלא בדף → None."""
+    r = requests.patch(SUPABASE_URL + "/rest/v1/buyer_page_items",
+                       headers={**_headers(), "Prefer": "return=representation"},
+                       params={"page_id": "eq." + str(page_id), "prop_key": "eq." + str(key)},
+                       json={"mark": mark or None, "note": note or "",
+                             "marked_at": _bp_now() if mark else None}, timeout=_TIMEOUT)
+    r.raise_for_status()
+    rows = r.json() or []
+    return rows[0] if rows else None
+
+
+def bpage_remove_item(page_id, key):
+    r = requests.delete(SUPABASE_URL + "/rest/v1/buyer_page_items", headers=_headers(),
+                        params={"page_id": "eq." + str(page_id), "prop_key": "eq." + str(key)},
+                        timeout=_TIMEOUT)
+    r.raise_for_status()
