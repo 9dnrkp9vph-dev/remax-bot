@@ -3915,6 +3915,7 @@ function matchProps(i){
   MQ_NEEDS = mq.hasNeeds;
   CUR_BUYER = b; MQ_CUR = mq.q; MG = null; MNB = [];
   _openMatchSheet();
+  bpLoad(b.row);
   Promise.all([
     POST('/api/search/properties', {q: mq.q, nosave: true}).catch(function(){ return {}; }),
     POST('/api/search/exclusives', {q: mq.q, nosave: true}).catch(function(){ return {}; }),
@@ -3941,6 +3942,45 @@ function toggleDx(id, btn){
   if (sv) sv.style.transform = open ? '' : 'rotate(180deg)';
 }
 var MITEMS = [], MSEL = {};
+/* [BPAGE 06/10] דף קונה — קישור אישי במקום הודעת טקסט; תגי "בדף הלקוח" בחלון */
+var BP_STATE = {keys: {}, newK: {}};
+function itemKey(it){
+  var p = it.p || {};
+  if (it.nb) return {source: 'newborn', key: p.key || ''};
+  return {source: it.shtaf ? 'shtaf' : 'office', key: p.pkey || ''};
+}
+function bpChip(k){
+  if (!k) return '';
+  if (Object.prototype.hasOwnProperty.call(BP_STATE.keys, k)){
+    var m = BP_STATE.keys[k], t = m === 'like' ? 'בדף · מתאים' : m === 'visit' ? 'בדף · רוצה לראות' : m === 'dislike' ? 'בדף · לא מתאים' : 'בדף הלקוח';
+    return '<span class="bpc" style="display:inline-block;background:#EAF0FA;color:#2E6BD6;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' + t + '</span>';
+  }
+  if (BP_STATE.newK[k]) return '<span class="bpc" style="display:inline-block;background:#2E6BD6;color:#fff;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">חדש</span>';
+  return '';
+}
+function bpSend(mis, fb){
+  fb = fb || sendSelectedText;
+  var b = CUR_BUYER || {};
+  var items = mis.map(function(k){ return itemKey(MITEMS[k]); }).filter(function(x){ return x.key; });
+  if (!items.length || !b.row){ fb(); return Promise.resolve(); }
+  return POST('/v2/api/bpage/send', {row: b.row, q: MQ_CUR, items: items}).then(function(j){
+    if (!j || j.off){ fb(); return; }
+    if (!j.ok){ toast(j.reason === 'no_items' ? 'הנכסים לא נמצאו — רענן ונסה שוב' : 'השליחה נכשלה'); return; }
+    items.forEach(function(x){ if (!Object.prototype.hasOwnProperty.call(BP_STATE.keys, x.key)) BP_STATE.keys[x.key] = ''; });
+    window.open('https://wa.me/' + (j.wa || b.wa || '') + '?text=' + encodeURIComponent(j.msg), '_blank');
+    if (typeof renderMatchTab === 'function' && typeof MG !== 'undefined' && MG) renderMatchTab();
+  }).catch(function(){ toast('השליחה נכשלה'); });
+}
+function bpLoad(row){
+  BP_STATE = {keys: {}, newK: {}};
+  if (!row) return Promise.resolve();
+  return GET('/v2/api/bpage?row=' + encodeURIComponent(row)).then(function(j){
+    if (!j || !j.ok) return;
+    (j.items || []).forEach(function(it){ BP_STATE.keys[it.key] = it.mark || ''; });
+    (j.new_matches || []).forEach(function(m){ BP_STATE.newK[m.key] = 1; });
+    if (typeof MG !== 'undefined' && MG && el('mRes')) renderMatchTab();
+  }).catch(function(){});
+}
 function msgLine(p, shtaf){
   // שורת נכס להודעת הוואטסאפ — בלי שם הסוכן/המשרד המקורי (בקשת אייל)
   var where = [(p.address || p.street), p.neighborhood, p.city].filter(Boolean).join(', ');
@@ -3964,7 +4004,7 @@ function propCard(p, b, shtaf){
     '<div class="r1"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + esc(dt) + '</div></div>' +
     '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">' +
-    '<div class="pr">' + esc(p.price ? '₪' + p.price : '') + '</div>' + scoreChip(p.score) + '</div>' +
+    '<div class="pr">' + esc(p.price ? '₪' + p.price : '') + '</div>' + scoreChip(p.score) + bpChip(p.pkey) + '</div>' +
     (desc ? '<button class="dxBtn" onclick="toggleDx(\'' + did + '\', this)" aria-label="הרחב לתיאור">' +
       '<svg width="13" height="13" viewBox="0 0 16 16" style="transition:transform .18s"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
     '</div>' +
@@ -4094,7 +4134,13 @@ function renderMatchTab(){
     var nh = '';
     MNB.slice(0, 30).forEach(function(r, i){
       if (i === g.s.length && i > 0) nh += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + g.w.length + '</div>';
-      try{ nh += nbCard(r, i); }catch(e){}
+      try{
+        var _mi = (r._mi != null) ? r._mi : (r._mi = MITEMS.push({p: r, nb: true}) - 1);
+        nh += '<div style="display:flex;align-items:center;gap:8px;margin:2px 4px 6px">' +
+          '<button class="sel' + (MSEL[_mi] ? ' on' : '') + '" onclick="toggleSel(' + _mi + ')" aria-label="בחירה לדף הלקוח">' +
+          '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7.5l3.5 3.5L12 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+          '<span style="font-size:12.5px;color:#6B7280">לדף הלקוח (בלי כתובת ותמונות)</span>' + bpChip(r.key) + '</div>' + nbCard(r, i);
+      }catch(e){}
     });
     if (nh) h = '<div class="nbk">' + nh + '</div>';
   } else {
@@ -4153,7 +4199,7 @@ function updateSelBar(){
 }
 /* החתמה על כל הנכסים המסומנים — פותח את טופס ההחתמה עם הקונה + הנכסים */
 function signSelected(){
-  var ks = Object.keys(MSEL);
+  var ks = Object.keys(MSEL).filter(function(k){ return !MITEMS[k].nb; });
   if (!ks.length) return;
   var props = ks.map(function(k){
     var it = MITEMS[k], p = it.p;
@@ -4171,13 +4217,22 @@ function waToBuyer(msg){
   window.open('https://wa.me/' + wa + '?text=' + encodeURIComponent(msg), '_blank');
 }
 function sendOne(mi){
-  var it = MITEMS[mi]; if (!it) return;
+  if (!MITEMS[mi]) return;
+  bpSend([mi], function(){ sendOneText(mi); });
+}
+function sendOneText(mi){
+  var it = MITEMS[mi]; if (!it || it.nb) return;
   var msg = 'היי' + (CUR_BUYER && CUR_BUYER.name ? ' ' + CUR_BUYER.name : '') +
     ', מצאתי נכס שיכול להתאים לך:\n\n' + msgLine(it.p, it.shtaf) + '\n\nמעניין אותך לשמוע עוד?';
   waToBuyer(msg);
 }
 function sendSelected(){
   var ks = Object.keys(MSEL);
+  if (!ks.length) return;
+  bpSend(ks.map(Number));
+}
+function sendSelectedText(){   // [BPAGE] ההתנהגות הישנה — כש-BPAGE=0 (נכס נולד לא נשלח בטקסט)
+  var ks = Object.keys(MSEL).filter(function(k){ return !MITEMS[k].nb; });
   if (!ks.length) return;
   var lines = ks.map(function(k, i){
     var it = MITEMS[k];
