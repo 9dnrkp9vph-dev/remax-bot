@@ -3959,7 +3959,7 @@ function itemKey(it){
 function bpChip(k){
   if (!k) return '';
   if (Object.prototype.hasOwnProperty.call(BP_STATE.keys, k)){
-    var m = BP_STATE.keys[k], t = m === 'like' ? 'בדף · מתאים' : m === 'visit' ? 'בדף · רוצה לראות' : m === 'dislike' ? 'בדף · לא מתאים' : 'בדף הלקוח';
+    var m = BP_STATE.keys[k], t = m === 'like' ? 'בדף · מתאים' : m === 'visit' ? 'בדף · רוצה לראות' : m === 'dislike' ? 'בדף · לא מתאים' : 'בדף הנכס';
     return '<span class="bpc" style="display:inline-block;background:#EAF0FA;color:#2E6BD6;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' + t + '</span>';
   }
   if (BP_STATE.newK[k]) return '<span class="bpc" style="display:inline-block;background:#2E6BD6;color:#fff;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">חדש</span>';
@@ -3991,12 +3991,12 @@ function bpLine(b, i){
   return '<div onclick="bpSheet(' + i + ')" style="display:flex;align-items:center;gap:8px;min-height:44px;margin:8px 0 0;padding:0 12px;' +
     'background:#F5F8FD;border-radius:14px;cursor:pointer;font-size:13px;font-weight:700;color:#1E3A5F">' +
     (s.unseen ? '<span class="bpDot" style="width:8px;height:8px;border-radius:50%;background:#2E6BD6;flex-shrink:0"></span>' : '') +
-    '<span>דף לקוח' + (parts.length ? ' · ' + esc(parts.join(' · ')) : ' · ' + s.total + ' נכסים') + '</span></div>';
+    '<span>דף נכס' + (parts.length ? ' · ' + esc(parts.join(' · ')) : ' · ' + s.total + ' נכסים') + '</span></div>';
 }
 function bpSheetHtml(b, j){
   var it = j.items || [], P = j.page || {};
   var grp = [['visit', 'רוצה לראות'], ['like', 'מתאים'], ['', 'טרם סומן'], ['dislike', 'לא מתאים']];
-  var h = '<h3>דף הלקוח · ' + esc(b.name || '') + '</h3>' +
+  var h = '<h3>דף נכס · ' + esc(b.name || '') + '</h3>' +
     (P.expired ? '<div style="color:#7A5E1C;font-weight:700;font-size:13px;margin-bottom:8px">הקישור פג תוקף — שליחה חדשה מחדשת אותו ל-90 יום</div>' : '');
   grp.forEach(function(g){
     var xs = it.filter(function(x){ return (x.mark || '') === g[0]; });
@@ -4066,7 +4066,7 @@ function bpDelTog(idx){
 function bpRemoveSel(){
   var ks = Object.keys(BP_DEL);
   if (!BP_CUR || !ks.length) return Promise.resolve();
-  if (!confirm(ks.length === 1 ? 'להסיר את הנכס מדף הלקוח?' : 'להסיר ' + ks.length + ' נכסים מדף הלקוח?')) return Promise.resolve();
+  if (!confirm(ks.length === 1 ? 'להסיר את הנכס מדף הנכס של הקונה?' : 'להסיר ' + ks.length + ' נכסים מדף הנכס של הקונה?')) return Promise.resolve();
   return POST('/v2/api/bpage/remove', {row: BP_CUR.b.row, keys: ks}).then(function(){
     BP_DEL = {}; bpSheet(BP_CUR.i); bpSumLoad();
   }).catch(function(){ toast('ההסרה נכשלה'); });
@@ -4246,9 +4246,9 @@ function renderMatchTab(){
       try{
         var _mi = (r._mi != null) ? r._mi : (r._mi = MITEMS.push({p: r, nb: true}) - 1);
         nh += '<div style="display:flex;align-items:center;gap:8px;margin:2px 4px 6px">' +
-          '<button class="sel' + (MSEL[_mi] ? ' on' : '') + '" onclick="toggleSel(' + _mi + ')" aria-label="בחירה לדף הלקוח">' +
+          '<button class="sel' + (MSEL[_mi] ? ' on' : '') + '" onclick="toggleSel(' + _mi + ')" aria-label="בחירה לדף הנכס">' +
           '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7.5l3.5 3.5L12 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
-          '<span style="font-size:12.5px;color:#6B7280">לדף הלקוח (בלי כתובת ותמונות)</span>' + bpChip(r.key) + '</div>' + nbCard(r, i);
+          '<span style="font-size:12.5px;color:#6B7280">לדף הנכס (בלי כתובת ותמונות)</span>' + bpChip(r.key) + '</div>' + nbCard(r, i);
       }catch(e){}
     });
     if (nh) h = '<div class="nbk">' + nh + '</div>';
@@ -12123,7 +12123,7 @@ def register(app, G):
             _bp_cache["new"].pop(page["id"], None)
             name = str(buyer.get("name", "") or "").strip()
             url = _bp_url(page["token"])
-            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "דף לקוח — שליחה",
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "דף נכס — שליחה",
                           "%s · %d נכסים" % (name, len(added)))
             return jsonify({"ok": True, "first": first, "added": len(added), "url": url,
                             "msg": bpage_wa_text(name.split()[0] if name else "", url, len(added), first),
@@ -12294,12 +12294,12 @@ def register(app, G):
             bname = str(buyer.get("name", "") or "").strip() or "לקוח"
             sn = it.get("snapshot") or {}
             st = " ".join(x for x in (sn.get("street"), sn.get("house")) if x)
-            _log_activity(page.get("agent_name", ""), "client", "", "סימון בדף לקוח",
+            _log_activity(page.get("agent_name", ""), "client", "", "סימון בדף נכס",
                           "%s: %s · %s%s" % (bname, BPAGE_MARKS[mark], st, (" · " + note) if note else ""))
             with _bp_glock:
                 gst = _bp_gate.setdefault(page["id"], {})
                 g = bpage_push_gate(gst, now)
-            title = "דף לקוח · " + bname
+            title = "דף נכס · " + bname
             if g == "now":
                 _bp_push(page, title, "%s — %s%s" % (BPAGE_MARKS[mark], st, (" · " + note) if note else ""))
                 def _flush(pid=page["id"], pg=page, t=title):
