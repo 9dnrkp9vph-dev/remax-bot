@@ -10910,8 +10910,14 @@ def bpage_snapshot(source, orow):
             "sqm": g('מ"ר') or g("מ״ר"), "type": g("סוג נכס"),
             "desc": (g("_desc_ae") or g("תיאור"))[:1200], "images": bpage_images(orow)}
     if source == "newborn":
-        snap.update(house="", desc="", images=[])
+        snap.update(street=bpage_nb_street(snap["street"]), house="", desc="", images=[])
     return snap
+
+
+def bpage_nb_street(st):
+    """נכס נולד: הרחוב מגיע כשדה אחד עם מספר הבית ('עוזי חיטמן 3') — חותכים את המספר בסוף
+    (06/10, נמצא בבדיקה חיה). מספר בתוך שם הרחוב ('8 בנובמבר') נשאר."""
+    return _re.sub(r"\s+\d+[א-ת]?(?:\s*/\s*\d+)?\s*$", "", str(st or "").strip())
 
 
 def bpage_live(item, live):
@@ -10921,6 +10927,8 @@ def bpage_live(item, live):
              note=item.get("note") or "", added=item.get("added_at") or "", marked=item.get("marked_at") or "",
              gone=False, priceOld="")
     d.setdefault("images", [])
+    if item.get("source") == "newborn":   # גם צילום ישן שנשמר לפני התיקון
+        d.update(street=bpage_nb_street(d.get("street")), house="", desc="", images=[])
     if live is not None:
         if str(live.get("ירד מפרסום", "") or "").strip():
             d["gone"] = True
