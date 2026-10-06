@@ -3441,8 +3441,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
       <div class="segs" id="filters">
         <div class="sg on" data-f="active" onclick="setFilter(this)">פעילים</div>
         <div class="sg" data-f="hot" onclick="setFilter(this)">חמים</div>
-        <div class="sg" data-f="frozen" onclick="setFilter(this)">בהקפאה</div>
-        <div class="sg" data-f="closed" onclick="setFilter(this)">סגרו</div>
+        <div class="sg" data-f="bpage" onclick="setFilter(this)">דף נכס</div>
       </div>
     </div>
     <div id="list"></div>
@@ -3680,6 +3679,7 @@ function render(){
     if (FILTER === 'frozen' && st !== 'frozen') return false;
     if (FILTER === 'closed' && st !== 'closed') return false;
     if (FILTER === 'active' && (st === 'frozen' || st === 'closed')) return false;   // פעילים כולל חמים
+    if (FILTER === 'bpage' && !BP_SUM[String(b.row)]) return false;   // [BPAGE 07/10] קונים עם דף נכס (כל הסטטוסים)
     if (q && ((b.name || '') + ' ' + (b.phone || '') + ' ' + (b.summary || '') + ' ' + (b.search || ''))
         .toLowerCase().indexOf(q) < 0) return false;
     return true;
@@ -3689,8 +3689,10 @@ function render(){
   src.forEach(function(b, i){ h += buyerCardHtml(b, i, ''); });
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#C29435" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#C29435" stroke-width="1.7" stroke-linecap="round"/></svg></div>' +
-    '<div class="t">אין קונים להצגה</div>' +
-    '<div class="s">קונים חדשים נוספים מהשיחות ("הוסף כקונה") או מכפתור "+ קונה" למעלה</div>' +
+    (FILTER === 'bpage'
+      ? '<div class="t">עדיין אין קונים עם דף נכס</div><div class="s">ב"התאם" מסמנים נכסים ולוחצים "שלח בוואטסאפ" — הקונה מקבל דף אישי ומופיע כאן</div>'
+      : '<div class="t">אין קונים להצגה</div>' +
+        '<div class="s">קונים חדשים נוספים מהשיחות ("הוסף כקונה") או מכפתור "+ קונה" למעלה</div>') +
     '<button class="btn btn-blue" style="max-width:220px" onclick="openAdd()">+ הוסף קונה</button></div>';
   el('list')._src = src;
   if (!h && q){   // [BUYER-AI-BTN] הוקלד טקסט ואין קונה בשם/טלפון כזה — כנראה תיאור נכס
@@ -4365,6 +4367,7 @@ function saveSt(){
     var s = JSON.parse(localStorage.getItem('v2st:buyers') || 'null');
     if (s){
       FILTER = s.f || FILTER; el('q').value = s.q || ''; _restY = s.y || 0;
+      if (['active', 'hot', 'bpage'].indexOf(FILTER) < 0) FILTER = 'active';   // 07/10: הוסרו בהקפאה/סגרו
     }
   }catch(e){}
   var sg = document.querySelector('#filters .sg[data-f="' + FILTER + '"]');
