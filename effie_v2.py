@@ -2125,12 +2125,19 @@ function bsRender(j){
   el('bsList').innerHTML = shown.map(function(r, i){
     var st = BS_ST[r.status] || [r.status, '#6B7280'];
     var when = r.status === 'sent' || r.status === 'no_agent' ? (r.sent_at ? ' · ' + r.sent_at : '') : '';
+    var dv = r.delivery || {}, dl = '';
+    if (r.status === 'sent'){
+      dl = dv.state === 'delivered' ? '<span style="color:#157A43"> · נמסר</span>'
+         : dv.state === 'failed' ? '<span style="color:#C24040"> · נכשל במסירה' + (dv.error ? ': ' + esc(dv.error) : '') + '</span>'
+         : '<span style="color:#6B7280;font-weight:600"> · אין אישור מסירה</span>';
+      if (r.to) dl += '<span style="color:#6B7280;font-weight:600"> · ל-' + esc(r.to) + '</span>';
+    }
     var sub = esc(r.addr) + (r.price ? ' · ' + esc(r.price) + ' ₪' : '') + (r.listed ? ' · פורסם ' + esc(r.listed) : '') + (r.gone ? ' · המודעה ירדה' : '');
     var who = (r.buyer_date ? 'קונה מ-' + esc(r.buyer_date) : '') + (r.after ? ' · פרסם אחרי שנכנס כקונה' : '');
     return '<div class="setRow" style="cursor:default;align-items:flex-start"><div class="mid">' +
       '<div class="nm">' + esc(r.buyer || 'קונה') + ' <span style="font-weight:600;color:#5B6472">· ' + esc(r.agent || 'בלי סוכן') + '</span></div>' +
       '<div class="sb">' + sub + '</div>' + (who ? '<div class="sb">' + who + '</div>' : '') +
-      '<div class="sb" style="color:' + st[1] + ';font-weight:700">' + st[0] + when + '</div></div>' +
+      '<div class="sb" style="color:' + st[1] + ';font-weight:700">' + st[0] + when + dl + '</div></div>' +
       '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">' +
       (r.gone ? '' : '<button onclick="bsSend(' + i + ')" style="min-height:40px;padding:8px 12px;border:none;border-radius:11px;background:#157A43;color:#fff;font-size:12px;font-weight:800;font-family:inherit;cursor:pointer">' + (r.status === 'sent' ? 'שלח שוב' : 'שלח לסוכן') + '</button>') +
       (r.link ? '<a href="' + esc(r.link) + '" target="_blank" rel="noopener" style="padding:4px 8px;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none">למודעה</a>' : '') +
@@ -10391,14 +10398,14 @@ def bs_report(buyers, idx, sent, now, buyer_ep, listing_ep, closed=None, fresh_d
             st = "pending"
         else:
             st = "old"
-        out.append({"key": k, "status": st, "sent_at": _d(float(rec.get("ts") or 0)),
+        out.append({"key": k, "status": st, "sent_at": _d(float(rec.get("ts") or 0)), "sent_ts": float(rec.get("ts") or 0),
                     "buyer": str(b.get("name") or "").strip(), "agent": str(b.get("agent") or "").strip(),
                     "buyer_date": _d(bep), "addr": L["addr"], "price": bs_money(L["price"]), "rent": L["rent"],
                     "link": L["link"], "listed": _d(m["lep"]), "after": m["after"], "gone": False, "_ts": float(rec.get("ts") or 0)})
     for k, rec in sent.items():   # נשלח בעבר והמודעה כבר לא פעילה
         if k in seen or not isinstance(rec, dict):
             continue
-        out.append({"key": k, "status": rec.get("r") or "sent", "sent_at": _d(float(rec.get("ts") or 0)),
+        out.append({"key": k, "status": rec.get("r") or "sent", "sent_at": _d(float(rec.get("ts") or 0)), "sent_ts": float(rec.get("ts") or 0),
                     "buyer": rec.get("bn") or "", "agent": rec.get("ag") or "", "buyer_date": "",
                     "addr": rec.get("ad") or "", "price": rec.get("pr") or "", "rent": False,
                     "link": rec.get("ln") or "", "listed": "", "after": False, "gone": True, "_ts": float(rec.get("ts") or 0)})
@@ -10406,6 +10413,28 @@ def bs_report(buyers, idx, sent, now, buyer_ep, listing_ep, closed=None, fresh_d
     out.sort(key=lambda r: (rank.get(r["status"], 9), -r["_ts"], r["buyer"]))
     for r in out:
         r.pop("_ts", None)
+    return out
+
+def bs_delivery(statuses, wa, since):
+    """[BS-CTRL 06/10] מסירה לפי ה-webhook של 360dialog (נמסר/נכשל) לנמען wa מאז since (epoch).
+    → {"state": "failed"|"delivered"|"", "error": "..."}; נכשל גובר. בלי דיווח — "" (ייתכן חסום / כבוי / טרם)."""
+    num = _re.sub(r"\D", "", str(wa or ""))
+    out = {"state": "", "error": ""}
+    if not num or not since:
+        return out
+    for st in statuses or []:
+        if _re.sub(r"\D", "", str(st.get("to") or "")) != num:
+            continue
+        try:
+            ts = float(st.get("ts") or 0)
+        except (TypeError, ValueError):
+            ts = 0
+        if ts and ts < since - 60:
+            continue
+        if st.get("status") == "failed" or st.get("error"):
+            out = {"state": "failed", "error": str(st.get("error") or "")}
+        elif st.get("status") == "delivered" and out["state"] != "failed":
+            out = {"state": "delivered", "error": ""}
     return out
 
 def inv_client_message(row, office):
@@ -11559,6 +11588,15 @@ def register(app, G):
                      "listings": len(raws), "listings_phone": sum(len(v) for v in idx.values()),
                      "owners": len(idx), "matches": sum(1 for r in rows if not r["gone"]),
                      "alerts_on": os.environ.get("BS_ALERTS", "1") != "0" and bool(G["_d360_on"]())}
+            try:   # מסירה בפועל (webhook של 360dialog) לשורות שנשלחו
+                sts = (G["_wa_diag_read"]() or {}).get("statuses") or G.get("_WA_STATUS_LOG") or []
+                ag_ph = G["fetch_agents_phones"]() or {}
+                for r in rows[:300]:
+                    if r["status"] == "sent" and r.get("sent_ts"):
+                        r["to"] = _bs_agent_wa({"agent": r["agent"]}, ag_ph)
+                        r["delivery"] = bs_delivery(sts, r["to"], r["sent_ts"])
+            except Exception as _de:
+                if log: log.warning(f"buyer-sellers delivery: {_de}")
             return jsonify({"ok": True, "stats": stats, "rows": rows[:300]})
         except Exception as e:
             if log: log.error(f"buyer-sellers report: {e}", exc_info=True)
