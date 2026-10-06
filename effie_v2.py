@@ -2038,8 +2038,7 @@ function boot(){
       .then(function(rs){
         OV = rs[0]; PEOPLE = (rs[1] && rs[1].agents) || []; COORDS = (rs[2] && rs[2].coordinators) || [];
         NB_DEFAULT = (rs[1] && rs[1].nbDefault) || 0;
-        UNMATCHED = ((rs[1] && rs[1].unmatchedSignings) || []).map(function(u){ return {n: u.name, c: u.count, w: 'חתימות'}; })
-          .concat(((rs[1] && rs[1].unmatchedListings) || []).map(function(u){ return {n: u.name, c: u.count, w: 'נכסים'}; }));
+        UNMATCHED = unmMerge(rs[1] || {});
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
         render(); loadSnaps(); repLoad(); bsLoad();
@@ -2298,6 +2297,18 @@ function purgeMember(i){
 }
 var UNMATCHED = [];
 var SHOW_ALL = false;
+/* שם שמופיע בכמה מקורות (חתימות/נכסים/קונים) — שורה אחת עם כל המקורות */
+function unmMerge(p){
+  var by = {}, out = [];
+  [['unmatchedSignings', 'חתימות'], ['unmatchedListings', 'נכסים'], ['unmatchedBuyers', 'קונים']].forEach(function(src){
+    (p[src[0]] || []).forEach(function(u){
+      var x = by[u.name];
+      if (!x){ x = by[u.name] = {n: u.name, c: 0, w: ''}; out.push(x); }
+      x.c += u.count || 0; x.w += (x.w ? ' · ' : '') + src[1];
+    });
+  });
+  return out.sort(function(a, b){ return b.c - a.c; });
+}
 function renderUnmatched(){
   var card = el('unmCard');
   if (!card) return;

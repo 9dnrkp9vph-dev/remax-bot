@@ -4724,6 +4724,10 @@ def api_dev_people():
     list_names = []
     for r in fetch_sheet_rows():
         list_names.append(r.get("סוכן 1", "")); list_names.append(r.get("סוכן 2", ""))
+    try:   # [BS-CTRL 06/10] גם שם הסוכן בקונים ("דוד עובדיה" לעומת "דודו עובדיה" — ההודעה לא הגיעה אליו)
+        buyer_names = [b.get("agent", "") for b in (_fetch_manual_buyers() or [])]
+    except Exception:
+        buyer_names = []
     removed = _removed_agent_keys()
     _susp = _suspended_set()
     agents = []
@@ -4757,6 +4761,7 @@ def api_dev_people():
     return jsonify({"ok": True, "agents": agents, "nbDefault": _nb_def,
                     "unmatchedSignings": _scan(sig_names),
                     "unmatchedListings": _scan(list_names),
+                    "unmatchedBuyers": _scan(buyer_names),
                     "removed": removed_out})
 
 @app.route("/api/dev/parity", methods=["GET"])
