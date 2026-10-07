@@ -13260,6 +13260,7 @@ def register(app, G):
             # dlv=2 (05/10): הגרסה שמסמנת גם מנת ירידה-בלבד — appResendDelistedOnce ב-Code.gs
             # בודק אותה ועוצר אם השרת עדיין ישן (אחרת היה רושם 'נשלח' על אירועים שנזרקו)
             out = {"ok": True, "stream": stream, "n": 0, "ourN": 0, "shtafN": 0, "nbN": 0, "delistedN": 0, "dlv": 2}
+            _guarded = []   # [DELIST-GUARD 07/10] דיווחי ירידה שנדחו — המודעה נשלחה כפעילה לאחרונה
             rows = b.get("rows") or []
             try:   # [BPAGE 06/10] אבחון גלריה: האם הסורק שולח images (v13.39) — שורה אחת לכל מנה
                 _ni = [len(r.get("images") or []) for r in rows if isinstance(r, dict)]
@@ -13316,7 +13317,7 @@ def register(app, G):
                     props = [y2_norm_office(r, _oid) for r in _rows]
                     for _pr in props:
                         _pr["_y2_ingested"] = _now_full   # "עדכון אחרון" במסך הנכסים
-                    _okp, _n, _new_rows = sb.merge_office_props(_oid, props, _dl if _oid == batch_oid else set(), _stamp, _now_full)
+                    _okp, _n, _new_rows = sb.merge_office_props(_oid, props, _dl if _oid == batch_oid else set(), _stamp, _now_full, guarded=_guarded)
                     out["ourN"] += _n
                     try:   # פוש לסוכן על מודעה חדשה שלו (אייל 10/09) — לא בהזרמות/backfill (שער 40)
                         if str(b.get("machine", "") or "").startswith("resend"):
@@ -13357,7 +13358,7 @@ def register(app, G):
                     out["delistedN"] += sb.mark_delisted("external_exclusives",
                                                          ["y2x:" + d for d in _plan["excl"]], stamp)
                 if _plan.get("props"):
-                    _pn = sb.mark_props_delisted(_plan["props"], stamp)
+                    _pn = sb.mark_props_delisted(_plan["props"], stamp, guarded=_guarded)
                     out["delistedN"] += _pn
                     if _pn:
                         G["_cache_clear"]("sheet_rows")
@@ -13374,6 +13375,9 @@ def register(app, G):
                     G["_cache_clear"]("map_props")   # פיני השת"פ במפה מתרעננים גם הם
             except Exception:
                 pass
+            if _guarded:
+                out["delistGuarded"] = len(_guarded)
+                if log: log.warning(f"yad2 ingest: delisted ignored — sent as active <48h: {_guarded[:40]}")
             if log: log.info(f"yad2 ingest: stream={stream} machine={b.get('machine','')} "
                              f"n={out['n']} nb={out['nbN']} shtaf={out['shtafN']} our={out['ourN']} delisted={out['delistedN']}")
             return jsonify(out)

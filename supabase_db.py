@@ -632,7 +632,23 @@ def mark_delisted(table, source_keys, stamp):
     return n
 
 
-def mark_props_delisted(tokens, stamp):
+def props_seen_recently(raw, now_ts=None, hours=None):
+    """[DELIST-GUARD 07/10] הסורק שלח את המודעה כפעילה ב-X השעות האחרונות (ברירת מחדל 48)?
+    אייל: אהוד מנור 13 נשלח כפעיל ב-14:41 וסומן 'ירד מפרסום' באותו יום, והוא באוויר — 22 כאלה
+    ב-06-07/10. דיווח ירידה שסותר שליחה טרייה = כנראה טעות הסורק → לא מסמנים (ורושמים).
+    env PROPS_DELIST_GUARD_HOURS (0 = כבוי)."""
+    try:
+        h = float(os.environ.get("PROPS_DELIST_GUARD_HOURS", "48")) if hours is None else float(hours)
+    except ValueError:
+        h = 48.0
+    if h <= 0 or not isinstance(raw, dict):
+        return False
+    import time as _t
+    now_ts = _t.time() if now_ts is None else now_ts
+    last = _il_epoch(raw.get("_y2_ingested"))
+    return bool(last) and now_ts - last < h * 3600
+
+def mark_props_delisted(tokens, stamp, guarded=None):
     """תווית "ירד מפרסום" לנכסי המשרד (טבלת properties) לפי טוקן יד2 ('מספר מודעה') —
     לאירועי ירידה שמגיעים מהסורק במנה נפרדת, בלי שורות הסניף (05/10). אותו מבנה כמו
     merge_office_props: raw['ירד מפרסום']=stamp + סטטוס. שורה שכבר מסומנת לא נדרסת;
@@ -647,6 +663,10 @@ def mark_props_delisted(tokens, stamp):
         if not isinstance(raw, dict) or raw.get("ירד מפרסום"):
             continue
         if str(raw.get("מספר מודעה") or "").strip() not in toks:
+            continue
+        if props_seen_recently(raw):   # [DELIST-GUARD] נשלח כפעיל לאחרונה — לא מסמנים
+            if guarded is not None:
+                guarded.append(str(raw.get("מספר מודעה") or "").strip())
             continue
         raw = dict(raw)
         raw["ירד מפרסום"] = stamp
@@ -872,7 +892,7 @@ def stale_office_update(branch_rows, incoming, now_ts):
         return []   # הסבב המלא לא מוכח — לא מורידים כלום
     return [r for r in branch_rows if int(r.get("_y2_miss") or 0) >= STALE_MISSES and now_ts - _last(r) >= day]
 
-def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now_full=""):
+def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now_full="", guarded=None):
     """נכסי המשרד מיד2 (שלב ב', החלטת אייל 01/09): מחליף את שורות הסניף office_tag
     ברשימה החדשה ושומר את שאר הסניפים. שורה של הסניף שנעדרת מהסריקה: ב-delisted →
     נשארת עם תווית "ירד מפרסום"; אחרת נשארת כמו שהיא (סריקה חלקית לא מוחקת).
@@ -945,9 +965,13 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
             keep.append(raw)
             continue
         if tok in delisted_tokens:
-            if not raw.get("ירד מפרסום"):
-                raw["ירד מפרסום"] = stamp
-            raw["סטטוס"] = "ירד מפרסום"
+            if not raw.get("ירד מפרסום") and props_seen_recently(raw):   # [DELIST-GUARD]
+                if guarded is not None:
+                    guarded.append(tok)
+            else:
+                if not raw.get("ירד מפרסום"):
+                    raw["ירד מפרסום"] = stamp
+                raw["סטטוס"] = "ירד מפרסום"
         keep.append(raw)
     # [STALE-PROPS 05/10] נכסי הסניף שלא הגיעו — מוני החמצה, ו"ירד מפרסום" לפי הכלל (3 סריקות + 24ש' + כיסוי)
     # ⏸ מושהה (אייל 07/10): "עד שנמצא למה הסורק מפספס — אחרת ~70 נכסים פעילים עלולים להיעלם, גם מדף הקונה".
