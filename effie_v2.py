@@ -4152,7 +4152,9 @@ function propCard(p, b, shtaf){
     '<div class="r1"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + esc(dt) + '</div></div>' +
     '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">' +
-    '<div class="pr">' + esc(p.price ? '₪' + p.price : '') + '</div>' + scoreChip(p.score) + bpChip(p.pkey) + '</div>' +
+    '<div class="pr">' + esc(p.price ? '₪' + p.price : '') + '</div>' + scoreChip(p.score) + bpChip(p.pkey) +
+    (p.delisted ? '<span style="display:inline-block;background:#F0EDE3;color:#5B6472;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' +
+      esc(bpGone(p.delisted)) + '</span>' : '') + '</div>' +
     (desc ? '<button class="dxBtn" onclick="toggleDx(\'' + did + '\', this)" aria-label="הרחב לתיאור">' +
       '<svg width="13" height="13" viewBox="0 0 16 16" style="transition:transform .18s"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
     '</div>' +
@@ -12139,6 +12141,11 @@ def register(app, G):
             exp = (now + _dtb.timedelta(days=BPAGE_DAYS)).isoformat()
             agent = str(buyer.get("agent", "") or "").strip()
             aph = str(buyer.get("agent_phone", "") or "").strip() or str((G["fetch_agents_phones"]() or {}).get(agent, "") or "")
+            # 07/10 (אייל: בראש הדף הופיע "מנהל"): שם גנרי → השם האמיתי לפי הטלפון; בלי טלפון → השולח
+            _disp = G.get("_display_name_for") or (lambda n, p: n)
+            if agent in ("", "מנהל", "סוכן") and not aph:
+                agent, aph = str(s.get("name", "") or "").strip(), str(s.get("phone", "") or "").strip()
+            agent = _disp(agent, aph) or agent
             qtext = str(b.get("q") or "").strip()[:200]
             query = {"q": qtext, "p": (G["_parse_props_query"](qtext) or {}) if qtext else {},
                      "budget": bai_budget(buyer.get("budget", "")) or bai_budget(buyer.get("search", ""))}
@@ -12255,6 +12262,10 @@ def register(app, G):
     def _bp_agent_ctx(page):
         ph = str(page.get("agent_phone", "") or "")
         nm = str(page.get("agent_name", "") or "").strip()
+        try:   # דפים שנשמרו עם "מנהל" לפני התיקון — השם האמיתי לפי הטלפון
+            nm = (G.get("_display_name_for") or (lambda n, p: n))(nm, ph) or nm
+        except Exception:
+            pass
         d = "".join(ch for ch in ph if ch.isdigit())
         tel = ("0" + d[-9:]) if len(d) >= 9 else ""
         return {"name": nm, "first": nm.split()[0] if nm else "", "phone": tel, "tel": tel,
