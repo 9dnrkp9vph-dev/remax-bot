@@ -3378,7 +3378,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .prop .sel{flex:0 0 40px;width:40px;border-radius:12px;border:1.5px solid #DCD6C8;background:#fff;color:#C9C4B6;
       display:flex;align-items:center;justify-content:center;cursor:pointer;min-height:40px}
   .prop .sel.on{background:#157A43;border-color:#157A43;color:#fff}
-  /* [BPAGE 07/10] בחירת נכס נולד לדף נכס — היה בלי עיצוב ונראה מסומן תמיד */
+  /* [BPAGE 07/10] בחירת נכס נולד לדף קונה — היה בלי עיצוב ונראה מסומן תמיד */
   .nbSel{flex:0 0 44px;width:44px;height:44px;border-radius:12px;border:1.5px solid #DCD6C8;background:#fff;color:#C9C4B6;
       display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
   .nbSel.on{background:#157A43;border-color:#157A43;color:#fff}
@@ -3445,7 +3445,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
       <div class="segs" id="filters">
         <div class="sg on" data-f="active" onclick="setFilter(this)">פעילים</div>
         <div class="sg" data-f="hot" onclick="setFilter(this)">חמים</div>
-        <div class="sg" data-f="bpage" onclick="setFilter(this)">דף נכס</div>
+        <div class="sg" data-f="bpage" onclick="setFilter(this)">דף קונה</div>
       </div>
     </div>
     <div id="list"></div>
@@ -3683,7 +3683,7 @@ function render(){
     if (FILTER === 'frozen' && st !== 'frozen') return false;
     if (FILTER === 'closed' && st !== 'closed') return false;
     if (FILTER === 'active' && (st === 'frozen' || st === 'closed')) return false;   // פעילים כולל חמים
-    if (FILTER === 'bpage' && !BP_SUM[String(b.row)]) return false;   // [BPAGE 07/10] קונים עם דף נכס (כל הסטטוסים)
+    if (FILTER === 'bpage' && !BP_SUM[String(b.row)]) return false;   // [BPAGE 07/10] קונים עם דף קונה (כל הסטטוסים)
     if (q && ((b.name || '') + ' ' + (b.phone || '') + ' ' + (b.summary || '') + ' ' + (b.search || ''))
         .toLowerCase().indexOf(q) < 0) return false;
     return true;
@@ -3694,7 +3694,7 @@ function render(){
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#C29435" stroke-width="1.7"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#C29435" stroke-width="1.7" stroke-linecap="round"/></svg></div>' +
     (FILTER === 'bpage'
-      ? '<div class="t">עדיין אין קונים עם דף נכס</div><div class="s">ב"התאם" מסמנים נכסים ולוחצים "שלח בוואטסאפ" — הקונה מקבל דף אישי ומופיע כאן</div>'
+      ? '<div class="t">עדיין אין קונים עם דף קונה</div><div class="s">ב"התאם" מסמנים נכסים ולוחצים "שלח בוואטסאפ" — הקונה מקבל דף אישי ומופיע כאן</div>'
       : '<div class="t">אין קונים להצגה</div>' +
         '<div class="s">קונים חדשים נוספים מהשיחות ("הוסף כקונה") או מכפתור "+ קונה" למעלה</div>') +
     '<button class="btn btn-blue" style="max-width:220px" onclick="openAdd()">+ הוסף קונה</button></div>';
@@ -3963,13 +3963,32 @@ function itemKey(it){
 function bpChip(k){
   if (!k) return '';
   if (Object.prototype.hasOwnProperty.call(BP_STATE.keys, k)){
-    var m = BP_STATE.keys[k], t = m === 'like' ? 'בדף · מתאים' : m === 'visit' ? 'בדף · רוצה לראות' : m === 'dislike' ? 'בדף · לא מתאים' : 'בדף הנכס';
+    var m = BP_STATE.keys[k], t = m === 'like' ? 'בדף · מתאים' : m === 'visit' ? 'בדף · רוצה לראות' : m === 'dislike' ? 'בדף · לא מתאים' : 'בדף הקונה';
     return '<span class="bpc" style="display:inline-block;background:#EAF0FA;color:#2E6BD6;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' + t + '</span>';
   }
   if (BP_STATE.newK[k]) return '<span class="bpc" style="display:inline-block;background:#2E6BD6;color:#fff;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">חדש</span>';
   return '';
 }
-function bpSend(mis, fb){
+function bpCopy(text){   // 07/10: העתקת קישור דף הקונה — clipboard, נפילה ל-execCommand, ולבסוף prompt
+  function legacy(){
+    try{
+      var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+      var ok = document.execCommand('copy'); document.body.removeChild(ta); if (ok) return true;
+    }catch(e){}
+    try{ window.prompt('העתק את הקישור', text); }catch(e){}
+    return false;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText)
+    return navigator.clipboard.writeText(text).then(function(){ return true; }, function(){ return legacy(); });
+  return Promise.resolve(legacy());
+}
+function addSelected(){
+  var ks = Object.keys(MSEL);
+  if (!ks.length) return;
+  bpSend(ks.map(Number), function(){ toast('דף קונה כבוי כרגע'); }, 'copy');
+}
+function bpSend(mis, fb, mode){
   fb = fb || sendSelectedText;
   var b = CUR_BUYER || {};
   var items = mis.map(function(k){ return itemKey(MITEMS[k]); }).filter(function(x){ return x.key; });
@@ -3978,6 +3997,12 @@ function bpSend(mis, fb){
     if (!j || j.off){ fb(); return; }
     if (!j.ok){ toast(j.reason === 'no_items' ? 'הנכסים לא נמצאו — רענן ונסה שוב' : 'השליחה נכשלה' + (j.reason ? ' · ' + j.reason : '')); return; }
     items.forEach(function(x){ if (!Object.prototype.hasOwnProperty.call(BP_STATE.keys, x.key)) BP_STATE.keys[x.key] = ''; });
+    if (mode === 'copy'){
+      MSEL = {}; updateSelBar();
+      bpCopy(j.url).then(function(ok){
+        toast((j.added ? 'נוספו ' + j.added + ' לדף הקונה' : 'כבר בדף הקונה') + (ok ? ' · הקישור הועתק' : ''));
+      });
+    } else
     window.open('https://wa.me/' + (j.wa || b.wa || '') + '?text=' + encodeURIComponent(j.msg), '_blank');
     if (typeof renderMatchTab === 'function' && typeof MG !== 'undefined' && MG) renderMatchTab();
   }).catch(function(e){ toast('השליחה נכשלה · ' + String((e && e.message) || e || '').slice(0, 80)); });
@@ -3995,12 +4020,12 @@ function bpLine(b, i){
   return '<div onclick="bpSheet(' + i + ')" style="display:flex;align-items:center;gap:8px;min-height:44px;margin:8px 0 0;padding:0 12px;' +
     'background:#F5F8FD;border-radius:14px;cursor:pointer;font-size:13px;font-weight:700;color:#1E3A5F">' +
     (s.unseen ? '<span class="bpDot" style="width:8px;height:8px;border-radius:50%;background:#2E6BD6;flex-shrink:0"></span>' : '') +
-    '<span>דף נכס' + (parts.length ? ' · ' + esc(parts.join(' · ')) : ' · ' + s.total + ' נכסים') + '</span></div>';
+    '<span>דף קונה' + (parts.length ? ' · ' + esc(parts.join(' · ')) : ' · ' + s.total + ' נכסים') + '</span></div>';
 }
 function bpSheetHtml(b, j){
   var it = j.items || [], P = j.page || {};
   var grp = [['visit', 'רוצה לראות'], ['like', 'מתאים'], ['', 'טרם סומן'], ['dislike', 'לא מתאים']];
-  var h = '<h3>דף נכס · ' + esc(b.name || '') + '</h3>' +
+  var h = '<h3>דף קונה · ' + esc(b.name || '') + '</h3>' +
     (P.expired ? '<div style="color:#7A5E1C;font-weight:700;font-size:13px;margin-bottom:8px">הקישור פג תוקף — שליחה חדשה מחדשת אותו ל-90 יום</div>' : '');
   grp.forEach(function(g){
     var xs = it.filter(function(x){ return (x.mark || '') === g[0]; });
@@ -4079,7 +4104,7 @@ function bpDelTog(idx){
 function bpRemoveSel(){
   var ks = Object.keys(BP_DEL);
   if (!BP_CUR || !ks.length) return Promise.resolve();
-  if (!confirm(ks.length === 1 ? 'להסיר את הנכס מדף הנכס של הקונה?' : 'להסיר ' + ks.length + ' נכסים מדף הנכס של הקונה?')) return Promise.resolve();
+  if (!confirm(ks.length === 1 ? 'להסיר את הנכס מדף הקונה?' : 'להסיר ' + ks.length + ' נכסים מדף הקונה?')) return Promise.resolve();
   return POST('/v2/api/bpage/remove', {row: BP_CUR.b.row, keys: ks}).then(function(){
     BP_DEL = {}; bpSheet(BP_CUR.i); bpSumLoad();
   }).catch(function(){ toast('ההסרה נכשלה'); });
@@ -4259,9 +4284,9 @@ function renderMatchTab(){
       try{
         var _mi = (r._mi != null) ? r._mi : (r._mi = MITEMS.push({p: r, nb: true}) - 1);
         nh += '<div style="display:flex;align-items:center;gap:8px;margin:2px 4px 6px">' +
-          '<button class="sel nbSel' + (MSEL[_mi] ? ' on' : '') + '" onclick="toggleSel(' + _mi + ')" aria-label="בחירה לדף הנכס">' +
+          '<button class="sel nbSel' + (MSEL[_mi] ? ' on' : '') + '" onclick="toggleSel(' + _mi + ')" aria-label="בחירה לדף הקונה">' +
           '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7.5l3.5 3.5L12 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
-          '<span onclick="toggleSel(' + _mi + ')" style="font-size:12.5px;color:#6B7280;cursor:pointer">לדף הנכס (בלי כתובת ותמונות)</span>' + bpChip(r.key) + '</div>' + nbCard(r, i);
+          '<span onclick="toggleSel(' + _mi + ')" style="font-size:12.5px;color:#6B7280;cursor:pointer">לדף הקונה (בלי כתובת ותמונות)</span>' + bpChip(r.key) + '</div>' + nbCard(r, i);
       }catch(e){}
     });
     if (nh) h = '<div class="nbk">' + nh + '</div>';
@@ -4283,8 +4308,8 @@ function renderMatchTab(){
     '<div style="display:flex;gap:8px">' +
     '<button class="btn" style="flex:1;background:#157A43;color:#fff;box-shadow:0 4px 14px rgba(31,175,94,.3)" ' +
     'onclick="sendSelected()"><span id="selN"></span></button>' +
-    '<button class="btn" style="flex:1;background:#C29435;color:#231700;box-shadow:0 4px 14px rgba(194,148,53,.3)" ' +
-    'onclick="signSelected()"><span id="selSigN"></span></button>' +
+    '<button class="btn" style="flex:1;background:#2E6BD6;color:#fff;box-shadow:0 4px 14px rgba(46,107,214,.3)" ' +
+    'onclick="addSelected()"><span id="selAddN"></span></button>' +
     '</div></div>';
   updateSelBar();
 }
@@ -4316,23 +4341,10 @@ function updateSelBar(){
   bar.style.display = n ? 'block' : 'none';
   if (n){
     el('selN').textContent = n === 1 ? 'שלח נכס בוואטסאפ' : 'שלח ' + n + ' בוואטסאפ';
-    el('selSigN').textContent = n === 1 ? 'החתם על הנכס' : 'החתם על ' + n + ' נכסים';
+    el('selAddN').textContent = n === 1 ? 'הוסף לדף קונה' : 'הוסף ' + n + ' לדף קונה';
   }
 }
 /* החתמה על כל הנכסים המסומנים — פותח את טופס ההחתמה עם הקונה + הנכסים */
-function signSelected(){
-  var ks = Object.keys(MSEL).filter(function(k){ return !MITEMS[k].nb; });
-  if (!ks.length) return;
-  var props = ks.map(function(k){
-    var it = MITEMS[k], p = it.p;
-    var w = [(p.address || p.street), p.neighborhood, p.city].filter(Boolean).join(', ');
-    return {addr: w, price: p.price || ''};
-  });
-  try{ localStorage.setItem('v2signPre', JSON.stringify({
-    client: (CUR_BUYER && CUR_BUYER.name) || '', phone: buyerPhone(),
-    props: props})); }catch(e){}
-  location.href = '/v2/sign?type=buyer';
-}
 function waToBuyer(msg){
   // וואטסאפ ללקוח — גם כשאין מספר שמור נפתח וואטסאפ עם ההודעה לבחירת איש קשר
   var wa = (CUR_BUYER && CUR_BUYER.wa) || '';
@@ -12137,7 +12149,7 @@ def register(app, G):
             _bp_cache["new"].pop(page["id"], None)
             name = str(buyer.get("name", "") or "").strip()
             url = _bp_url(page["token"])
-            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "דף נכס — שליחה",
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "דף קונה — שליחה",
                           "%s · %d נכסים" % (name, len(added)))
             return jsonify({"ok": True, "first": first, "added": len(added), "url": url,
                             "msg": bpage_wa_text(name.split()[0] if name else "", url, len(added), first),
@@ -12308,12 +12320,12 @@ def register(app, G):
             bname = str(buyer.get("name", "") or "").strip() or "לקוח"
             sn = it.get("snapshot") or {}
             st = " ".join(x for x in (sn.get("street"), sn.get("house")) if x)
-            _log_activity(page.get("agent_name", ""), "client", "", "סימון בדף נכס",
+            _log_activity(page.get("agent_name", ""), "client", "", "סימון בדף קונה",
                           "%s: %s · %s%s" % (bname, BPAGE_MARKS[mark], st, (" · " + note) if note else ""))
             with _bp_glock:
                 gst = _bp_gate.setdefault(page["id"], {})
                 g = bpage_push_gate(gst, now)
-            title = "דף נכס · " + bname
+            title = "דף קונה · " + bname
             if g == "now":
                 _bp_push(page, title, "%s — %s%s" % (BPAGE_MARKS[mark], st, (" · " + note) if note else ""))
                 def _flush(pid=page["id"], pg=page, t=title):
