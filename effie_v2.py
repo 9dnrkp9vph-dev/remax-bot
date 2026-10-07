@@ -3966,7 +3966,7 @@ function bpChip(k){
     var m = BP_STATE.keys[k], t = m === 'like' ? 'בדף · מתאים' : m === 'visit' ? 'בדף · רוצה לראות' : m === 'dislike' ? 'בדף · לא מתאים' : 'בדף הקונה';
     return '<span class="bpc" style="display:inline-block;background:#EAF0FA;color:#2E6BD6;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' + t + '</span>';
   }
-  if (BP_STATE.newK[k]) return '<span class="bpc" style="display:inline-block;background:#2E6BD6;color:#fff;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">חדש</span>';
+  if (BP_STATE.newK[k]) return '<span class="bpc" style="display:inline-block;background:#2E6BD6;color:#fff;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">התאמה חדשה</span>';
   return '';
 }
 function bpCopy(text){   // 07/10: העתקת קישור דף הקונה — clipboard, נפילה ל-execCommand, ולבסוף prompt
@@ -4021,7 +4021,8 @@ function bpLine(b, i){
   return '<div onclick="bpSheet(' + i + ')" style="display:flex;align-items:center;gap:8px;min-height:44px;margin:8px 0 0;padding:0 12px;' +
     'background:#F5F8FD;border-radius:14px;cursor:pointer;font-size:13px;font-weight:700;color:#1E3A5F">' +
     (s.unseen ? '<span class="bpDot" style="width:8px;height:8px;border-radius:50%;background:#2E6BD6;flex-shrink:0"></span>' : '') +
-    '<span>דף קונה' + (parts.length ? ' · ' + esc(parts.join(' · ')) : ' · ' + s.total + ' נכסים') + '</span></div>';
+    '<span style="flex:1;min-width:0">דף קונה' + (parts.length ? ' · ' + esc(parts.join(' · ')) : ' · ' + s.total + ' נכסים') + '</span>' +
+    '<span style="flex-shrink:0;background:#fff;border:1.5px solid #2E6BD6;color:#2E6BD6;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:800">הצג דף קונה</span></div>';
 }
 function bpSheetHtml(b, j){
   var it = j.items || [], P = j.page || {};
@@ -4126,7 +4127,7 @@ function bpLoad(row){
     if (!j || !j.ok) return;
     (j.items || []).forEach(function(it){ BP_STATE.keys[it.key] = it.mark || ''; });
     (j.new_matches || []).forEach(function(m){ BP_STATE.newK[m.key] = 1; });
-    if (typeof MG !== 'undefined' && MG && el('mRes')) renderMatchTab();
+    if (typeof MG !== 'undefined' && MG && el('mRes')){ _pickNewTab(); renderMatchTabs(); renderMatchTab(); }
   }).catch(function(){});
 }
 function msgLine(p, shtaf){
@@ -4240,6 +4241,24 @@ function _splitSW(list){
   return {s: list.filter(strong), w: list.filter(function(p){ return !strong(p); })};
 }
 function _nbGroup(nb){ var g = _splitSW(nb.filter(_budgetOk(CUR_BUYER || {}))); MNB = g.s.concat(g.w); return g; }
+/* [BPAGE-NEW 07/10] אייל: "לראות תג של ההתאמה החדשה על הנכס" — התאמות חדשות לדף הקונה ראשונות בכל טאב,
+   נקודה על טאב שיש בו כאלה, ופתיחה בטאב הראשון שיש בו חדשות (אם הסוכן עוד לא בחר טאב) */
+var MTAB_USER = false;
+function _mKey(p, nb){ return nb ? (p.key || '') : (p.pkey || ''); }
+function _newFirst(list, nb){
+  var a = [], b = [];
+  (list || []).forEach(function(p){ (BP_STATE.newK[_mKey(p, nb)] ? a : b).push(p); });
+  return a.concat(b);
+}
+function _tabNewN(k){
+  var g = MG && MG[k]; if (!g) return 0;
+  return g.s.concat(g.w).filter(function(p){ return BP_STATE.newK[_mKey(p, k === 'nb')]; }).length;
+}
+function _pickNewTab(){
+  if (MTAB_USER || !MG || _tabNewN(MTAB)) return;
+  var ks = ['office', 'shtaf', 'nb', 'mine'];
+  for (var i = 0; i < ks.length; i++) if (_tabNewN(ks[i])){ MTAB = ks[i]; return; }
+}
 function renderMatches(b, office, shtaf, nb, my){
   CUR_BUYER = b;
   MITEMS = []; MSEL = {};
@@ -4257,11 +4276,12 @@ function renderMatches(b, office, shtaf, nb, my){
   });
   MG = {office: _splitSW(office), shtaf: _splitSW(shtaf), nb: _nbGroup(nb || []), mine: _splitSW(mine)};
   var order = ['office', 'shtaf', 'nb', 'mine'];
-  MTAB = 'office';
+  MTAB = 'office'; MTAB_USER = false;
   for (var i = 0; i < order.length; i++){
     var g = MG[order[i]];
     if (g.s.length + g.w.length){ MTAB = order[i]; break; }
   }
+  _pickNewTab();
   renderMatchTabs(); renderMatchTab();
 }
 var MTAB_LBL = {office: 'המשרד שלנו', shtaf: 'שת"פ', nb: 'נכס נולד', mine: 'שלי'};
@@ -4270,11 +4290,12 @@ function renderMatchTabs(){
   t.innerHTML = ['office', 'shtaf', 'nb', 'mine'].map(function(k){
     var g = MG[k];
     return '<div class="t' + (k === MTAB ? ' on' : '') + '" onclick="setMatchTab(\'' + k + '\')">' +
-      MTAB_LBL[k] + ' <b>' + (g.s.length + g.w.length) + '</b></div>';
+      MTAB_LBL[k] + ' <b>' + (g.s.length + g.w.length) + '</b>' +
+      (_tabNewN(k) ? '<span aria-label="יש התאמות חדשות" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#2E6BD6;margin-inline-start:4px;vertical-align:middle"></span>' : '') + '</div>';
   }).join('');
 }
 function setMatchTab(k){
-  MTAB = k; renderMatchTabs(); renderMatchTab();
+  MTAB = k; MTAB_USER = true; renderMatchTabs(); renderMatchTab();
   var s = el('sheet'); if (s && s.scrollTo) s.scrollTo(0, 0); else if (s) s.scrollTop = 0;
 }
 function renderMatchTab(){
@@ -4282,6 +4303,8 @@ function renderMatchTab(){
   var b = CUR_BUYER || {}, g = MG[MTAB], h = '';
   if (MTAB === 'nb'){
     var nh = '';
+    // הכרטיס פונה לשורה לפי המיקום ב-MNB (nbKitRows) — לכן הסדר החדש נקבע ב-MNB עצמו
+    MNB = _newFirst(g.s, true).concat(g.w);
     MNB.slice(0, 30).forEach(function(r, i){
       if (i === g.s.length && i > 0) nh += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + g.w.length + '</div>';
       try{
@@ -4296,7 +4319,7 @@ function renderMatchTab(){
   } else {
     var sh = MTAB === 'shtaf';
     var capS = sh ? 15 : 25, capW = sh ? 10 : 15;
-    g.s.slice(0, capS).forEach(function(p){ h += propCard(p, b, sh); });
+    _newFirst(g.s, false).slice(0, capS).forEach(function(p){ h += propCard(p, b, sh); });
     if (g.w.length){
       h += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + g.w.length + '</div>';
       g.w.slice(0, capW).forEach(function(p){ h += propCard(p, b, sh); });
