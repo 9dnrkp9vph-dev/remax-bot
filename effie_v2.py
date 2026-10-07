@@ -3996,7 +3996,8 @@ function bpSend(mis, fb, mode){
   return POST('/v2/api/bpage/send', {row: b.row, q: MQ_CUR, items: items}).then(function(j){
     if (!j || j.off){ fb(); return; }
     if (!j.ok){ toast(j.reason === 'no_items' ? 'הנכסים לא נמצאו — רענן ונסה שוב' : 'השליחה נכשלה' + (j.reason ? ' · ' + j.reason : '')); return; }
-    items.forEach(function(x){ if (!Object.prototype.hasOwnProperty.call(BP_STATE.keys, x.key)) BP_STATE.keys[x.key] = ''; });
+    (j.keys || items.map(function(x){ return x.key; })).forEach(function(k){ if (!Object.prototype.hasOwnProperty.call(BP_STATE.keys, k)) BP_STATE.keys[k] = ''; });
+    if (j.missing && j.missing.length) toast(j.missing.length === 1 ? 'נכס אחד לא נמצא ולא נוסף' : j.missing.length + ' נכסים לא נמצאו ולא נוספו');
     if (mode === 'copy'){
       MSEL = {}; updateSelBar();
       bpCopy(j.url).then(function(ok){
@@ -12021,8 +12022,8 @@ def register(app, G):
         out = {"office": {}, "shtaf": {}, "newborn": {}}
         try:
             for r in (G["fetch_sheet_rows"]() or []):
-                if str(r.get("סטטוס", "") or "").strip() not in ("", "פעילה"):
-                    continue
+                # 07/10 (אייל: "סימנתי שני נכסים ונכנס אחד"): חיפוש הנכסים לא מסנן סטטוס — גם כאן לא,
+                # אחרת נכס שמוצג בחלון ההתאמות "לא נמצא" בשליחה ונזרק בשקט
                 k = G["_prop_price_key"](r)
                 if k:
                     out["office"][k] = dict(r, _ep=G["_prop_epoch"](r) or 0)
@@ -12117,17 +12118,22 @@ def register(app, G):
             return jsonify({"ok": False, "off": True})
         try:
             src = _bp_sources()
-            good, seen = [], set()
+            good, seen, missing = [], set(), []
             for it in (b.get("items") or [])[:30]:
                 so = "office" if it.get("source") == "mine" else str(it.get("source") or "")
                 k = str(it.get("key") or "")
                 r = (src.get(so) or {}).get(k)
-                if r is None or k in seen:
+                if r is None:
+                    missing.append(k)
+                    continue
+                if k in seen:
                     continue
                 seen.add(k)
                 good.append({"source": so, "prop_key": k, "snapshot": bpage_snapshot(so, r)})
+            if missing and log:
+                log.warning("bpage send: %d keys not found: %s" % (len(missing), ",".join(missing)[:300]))
             if not good:
-                return jsonify({"ok": False, "reason": "no_items"})
+                return jsonify({"ok": False, "reason": "no_items", "missing": missing})
             import secrets as _secrets, datetime as _dtb
             now = _dtb.datetime.now(_dtb.timezone.utc)
             exp = (now + _dtb.timedelta(days=BPAGE_DAYS)).isoformat()
@@ -12152,6 +12158,7 @@ def register(app, G):
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "דף קונה — שליחה",
                           "%s · %d נכסים" % (name, len(added)))
             return jsonify({"ok": True, "first": first, "added": len(added), "url": url,
+                            "keys": [g["prop_key"] for g in good], "missing": missing,
                             "msg": bpage_wa_text(name.split()[0] if name else "", url, len(added), first),
                             "wa": G["_wa_phone"](buyer.get("phone", ""))})
         except Exception as e:
