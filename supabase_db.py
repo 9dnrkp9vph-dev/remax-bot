@@ -950,16 +950,19 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
             raw["סטטוס"] = "ירד מפרסום"
         keep.append(raw)
     # [STALE-PROPS 05/10] נכסי הסניף שלא הגיעו — מוני החמצה, ו"ירד מפרסום" לפי הכלל (3 סריקות + 24ש' + כיסוי)
-    try:
-        import time as _time
-        _absent = [r for r in keep if str(r.get("_y2_office_id") or "").strip() == office_tag
-                   and not r.get("ירד מפרסום")]
-        for r in stale_office_update(_absent, list(raw_rows), _time.time()):
-            r["ירד מפרסום"] = stamp or _il_today().strftime("%d/%m/%Y")
-            r["סטטוס"] = "ירד מפרסום"
-            r["_y2_auto_delist"] = r["ירד מפרסום"]   # סימון: ירד לפי הכלל (לא אות מהסורק)
-    except Exception:
-        pass   # הכלל לעולם לא מפיל את הקליטה
+    # ⏸ מושהה (אייל 07/10): "עד שנמצא למה הסורק מפספס — אחרת ~70 נכסים פעילים עלולים להיעלם, גם מדף הקונה".
+    # הפעלה מחדש: env PROPS_STALE_DELIST=1. כבוי = לא סופרים ולא מסמנים בכלל.
+    if os.environ.get("PROPS_STALE_DELIST", "0") == "1":
+        try:
+            import time as _time
+            _absent = [r for r in keep if str(r.get("_y2_office_id") or "").strip() == office_tag
+                       and not r.get("ירד מפרסום")]
+            for r in stale_office_update(_absent, list(raw_rows), _time.time()):
+                r["ירד מפרסום"] = stamp or _il_today().strftime("%d/%m/%Y")
+                r["סטטוס"] = "ירד מפרסום"
+                r["_y2_auto_delist"] = r["ירד מפרסום"]   # סימון: ירד לפי הכלל (לא אות מהסורק)
+        except Exception:
+            pass   # הכלל לעולם לא מפיל את הקליטה
     ok, n = replace_properties(keep + list(raw_rows))
     return ok, n, new_rows
 
