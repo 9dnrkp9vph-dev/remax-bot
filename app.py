@@ -5317,6 +5317,30 @@ def api_sign_properties():
         if len(out) >= 300: break
     return jsonify({"ok": True, "properties": out})
 
+def _sign_split_excl(docs, excl_i, token, token2):
+    """בלעדיות = הסכם נפרד (דרישה משפטית, 16/07): מסמך המוכר (token) ומסמך הבלעדיות (token2).
+    מספר הסכם המוכר נשתל בשורת "מספר ___" שבגוף הבלעדיות ובכותרתה; שרשור סימטרי בין השניים.
+    משותף לשליחה מרחוק ולהחתמה במקום (07/10, אייל: "שיהיו 2 נפרדים"). → (docs1, docs2)"""
+    _num1 = "%05d" % ((sum(ord(c) for c in token) * 7) % 90000 + 10000)   # אותה נוסחת מספר של עמוד הצפייה
+    _d2 = dict(docs[excl_i])
+    # כל המופעים של "מספר ____" (המבוא + סעיף 5), עמיד לתווי כיווניות נסתרים ולקו מקוף/מפריד
+    _b2, _nsub = re.subn(r"(מספר|מס['׳]?)[\s‎‏‪-‮]*[_–—־]{2,}",
+                         "\\g<1> " + _num1, str(_d2.get("body", "")))
+    if _nsub:
+        _d2["body"] = _b2
+        log.info(f"sign split: seller number injected into {_nsub} blank(s) in exclusivity body")
+    else:
+        log.warning("sign split: exclusivity number blank not found in contract body — number shown in title only")
+    _d2["title"] = str(_d2.get("title", "")).strip() + " · להסכם מס' " + _num1
+    docs1 = [dict(d) for i, d in enumerate(docs) if i != excl_i]
+    docs1[0]["next_token"] = token2
+    docs1[0]["next_title"] = str(docs[excl_i].get("title", "")).strip() or "הסכם בלעדיות"
+    # שרשור סימטרי (05/08): לקוח שנכנס מקישור הבלעדיות (ה-SMS הכפול) מנותב
+    # אחרי חתימתה גם להסכם המוכר — בלי זה חצי מהזוג נשאר "ממתין לחתימה"
+    _d2["next_token"] = token
+    _d2["next_title"] = str(docs1[0].get("title", "")).strip() or "הסכם מוכר"
+    return docs1, [_d2]
+
 @app.route("/api/sign/submit", methods=["POST"])
 def api_sign_submit():
     """שמירת חתימה דיגיטלית → רשומה בגליון 'חתימות' (נכנס לדוחות) + שמירת המסמך לצפייה."""
@@ -5356,22 +5380,42 @@ def api_sign_submit():
     token = _secrets.token_urlsafe(12)
     base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
     link = base + "/s/" + token
+    # 07/10 (אייל: "לוחץ על הבלעדיות ומקבל את הסכם התיווך הרגיל" → "שיהיו 2 נפרדים"): גם בהחתמה
+    # במקום הבלעדיות = מסמך נפרד עם קישור משלו, כמו בשליחה מרחוק. אותה חתימה לשני המסמכים.
+    token2 = link2 = ""
+    _excl_i = next((i for i, d in enumerate(docs)
+                    if "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()), None)
+    if _excl_i is not None and len(docs) >= 2:
+        token2 = _secrets.token_urlsafe(12)
+        link2 = base + "/s/" + token2
+        docs1, docs2 = _sign_split_excl(docs, _excl_i, token, token2)
+    else:
+        docs1, docs2 = list(docs), None
     # ⚡ מהירות (בקשת אייל 13/07): סינכרוני רק שמירת המסמך החתום (חיוני); שורות
     # הגיליון, הקונה, הפוש וה-SMS לסוכן — ברקע. _recent_signs_add שומר נראות מיידית.
     recs = []
     for d in docs:
+        _is_x = bool(token2) and "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()
         _srec = {"event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
                  "client_name": client, "address": address, "city": city,
-                 "commission_pct": link, "received_at": now_iso, "notes": notes}
+                 "commission_pct": (link2 if _is_x else link), "received_at": now_iso, "notes": notes}
         recs.append(_srec)
     doc_saved = False; doc_resp = ""
     try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה) — סינכרוני, זה המסמך החתום
         jd = _signdoc_save({
             "doc_token": token, "event_id": eid, "status": "signed",
-            "header": header, "docs": _json.dumps(docs, ensure_ascii=False),
+            "header": header, "docs": _json.dumps(docs1, ensure_ascii=False),
             "signature": signature, "signed_at": now_iso})
         doc_saved = bool(jd and jd.get("ok"))
         doc_resp = str(jd)[:200] if jd is not None else "None (אין תגובה)"
+        if doc_saved and docs2 is not None:
+            jd2 = _signdoc_save({
+                "doc_token": token2, "event_id": eid, "status": "signed",
+                "header": header, "docs": _json.dumps(docs2, ensure_ascii=False),
+                "signature": signature, "signed_at": now_iso})
+            if not (jd2 and jd2.get("ok")):
+                doc_saved = False
+                doc_resp = "excl: " + (str(jd2)[:180] if jd2 is not None else "None (אין תגובה)")
     except Exception as _e:
         doc_saved = False; doc_resp = "EXC: " + str(_e)[:160]
     if doc_saved:
@@ -5395,14 +5439,14 @@ def api_sign_submit():
             _sms_agent_signing(client, agent, address, link)
             # עותק ללקוח (החתמה במקום — בקשת אייל 05/08): קישור להסכם החתום שלו.
             # בהחתמה מרחוק הלקוח כבר מחזיק את הקישור; כאן הוא חתם על מכשיר הסוכן.
-            try: _send_client_signed_copy(phone, client, link)   # SMS + וואטסאפ
+            try: _send_client_signed_copy(phone, client, link, link2)   # SMS + וואטסאפ
             except Exception: pass
         except Exception as _bge:
             log.error(f"sign submit bg error: {_bge}")
     if doc_saved:   # נכשל = הסוכן ינסה שוב — לא כותבים שורות שיוכפלו בניסיון הבא
         import threading as _thr
         _thr.Thread(target=_sign_submit_bg, daemon=True).start()
-    return jsonify({"ok": doc_saved, "event_id": eid, "link": link, "doc_saved": doc_saved, "doc_resp": doc_resp})
+    return jsonify({"ok": doc_saved, "event_id": eid, "link": link, "link2": link2, "doc_saved": doc_saved, "doc_resp": doc_resp})
 
 def _sign_now_iso():
     import datetime as _dt
@@ -5869,25 +5913,7 @@ def api_sign_send_remote():
                     if "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()), None)
     if _excl_i is not None and len(docs) >= 2:
         token2 = _secrets.token_urlsafe(12)
-        _num1 = "%05d" % ((sum(ord(c) for c in token) * 7) % 90000 + 10000)   # אותה נוסחת מספר של עמוד הצפייה
-        _d2 = dict(docs[_excl_i])
-        # כל המופעים של "מספר ____" (המבוא + סעיף 5), עמיד לתווי כיווניות נסתרים ולקו מקוף/מפריד
-        _b2, _nsub = re.subn(r"(מספר|מס['׳]?)[\s‎‏‪-‮]*[_–—־]{2,}",
-                             "\\g<1> " + _num1, str(_d2.get("body", "")))
-        if _nsub:
-            _d2["body"] = _b2
-            log.info(f"sign split: seller number injected into {_nsub} blank(s) in exclusivity body")
-        else:
-            log.warning("sign split: exclusivity number blank not found in contract body — number shown in title only")
-        _d2["title"] = str(_d2.get("title", "")).strip() + " · להסכם מס' " + _num1
-        docs1 = [dict(d) for i, d in enumerate(docs) if i != _excl_i]
-        docs1[0]["next_token"] = token2
-        docs1[0]["next_title"] = str(docs[_excl_i].get("title", "")).strip() or "הסכם בלעדיות"
-        # שרשור סימטרי (05/08): לקוח שנכנס מקישור הבלעדיות (ה-SMS הכפול) מנותב
-        # אחרי חתימתה גם להסכם המוכר — בלי זה חצי מהזוג נשאר "ממתין לחתימה"
-        _d2["next_token"] = token
-        _d2["next_title"] = str(docs1[0].get("title", "")).strip() or "הסכם מוכר"
-        docs2 = [_d2]
+        docs1, docs2 = _sign_split_excl(docs, _excl_i, token, token2)
     else:
         docs1, docs2 = list(docs), None
     recs = []
@@ -6101,14 +6127,20 @@ def api_sign_share():
     except Exception: sms_ok = False
     return jsonify({"ok": (wa_ok or sms_ok), "wa": wa_ok, "sms": sms_ok})
 
-def _send_client_signed_copy(phone, client, link):
-    """עותק ההסכם החתום ללקוח — SMS + וואטסאפ רשמי (29/09, אייל). משמש בהחתמה במקום ובמרחוק."""
+def _send_client_signed_copy(phone, client, link, link2=""):
+    """עותק ההסכם החתום ללקוח — SMS + וואטסאפ רשמי (29/09, אייל). משמש בהחתמה במקום ובמרחוק.
+    link2 = הסכם הבלעדיות כשנחתם במקום יחד עם הסכם המוכר (07/10 — שני מסמכים נפרדים)."""
     _cl9 = _last9(phone or "")
     if not (_cl9 and link):
         return
     _first = (client or "").split()[0] if (client or "").strip() else ""
-    _msg = ("שלום" + ((" " + _first) if _first else "") +
-            ", ההסכם שחתמת מטעם RE/MAX Family זמין לצפייה ולשמירה:\n" + link)
+    if link2:
+        _msg = ("שלום" + ((" " + _first) if _first else "") +
+                ", ההסכמים שחתמת מטעם RE/MAX Family זמינים לצפייה ולשמירה:\n"
+                "הסכם מוכר:\n" + link + "\nהסכם בלעדיות:\n" + link2)
+    else:
+        _msg = ("שלום" + ((" " + _first) if _first else "") +
+                ", ההסכם שחתמת מטעם RE/MAX Family זמין לצפייה ולשמירה:\n" + link)
     try: web_send_sms(_cl9, _msg)
     except Exception: pass
     if _d360_on():
