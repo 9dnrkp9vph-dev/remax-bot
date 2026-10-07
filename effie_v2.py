@@ -3999,6 +3999,7 @@ function bpSend(mis, fb, mode){
   return POST('/v2/api/bpage/send', {row: b.row, q: MQ_CUR, items: items}).then(function(j){
     if (!j || j.off){ fb(); return; }
     if (!j.ok){ toast(j.reason === 'no_items' ? 'הנכסים לא נמצאו — רענן ונסה שוב' : 'השליחה נכשלה' + (j.reason ? ' · ' + j.reason : '')); return; }
+    try{ localStorage.removeItem('v2c:bp:' + b.row); }catch(e){}   // [BPAGE-FAST] העותק השמור של הגיליון כבר לא מעודכן
     (j.keys || items.map(function(x){ return x.key; })).forEach(function(k){ if (!Object.prototype.hasOwnProperty.call(BP_STATE.keys, k)) BP_STATE.keys[k] = ''; });
     if (j.missing && j.missing.length) toast(j.missing.length === 1 ? 'נכס אחד לא נמצא ולא נוסף' : j.missing.length + ' נכסים לא נמצאו ולא נוספו');
     if (mode === 'copy'){
@@ -4073,10 +4074,16 @@ var BP_CUR = null;
 function bpSheet(i){
   var b = el('list')._src[i]; if (!b) return;
   BP_CUR = {b: b, i: i, j: null}; BP_DEL = {};
-  openSheet('<div style="text-align:center;color:#6B7280;padding:20px 0">טוען…</div>');
+  // [BPAGE-FAST 08/10] פתיחה מיידית מהעותק השמור של הדף הזה; התשובה מהשרת מחליפה אותו
+  var _ck = 'v2c:bp:' + b.row, _c = null;
+  try{ _c = JSON.parse(localStorage.getItem(_ck) || 'null'); }catch(e){}
+  if (_c && _c.page){ BP_CUR.j = _c; openSheet(bpSheetHtml(b, _c)); }
+  else openSheet('<div style="text-align:center;color:#6B7280;padding:20px 0">טוען…</div>');
   GET('/v2/api/bpage?row=' + encodeURIComponent(b.row)).then(function(j){
-    if (!j || !j.ok || !j.page){ closeSheet(); toast('אין דף לקונה הזה'); return; }
-    BP_CUR.j = j; openSheet(bpSheetHtml(b, j));
+    if (!BP_CUR || BP_CUR.b !== b) return;   // הסוכן כבר עבר לקונה אחר
+    if (!j || !j.ok || !j.page){ closeSheet(); toast('אין דף לקונה הזה'); try{ localStorage.removeItem(_ck); }catch(e){} return; }
+    try{ localStorage.setItem(_ck, JSON.stringify(j)); }catch(e){}
+    BP_CUR.j = j; if (!Object.keys(BP_DEL).length) openSheet(bpSheetHtml(b, j));
     POST('/v2/api/bpage/seen', {row: b.row}).then(function(){
       var s = BP_SUM[String(b.row)]; if (s){ s.unseen = false; render(); } }).catch(function(){});
   }).catch(function(){ closeSheet(); toast('שגיאה בטעינה'); });
@@ -4111,6 +4118,7 @@ function bpRemoveSel(){
   if (!BP_CUR || !ks.length) return Promise.resolve();
   if (!confirm(ks.length === 1 ? 'להסיר את הנכס מדף הקונה?' : 'להסיר ' + ks.length + ' נכסים מדף הקונה?')) return Promise.resolve();
   return POST('/v2/api/bpage/remove', {row: BP_CUR.b.row, keys: ks}).then(function(){
+    try{ localStorage.removeItem('v2c:bp:' + BP_CUR.b.row); }catch(e){}   // בלי הבזק של הנכסים שהוסרו
     BP_DEL = {}; bpSheet(BP_CUR.i); bpSumLoad();
   }).catch(function(){ toast('ההסרה נכשלה'); });
 }
@@ -11233,6 +11241,7 @@ h1{font-size:22px;margin:6px 0 8px;font-weight:800}
 #fs .gal img{object-fit:contain;cursor:default}#fs .x{position:absolute;top:14px;left:14px;width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:22px}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;border-radius:999px;padding:10px 18px;font-weight:700;display:none;z-index:30}
 .stage{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:18px 16px;margin-bottom:14px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.stage .ologo{height:46px;max-width:180px;object-fit:contain;margin-bottom:12px}
 .stage .big{width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid #E4C56B;background:#E4C56B;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#231700}
 .stage .lb{font-size:12.5px;font-weight:700;color:#7A5E1C;margin-top:10px}.stage .nm2{font-size:21px;font-weight:800;margin-top:2px}
 .stage .lic{font-size:13px;color:#5B6472;margin-top:3px}.stage .of2{font-size:13px;color:#6B7280;margin-top:1px}
@@ -11301,7 +11310,7 @@ function render(){
 function srchHtml(){
   var who = D.agent.first || D.agent.name || 'הסוכן', n = D.scanN ? Number(D.scanN).toLocaleString('he-IL') + ' ' : '';
   return '<div class="srch" id="srch"><div class="t">מחפש משהו אחר?</div>' +
-    '<div class="s">כתוב מה חשוב לך — אזור, תקציב, חדרים. סוכן ה-AI שלנו יסרוק ' + esc(n) + 'נכסים למכירה בקריות, ו' + esc(who) + ' יחזור אליך עם התאמות.</div>' +
+    '<div class="s">כתוב מה חשוב לך — אזור, תקציב, חדרים. סוכן ה-AI שלנו יסרוק ' + esc(n) + 'מודעות למכירה בקריות, ו' + esc(who) + ' יחזור אליך עם התאמות.</div>' +
     (ST.sent ? '<div class="ok">נשלח! ' + esc(who) + ' יחזור אליך בקרוב</div>' :
       '<textarea id="sq" maxlength="500" placeholder="למשל: 4 חדרים בקרית ביאליק עם מעלית, עד 2.2 מיליון">' + esc(ST.sq || '') + '</textarea>' +
       '<button id="sb" onclick="sendSearch()">שלח ל' + esc(who) + '</button>') + '</div>';
@@ -11405,7 +11414,7 @@ def bpage_stage(agent, office, instagram=""):
     if ig.startswith("https://"):
         row += '<a class="ig" href="%s" target="_blank" rel="noopener" aria-label="אינסטגרם של המשרד">%s</a>' % (_bp_esc(ig), _BP_IG_SVG)
     lic = str(agent.get("license") or "").strip()
-    return ('<div class="stage">%s<div class="lb">הסוכן שלך</div><div class="nm2">%s</div>%s<div class="of2">%s</div>%s</div>'
+    return ('<div class="stage"><img class="ologo" src="/assets/logo" alt="" onerror="this.style.display=\'none\'">%s<div class="lb">הסוכן שלך</div><div class="nm2">%s</div>%s<div class="of2">%s</div>%s</div>'
             % (av, _bp_esc(agent.get("name")), ('<div class="lic">רישיון תיווך מס\' %s</div>' % _bp_esc(lic)) if lic else "",
                _bp_esc((office or {}).get("name")), ('<div class="row">%s</div>' % row) if row else ""))
 
@@ -12210,6 +12219,22 @@ def register(app, G):
         """{source: {key: orow}} מהמקורות החיים; orow במבנה שורת משרד + _ep (נראה לראשונה). cache 120ש'."""
         if _bp_cache["src"] is not None and time.time() - _bp_cache["ts"] < 120:
             return _bp_cache["src"]
+        # [BPAGE-FAST 08/10] ישן עד 30 דק' → מוחזר מיד והבנייה רצה ברקע (אחת בכל רגע); רק בנייה ראשונה חוסמת
+        if _bp_cache["src"] is not None and time.time() - _bp_cache["ts"] < 1800:
+            if not _bp_cache.get("busy"):
+                _bp_cache["busy"] = True
+                def _bg():
+                    try:
+                        _bp_sources_build()
+                    except Exception as e:
+                        if log: log.warning(f"bpage sources bg: {e}")
+                    finally:
+                        _bp_cache["busy"] = False
+                _bpthr.Thread(target=_bg, daemon=True, name="bpage-src").start()
+            return _bp_cache["src"]
+        return _bp_sources_build()
+
+    def _bp_sources_build():
         out = {"office": {}, "shtaf": {}, "newborn": {}}
         try:
             for r in (G["fetch_sheet_rows"]() or []):
@@ -12322,6 +12347,16 @@ def register(app, G):
             _bpthr.Thread(target=_run, daemon=True, name="bpage-new").start()
         return out, bool(stale)
 
+    def _bp_newmatches_quick(page, items):
+        """[BPAGE-FAST 08/10] גיליון דף הקונה: ההתאמות החדשות מהחישוב האחרון (גם ישן) — וחישוב טרי ברקע;
+        רק דף שלא חושב מעולם מחושב בבקשה."""
+        ck = _bp_cache["new"].get(page["id"])
+        if not ck:
+            return _bp_newmatches(page, items)
+        if time.time() - ck[0] >= 600:
+            _bp_newmatches_cached([(page, items)])
+        return ck[1]
+
     @app.route("/v2/api/bpage/send", methods=["POST"])
     def v2_api_bpage_send():
         if not _BPAGE_ON:
@@ -12408,7 +12443,7 @@ def register(app, G):
                                              "seen_at": page.get("seen_at"), "last_sent_at": page.get("last_sent_at"),
                                              "expired": bpage_expired(page, time.time())},
                         "items": disp, "new_matches": [bpage_nm_disp(m, (src.get(m.get("source")) or {}).get(m.get("key")))
-                                                       for m in _bp_newmatches(page, items)]})
+                                                       for m in _bp_newmatches_quick(page, items)]})
 
     @app.route("/v2/api/bpage/summary", methods=["GET"])
     def v2_api_bpage_summary():

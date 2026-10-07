@@ -3333,10 +3333,19 @@ def _display_name_for(name, phone):
     nm = str(name or "").strip()
     # 05/10: שם בלי אף אות עברית ("eyal-shmul" מכניסת Google/Apple) → השם האמיתי לפי הטלפון, אם ידוע
     if nm and nm not in _GENERIC_NAMES and not re.search(r"[\u0590-\u05FF]", nm):
-        try:
-            real = str(_name_for_phone(_last9(phone or "")) or "").strip() if _last9(phone or "") else ""
-        except Exception:
-            real = ""
+        # 08/10: שם הכניסה מ-Google ("eyal-shmul") יושב ראשון במפה — מעדיפים שם עם עברית מכל המקורות
+        l9, cands = _last9(phone or ""), []
+        if l9:
+            for _src in (lambda: web_phone_name_map(), lambda: web_contacts_phone_name(), lambda: _config_agent_phones()):
+                try:
+                    cands.append(str(_src().get(l9) or "").strip())
+                except Exception:
+                    pass
+            try:
+                cands.append(str(_name_for_phone(l9) or "").strip())
+            except Exception:
+                pass
+        real = next((x for x in cands if re.search(r"[\u0590-\u05FF]", x)), "") or next((x for x in cands if x), "")
         return real or nm
     if nm not in _GENERIC_NAMES:
         return nm
