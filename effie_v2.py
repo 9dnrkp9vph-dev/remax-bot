@@ -983,9 +983,9 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="6.5" cy="5.5" r="2.6" fill="none" stroke="#C29435" stroke-width="1.6"/><path d="M2 13.5c.5-2.5 2.3-3.9 4.5-3.9 1 0 1.9.3 2.6.8" fill="none" stroke="#C29435" stroke-width="1.6" stroke-linecap="round"/><path d="M12.5 8.5l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z" fill="#C29435"/></svg></div>
         <div class="l">חיפוש קונה AI</div>
       </div>
-      <div class="a lite" onclick="location.href='/v2/effie'">
-        <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 2a4.5 4.5 0 0 1 4.5 4.5c0 2.6-2.1 4.4-4.5 4.4-.5 0-1-.06-1.4-.2L4 12l.7-2.3A4.4 4.4 0 0 1 3.5 6.5 4.5 4.5 0 0 1 8 2z" fill="none" stroke="#C29435" stroke-width="1.6" stroke-linejoin="round"/><circle cx="6.3" cy="6.5" r=".8" fill="#C29435"/><circle cx="9.7" cy="6.5" r=".8" fill="#C29435"/></svg></div>
-        <div class="l">שאל את אפי</div>
+      <div class="a lite" onclick="location.href='/v2/buyers?tab=bpage'">   <!-- [AI-MATCH 08/10] במקום "שאל את אפי" (מוקפא — /v2/effie נשאר בכתובת) -->
+        <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="3" width="8" height="10.5" rx="2" fill="none" stroke="#C29435" stroke-width="1.6"/><path d="M4.5 6.5h3M4.5 9h3" stroke="#C29435" stroke-width="1.5" stroke-linecap="round"/><path d="M12.5 2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z" fill="#C29435"/></svg></div>
+        <div class="l">התאמות AI</div>
       </div>
       <div class="a lite" style="position:relative" onclick="location.href='/v2/deals'">
         <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#7A5E1C" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#7A5E1C" stroke-width="1.6" stroke-linecap="round"/></svg></div>
@@ -4120,8 +4120,23 @@ function bpResend(){
   window.open('https://wa.me/' + (b.wa || '') + '?text=' + encodeURIComponent('היי' + (first ? ' ' + first : '') + ', הנה רשימת הנכסים שלך:\n' + BP_CUR.j.page.url), '_blank');
 }
 function bpNew(){ if (!BP_CUR) return; closeSheet(); BP_AUTOSEL = true; matchProps(BP_CUR.i); }
-function bpSumLoad(){
-  return GET('/v2/api/bpage/summary').then(function(j){ BP_SUM = (j && j.rows) || {}; render(); }).catch(function(){});
+/* [BPAGE-FAST 08/10] פתיחה מיידית מהעותק השמור; התשובה מהשרת מעדכנת. מונה "התאמות חדשות" שעוד
+   מחושב בשרת (pending) — נשאר מהעותק, ובדיקה חוזרת אחת-שתיים כעבור כמה שניות */
+var _bpPoll = 0;
+(function(){ try{ var c = JSON.parse(localStorage.getItem('v2c:bpsum') || 'null'); if (c && c.rows) BP_SUM = c.rows; }catch(e){} })();
+function bpSumLoad(again){
+  if (!again) _bpPoll = 0;
+  return GET('/v2/api/bpage/summary').then(function(j){
+    if (!j || j.ok === false) return;
+    var rows = j.rows || {};
+    Object.keys(rows).forEach(function(k){
+      if (rows[k].newN == null && BP_SUM[k] && BP_SUM[k].newN != null) rows[k].newN = BP_SUM[k].newN;
+    });
+    BP_SUM = rows;
+    try{ localStorage.setItem('v2c:bpsum', JSON.stringify({rows: rows})); }catch(e){}
+    render();
+    if (j.pending && _bpPoll < 2){ _bpPoll++; setTimeout(function(){ bpSumLoad(true); }, 8000); }
+  }).catch(function(){});
 }
 function bpLoad(row){
   BP_STATE = {keys: {}, newK: {}, newL: []};
@@ -4478,6 +4493,7 @@ function saveSt(){
       if (['active', 'hot', 'bpage'].indexOf(FILTER) < 0) FILTER = 'active';   // 07/10: הוסרו בהקפאה/סגרו
     }
   }catch(e){}
+  if (/[?&]tab=bpage\b/.test(location.search)){ FILTER = 'bpage'; el('q').value = ''; _restY = 0; }   // [AI-MATCH 08/10] מאריח "התאמות AI" בבית
   var sg = document.querySelector('#filters .sg[data-f="' + FILTER + '"]');
   if (sg){ var cs = sg.parentNode.children;
     for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
@@ -12199,6 +12215,32 @@ def register(app, G):
         _bp_cache["new"][page["id"]] = (time.time(), res)
         return res
 
+    _BP_NM_BG = {"busy": False}
+
+    def _bp_newmatches_cached(pages_items):
+        """[BPAGE-FAST 08/10] אייל: "לוקח המון זמן לדף להעלות". מונה ההתאמות החדשות לכל דף מוחזר מיד
+        מהחישוב האחרון (גם אם ישן); דפים שהחישוב שלהם פג (10 דק') מחושבים ברקע — thread אחד, בתור.
+        → ({page_id: n או None}, pending)."""
+        out, stale = {}, []
+        now = time.time()
+        for p, its in pages_items:
+            ck = _bp_cache["new"].get(p["id"])
+            out[p["id"]] = len(ck[1]) if ck else None
+            if not ck or now - ck[0] >= 600:
+                stale.append((p, list(its)))
+        if stale and not _BP_NM_BG["busy"]:
+            _BP_NM_BG["busy"] = True
+            def _run():
+                try:
+                    for p, its in stale:
+                        _bp_newmatches(p, its)
+                except Exception as e:
+                    if log: log.warning(f"bpage new matches bg: {e}")
+                finally:
+                    _BP_NM_BG["busy"] = False
+            _bpthr.Thread(target=_run, daemon=True, name="bpage-new").start()
+        return out, bool(stale)
+
     @app.route("/v2/api/bpage/send", methods=["POST"])
     def v2_api_bpage_send():
         if not _BPAGE_ON:
@@ -12304,6 +12346,7 @@ def register(app, G):
             for i in items:
                 by_page.setdefault(i["page_id"], []).append(i)
             rows = {}
+            nm, pending = _bp_newmatches_cached([(p, by_page.get(p["id"], [])) for p in pages])
             for p in pages:
                 its = by_page.get(p["id"], [])
                 seen = bpage_iso_ep(p.get("seen_at"))
@@ -12313,8 +12356,10 @@ def register(app, G):
                         cnt[i["mark"]] += 1
                 rows[str(p["row"])] = dict(cnt, total=len(its),
                                            unseen=any(bpage_iso_ep(i.get("marked_at")) > seen for i in its if i.get("marked_at")),
-                                           newN=len(_bp_newmatches(p, its)), expired=bpage_expired(p, time.time()))
-            return jsonify({"ok": True, "rows": rows})
+                                           expired=bpage_expired(p, time.time()))
+                if nm.get(p["id"]) is not None:
+                    rows[str(p["row"])]["newN"] = nm[p["id"]]
+            return jsonify({"ok": True, "rows": rows, "pending": pending})
         except Exception as e:
             if log: log.warning(f"bpage summary: {e}")
             return jsonify({"ok": True, "rows": {}})
