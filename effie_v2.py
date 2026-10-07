@@ -4250,14 +4250,11 @@ function _nbGroup(nb){ var g = _splitSW(nb.filter(_budgetOk(CUR_BUYER || {}))); 
    נקודה על טאב שיש בו כאלה, ופתיחה בטאב הראשון שיש בו חדשות (אם הסוכן עוד לא בחר טאב) */
 var MTAB_USER = false;
 function _mKey(p, nb){ return nb ? (p.key || '') : (p.pkey || ''); }
-function _newFirst(list, nb){
-  var a = [], b = [];
-  (list || []).forEach(function(p){ (BP_STATE.newK[_mKey(p, nb)] ? a : b).push(p); });
-  return a.concat(b);
-}
+var NM_TAB = {office: 'office', shtaf: 'shtaf', newborn: 'nb'};
 function _tabNewN(k){
   var g = MG && MG[k]; if (!g) return 0;
-  return g.s.concat(g.w).filter(function(p){ return BP_STATE.newK[_mKey(p, k === 'nb')]; }).length;
+  if (k === 'mine') return g.s.concat(g.w).filter(function(p){ return BP_STATE.newK[_mKey(p, false)] && !Object.prototype.hasOwnProperty.call(BP_STATE.keys, p.pkey); }).length;
+  return _nmOpen().filter(function(m){ return NM_TAB[m.source] === k; }).length;
 }
 function _pickNewTab(){
   if (MTAB_USER || !MG || _tabNewN(MTAB)) return;
@@ -4267,7 +4264,18 @@ function _pickNewTab(){
 /* כל ההתאמות החדשות לדף בראש החלון (גם אלה שלא בתוצאות החיפוש), עם בחירה; אחרי "הוסף נכסים ·
    N התאמות חדשות" — כולן מסומנות אוטומטית (אייל 07/10) */
 function _nmOpen(){ return (BP_STATE.newL || []).filter(function(m){ return !Object.prototype.hasOwnProperty.call(BP_STATE.keys, m.key); }); }
-function _nmMi(m){
+function _nmFind(m){   // הכרטיס של ההתאמה החדשה בטאב שלה, אם היא בתוצאות החיפוש
+  var g = MG && MG[NM_TAB[m.source]]; if (!g) return null;
+  var nb = m.source === 'newborn', xs = g.s.concat(g.w);
+  for (var i = 0; i < xs.length; i++) if (_mKey(xs[i], nb) === m.key) return xs[i];
+  return null;
+}
+function _nmMi(m){   // אותו אינדקס בחירה כמו הכרטיס בטאב (אם קיים) — בחירה אחת לנכס
+  var p = _nmFind(m);
+  if (p){
+    if (p._mi == null) p._mi = MITEMS.push(m.source === 'newborn' ? {p: p, nb: true} : {p: p, shtaf: m.source === 'shtaf'}) - 1;
+    return p._mi;
+  }
   if (m._mi == null) m._mi = MITEMS.push({p: m.source === 'newborn' ? {key: m.key} : {pkey: m.key},
                                           nb: m.source === 'newborn', shtaf: m.source === 'shtaf', nm: true}) - 1;
   return m._mi;
@@ -4277,11 +4285,8 @@ function _nmAutoSel(){
   BP_AUTOSEL = false;
   _nmOpen().forEach(function(m){ MSEL[_nmMi(m)] = 1; });
 }
-function _nmSection(){
-  var xs = _nmOpen(); if (!xs.length) return '';
-  var h = '<div class="grpTitle" style="color:#2E6BD6">התאמות חדשות לדף הקונה · ' + xs.length + '</div>';
-  xs.forEach(function(m){
-    var mi = _nmMi(m);
+function _nmRow(m){   // התאמה חדשה שאינה בתוצאות החיפוש — כרטיס מקוצר מפרטי השרת
+    var mi = _nmMi(m), h = '';
     h += '<div style="background:#fff;border:1.5px solid #D6E3FA;border-radius:16px;padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center">' +
       '<button class="sel' + (MSEL[mi] ? ' on' : '') + '" onclick="toggleSel(' + mi + ')" aria-label="בחירה לדף הקונה">' +
       '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7.5l3.5 3.5L12 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
@@ -4291,9 +4296,9 @@ function _nmSection(){
       (m.score ? ' · ' + m.score + '% התאמה' : '') + '</div></div>' +
       (m.link ? '<a href="' + esc(m.link) + '" target="_blank" rel="noopener" style="flex-shrink:0;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none;padding:8px 4px">למודעה</a>' : '') +
       '</div>';
-  });
   return h;
 }
+function _nmTitle(n){ return '<div class="grpTitle" style="color:#2E6BD6">התאמות חדשות · ' + n + '</div>'; }
 function renderMatches(b, office, shtaf, nb, my){
   CUR_BUYER = b;
   MITEMS = []; MSEL = {};
@@ -4340,9 +4345,15 @@ function renderMatchTab(){
   if (MTAB === 'nb'){
     var nh = '';
     // הכרטיס פונה לשורה לפי המיקום ב-MNB (nbKitRows) — לכן הסדר החדש נקבע ב-MNB עצמו
-    MNB = _newFirst(g.s, true).concat(g.w);
+    var _nbNew = g.s.concat(g.w).filter(function(r){ return BP_STATE.newK[r.key] && !Object.prototype.hasOwnProperty.call(BP_STATE.keys, r.key); });
+    var _nbMiss = _nmOpen().filter(function(m){ return m.source === 'newborn' && !_nmFind(m); });
+    MNB = _nbNew.concat(g.s.filter(function(r){ return _nbNew.indexOf(r) < 0; }), g.w.filter(function(r){ return _nbNew.indexOf(r) < 0; }));
+    var _nbS = g.s.filter(function(r){ return _nbNew.indexOf(r) < 0; }).length;
+    if (_nbNew.length + _nbMiss.length) nh += _nmTitle(_nbNew.length + _nbMiss.length);
+    _nbMiss.forEach(function(m){ nh += _nmRow(m); });
     MNB.slice(0, 30).forEach(function(r, i){
-      if (i === g.s.length && i > 0) nh += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + g.w.length + '</div>';
+      if (_nbNew.length && i === _nbNew.length) nh += '<div class="grpTitle">כל ההתאמות</div>';
+      if (i === _nbNew.length + _nbS && i > _nbNew.length) nh += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + (MNB.length - _nbNew.length - _nbS) + '</div>';
       try{
         var _mi = (r._mi != null) ? r._mi : (r._mi = MITEMS.push({p: r, nb: true}) - 1);
         nh += '<div style="display:flex;align-items:center;gap:8px;margin:2px 4px 6px">' +
@@ -4355,16 +4366,25 @@ function renderMatchTab(){
   } else {
     var sh = MTAB === 'shtaf';
     var capS = sh ? 15 : 25, capW = sh ? 10 : 15;
-    _newFirst(g.s, false).slice(0, capS).forEach(function(p){ h += propCard(p, b, sh); });
-    if (g.w.length){
-      h += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + g.w.length + '</div>';
-      g.w.slice(0, capW).forEach(function(p){ h += propCard(p, b, sh); });
+    var _isNew = function(p){ return BP_STATE.newK[p.pkey] && !Object.prototype.hasOwnProperty.call(BP_STATE.keys, p.pkey); };
+    var _pNew = g.s.concat(g.w).filter(_isNew);
+    var _pMiss = MTAB === 'mine' ? [] : _nmOpen().filter(function(m){ return NM_TAB[m.source] === MTAB && !_nmFind(m); });
+    if (_pNew.length + _pMiss.length){
+      h += _nmTitle(_pNew.length + _pMiss.length);
+      _pNew.forEach(function(p){ h += propCard(p, b, sh); });
+      _pMiss.forEach(function(m){ h += _nmRow(m); });
+      h += '<div class="grpTitle">כל ההתאמות</div>';
+    }
+    var _gs = g.s.filter(function(p){ return !_isNew(p); }), _gw = g.w.filter(function(p){ return !_isNew(p); });
+    _gs.slice(0, capS).forEach(function(p){ h += propCard(p, b, sh); });
+    if (_gw.length){
+      h += '<div class="grpTitle" style="color:#6B7280">התאמות נוספות · ' + _gw.length + '</div>';
+      _gw.slice(0, capW).forEach(function(p){ h += propCard(p, b, sh); });
     }
   }
   var emptyTx = {office: 'לא נמצאו התאמות במשרד', shtaf: 'לא נמצאו התאמות בשת"פ',
                  nb: 'לא נמצאו התאמות בנכס נולד (מכירה בלבד)', mine: 'אין התאמות מתוך הנכסים שלך'}[MTAB];
-  var _nms = _nmSection();
-  el('mRes').innerHTML = _nms + (h ||
+  el('mRes').innerHTML = (h ||
     '<div style="text-align:center;color:#6B7280;font-size:13px;padding:16px 0">' + emptyTx +
     ' — נסה טאב אחר או לעדכן את הדרישות של הקונה</div>') +
     '<div id="selBar" style="display:none;position:sticky;bottom:0;padding:8px 0">' +
