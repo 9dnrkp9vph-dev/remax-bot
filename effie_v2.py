@@ -3954,7 +3954,7 @@ function toggleDx(id, btn){
 }
 var MITEMS = [], MSEL = {};
 /* [BPAGE 06/10] דף קונה — קישור אישי במקום הודעת טקסט; תגי "בדף הלקוח" בחלון */
-var BP_STATE = {keys: {}, newK: {}};
+var BP_STATE = {keys: {}, newK: {}, newL: []}, BP_AUTOSEL = false;
 function itemKey(it){
   var p = it.p || {};
   if (it.nb) return {source: 'newborn', key: p.key || ''};
@@ -3991,7 +3991,10 @@ function addSelected(){
 function bpSend(mis, fb, mode){
   fb = fb || sendSelectedText;
   var b = CUR_BUYER || {};
-  var items = mis.map(function(k){ return itemKey(MITEMS[k]); }).filter(function(x){ return x.key; });
+  var _seen = {};   // אותו נכס גם ב"התאמות חדשות" וגם בכרטיס בטאב — נשלח פעם אחת
+  var items = mis.map(function(k){ return itemKey(MITEMS[k]); }).filter(function(x){
+    var u = x.source + '|' + x.key; if (!x.key || _seen[u]) return false; _seen[u] = 1; return true;
+  });
   if (!items.length || !b.row){ fb(); return Promise.resolve(); }
   return POST('/v2/api/bpage/send', {row: b.row, q: MQ_CUR, items: items}).then(function(j){
     if (!j || j.off){ fb(); return; }
@@ -4116,19 +4119,21 @@ function bpResend(){
   var b = BP_CUR.b, first = String(b.name || '').trim().split(/\s+/)[0] || '';
   window.open('https://wa.me/' + (b.wa || '') + '?text=' + encodeURIComponent('היי' + (first ? ' ' + first : '') + ', הנה רשימת הנכסים שלך:\n' + BP_CUR.j.page.url), '_blank');
 }
-function bpNew(){ if (!BP_CUR) return; closeSheet(); matchProps(BP_CUR.i); }
+function bpNew(){ if (!BP_CUR) return; closeSheet(); BP_AUTOSEL = true; matchProps(BP_CUR.i); }
 function bpSumLoad(){
   return GET('/v2/api/bpage/summary').then(function(j){ BP_SUM = (j && j.rows) || {}; render(); }).catch(function(){});
 }
 function bpLoad(row){
-  BP_STATE = {keys: {}, newK: {}};
+  BP_STATE = {keys: {}, newK: {}, newL: []};
   if (!row) return Promise.resolve();
   return GET('/v2/api/bpage?row=' + encodeURIComponent(row)).then(function(j){
     if (!j || !j.ok) return;
     (j.items || []).forEach(function(it){ BP_STATE.keys[it.key] = it.mark || ''; });
     (j.new_matches || []).forEach(function(m){ BP_STATE.newK[m.key] = 1; });
-    if (typeof MG !== 'undefined' && MG && el('mRes')){ _pickNewTab(); renderMatchTabs(); renderMatchTab(); }
-  }).catch(function(){});
+    BP_STATE.newL = j.new_matches || [];
+    if (!BP_STATE.newL.length) BP_AUTOSEL = false;   // אין חדשות — שלא יסמן בקונה הבא
+    if (typeof MG !== 'undefined' && MG && el('mRes')){ _pickNewTab(); _nmAutoSel(); renderMatchTabs(); renderMatchTab(); }
+  }).catch(function(){ BP_AUTOSEL = false; });
 }
 function msgLine(p, shtaf){
   // שורת נכס להודעת הוואטסאפ — בלי שם הסוכן/המשרד המקורי (בקשת אייל)
@@ -4259,9 +4264,40 @@ function _pickNewTab(){
   var ks = ['office', 'shtaf', 'nb', 'mine'];
   for (var i = 0; i < ks.length; i++) if (_tabNewN(ks[i])){ MTAB = ks[i]; return; }
 }
+/* כל ההתאמות החדשות לדף בראש החלון (גם אלה שלא בתוצאות החיפוש), עם בחירה; אחרי "הוסף נכסים ·
+   N התאמות חדשות" — כולן מסומנות אוטומטית (אייל 07/10) */
+function _nmOpen(){ return (BP_STATE.newL || []).filter(function(m){ return !Object.prototype.hasOwnProperty.call(BP_STATE.keys, m.key); }); }
+function _nmMi(m){
+  if (m._mi == null) m._mi = MITEMS.push({p: m.source === 'newborn' ? {key: m.key} : {pkey: m.key},
+                                          nb: m.source === 'newborn', shtaf: m.source === 'shtaf', nm: true}) - 1;
+  return m._mi;
+}
+function _nmAutoSel(){
+  if (!BP_AUTOSEL || !MG || !(BP_STATE.newL || []).length) return;
+  BP_AUTOSEL = false;
+  _nmOpen().forEach(function(m){ MSEL[_nmMi(m)] = 1; });
+}
+function _nmSection(){
+  var xs = _nmOpen(); if (!xs.length) return '';
+  var h = '<div class="grpTitle" style="color:#2E6BD6">התאמות חדשות לדף הקונה · ' + xs.length + '</div>';
+  xs.forEach(function(m){
+    var mi = _nmMi(m);
+    h += '<div style="background:#fff;border:1.5px solid #D6E3FA;border-radius:16px;padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center">' +
+      '<button class="sel' + (MSEL[mi] ? ' on' : '') + '" onclick="toggleSel(' + mi + ')" aria-label="בחירה לדף הקונה">' +
+      '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 7.5l3.5 3.5L12 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+      '<div onclick="toggleSel(' + mi + ')" style="flex:1;min-width:0;cursor:pointer">' + bpCatChip(m) +
+      '<div style="font-weight:800">' + esc(m.addr || 'נכס') + (m.city ? ', ' + esc(m.city) : '') + '</div>' +
+      '<div style="font-size:12.5px;color:#6B7280">' + esc([bpFmtP(m.price), m.rooms ? m.rooms + ' חד׳' : '', m.sqm ? m.sqm + ' מ"ר' : ''].filter(Boolean).join(' · ')) +
+      (m.score ? ' · ' + m.score + '% התאמה' : '') + '</div></div>' +
+      (m.link ? '<a href="' + esc(m.link) + '" target="_blank" rel="noopener" style="flex-shrink:0;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none;padding:8px 4px">למודעה</a>' : '') +
+      '</div>';
+  });
+  return h;
+}
 function renderMatches(b, office, shtaf, nb, my){
   CUR_BUYER = b;
   MITEMS = []; MSEL = {};
+  (BP_STATE.newL || []).forEach(function(m){ m._mi = null; });
   var bok = _budgetOk(b);
   office = office.filter(bok); shtaf = shtaf.filter(bok);
   shtaf = dedupeShtaf(office, shtaf);
@@ -4281,7 +4317,7 @@ function renderMatches(b, office, shtaf, nb, my){
     var g = MG[order[i]];
     if (g.s.length + g.w.length){ MTAB = order[i]; break; }
   }
-  _pickNewTab();
+  _pickNewTab(); _nmAutoSel();
   renderMatchTabs(); renderMatchTab();
 }
 var MTAB_LBL = {office: 'המשרד שלנו', shtaf: 'שת"פ', nb: 'נכס נולד', mine: 'שלי'};
@@ -4327,7 +4363,8 @@ function renderMatchTab(){
   }
   var emptyTx = {office: 'לא נמצאו התאמות במשרד', shtaf: 'לא נמצאו התאמות בשת"פ',
                  nb: 'לא נמצאו התאמות בנכס נולד (מכירה בלבד)', mine: 'אין התאמות מתוך הנכסים שלך'}[MTAB];
-  el('mRes').innerHTML = (h ||
+  var _nms = _nmSection();
+  el('mRes').innerHTML = _nms + (h ||
     '<div style="text-align:center;color:#6B7280;font-size:13px;padding:16px 0">' + emptyTx +
     ' — נסה טאב אחר או לעדכן את הדרישות של הקונה</div>') +
     '<div id="selBar" style="display:none;position:sticky;bottom:0;padding:8px 0">' +
@@ -11308,6 +11345,18 @@ def bpage_digest_plan(pages_new):
         o["props"] += len(new)
     return out
 
+def bpage_nm_disp(m, live):
+    """[BPAGE-NEW 07/10] התאמה חדשה לדף + פרטי תצוגה לסוכן (אייל: 'בחלק מופיע התאמה חדשה ובחלק לא' —
+    חלק מההתאמות החדשות לא נמצאות בתוצאות החיפוש שבחלון, ולכן אין להן כרטיס). לסוכן בלבד."""
+    g = lambda k: str((live or {}).get(k, "") or "").strip()
+    st, house = g("כתובת"), g("מספר בית")
+    if house and house not in st.split():
+        st = (st + " " + house).strip()
+    d = dict(m, addr=st, city=g("עיר / ישוב"), price=_bp_digits(g("מחיר")), rooms=g("חדרים"),
+             sqm=g('מ"ר') or g("מ״ר"), link=g("קישור"))
+    d.update(bpage_cat(m.get("source"), live))
+    return d
+
 def bpage_cat(source, live):
     """[BPAGE 07/10] קטגוריה לתצוגת הסוכן בלבד (אייל): נכס נולד / שת"פ · המשרד המפרסם / המשרד · הסוכן.
     לא נכנס לצילום ולא לדף הלקוח."""
@@ -12215,7 +12264,8 @@ def register(app, G):
         return jsonify({"ok": True, "page": {"url": _bp_url(page["token"]), "expires": page.get("expires_at"),
                                              "seen_at": page.get("seen_at"), "last_sent_at": page.get("last_sent_at"),
                                              "expired": bpage_expired(page, time.time())},
-                        "items": disp, "new_matches": _bp_newmatches(page, items)})
+                        "items": disp, "new_matches": [bpage_nm_disp(m, (src.get(m.get("source")) or {}).get(m.get("key")))
+                                                       for m in _bp_newmatches(page, items)]})
 
     @app.route("/v2/api/bpage/summary", methods=["GET"])
     def v2_api_bpage_summary():
