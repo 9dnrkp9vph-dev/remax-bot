@@ -11232,6 +11232,18 @@ h1{font-size:22px;margin:6px 0 8px;font-weight:800}
 #fs{display:none;position:fixed;inset:0;background:#0E1D33;z-index:20}#fs.open{display:flex}#fs .gal{aspect-ratio:auto;height:100%;width:100%;background:#0E1D33}
 #fs .gal img{object-fit:contain;cursor:default}#fs .x{position:absolute;top:14px;left:14px;width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:22px}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;border-radius:999px;padding:10px 18px;font-weight:700;display:none;z-index:30}
+.stage{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:18px 16px;margin-bottom:14px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.stage .big{width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid #E4C56B;background:#E4C56B;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#231700}
+.stage .lb{font-size:12.5px;font-weight:700;color:#7A5E1C;margin-top:10px}.stage .nm2{font-size:21px;font-weight:800;margin-top:2px}
+.stage .lic{font-size:13px;color:#5B6472;margin-top:3px}.stage .of2{font-size:13px;color:#6B7280;margin-top:1px}
+.stage .row{display:flex;gap:8px;margin-top:14px;width:100%}.stage .row a{flex:1;min-height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:6px;font-weight:800;text-decoration:none;font-size:14.5px}
+.stage .row .w{background:#157A43;color:#fff}.stage .row .p{background:#fff;border:1.5px solid #DCD6C8;color:#1E3A5F}.stage .row .ig{flex:0 0 46px;background:#fff;border:1.5px solid #DCD6C8}
+.share{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:44px;background:#fff;border:1.5px solid #DCD6C8;border-radius:14px;font-family:inherit;font-weight:800;font-size:14px;color:#1E3A5F;margin-bottom:14px;cursor:pointer}
+.srch{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:16px;margin:4px 0 24px}
+.srch .t{font-weight:800;font-size:17px}.srch .s{font-size:13.5px;color:#5B6472;line-height:1.5;margin-top:4px}
+.srch textarea{width:100%;min-height:92px;margin-top:10px;font-size:16px;font-family:inherit;border:1.5px solid #DCD6C8;border-radius:14px;padding:10px;resize:vertical;color:#1E3A5F}
+.srch button{width:100%;min-height:46px;margin-top:8px;border:none;border-radius:14px;background:#2E6BD6;color:#fff;font-family:inherit;font-weight:800;font-size:15px;cursor:pointer}
+.srch .ok{background:#EAF5EE;color:#157A43;font-weight:800;border-radius:14px;padding:12px;margin-top:10px;text-align:center}
 """
 
 BPAGE_JS = r"""
@@ -11283,7 +11295,35 @@ function render(){
     h += '<button class="fold" onclick="ST.fold=!ST.fold;render()">לא מתאימים (' + X.length + ')' + (ST.fold ? ' — הסתר' : '') + '</button>';
     if (ST.fold) h += X.map(function(it, j){ return cardHtml(it, A.length + j); }).join('');
   }
-  document.getElementById('list').innerHTML = h;
+  document.getElementById('list').innerHTML = h + srchHtml();
+}
+/* [BPAGE-UP 08/10] עדכון חיפוש במלל חופשי → וואטסאפ עסקי לסוכן; שיתוף הדף */
+function srchHtml(){
+  var who = D.agent.first || D.agent.name || 'הסוכן', n = D.scanN ? Number(D.scanN).toLocaleString('he-IL') + ' ' : '';
+  return '<div class="srch" id="srch"><div class="t">מחפש משהו אחר?</div>' +
+    '<div class="s">כתוב מה חשוב לך — אזור, תקציב, חדרים. סוכן ה-AI שלנו יסרוק ' + esc(n) + 'נכסים למכירה בקריות, ו' + esc(who) + ' יחזור אליך עם התאמות.</div>' +
+    (ST.sent ? '<div class="ok">נשלח! ' + esc(who) + ' יחזור אליך בקרוב</div>' :
+      '<textarea id="sq" maxlength="500" placeholder="למשל: 4 חדרים בקרית ביאליק עם מעלית, עד 2.2 מיליון">' + esc(ST.sq || '') + '</textarea>' +
+      '<button id="sb" onclick="sendSearch()">שלח ל' + esc(who) + '</button>') + '</div>';
+}
+function sendSearch(){
+  var t = document.getElementById('sq'), b = document.getElementById('sb');
+  var v = t ? t.value.trim() : '';
+  ST.sq = v;
+  if (!v){ toast('כתוב מה אתה מחפש'); return; }
+  if (b){ b.disabled = true; b.textContent = 'שולח…'; }
+  return fetch(location.pathname.replace(/\/$/, '') + '/search', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: v})}).then(function(r){ return r.json(); }).then(function(j){
+      if (j && j.ok){ ST.sent = true; render(); var e = document.getElementById('srch'); if (e && e.scrollIntoView) e.scrollIntoView({block: 'center'}); }
+      else { toast(j && j.reason === 'rate' ? 'כבר שלחת — נסה שוב מאוחר יותר' : 'לא נשלח — נסה שוב'); render(); }
+    }).catch(function(){ toast('לא נשלח — נסה שוב'); render(); });
+}
+function sharePage(){
+  var u = location.href.split('#')[0], t = 'רשימת נכסים' + (D.office ? ' · ' + D.office : '');
+  if (navigator.share) return navigator.share({title: t, url: u}).catch(function(){});
+  var done = function(){ toast('הקישור הועתק'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(u).then(done, function(){ window.prompt('העתק את הקישור', u); });
+  window.prompt('העתק את הקישור', u);
 }
 function itemAt(i){ return all()[i]; }
 function more(i, b){ var d = document.getElementById('d' + i); if (!d) return; d.classList.toggle('open'); b.textContent = d.classList.contains('open') ? 'הצג פחות' : 'קרא עוד'; }
@@ -11346,14 +11386,55 @@ def _bp_doc(title, body, office):
             '<style>%s</style></head><body>%s</body></html>') % (_bp_esc(title), BPAGE_CSS, body)
 
 
+_BP_IG_SVG = ('<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="#1E3A5F" stroke-width="1.8"/>'
+              '<circle cx="12" cy="12" r="4.2" fill="none" stroke="#1E3A5F" stroke-width="1.8"/><circle cx="17.3" cy="6.7" r="1.2" fill="#1E3A5F"/></svg>')
+
+def bpage_stage(agent, office, instagram=""):
+    """[BPAGE-UP 08/10] כרטיס הסוכן בראש דף הקונה (אייל: "שהסוכן יקבל יותר במה"): תמונה גדולה, שם,
+    רישיון תיווך, משרד, וואטסאפ/חיוג ואינסטגרם של המשרד."""
+    agent = agent or {}
+    ini = _bp_esc((agent.get("name") or "?")[:1])
+    av = ('<img class="big" src="%s" alt="" onerror="this.outerHTML=\'<div class=big>%s</div>\'">' % (_bp_esc(agent["avatar"]), ini)
+          if agent.get("avatar") else '<div class="big">%s</div>' % ini)
+    row = ""
+    if agent.get("wa"):
+        row += '<a class="w" href="https://wa.me/%s" target="_blank" rel="noopener">וואטסאפ</a>' % _bp_esc(agent["wa"])
+    if agent.get("tel"):
+        row += '<a class="p" href="tel:%s">חיוג</a>' % _bp_esc(agent["tel"])
+    ig = str(instagram or "").strip()
+    if ig.startswith("https://"):
+        row += '<a class="ig" href="%s" target="_blank" rel="noopener" aria-label="אינסטגרם של המשרד">%s</a>' % (_bp_esc(ig), _BP_IG_SVG)
+    lic = str(agent.get("license") or "").strip()
+    return ('<div class="stage">%s<div class="lb">הסוכן שלך</div><div class="nm2">%s</div>%s<div class="of2">%s</div>%s</div>'
+            % (av, _bp_esc(agent.get("name")), ('<div class="lic">רישיון תיווך מס\' %s</div>' % _bp_esc(lic)) if lic else "",
+               _bp_esc((office or {}).get("name")), ('<div class="row">%s</div>' % row) if row else ""))
+
+
+def bpage_scan_count(src):
+    """[BPAGE-UP 08/10] מספר הנכסים הפעילים למכירה (משרד + שת"פ + נכס נולד), מעוגל לעשרות — למשפט "יסרוק N נכסים"."""
+    n = 0
+    for rows in (src or {}).values():
+        for r in (rows or {}).values():
+            if str((r or {}).get("ירד מפרסום", "") or "").strip():
+                continue
+            if "שכר" in str((r or {}).get("סוג עסקה", "") or ""):
+                continue
+            n += 1
+    return (n // 10) * 10
+
+
 def bpage_render_public(ctx):
-    data = {"agent": ctx["agent"], "active": ctx["active"], "disliked": ctx["disliked"]}
+    data = {"agent": ctx["agent"], "active": ctx["active"], "disliked": ctx["disliked"],
+            "scanN": ctx.get("scan_n") or 0, "office": (ctx.get("office") or {}).get("name") or ""}
     js_data = _json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     chips = "".join('<span class="chip">%s</span>' % _bp_esc(c) for c in (ctx.get("chips") or []) if c)
     hi = "שלום %s, הנכסים שבחרתי בשבילך" % ctx["buyer_first"] if ctx.get("buyer_first") else "הנכסים שבחרתי בשבילך"
+    share = ('<button class="share" onclick="sharePage()"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">'
+             '<path d="M8 10V2.5M5 5l3-3 3 3M3.5 8.5v4a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-4" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>שתף את הרשימה</button>')
     body = (_bp_head(ctx.get("office"), ctx["agent"]) +
-            '<div class="wrap"><h1>%s</h1>%s<div id="list"></div></div><div id="fs"></div><div id="toast" role="status" aria-live="polite"></div>'
-            % (_bp_esc(hi), ('<div class="chips">%s</div>' % chips) if chips else "") +
+            '<div class="wrap">%s<h1>%s</h1>%s%s<div id="list"></div></div><div id="fs"></div><div id="toast" role="status" aria-live="polite"></div>'
+            % (bpage_stage(ctx["agent"], ctx.get("office"), ctx.get("instagram")), _bp_esc(hi),
+               ('<div class="chips">%s</div>' % chips) if chips else "", share) +
             '<script>window.BP=%s;</script><script>%s</script>' % (js_data, BPAGE_JS))
     return _bp_doc((ctx.get("office") or {}).get("name") or "נכסים", body, ctx.get("office"))
 
@@ -12406,7 +12487,11 @@ def register(app, G):
             pass
         d = "".join(ch for ch in ph if ch.isdigit())
         tel = ("0" + d[-9:]) if len(d) >= 9 else ""
-        return {"name": nm, "first": nm.split()[0] if nm else "", "phone": tel, "tel": tel,
+        try:
+            lic = str((_load_config().get("v2_licenses") or {}).get(d[-9:], "") or "").strip() if d else ""
+        except Exception:
+            lic = ""
+        return {"name": nm, "first": nm.split()[0] if nm else "", "phone": tel, "tel": tel, "license": lic,
                 "wa": G["_wa_phone"](ph) if ph else "", "avatar": ("/v2/api/avatar?p=" + d[-9:]) if d else ""}
 
     def _bp_resp(html, code):
@@ -12444,8 +12529,13 @@ def register(app, G):
         bd = bai_budget(buyer.get("budget", "")) or bai_budget(buyer.get("search", ""))
         if bd:
             chips.append("עד ₪{:,}".format(int(bd)))
+        try:
+            ig = str((_load_config().get("v2_office") or {}).get("instagram", "") or "")
+        except Exception:
+            ig = ""
         return _bp_resp(bpage_render_public({"office": office, "agent": agent, "buyer_first": name.split()[0] if name else "",
-                                             "chips": chips, "active": act, "disliked": dis}), 200)
+                                             "chips": chips, "active": act, "disliked": dis,
+                                             "instagram": ig, "scan_n": bpage_scan_count(src)}), 200)
 
     def _bp_push(page, title, body):
         to = G["_last9"](page.get("agent_phone", ""))
@@ -12493,6 +12583,40 @@ def register(app, G):
                         _bp_push(pg, t, "סימן עוד %d נכסים" % n)
                 tm = _bpthr.Timer(600, _flush); tm.daemon = True; tm.start()
         return jsonify({"ok": True})
+
+    _bp_srate = {}
+
+    @app.route("/b/<token>/search", methods=["POST"])
+    def bpage_public_search(token):
+        """[BPAGE-UP 08/10] הלקוח מעדכן מה הוא מחפש (מלל חופשי) → וואטסאפ עסקי לסוכן (אייל: "שולח את הנתונים
+        שהלקוח כותב כהודעה לסוכן מהוואטסאפ ביזנס"). בלי 360dialog — פוש לסוכן. עד 3 בשעה לדף."""
+        page = _bp_page_or_none(token)
+        if not page:
+            return jsonify({"ok": False}), 404
+        if bpage_expired(page, time.time()):
+            return jsonify({"ok": False, "expired": True}), 410
+        text = str((request.get_json(silent=True) or {}).get("text") or "").strip()[:500]
+        if not text:
+            return jsonify({"ok": False, "reason": "empty"}), 400
+        now = time.time()
+        with _bp_glock:
+            if not bpage_rate_ok(_bp_srate.setdefault(page["id"], []), now, limit=3, per=3600):
+                return jsonify({"ok": False, "reason": "rate"}), 429
+        buyer = _bp_buyer(page.get("row")) or {}
+        bname = str(buyer.get("name", "") or "").strip() or "לקוח"
+        bph = "".join(ch for ch in str(buyer.get("phone", "") or "") if ch.isdigit())
+        msg = "עדכון חיפוש מ%s (דף הקונה):\n%s" % (bname, text) + (("\nטלפון: 0" + bph[-9:]) if len(bph) >= 9 else "")
+        wa = G["_wa_phone"](page.get("agent_phone", "")) if page.get("agent_phone") else ""
+        sent = False
+        if wa and G["_d360_on"]():
+            try:
+                sent = bool(G["send_text"](wa, msg))
+            except Exception as e:
+                if log: log.warning(f"bpage search wa: {e}")
+        if not sent:
+            _bp_push(page, "עדכון חיפוש · " + bname, text[:120])
+        _log_activity(page.get("agent_name", ""), "client", "", "עדכון חיפוש בדף קונה", (bname + ": " + text)[:60])
+        return jsonify({"ok": True, "wa": sent})
 
     _BPAGE_DIGEST = (os.environ.get("BPAGE_DIGEST", "1") or "1").strip() not in ("0", "false", "off")
     _BPAGE_DIGEST_HOUR = int(os.environ.get("BPAGE_DIGEST_HOUR", "10") or 10)
