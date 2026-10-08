@@ -10922,6 +10922,49 @@ def v2_reports_daily():
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
+def bpage_report_counts(pages, items, P, agent_of):
+    """[BPAGE-REPORT 08/10] דף קונה לפי סוכן לכל תקופה: דפים שהוקמו (created_at), שליחות (נכסים שנוספו
+    לאותו דף באותה דקה = שליחה אחת) ונכסים שנשלחו. → {new, sends, items, by: {סוכן: {new, sends, items}}}"""
+    pmap = {p.get("id"): p for p in (pages or [])}
+    ag = lambda p: str(agent_of(p) or "").strip() or "ללא סוכן"
+    new_all, new_by = _rep_count(list(pmap.values()), lambda p: _rep_date(p.get("created_at", "")), P, key=ag)
+    its = [dict(i, _ag=ag(pmap[i.get("page_id")])) for i in (items or []) if i.get("page_id") in pmap]
+    batches = {}
+    for i in its:
+        batches.setdefault((i.get("page_id"), str(i.get("added_at") or "")[:16]), i)
+    snd_all, snd_by = _rep_count(list(batches.values()), lambda i: _rep_date(i.get("added_at", "")), P, key=lambda i: i["_ag"])
+    it_all, it_by = _rep_count(its, lambda i: _rep_date(i.get("added_at", "")), P, key=lambda i: i["_ag"])
+    by = {}
+    for per, src in (("new", new_by), ("sends", snd_by), ("items", it_by)):
+        for p, cnt in src.items():
+            for a, nn in cnt.items():
+                by.setdefault(a, {}).setdefault(per, {})[p] = nn
+    return {"new": dict(new_all), "sends": dict(snd_all), "items": dict(it_all), "by": by}
+
+def render_bpage_table(bp):
+    """[BPAGE-REPORT 08/10] טבלת 'דף קונה לפי סוכן' — HTML בטוח למייל. אתמול / החודש לכל מדד."""
+    import html as _h
+    F = "font-family:Heebo,Arial,sans-serif"
+    th = f"padding:7px 6px;{F};font-size:11.5px;color:#6B7280;font-weight:700;text-align:center;border-bottom:1px solid #E9E4D8"
+    td = f"padding:7px 6px;{F};font-size:13px;color:#1E3A5F;text-align:center;border-bottom:1px solid #F0EDE3"
+    by = (bp or {}).get("by") or {}
+    g = lambda d, m, p: int(((d or {}).get(m) or {}).get(p, 0) or 0)
+    rows = [a for a in by if any(g(by[a], m, p) for m in ("new", "sends", "items") for p in ("day", "month"))]
+    if not rows:
+        return f"<div style='{F};font-size:13px;color:#6B7280;padding:6px 0'>לא הוקמו ולא נשלחו דפי קונה החודש</div>"
+    rows.sort(key=lambda a: (-g(by[a], "sends", "month"), -g(by[a], "new", "month"), a))
+    cell = lambda d, m: f"{g(d, m, 'day') or '–'} · {g(d, m, 'month') or '–'}"
+    head = (f"<tr><th style='{th};text-align:right'>סוכן</th><th style='{th}'>דפים שהוקמו</th><th style='{th}'>שליחות</th>"
+            f"<th style='{th}'>נכסים שנשלחו</th></tr>")
+    tot = {m: {"day": int(((bp or {}).get(m) or {}).get("day", 0) or 0), "month": int(((bp or {}).get(m) or {}).get("month", 0) or 0)} for m in ("new", "sends", "items")}
+    def _tr(name, d, bold=False):
+        w = "font-weight:800;background:#F7F5EE;" if bold else ""
+        return (f"<tr><td style='{td};{w}text-align:right;white-space:nowrap'>{_h.escape(str(name))}</td>"
+                + "".join(f"<td style='{td};{w}white-space:nowrap'>{cell(d, m)}</td>" for m in ("new", "sends", "items")) + "</tr>")
+    return (f"<div style='{F};font-size:11.5px;color:#6B7280;margin-bottom:4px'>בכל עמודה: אתמול · החודש</div>"
+            f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' dir='rtl' style='border-collapse:collapse'>"
+            + head + "".join(_tr(a, by[a]) for a in rows) + _tr("סה\"כ", tot, True) + "</table>")
+
 def build_office_report(day=None):
     """הדוח היומי (אייל 15/09). day = התאריך המדווח (ברירת מחדל: אתמול, שעון ישראל).
     מחזיר {subject, html, text, data}. כל מקור נתונים עטוף — כשל באחד לא מפיל את הדוח."""
@@ -11095,7 +11138,11 @@ def build_office_report(day=None):
     except Exception as e:
         log.warning(f"daily report: usage failed: {e}")
         usage = {"rows": [], "total": {}, "action_counts": []}
-    data = {"day": day.isoformat(), "office": office, "usage": usage,
+    # ── דף קונה לפי סוכן (אייל 08/10): דפים שהוקמו ושליחות (אצווה של נכסים שנוספו יחד = שליחה) ──
+    bpages = _safe(lambda: (_sbdb.bpage_all() or []) if (_sbdb and _sbdb.enabled()) else [], "bpages")
+    bp_items = _safe(lambda: (_sbdb.bpage_items([p["id"] for p in bpages]) or []) if bpages else [], "bpage_items")
+    bp_data = bpage_report_counts(bpages, bp_items, P, lambda p: _canon_agent_name(_display_name_for(str(p.get("agent_name") or ""), p.get("agent_phone", ""))))
+    data = {"day": day.isoformat(), "office": office, "usage": usage, "bpage": bp_data,
             "calls": c_all, "calls_answered": c_ans, "calls_by_agent": {p: dict(v) for p, v in c_by.items()},
             "signings": s_all, "signings_by_label": s_lab, "signings_by_agent": {p: dict(v) for p, v in s_by.items()},
             "shtaf": x_all, "shtaf_by_office": {p: dict(v) for p, v in x_by.items()},
@@ -11135,10 +11182,8 @@ def build_office_report(day=None):
     H.append(_table("קונים שנכנסו למערכת", [_row("קונים", _vals(b_all), True)]))
     H.append(f"<div style='font-size:12.5px;color:#5B6472;margin-top:4px'>לפי סוכן (החודש): {_esc(_by_list(b_by, 'month', 8))}</div>")
     H.append(_table("תהליכים ועסקאות", [_row("תהליכים שנפתחו", _vals(d_open)), _row("עסקאות שנסגרו", _vals(d_closed), True)]))
-    H.append(f"<div style='font-size:12.5px;color:#5B6472;margin-top:4px'>פתוחים כרגע: <b>{open_now}</b> · אצל עו\"ד: <b>{len(lawyer_now)}</b>"
-             + (f" ({_esc(', '.join(f'{a} ({n})' for a, n in lawyer_by.most_common(8)))})" if lawyer_now else "")
-             + f"<br>נסגרו לפי סוכן — השבוע: {_esc(_by_list(d_closed_by, 'week', 8))} · החודש: {_esc(_by_list(d_closed_by, 'month', 8))} · השנה: {_esc(_by_list(d_closed_by, 'year', 10))}"
-             + f"<br>נפתחו לפי סוכן (החודש): {_esc(_by_list(d_open_by, 'month', 8))}</div>")
+    # 08/10 (אייל): בלי פירוט העסקאות לפי שמות סוכנים — מספרים בלבד
+    H.append(f"<div style='font-size:12.5px;color:#5B6472;margin-top:4px'>פתוחים כרגע: <b>{open_now}</b> · אצל עו\"ד: <b>{len(lawyer_now)}</b></div>")
     H.append(f"<h3 style='margin:18px 0 6px;color:#1E3A5F;font-size:16px'>סריקות אחרונות</h3>"
              f"<div style='font-size:13.5px'>נכסי המשרד (יד2): <b>{_esc(scan_office)}</b> · שת\"פ: <b>{_esc(scan_shtaf)}</b> · נכס נולד (מודעה אחרונה): <b>{_esc(scan_nb)}</b></div>")
     if ins:
@@ -11175,9 +11220,16 @@ def build_office_report(day=None):
     L.append("שת\"פ לפי משרד — אתמול: " + _by_list(x_by, "day")); L.append("שת\"פ לפי משרד — החודש: " + _by_list(x_by, "month", 8)); L.append("")
     L.append("— קונים —"); _tl("נכנסו למערכת", b_all); L.append("לפי סוכן (החודש): " + _by_list(b_by, "month", 8)); L.append("")
     L.append("— תהליכים ועסקאות —"); _tl("נפתחו", d_open); _tl("נסגרו", d_closed)
-    L.append(f"פתוחים כרגע {open_now} · אצל עו\"ד {len(lawyer_now)}" + (" (" + ", ".join(f"{a} ({n})" for a, n in lawyer_by.most_common(8)) + ")" if lawyer_now else ""))
-    L.append("נסגרו לפי סוכן — השבוע: " + _by_list(d_closed_by, "week", 8) + " · החודש: " + _by_list(d_closed_by, "month", 8) + " · השנה: " + _by_list(d_closed_by, "year", 10))
-    L.append("נפתחו לפי סוכן (החודש): " + _by_list(d_open_by, "month", 8)); L.append("")
+    L.append(f"פתוחים כרגע {open_now} · אצל עו\"ד {len(lawyer_now)}"); L.append("")
+    _bpd = bp_data or {}
+    L.append("— דף קונה —")
+    L.append("דפים שהוקמו — אתמול %s · החודש %s · שליחות — אתמול %s · החודש %s" % (
+        (_bpd.get("new") or {}).get("day", 0), (_bpd.get("new") or {}).get("month", 0),
+        (_bpd.get("sends") or {}).get("day", 0), (_bpd.get("sends") or {}).get("month", 0)))
+    for _a, _v in sorted((_bpd.get("by") or {}).items(), key=lambda kv: -((kv[1].get("sends") or {}).get("month", 0))):
+        if (_v.get("sends") or {}).get("month") or (_v.get("new") or {}).get("month"):
+            L.append(f"  {_a}: הוקמו {(_v.get('new') or {}).get('month', 0)} · שליחות {(_v.get('sends') or {}).get('month', 0)} (החודש)")
+    L.append("")
     L.append(f"סריקות אחרונות: נכסי המשרד {scan_office} · שת\"פ {scan_shtaf} · נכס נולד {scan_nb}")
     _ur = usage.get("rows") or []
     if _ur:
@@ -11281,7 +11333,8 @@ def render_office_report_page(rep):
     if not mrows: mrows = "<div class='empty'>אין מודעות חדשות החודש</div>"
     # ── צנרת ──
     def _lst(dct): return ", ".join(f"{_e(a)} ({n})" for a, n in sorted((dct or {}).items(), key=lambda kv: -kv[1])) or "—"
-    law = _lst(d.get("lawyer_by_agent")); closed_m = _lst(d["deals_closed_by_agent"].get("month")); opened_m = _lst(d["deals_opened_by_agent"].get("month"))
+    # 08/10 (אייל): צנרת העסקאות בלי שמות סוכנים — מספרים בלבד
+    law = ""; closed_m = ""; opened_m = str((d.get("deals_opened") or {}).get("month", 0))
     ins = "".join(f"<div class='ins'>{_e(i)}</div>" for i in (d.get("insights") or [])) or "<div class='empty'>אין תובנות מיוחדות ליום הזה</div>"
     # ── נכס נולד לפי ערים (אייל 15/09): פעילים כרגע + נוספו לפי תקופה ──
     nct = d.get("newborn_city_total") or {}; nbc = d.get("newborn_by_city") or {}
@@ -11350,6 +11403,7 @@ def render_office_report_page(rep):
             f"<div class='pbox'><div class='n'>{d['open_now']}</div><div class='l'>תהליכים פתוחים</div><div class='w'>נפתחו החודש: {opened_m}</div></div>"
             f"<div class='pbox'><div class='n'>{d['lawyer_now']}</div><div class='l'>אצל עו\"ד</div><div class='w'>{law}</div></div>"
             f"<div class='pbox'><div class='n' style='color:#2E6BD6'>{d['deals_closed']['month']}</div><div class='l'>נסגרו החודש · השנה {d['deals_closed']['year']}</div><div class='w'>{closed_m}</div></div></div></div>"
+            f"<div class='sec'><h2>דף קונה לפי סוכן<small>דפים שהוקמו, שליחות ונכסים שנשלחו</small></h2>{render_bpage_table(d.get('bpage') or {})}</div>"
             f"<div class='sec'><h2>זמן ופעולות באפליקציה</h2>{render_usage_table(d.get('usage') or {})}</div>"
             f"<div class='sec'><h2>תובנות</h2>{ins}</div>"
             f"<div class='ft'>סריקות אחרונות — נכסי המשרד {_e(sc_.get('office'))} · שת\"פ {_e(sc_.get('shtaf'))} · נכס נולד {_e(sc_.get('newborn'))} · הופק על ידי אפי</div>"
@@ -11437,9 +11491,10 @@ def render_office_report_email(rep):
     def _pbox(n, l, w, color="#1E3A5F"):
         return (f"<td width='33%' valign='top' style='padding:4px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#F7F5EE;border-radius:14px'><tr><td style='padding:10px 12px;{F}'>"
                 f"<div style='font-size:28px;font-weight:800;color:{color}'>{n}</div><div style='font-size:12px;color:#6B7280'>{_e(l)}</div><div style='font-size:12px;margin-top:4px'>{w}</div></td></tr></table></td>")
-    pipe = (_pbox(d["open_now"], "תהליכים פתוחים", "נפתחו החודש: " + _lst(d["deals_opened_by_agent"].get("month")))
-            + _pbox(d["lawyer_now"], "אצל עו\"ד", _lst(d.get("lawyer_by_agent")))
-            + _pbox(d["deals_closed"]["month"], f"נסגרו החודש · השנה {d['deals_closed']['year']}", _lst(d["deals_closed_by_agent"].get("month")), "#2E6BD6"))
+    # 08/10 (אייל): בלי פירוט העסקאות לפי שמות סוכנים
+    pipe = (_pbox(d["open_now"], "תהליכים פתוחים", "נפתחו החודש: " + str((d.get("deals_opened") or {}).get("month", 0)))
+            + _pbox(d["lawyer_now"], "אצל עו\"ד", "")
+            + _pbox(d["deals_closed"]["month"], f"נסגרו החודש · השנה {d['deals_closed']['year']}", "", "#2E6BD6"))
     ins = "".join(f"<div style='background:#FBF3DD;border-right:4px solid #C29435;border-radius:10px;padding:8px 12px;margin:6px 0;{F};font-size:13.5px;color:#1E3A5F'>{_e(i)}</div>" for i in (d.get("insights") or [])) or f"<div style='{F};color:#6B7280;font-size:13px'>אין תובנות מיוחדות ליום הזה</div>"
     sc_ = d.get("scans") or {}
     def _sec(title, small, body):
@@ -11461,6 +11516,7 @@ def render_office_report_email(rep):
             + _sec("נכס נולד לפי ערים", "מודעות של פרטיים — הזדמנויות לגיוס" + (f" · אחרי ניכוי {d.get('newborn_dupes', 0)} כפילויות" if d.get("newborn_dupes") else ""), cities_tbl)
             + _sec("פודיום הסוכנים", "דירוג משולב: שיחות, החתמות, קונים, סגירות", leaders)
             + _sec("צנרת העסקאות", "", f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>{pipe}</tr></table>")
+            + _sec("דף קונה לפי סוכן", "דפים שהוקמו, שליחות ונכסים שנשלחו", render_bpage_table(d.get("bpage") or {}))
             + _sec("זמן ופעולות באפליקציה", "ביום המדווח · לפי סוכן, ממוין לפי זמן", render_usage_table(d.get("usage") or {}))
             + _sec("תובנות", "", ins)
             + f"<tr><td style='padding:10px;{F};font-size:11.5px;color:#6B7280;text-align:center'>סריקות אחרונות — נכסי המשרד {_e(sc_.get('office'))} · שת\"פ {_e(sc_.get('shtaf'))} · נכס נולד {_e(sc_.get('newborn'))} · הופק על ידי אפי</td></tr>"
@@ -11507,7 +11563,7 @@ def _logo_file():
 def _report_story_files(rep):
     """[REPORT-STORY 05/10] תמונות סטורי מהדוח (אייל: 'באותו מייל כמה תמונות לסטורי, אם ארצה להשתמש').
     כשל בציור לא מפיל את המייל — הוא יוצא בלי תמונות. כיבוי: REPORT_STORIES=0."""
-    if (os.environ.get("REPORT_STORIES", "1") or "1").strip() == "0":
+    if (os.environ.get("REPORT_STORIES", "0") or "0").strip() != "1":   # 08/10 (אייל): "לא רלוונטיים" — כבוי; REPORT_STORIES=1 מחזיר
         return []
     try:
         import report_story as _rs
