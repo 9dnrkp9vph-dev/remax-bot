@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.42
+// @version      13.43
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -51,7 +51,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.42'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='13.43'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -2458,7 +2458,7 @@ function exclScanFamilyNow(force){
     return {ok:false,msg:'סריקה פעילה — '+leaseWhy(now)+'. לחץ שוב כדי להפעיל בכל זאת'};
   }
   if(force){gmSet('ysExclCool','0');leaseClear();}
-  try{ exclRunClear(); }catch(e){}          // שהסניפים לא ידולגו בגלל יומן ההתקדמות
+  // v13.43: בלי exclRunClear — סניפי Family לא מדולגים ממילא, וניקוי מחק את חלק א׳ של הריצה המלאה
   leaseOpen(now,'full');
   try{ GM_openInTab(EXCL_DIRECTORY+'#'+EXCL_FLAG+'-'+EXCL_FAM_FLAG,{active:true,insert:true}); }
   catch(e){ return {ok:false,msg:'פתיחת הטאב נכשלה: '+e}; }
@@ -2562,8 +2562,7 @@ function famTick(now,st){
       cool:gmGet('ysExclCool','0'), leaseDead:exclDeadNow(now), nextFull:nextFull});
     if(!d.ok)return;
     gmSet('ysFamLast',String(now));
-    try{ exclRunClear(); }catch(e){}
-    leaseOpen(now,'fam');
+    leaseOpen(now,'fam');   // v13.43: בלי exclRunClear — לא מוחקים התקדמות של ריצה מלאה
     GM_openInTab(EXCL_DIRECTORY+'#'+EXCL_FLAG+'-'+EXCL_FAM_FLAG,{active:true,insert:true});
     log('🏠 נפתח טאב סריקת Family (כל שעתיים)');
   }catch(e){ log('famTick: '+e); }
@@ -2929,10 +2928,14 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
       return;
     }
     if(i>=OFFICES.length){
-      var now=Date.now(),st=exclLoadState(now);
-      exclDue(st,now).forEach(function(k){st[k].done=true;});
-      exclSaveState(st);
-      exclRunClear(); // הריצה הושלמה — הסריקה הבאה (ערב/מחר) מתחילה נקי
+      // 🐞 v13.43 (08/10): ריצת Family בלבד סימנה את ריצת הבוקר כגמורה ומחקה את
+      //    ההתקדמות שלה — חלק ב׳ של הבוקר בוטל ו-7 משרדים חיכו לערב. רק ריצה מלאה סוגרת.
+      if(!(dirDiag&&dirDiag.famOnly)){
+        var now=Date.now(),st=exclLoadState(now);
+        exclDue(st,now).forEach(function(k){st[k].done=true;});
+        exclSaveState(st);
+        exclRunClear(); // הריצה הושלמה — הסריקה הבאה (ערב/מחר) מתחילה נקי
+      }
       var exT=0,exF=0,phN=0;diags.forEach(function(d){exT+=d.exclTrue;exF+=d.exclFalse;phN+=d.phones;});
       summary.push('סה"כ: בלעדי '+exT+' · רגיל '+exF+' · טל '+phN);
       exclPostDiag({at:new Date().toISOString(),dir:dirDiag||null,offices:diags});
