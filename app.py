@@ -11122,10 +11122,7 @@ def build_office_report(day=None):
             else:
                 pos = 1 + sum(1 for _, n in others if n > o_active)
                 ins.append(f"{o1} מוביל את השוק עם {n1} נכסים בפרסום; אנחנו במקום {pos} עם {o_active} ({o_active_excl} בבלעדיות).")
-        if lawyer_now:
-            ins.append(f"{len(lawyer_now)} תהליכים אצל עו\"ד כרגע — " + ", ".join(f"{a} ({n})" for a, n in lawyer_by.most_common(4)) + ".")
-        if d_closed["month"] == 0 and day.day >= 15:
-            ins.append("אפס עסקאות שנסגרו החודש עד כה.")
+        # 09/10 (אייל): בלי תובנות על תהליכים ועסקאות (אצל עו"ד / אפס סגירות)
         if scan_office != "—":
             so = _rep_date(scan_office)
             if so and (day - so).days >= 1:
