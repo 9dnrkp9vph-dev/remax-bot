@@ -1887,6 +1887,12 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <button onclick="repSend('')" style="flex:1;padding:12px 0;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">שלח עכשיו (אתמול)</button>
         <button onclick="repOpen()" style="flex:1;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">הצג דוח</button>
       </div>
+      <!-- [WEEKLY 09/10] סיכום שבועי — אוטומטי כל יום ראשון בשעת הדוח -->
+      <div style="font-size:12px;color:#6B7280;margin-top:10px">סיכום שבועי (ראשון–שבת, כולל גיוסים בבלעדיות) נשלח אוטומטית כל יום ראשון</div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button onclick="wkSend()" style="flex:1;padding:12px 0;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">שלח סיכום שבועי</button>
+        <button onclick="location.href='/api/weekly-report?token=' + encodeURIComponent(TOK || '')" style="flex:1;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">הצג סיכום שבועי</button>
+      </div>
     </div>
 
     <!-- הגדרות המשרד -->
@@ -2266,6 +2272,11 @@ function repSend(d){
       }).catch(function(){});
       if (++n >= 36){ clearInterval(_repPoll); toast('עדיין מפיק… תרענן את הדף בעוד דקה'); }
     }, 5000);   // עד 3 דקות
+  }).catch(function(){ toast('שגיאה'); });
+}
+function wkSend(){
+  POST('/api/weekly-report/send', {}).then(function(j){
+    toast(j && j.ok ? 'הסיכום השבועי מופק ונשלח ברקע — יגיע למייל תוך דקה' : 'לא התקבל: ' + ((j && (j.msg || j.error)) || 'שגיאה'));
   }).catch(function(){ toast('שגיאה'); });
 }
 function repOpen(){

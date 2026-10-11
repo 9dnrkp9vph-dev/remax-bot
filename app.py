@@ -11660,6 +11660,7 @@ def api_daily_report_status():
     return jsonify({"ok": True, "to": ", ".join(_report_recipients()), "recipients": _report_recipients(), "hour": REPORT_HOUR,
                     "channel": "smtp" if (SMTP_USER and SMTP_PASS) else ("apps_script" if (APPS_SCRIPT_URL and APPS_SCRIPT_TOKEN) else "none"),
                     "thread_alive": bool(th is not None and th.is_alive()),
+                    "weekly": {"last": _WEEKLY_LAST, "sent": (_load_config() or {}).get("v2_weekly_report") or {}},
                     "thread_started": th is not None, "pid": os.getpid(),
                     "threads": sorted(t.name for t in _threading.enumerate())[:24],
                     "server": {"web_concurrency": os.environ.get("WEB_CONCURRENCY", ""), "argv": " ".join(__import__("sys").argv)[:120],
@@ -11742,6 +11743,186 @@ def api_daily_report_send():
         return jsonify({"ok": False, "msg": _REPORT_LAST["msg"]})
     return jsonify({"ok": True, "queued": True})
 
+# ── [WEEKLY 09/10] סיכום שבועי — כל יום ראשון ב-REPORT_HOUR על השבוע שהסתיים (ראשון–שבת) (אייל) ──
+def weekly_end_for(today):
+    """השבת האחרונה שהסתיימה לפני today (ביום ראשון — אתמול)."""
+    import datetime as _dt
+    back = (today.weekday() - 5) % 7 or 7   # weekday: שני=0 … שבת=5, ראשון=6
+    return today - _dt.timedelta(days=back)
+
+def weekly_exclusives(sigs, start, end):
+    """גיוסים בבלעדיות שנחתמו בשבוע (נחתם = יש קישור/עמלה — כלל מסך החתימות): [{agent, address, date}] לפי תאריך."""
+    out = []
+    for g in sigs or []:
+        if _deal_label(g.get("deal_type", "")) != "בלעדיות":
+            continue
+        if not str(g.get("commission_pct", "") or "").strip():
+            continue
+        d = _rep_date(g.get("received_at", ""))
+        if not d or not (start <= d <= end):
+            continue
+        addr = ", ".join(x for x in (str(g.get("address", "") or "").strip(), str(g.get("city", "") or "").strip()) if x)
+        out.append({"agent": _canon_agent_name(_norm_name(str(g.get("agent", "") or ""))) or "—", "address": addr or "—",
+                    "date": d.strftime("%d/%m/%Y"), "_d": d.isoformat()})
+    out.sort(key=lambda x: (x["_d"], x["agent"]))
+    for x in out:
+        x.pop("_d", None)
+    return out
+
+def build_weekly_report(end=None):
+    """הסיכום השבועי: עמודת 'השבוע' של הדוח היומי ליום שבת + רשימת גיוסים בבלעדיות. → {subject, html, text, data}."""
+    import datetime as _dt
+    if end is None:
+        end = weekly_end_for(_dt.datetime.now(_rep_tz()).date())
+    start = end - _dt.timedelta(days=6)
+    rep = build_office_report(end)
+    d = rep["data"]
+    try:
+        excl = weekly_exclusives(get_signings(), start, end)
+    except Exception as e:
+        log.warning(f"weekly report: exclusives failed: {e}")
+        excl = []
+    wk = lambda k: int(((d.get(k) or {}).get("week")) or 0)
+    byw = lambda k: dict(((d.get(k) or {}).get("week")) or {})
+    agents = {}
+    for col, src in (("calls", byw("calls_by_agent")), ("signings", byw("signings_by_agent")), ("buyers", byw("buyers_by_agent"))):
+        for a, n in src.items():
+            a = _norm_name(a)
+            if a and a != "—":
+                agents.setdefault(a, {})[col] = agents.get(a, {}).get(col, 0) + n
+    for x in excl:
+        agents.setdefault(x["agent"], {})["excl"] = agents.get(x["agent"], {}).get("excl", 0) + 1
+    for a, v in ((d.get("bpage") or {}).get("by") or {}).items():
+        n = int(((v.get("sends") or {}).get("week")) or 0)
+        if n:
+            a = _norm_name(a)
+            agents.setdefault(a, {})["bp"] = agents.get(a, {}).get("bp", 0) + n
+    ans = int(((d.get("calls_answered") or {}).get("week")) or 0)
+    kpis = [("שיחות נכנסות", wk("calls"), ("נענו %d%%" % round(100 * ans / wk("calls"))) if wk("calls") else ""),
+            ("החתמות", wk("signings"), "קונים %s · מוכרים %s" % (((d.get("signings_by_label") or {}).get("קונים") or {}).get("week", 0),
+                                                              ((d.get("signings_by_label") or {}).get("מוכר") or {}).get("week", 0))),
+            ("גיוסים בבלעדיות", len(excl), "נחתמו השבוע"),
+            ("קונים חדשים", wk("buyers"), ""),
+            ("נכסים חדשים שלנו ביד2", wk("office_new"), ""),
+            ("שליחות דף קונה", int(((d.get("bpage") or {}).get("sends") or {}).get("week", 0) or 0), "")]
+    office = d.get("office") or "המשרד"
+    rng = "%s–%s" % (start.strftime("%d/%m"), end.strftime("%d/%m/%Y"))
+    data = {"office": office, "start": start.isoformat(), "end": end.isoformat(), "range": rng, "kpis": kpis,
+            "exclusives": excl, "agents": agents, "report_url": d.get("report_url", "")}
+    subject = "סיכום שבועי %s · %s" % (office, rng)
+    L = [subject, ""] + ["%s: %s%s" % (k, n, (" (" + s2 + ")") if s2 else "") for k, n, s2 in kpis]
+    L += ["", "— גיוסים בבלעדיות (%d) —" % len(excl)] + ["%s · %s · %s" % (x["date"], x["agent"], x["address"]) for x in excl]
+    L += ["", "— לפי סוכן —"] + ["%s: שיחות %s · החתמות %s · בלעדיות %s · קונים %s · דף קונה %s" % (
+        a, v.get("calls", 0), v.get("signings", 0), v.get("excl", 0), v.get("buyers", 0), v.get("bp", 0))
+        for a, v in sorted(agents.items(), key=lambda kv: (-kv[1].get("excl", 0), -kv[1].get("signings", 0), kv[0]))]
+    wr = {"subject": subject, "text": "\n".join(L), "data": data}
+    wr["html"] = render_weekly_email(wr)
+    return wr
+
+def render_weekly_email(wr):
+    """מייל הסיכום השבועי — טבלאות בלבד, עיצוב מוטמע (בטוח ל-Gmail), RTL, פלטת אפי."""
+    import html as _h
+    d = wr["data"]
+    F = "font-family:Heebo,Arial,sans-serif"
+    e = lambda x: _h.escape(str(x if x is not None else ""))
+    base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    th = f"padding:7px 6px;{F};font-size:11.5px;color:#6B7280;font-weight:700;border-bottom:1px solid #E9E4D8"
+    td = f"padding:8px 6px;{F};font-size:13px;color:#1E3A5F;border-bottom:1px solid #F0EDE3"
+    tiles = "".join(
+        (("</tr><tr>" if i and i % 3 == 0 else "")
+         + f"<td width='33%' valign='top' style='padding:4px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#fff;border-radius:16px'>"
+           f"<tr><td style='padding:12px 12px;{F}'><div style='font-size:12px;color:#7A5E1C;font-weight:700'>{e(k)}</div>"
+           f"<div style='font-size:30px;font-weight:800;color:#1E3A5F;line-height:1.2'>{e(n)}</div><div style='font-size:11.5px;color:#6B7280'>{e(s2)}</div></td></tr></table></td>")
+        for i, (k, n, s2) in enumerate(d["kpis"]))
+    ex = d["exclusives"]
+    if ex:
+        exc = (f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' dir='rtl' style='border-collapse:collapse'>"
+               f"<tr><th style='{th};text-align:right'>סוכן</th><th style='{th};text-align:right'>כתובת</th><th style='{th};text-align:center'>תאריך הגיוס</th></tr>"
+               + "".join(f"<tr><td style='{td};font-weight:800;white-space:nowrap'>{e(x['agent'])}</td><td style='{td}'>{e(x['address'])}</td>"
+                         f"<td style='{td};text-align:center;white-space:nowrap'>{e(x['date'])}</td></tr>" for x in ex) + "</table>")
+    else:
+        exc = f"<div style='{F};font-size:13px;color:#6B7280'>לא נחתמו בלעדיות השבוע</div>"
+    ag = sorted(d["agents"].items(), key=lambda kv: (-kv[1].get("excl", 0), -kv[1].get("signings", 0), kv[0]))
+    cols = (("calls", "שיחות"), ("signings", "החתמות"), ("excl", "בלעדיות"), ("buyers", "קונים"), ("bp", "דף קונה"))
+    agt = (f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' dir='rtl' style='border-collapse:collapse'>"
+           f"<tr><th style='{th};text-align:right'>סוכן</th>" + "".join(f"<th style='{th};text-align:center'>{lb}</th>" for _, lb in cols) + "</tr>"
+           + "".join(f"<tr><td style='{td};text-align:right;white-space:nowrap'>{e(a)}</td>"
+                     + "".join(f"<td style='{td};text-align:center'>{v.get(c) or '–'}</td>" for c, _ in cols) + "</tr>" for a, v in ag)
+           + "</table>") if ag else f"<div style='{F};font-size:13px;color:#6B7280'>אין פעילות לפי סוכן השבוע</div>"
+    def sec(title, small, body):
+        return (f"<tr><td style='padding:8px 6px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#fff;border-radius:18px'><tr><td style='padding:14px 16px'>"
+                f"<div style='{F};font-size:17px;font-weight:800;color:#1E3A5F;margin-bottom:8px'>{e(title)} <span style='font-size:11.5px;color:#6B7280;font-weight:500'>{e(small)}</span></div>{body}</td></tr></table></td></tr>")
+    return (f"<div dir='rtl' style='background:#F2EFE7;padding:12px 0'><table role='presentation' width='640' align='center' cellpadding='0' cellspacing='0' style='max-width:640px;margin:0 auto'>"
+            f"<tr><td style='padding:6px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#1E3A5F;border-radius:22px'><tr><td style='padding:18px 20px'>"
+            f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr><td width='64' valign='middle'><img src='{base}/assets/logo' width='56' height='56' alt='' style='display:block;background:#fff;border-radius:28px;padding:4px;border:3px solid #E4C56B'></td>"
+            f"<td valign='middle' style='padding-right:10px;{F}'><div style='font-size:22px;font-weight:800;color:#fff'>סיכום שבועי · {e(d['office'])}</div>"
+            f"<div style='font-size:12.5px;color:#D9DEE8;margin-top:3px'>שבוע {e(d['range'])} · ראשון עד שבת</div></td></tr></table></td></tr></table></td></tr>"
+            f"<tr><td style='padding:2px 2px'><table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>{tiles}</tr></table></td></tr>"
+            + sec("גיוסים בבלעדיות", "%d השבוע · נחתמו" % len(ex), exc)
+            + sec("לפי סוכן", "השבוע · ממוין לפי בלעדיות והחתמות", agt)
+            + f"<tr><td style='padding:10px;{F};font-size:11.5px;color:#6B7280;text-align:center'>הופק על ידי אפי</td></tr></table></div>")
+
+_WEEKLY_LAST = {}
+
+def _weekly_build_and_send(end=None, to=""):
+    t0 = time.time()
+    _WEEKLY_LAST.update({"state": "running", "started": t0, "ok": None, "msg": ""})
+    try:
+        wr = build_weekly_report(end)
+        ok, msg = _report_send_email(wr["subject"], wr["html"], wr["text"], to or None)
+    except Exception as ex:
+        ok, msg = False, f"{type(ex).__name__}: {str(ex)[:120]}"
+        log.error(f"weekly report failed: {ex}", exc_info=True)
+    _WEEKLY_LAST.update({"state": "done", "ok": bool(ok), "msg": msg, "secs": round(time.time() - t0, 1)})
+    return ok, msg
+
+@app.route("/api/weekly-report", methods=["GET"])
+def api_weekly_report():
+    """הסיכום השבועי בדפדפן (?end=YYYY-MM-DD — שבת שבוע; ברירת מחדל: השבוע שהסתיים); ?fmt=json."""
+    if not _report_auth_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    import datetime as _dt
+    end = None
+    try:
+        if request.args.get("end"):
+            end = _dt.date.fromisoformat(request.args["end"])
+    except Exception:
+        end = None
+    wr = build_weekly_report(end)
+    if (request.args.get("fmt", "") or "").lower() == "json":
+        return jsonify({"ok": True, **wr})
+    return Response("<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>"
+                    + wr["subject"] + "</title>" + wr["html"], mimetype="text/html")
+
+@app.route("/api/weekly-report/send", methods=["POST", "GET"])
+def api_weekly_report_send():
+    """שליחה ידנית של הסיכום השבועי — ברקע; מצב ב-/api/daily-report/status (weekly)."""
+    if not _report_auth_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    to = str(request.args.get("to", "") or "").strip()
+    _threading.Thread(target=_weekly_build_and_send, args=(None, to), daemon=True, name="weekly-report-manual").start()
+    return jsonify({"ok": True, "queued": True})
+
+def _weekly_tick(now):
+    """ביום ראשון אחרי REPORT_HOUR — פעם אחת (v2_weekly_report[תאריך]); כשל → ניסיון חוזר כל 15 דק', עד 8."""
+    if now.weekday() != 6 or now.hour < REPORT_HOUR or (os.environ.get("WEEKLY_REPORT", "1") or "1") == "0":
+        return False
+    key = now.date().isoformat()
+    rec = ((_load_config() or {}).get("v2_weekly_report") or {}).get(key) or {}
+    if rec.get("ok") or int(rec.get("tries") or 0) >= 8 or (time.time() - float(rec.get("ts") or 0)) < 900:
+        return False
+    ok, msg = _weekly_build_and_send()
+    log.info(f"weekly report {key}: {msg}")
+    def _mark(cfg, _k=key, _ok=ok, _msg=msg):
+        d = cfg.get("v2_weekly_report") or {}
+        prev = d.get(_k) or {}
+        d[_k] = {"ts": time.time(), "ok": _ok, "tries": int(prev.get("tries") or 0) + 1, "msg": str(_msg)[:120]}
+        for kk in sorted(d)[:-8]: d.pop(kk, None)
+        cfg["v2_weekly_report"] = d
+        return True
+    _config_mutate(_mark)
+    return True
+
 def _report_daily_loop():
     """שליחה אוטומטית פעם ביום ב-REPORT_HOUR (שעון ישראל) — idempotent דרך הקונפיג (v2_daily_report[יום])."""
     import datetime as _dt
@@ -11780,6 +11961,10 @@ def _report_daily_loop_body(_dt):
                         cfg["v2_daily_report"] = d
                         return True
                     _config_mutate(_mark)
+            try:
+                _weekly_tick(now)   # [WEEKLY 09/10] יום ראשון — הסיכום השבועי (אחרי היומי)
+            except Exception as _we:
+                log.warning(f"weekly report tick: {_we}")
         except Exception as e:
             log.warning(f"daily report loop: {e}")
             _REPORT_LAST.update({"state": "done", "ok": False, "msg": f"לולאה: {type(e).__name__}: {str(e)[:100]}"})
