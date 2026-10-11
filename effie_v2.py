@@ -4007,7 +4007,7 @@ function itemKey(it){
 function bpChip(k){
   if (!k) return '';
   if (Object.prototype.hasOwnProperty.call(BP_STATE.keys, k)){
-    var m = BP_STATE.keys[k], t = m === 'like' ? 'בדף · מתאים' : m === 'visit' ? 'בדף · רוצה לראות' : m === 'dislike' ? 'בדף · לא מתאים' : 'בדף הקונה';
+    var m = BP_STATE.keys[k], t = (m === 'like' || m === 'visit') ? 'בדף · מתאים' : m === 'dislike' ? 'בדף · לא מתאים' : 'בדף הקונה';
     return '<span class="bpc" style="display:inline-block;background:#EAF0FA;color:#2E6BD6;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' + t + '</span>';
   }
   if (BP_STATE.newK[k]) return '<span class="bpc" style="display:inline-block;background:#2E6BD6;color:#fff;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">התאמה חדשה</span>';
@@ -4044,6 +4044,12 @@ function bpSend(mis, fb, mode){
     if (!j || j.off){ fb(); return; }
     if (!j.ok){ toast(j.reason === 'no_items' ? 'הנכסים לא נמצאו — רענן ונסה שוב' : 'השליחה נכשלה' + (j.reason ? ' · ' + j.reason : '')); return; }
     try{ localStorage.removeItem('v2c:bp:' + b.row); }catch(e){}   // [BPAGE-FAST] העותק השמור של הגיליון כבר לא מעודכן
+    // 11/10 (אייל: "לוקח המון זמן עד שהדף מופיע בטאב 'דף קונה'"): הטאב מסונן לפי BP_SUM, שלא התעדכן
+    // אחרי שליחה — הקונה הופיע רק בטעינה הבאה של המסך. עכשיו: מיד בעותק המקומי + רענון מהשרת.
+    var _rk = String(b.row), _bs = BP_SUM[_rk] || {like: 0, visit: 0, dislike: 0, total: 0};
+    _bs.total = (_bs.total || 0) + (j.added || 0); _bs.expired = false; BP_SUM[_rk] = _bs;
+    try{ localStorage.setItem('v2c:bpsum', JSON.stringify({rows: BP_SUM})); }catch(e){}
+    bpSumLoad();
     (j.keys || items.map(function(x){ return x.key; })).forEach(function(k){ if (!Object.prototype.hasOwnProperty.call(BP_STATE.keys, k)) BP_STATE.keys[k] = ''; });
     if (j.missing && j.missing.length) toast(j.missing.length === 1 ? 'נכס אחד לא נמצא ולא נוסף' : j.missing.length + ' נכסים לא נמצאו ולא נוספו');
     if (mode === 'copy'){
@@ -4062,8 +4068,7 @@ function bpLine(b, i){
   var s = BP_SUM[String(b.row)]; if (!s) return '';
   var parts = [];
   if (s.expired) parts.push('פג תוקף');
-  if (s.like) parts.push(s.like + ' מתאים');
-  if (s.visit) parts.push(s.visit + ' רוצה לראות');
+  if ((s.like || 0) + (s.visit || 0)) parts.push(((s.like || 0) + (s.visit || 0)) + ' מתאים');   // 11/10: 'רוצה לראות' ישן = מתאים
   if (s.dislike) parts.push(s.dislike + ' לא מתאים');
   if (s.newN) parts.push(s.newN + ' התאמות חדשות');
   return '<div onclick="bpSheet(' + i + ')" style="display:flex;align-items:center;gap:8px;min-height:44px;margin:8px 0 0;padding:0 12px;' +
@@ -4074,11 +4079,11 @@ function bpLine(b, i){
 }
 function bpSheetHtml(b, j){
   var it = j.items || [], P = j.page || {};
-  var grp = [['visit', 'רוצה לראות'], ['like', 'מתאים'], ['', 'טרם סומן'], ['dislike', 'לא מתאים']];
+  var grp = [['like', 'מתאים'], ['', 'טרם סומן'], ['dislike', 'לא מתאים']];   // 11/10 (אייל): בלי 'רוצה לראות' — סימון ישן נספר כמתאים
   var h = '<h3>דף קונה · ' + esc(b.name || '') + '</h3>' +
     (P.expired ? '<div style="color:#7A5E1C;font-weight:700;font-size:13px;margin-bottom:8px">הקישור פג תוקף — שליחה חדשה מחדשת אותו ל-90 יום</div>' : '');
   grp.forEach(function(g){
-    var xs = it.filter(function(x){ return (x.mark || '') === g[0]; });
+    var xs = it.filter(function(x){ var mk = x.mark === 'visit' ? 'like' : (x.mark || ''); return mk === g[0]; });
     if (!xs.length) return;
     h += '<div class="grpTitle">' + g[1] + ' · ' + xs.length + '</div>';
     xs.forEach(function(x){
@@ -11270,8 +11275,7 @@ h1{font-size:22px;margin:6px 0 8px;font-weight:800}
 .teaser{background:#F6EEDB;color:#7A5E1C;font-weight:700;font-size:13.5px;border-radius:14px;padding:10px 12px;margin-top:10px}
 .acts{display:flex;gap:8px;margin-top:12px}
 .acts button{flex:1;min-height:44px;border-radius:14px;font-family:inherit;font-weight:800;font-size:14px;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F}
-.acts .lk.on{background:#2E6BD6;border-color:#2E6BD6;color:#fff}.acts .dl.on{background:#5B6472;border-color:#5B6472;color:#fff}
-.acts .vs{background:#157A43;border-color:#157A43;color:#fff}
+.acts .lk{border-color:#157A43;color:#157A43}.acts .lk.on{background:#157A43;border-color:#157A43;color:#fff}.acts .dl.on{background:#5B6472;border-color:#5B6472;color:#fff}
 .note{display:none;margin-top:8px}.note.open{display:flex;gap:8px}
 .note input{flex:1;font-size:16px;font-family:inherit;border:1.5px solid #DCD6C8;border-radius:12px;padding:10px;min-height:44px}
 .note button{min-height:44px;border-radius:12px;border:none;background:#2E6BD6;color:#fff;font-weight:800;padding:0 16px;font-family:inherit}
@@ -11303,9 +11307,6 @@ BPAGE_JS = r"""
 var D = window.BP || {}, ST = {};
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtP(p){ p = String(p || '').replace(/\D/g, ''); return p ? '₪' + p.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''; }
-function where(it, full){ var st = [it.street, full ? it.house : ''].filter(Boolean).join(' ');
-  return [st, it.neighborhood, it.city].filter(Boolean).join(', '); }
-function visitText(it){ return 'שלום ' + (D.agent.first || '') + ', אשמח לתאם ביקור ב' + where(it, it.source !== 'newborn'); }
 function galHtml(it, i){
   var im = it.images || [];
   if (!im.length) return '';
@@ -11330,8 +11331,7 @@ function cardHtml(it, i){
     (nb ? '<div class="teaser">נכס חדש לפני פרסום · פרטים אצל ' + esc(D.agent.first || D.agent.name) + '</div>' : '') +
     (it.gone ? '<span class="gonetag">כבר לא זמין</span>' :
       '<div class="acts"><button class="lk' + (it.mark === 'like' || it.mark === 'visit' ? ' on' : '') + '" onclick="mark(' + i + ',\'like\')">מתאים</button>' +
-      '<button class="dl' + (it.mark === 'dislike' ? ' on' : '') + '" onclick="mark(' + i + ',\'dislike\')">לא מתאים</button>' +
-      '<button class="vs" onclick="visit(' + i + ')">רוצה לראות</button></div>' +
+      '<button class="dl' + (it.mark === 'dislike' ? ' on' : '') + '" onclick="mark(' + i + ',\'dislike\')">לא מתאים</button></div>' +
       '<div class="note" id="n' + i + '"><input id="ni' + i + '" maxlength="200" placeholder="למה? (לא חובה)" value="' + esc(it.note || '') + '">' +
       '<button onclick="saveNote(' + i + ')">שמור</button></div>') +
     '</div></div>';
@@ -11400,9 +11400,6 @@ function mark(i, m){
 function saveNote(i){ var it = itemAt(i), inp = document.getElementById('ni' + i); if (!it || !inp) return;
   it.note = inp.value.slice(0, 200); send(it, 'dislike', it.note); toast('תודה, הועבר ל' + (D.agent.first || 'סוכן'));
   var n = document.getElementById('n' + i); if (n) n.classList.remove('open'); }
-function visit(i){ var it = itemAt(i); if (!it) return;
-  it.mark = 'visit'; send(it, 'visit', ''); render();
-  window.open('https://wa.me/' + D.agent.wa + '?text=' + encodeURIComponent(visitText(it)), '_blank'); }
 function fsOpen(i, k){ var it = itemAt(i); if (!it) return; var fs = document.getElementById('fs');
   fs.innerHTML = '<div class="gal">' + it.images.map(function(u){ return '<img src="' + esc(u) + '" alt="">'; }).join('') + '</div>' +
     '<button class="x" aria-label="סגירה" onclick="document.getElementById(\'fs\').classList.remove(\'open\')">×</button>';
