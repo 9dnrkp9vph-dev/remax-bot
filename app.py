@@ -7684,8 +7684,13 @@ def api_search_properties():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
-        _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכסים", q or "(כל הנכסים)")
-        if q and not (request.get_json(silent=True) or {}).get("nosave"):
+        # [BPAGE-NMFULL 11/10] keys = שליפת נכסים מסוימים לפי pkey (התאמות חדשות לדף קונה שלא בתוצאות
+        # החיפוש) — אותו כרטיס בדיוק; בלי רישום חיפוש ביומן
+        _keys = (request.get_json(silent=True) or {}).get("keys")
+        _keys = set(str(k) for k in _keys[:60]) if isinstance(_keys, list) else None
+        if _keys is None:
+            _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכסים", q or "(כל הנכסים)")
+        if q and _keys is None and not (request.get_json(silent=True) or {}).get("nosave"):
             _push_recent(s["phone"], "props", q)
         _scan_price_changes()
         _pc_map = _price_changed_map()   # נכסים שהמחיר שלהם השתנה ב-7 ימים — תג לכולם
@@ -7726,6 +7731,8 @@ def api_search_properties():
             d["lng"] = round(_ll[1], 6) if _ll else None
             return d
 
+        if _keys is not None:
+            return jsonify({"ok": True, "results": [_row_out(r) for r in fetch_sheet_rows() if _prop_price_key(r) in _keys]})
         # חיפוש ריק = כל הנכסים הפעילים, ממוינים מהחדש לישן (לפי תאריך יצירה)
         if not q:
             rows = [r for r in fetch_sheet_rows()
@@ -8822,23 +8829,32 @@ def api_search_newborn():
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     q = ((request.get_json(silent=True) or {}).get("q", "") or "").strip()
-    if not q:
+    _keys = (request.get_json(silent=True) or {}).get("keys")   # [BPAGE-NMFULL 11/10] שליפה לפי מפתח נכס נולד
+    _keys = set(str(k) for k in _keys[:60]) if isinstance(_keys, list) else None
+    if not q and _keys is None:
         return jsonify({"ok": True, "results": [], "count": 0, "summary": "", "rent": False})
     try:
-        _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכס נולד", q)
-        parsed = _parse_props_query(q)
-        if not parsed:
+        if _keys is None:
+            _log_activity(s["name"], s["role"], s["phone"], "חיפוש נכס נולד", q)
+            parsed = _parse_props_query(q)
+        else:
+            parsed = {}
+        if not parsed and _keys is None:
             return jsonify({"ok": True, "results": [], "count": 0, "summary": "", "rent": False})
         now = time.time()
         pseudo = []
         for r in fetch_newborn():
             c = _newborn_created_epoch(r)
-            if not c or (now - c) / 86400 > NEWBORN_WINDOW_DAYS:
+            if _keys is not None:
+                if _nb_key(r) not in _keys:
+                    continue
+            elif not c or (now - c) / 86400 > NEWBORN_WINDOW_DAYS:
                 continue
             pr = _nb_as_office_row(r)
-            pr["_nb"] = r; pr["_age"] = int((now - c) / 86400)
+            pr["_nb"] = r; pr["_age"] = int((now - c) / 86400) if c else 0
             pseudo.append(pr)
-        matches = search_listings_in_sheet(parsed, rows=pseudo, cap=30)
+        matches = ([(0, pr, 0) for pr in pseudo] if _keys is not None
+                   else search_listings_in_sheet(parsed, rows=pseudo, cap=30))
         _scan_price_changes()
         _pd = _price_dropped_map()
         _ctx = {"contacts": _fetch_newborn_contacts(), "statuses": _nb_statuses(), "fam_list": _famexcl_addr_list(),
@@ -9278,16 +9294,22 @@ def api_search_exclusives():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
+        _keys = (request.get_json(silent=True) or {}).get("keys")   # [BPAGE-NMFULL 11/10] שליפה לפי pkey
+        _keys = set(str(k) for k in _keys[:60]) if isinstance(_keys, list) else None
+        if _keys is not None:
+            q = ""
         if q: _log_activity(s["name"], s["role"], s["phone"], "חיפוש בלעדיות", q)
-        if not (request.get_json(silent=True) or {}).get("nosave"):
+        if _keys is None and not (request.get_json(silent=True) or {}).get("nosave"):
             _push_recent(s["phone"], "excl", q)
-        parsed = parse_exclusivity_search_query(q if q.startswith("מחפש") else ("מחפש בלעדיות " + q)) or {}
+        parsed = {} if _keys is not None else (parse_exclusivity_search_query(q if q.startswith("מחפש") else ("מחפש בלעדיות " + q)) or {})
         parsed["budget_max"] = _web_num(parsed.get("budget_max"))   # מנע TypeError בכפל
         parsed["rooms"]      = _web_num(parsed.get("rooms"))
         rows = _dedupe_exclusives(fetch_external_exclusives())
         _scan_price_changes()                 # 24/09: ירידות מחיר גם בשת"פ
         _pd_map = _price_dropped_map()
-        if not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords") or parsed.get("property_type")):
+        if _keys is not None:
+            matches = [(0, r) for r in rows if _excl_price_key(r) in _keys]
+        elif not (parsed.get("city") or parsed.get("cities") or parsed.get("neighborhood") or parsed.get("neighborhoods") or parsed.get("rooms") or parsed.get("budget_max") or parsed.get("keywords") or parsed.get("property_type")):
             # "כל הבלעדיות" (בלי חיפוש) — כל השת"פ, כמו שהמשרד מציג את כל 471 (בלי
             # חיתוך ל-30 שהסתיר נכסים; תיקון "רק 27 בשת\"פ", 19/07). ממויין מהחדש לישן.
             rows = sorted(rows, key=lambda r: _excl_epoch(r.get("received_at", "")), reverse=True)

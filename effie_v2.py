@@ -4204,7 +4204,7 @@ function bpLoad(row){
     (j.new_matches || []).forEach(function(m){ BP_STATE.newK[m.key] = 1; });
     BP_STATE.newL = j.new_matches || [];
     if (!BP_STATE.newL.length) BP_AUTOSEL = false;   // אין חדשות — שלא יסמן בקונה הבא
-    if (typeof MG !== 'undefined' && MG && el('mRes')){ _pickNewTab(); _nmAutoSel(); renderMatchTabs(); renderMatchTab(); }
+    if (typeof MG !== 'undefined' && MG && el('mRes')){ _pickNewTab(); _nmAutoSel(); renderMatchTabs(); renderMatchTab(); _nmFetchMissing(); }
   }).catch(function(){ BP_AUTOSEL = false; });
 }
 function msgLine(p, shtaf){
@@ -4371,6 +4371,35 @@ function _nmRow(m){   // התאמה חדשה שאינה בתוצאות החיפ�
   return h;
 }
 function _nmTitle(n){ return '<div class="grpTitle" style="color:#2E6BD6">התאמות חדשות · ' + n + '</div>'; }
+/* [BPAGE-NMFULL 11/10] אייל: "בהתאמות חדשות אני רוצה שיופיעו כמו השאר". התאמה חדשה שלא בתוצאות החיפוש של
+   החלון נשלפת מהשרת לפי המפתח (אותו endpoint, אותו כרטיס) ונכנסת לטאב שלה — ואז מוצגת ככרטיס מלא.
+   עד שהתשובה מגיעה מוצג הכרטיס המקוצר. בחירה שכבר נעשתה (סימון אוטומטי) עוברת לכרטיס המלא. */
+var NM_URL = {office: '/api/search/properties', shtaf: '/api/search/exclusives', newborn: '/api/search/newborn'};
+function _nmFetchMissing(){
+  if (!MG || !(BP_STATE.newL || []).length) return;
+  var mg = MG;
+  ['office', 'shtaf', 'newborn'].forEach(function(src){
+    var tab = NM_TAB[src], g = mg[tab];
+    if (!g || g._nmf) return;
+    var miss = _nmOpen().filter(function(m){ return m.source === src && !_nmFind(m); });
+    if (!miss.length) return;
+    g._nmf = true;
+    POST(NM_URL[src], {keys: miss.map(function(m){ return m.key; }), nosave: true}).then(function(j){
+      if (MG !== mg || mg[tab] !== g || !j || !j.ok) return;
+      var nb = src === 'newborn', byK = {};
+      miss.forEach(function(m){ byK[m.key] = m; });
+      (j.results || []).forEach(function(p){
+        var m = byK[_mKey(p, nb)]; if (!m || _nmFind(m)) return;
+        if (m.score) p.score = m.score;
+        if (m._mi != null){   // כבר נבחר (או קיבל אינדקס) — הכרטיס המלא יורש אותו
+          p._mi = m._mi; MITEMS[m._mi] = nb ? {p: p, nb: true} : {p: p, shtaf: src === 'shtaf'};
+        }
+        g.s.unshift(p);
+      });
+      if (_MATCH_OPEN && !_SUB_FROM_MATCH && el('mRes')){ renderMatchTabs(); renderMatchTab(); }
+    }).catch(function(){});
+  });
+}
 function renderMatches(b, office, shtaf, nb, my){
   CUR_BUYER = b;
   MITEMS = []; MSEL = {};
@@ -4396,6 +4425,7 @@ function renderMatches(b, office, shtaf, nb, my){
   }
   _pickNewTab(); _nmAutoSel();
   renderMatchTabs(); renderMatchTab();
+  _nmFetchMissing();
 }
 var MTAB_LBL = {office: 'המשרד שלנו', shtaf: 'שת"פ', nb: 'נכס נולד', mine: 'שלי'};
 function renderMatchTabs(){
@@ -4478,6 +4508,7 @@ function nbKitRefresh(){
     var bySc = function(a, c){ return (c.score || 0) - (a.score || 0); };
     MG.nb = _nbGroup((j.results || []).sort(bySc));
     if (_MATCH_OPEN && !_SUB_FROM_MATCH && el('mRes')){ renderMatchTabs(); renderMatchTab(); }
+    _nmFetchMissing();   // [BPAGE-NMFULL] קבוצת נכס נולד חדשה — שליפה חוזרת של ההתאמות החדשות החסרות
   }).catch(function(){});
 }
 function reopenMatches(){ _openMatchSheet(); renderMatchTabs(); renderMatchTab(); }
