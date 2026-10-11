@@ -442,6 +442,35 @@ input, textarea, select{ font-size:16px !important; }
   }catch(e){} }
   setTimeout(_ping, 2000); setInterval(_ping, 45000);
 })();
+/* [GCAL-STATUS 11/10] המייל של הסוכן (חשבון Google המקושר) + מצב סנכרון היומן — בשני האזורים האישיים.
+   אירנה קבעה פגישות שלא הגיעו ליומן Google בלי שום סימן; כאן רואים את זה, והכפתור מכריח הסכמה מחדש. */
+function v2GcalBoxHtml(){
+  return '<div id="v2gBox" style="background:#fff;border:1.5px solid #E9E4D8;border-radius:13px;padding:11px 13px;font-size:13px;color:#6B7280">טוען את חשבון Google…</div>';
+}
+function v2GcalRender(j){
+  var e = String((j && j.email) || '').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; });
+  var st = (j && j.status) || 'none';
+  var ok = st === 'ok';
+  var msg = ok ? 'יומן Google מסונכרן — פגישות ופולו-אפ נכנסות ליומן'
+    : st === 'off' ? 'סנכרון היומן כבוי'
+    : st === 'none' ? 'לא מחובר לחשבון Google — לחץ "סנכרון יומן Google"'
+    : 'היומן לא מסונכרן — פגישות לא נכנסות ליומן Google. לחץ "סנכרון יומן Google" ואשר גישה ליומן';
+  return '<div style="font-size:12px;font-weight:700;color:#6B7280">מייל · חשבון Google</div>' +
+    '<div style="font-size:15px;font-weight:700;color:#1E3A5F;margin-top:2px;direction:ltr;text-align:right;word-break:break-all">' + (e || 'לא מחובר') + '</div>' +
+    '<div style="display:flex;align-items:flex-start;gap:7px;margin-top:6px;font-size:12.5px;color:#1E3A5F;line-height:1.5">' +
+    '<span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:5px;background:' + (ok ? '#1FAF5E' : '#C29435') + '"></span>' +
+    '<span>' + msg + '</span></div>';
+}
+function v2GcalLoad(tok){
+  fetch('/v2/api/me/google', {headers: {'X-Auth-Token': tok}}).then(function(r){ return r.json(); }).then(function(j){
+    var b = document.getElementById('v2gBox');
+    if (b && j && j.ok) b.innerHTML = v2GcalRender(j);
+    else if (b) b.textContent = 'לא ניתן לטעון את חשבון Google';
+  }).catch(function(){ var b = document.getElementById('v2gBox'); if (b) b.textContent = 'לא ניתן לטעון את חשבון Google'; });
+}
+function v2GcalGo(){
+  location.href = '/auth/google/login?consent=1&' + (window.Capacitor ? 'native=1' : 'next=v2');
+}
 /* אזור אישי גלובלי — נפתח מעיגול הפרופיל בכל מסך (לא רק בבית): תמונה, רישיון, יומן */
 function v2Me(){
   var tok = null, name = '', role = '', phone = '';
@@ -472,6 +501,7 @@ function v2Me(){
     '</div>' +
     '<div><div style="font-size:16.5px;font-weight:800">' + name.replace(/</g, '&lt;') + '</div>' +
     '<div style="font-size:12.5px;color:#6B7280">' + roleTx + (phone ? ' · 0' + phone : '') + '</div></div></div>' +
+    v2GcalBoxHtml() +
     '<div><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:6px">מספר רישיון תיווך · מופיע על טפסי החתימה</div>' +
     '<div style="display:flex;gap:8px">' +
     '<input id="v2meLic" type="text" inputmode="numeric" maxlength="10" placeholder="מספר הרישיון שלך" style="flex:1;min-width:0;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;outline:none">' +
@@ -483,11 +513,12 @@ function v2Me(){
     '<button onclick="v2MeResetNbT()" style="padding:10px 12px;border-radius:13px;background:none;border:0;color:#6B7280;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;text-decoration:underline">שחזר לנוסח הקבוע</button></div></div>' +
     '<input type="file" id="v2meFile" accept="image/*" style="display:none" onchange="v2MeUpload(this)">' +
     '<button class="v2meBtn" onclick="document.getElementById(\'v2meFile\').click()">החלפת תמונת פרופיל</button>' +
-    '<button class="v2meBtn" onclick="location.href=\'/auth/google/login?\' + (window.Capacitor ? \'native=1\' : \'next=v2\')">סנכרון יומן Google</button>' +
+    '<button class="v2meBtn" onclick="v2GcalGo()">סנכרון יומן Google</button>' +
     ((window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'ios')
       ? '<button class="v2meBtn" style="color:#8B5E10" onclick="v2MeAppleUnlink()">נתק חשבון Apple (לבדיקה מחדש)</button>' : '') +
     '</div>';
   document.body.appendChild(w);
+  v2GcalLoad(tok);
   fetch('/v2/api/me/license', {headers: {'X-Auth-Token': tok}}).then(function(r){ return r.json(); }).then(function(j){
     var f = document.getElementById('v2meLic');
     if (j && j.ok && f) f.value = j.license || '';
@@ -1154,6 +1185,7 @@ function openMe(){
     '<span style="position:absolute">' + esc((ME.name || ' ')[0]) + '</span></div>' +
     '<div><div style="font-size:16.5px;font-weight:800">' + esc(ME.name) + '</div>' +
     '<div style="font-size:12.5px;color:#6B7280">' + esc(ME.role) + (ME.phone ? ' · 0' + esc(ME.phone) : '') + '</div></div></div>' +
+    v2GcalBoxHtml() +
     '<div><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:6px">מספר רישיון תיווך · מופיע על טפסי החתימה</div>' +
     '<div style="display:flex;gap:8px">' +
     '<input id="meLic" type="text" inputmode="numeric" maxlength="10" placeholder="מספר הרישיון שלך" ' +
@@ -1168,7 +1200,7 @@ function openMe(){
     '<input type="file" id="meFile" accept="image/*" style="display:none" onchange="meUpload(this)">' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" onclick="el(\'meFile\').click()">החלפת תמונת פרופיל</button>' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" ' +
-    'onclick="location.href=\'/auth/google/login?\' + (window.Capacitor ? \'native=1\' : \'next=v2\')">' +
+    'onclick="v2GcalGo()">' +
     'סנכרון יומן Google (גם אחרי כניסה ב-SMS)</button>' +
     ((window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'ios')
       ? '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#8B5E10;border:1.5px solid #DCD6C8" onclick="meAppleUnlink()">נתק חשבון Apple (לבדיקה מחדש)</button>' : '') +
@@ -1176,6 +1208,7 @@ function openMe(){
   // תמונה קיימת מכסה את האות
   var im = el('meAv');
   if (im) im.onload = function(){ var sp = im.parentNode.querySelector('span'); if (sp) sp.style.display = 'none'; };
+  v2GcalLoad(TOK);
   GET('/v2/api/me/license').then(function(j){
     if (j && j.ok && el('meLic')) el('meLic').value = j.license || '';
   }).catch(function(){});
@@ -5224,7 +5257,7 @@ function stSet(i, status, date){
       if (!j.ok){ toast('שגיאה בשמירה'); return; }
       closeSheet();
       toast(status === 'not_interested' ? 'סומן: לא מעוניין' :
-        (ST_LABEL[status] + ' נקבע' + (j.calendar ? ' + נשמר ביומן' : '')));
+        (ST_LABEL[status] + ' נקבע' + (j.calendar ? ' + נשמר ביומן' : ' · לא נכנס ליומן Google (ראה אזור אישי)')));
       nbKitRefresh();
     });
 }
@@ -9242,7 +9275,7 @@ function saveNewMeet(){
   }).then(function(j){
     if (!j.ok){ toast('שגיאה בשמירה'); return; }
     closeSheet();
-    toast((el('sheet')._nst === 'followup' ? 'הפולו-אפ נקבע' : 'הפגישה נקבעה') + (j.calendar ? ' + נשמר ביומן' : ''));
+    toast((el('sheet')._nst === 'followup' ? 'הפולו-אפ נקבע' : 'הפגישה נקבעה') + (j.calendar ? ' + נשמר ביומן' : ' · לא נכנס ליומן Google (ראה אזור אישי)'));
     load();
   });
 }
@@ -12031,6 +12064,19 @@ def register(app, G):
             cfg["v2_licenses"] = m
         ok, _ = _config_mutate(_mut)
         return jsonify({"ok": bool(ok), "license": lic})
+
+    # [GCAL-STATUS 11/10] האזור האישי: המייל של הסוכן (חשבון Google המקושר) + מצב סנכרון היומן
+    @app.route("/v2/api/me/google", methods=["GET"])
+    def v2_api_me_google():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        try:
+            st = G["_gcal_status_for_phone"](_last9(s.get("phone", "")))
+        except Exception as e:
+            if log: log.warning(f"me/google: {e}")
+            st = {"email": "", "status": "none"}
+        return jsonify({"ok": True, "email": st.get("email", ""), "status": st.get("status", "none")})
 
     # נוסח וואטסאפ אישי לפנייה לבעל נכס (נכס נולד) — פר-סוכן, דפוס הרישיון
     _NB_WA_DEFAULT = "שלום [שם], ראיתי את המודעה שלך ב[כתובת]. אשמח לדבר איתך לגבי הנכס."

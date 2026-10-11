@@ -4283,7 +4283,12 @@ def auth_google_login():
     params = {"client_id": GOOGLE_CLIENT_ID, "redirect_uri": GOOGLE_REDIRECT_URI,
               "response_type": "code",
               "scope": "openid email profile https://www.googleapis.com/auth/calendar.events",
-              "access_type": "offline", "prompt": "select_account", "include_granted_scopes": "true",
+              "access_type": "offline",
+              # [GCAL-STATUS 11/10] Google מחזירה refresh_token רק בהסכמה הראשונה. סוכן שהטוקן שלו
+              # אבד/פג נשאר בלי יומן גם אחרי כניסה חוזרת — כפתור 'סנכרון יומן Google' שולח consent=1
+              # ומכריח מסך הסכמה, וכך מגיע טוקן חדש. כניסה רגילה — בלי מסך הסכמה.
+              "prompt": ("consent select_account" if request.args.get("consent") == "1" else "select_account"),
+              "include_granted_scopes": "true",
               "state": state}
     return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + _urlencode(params))
 
@@ -4618,6 +4623,29 @@ def gcal_delete_event(email, event_id):
         return r.status_code in (200, 204, 404, 410)   # 404/410 = כבר נמחק
     except Exception as e:
         log.error(f"gcal delete: {e}"); return False
+
+def _gcal_status_for_phone(phone):
+    """[GCAL-STATUS 11/10] חשבון Google של הסוכן ומצב סנכרון היומן — לאזור האישי.
+    אירנה: פגישות נשמרו באפליקציה ולא הגיעו ליומן Google, בלי שום התרעה (gcal_create_event
+    מחזיר None בשקט כשאין refresh_token / הטוקן פג). כאן רואים את זה.
+    status: none (לא מקושר) · no_token (מקושר בלי הרשאת יומן) · off (הסוכן כיבה) ·
+            expired (Google דחתה את הטוקן) · ok."""
+    email = _gauth_email_for_phone(phone) if phone else ""
+    if not email:
+        return {"email": "", "status": "none"}
+    rec = _gauth_all().get(email) or {}
+    rt = rec.get("refresh_token")
+    if not rt:
+        return {"email": email, "status": "no_token"}
+    if rec.get("cal_off"):
+        return {"email": email, "status": "off"}
+    ck = "gcal_status:" + email
+    c = _cache_get(ck, 600)
+    if c is not None and c.get("rt") == rt[-8:]:
+        return {"email": email, "status": c["status"]}
+    st = "ok" if _g_access_from_refresh(rt) else "expired"
+    _cache_put(ck, {"rt": rt[-8:], "status": st})
+    return {"email": email, "status": st}
 
 @app.route("/api/gcal/test", methods=["GET", "POST"])
 def api_gcal_test():
