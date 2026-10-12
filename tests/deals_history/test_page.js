@@ -72,4 +72,9 @@ const ac = T6.agentCard({date: '01/02/2024', address: 'נעמי שמר 2', side:
 ck(ac.includes('wa.me/972521234567') && ac.includes('תזכורת ללקוח'), ac);
 const oc2 = T6.openCard({date: '10/05/2026', street: 'הגפן 9', city: 'ביאליק', side: 'שוכר', agent: 'דנה לוי + משה כהן', client_name: 'יוסי', client_phone: '0529999999', year: 2026});
 ck(oc2.includes('wa.me/972529999999') && decodeURIComponent(oc2.match(/text=([^"]+)/)[1]).includes('כאן דנה לוי'), oc2);
+// אייל 12/10: 'דווח' ירוק בלי תאריך
+const rg = T6.agentCard({date: '01/02/2026', address: 'x', side: 'קונה', client: 'גל', price: 1, agent: 'משה', commission_net: 1, paid: 46600, reported: 'כן'}, 'משה');
+ck(rg.includes('>דווח<') && !rg.includes('לא דווח') && rg.includes('שולם ₪46,600'), rg);
+const og = T6.openCard({date: '01/02/2026', street: 'x', city: 'y', agent: 'משה', year: 2026, paid_amount: null, reported_date: null, status: {reported_date: 'green', paid_amount: 'red'}});
+ck(og.includes('>דווח<') && og.includes('טרם שולם'), og);
 console.log('OK', n, 'checks');

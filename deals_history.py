@@ -30,6 +30,7 @@ HEADER_FIELDS = [
     ("agent", ["סוכן", "מתווך"]),
     ("collection_status", ["סטאוס טיפול בגבייה", "סטטוס טיפול בגבייה"]),
     ("client", ["טל ושם לקוח", "שם לקוח", "לקוח"]),
+    ("client_phone", ["נייד לקוח", "טלפון לקוח", "טל לקוח", "נייד", "טלפון"]),   # עמודה נפרדת (ביאליק 2026 — אייל 12/10)
     ("notes", ["הערה", "הערות"]),
     ("discount", ["הנחה לפני מעמ", 'הנחה לפני מע"מ', "הנחה"]),
     ("deal_amount", ["סכום העסקה", "סכום עסקה"]),
@@ -122,6 +123,47 @@ def _num_out(v):
 _PHONE = re.compile(r"0[2-9]\d?[\s\-]?\d{3}[\s\-]?\d{4}")
 
 
+_STATUS_FIELDS = ("paid_amount", "deposited", "reported_date")
+
+
+def fill_class_rgb(rgb):
+    """צבע רקע → 'green'/'red'/'yellow'/''. בקבצים: ירוק C6EFCE = בוצע, ורוד FFC7CE = לא, צהוב FFEB9C = בטיפול (אייל 12/10)."""
+    h = re.sub(r"[^0-9A-Fa-f]", "", str(rgb or ""))[-6:]
+    if len(h) != 6 or h.upper() in ("000000", "FFFFFF"):
+        return ""
+    r, g, b = int(h[:2], 16), int(h[2:4], 16), int(h[4:], 16)
+    if g > r + 15 and g >= b:
+        return "green"
+    if r > 200 and g > 200 and b < 190:
+        return "yellow"
+    if r > g + 15 and r > b:
+        return "red"
+    return ""
+
+
+def cell_fill_class(cell):
+    try:
+        f = cell.fill
+        if not f or f.fill_type in (None, "none"):
+            return ""
+        c = f.fgColor
+        return fill_class_rgb(c.rgb) if c is not None and c.type == "rgb" else ""
+    except Exception:
+        return ""
+
+
+def phone_cell(v):
+    """תא טלפון → '05XXXXXXXX'. אקסל שומר נייד כמספר בלי 0 (546334989 / 546334989.0); +972 → 0."""
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    d = re.sub(r"\D", "", str(v or ""))
+    if d.startswith("972"):
+        d = d[3:]
+    if len(d) == 9 and d[0] in "23456789":
+        d = "0" + d
+    return d if 9 <= len(d) <= 10 else ""
+
+
 def split_client(s):
     s = re.sub(r"\s+", " ", str(s or "")).strip()
     if not s:
@@ -200,6 +242,13 @@ def normalize_row(cells, fields, ctx):
     if not ddate and amount is None and comm is None and not street:
         return "broken", {"agent": agent, "src_row": ctx["row_idx"], "sheet": ctx["sheet"]}
     name, phone = split_client(_cell(cells, fields, "client"))
+    phone = phone_cell(_cell(cells, fields, "client_phone")) or phone
+    # [אייל 12/10] תשלום/הפקדה/דיווח מסומנים בצבע התא: ירוק = בוצע (גם כשהתא ריק); מספר בתא גובר
+    fills = {k: v for k, v in (ctx.get("fills") or {}).items() if v}
+    paid = _num_out(_cell(cells, fields, "paid_amount"))
+    if paid is None and fills.get("paid_amount") == "green":
+        paid = _num_out(_cell(cells, fields, "commission_gross")) or comm
+    dep = _txt(_cell(cells, fields, "deposited")) or ("כן" if fills.get("deposited") == "green" else "")
     serial = _txt(_cell(cells, fields, "serial"))
     key_tail = serial if re.fullmatch(r"\d+", serial or "") else "r%d" % ctx["row_idx"]
     if ctx.get("key_mode") == "sync":
@@ -230,8 +279,8 @@ def normalize_row(cells, fields, ctx):
         "deal_amount": amount, "commission_gross": _num_out(_cell(cells, fields, "commission_gross")),
         "commission_net": comm, "discount": _num_out(_cell(cells, fields, "discount")),
         "lead_source": _txt(_cell(cells, fields, "lead_source")),
-        "paid_amount": _num_out(_cell(cells, fields, "paid_amount")),
-        "deposited": _txt(_cell(cells, fields, "deposited")),
+        "paid_amount": paid,
+        "deposited": dep,
         "invoice_no": _txt(_cell(cells, fields, "invoice_no")),
         "receipt_no": _txt(_cell(cells, fields, "receipt_no")),
         "reported_date": rep.isoformat() if rep else None,
@@ -239,7 +288,7 @@ def normalize_row(cells, fields, ctx):
         "collection_status": _txt(_cell(cells, fields, "collection_status")),
         "notes": _txt(_cell(cells, fields, "notes")),
         "lawyer_notes": _txt(_cell(cells, fields, "lawyer_notes")),
-        "raw": raw,
+        "raw": dict(raw, _status=fills) if fills else raw,
     }
     return "ok", row
 
@@ -276,10 +325,11 @@ def rows_from_workbook(wb, branch, year, sheets, default_agent="", stop_after_em
         if sh not in names:
             rep["missing_sheets"].append(sh)
             continue
-        it = wb[sh].iter_rows(values_only=True)
-        head = []
+        it = wb[sh].iter_rows()
+        head, head_cells = [], []
         for r in it:
-            head.append(r)
+            head_cells.append(r)
+            head.append(tuple(getattr(c, "value", None) for c in r))
             if len(head) >= 12:
                 break
         hi, fields = find_header_row(head)
@@ -288,14 +338,17 @@ def rows_from_workbook(wb, branch, year, sheets, default_agent="", stop_after_em
             continue
         headers = [normalize_header(c) for c in head[hi]]
         def rows_iter():
-            for k, r in enumerate(head[hi + 1:], start=hi + 2):
+            for k, r in enumerate(head_cells[hi + 1:], start=hi + 2):
                 yield k, r
             k = len(head) + 1
             for r in it:
                 yield k, r
                 k += 1
         empty = 0
-        for i, cells in rows_iter():
+        for i, rcells in rows_iter():
+            cells = tuple(getattr(c, "value", None) for c in rcells)
+            fills = {f: cell_fill_class(rcells[fields[f]]) for f in _STATUS_FIELDS
+                     if f in fields and fields[f] < len(rcells)}
             if not any(c not in (None, "") and not (isinstance(c, str) and not c.strip()) for c in (cells or ())):
                 empty += 1
                 if empty >= stop_after_empty:
@@ -305,7 +358,7 @@ def rows_from_workbook(wb, branch, year, sheets, default_agent="", stop_after_em
             empty = 0
             st, row = normalize_row(cells, fields, {"branch": branch, "year": year, "sheet": sh, "row_idx": i,
                                                     "headers": headers, "default_agent": default_agent,
-                                                    "key_mode": key_mode})
+                                                    "key_mode": key_mode, "fills": fills})
             rep[st] += 1
             if st == "ok":
                 if row["src_key"] in seen:
@@ -339,6 +392,9 @@ def pick_latest(entries):
 
 def row_hash(row):
     core = {k: v for k, v in (row or {}).items() if k != "raw" and not k.startswith("_") and k != "src_hash"}
+    st = ((row or {}).get("raw") or {}).get("_status")
+    if st:
+        core["_status"] = st   # שינוי צבע בלבד (למשל 'התקבל כסף' הפך ירוק) — חייב לעדכן
     return _hashlib.sha1(_json.dumps(core, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
 
 
@@ -411,7 +467,7 @@ def view_agent(r):
     if (r.get("year") or 0) >= DETAIL_FROM_YEAR:
         rep = r.get("reported_date") or ""
         d.update(commission_net=r.get("commission_net"), paid=r.get("paid_amount"),
-                 reported=("%s/%s" % (rep[5:7], rep[:4])) if rep else "")
+                 reported=("%s/%s" % (rep[5:7], rep[:4])) if rep else ("כן" if is_reported(r) else ""))
     return d
 
 
@@ -424,7 +480,7 @@ def view_comps(r):
 _FULL = ("id", "branch", "year", "src_sheet", "src_serial", "deal_date", "city", "street", "side", "agent",
          "client_name", "client_phone", "other_broker", "deal_amount", "commission_gross", "commission_net",
          "discount", "lead_source", "paid_amount", "deposited", "invoice_no", "receipt_no", "reported_date",
-         "remax_approved", "collection_status", "notes", "lawyer_notes", "missing_since")
+         "remax_approved", "collection_status", "notes", "lawyer_notes", "missing_since", "status")
 
 
 def view_full(r):
@@ -657,8 +713,13 @@ def unpaid(rows):
     return _sort_desc(r for r in _detail(rows) if not r.get("paid_amount"))
 
 
+def is_reported(r):
+    """תאריך דיווח — או תא 'דווח במערכת' ירוק בלי תאריך (אייל 12/10)."""
+    return bool(r.get("reported_date")) or ((r.get("status") or {}).get("reported_date") == "green")
+
+
 def unreported(rows):
-    return _sort_desc(r for r in _detail(rows) if not r.get("reported_date"))
+    return _sort_desc(r for r in _detail(rows) if not is_reported(r))
 
 
 _BRANCH_KEYS = ("bialik", "motzkin", "kiryat_yam")
@@ -820,7 +881,7 @@ function agentCard(x, me){
     '<div class="pr">' + esc(fmtP(x.price)) + '</div></div>' +
     (det ? '<div class="chips"><span class="chip">עמלה ' + esc(fmtP(x.commission_net) || '—') + '</span>' +
       (x.paid ? '<span class="chip ok">שולם ' + esc(fmtP(x.paid)) + '</span>' : '<span class="chip wait">טרם שולם</span>') +
-      (x.reported ? '<span class="chip ok">דווח ' + esc(x.reported) + '</span>' : '<span class="chip wait">לא דווח</span>') + '</div>' : '') +
+      (x.reported ? '<span class="chip ok">דווח' + (x.reported === 'כן' ? '' : ' ' + esc(x.reported)) + '</span>' : '<span class="chip wait">לא דווח</span>') + '</div>' : '') +
     waBtn(x, me || (ag.split(' + ')[0] || '')) + '</div>';
 }
 function compCard(x){
@@ -836,7 +897,8 @@ function openCard(x){
     '<div class="pr">' + esc(fmtP(x.commission_net)) + '</div></div>' +
     '<div class="chips">' + ((x.year || 0) < 2026 ? '' :
     (x.paid_amount ? '<span class="chip ok">שולם ' + esc(fmtP(x.paid_amount)) + '</span>' : '<span class="chip wait">טרם שולם</span>') +
-    (x.reported_date ? '<span class="chip ok">דווח ' + esc(x.reported_date.slice(5, 7) + '/' + x.reported_date.slice(0, 4)) + '</span>' : '<span class="chip wait">לא דווח</span>')) +
+    (x.reported_date ? '<span class="chip ok">דווח ' + esc(x.reported_date.slice(5, 7) + '/' + x.reported_date.slice(0, 4)) + '</span>' :
+      (x.status && x.status.reported_date === 'green' ? '<span class="chip ok">דווח</span>' : '<span class="chip wait">לא דווח</span>'))) +
     (x.collection_status ? '<span class="chip">' + esc(x.collection_status) + '</span>' : '') +
     (x.invoice_no ? '<span class="chip">חשבונית ' + esc(x.invoice_no) + '</span>' : '') +
     (x.receipt_no ? '<span class="chip">קבלה ' + esc(x.receipt_no) + '</span>' : '') + '</div>' +
