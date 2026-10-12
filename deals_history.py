@@ -457,21 +457,34 @@ def _alias_map(idx):
     return m
 
 
+def _city_canon(c, idx):
+    """'ביאליק' / 'ק. ביאליק' / 'קריית ביאליק' → 'קרית ביאליק' (לפי מפת הערים של חיפוש הנכסים).
+    [12/10 חי] בקבצי העסקאות העיר כתובה בקיצור — בלי זה אף עסקה לא נמצאה לפי שכונה."""
+    n = _city_n(re.sub(r"^ק\s*\.\s*", "קרית ", str(c or "").strip()))
+    for cand in (n, "קרית " + n):   # 'ים' → 'קרית ים'
+        for canon, aliases in ((idx or {}).get("city") or {}).items():
+            if cand == _city_n(canon) or cand in {_city_n(a) for a in aliases or ()}:
+                return _city_n(canon)
+    return n
+
+
 def nb_street_index(street_rows, idx):
-    """[(רחוב, שכונה, עיר)] → {"sc": {(רחוב, עיר): שכונה קנונית}} — רק עם 2+ עדויות לאותה שכונה."""
+    """[(רחוב, שכונה, עיר)] → {"sc": {(רחוב, עיר): שכונה}, "s": {רחוב: שכונה}} — רק עם 2+ עדויות.
+    "s" = רחוב שכל העדויות שלו בשכונה אחת (לעסקה בלי עיר)."""
     import collections
     am = _alias_map(idx)
     votes = collections.defaultdict(collections.Counter)
     for st, nb, city in street_rows or []:
         sk, nbn = _sk(st), _city_n(nb)
         if len(sk) >= 2 and nbn:
-            votes[(sk, _city_n(city))][am.get(nbn, nbn)] += 1
-    sc = {}
+            votes[(sk, _city_canon(city, idx))][am.get(nbn, nbn)] += 1
+    sc, by_st = {}, collections.defaultdict(set)
     for k, cnt in votes.items():
         top, c = cnt.most_common(1)[0]
         if c >= 2:
             sc[k] = top
-    return {"sc": sc}
+            by_st[k[0]].add(top)
+    return {"sc": sc, "s": {st: list(v)[0] for st, v in by_st.items() if len(v) == 1}}
 
 
 def find_area(q, idx):
@@ -496,8 +509,13 @@ def comps_search(rows, q, cap=200, area_ctx=None):
         return {"results": [], "n_sale": 0, "avg_sale": None, "n_rent": 0, "avg_rent": None}
     area = find_area(q, area_ctx.get("idx")) if area_ctx else None
     if area:
-        sc = (area_ctx.get("streets") or {}).get("sc") or {}
-        hit = [r for r in rows if sc.get((_sk(r.get("street")), _city_n(r.get("city")))) == area["nb"]]
+        si = area_ctx.get("streets") or {}
+        sc, s1, idx = si.get("sc") or {}, si.get("s") or {}, area_ctx.get("idx")
+
+        def _nb_of(r):
+            sk, city = _sk(r.get("street")), _city_canon(r.get("city"), idx)
+            return sc.get((sk, city)) if city else s1.get(sk)
+        hit = [r for r in rows if _nb_of(r) == area["nb"]]
     else:
         hit = [r for r in rows if all(t in _norm_q(" ".join((r.get("street") or "", r.get("city") or ""))) for t in toks)]
     hit = _sort_desc(hit)
