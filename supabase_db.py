@@ -1306,3 +1306,33 @@ def bpage_remove_item(page_id, key):
                         params={"page_id": "eq." + str(page_id), "prop_key": "eq." + str(key)},
                         timeout=_TIMEOUT)
     r.raise_for_status()
+
+
+# ── [DEALS-HISTORY 12/10] היסטוריית עסקאות ──────────────────────────────────────
+_DH_COLS = ("id,src_key,branch,year,src_sheet,src_row,src_serial,deal_date,city,street,side,agent,"
+            "client_name,client_phone,other_broker,deal_amount,commission_gross,commission_net,discount,"
+            "lead_source,paid_amount,deposited,invoice_no,receipt_no,reported_date,remax_approved,"
+            "collection_status,notes,lawyer_notes,app_deal_id,missing_since,updated_at")
+
+
+def deal_history_upsert(rows):
+    """upsert לפי (office_id, src_key) במנות — עמודות אחידות, האחרון לכל מפתח גובר."""
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    prepared = []
+    for r in rows or []:
+        x = dict(r)
+        x["office_id"] = SB_OFFICE_ID
+        x["updated_at"] = now
+        prepared.append(x)
+    keys = set()
+    for x in prepared:
+        keys |= set(x.keys())
+    for x in prepared:
+        for k in keys:
+            x.setdefault(k, None)
+    return _upsert_bulk("deal_history", prepared, key_field="src_key")
+
+
+def deal_history_all():
+    """כל השורות של המשרד (בלי raw — הוא גדול ולא נחוץ לתצוגות)."""
+    return _get_all("deal_history", _DH_COLS)
