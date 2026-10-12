@@ -1312,7 +1312,7 @@ def bpage_remove_item(page_id, key):
 _DH_COLS = ("id,src_key,branch,year,src_sheet,src_row,src_serial,deal_date,city,street,side,agent,"
             "client_name,client_phone,other_broker,deal_amount,commission_gross,commission_net,discount,"
             "lead_source,paid_amount,deposited,invoice_no,receipt_no,reported_date,remax_approved,"
-            "collection_status,notes,lawyer_notes,app_deal_id,missing_since,updated_at")
+            "collection_status,notes,lawyer_notes,app_deal_id,missing_since,updated_at,src_hash,src_path,agent_raw")
 
 
 def deal_history_upsert(rows):
@@ -1336,3 +1336,18 @@ def deal_history_upsert(rows):
 def deal_history_all():
     """כל השורות של המשרד (בלי raw — הוא גדול ולא נחוץ לתצוגות)."""
     return _get_all("deal_history", _DH_COLS)
+
+
+def deal_history_set_missing(keys, ts):
+    """missing_since=ts (או null — חזרה) לשורות לפי src_key. מנות של 100."""
+    keys = [k for k in (keys or []) if k]
+    n = 0
+    for i in range(0, len(keys), 100):
+        part = keys[i:i + 100]
+        lst = ",".join('"%s"' % k.replace('"', '\\"') for k in part)
+        r = requests.patch(SUPABASE_URL + "/rest/v1/deal_history", headers={**_headers(), "Prefer": "return=minimal"},
+                           params={"office_id": "eq." + SB_OFFICE_ID, "src_key": "in.(%s)" % lst},
+                           json={"missing_since": ts}, timeout=_TIMEOUT)
+        r.raise_for_status()
+        n += len(part)
+    return n

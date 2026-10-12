@@ -302,6 +302,44 @@ def rows_from_workbook(wb, branch, year, sheets, default_agent="", stop_after_em
     return out, rep
 
 
+import hashlib as _hashlib, json as _json
+
+_TRACK_NAME = re.compile(r"מעקב|עסקאות")
+
+
+def pick_latest(entries):
+    """אייל 12/10: בכל תיקייה — קובץ המעקב שנשמר אחרון (גם עותק כפול). קובץ בלי 'מעקב/עסקאות' בשם
+    (קרית ים: '2026 קרית ים.xlsx') — רק כשאין בתיקייה קובץ מעקב בשם מפורש. 'גיבוי…' לא נבחר אם יש אחר."""
+    xl = [e for e in (entries or []) if re.search(r"\.xls[xmb]?$", e.get("name", ""), re.I)
+          and not e["name"].startswith("~$")]
+    pool = [e for e in xl if _TRACK_NAME.search(e["name"]) and "גיבוי" not in e["name"]] \
+        or [e for e in xl if "גיבוי" not in e["name"]] or xl
+    return max(pool, key=lambda e: (e.get("server_modified") or "", e["name"])) if pool else None
+
+
+def row_hash(row):
+    core = {k: v for k, v in (row or {}).items() if k != "raw" and not k.startswith("_") and k != "src_hash"}
+    return _hashlib.sha1(_json.dumps(core, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+
+
+def sync_plan(existing, incoming, switched):
+    ex = {r["src_key"]: r for r in existing or []}
+    seen = set()
+    up = []
+    for r in incoming or []:
+        h = row_hash(r)
+        seen.add(r["src_key"])
+        old = ex.get(r["src_key"])
+        if not old or old.get("src_hash") != h or old.get("missing_since"):
+            up.append(dict(r, src_hash=h))
+    missing = [k for k, r in ex.items() if k not in seen and not r.get("missing_since")]
+    back = [k for k, r in ex.items() if k in seen and r.get("missing_since")]
+    guarded = False
+    if switched and ex and len(seen & set(ex)) < 0.6 * len(ex):
+        missing, guarded = [], True
+    return {"upsert": up, "missing": sorted(missing), "back": sorted(back), "guarded": guarded}
+
+
 _AGENT_SPLIT = re.compile(r"\s*[+/\\]\s*")   # לא מפצלים על "ו" — שמות כמו "אלעד ויזמן"; צמדי "ו" הומרו ל-"+" במיפוי
 
 
