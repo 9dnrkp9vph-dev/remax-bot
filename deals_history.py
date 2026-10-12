@@ -670,6 +670,49 @@ def by_branch(rows, branch):
     return [r for r in rows if r.get("branch") == branch] if branch in _BRANCH_KEYS else rows
 
 
+def link_names(deal_names, app_names, key):
+    """שם בקבצים → שם הסוכן באפליקציה (אייל 12/10: 'לחי אלבז לא מופיעות עסקאות').
+    זהה (אחרי נרמול כתיב) → אותו סוכן; אחרת שם פרטי + שם משפחה זהים ('חי אלבז' ↔ 'חי חיים אלבז') — רק כשיש מועמד יחיד.
+    שם של מילה אחת / בלי התאמה — לא מחברים."""
+    exact, loose = {}, {}
+    for a in app_names or ():
+        a = str(a or "").strip()
+        if not a:
+            continue
+        exact.setdefault(key(a), a)
+        t = a.split()
+        if len(t) >= 2:
+            loose.setdefault((key(t[0]), key(t[-1])), set()).add(a)
+    out = {}
+    for dn in deal_names or ():
+        dn = str(dn or "").strip()
+        if not dn:
+            continue
+        if key(dn) in exact:
+            out[dn] = exact[key(dn)]
+            continue
+        t = dn.split()
+        cand = loose.get((key(t[0]), key(t[-1]))) if len(t) >= 2 else None
+        if cand and len(cand) == 1:
+            out[dn] = next(iter(cand))
+    return out
+
+
+def apply_links(rows, links):
+    """עותק של השורות עם שמות הסוכנים באפליקציה (גם בעסקה משותפת, לכל חבר); השם מהקובץ נשמר ב-agent_file."""
+    out = []
+    for r in rows:
+        mem = split_agents(r.get("agent", ""))
+        new = [links.get(a, a) for a in mem]
+        if new != mem:
+            r = dict(r, agent=" + ".join(new), agent_file=r.get("agent", ""))
+        out.append(r)
+    return out
+
+
+_LINK_CACHE = {"ts": 0, "src": None, "rows": [], "links": {}, "names": []}
+
+
 def _rows(sb):
     if time.time() - _HIST_CACHE["ts"] < 120:
         return _HIST_CACHE["rows"]
@@ -817,10 +860,27 @@ function bars(){ return brBar() + kindBar(); }
 function setBr(b){ BRF = b; try{ localStorage.setItem('v2st:histbr', b); }catch(e){} draw(); }
 function brQ(){ return ED && BRF ? 'branch=' + BRF : ''; }
 function withQ(u){ var parts = [].slice.call(arguments, 1).filter(Boolean); return parts.length ? u + (u.indexOf('?') >= 0 ? '&' : '?') + parts.join('&') : u; }
+function agentsHtml(j){
+  // טבלת כל הסוכנים (אייל 12/10)
+  var a = (j && j.agents) || [], u = (j && j.unlinked) || [];
+  if (!a.length && !u.length) return emptyHtml('אין סוכנים להצגה', 'רשימת הסוכנים נטענת מאנשי הקשר של המשרד');
+  var h = '<div class="card"><div class="ad" style="margin-bottom:6px">סוכנים באפליקציה · ' + a.length + '</div>' +
+    '<table><tr><th>סוכן</th><th>עסקאות</th><th>' + (j.since || 2026) + '</th><th>אחרונה</th></tr>' +
+    a.map(function(x){
+      return '<tr><td>' + esc(x.name) + (x.file_names && x.file_names.length ? '<div class="sb">בקבצים: ' + esc(x.file_names.join(', ')) + '</div>' : '') + '</td>' +
+        '<td>' + (x.n ? x.n : '<span class="chip wait">אין</span>') + '</td><td>' + (x.n_cur || '') + '</td><td>' + esc(x.last || '') + '</td></tr>';
+    }).join('') + '</table></div>';
+  if (u.length) h += '<div class="card"><div class="ad">שמות בקבצים בלי סוכן באפליקציה · ' + u.length + '</div>' +
+    '<div class="sb" style="margin-bottom:6px">סוכנים לשעבר, שותפים חיצוניים או שם שכתוב אחרת — שלח לי אם מישהו מהם הוא סוכן פעיל</div>' +
+    '<table><tr><th>שם בקובץ</th><th>עסקאות</th><th>סניף</th><th>אחרונה</th></tr>' +
+    u.map(function(x){ return '<tr><td>' + esc(x.name) + '</td><td>' + x.n + '</td><td>' + esc((x.branches || []).map(function(b){ return BR[b] || b; }).join(', ')) + '</td><td>' + esc(x.last || '') + '</td></tr>'; }).join('') +
+    '</table></div>';
+  return h;
+}
 function GET(u){ return fetch(u, {headers: {'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
 function setTab(t){ TAB = t; try{ localStorage.setItem('v2st:hist', t); }catch(e){} draw(); }
 function tabsFor(){
-  return ED ? [['stats', 'דוחות'], ['unpaid', 'לא שולם'], ['unrep', 'לא דווח'], ['review', 'לבדיקה'], ['search', 'חיפוש'], ['comps', 'מחירי השוואה']]
+  return ED ? [['stats', 'דוחות'], ['unpaid', 'לא שולם'], ['unrep', 'לא דווח'], ['agents', 'סוכנים'], ['review', 'לבדיקה'], ['search', 'חיפוש'], ['comps', 'מחירי השוואה']]
             : [['mine', 'העסקאות שלי'], ['comps', 'מחירי השוואה']];
 }
 function draw(){
@@ -861,6 +921,12 @@ function draw(){
         return '<option' + (String(y) === String(j.year) ? ' selected' : '') + '>' + y + '</option>'; }).join('') + '</select>';
       list.innerHTML = statsHtml(j);
       GET('/v2/api/deals/history/sync').then(function(sy){ tools.insertAdjacentHTML('beforeend', syncLine(sy)); }).catch(function(){});
+    }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
+  } else if (TAB === 'agents'){
+    tools.innerHTML = '';
+    GET('/v2/api/deals/history/agents').then(function(j){
+      if (!j || !j.ok){ list.innerHTML = emptyHtml('אין הרשאה', 'זמין למנהלים ולהנהלת חשבונות'); return; }
+      list.innerHTML = agentsHtml(j);
     }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
   } else if (TAB === 'review'){
     GET(withQ('/v2/api/deals/history/review', brQ(), kQ())).then(function(j){
@@ -1024,6 +1090,37 @@ def register(app, G, page):
         G["_log_activity"]("ייבוא", "system", "", "היסטוריית עסקאות — ייבוא", "%d שורות" % saved)
         return jsonify({"ok": True, "saved": saved, "skipped_no_agent": skipped})
 
+    def _app_names():
+        """שמות הסוכנים באפליקציה — אנשי הקשר (מקור הכניסה) + ספריית הצוות בקונפיג."""
+        names = []
+        try:
+            names += [v for v in (G["web_contacts_phone_name"]() or {}).values() if v]
+        except Exception:
+            pass
+        try:
+            names += [(a.get("name") or "") for a in (G["_load_config"]().get("agents") or [])]
+        except Exception:
+            pass
+        out, seen = [], set()
+        for nm in names:
+            nm = str(nm or "").strip()
+            k = G["_canon_key"](nm)
+            if nm and k and k not in seen and nm not in _GENERIC:
+                seen.add(k)
+                out.append(nm)
+        return out
+
+    def _lrows(sb):
+        """השורות עם שמות הסוכנים כפי שהם באפליקציה (מטמון 10 דק' לכל טעינה של הטבלה)."""
+        rows = _rows(sb)
+        if _LINK_CACHE["src"] is rows and time.time() - _LINK_CACHE["ts"] < 600:
+            return _LINK_CACHE["rows"]
+        names = _app_names()
+        mem = {a for r in rows for a in split_agents(r.get("agent", ""))}
+        links = link_names(mem, names, G["_canon_key"]) if names else {}
+        _LINK_CACHE.update(ts=time.time(), src=rows, rows=apply_links(rows, links), links=links, names=names)
+        return _LINK_CACHE["rows"]
+
     def _auth():
         s = G["_web_auth"]()
         if not s:
@@ -1051,7 +1148,7 @@ def register(app, G, page):
         s, err = _auth()
         if err:
             return err
-        rows = scope_rows(active_rows(_rows(sb)), {"keys": _keys(s)}, G["_canon_key"])
+        rows = scope_rows(active_rows(_lrows(sb)), {"keys": _keys(s)}, G["_canon_key"])
         years = sorted({r.get("year") for r in rows if r.get("year")}, reverse=True)
         rows = by_kind(rows, request.args.get("deal", ""))
         q, area = (request.args.get("q") or "").strip(), None
@@ -1085,7 +1182,7 @@ def register(app, G, page):
         s, err = _auth()
         if err:
             return err
-        rows = active_rows(_rows(sb))
+        rows = active_rows(_lrows(sb))
         if is_editor(s):
             rows = by_branch(rows, request.args.get("branch", ""))
         rows = by_kind(rows, request.args.get("deal", ""))
@@ -1097,7 +1194,7 @@ def register(app, G, page):
         if err:
             return err
         br, dl = request.args.get("branch", ""), request.args.get("deal", "")
-        full = by_branch(active_rows(_rows(sb)), br)
+        full = by_branch(active_rows(_lrows(sb)), br)
         years = sorted({r.get("year") for r in full if r.get("year")}, reverse=True)
         y = request.args.get("year", "")
         year = int(y) if y.isdigit() else (years[0] if years else time.localtime().tm_year)
@@ -1112,7 +1209,7 @@ def register(app, G, page):
         if err:
             return err
         fn = unreported if request.args.get("kind") == "unreported" else unpaid
-        rows = by_kind(by_branch(active_rows(_rows(sb)), request.args.get("branch", "")), request.args.get("deal", ""))
+        rows = by_kind(by_branch(active_rows(_lrows(sb)), request.args.get("branch", "")), request.args.get("deal", ""))
         return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(rows)], "since": DETAIL_FROM_YEAR})
 
     @app.route("/v2/api/deals/history/search", methods=["GET"])
@@ -1123,7 +1220,7 @@ def register(app, G, page):
         toks = [t for t in _norm_q(request.args.get("q", "")).split() if t]
         if not toks:
             return jsonify({"ok": True, "results": []})
-        hits = [r for r in by_kind(by_branch(_rows(sb), request.args.get("branch", "")), request.args.get("deal", "")) if all(t in _norm_q(" ".join(str(r.get(k) or "") for k in
+        hits = [r for r in by_kind(by_branch(_lrows(sb), request.args.get("branch", "")), request.args.get("deal", "")) if all(t in _norm_q(" ".join(str(r.get(k) or "") for k in
                 ("client_name", "client_phone", "street", "city", "agent", "invoice_no", "receipt_no"))) for t in toks)]
         return jsonify({"ok": True, "results": [view_full(r) for r in _sort_desc(hits)[:200]]})
 
@@ -1162,13 +1259,42 @@ def register(app, G, page):
                         "year": int(os.environ.get("DEALS_SYNC_YEAR") or _dt.date.today().year),
                         "branches": {k: v for k, v in SYNC_STATE.items()}})
 
+    @app.route("/v2/api/deals/history/agents", methods=["GET"])
+    def v2_deals_history_agents():
+        """טבלת כל הסוכנים (אייל 12/10): כמה עסקאות מחוברות לכל סוכן באפליקציה, ושמות מהקבצים שלא מחוברים לאף סוכן."""
+        s, err = _editor()
+        if err:
+            return err
+        rows = active_rows(_lrows(sb))
+        names = _LINK_CACHE.get("names") or []
+        back = {}
+        for dn, an in (_LINK_CACHE.get("links") or {}).items():
+            if dn != an:
+                back.setdefault(an, set()).add(dn)
+        agg = {}
+        for r in rows:
+            for a in split_agents(r.get("agent", "")):
+                x = agg.setdefault(a, {"n": 0, "n_cur": 0, "last": "", "branches": set()})
+                x["n"] += 1
+                x["n_cur"] += (r.get("year") or 0) >= DETAIL_FROM_YEAR
+                x["last"] = max(x["last"], r.get("deal_date") or "")
+                x["branches"].add(r.get("branch") or "")
+        app_set = set(names)
+        agents = [{"name": nm, "n": agg.get(nm, {}).get("n", 0), "n_cur": agg.get(nm, {}).get("n_cur", 0),
+                   "last": _dmy(agg.get(nm, {}).get("last", "")), "file_names": sorted(back.get(nm, ()))} for nm in names]
+        agents.sort(key=lambda a: (-a["n"], a["name"]))
+        unl = [{"name": a, "n": x["n"], "last": _dmy(x["last"]), "branches": sorted(b for b in x["branches"] if b)}
+               for a, x in agg.items() if a not in app_set]
+        unl.sort(key=lambda a: (-a["n"], a["name"]))
+        return jsonify({"ok": True, "agents": agents, "unlinked": unl, "since": DETAIL_FROM_YEAR})
+
     @app.route("/v2/api/deals/history/review", methods=["GET"])
     def v2_deals_history_review():
         s, err = _editor()
         if err:
             return err
         br = request.args.get("branch", "")
-        miss = [view_full(r) for r in _sort_desc(r for r in by_kind(by_branch(_rows(sb), br), request.args.get("deal", ""))
+        miss = [view_full(r) for r in _sort_desc(r for r in by_kind(by_branch(_lrows(sb), br), request.args.get("deal", ""))
                                                  if r.get("missing_since"))]
         unm = [{"branch": b, "name": nm} for b, st in SYNC_STATE.items() if isinstance(st, dict)
                and (br not in _BRANCH_KEYS or b == br) for nm in (st.get("unmapped") or [])]

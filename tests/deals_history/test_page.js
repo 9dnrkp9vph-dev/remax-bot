@@ -56,4 +56,8 @@ ck(kb.includes('מכירה וקנייה') && /class="bc on"[^>]*>שכירות/.t
 const sh2 = T4.statsHtml({year: 2026, deal: 'rent', total: {n: 2, commission: 7000}, prev: {n: 0, commission: 0},
   bySide: {sale: {n: 3, commission: 44000}, rent: {n: 2, commission: 7000}}, byBranch: [], byAgent: [], byMonth: []});
 ck(sh2.includes('שכירויות 2026') && sh2.includes('מכירה וקנייה · ₪44,000') && sh2.includes('שכירות · ₪7,000'), sh2);
+eval(js.replace(/\(function\(\)\{\s*try\{ TOK[\s\S]*$/, '') + ';global.T5={agentsHtml};');
+const ah = T5.agentsHtml({since: 2026, agents: [{name: 'חי חיים אלבז', n: 12, n_cur: 3, last: '01/09/2026', file_names: ['חי אלבז']}, {name: 'אלעד לוי', n: 0, n_cur: 0, last: '', file_names: []}],
+  unlinked: [{name: 'רוני', n: 4, last: '01/01/2019', branches: ['motzkin']}]});
+ck(ah.includes('חי חיים אלבז') && ah.includes('בקבצים: חי אלבז') && ah.includes('>אין<') && ah.includes('רוני') && ah.includes('מוצקין'), ah);
 console.log('OK', n, 'checks');
