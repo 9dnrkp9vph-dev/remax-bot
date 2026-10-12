@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.43
+// @version      13.44
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -51,7 +51,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.43'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='13.44'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -1189,8 +1189,14 @@ function saveRows(rows,dom,full,done){
     status((ok?'✓ ':'⚠️ ')+m);if(done)done(m);
   }, full);
 }
+// v13.44 (אייל 12/10, "אין נכסים" כמה פעמים ביום): מיד אחרי החלפת פרופיל הסריקה מתחילה לפני
+// שהטבלה של יד2 נטענת ונגמרת ריקה, והסבב של אותו פרופיל הולך לאיבוד. סריקה ריקה מנסה שוב פעם אחת.
+var EMPTY_RETRY_MS=60000;
+var scanDeps={};   // בדיקות בלבד: החלפת מקורות העמודים/השמירה (הקוד רץ בתוך IIFE)
 // הסריקה המלאה — משמשת גם ידני וגם אוטומטי: כל העמודים + token/טלפון + זיהוי "ירד מפרסום"
-function runFullScan(statusFn, done){
+function runFullScan(statusFn, done, emptyRetried){
+  var dUi=scanDeps.uiPaginateAll||uiPaginateAll, dFetch=scanDeps.activeFetchAllPages||activeFetchAllPages,
+      dExtract=scanDeps.extractRows||extractRows, dSave=scanDeps.saveRows||saveRows;
   var W=(typeof unsafeWindow!=='undefined')?unsafeWindow:window;
   var fetchFn=function(u){return fetchT(W,u);}; // עם תקרת זמן — בקשה תקועה לא מקפיאה את הסריקה
   // v13.17: סריקה אחת בכל רגע. 15/09: לחיצה על "סרוק" בזמן שהסריקה האוטומטית (שמתחילה לבד
@@ -1206,32 +1212,39 @@ function runFullScan(statusFn, done){
     statusFn('קורא את כל הנכסים...');
     var afterPages=function(rows, full){
       try{
-        var dom=extractRows();
+        var dom=dExtract();
         if(!rows.length){ // אין API בכלל — נפילה אחרונה לטבלה
           rows=dom;
+          if(!rows.length && !emptyRetried){
+            statusFn('לא נמצאו נכסים — הטבלה עוד לא נטענה, מנסה שוב בעוד דקה');
+            log('📭 סריקה ריקה — ניסיון חוזר בעוד '+Math.round(EMPTY_RETRY_MS/1000)+'ש׳');
+            scanStart=0;   // ההמתנה לא נחשבת "סריקה רצה" — אחרת הניסיון החוזר ייחסם
+            setTimeout(function(){ runFullScan(statusFn, done, true); }, EMPTY_RETRY_MS);
+            return;
+          }
           if(!rows.length){statusFn('לא נמצאו נכסים — הטבלה עוד לא נטענה');fin('אין נכסים');return;}
-          saveRows(rows,dom,false,function(m){fin(m);}); return;
+          dSave(rows,dom,false,function(m){fin(m);}); return;
         }
         // תקרת שליפות בסריקה אחת — השאר יושלמו בסריקות הבאות (מונע סריקה שנמשכת שעות)
         var needAll=needTokens(rows), need=needAll.slice(0,TOKENS_PER_SCAN);
-        if(!need.length){ saveRows(rows,dom,full,function(m){fin(m);}); return; }
+        if(!need.length){ dSave(rows,dom,full,function(m){fin(m);}); return; }
         statusFn('משיג קישורים 0/'+need.length+(needAll.length>need.length?(' (מתוך '+needAll.length+', השאר בסריקה הבאה)'):'')+'…');
         fetchTokens(need, fetchFn,
           function(i,n,ok){ if(i%5===0||i===n) statusFn('משיג קישורים '+i+'/'+n+' ('+ok+' נמצאו)…'); },
           function(cache,ok){
             try{
               rows.forEach(function(r){var c=cache[r._orderId];if(c){if(!r.link&&c.t)r.link=itemLink(r._orderId,c.t,r._city);if(!hasPhone(r)&&c.p)r.phone=c.p;if(!r.description&&c.d)r.description=c.d;}});
-              saveRows(rows,dom,full,function(m){fin(m);});
+              dSave(rows,dom,full,function(m){fin(m);});
             }catch(e){log('scan error (tokens): '+e);fin('שגיאה: '+e);}
           });
       }catch(e){log('scan error (pages): '+e);fin('שגיאה: '+e);}
     };
     // דרך א' (מועדפת): הממשק של יד2 טוען את העמודים — הבקשות שלו לא נחסמות.
     // דרך ב' (גיבוי): משיכה עצמית, שנעצרת על 100 מודעות כשיד2 חוסם.
-    uiPaginateAll(function(cur,total,n){ statusFn('עמוד '+cur+'/'+total+' · '+n+' נכסים...'); },
+    dUi(function(cur,total,n){ statusFn('עמוד '+cur+'/'+total+' · '+n+' נכסים...'); },
       function(uiRows, uiFull){
         if(uiRows && uiRows.length){ log('📄 פגינציה דרך הממשק: '+uiRows.length+' נכסים'+(uiFull?' (עד הסוף)':'')); afterPages(uiRows, uiFull); return; }
-        activeFetchAllPages(fetchFn, function(page,n){ statusFn('קורא עמוד '+page+' ('+n+' נכסים)...'); }, afterPages);
+        dFetch(fetchFn, function(page,n){ statusFn('קורא עמוד '+page+' ('+n+' נכסים)...'); }, afterPages);
       });
   }catch(e){log('scan error (start): '+e);fin('שגיאה: '+e);}
 }
@@ -1831,7 +1844,8 @@ function pairDecision(src, stamps, now, active, enabled){
 }
 function afterAutoScan(){
   paused=false;
-  var src=srcKey(); scanStampSave(src);
+  // v13.44: סריקה שלא אספה כלום לא נחשבת "נסרק" — כך הזוג יחזור לפרופיל הזה בסבב הבא
+  var src=srcKey(); if(lastScanMsg!=='אין נכסים') scanStampSave(src);
   var stamps={}; try{ stamps=JSON.parse(localStorage.getItem('ysScanBySrc')||'{}')||{}; }catch(e){}
   var act=userActive();
   if(pairDecision(src, stamps, Date.now(), act, dsEnabled()&&typeof fetch==='function')){
@@ -3087,7 +3101,7 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v){if(v!==undefined)scanStart=v;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
