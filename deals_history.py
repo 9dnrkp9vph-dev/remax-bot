@@ -236,6 +236,138 @@ def canon_agent(raw_name, branch, amap, canon):
     return " + ".join(x for x in names if x)
 
 
+# ── תצוגות לפי הרשאה ─────────────────────────────────────────────────────────
+EDITOR_DROLES = ("manager", "developer", "accountant")
+_GENERIC = ("מנהל", "סוכן")
+DETAIL_FROM_YEAR = 2026   # אייל 12/10: פירוט עמלה/גבייה/דיווח רק מקובץ 2026; ההיסטוריה — לקוח/כתובת/סכום
+
+
+def is_editor(s):
+    return (s or {}).get("drole") in EDITOR_DROLES
+
+
+def _dmy(iso):
+    return "%s/%s/%s" % (iso[8:10], iso[5:7], iso[:4]) if iso else ""
+
+
+def _addr(r):
+    return ", ".join(x for x in (r.get("street") or "", r.get("city") or "") if x)
+
+
+def _kind(side):
+    return "השכרה" if any(w in (side or "") for w in ("שוכר", "משכיר")) else "מכירה"
+
+
+def view_agent(r):
+    d = {"id": r["id"], "date": _dmy(r.get("deal_date") or ""), "address": _addr(r), "side": r.get("side") or "",
+         "client": r.get("client_name") or "", "price": r.get("deal_amount"), "branch": r.get("branch"),
+         "year": r.get("year")}
+    if (r.get("year") or 0) >= DETAIL_FROM_YEAR:
+        rep = r.get("reported_date") or ""
+        d.update(commission_net=r.get("commission_net"), paid=r.get("paid_amount"),
+                 reported=("%s/%s" % (rep[5:7], rep[:4])) if rep else "")
+    return d
+
+
+def view_comps(r):
+    return {"date": _dmy(r.get("deal_date") or ""), "address": _addr(r), "kind": _kind(r.get("side")),
+            "side": r.get("side") or "", "price": r.get("deal_amount"), "agent": r.get("agent") or "",
+            "branch": r.get("branch")}
+
+
+_FULL = ("id", "branch", "year", "src_sheet", "src_serial", "deal_date", "city", "street", "side", "agent",
+         "client_name", "client_phone", "other_broker", "deal_amount", "commission_gross", "commission_net",
+         "discount", "lead_source", "paid_amount", "deposited", "invoice_no", "receipt_no", "reported_date",
+         "remax_approved", "collection_status", "notes", "lawyer_notes", "missing_since")
+
+
+def view_full(r):
+    d = {k: r.get(k) for k in _FULL}
+    d["date"] = _dmy(r.get("deal_date") or "")
+    return d
+
+
+def scope_rows(rows, s, canon_key):
+    """s["keys"] = מפתחות קנוניים מותרים (הסוכן + שותפי הצוות / הסוכנים של המתאמת).
+    עסקה משותפת ('א + ב') גלויה לכל אחד מחבריה. שם כללי ('מנהל') לא רואה כלום כאן."""
+    keys = set((s or {}).get("keys") or set()) - {canon_key(g) for g in _GENERIC} - {""}
+    if not keys:
+        return []
+    return [r for r in rows if any(canon_key(a) in keys for a in split_agents(r.get("agent", "")))]
+
+
+def _sort_desc(rows):
+    return sorted(rows, key=lambda r: (r.get("deal_date") or "", r.get("id") or ""), reverse=True)
+
+
+def _norm_q(t):
+    return normalize_header(t).lower()
+
+
+def comps_search(rows, q, cap=200):
+    toks = [t for t in _norm_q(q).split() if t]
+    if not toks:
+        return {"results": [], "n_sale": 0, "avg_sale": None, "n_rent": 0, "avg_rent": None}
+    hit = [r for r in rows if all(t in _norm_q(" ".join((r.get("street") or "", r.get("city") or ""))) for t in toks)]
+    hit = _sort_desc(hit)
+    out = {"results": [view_comps(r) for r in hit[:cap]]}
+    for kind, k in (("מכירה", "sale"), ("השכרה", "rent")):
+        sel = [r for r in hit if _kind(r.get("side")) == kind]
+        ps = [float(r["deal_amount"]) for r in sel if r.get("deal_amount")]
+        out["n_" + k] = len(sel)
+        out["avg_" + k] = int(round(sum(ps) / len(ps))) if ps else None
+    return out
+
+
+def _agg(rows):
+    return {"n": len(rows), "commission": int(round(sum(float(r.get("commission_net") or 0) for r in rows)))}
+
+
+def stats(rows, year):
+    """עסקאות ועמלות לשנה. עסקה משותפת — חצי לכל סוכן (אייל 12/10: 'א'); הסה"כ לא משתנה."""
+    cur = [r for r in rows if r.get("year") == year]
+    prev = [r for r in rows if r.get("year") == year - 1]
+    ag = {}
+    for r in cur:
+        names = split_agents(r.get("agent", "")) or [""]
+        share = 1.0 / len(names)
+        for a in names:
+            x = ag.setdefault(a, {"agent": a, "n": 0.0, "commission": 0.0})
+            x["n"] += share
+            x["commission"] += float(r.get("commission_net") or 0) * share
+    by_agent = sorted(({"agent": x["agent"], "n": round(x["n"], 2), "commission": int(round(x["commission"]))}
+                       for x in ag.values()), key=lambda x: -x["commission"])
+    br, months = {}, {}
+    for r in cur:
+        br.setdefault(r.get("branch") or "", []).append(r)
+        m = (r.get("deal_date") or "")[5:7]
+        if m:
+            months.setdefault(m, []).append(r)
+    return {"year": year, "total": _agg(cur), "prev": _agg(prev),
+            "byBranch": sorted(({"branch": k, **_agg(v)} for k, v in br.items()), key=lambda x: -x["commission"]),
+            "byAgent": by_agent, "byMonth": [{"month": m, **_agg(months[m])} for m in sorted(months)]}
+
+
+def _detail(rows):
+    return [r for r in rows if (r.get("year") or 0) >= DETAIL_FROM_YEAR]
+
+
+def unpaid(rows):
+    return sorted((r for r in _detail(rows) if not r.get("paid_amount")), key=lambda r: (r.get("deal_date") or "9999", r.get("id") or ""))
+
+
+def unreported(rows):
+    return sorted((r for r in _detail(rows) if not r.get("reported_date")), key=lambda r: (r.get("deal_date") or "9999", r.get("id") or ""))
+
+
+def _rows(sb):
+    if time.time() - _HIST_CACHE["ts"] < 120:
+        return _HIST_CACHE["rows"]
+    rows = sb.deal_history_all() if (sb and sb.enabled()) else []
+    _HIST_CACHE.update(ts=time.time(), rows=rows)
+    return rows
+
+
 _HIST_CACHE = {"ts": 0, "rows": []}
 
 
@@ -269,3 +401,76 @@ def register(app, G, page):
         _HIST_CACHE["ts"] = 0
         G["_log_activity"]("ייבוא", "system", "", "היסטוריית עסקאות — ייבוא", "%d שורות" % saved)
         return jsonify({"ok": True, "saved": saved, "skipped_no_agent": skipped})
+
+    def _auth():
+        s = G["_web_auth"]()
+        if not s:
+            return None, (jsonify({"ok": False, "auth": False}), 401)
+        return s, None
+
+    def _keys(s):
+        """הסוכן + שותפי הצוות (אייל 12/10) / הסוכנים של המתאמת — דרך _scope_keys_phones הקיים."""
+        nm = (s.get("name") or "").strip()
+        if s.get("role") != "coordinator" and nm in _GENERIC:
+            return set()
+        keys, _p, _m = G["_scope_keys_phones"](s.get("role", "agent"), nm, set(), s.get("agents"), s.get("agent_names"))
+        return set(keys or set())
+
+    def _editor():
+        s, err = _auth()
+        if err:
+            return None, err
+        if not is_editor(s):
+            return None, (jsonify({"ok": False, "reason": "forbidden"}), 403)
+        return s, None
+
+    @app.route("/v2/api/deals/history/mine", methods=["GET"])
+    def v2_deals_history_mine():
+        s, err = _auth()
+        if err:
+            return err
+        rows = scope_rows(_rows(sb), {"keys": _keys(s)}, G["_canon_key"])
+        years = sorted({r.get("year") for r in rows if r.get("year")}, reverse=True)
+        y = request.args.get("year", "")
+        if y.isdigit():
+            rows = [r for r in rows if r.get("year") == int(y)]
+        res = [dict(view_agent(r), agent=r.get("agent") or "") for r in _sort_desc(rows)]
+        return G["_etag_wrap"]({"ok": True, "results": res, "years": years, "n": len(rows)})
+
+    @app.route("/v2/api/deals/history/comps", methods=["GET"])
+    def v2_deals_history_comps():
+        s, err = _auth()
+        if err:
+            return err
+        return jsonify(dict(comps_search(_rows(sb), request.args.get("q", "")), ok=True))
+
+    @app.route("/v2/api/deals/history/stats", methods=["GET"])
+    def v2_deals_history_stats():
+        s, err = _editor()
+        if err:
+            return err
+        rows = _rows(sb)
+        years = sorted({r.get("year") for r in rows if r.get("year")}, reverse=True)
+        y = request.args.get("year", "")
+        year = int(y) if y.isdigit() else (years[0] if years else time.localtime().tm_year)
+        return G["_etag_wrap"](dict(stats(rows, year), ok=True, years=years))
+
+    @app.route("/v2/api/deals/history/open", methods=["GET"])
+    def v2_deals_history_open():
+        s, err = _editor()
+        if err:
+            return err
+        fn = unreported if request.args.get("kind") == "unreported" else unpaid
+        return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(_rows(sb))], "since": DETAIL_FROM_YEAR})
+
+    @app.route("/v2/api/deals/history/search", methods=["GET"])
+    def v2_deals_history_search():
+        s, err = _editor()
+        if err:
+            return err
+        toks = [t for t in _norm_q(request.args.get("q", "")).split() if t]
+        if not toks:
+            return jsonify({"ok": True, "results": []})
+        hits = [r for r in _rows(sb) if all(t in _norm_q(" ".join(str(r.get(k) or "") for k in
+                ("client_name", "client_phone", "street", "city", "agent", "invoice_no", "receipt_no"))) for t in toks)]
+        return jsonify({"ok": True, "results": [view_full(r) for r in _sort_desc(hits)[:200]]})
