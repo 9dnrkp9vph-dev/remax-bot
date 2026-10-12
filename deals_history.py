@@ -497,6 +497,18 @@ def load_osm_streets(path=None):
         return {}
 
 
+def _city_from_text(text, idx):
+    """עיר מתוך שדה רחוב שמכיל כתובת מלאה ('בגין12 ק.מוצקין') — שם עיר/כינוי כמילה שלמה. אין → ''."""
+    t = " " + _city_n(re.sub(r"ק\s*\.\s*", "קרית ", str(text or ""))) + " "
+    best = ""
+    for canon, aliases in ((idx or {}).get("city") or {}).items():
+        for a in [canon] + list(aliases or ()):
+            a = _city_n(a)
+            if len(a) >= 3 and (" " + a + " ") in t and len(a) > len(best):
+                best, out = a, _city_n(canon)
+    return out if best else ""
+
+
 def nb_street_index(street_rows, idx, osm=None):
     """[(רחוב, שכונה, עיר)] → {"sc": {(רחוב, עיר): שכונה}, "s": {רחוב: שכונה}} — רק עם 2+ עדויות.
     "s" = רחוב שכל העדויות שלו בשכונה אחת (לעסקה בלי עיר).
@@ -523,11 +535,22 @@ def nb_street_index(street_rows, idx, osm=None):
     return {"sc": sc, "s": {st: list(v)[0] for st, v in by_st.items() if len(v) == 1}}
 
 
+# שכונות שהשם שלהן קיים ביותר מעיר אחת — החלטת אייל לאיזו עיר הכוונה (12/10: 'גבעת הרקפות' = ביאליק, לא אתא)
+AREA_FIXED = {"גבעת הרקפות": "קרית ביאליק"}
+
+
 def find_area(q, idx):
     """מילים בחיפוש → שכונה (כינוי חד-משמעי, 3+ תווים; תחילית ב/ה/ל/מ מותרת). אחרת None."""
     am = _alias_map(idx)
     amb = {_city_n(a) for a in ((idx or {}).get("ambiguous") or ())}
     toks = _city_n(q).split()
+    for size in (3, 2, 1):
+        for i in range(len(toks) - size + 1):
+            ph = " ".join(toks[i:i + size])
+            for cand in (ph, ph[1:] if ph[:1] in "בהלמ" else None):
+                if cand in AREA_FIXED:
+                    city = AREA_FIXED[cand]
+                    return {"nb": cand, "city": city, "label": cand + " · " + city, "aliases": [cand], "only_city": True}
     for size in (3, 2, 1):
         for i in range(len(toks) - size + 1):
             ph = " ".join(toks[i:i + size])
@@ -548,12 +571,18 @@ def area_filter(rows, q, area_ctx=None):
     area = find_area(q, area_ctx.get("idx")) if area_ctx else None
     if area:
         si = area_ctx.get("streets") or {}
+
+        def _row_city(r):
+            return _city_canon(r.get("city"), idx) or _city_from_text(r.get("street"), idx)
         sc, s1, idx = si.get("sc") or {}, si.get("s") or {}, area_ctx.get("idx")
 
         def _nb_of(r):
-            sk, city = _sk(r.get("street")), _city_canon(r.get("city"), idx)
+            sk, city = _sk(r.get("street")), _row_city(r)
             return sc.get((sk, city)) if city else s1.get(sk)
-        hit = [r for r in rows if (lambda v: v and (v == area["nb"] or _label_has(v, area.get("aliases"))))(_nb_of(r))]
+        def _in_city(r):   # שכונה עם עיר קבועה (AREA_FIXED) — רק עסקאות באותה עיר (או בלי עיר)
+            c = _row_city(r)
+            return not area.get("only_city") or not c or c == _city_n(area["city"])
+        hit = [r for r in rows if _in_city(r) and (lambda v: v and (v == area["nb"] or _label_has(v, area.get("aliases"))))(_nb_of(r))]
     else:
         hit = [r for r in rows if all(t in _norm_q(" ".join((r.get("street") or "", r.get("city") or ""))) for t in toks)]
     return _sort_desc(hit), area

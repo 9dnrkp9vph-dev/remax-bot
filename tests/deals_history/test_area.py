@@ -60,4 +60,22 @@ ck(kh == ["01/04/2026", "01/05/2026"], ("קרית חיים = מערבית+מזר
 ck([x["date"] for x in D.comps_search(R3, "קרית חיים מערבית", area_ctx=ctx3)["results"]] == ["01/05/2026"], "west only")
 IDX2 = dict(IDX, city=dict(IDX["city"], **{"קרית ים": ["קרית ים"]}))
 ck(D._city_canon("ים", IDX2) == "קרית ים", D._city_canon("ים", IDX2))
+# אייל 12/10: 'גבעת הרקפות' = השכונה בקרית ביאליק בלבד (לא קרית אתא), גם כשהכינוי עמום במפה
+IDX4 = dict(IDX, city=dict(IDX["city"], **{"קרית אתא": ["אתא", "קרית אתא"]}),
+            nb=dict(IDX["nb"], **{"גבעת הרקפות": {"city": "קרית ביאליק", "aliases": ["גבעת הרקפות באתא", "גבעת הרקפות בביאליק"]}}),
+            ambiguous={"ותיק", "ותיקה", "מרכז", "גבעת הרקפות"})
+OSM4 = {"קרית ביאליק": {"מנחם בגין": "גבעת הרקפות", "בגין": "גבעת הרקפות", "חיננית": "גבעת הרקפות"}, "קרית אתא": {"הרב מינץ": "גבעת הרקפות"}}
+ctx4 = {"idx": IDX4, "streets": D.nb_street_index([], IDX4, osm=OSM4)}
+R4 = [dict(id="a", street="מנחם בגין 3", city="ביאליק", side="מוכר", deal_amount=1, deal_date="2026-03-01", agent="א", branch="bialik"),
+      dict(id="b", street="חיננית 5", city="קרית ביאליק", side="קונה", deal_amount=1, deal_date="2026-04-01", agent="א", branch="bialik"),
+      dict(id="c", street="הרב מינץ 2", city="אתא", side="מוכר", deal_amount=1, deal_date="2026-05-01", agent="ב", branch="motzkin")]
+for q in ("עסקאות בגבעת הרקפות", "גבעת הרקפות"):
+    cs4 = D.comps_search(R4, q, area_ctx=ctx4)
+    ck([x["date"] for x in cs4["results"]] == ["01/04/2026", "01/03/2026"] and cs4["area"] == "גבעת הרקפות · קרית ביאליק", (q, cs4))
+# כתובת מלאה בשדה הרחוב בלי עיר ('בגין12 ק.מוצקין') — העיר מהטקסט, לא שיוך לבגין של ביאליק
+R5 = R4 + [dict(id="d", street="בגין12 ק.מוצקין", city="", side="מוכר", deal_amount=1, deal_date="2026-06-01", agent="ג", branch="motzkin"),
+           dict(id="e", street="חיננית 9 ק.ביאליק", city="", side="מוכר", deal_amount=1, deal_date="2026-07-01", agent="ג", branch="bialik")]
+cs5 = D.comps_search(R5, "גבעת הרקפות", area_ctx=ctx4)
+ck([x["date"] for x in cs5["results"]] == ["01/07/2026", "01/04/2026", "01/03/2026"], cs5["results"])
+ck(D._city_from_text("בגין12 ק.מוצקין", IDX4) == "קרית מוצקין" and D._city_from_text("הרצל 5", IDX4) == "", "city from text")
 print("OK", n, "checks")
