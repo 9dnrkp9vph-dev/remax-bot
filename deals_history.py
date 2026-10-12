@@ -540,10 +540,11 @@ def find_area(q, idx):
     return None
 
 
-def comps_search(rows, q, cap=200, area_ctx=None):
+def area_filter(rows, q, area_ctx=None):
+    """חיפוש לפי שכונה (אם זוהתה) או רחוב/עיר → (שורות, שכונה|None). משותף למחירי השוואה ול'העסקאות שלי'."""
     toks = [t for t in _norm_q(q).split() if t]
     if not toks:
-        return {"results": [], "n_sale": 0, "avg_sale": None, "n_rent": 0, "avg_rent": None}
+        return [], None
     area = find_area(q, area_ctx.get("idx")) if area_ctx else None
     if area:
         si = area_ctx.get("streets") or {}
@@ -555,7 +556,13 @@ def comps_search(rows, q, cap=200, area_ctx=None):
         hit = [r for r in rows if (lambda v: v and (v == area["nb"] or _label_has(v, area.get("aliases"))))(_nb_of(r))]
     else:
         hit = [r for r in rows if all(t in _norm_q(" ".join((r.get("street") or "", r.get("city") or ""))) for t in toks)]
-    hit = _sort_desc(hit)
+    return _sort_desc(hit), area
+
+
+def comps_search(rows, q, cap=200, area_ctx=None):
+    hit, area = area_filter(rows, q, area_ctx)
+    if not [t for t in _norm_q(q).split() if t]:
+        return {"results": [], "n_sale": 0, "avg_sale": None, "n_rent": 0, "avg_rent": None}
     out = {"results": [view_comps(r) for r in hit[:cap]]}
     if area:
         out["area"] = area["label"]
@@ -606,11 +613,20 @@ def _detail(rows):
 
 
 def unpaid(rows):
-    return sorted((r for r in _detail(rows) if not r.get("paid_amount")), key=lambda r: (r.get("deal_date") or "9999", r.get("id") or ""))
+    """החדש למעלה (אייל 12/10: 'תמיד העסקאות עם התאריך הכי חדש בראש הרשימה')."""
+    return _sort_desc(r for r in _detail(rows) if not r.get("paid_amount"))
 
 
 def unreported(rows):
-    return sorted((r for r in _detail(rows) if not r.get("reported_date")), key=lambda r: (r.get("deal_date") or "9999", r.get("id") or ""))
+    return _sort_desc(r for r in _detail(rows) if not r.get("reported_date"))
+
+
+_BRANCH_KEYS = ("bialik", "motzkin", "kiryat_yam")
+
+
+def by_branch(rows, branch):
+    """בורר הסניף של המנהלים (אייל 12/10). ריק/לא מוכר = כל הסניפים."""
+    return [r for r in rows if r.get("branch") == branch] if branch in _BRANCH_KEYS else rows
 
 
 def _rows(sb):
@@ -644,6 +660,9 @@ V2_HISTORY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
   .chip{font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;background:#F2EFE7;color:#5B6472}
   .chip.ok{background:#EAF5EE;color:#157A43}.chip.wait{background:#F6EEDB;color:#7A5E1C}
+  .brs{display:flex;gap:6px;flex-wrap:wrap}
+  .brs .bc{padding:10px 14px;min-height:44px;display:flex;align-items:center;font-size:13px;font-weight:700;border-radius:12px;background:#fff;border:1.5px solid #DCD6C8;color:#5B6472;cursor:pointer}
+  .brs .bc.on{background:#1E3A5F;border-color:#1E3A5F;color:#fff}
   .sum{display:flex;gap:10px}.sum .card{flex:1;text-align:center}.sum b{display:block;font-size:20px;font-weight:800}
   .sum span{font-size:12px;color:#6B7280}
   input.q{width:100%;font-size:16px;font-family:inherit;padding:12px 14px;border:1.5px solid #DCD6C8;border-radius:14px;background:#fff;color:#1E3A5F;outline:none}
@@ -665,7 +684,7 @@ V2_HISTORY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 </main>
 <div id="toast"></div>
 <script>
-var TOK = '', ED = false, TAB = '', YEAR = '', Q = '', ME = '';
+var TOK = '', ED = false, TAB = '', YEAR = '', Q = '', ME = '', BRF = '', MQ = '';
 var BR = {bialik: 'ביאליק', motzkin: 'מוצקין', kiryat_yam: 'קרית ים'};
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtP(p){ if (p == null || p === '') return ''; var n = Math.round(Number(p)); if (isNaN(n)) return ''; return '₪' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
@@ -687,7 +706,7 @@ function agentCard(x, me){
 }
 function compCard(x){
   return '<div class="card"><div class="row1"><div><div class="ad">' + esc(x.address || '—') + '</div>' +
-    '<div class="sb">' + esc([x.date, x.kind, x.agent].filter(Boolean).join(' · ')) + '</div></div>' +
+    '<div class="sb">' + esc([x.date, x.kind, x.agent, ED ? BR[x.branch] : ''].filter(Boolean).join(' · ')) + '</div></div>' +
     '<div class="pr">' + esc(fmtP(x.price)) + '</div></div></div>';
 }
 function openCard(x){
@@ -736,6 +755,15 @@ function reviewHtml(j){
     u.map(function(x){ return '<div class="sb">' + esc(BR[x.branch] || x.branch) + ' · ' + esc(x.name) + '</div>'; }).join('') + '</div>';
   return h;
 }
+function brBar(){
+  // בורר סניף למנהלים בכל הטאבים (אייל 12/10)
+  if (!ED) return '';
+  return '<div class="brs">' + [['', 'כל הסניפים'], ['bialik', 'ביאליק'], ['motzkin', 'מוצקין'], ['kiryat_yam', 'קרית ים']].map(function(b){
+    return '<div class="bc' + (b[0] === BRF ? ' on' : '') + '" onclick="setBr(\'' + b[0] + '\')">' + b[1] + '</div>'; }).join('') + '</div>';
+}
+function setBr(b){ BRF = b; try{ localStorage.setItem('v2st:histbr', b); }catch(e){} draw(); }
+function brQ(){ return ED && BRF ? 'branch=' + BRF : ''; }
+function withQ(u){ var parts = [].slice.call(arguments, 1).filter(Boolean); return parts.length ? u + (u.indexOf('?') >= 0 ? '&' : '?') + parts.join('&') : u; }
 function GET(u){ return fetch(u, {headers: {'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
 function setTab(t){ TAB = t; try{ localStorage.setItem('v2st:hist', t); }catch(e){} draw(); }
 function tabsFor(){
@@ -750,41 +778,47 @@ function draw(){
   var tools = document.getElementById('tools'), list = document.getElementById('list');
   list.innerHTML = '<div class="sb" style="text-align:center;padding:20px 0">טוען…</div>';
   if (TAB === 'comps' || TAB === 'search'){
-    tools.innerHTML = '<input class="q" id="q" type="search" enterkeyhint="search" placeholder="' +
+    tools.innerHTML = brBar() + '<input class="q" id="q" type="search" enterkeyhint="search" placeholder="' +
       (TAB === 'comps' ? 'רחוב או שכונה — למשל "אפקה" או "הגפן מוצקין"' : 'שם לקוח, טלפון, כתובת, סוכן או מספר חשבונית') + '" value="' + esc(Q) + '">';
     var q = document.getElementById('q');
     q.onkeydown = function(e){ if (e.key === 'Enter'){ Q = q.value.trim(); runQ(); } };
     q.onchange = function(){ Q = q.value.trim(); runQ(); };
     runQ(); return;
   }
-  tools.innerHTML = '';
+  tools.innerHTML = brBar();
   if (TAB === 'mine'){
-    GET('/v2/api/deals/history/mine' + (YEAR ? '?year=' + YEAR : '')).then(function(j){
+    GET(withQ('/v2/api/deals/history/mine', YEAR ? 'year=' + YEAR : '', MQ ? 'q=' + encodeURIComponent(MQ) : '')).then(function(j){
       if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'נסה שוב בעוד רגע'); return; }
-      tools.innerHTML = '<div style="display:flex;gap:8px;align-items:center"><select class="yr" onchange="YEAR=this.value;draw()"><option value="">כל השנים</option>' +
+      // אייל 12/10: הסוכן מחפש שכונה/רחוב רק בעסקאות שלו
+      tools.innerHTML = '<input class="q" id="mq" type="search" enterkeyhint="search" placeholder="שכונה או רחוב — למשל אפקה" value="' + esc(MQ) + '">' +
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><select class="yr" onchange="YEAR=this.value;draw()"><option value="">כל השנים</option>' +
         (j.years || []).map(function(y){ return '<option' + (String(y) === String(YEAR) ? ' selected' : '') + '>' + y + '</option>'; }).join('') +
-        '</select><div class="sb">' + j.n + ' עסקאות</div></div>';
+        '</select><div class="sb">' + j.n + ' עסקאות' + (j.area ? ' · שכונת ' + esc(j.area) : '') + '</div></div>';
+      var mq = document.getElementById('mq');
+      mq.onkeydown = function(e){ if (e.key === 'Enter'){ MQ = mq.value.trim(); draw(); } };
+      mq.onchange = function(){ if (mq.value.trim() !== MQ){ MQ = mq.value.trim(); draw(); } };
       list.innerHTML = j.results.length ? j.results.map(function(x){ return agentCard(x, ME); }).join('') :
-        emptyHtml('עוד אין עסקאות כאן', 'העסקאות שסגרת במשרד יופיעו כאן');
+        (MQ ? emptyHtml('לא נמצאו עסקאות שלך כאן', 'אין לך עסקאות ב"' + MQ + '" — נסה שכונה או רחוב אחר') :
+        emptyHtml('עוד אין עסקאות כאן', 'העסקאות שסגרת במשרד יופיעו כאן'));
     }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
   } else if (TAB === 'stats'){
-    GET('/v2/api/deals/history/stats' + (YEAR ? '?year=' + YEAR : '')).then(function(j){
+    GET(withQ('/v2/api/deals/history/stats', YEAR ? 'year=' + YEAR : '', brQ())).then(function(j){
       if (!j || !j.ok){ list.innerHTML = emptyHtml('אין הרשאה', 'הדוחות זמינים למנהלים ולהנהלת חשבונות'); return; }
-      tools.innerHTML = '<select class="yr" onchange="YEAR=this.value;draw()">' + (j.years || []).map(function(y){
+      tools.innerHTML = brBar() + '<select class="yr" style="margin-top:10px" onchange="YEAR=this.value;draw()">' + (j.years || []).map(function(y){
         return '<option' + (String(y) === String(j.year) ? ' selected' : '') + '>' + y + '</option>'; }).join('') + '</select>';
       list.innerHTML = statsHtml(j);
       GET('/v2/api/deals/history/sync').then(function(sy){ tools.insertAdjacentHTML('beforeend', syncLine(sy)); }).catch(function(){});
     }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
   } else if (TAB === 'review'){
-    GET('/v2/api/deals/history/review').then(function(j){
+    GET(withQ('/v2/api/deals/history/review', brQ())).then(function(j){
       if (!j || !j.ok){ list.innerHTML = emptyHtml('אין הרשאה', 'זמין למנהלים ולהנהלת חשבונות'); return; }
       list.innerHTML = reviewHtml(j);
     }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
   } else {
     var kind = TAB === 'unpaid' ? 'unpaid' : 'unreported';
-    GET('/v2/api/deals/history/open?kind=' + kind).then(function(j){
+    GET(withQ('/v2/api/deals/history/open?kind=' + kind, brQ())).then(function(j){
       if (!j || !j.ok){ list.innerHTML = emptyHtml('אין הרשאה', 'זמין למנהלים ולהנהלת חשבונות'); return; }
-      tools.innerHTML = j.results.length ? '<div class="sb">' + j.results.length + ' צדדים ב-' + j.since + ' והלאה, מהישן לחדש</div>' : '';
+      tools.innerHTML = brBar() + (j.results.length ? '<div class="sb" style="margin-top:8px">' + j.results.length + ' צדדים ב-' + j.since + ' והלאה, מהחדש לישן</div>' : '');
       list.innerHTML = j.results.length ? j.results.map(openCard).join('') :
         emptyHtml(kind === 'unpaid' ? 'אין כרגע מה לגבות' : 'אין כרגע מה לדווח', 'הרשימה מתמלאת מקבצי המעקב של ' + j.since + ' — אחרי חיבור הקבצים לאפי');
     }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
@@ -794,7 +828,7 @@ function runQ(){
   var list = document.getElementById('list');
   if (!Q){ list.innerHTML = emptyHtml(TAB === 'comps' ? 'מחירי השוואה' : 'חיפוש עסקה', TAB === 'comps' ? 'הקלד רחוב או שכונה (למשל אפקה) וראה מה נמכר שם ובכמה' : 'הקלד שם, טלפון או כתובת'); return; }
   var u = TAB === 'comps' ? '/v2/api/deals/history/comps?q=' : '/v2/api/deals/history/search?q=';
-  GET(u + encodeURIComponent(Q)).then(function(j){
+  GET(withQ(u + encodeURIComponent(Q), brQ())).then(function(j){
     if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'נסה שוב'); return; }
     var head = TAB === 'comps' ? (j.area ? '<div class="sb">שכונת ' + esc(j.area) + '</div>' : '') + '<div class="sum"><div class="card"><b>' + j.n_sale + '</b><span>מכירות · ממוצע ' + esc(fmtP(j.avg_sale) || '—') + '</span></div>' +
       '<div class="card"><b>' + j.n_rent + '</b><span>השכרות · ממוצע ' + esc(fmtP(j.avg_rent) || '—') + '</span></div></div>' : '';
@@ -803,7 +837,7 @@ function runQ(){
   }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'בדוק חיבור ונסה שוב'); });
 }
 (function(){
-  try{ TOK = localStorage.getItem('fbTok') || ''; TAB = localStorage.getItem('v2st:hist') || ''; }catch(e){}
+  try{ TOK = localStorage.getItem('fbTok') || ''; TAB = localStorage.getItem('v2st:hist') || ''; BRF = localStorage.getItem('v2st:histbr') || ''; }catch(e){}
   if (!TOK){ location.href = '/v2'; return; }
   GET('/api/auth/whoami').then(function(j){
     if (!j || !j.ok){ location.replace('/v2'); return; }
@@ -966,11 +1000,17 @@ def register(app, G, page):
             return err
         rows = scope_rows(active_rows(_rows(sb)), {"keys": _keys(s)}, G["_canon_key"])
         years = sorted({r.get("year") for r in rows if r.get("year")}, reverse=True)
+        q, area = (request.args.get("q") or "").strip(), None
+        if q:   # אייל 12/10: הסוכן רואה באיזו שכונה/רחוב הוא עצמו מכר
+            rows, area = area_filter(rows, q, _area_ctx())
         y = request.args.get("year", "")
         if y.isdigit():
             rows = [r for r in rows if r.get("year") == int(y)]
         res = [dict(view_agent(r), agent=r.get("agent") or "") for r in _sort_desc(rows)]
-        return G["_etag_wrap"]({"ok": True, "results": res, "years": years, "n": len(rows)})
+        out = {"ok": True, "results": res, "years": years, "n": len(rows)}
+        if area:
+            out["area"] = area["label"]
+        return G["_etag_wrap"](out)
 
     _AREA = {"ts": 0, "v": None}
 
@@ -991,18 +1031,22 @@ def register(app, G, page):
         s, err = _auth()
         if err:
             return err
-        return jsonify(dict(comps_search(active_rows(_rows(sb)), request.args.get("q", ""), area_ctx=_area_ctx()), ok=True))
+        rows = active_rows(_rows(sb))
+        if is_editor(s):
+            rows = by_branch(rows, request.args.get("branch", ""))
+        return jsonify(dict(comps_search(rows, request.args.get("q", ""), area_ctx=_area_ctx()), ok=True))
 
     @app.route("/v2/api/deals/history/stats", methods=["GET"])
     def v2_deals_history_stats():
         s, err = _editor()
         if err:
             return err
-        rows = active_rows(_rows(sb))
+        br = request.args.get("branch", "")
+        rows = by_branch(active_rows(_rows(sb)), br)
         years = sorted({r.get("year") for r in rows if r.get("year")}, reverse=True)
         y = request.args.get("year", "")
         year = int(y) if y.isdigit() else (years[0] if years else time.localtime().tm_year)
-        return G["_etag_wrap"](dict(stats(rows, year), ok=True, years=years))
+        return G["_etag_wrap"](dict(stats(rows, year), ok=True, years=years, branch=br if br in _BRANCH_KEYS else ""))
 
     @app.route("/v2/api/deals/history/open", methods=["GET"])
     def v2_deals_history_open():
@@ -1010,7 +1054,8 @@ def register(app, G, page):
         if err:
             return err
         fn = unreported if request.args.get("kind") == "unreported" else unpaid
-        return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(active_rows(_rows(sb)))], "since": DETAIL_FROM_YEAR})
+        rows = by_branch(active_rows(_rows(sb)), request.args.get("branch", ""))
+        return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(rows)], "since": DETAIL_FROM_YEAR})
 
     @app.route("/v2/api/deals/history/search", methods=["GET"])
     def v2_deals_history_search():
@@ -1020,7 +1065,7 @@ def register(app, G, page):
         toks = [t for t in _norm_q(request.args.get("q", "")).split() if t]
         if not toks:
             return jsonify({"ok": True, "results": []})
-        hits = [r for r in _rows(sb) if all(t in _norm_q(" ".join(str(r.get(k) or "") for k in
+        hits = [r for r in by_branch(_rows(sb), request.args.get("branch", "")) if all(t in _norm_q(" ".join(str(r.get(k) or "") for k in
                 ("client_name", "client_phone", "street", "city", "agent", "invoice_no", "receipt_no"))) for t in toks)]
         return jsonify({"ok": True, "results": [view_full(r) for r in _sort_desc(hits)[:200]]})
 
@@ -1064,7 +1109,8 @@ def register(app, G, page):
         s, err = _editor()
         if err:
             return err
-        miss = [view_full(r) for r in _rows(sb) if r.get("missing_since")]
+        br = request.args.get("branch", "")
+        miss = [view_full(r) for r in _sort_desc(r for r in by_branch(_rows(sb), br) if r.get("missing_since"))]
         unm = [{"branch": b, "name": nm} for b, st in SYNC_STATE.items() if isinstance(st, dict)
-               for nm in (st.get("unmapped") or [])]
+               and (br not in _BRANCH_KEYS or b == br) for nm in (st.get("unmapped") or [])]
         return jsonify({"ok": True, "missing": miss, "unmapped": unm})

@@ -39,4 +39,13 @@ ck(T2.syncLine({enabled: false}).includes('כבוי'), 'off');
 const rv = T2.reviewHtml({missing: [{date: '01/02/2026', street: 'הרצל 2', city: 'קרית ים', agent: 'נדב רייזר', year: 2026}], unmapped: [{branch: 'bialik', name: 'חדש'}]});
 ck(rv.includes('נעלמו מהאקסל') && rv.includes('הרצל 2') && rv.includes('ביאליק') && rv.includes('חדש'), rv);
 ck(T2.reviewHtml({missing: [], unmapped: []}).includes('אין מה לבדוק'), 'empty');
+// אייל 12/10: בורר סניף למנהלים; לסוכן — בלי
+eval(js.replace(/\(function\(\)\{\s*try\{ TOK[\s\S]*$/, '') + ';global.T3={brBar,withQ,brQ,setED:function(v,b){ED=v;BRF=b;}};');
+T3.setED(false, 'bialik');
+ck(T3.brBar() === '' && T3.brQ() === '', 'agent: no branch bar, no param');
+T3.setED(true, 'motzkin');
+const bb = T3.brBar();
+ck(bb.includes('כל הסניפים') && bb.includes('קרית ים') && /class="bc on"[^>]*>מוצקין/.test(bb), bb);
+ck(T3.withQ('/a?kind=x', 'branch=motzkin') === '/a?kind=x&branch=motzkin' && T3.withQ('/a', '', 'q=1') === '/a?q=1' && T3.withQ('/a', '') === '/a', 'withQ');
+ck(T3.brQ() === 'branch=motzkin', 'brQ');
 console.log('OK', n, 'checks');
