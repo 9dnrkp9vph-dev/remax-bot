@@ -32,9 +32,9 @@ class SB:
 D._AGENT_MAP_CACHE.clear(); D._AGENT_MAP_CACHE.update(m={"bialik|נדב": "נדב רייזר"}, ts=9e18)
 st = D.sync_branch("bialik", 2026, SB(), DBX(), lambda x: x, "2026-10-12T10:05:00Z", folder="/d", pw="")
 ck(st["error"] == "" and st["rows"] == 2 and st["upserted"] == 2 and st["file"] == "מעקב עסקאות 2026.xlsx", st)
-ck(DB["bialik|2026|עסקאות26|1"]["agent"] == "נדב רייזר" and DB["bialik|2026|עסקאות26|1"]["agent_raw"] == "נדב", "mapped")
+ck(DB["bialik|2026|1"]["agent"] == "נדב רייזר" and DB["bialik|2026|1"]["agent_raw"] == "נדב", "mapped")
 ck(st["unmapped"] == ["חדש בלי מיפוי"], st["unmapped"])
-ck(DB["bialik|2026|עסקאות26|2"]["paid_amount"] == 8000 and DB["bialik|2026|עסקאות26|2"]["src_path"] == "/d/m.xlsx", "fields")
+ck(DB["bialik|2026|2"]["paid_amount"] == 8000 and DB["bialik|2026|2"]["src_path"] == "/d/m.xlsx", "fields")
 # אותו rev → בלי הורדה ובלי כתיבה
 before = len(dl)
 st2 = D.sync_branch("bialik", 2026, SB(), DBX(), lambda x: x, "2026-10-12T10:10:00Z", folder="/d", pw="", last=st)
@@ -43,8 +43,8 @@ ck(len(dl) == before and st2["upserted"] == 0 and st2.get("skipped"), st2)
 CONTENT["/d/m.xlsx"] = xlsx([[1, dt.datetime(2026, 1, 5), "קרית ים", "הרצל 1", "מוכר", "נדב", 900000, 9000, 9000]])
 FILES["/d"][0]["rev"] = "r2"
 st3 = D.sync_branch("bialik", 2026, SB(), DBX(), lambda x: x, "2026-10-12T10:15:00Z", folder="/d", pw="", last=st)
-ck(st3["upserted"] == 1 and st3["missing"] == 1 and DB["bialik|2026|עסקאות26|2"]["missing_since"] == "2026-10-12T10:15:00Z", st3)
-ck(DB["bialik|2026|עסקאות26|1"]["paid_amount"] == 9000, "update applied")
+ck(st3["upserted"] == 1 and st3["missing"] == 1 and DB["bialik|2026|2"]["missing_since"] == "2026-10-12T10:15:00Z", st3)
+ck(DB["bialik|2026|1"]["paid_amount"] == 9000, "update applied")
 # כשל הורדה / סיסמה → שגיאה במצב, הטבלה לא נגעה
 class BAD(DBX):
     def download(self, p): raise RuntimeError("boom")

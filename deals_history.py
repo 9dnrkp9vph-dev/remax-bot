@@ -191,6 +191,14 @@ def normalize_row(cells, fields, ctx):
     name, phone = split_client(_cell(cells, fields, "client"))
     serial = _txt(_cell(cells, fields, "serial"))
     key_tail = serial if re.fullmatch(r"\d+", serial or "") else "r%d" % ctx["row_idx"]
+    if ctx.get("key_mode") == "sync":
+        # [ביקורת 2א] סנכרון 2026: בלי שם הגיליון (שינוי שם טאב לא משכפל), ובלי מס"ד — לפי תוכן (לא מיקום)
+        if not re.fullmatch(r"\d+", serial or ""):
+            sig = "|".join([ddate.isoformat() if ddate else "", street, norm_side(_cell(cells, fields, "side")), agent])
+            key_tail = "h" + _hashlib.sha1(sig.encode()).hexdigest()[:10]
+        src_key = "%s|%s|%s" % (ctx["branch"], ctx["year"], key_tail)
+    else:
+        src_key = "%s|%s|%s|%s" % (ctx["branch"], ctx["year"], ctx["sheet"], key_tail)
     rep = parse_date(_cell(cells, fields, "reported_date"))
     hdr_names = ctx.get("headers") or []   # כל התאים המקוריים לפי כותרת (כשהכותרות ידועות)
     raw = {}
@@ -203,7 +211,7 @@ def normalize_row(cells, fields, ctx):
         raw["התחשבנות סוכן"] = _txt(cells[si])
     row = {
         "branch": ctx["branch"], "year": int(ctx["year"]), "src_sheet": ctx["sheet"], "src_row": ctx["row_idx"],
-        "src_serial": serial, "src_key": "%s|%s|%s|%s" % (ctx["branch"], ctx["year"], ctx["sheet"], key_tail),
+        "src_serial": serial, "src_key": src_key,
         "deal_date": ddate.isoformat() if ddate else None, "city": city, "street": street,
         "side": norm_side(_cell(cells, fields, "side")), "agent": agent,
         "client_name": name, "client_phone": phone,
@@ -247,7 +255,7 @@ def pick_main_sheet(wb):
     return None
 
 
-def rows_from_workbook(wb, branch, year, sheets, default_agent="", stop_after_empty=300):
+def rows_from_workbook(wb, branch, year, sheets, default_agent="", stop_after_empty=300, key_mode=""):
     import collections
     rep = {"ok": 0, "skip": 0, "broken": 0, "agents": collections.Counter(), "commission": 0,
            "missing_sheets": [], "broken_rows": [], "dup_keys": [], "stopped_at": None}
@@ -285,7 +293,8 @@ def rows_from_workbook(wb, branch, year, sheets, default_agent="", stop_after_em
                 continue
             empty = 0
             st, row = normalize_row(cells, fields, {"branch": branch, "year": year, "sheet": sh, "row_idx": i,
-                                                    "headers": headers, "default_agent": default_agent})
+                                                    "headers": headers, "default_agent": default_agent,
+                                                    "key_mode": key_mode})
             rep[st] += 1
             if st == "ok":
                 if row["src_key"] in seen:
@@ -334,8 +343,11 @@ def sync_plan(existing, incoming, switched):
             up.append(dict(r, src_hash=h))
     missing = [k for k, r in ex.items() if k not in seen and not r.get("missing_since")]
     back = [k for k, r in ex.items() if k in seen and r.get("missing_since")]
+    # [ביקורת 2א] ההגנה לא תלויה בזיכרון (אחרי אתחול/מעבר קובץ): קובץ שמכיל פחות מ-60% מהשורות הפעילות
+    # שכבר בטבלה — לא מסמנים חסרים (עותק כפול חלקי / גיליון שהוחלף). סניף קטן (<5) — בלי הגנה.
+    act = {k for k, r in ex.items() if not r.get("missing_since")}
     guarded = False
-    if switched and ex and len(seen & set(ex)) < 0.6 * len(ex):
+    if (switched or len(act) >= 5) and act and len(seen & act) < 0.6 * len(act):
         missing, guarded = [], True
     return {"upsert": up, "missing": sorted(missing), "back": sorted(back), "guarded": guarded}
 
@@ -469,6 +481,11 @@ def stats(rows, year):
     return {"year": year, "total": _agg(cur), "prev": _agg(prev),
             "byBranch": sorted(({"branch": k, **_agg(v)} for k, v in br.items()), key=lambda x: -x["commission"]),
             "byAgent": by_agent, "byMonth": [{"month": m, **_agg(months[m])} for m in sorted(months)]}
+
+
+def active_rows(rows):
+    """[ביקורת 2א] שורות שנעלמו מהאקסל (missing_since) לא נספרות בדוחות/רשימות/השוואה — רק ב'לבדיקה' ובחיפוש."""
+    return [r for r in rows if not r.get("missing_since")]
 
 
 def _detail(rows):
@@ -737,7 +754,7 @@ def sync_branch(branch, year, sb, dbx, canon, now_iso, folder=None, pw=None, las
         if not sh:
             st["error"] = "לא נמצא גיליון עסקאות בקובץ"
             return st
-        rows, rep = rows_from_workbook(wb, branch, year, [sh], DEFAULT_AGENT.get(branch, ""))
+        rows, rep = rows_from_workbook(wb, branch, year, [sh], DEFAULT_AGENT.get(branch, ""), key_mode="sync")
         amap = load_agent_map()
         unm = set()
         for r in rows:
@@ -834,7 +851,7 @@ def register(app, G, page):
         s, err = _auth()
         if err:
             return err
-        rows = scope_rows(_rows(sb), {"keys": _keys(s)}, G["_canon_key"])
+        rows = scope_rows(active_rows(_rows(sb)), {"keys": _keys(s)}, G["_canon_key"])
         years = sorted({r.get("year") for r in rows if r.get("year")}, reverse=True)
         y = request.args.get("year", "")
         if y.isdigit():
@@ -847,14 +864,14 @@ def register(app, G, page):
         s, err = _auth()
         if err:
             return err
-        return jsonify(dict(comps_search(_rows(sb), request.args.get("q", "")), ok=True))
+        return jsonify(dict(comps_search(active_rows(_rows(sb)), request.args.get("q", "")), ok=True))
 
     @app.route("/v2/api/deals/history/stats", methods=["GET"])
     def v2_deals_history_stats():
         s, err = _editor()
         if err:
             return err
-        rows = _rows(sb)
+        rows = active_rows(_rows(sb))
         years = sorted({r.get("year") for r in rows if r.get("year")}, reverse=True)
         y = request.args.get("year", "")
         year = int(y) if y.isdigit() else (years[0] if years else time.localtime().tm_year)
@@ -866,7 +883,7 @@ def register(app, G, page):
         if err:
             return err
         fn = unreported if request.args.get("kind") == "unreported" else unpaid
-        return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(_rows(sb))], "since": DETAIL_FROM_YEAR})
+        return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(active_rows(_rows(sb)))], "since": DETAIL_FROM_YEAR})
 
     @app.route("/v2/api/deals/history/search", methods=["GET"])
     def v2_deals_history_search():
