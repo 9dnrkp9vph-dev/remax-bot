@@ -26,5 +26,5 @@ ck(all(r["office_id"] == "OFF" for r in p[3]) and set(p[3][0]) == set(p[3][1]), 
 ck([r["agent"] for r in p[3] if r["src_key"].endswith("|1")] == ["משה כהן"], "last wins")
 out = S.deal_history_all()
 g = calls[-1]
-ck(g[0] == "get" and "raw" not in g[2]["select"] and out[0]["agent"] == "משה", g[2]["select"])
+ck(g[0] == "get" and "raw" not in g[2]["select"].split(",") and out[0]["agent"] == "משה", g[2]["select"])   # עמודת raw (jsonb) לא נמשכת; agent_raw כן
 print("OK", n, "checks")
