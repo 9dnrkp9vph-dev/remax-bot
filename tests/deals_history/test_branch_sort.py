@@ -62,6 +62,13 @@ ck([x["id"] for x in m2["results"]] == ["3"], ("own street only, missing exclude
 m3 = c.get("/v2/api/deals/history/mine?q=באפקה&year=2025", headers=T).get_json()
 ck([x["id"] for x in m3["results"]] == ["5"] and m3["years"] == [2026, 2025], m3)
 ck([x["id"] for x in c.get("/v2/api/deals/history/mine", headers=T).get_json()["results"]] == ["3", "1", "5"], "mine unchanged")
+# אייל 12/10: חיפוש בלי טקסט = כל העסקאות, החדש למעלה, בדפים
+se0 = c.get("/v2/api/deals/history/search", headers=M).get_json()
+ck([x["id"] for x in se0["results"]] == ["7", "2", "6", "4", "3", "1", "5"] and se0["total"] == 7 and not se0["more"], se0)
+se1 = c.get("/v2/api/deals/history/search?branch=motzkin&limit=2", headers=M).get_json()
+ck([x["id"] for x in se1["results"]] == ["7", "3"] and se1["total"] == 3 and se1["more"], se1)
+se2 = c.get("/v2/api/deals/history/search?branch=motzkin&limit=2&offset=2", headers=M).get_json()
+ck([x["id"] for x in se2["results"]] == ["5"] and not se2["more"], se2)
 R.append(dict(row("8", "kiryat_yam", "2026-01-01", "", "", "קובי חמו"), deal_date="", missing_since="2026-10-12T00:00:00Z"))
 D._HIST_CACHE["ts"] = 0
 ck("8" not in [x["id"] for x in c.get("/v2/api/deals/history/review", headers=M).get_json()["missing"]], "sum row not in review")

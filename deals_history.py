@@ -982,16 +982,32 @@ function draw(){
     }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
   }
 }
-function runQ(){
+function searchMore(off){
+  // אייל 12/10: חיפוש בלי טקסט = כל העסקאות של שלושת המשרדים, החדש למעלה, 100 בכל פעם
   var list = document.getElementById('list');
-  if (!Q){ list.innerHTML = emptyHtml(TAB === 'comps' ? 'מחירי השוואה' : 'חיפוש עסקה', TAB === 'comps' ? 'הקלד רחוב או שכונה (למשל אפקה) וראה מה נמכר שם ובכמה' : 'הקלד שם, טלפון או כתובת'); return; }
-  var u = TAB === 'comps' ? '/v2/api/deals/history/comps?q=' : '/v2/api/deals/history/search?q=';
-  GET(withQ(u + encodeURIComponent(Q), brQ(), kQ())).then(function(j){
+  var more = document.getElementById('more'); if (more) more.remove();
+  if (!off) list.innerHTML = '<div class="sb" style="text-align:center;padding:20px 0">טוען…</div>';
+  GET(withQ('/v2/api/deals/history/search?q=' + encodeURIComponent(Q || ''), brQ(), kQ(), off ? 'offset=' + off : '')).then(function(j){
     if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'נסה שוב'); return; }
     OFFICE = j.office || OFFICE;
-    var head = TAB === 'comps' ? (j.area ? '<div class="sb">שכונת ' + esc(j.area) + '</div>' : '') + '<div class="sum"><div class="card"><b>' + j.n_sale + '</b><span>מכירות · ממוצע ' + esc(fmtP(j.avg_sale) || '—') + '</span></div>' +
-      '<div class="card"><b>' + j.n_rent + '</b><span>השכרות · ממוצע ' + esc(fmtP(j.avg_rent) || '—') + '</span></div></div>' : '';
-    list.innerHTML = j.results.length ? head + j.results.map(TAB === 'comps' ? compCard : openCard).join('') :
+    var cards = j.results.map(openCard).join('');
+    var btn = j.more ? '<div id="more" class="bc" style="justify-content:center;background:#fff;border:1.5px solid #DCD6C8;border-radius:12px;min-height:44px;display:flex;align-items:center;font-weight:700;cursor:pointer" onclick="searchMore(' + (j.offset + j.results.length) + ')">הצג עוד</div>' : '';
+    if (!off){
+      list.innerHTML = j.results.length ? '<div class="sb">' + (Q ? j.total + ' תוצאות' : 'כל העסקאות · ' + j.total + ' · החדשות למעלה') + '</div>' + cards + btn :
+        emptyHtml('לא נמצא', Q ? 'אין עסקאות עבור "' + Q + '" — נסה מילה אחרת' : 'אין עסקאות להצגה');
+    } else list.insertAdjacentHTML('beforeend', cards + btn);
+  }).catch(function(){ if (!off) list.innerHTML = emptyHtml('לא ניתן לחפש', 'בדוק חיבור ונסה שוב'); });
+}
+function runQ(){
+  var list = document.getElementById('list');
+  if (TAB === 'search'){ searchMore(0); return; }
+  if (!Q){ list.innerHTML = emptyHtml('מחירי השוואה', 'הקלד רחוב או שכונה (למשל אפקה) וראה מה נמכר שם ובכמה'); return; }
+  GET(withQ('/v2/api/deals/history/comps?q=' + encodeURIComponent(Q), brQ(), kQ())).then(function(j){
+    if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'נסה שוב'); return; }
+    OFFICE = j.office || OFFICE;
+    var head = (j.area ? '<div class="sb">שכונת ' + esc(j.area) + '</div>' : '') + '<div class="sum"><div class="card"><b>' + j.n_sale + '</b><span>מכירות · ממוצע ' + esc(fmtP(j.avg_sale) || '—') + '</span></div>' +
+      '<div class="card"><b>' + j.n_rent + '</b><span>השכרות · ממוצע ' + esc(fmtP(j.avg_rent) || '—') + '</span></div></div>';
+    list.innerHTML = j.results.length ? head + j.results.map(compCard).join('') :
       emptyHtml('לא נמצא', 'אין עסקאות עבור "' + Q + '" — נסה מילה אחרת');
   }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'בדוק חיבור ונסה שוב'); });
 }
@@ -1264,11 +1280,20 @@ def register(app, G, page):
         if err:
             return err
         toks = [t for t in _norm_q(request.args.get("q", "")).split() if t]
-        if not toks:
-            return jsonify({"ok": True, "results": []})
-        hits = [r for r in by_kind(by_branch(_lrows(sb), request.args.get("branch", "")), request.args.get("deal", "")) if all(t in _norm_q(" ".join(str(r.get(k) or "") for k in
-                ("client_name", "client_phone", "street", "city", "agent", "invoice_no", "receipt_no"))) for t in toks)]
-        return jsonify({"ok": True, "results": [view_full(r) for r in _sort_desc(hits)[:200]], "office": _office()})
+        rows = [r for r in by_kind(by_branch(_lrows(sb), request.args.get("branch", "")), request.args.get("deal", ""))
+                if r.get("deal_date") or r.get("street") or r.get("client_name")]
+        if toks:
+            rows = [r for r in rows if all(t in _norm_q(" ".join(str(r.get(k) or "") for k in
+                    ("client_name", "client_phone", "street", "city", "agent", "invoice_no", "receipt_no"))) for t in toks)]
+        # אייל 12/10: בלי טקסט — כל העסקאות של שלושת המשרדים, החדש למעלה, בדפים
+        try:
+            lim = max(1, min(int(request.args.get("limit") or 100), 300))
+            off = max(0, int(request.args.get("offset") or 0))
+        except ValueError:
+            lim, off = 100, 0
+        hits = _sort_desc(rows)
+        return jsonify({"ok": True, "results": [view_full(r) for r in hits[off:off + lim]], "total": len(hits),
+                        "more": off + lim < len(hits), "offset": off, "office": _office()})
 
     @app.route("/v2/history", methods=["GET"])
     def v2_history_page():

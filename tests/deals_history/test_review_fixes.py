@@ -42,8 +42,8 @@ src = open(os.path.join(os.path.dirname(__file__), "..", "..", "deals_history.py
 a = src.index("<script>", src.index("V2_HISTORY_HTML = ")); b = src.index("</script>", a); js = src[a:b]
 import re as _re
 calls = _re.findall(r"GET\((?:withQ\()?(?:'/v2/api/deals/history/|u \+ encodeURIComponent)", js)
-catches = js.count("}).catch(function(){ list.innerHTML = emptyHtml(") + js.count("}).catch(function(){});")
-ck(len(calls) >= 6 and catches == len(calls), ("every fetch has catch", len(calls), catches))
+catches = js.count("}).catch(function(){")
+ck(len(calls) >= 8 and catches >= len(calls) + 1, ("every fetch (+whoami) has catch", len(calls), catches))
 # אייל 12/10: 'קובי לא עשה עמלה כזאת' — שורת סכום בלי תווית (רק מספרים) לא נספרת כעסקה של סוכן ברירת המחדל
 ck(D.normalize_row((None, None, None, None, None, 18000000, None), F, KY)[0] == "skip", "numbers-only row (sum) not a Kobi deal")
 H2 = ("תאריך עסקה", "עיר", "רחוב", "קונה / מוכר", "סוכן", "סכום העסקה", "עמלה לפני מעמ")
