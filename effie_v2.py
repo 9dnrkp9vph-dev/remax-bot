@@ -956,6 +956,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#1E3A5F" stroke-width="1.5"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#1E3A5F" stroke-width="1.5" stroke-linecap="round"/></svg>
       תהליכים ועסקאות</a>
+    <a href="/v2/history" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
+       color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#1E3A5F" stroke-width="1.5"/><path d="M8 4.8V8l2.2 1.6" stroke="#1E3A5F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      היסטוריית עסקאות</a>
     <a href="/v2/map" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
        color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 16 16"><path d="M8 14s-5-4.2-5-8a5 5 0 0 1 10 0c0 3.8-5 8-5 8z" fill="none" stroke="#1E3A5F" stroke-width="1.5"/><circle cx="8" cy="6" r="1.8" fill="none" stroke="#1E3A5F" stroke-width="1.5"/></svg>
@@ -6892,6 +6896,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
           תהליך חדש
         </button>
         <button class="b2" onclick="openForm(null, true)">+ עסקה</button>
+        <button class="b2" onclick="location.href='/v2/history'">היסטוריה</button>
       </div>
       <div class="srch">
         <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>

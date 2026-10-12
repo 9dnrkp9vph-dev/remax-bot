@@ -368,6 +368,174 @@ def _rows(sb):
     return rows
 
 
+V2_HISTORY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>היסטוריית עסקאות</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;min-height:100vh}
+  header{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 6px}
+  header .bk{width:44px;height:44px;border-radius:14px;background:#fff;border:1px solid #E9E4D8;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  header h1{font-size:19px;font-weight:800;flex:1}
+  main{max-width:640px;margin:0 auto;padding:4px 16px 40px;display:flex;flex-direction:column;gap:12px}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px;overflow-x:auto;scrollbar-width:none}
+  .segs::-webkit-scrollbar{display:none}
+  .segs .sg{flex:1 0 auto;text-align:center;padding:9px 12px;min-height:40px;font-size:12.5px;font-weight:700;color:#5B6472;border-radius:10px;cursor:pointer;white-space:nowrap}
+  .segs .sg.on{color:#fff;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
+  #list{display:flex;flex-direction:column;gap:10px}
+  .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 16px}
+  .row1{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .ad{font-weight:800;font-size:15px}.sb{font-size:12.5px;color:#6B7280;margin-top:2px}
+  .pr{font-weight:800;font-size:15px;white-space:nowrap}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;background:#F2EFE7;color:#5B6472}
+  .chip.ok{background:#EAF5EE;color:#157A43}.chip.wait{background:#F6EEDB;color:#7A5E1C}
+  .sum{display:flex;gap:10px}.sum .card{flex:1;text-align:center}.sum b{display:block;font-size:20px;font-weight:800}
+  .sum span{font-size:12px;color:#6B7280}
+  input.q{width:100%;font-size:16px;font-family:inherit;padding:12px 14px;border:1.5px solid #DCD6C8;border-radius:14px;background:#fff;color:#1E3A5F;outline:none}
+  select.yr{font-size:16px;font-family:inherit;padding:10px 12px;border:1.5px solid #DCD6C8;border-radius:13px;background:#fff;color:#1E3A5F;min-height:44px}
+  table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:7px 4px;border-bottom:1px solid #F0EDE3;text-align:right}
+  th{color:#6B7280;font-weight:700}
+  .empty{text-align:center;padding:36px 16px}.empty .c{width:62px;height:62px;border-radius:50%;background:#F6EEDB;margin:0 auto 12px;display:flex;align-items:center;justify-content:center}
+  .empty .t{font-weight:800;font-size:17px}.empty .s{color:#6B7280;margin-top:6px;font-size:13.5px}
+</style></head><body>
+<header>
+  <div class="bk" onclick="history.length > 1 ? history.back() : location.href='/v2/home'" aria-label="חזרה">
+    <svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <h1>היסטוריית עסקאות</h1>
+</header>
+<main>
+  <div class="segs" id="tabs"></div>
+  <div id="tools"></div>
+  <div id="list"><div class="sb" style="text-align:center;padding:20px 0">טוען…</div></div>
+</main>
+<div id="toast"></div>
+<script>
+var TOK = '', ED = false, TAB = '', YEAR = '', Q = '', ME = '';
+var BR = {bialik: 'ביאליק', motzkin: 'מוצקין', kiryat_yam: 'קרית ים'};
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function fmtP(p){ if (p == null || p === '') return ''; var n = Math.round(Number(p)); if (isNaN(n)) return ''; return '₪' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function emptyHtml(t, s){ return '<div class="empty"><div class="c"><svg width="26" height="26" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9H4z" fill="none" stroke="#C29435" stroke-width="2" stroke-linejoin="round"/></svg></div><div class="t">' + esc(t) + '</div><div class="s">' + esc(s) + '</div></div>'; }
+function agentCard(x, me){
+  // היסטוריה (עד 2025): תאריך/כתובת/לקוח/סכום. 2026: גם עמלה/שולם/דווח (אייל 12/10)
+  var ag = String(x.agent || ''), joint = ag.indexOf(' + ') >= 0;
+  var others = joint ? ag.split(' + ').filter(function(a){ return a.trim() !== String(me || '').trim(); }) : [];
+  var det = Object.prototype.hasOwnProperty.call(x, 'commission_net');
+  return '<div class="card"><div class="row1"><div><div class="ad">' + esc(x.address || '—') + '</div>' +
+    '<div class="sb">' + esc([x.date, x.side, x.client].filter(Boolean).join(' · ')) + '</div>' +
+    (joint ? '<div class="sb">עסקה משותפת' + (others.length ? ' עם ' + esc(others.join(', ')) : '') + '</div>' :
+      (me && ag && ag !== me ? '<div class="sb">' + esc(ag) + '</div>' : '')) + '</div>' +
+    '<div class="pr">' + esc(fmtP(x.price)) + '</div></div>' +
+    (det ? '<div class="chips"><span class="chip">עמלה ' + esc(fmtP(x.commission_net) || '—') + '</span>' +
+      (x.paid ? '<span class="chip ok">שולם ' + esc(fmtP(x.paid)) + '</span>' : '<span class="chip wait">טרם שולם</span>') +
+      (x.reported ? '<span class="chip ok">דווח ' + esc(x.reported) + '</span>' : '<span class="chip wait">לא דווח</span>') + '</div>' : '') +
+    '</div>';
+}
+function compCard(x){
+  return '<div class="card"><div class="row1"><div><div class="ad">' + esc(x.address || '—') + '</div>' +
+    '<div class="sb">' + esc([x.date, x.kind, x.agent].filter(Boolean).join(' · ')) + '</div></div>' +
+    '<div class="pr">' + esc(fmtP(x.price)) + '</div></div></div>';
+}
+function openCard(x){
+  var addr = [x.street, x.city].filter(Boolean).join(', ');
+  return '<div class="card"><div class="row1"><div><div class="ad">' + esc(addr || '—') + '</div>' +
+    '<div class="sb">' + esc([x.date, x.side, x.agent, BR[x.branch]].filter(Boolean).join(' · ')) + '</div>' +
+    '<div class="sb">' + esc([x.client_name, x.client_phone].filter(Boolean).join(' · ')) + '</div></div>' +
+    '<div class="pr">' + esc(fmtP(x.commission_net)) + '</div></div>' +
+    '<div class="chips">' + ((x.year || 0) < 2026 ? '' :
+    (x.paid_amount ? '<span class="chip ok">שולם ' + esc(fmtP(x.paid_amount)) + '</span>' : '<span class="chip wait">טרם שולם</span>') +
+    (x.reported_date ? '<span class="chip ok">דווח ' + esc(x.reported_date.slice(5, 7) + '/' + x.reported_date.slice(0, 4)) + '</span>' : '<span class="chip wait">לא דווח</span>')) +
+    (x.collection_status ? '<span class="chip">' + esc(x.collection_status) + '</span>' : '') +
+    (x.invoice_no ? '<span class="chip">חשבונית ' + esc(x.invoice_no) + '</span>' : '') +
+    (x.receipt_no ? '<span class="chip">קבלה ' + esc(x.receipt_no) + '</span>' : '') + '</div></div>';
+}
+function statsHtml(j){
+  var t = j.total || {}, p = j.prev || {};
+  var tbl = function(title, rows, key, lbl){
+    if (!rows || !rows.length) return '';
+    return '<div class="card"><div class="ad" style="margin-bottom:6px">' + title + '</div><table><tr><th>' + lbl + '</th><th>עסקאות</th><th>עמלה</th></tr>' +
+      rows.map(function(r){ return '<tr><td>' + esc(key(r)) + '</td><td>' + r.n + '</td><td>' + esc(fmtP(r.commission)) + '</td></tr>'; }).join('') + '</table></div>';
+  };
+  return '<div class="sum"><div class="card"><b>' + (t.n || 0) + '</b><span>עסקאות ' + j.year + '</span></div>' +
+    '<div class="card"><b>' + esc(fmtP(t.commission || 0)) + '</b><span>עמלה לפני מע"מ</span></div></div>' +
+    '<div class="sb" style="text-align:center">' + (j.year - 1) + ': ' + (p.n || 0) + ' עסקאות · ' + esc(fmtP(p.commission || 0)) + '</div>' +
+    tbl('לפי משרד', j.byBranch, function(r){ return BR[r.branch] || r.branch; }, 'משרד') +
+    tbl('לפי סוכן', j.byAgent, function(r){ return r.agent; }, 'סוכן') +
+    tbl('לפי חודש', j.byMonth, function(r){ return r.month; }, 'חודש');
+}
+function GET(u){ return fetch(u, {headers: {'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function setTab(t){ TAB = t; try{ localStorage.setItem('v2st:hist', t); }catch(e){} draw(); }
+function tabsFor(){
+  return ED ? [['stats', 'דוחות'], ['unpaid', 'לא שולם'], ['unrep', 'לא דווח'], ['search', 'חיפוש'], ['comps', 'מחירי השוואה']]
+            : [['mine', 'העסקאות שלי'], ['comps', 'מחירי השוואה']];
+}
+function draw(){
+  var tb = tabsFor();
+  if (!tb.some(function(x){ return x[0] === TAB; })) TAB = tb[0][0];
+  document.getElementById('tabs').innerHTML = tb.map(function(x){
+    return '<div class="sg' + (x[0] === TAB ? ' on' : '') + '" onclick="setTab(\'' + x[0] + '\')">' + x[1] + '</div>'; }).join('');
+  var tools = document.getElementById('tools'), list = document.getElementById('list');
+  list.innerHTML = '<div class="sb" style="text-align:center;padding:20px 0">טוען…</div>';
+  if (TAB === 'comps' || TAB === 'search'){
+    tools.innerHTML = '<input class="q" id="q" type="search" enterkeyhint="search" placeholder="' +
+      (TAB === 'comps' ? 'רחוב, שכונה או עיר — למשל הגפן מוצקין' : 'שם לקוח, טלפון, כתובת, סוכן או מספר חשבונית') + '" value="' + esc(Q) + '">';
+    var q = document.getElementById('q');
+    q.onkeydown = function(e){ if (e.key === 'Enter'){ Q = q.value.trim(); runQ(); } };
+    q.onchange = function(){ Q = q.value.trim(); runQ(); };
+    runQ(); return;
+  }
+  tools.innerHTML = '';
+  if (TAB === 'mine'){
+    GET('/v2/api/deals/history/mine' + (YEAR ? '?year=' + YEAR : '')).then(function(j){
+      if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'נסה שוב בעוד רגע'); return; }
+      tools.innerHTML = '<div style="display:flex;gap:8px;align-items:center"><select class="yr" onchange="YEAR=this.value;draw()"><option value="">כל השנים</option>' +
+        (j.years || []).map(function(y){ return '<option' + (String(y) === String(YEAR) ? ' selected' : '') + '>' + y + '</option>'; }).join('') +
+        '</select><div class="sb">' + j.n + ' עסקאות</div></div>';
+      list.innerHTML = j.results.length ? j.results.map(function(x){ return agentCard(x, ME); }).join('') :
+        emptyHtml('עוד אין עסקאות כאן', 'העסקאות שסגרת במשרד יופיעו כאן');
+    }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
+  } else if (TAB === 'stats'){
+    GET('/v2/api/deals/history/stats' + (YEAR ? '?year=' + YEAR : '')).then(function(j){
+      if (!j || !j.ok){ list.innerHTML = emptyHtml('אין הרשאה', 'הדוחות זמינים למנהלים ולהנהלת חשבונות'); return; }
+      tools.innerHTML = '<select class="yr" onchange="YEAR=this.value;draw()">' + (j.years || []).map(function(y){
+        return '<option' + (String(y) === String(j.year) ? ' selected' : '') + '>' + y + '</option>'; }).join('') + '</select>';
+      list.innerHTML = statsHtml(j);
+    });
+  } else {
+    var kind = TAB === 'unpaid' ? 'unpaid' : 'unreported';
+    GET('/v2/api/deals/history/open?kind=' + kind).then(function(j){
+      if (!j || !j.ok){ list.innerHTML = emptyHtml('אין הרשאה', 'זמין למנהלים ולהנהלת חשבונות'); return; }
+      tools.innerHTML = j.results.length ? '<div class="sb">' + j.results.length + ' צדדים ב-' + j.since + ' והלאה, מהישן לחדש</div>' : '';
+      list.innerHTML = j.results.length ? j.results.map(openCard).join('') :
+        emptyHtml(kind === 'unpaid' ? 'אין כרגע מה לגבות' : 'אין כרגע מה לדווח', 'הרשימה מתמלאת מקבצי המעקב של ' + j.since + ' — אחרי חיבור הקבצים לאפי');
+    });
+  }
+}
+function runQ(){
+  var list = document.getElementById('list');
+  if (!Q){ list.innerHTML = emptyHtml(TAB === 'comps' ? 'מחירי השוואה' : 'חיפוש עסקה', TAB === 'comps' ? 'הקלד רחוב או שכונה וראה מה נמכר שם ובכמה' : 'הקלד שם, טלפון או כתובת'); return; }
+  var u = TAB === 'comps' ? '/v2/api/deals/history/comps?q=' : '/v2/api/deals/history/search?q=';
+  GET(u + encodeURIComponent(Q)).then(function(j){
+    if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'נסה שוב'); return; }
+    var head = TAB === 'comps' ? '<div class="sum"><div class="card"><b>' + j.n_sale + '</b><span>מכירות · ממוצע ' + esc(fmtP(j.avg_sale) || '—') + '</span></div>' +
+      '<div class="card"><b>' + j.n_rent + '</b><span>השכרות · ממוצע ' + esc(fmtP(j.avg_rent) || '—') + '</span></div></div>' : '';
+    list.innerHTML = j.results.length ? head + j.results.map(TAB === 'comps' ? compCard : openCard).join('') :
+      emptyHtml('לא נמצא', 'אין עסקאות עבור "' + Q + '" — נסה מילה אחרת');
+  });
+}
+(function(){
+  try{ TOK = localStorage.getItem('fbTok') || ''; TAB = localStorage.getItem('v2st:hist') || ''; }catch(e){}
+  if (!TOK){ location.href = '/v2'; return; }
+  GET('/api/auth/whoami').then(function(j){
+    if (!j || !j.ok){ location.replace('/v2'); return; }
+    ED = ['manager', 'developer', 'accountant'].indexOf(j.drole) >= 0; ME = j.name || '';
+    draw();
+  }).catch(function(){ location.replace('/v2'); });
+})();
+</script></body></html>'''
+
+
 _HIST_CACHE = {"ts": 0, "rows": []}
 
 
@@ -474,3 +642,7 @@ def register(app, G, page):
         hits = [r for r in _rows(sb) if all(t in _norm_q(" ".join(str(r.get(k) or "") for k in
                 ("client_name", "client_phone", "street", "city", "agent", "invoice_no", "receipt_no"))) for t in toks)]
         return jsonify({"ok": True, "results": [view_full(r) for r in _sort_desc(hits)[:200]]})
+
+    @app.route("/v2/history", methods=["GET"])
+    def v2_history_page():
+        return page(V2_HISTORY_HTML)
