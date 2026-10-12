@@ -37,6 +37,7 @@ HEADER_FIELDS = [
     ("lawyer_notes", ['עו"ד / הערות', 'עו"ד']),
 ]
 _PREFIX_OK = {"lawyer_notes", "invoice_no"}   # כותרות שמגיעות עם המשך ('עו"ד ויסמן / ...', 'חשבונית מס קבלה')
+_TOTAL = re.compile(r'^(סה"כ|סה״כ|סיכום|total)\b', re.I)
 CITIES = ["קרית מוצקין", "קרית ביאליק", "קרית ים", "קרית אתא", "קרית חיים", "חיפה", "עכו", "נשר"]
 
 
@@ -151,10 +152,12 @@ def _txt(v):
 
 
 def _split_address(addr):
+    """העיר רק בסוף הכתובת — 'דרך עכו 119' / 'דרך חיפה 12' נשארים רחוב (ביקורת 12/10)."""
     a = normalize_header(addr)
     for c in CITIES:
-        if c in a:
-            return c, re.sub(r"\s+", " ", a.replace(c, " ").strip(" ,"))
+        m = re.search(r"(?:^|[\s,])" + re.escape(c) + r"\s*$", a)
+        if m:
+            return c, re.sub(r"\s+", " ", a[:m.start()]).strip(" ,")
     return "", a
 
 
@@ -165,6 +168,9 @@ def normalize_row(cells, fields, ctx):
         return "skip", None
     agent = _txt(_cell(cells, fields, "agent"))
     if re.search(r'סה"כ|סה״כ|סיכום|total', agent, re.I):
+        return "skip", None
+    # שורת סה"כ/סיכום גם כשהמילה בעמודה אחרת (קרית ים: עמודת הסוכן ריקה — ביקורת 12/10)
+    if any(isinstance(c, str) and len(c.strip()) <= 15 and _TOTAL.match(c.strip()) for c in cells):
         return "skip", None
     amount = _num_out(_cell(cells, fields, "deal_amount"))
     comm = _num_out(_cell(cells, fields, "commission_net"))
@@ -177,7 +183,9 @@ def normalize_row(cells, fields, ctx):
     if not agent and ctx.get("default_agent") and (ddate or amount is not None or street):
         agent = ctx["default_agent"]   # קרית ים: עמודת הסוכן ריקה — כל העסקאות של קובי חמו (אייל 12/10)
     if not agent:
-        return "skip", None   # שורות סיכום חודשיות / הערות — בלי סוכן אין עסקה
+        if ddate or amount is not None or street:   # נראית כמו עסקה בלי סוכן — לדוח, לא להיעלם בשקט
+            return "broken", {"agent": "", "src_row": ctx["row_idx"], "sheet": ctx["sheet"]}
+        return "skip", None   # שורות סיכום חודשיות / הערות — בלי סוכן ובלי פרטי עסקה
     if not ddate and amount is None and comm is None and not street:
         return "broken", {"agent": agent, "src_row": ctx["row_idx"], "sheet": ctx["sheet"]}
     name, phone = split_client(_cell(cells, fields, "client"))
@@ -501,7 +509,7 @@ function draw(){
       tools.innerHTML = '<select class="yr" onchange="YEAR=this.value;draw()">' + (j.years || []).map(function(y){
         return '<option' + (String(y) === String(j.year) ? ' selected' : '') + '>' + y + '</option>'; }).join('') + '</select>';
       list.innerHTML = statsHtml(j);
-    });
+    }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
   } else {
     var kind = TAB === 'unpaid' ? 'unpaid' : 'unreported';
     GET('/v2/api/deals/history/open?kind=' + kind).then(function(j){
@@ -509,7 +517,7 @@ function draw(){
       tools.innerHTML = j.results.length ? '<div class="sb">' + j.results.length + ' צדדים ב-' + j.since + ' והלאה, מהישן לחדש</div>' : '';
       list.innerHTML = j.results.length ? j.results.map(openCard).join('') :
         emptyHtml(kind === 'unpaid' ? 'אין כרגע מה לגבות' : 'אין כרגע מה לדווח', 'הרשימה מתמלאת מקבצי המעקב של ' + j.since + ' — אחרי חיבור הקבצים לאפי');
-    });
+    }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
   }
 }
 function runQ(){
@@ -522,7 +530,7 @@ function runQ(){
       '<div class="card"><b>' + j.n_rent + '</b><span>השכרות · ממוצע ' + esc(fmtP(j.avg_rent) || '—') + '</span></div></div>' : '';
     list.innerHTML = j.results.length ? head + j.results.map(TAB === 'comps' ? compCard : openCard).join('') :
       emptyHtml('לא נמצא', 'אין עסקאות עבור "' + Q + '" — נסה מילה אחרת');
-  });
+  }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'בדוק חיבור ונסה שוב'); });
 }
 (function(){
   try{ TOK = localStorage.getItem('fbTok') || ''; TAB = localStorage.getItem('v2st:hist') || ''; }catch(e){}

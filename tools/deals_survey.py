@@ -99,19 +99,28 @@ def survey(pws):
     return sources, agents
 
 
+def write_proposals(here, sources, agents):
+    """כותב את ההצעה. קובץ שכבר קיים (אולי אושר ותוקן ידנית) לא נדרס — ההצעה ל-*.proposed.json."""
+    out = []
+    for name, data in (("deals_sources", sources), ("deals_agent_map", {k: "" for k in sorted(agents)})):
+        path = os.path.join(here, name + ".json")
+        if os.path.exists(path):
+            path = os.path.join(here, name + ".proposed.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1, sort_keys=True)
+        out.append(path)
+    return out
+
+
 def main():
     print("סקירת קבצי מעקב עסקאות (2016–2025) — קריאה בלבד. הסיסמאות לא נשמרות ולא מודפסות.\n")
     pws = {g: getpass.getpass("סיסמת %s: " % g) for g in ("ביאליק", "מוצקין + קרית ים")}
     sources, agents = survey(pws)
-    here = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(here, "deals_sources.json"), "w", encoding="utf-8") as f:
-        json.dump(sources, f, ensure_ascii=False, indent=1, sort_keys=True)
-    with open(os.path.join(here, "deals_agent_map.json"), "w", encoding="utf-8") as f:
-        json.dump({k: "" for k in sorted(agents)}, f, ensure_ascii=False, indent=1)
+    paths = write_proposals(os.path.dirname(os.path.abspath(__file__)), sources, agents)
     print("\n== שמות סוכנים גולמיים (משרד | שם : שורות) ==")
     for k in sorted(agents, key=lambda k: (k.split("|")[0], -agents[k], k)):
         print("   %s : %d" % (k, agents[k]))
-    print("\nנכתבו tools/deals_sources.json ו-tools/deals_agent_map.json (להצעה ואישור).")
+    print("\nנכתבו (להצעה ואישור): " + ", ".join(os.path.basename(p) for p in paths))
 
 
 if __name__ == "__main__":

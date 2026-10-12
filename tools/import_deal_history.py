@@ -11,8 +11,8 @@ APP_URL = os.environ.get("APP_URL", "https://remax-bot.onrender.com")
 
 def rows_from_workbook(wb, branch, year, sheets, default_agent=""):
     rep = {"ok": 0, "skip": 0, "broken": 0, "agents": collections.Counter(), "commission": 0,
-           "missing_sheets": [], "broken_rows": []}
-    out = []
+           "missing_sheets": [], "broken_rows": [], "dup_keys": []}
+    out, seen = [], set()
     names = [ws.title for ws in wb.worksheets]
     for sh in sheets:
         if sh not in names:
@@ -29,6 +29,11 @@ def rows_from_workbook(wb, branch, year, sheets, default_agent=""):
                                                       "headers": headers, "default_agent": default_agent})
             rep[st] += 1
             if st == "ok":
+                if row["src_key"] in seen:   # מס"ד כפול בגיליון — לא דורסים את הקודם (ביקורת 12/10)
+                    if row["src_key"] not in rep["dup_keys"]:
+                        rep["dup_keys"].append(row["src_key"])
+                    row["src_key"] = "%s|r%d" % (row["src_key"], i)
+                seen.add(row["src_key"])
                 out.append(row)
                 rep["agents"][row["agent"]] += 1
                 rep["commission"] += float(row.get("commission_net") or 0)
@@ -61,6 +66,8 @@ def main():
         print("%-16s שורות=%4d  דולגו=%4d  שבורות=%3d  עמלה=%10s  %s" % (
             key, rep["ok"], rep["skip"], rep["broken"], "{:,.0f}".format(rep["commission"]),
             ("גיליונות חסרים: " + ", ".join(rep["missing_sheets"])) if rep["missing_sheets"] else ""))
+        if rep["dup_keys"]:
+            print("   מס\"ד כפול (נשמרו שתיהן): " + ", ".join(k.split("|")[-1] for k in rep["dup_keys"]))
         all_rows += rows
     print("\nסה\"כ שורות: %d" % len(all_rows))
     if unmapped:
