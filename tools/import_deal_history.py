@@ -9,38 +9,7 @@ import deals_history as D
 APP_URL = os.environ.get("APP_URL", "https://remax-bot.onrender.com")
 
 
-def rows_from_workbook(wb, branch, year, sheets, default_agent=""):
-    rep = {"ok": 0, "skip": 0, "broken": 0, "agents": collections.Counter(), "commission": 0,
-           "missing_sheets": [], "broken_rows": [], "dup_keys": []}
-    out, seen = [], set()
-    names = [ws.title for ws in wb.worksheets]
-    for sh in sheets:
-        if sh not in names:
-            rep["missing_sheets"].append(sh)
-            continue
-        rows = list(wb[sh].iter_rows(values_only=True))
-        hi, fields = D.find_header_row(rows)
-        if hi is None:
-            rep["missing_sheets"].append(sh)
-            continue
-        headers = [D.normalize_header(c) for c in rows[hi]]
-        for i, cells in enumerate(rows[hi + 1:], start=hi + 2):
-            st, row = D.normalize_row(cells, fields, {"branch": branch, "year": year, "sheet": sh, "row_idx": i,
-                                                      "headers": headers, "default_agent": default_agent})
-            rep[st] += 1
-            if st == "ok":
-                if row["src_key"] in seen:   # מס"ד כפול בגיליון — לא דורסים את הקודם (ביקורת 12/10)
-                    if row["src_key"] not in rep["dup_keys"]:
-                        rep["dup_keys"].append(row["src_key"])
-                    row["src_key"] = "%s|r%d" % (row["src_key"], i)
-                seen.add(row["src_key"])
-                out.append(row)
-                rep["agents"][row["agent"]] += 1
-                rep["commission"] += float(row.get("commission_net") or 0)
-            elif st == "broken":
-                rep["broken_rows"].append("%s שורה %d" % (sh, i))
-    rep["agents"] = dict(rep["agents"])
-    return out, rep
+rows_from_workbook = D.rows_from_workbook   # [שלב 2א] קוד אחד לשרת ולכלי
 
 
 def main():

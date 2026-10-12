@@ -225,6 +225,83 @@ def normalize_row(cells, fields, ctx):
     return "ok", row
 
 
+def open_workbook(data, pw):
+    """bytes של xlsx/xlsm (מוצפן או לא) → Workbook read_only. סיסמה שגויה → חריגה."""
+    import io, msoffcrypto, openpyxl
+    bio = io.BytesIO(data)
+    of = msoffcrypto.OfficeFile(io.BytesIO(data))
+    if of.is_encrypted():
+        out = io.BytesIO()
+        of.load_key(password=pw or "")
+        of.decrypt(out)
+        bio = out
+    bio.seek(0)
+    return openpyxl.load_workbook(bio, read_only=True, data_only=True)
+
+
+def pick_main_sheet(wb):
+    for ws in wb.worksheets:
+        hi, fields = find_header_row(list(ws.iter_rows(values_only=True, max_row=12)))
+        if hi is not None and "agent" in fields and len([k for k in fields if not k.startswith("_")]) >= 6:
+            return ws.title
+    return None
+
+
+def rows_from_workbook(wb, branch, year, sheets, default_agent="", stop_after_empty=300):
+    import collections
+    rep = {"ok": 0, "skip": 0, "broken": 0, "agents": collections.Counter(), "commission": 0,
+           "missing_sheets": [], "broken_rows": [], "dup_keys": [], "stopped_at": None}
+    out, seen = [], set()
+    names = [ws.title for ws in wb.worksheets]
+    for sh in sheets:
+        if sh not in names:
+            rep["missing_sheets"].append(sh)
+            continue
+        it = wb[sh].iter_rows(values_only=True)
+        head = []
+        for r in it:
+            head.append(r)
+            if len(head) >= 12:
+                break
+        hi, fields = find_header_row(head)
+        if hi is None:
+            rep["missing_sheets"].append(sh)
+            continue
+        headers = [normalize_header(c) for c in head[hi]]
+        def rows_iter():
+            for k, r in enumerate(head[hi + 1:], start=hi + 2):
+                yield k, r
+            k = len(head) + 1
+            for r in it:
+                yield k, r
+                k += 1
+        empty = 0
+        for i, cells in rows_iter():
+            if not any(c not in (None, "") and not (isinstance(c, str) and not c.strip()) for c in (cells or ())):
+                empty += 1
+                if empty >= stop_after_empty:
+                    rep["stopped_at"] = i   # קבצים עם מיליון שורות ריקות בסוף — לא קוראים את כולן
+                    break
+                continue
+            empty = 0
+            st, row = normalize_row(cells, fields, {"branch": branch, "year": year, "sheet": sh, "row_idx": i,
+                                                    "headers": headers, "default_agent": default_agent})
+            rep[st] += 1
+            if st == "ok":
+                if row["src_key"] in seen:
+                    if row["src_key"] not in rep["dup_keys"]:
+                        rep["dup_keys"].append(row["src_key"])
+                    row["src_key"] = "%s|r%d" % (row["src_key"], i)
+                seen.add(row["src_key"])
+                out.append(row)
+                rep["agents"][row["agent"]] += 1
+                rep["commission"] += float(row.get("commission_net") or 0)
+            elif st == "broken":
+                rep["broken_rows"].append("%s שורה %d" % (sh, i))
+    rep["agents"] = dict(rep["agents"])
+    return out, rep
+
+
 _AGENT_SPLIT = re.compile(r"\s*[+/\\]\s*")   # לא מפצלים על "ו" — שמות כמו "אלעד ויזמן"; צמדי "ו" הומרו ל-"+" במיפוי
 
 
