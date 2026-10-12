@@ -23,7 +23,7 @@
 ## Global Constraints
 - **החלטות אייל 12/10:**
   - **קריאה בלבד.** אפי לא כותב לקבצים בשלב הזה.
-  - **מאיזה קובץ קוראים:** בכל תיקיית 2026, קובץ המעקב שנשמר אחרון. עותק כפול נחשב, וכן גם קובץ "גיבוי…" וקבצי `~$`.
+  - **מאיזה קובץ קוראים:** בכל תיקיית 2026, קובץ המעקב שנשמר אחרון. עותק כפול נחשב. "גיבוי…" וקבצי `~$` לא נבחרים. קובץ בלי "מעקב/עסקאות" בשם (קרית ים: `2026 קרית ים.xlsx`) נבחר רק כשאין קובץ מעקב בשם מפורש.
   - **פירוט עמלה, גבייה ודיווח:** רק בשורות 2026.
 - **סיסמאות ומפתחות:** רק ב-env של Render:
   - `DEALS_PW_BIALIK`, `DEALS_PW_MOTZKIN_YAM`
@@ -378,6 +378,9 @@ E = [{"name": "מעקב עסקאות 2026.xlsx", "path": "/a/1", "rev": "1", "se
      {"name": "סיכום_עסקאות_אפריל_2026.txt", "path": "/a/4", "rev": "4", "server_modified": "2026-10-12T00:00:00Z"}]
 ck(D.pick_latest(E)["path"] == "/a/2", "newest tracking file, conflicted allowed, ~$ and txt ignored")
 ck(D.pick_latest([]) is None, "empty")
+ck(D.pick_latest([{"name": "2026 קרית ים.xlsx", "path": "/k", "rev": "1", "server_modified": "2026-09-29T06:31:00Z"}])["path"] == "/k", "KY file name without מעקב")
+ck(D.pick_latest([{"name": "גיבוי מעקב עסקאות 2026.xlsx", "path": "/g", "rev": "1", "server_modified": "2026-12-01T00:00:00Z"},
+                  {"name": "מעקב עסקאות 2026.xlsx", "path": "/m", "rev": "1", "server_modified": "2026-07-01T00:00:00Z"}])["path"] == "/m", "backup not picked")
 a = {"src_key": "b|2026|s|1", "agent": "x", "deal_amount": 1, "raw": {"z": 1}}
 ck(D.row_hash(a) == D.row_hash(dict(a, raw={"z": 2}, _x=5)) and D.row_hash(a) != D.row_hash(dict(a, deal_amount=2)), "hash ignores raw/_")
 ex = [dict(src_key="k1", src_hash=D.row_hash({"src_key": "k1", "v": 1})),
@@ -420,9 +423,12 @@ _TRACK_NAME = re.compile(r"מעקב|עסקאות")
 
 
 def pick_latest(entries):
-    """אייל 12/10: בכל תיקייה — קובץ המעקב שנשמר אחרון (גם עותק כפול)."""
-    pool = [e for e in (entries or []) if re.search(r"\.xls[xmb]?$", e.get("name", ""), re.I)
-            and not e["name"].startswith("~$") and _TRACK_NAME.search(e["name"])]
+    """אייל 12/10: בכל תיקייה — קובץ המעקב שנשמר אחרון (גם עותק כפול). קובץ בלי 'מעקב/עסקאות' בשם
+    (קרית ים: '2026 קרית ים.xlsx') — רק כשאין בתיקייה קובץ מעקב בשם מפורש. 'גיבוי…' לא נבחר אם יש אחר."""
+    xl = [e for e in (entries or []) if re.search(r"\.xls[xmb]?$", e.get("name", ""), re.I)
+          and not e["name"].startswith("~$")]
+    pool = [e for e in xl if _TRACK_NAME.search(e["name"]) and "גיבוי" not in e["name"]] \
+        or [e for e in xl if "גיבוי" not in e["name"]] or xl
     return max(pool, key=lambda e: (e.get("server_modified") or "", e["name"])) if pool else None
 
 
@@ -466,7 +472,7 @@ def deal_history_set_missing(keys, ts):
     return n
 ```
 
-- [ ] **Step 4: Run** את הבדיקה ואת כל החבילה. Expected: `OK 13 checks`, הכל ירוק.
+- [ ] **Step 4: Run** את הבדיקה ואת כל החבילה. Expected: `OK 15 checks`, הכל ירוק.
 - [ ] **Step 5: Commit** — הודעה: "היסטוריית עסקאות: תכנון סנכרון — הקובץ האחרון, hash לשורה, חסרים/חזרו, הגנה במעבר קובץ".
 
 ---
