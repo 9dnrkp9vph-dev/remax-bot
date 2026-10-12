@@ -62,8 +62,9 @@ def main(argv):
     rows = list(ws.iter_rows(max_row=12))
     hi, F = D.find_header_row([[c.value for c in r] for r in rows])
     print("גיליון:", sh, "· שורת כותרת:", hi + 1)
-    print("עמודות:", {f: openpyxl.utils.get_column_letter(F[f] + 1) for f in WATCH + ("client", "agent") if f in F})
+    print("עמודות:", {f: openpyxl.utils.get_column_letter(F[f] + 1) for f in WATCH + ("client", "client_phone", "agent") if f in F})
     stats = collections.defaultdict(collections.Counter)
+    per_agent = collections.defaultdict(lambda: [0, 0])   # סוכן → [עם נייד, בלי נייד]
     shown = 0
     for r in ws.iter_rows(min_row=hi + 2):
         vals = [c.value for c in r]
@@ -79,15 +80,18 @@ def main(argv):
             stats[f][(k, fl)] += 1
             txt = (" '%s'" % str(c.value).strip()[:20]) if (f in STATUS_TEXT and k == "טקסט") else ""
             parts.append("%s=%s/%s%s" % (f, k, fl, txt))
-        if "client" in F and F["client"] < len(r):
-            has_ph = bool(re.search(r"0\d[\d\-\s]{7,}", str(r[F["client"]].value or "")))
-            stats["client_phone"]["כן" if has_ph else "לא"] += 1
+        has_ph = bool(row.get("client_phone"))
+        stats["client_phone"]["כן" if has_ph else "לא"] += 1
+        per_agent[row.get("agent") or "?"][0 if has_ph else 1] += 1
         if shown < n:
             print(" · ".join(parts))
             shown += 1
     print("\nסיכום (סוג ערך, צבע) לכל עמודה:")
     for f, c in stats.items():
         print(" ", f, dict(c.most_common(8)))
+    print("\nנייד לקוח לפי סוכן (עם / בלי):")
+    for a, (y, nn) in sorted(per_agent.items(), key=lambda x: -(x[1][0] + x[1][1])):
+        print("  %-18s %4d / %4d" % (a, y, nn))
     return 0
 
 
