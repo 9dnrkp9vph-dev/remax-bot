@@ -32,8 +32,10 @@ def main():
             r["src_path"] = src["file"]
             if not amap.get("%s|%s" % (br, r["agent"])):
                 unmapped["%s|%s" % (br, r["agent"])] += 1
-        print("%-16s שורות=%4d  דולגו=%4d  שבורות=%3d  עמלה=%10s  %s" % (
-            key, rep["ok"], rep["skip"], rep["broken"], "{:,.0f}".format(rep["commission"]),
+        ph = sum(1 for r in rows if r.get("client_phone"))
+        gp = sum(1 for r in rows if ((r.get("raw") or {}).get("_status") or {}).get("paid_amount") == "green")
+        print("%-16s שורות=%4d  דולגו=%4d  שבורות=%3d  עמלה=%10s  טלפונים=%4d  שולם-בצבע=%4d  %s" % (
+            key, rep["ok"], rep["skip"], rep["broken"], "{:,.0f}".format(rep["commission"]), ph, gp,
             ("גיליונות חסרים: " + ", ".join(rep["missing_sheets"])) if rep["missing_sheets"] else ""))
         if rep["dup_keys"]:
             print("   מס\"ד כפול (נשמרו שתיהן): " + ", ".join(k.split("|")[-1] for k in rep["dup_keys"]))
