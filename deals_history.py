@@ -188,8 +188,11 @@ def normalize_row(cells, fields, ctx):
         c2, street = _split_address(_txt(_cell(cells, fields, "address")))
         city = city or c2
     ddate = parse_date(_cell(cells, fields, "deal_date"))
-    if not agent and ctx.get("default_agent") and (ddate or amount is not None or street):
+    if not agent and ctx.get("default_agent") and (ddate or street):
+        # רק שורה עם תאריך/רחוב. שורת סכום בלי תווית (רק מספרים) נספרה כעסקה של קובי (אייל 12/10)
         agent = ctx["default_agent"]   # קרית ים: עמודת הסוכן ריקה — כל העסקאות של קובי חמו (אייל 12/10)
+    if not agent and ctx.get("default_agent") and not (ddate or street):
+        return "skip", None   # קרית ים: שורת סכום/סיכום — מספרים בלי תאריך ובלי כתובת
     if not agent:
         if ddate or amount is not None or street:   # נראית כמו עסקה בלי סוכן — לדוח, לא להיעלם בשקט
             return "broken", {"agent": "", "src_row": ctx["row_idx"], "sheet": ctx["sheet"]}
@@ -404,7 +407,7 @@ def _kind(side):
 def view_agent(r):
     d = {"id": r["id"], "date": _dmy(r.get("deal_date") or ""), "address": _addr(r), "side": r.get("side") or "",
          "client": r.get("client_name") or "", "price": r.get("deal_amount"), "branch": r.get("branch"),
-         "year": r.get("year")}
+         "year": r.get("year"), "phone": re.sub(r"\D", "", str(r.get("client_phone") or ""))}   # וואטסאפ ללקוח (אייל 12/10)
     if (r.get("year") or 0) >= DETAIL_FROM_YEAR:
         rep = r.get("reported_date") or ""
         d.update(commission_net=r.get("commission_net"), paid=r.get("paid_amount"),
@@ -634,8 +637,10 @@ def stats(rows, year):
 
 
 def active_rows(rows):
-    """[ביקורת 2א] שורות שנעלמו מהאקסל (missing_since) לא נספרות בדוחות/רשימות/השוואה — רק ב'לבדיקה' ובחיפוש."""
-    return [r for r in rows if not r.get("missing_since")]
+    """[ביקורת 2א] שורות שנעלמו מהאקסל (missing_since) לא נספרות בדוחות/רשימות/השוואה — רק ב'לבדיקה' ובחיפוש.
+    [אייל 12/10] גם שורה בלי תאריך, בלי רחוב ובלי לקוח (שורת סכום שנכנסה בטעות) — לא עסקה."""
+    return [r for r in rows if not r.get("missing_since")
+            and (r.get("deal_date") or r.get("street") or r.get("client_name"))]
 
 
 def _detail(rows):
@@ -747,6 +752,7 @@ V2_HISTORY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .brs{display:flex;gap:6px;flex-wrap:wrap}
   .brs .bc{padding:10px 14px;min-height:44px;display:flex;align-items:center;font-size:13px;font-weight:700;border-radius:12px;background:#fff;border:1.5px solid #DCD6C8;color:#5B6472;cursor:pointer}
   .brs .bc.on{background:#1E3A5F;border-color:#1E3A5F;color:#fff}
+  a.wa{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;margin-top:10px;border-radius:12px;background:#157A43;color:#fff;font-weight:700;font-size:14px;text-decoration:none}
   .sum{display:flex;gap:10px}.sum .card{flex:1;text-align:center}.sum b{display:block;font-size:20px;font-weight:800}
   .sum span{font-size:12px;color:#6B7280}
   input.q{width:100%;font-size:16px;font-family:inherit;padding:12px 14px;border:1.5px solid #DCD6C8;border-radius:14px;background:#fff;color:#1E3A5F;outline:none}
@@ -768,11 +774,35 @@ V2_HISTORY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 </main>
 <div id="toast"></div>
 <script>
-var TOK = '', ED = false, TAB = '', YEAR = '', Q = '', ME = '', BRF = '', MQ = '', KF = '';
+var TOK = '', ED = false, TAB = '', YEAR = '', Q = '', ME = '', BRF = '', MQ = '', KF = '', OFFICE = '';
 var BR = {bialik: 'ביאליק', motzkin: 'מוצקין', kiryat_yam: 'קרית ים'};
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtP(p){ if (p == null || p === '') return ''; var n = Math.round(Number(p)); if (isNaN(n)) return ''; return '₪' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 function emptyHtml(t, s){ return '<div class="empty"><div class="c"><svg width="26" height="26" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9H4z" fill="none" stroke="#C29435" stroke-width="2" stroke-linejoin="round"/></svg></div><div class="t">' + esc(t) + '</div><div class="s">' + esc(s) + '</div></div>'; }
+// אייל 12/10: וואטסאפ ללקוח עם הודעה מובנית שמזכירה שהסוכן קיים — רק כשיש טלפון
+function waPhone(p){
+  var d = String(p || '').replace(/\D/g, '');
+  if (d.indexOf('972') === 0) d = d.slice(3);
+  if (d.charAt(0) === '0') d = d.slice(1);
+  return d.length >= 8 && d.length <= 9 ? '972' + d : '';
+}
+function remindText(x, agent){
+  var first = String(x.client || '').trim().split(/\s+/)[0] || '';
+  var acts = {'מוכר': 'במכירת הנכס', 'קונה': 'בקניית הנכס', 'משכיר': 'בהשכרת הנכס', 'שוכר': 'בשכירת הדירה'};
+  var act = acts[String(x.side || '').trim()] || 'בעסקת הנדל"ן';
+  var addr = x.address || [x.street, x.city].filter(Boolean).join(', ');
+  var yr = /\d{4}$/.test(x.date || '') ? String(x.date).slice(-4) : '';
+  return 'שלום' + (first ? ' ' + first : '') + ', כאן ' + agent + (OFFICE ? ' מ' + OFFICE : '') + '. ליוויתי אתכם ' + act +
+    (addr ? ' ב' + addr : '') + (yr ? ' ב-' + yr : '') + ', ורציתי להזכיר שאני כאן בשבילכם. ' +
+    'אם אתם או מישהו שאתם מכירים חושבים לקנות, למכור או להשכיר נכס, אשמח לעזור.\n' + agent;
+}
+function waBtn(x, agent){
+  var ph = waPhone(x.phone || x.client_phone);
+  if (!ph) return '';
+  return '<a class="wa" target="_blank" rel="noopener" href="https://wa.me/' + ph + '?text=' + encodeURIComponent(remindText(x, agent || '')) + '">' +
+    '<svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
+    'תזכורת ללקוח בוואטסאפ</a>';
+}
 function agentCard(x, me){
   // היסטוריה (עד 2025): תאריך/כתובת/לקוח/סכום. 2026: גם עמלה/שולם/דווח (אייל 12/10)
   var ag = String(x.agent || ''), joint = ag.indexOf(' + ') >= 0;
@@ -786,7 +816,7 @@ function agentCard(x, me){
     (det ? '<div class="chips"><span class="chip">עמלה ' + esc(fmtP(x.commission_net) || '—') + '</span>' +
       (x.paid ? '<span class="chip ok">שולם ' + esc(fmtP(x.paid)) + '</span>' : '<span class="chip wait">טרם שולם</span>') +
       (x.reported ? '<span class="chip ok">דווח ' + esc(x.reported) + '</span>' : '<span class="chip wait">לא דווח</span>') + '</div>' : '') +
-    '</div>';
+    waBtn(x, me || (ag.split(' + ')[0] || '')) + '</div>';
 }
 function compCard(x){
   return '<div class="card"><div class="row1"><div><div class="ad">' + esc(x.address || '—') + '</div>' +
@@ -804,7 +834,9 @@ function openCard(x){
     (x.reported_date ? '<span class="chip ok">דווח ' + esc(x.reported_date.slice(5, 7) + '/' + x.reported_date.slice(0, 4)) + '</span>' : '<span class="chip wait">לא דווח</span>')) +
     (x.collection_status ? '<span class="chip">' + esc(x.collection_status) + '</span>' : '') +
     (x.invoice_no ? '<span class="chip">חשבונית ' + esc(x.invoice_no) + '</span>' : '') +
-    (x.receipt_no ? '<span class="chip">קבלה ' + esc(x.receipt_no) + '</span>' : '') + '</div></div>';
+    (x.receipt_no ? '<span class="chip">קבלה ' + esc(x.receipt_no) + '</span>' : '') + '</div>' +
+    waBtn({client: x.client_name, client_phone: x.client_phone, side: x.side, street: x.street, city: x.city, date: x.date},
+          String(x.agent || '').split(' + ')[0]) + '</div>';
 }
 function statsHtml(j){
   var t = j.total || {}, p = j.prev || {};
@@ -902,6 +934,7 @@ function draw(){
   if (TAB === 'mine'){
     GET(withQ('/v2/api/deals/history/mine', YEAR ? 'year=' + YEAR : '', MQ ? 'q=' + encodeURIComponent(MQ) : '', kQ())).then(function(j){
       if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'נסה שוב בעוד רגע'); return; }
+      OFFICE = j.office || OFFICE;
       // אייל 12/10: הסוכן מחפש שכונה/רחוב רק בעסקאות שלו
       tools.innerHTML = kindBar() + '<input class="q" id="mq" style="margin-top:10px" type="search" enterkeyhint="search" placeholder="שכונה או רחוב — למשל אפקה" value="' + esc(MQ) + '">' +
         '<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><select class="yr" onchange="YEAR=this.value;draw()"><option value="">כל השנים</option>' +
@@ -937,6 +970,7 @@ function draw(){
     var kind = TAB === 'unpaid' ? 'unpaid' : 'unreported';
     GET(withQ('/v2/api/deals/history/open?kind=' + kind, brQ(), kQ())).then(function(j){
       if (!j || !j.ok){ list.innerHTML = emptyHtml('אין הרשאה', 'זמין למנהלים ולהנהלת חשבונות'); return; }
+      OFFICE = j.office || OFFICE;
       tools.innerHTML = bars() + (j.results.length ? '<div class="sb" style="margin-top:8px">' + j.results.length + ' צדדים ב-' + j.since + ' והלאה, מהחדש לישן</div>' : '');
       list.innerHTML = j.results.length ? j.results.map(openCard).join('') :
         emptyHtml(kind === 'unpaid' ? 'אין כרגע מה לגבות' : 'אין כרגע מה לדווח', 'הרשימה מתמלאת מקבצי המעקב של ' + j.since + ' — אחרי חיבור הקבצים לאפי');
@@ -949,6 +983,7 @@ function runQ(){
   var u = TAB === 'comps' ? '/v2/api/deals/history/comps?q=' : '/v2/api/deals/history/search?q=';
   GET(withQ(u + encodeURIComponent(Q), brQ(), kQ())).then(function(j){
     if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'נסה שוב'); return; }
+    OFFICE = j.office || OFFICE;
     var head = TAB === 'comps' ? (j.area ? '<div class="sb">שכונת ' + esc(j.area) + '</div>' : '') + '<div class="sum"><div class="card"><b>' + j.n_sale + '</b><span>מכירות · ממוצע ' + esc(fmtP(j.avg_sale) || '—') + '</span></div>' +
       '<div class="card"><b>' + j.n_rent + '</b><span>השכרות · ממוצע ' + esc(fmtP(j.avg_rent) || '—') + '</span></div></div>' : '';
     list.innerHTML = j.results.length ? head + j.results.map(TAB === 'comps' ? compCard : openCard).join('') :
@@ -1121,6 +1156,12 @@ def register(app, G, page):
         _LINK_CACHE.update(ts=time.time(), src=rows, rows=apply_links(rows, links), links=links, names=names)
         return _LINK_CACHE["rows"]
 
+    def _office():
+        try:
+            return ((G["_load_config"]() or {}).get("v2_office") or {}).get("name") or ""
+        except Exception:
+            return ""
+
     def _auth():
         s = G["_web_auth"]()
         if not s:
@@ -1158,7 +1199,7 @@ def register(app, G, page):
         if y.isdigit():
             rows = [r for r in rows if r.get("year") == int(y)]
         res = [dict(view_agent(r), agent=r.get("agent") or "") for r in _sort_desc(rows)]
-        out = {"ok": True, "results": res, "years": years, "n": len(rows)}
+        out = {"ok": True, "results": res, "years": years, "n": len(rows), "office": _office()}
         if area:
             out["area"] = area["label"]
         return G["_etag_wrap"](out)
@@ -1210,7 +1251,7 @@ def register(app, G, page):
             return err
         fn = unreported if request.args.get("kind") == "unreported" else unpaid
         rows = by_kind(by_branch(active_rows(_lrows(sb)), request.args.get("branch", "")), request.args.get("deal", ""))
-        return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(rows)], "since": DETAIL_FROM_YEAR})
+        return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(rows)], "since": DETAIL_FROM_YEAR, "office": _office()})
 
     @app.route("/v2/api/deals/history/search", methods=["GET"])
     def v2_deals_history_search():
@@ -1222,7 +1263,7 @@ def register(app, G, page):
             return jsonify({"ok": True, "results": []})
         hits = [r for r in by_kind(by_branch(_lrows(sb), request.args.get("branch", "")), request.args.get("deal", "")) if all(t in _norm_q(" ".join(str(r.get(k) or "") for k in
                 ("client_name", "client_phone", "street", "city", "agent", "invoice_no", "receipt_no"))) for t in toks)]
-        return jsonify({"ok": True, "results": [view_full(r) for r in _sort_desc(hits)[:200]]})
+        return jsonify({"ok": True, "results": [view_full(r) for r in _sort_desc(hits)[:200]], "office": _office()})
 
     @app.route("/v2/history", methods=["GET"])
     def v2_history_page():
@@ -1295,7 +1336,7 @@ def register(app, G, page):
             return err
         br = request.args.get("branch", "")
         miss = [view_full(r) for r in _sort_desc(r for r in by_kind(by_branch(_lrows(sb), br), request.args.get("deal", ""))
-                                                 if r.get("missing_since"))]
+                                                 if r.get("missing_since") and (r.get("deal_date") or r.get("street") or r.get("client_name")))]
         unm = [{"branch": b, "name": nm} for b, st in SYNC_STATE.items() if isinstance(st, dict)
                and (br not in _BRANCH_KEYS or b == br) for nm in (st.get("unmapped") or [])]
         return jsonify({"ok": True, "missing": miss, "unmapped": unm})

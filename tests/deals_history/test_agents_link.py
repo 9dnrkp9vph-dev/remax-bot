@@ -50,3 +50,11 @@ ck([a["name"] for a in t["agents"]][0] in ("חי חיים אלבז", "משה כ�
 ck(t["unlinked"] == [{"name": "רוני", "n": 1, "last": "01/01/2019", "branches": ["motzkin"]}], t["unlinked"])
 ck(c.get("/v2/api/deals/history/agents", headers={"X-Auth-Token": "C"}).status_code == 403, "agents table: editors only")
 print("OK", n, "checks")
+# אייל 12/10: וואטסאפ ללקוח מ'העסקאות שלי' — הטלפון בכרטיס של הסוכן (רק שלו), שם המשרד בתשובה
+R.append(dict(row("5", "חי אלבז", "2024-02-01"), client_name="דנה לוי", client_phone="052-1234567", side="קונה"))
+D._HIST_CACHE["ts"] = 0; D._LINK_CACHE["ts"] = 0
+G["_load_config"] = lambda: {"v2_office": {"name": "רימקס פמילי"}}
+m2 = c.get("/v2/api/deals/history/mine", headers={"X-Auth-Token": "C"}).get_json()
+x5 = [x for x in m2["results"] if x["id"] == "5"][0]
+ck(x5["phone"] == "0521234567" and m2["office"] == "רימקס פמילי" and [x for x in m2["results"] if x["id"] == "1"][0]["phone"] == "", (x5, m2.get("office")))
+print("OK", n, "checks")

@@ -62,4 +62,7 @@ ck([x["id"] for x in m2["results"]] == ["3"], ("own street only, missing exclude
 m3 = c.get("/v2/api/deals/history/mine?q=באפקה&year=2025", headers=T).get_json()
 ck([x["id"] for x in m3["results"]] == ["5"] and m3["years"] == [2026, 2025], m3)
 ck([x["id"] for x in c.get("/v2/api/deals/history/mine", headers=T).get_json()["results"]] == ["3", "1", "5"], "mine unchanged")
+R.append(dict(row("8", "kiryat_yam", "2026-01-01", "", "", "קובי חמו"), deal_date="", missing_since="2026-10-12T00:00:00Z"))
+D._HIST_CACHE["ts"] = 0
+ck("8" not in [x["id"] for x in c.get("/v2/api/deals/history/review", headers=M).get_json()["missing"]], "sum row not in review")
 print("OK", n, "checks")

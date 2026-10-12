@@ -44,4 +44,13 @@ import re as _re
 calls = _re.findall(r"GET\((?:withQ\()?(?:'/v2/api/deals/history/|u \+ encodeURIComponent)", js)
 catches = js.count("}).catch(function(){ list.innerHTML = emptyHtml(") + js.count("}).catch(function(){});")
 ck(len(calls) >= 6 and catches == len(calls), ("every fetch has catch", len(calls), catches))
+# אייל 12/10: 'קובי לא עשה עמלה כזאת' — שורת סכום בלי תווית (רק מספרים) לא נספרת כעסקה של סוכן ברירת המחדל
+ck(D.normalize_row((None, None, None, None, None, 18000000, None), F, KY)[0] == "skip", "numbers-only row (sum) not a Kobi deal")
+H2 = ("תאריך עסקה", "עיר", "רחוב", "קונה / מוכר", "סוכן", "סכום העסקה", "עמלה לפני מעמ")
+hi2, F2 = D.find_header_row([H2])
+ck(D.normalize_row((None, None, None, None, None, 30000000, 840000), F2, KY)[0] == "skip", "sum row with commission")
+ck(D.normalize_row((dt.datetime(2026, 1, 1), None, None, "מוכר", None, 900000, 20000), F2, KY)[0] == "ok", "dated row still Kobi's")
+rows_ = [dict(id="a", deal_date="2026-01-01", street="הרצל 1", client_name=""), dict(id="b", deal_date="", street="", client_name="", commission_net=840000),
+         dict(id="c", deal_date="", street="", client_name="דנה")]
+ck([r["id"] for r in D.active_rows(rows_)] == ["a", "c"], "active_rows drops non-deal rows already in the table")
 print("OK", n, "checks")

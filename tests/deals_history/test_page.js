@@ -60,4 +60,16 @@ eval(js.replace(/\(function\(\)\{\s*try\{ TOK[\s\S]*$/, '') + ';global.T5={agent
 const ah = T5.agentsHtml({since: 2026, agents: [{name: 'חי חיים אלבז', n: 12, n_cur: 3, last: '01/09/2026', file_names: ['חי אלבז']}, {name: 'אלעד לוי', n: 0, n_cur: 0, last: '', file_names: []}],
   unlinked: [{name: 'רוני', n: 4, last: '01/01/2019', branches: ['motzkin']}]});
 ck(ah.includes('חי חיים אלבז') && ah.includes('בקבצים: חי אלבז') && ah.includes('>אין<') && ah.includes('רוני') && ah.includes('מוצקין'), ah);
+// אייל 12/10: וואטסאפ ללקוח עם הודעה מובנית — רק כשיש טלפון
+eval(js.replace(/\(function\(\)\{\s*try\{ TOK[\s\S]*$/, '') + ';global.T6={waPhone,remindText,waBtn,agentCard,openCard,setOff:function(o){OFFICE=o;}};');
+T6.setOff('רימקס פמילי');
+ck(T6.waPhone('052-1234567') === '972521234567' && T6.waPhone('+972 52 123 4567') === '972521234567' && T6.waPhone('') === '' && T6.waPhone('123') === '', 'waPhone');
+const msg = T6.remindText({client: 'דנה לוי', side: 'קונה', address: 'נעמי שמר 2, ביאליק', date: '01/02/2024'}, 'משה כהן');
+ck(msg.startsWith('שלום דנה, כאן משה כהן מרימקס פמילי.') && msg.includes('בקניית הנכס בנעמי שמר 2, ביאליק ב-2024') && msg.includes('אשמח לעזור') && msg.trim().endsWith('משה כהן'), msg);
+ck(T6.remindText({client: '', side: 'משכיר', address: 'הגפן 4', date: ''}, 'משה').startsWith('שלום, כאן משה מרימקס פמילי. ליוויתי אתכם בהשכרת הנכס בהגפן 4,'), T6.remindText({client: '', side: 'משכיר', address: 'הגפן 4', date: ''}, 'משה'));
+ck(T6.waBtn({phone: ''}, 'משה') === '' && T6.waBtn({phone: '0521234567', client: 'דנה', side: 'מוכר', address: 'x', date: ''}, 'משה').includes('https://wa.me/972521234567?text='), 'btn only with phone');
+const ac = T6.agentCard({date: '01/02/2024', address: 'נעמי שמר 2', side: 'קונה', client: 'דנה', price: 1, agent: 'משה כהן', phone: '0521234567'}, 'משה כהן');
+ck(ac.includes('wa.me/972521234567') && ac.includes('תזכורת ללקוח'), ac);
+const oc2 = T6.openCard({date: '10/05/2026', street: 'הגפן 9', city: 'ביאליק', side: 'שוכר', agent: 'דנה לוי + משה כהן', client_name: 'יוסי', client_phone: '0529999999', year: 2026});
+ck(oc2.includes('wa.me/972529999999') && decodeURIComponent(oc2.match(/text=([^"]+)/)[1]).includes('כאן דנה לוי'), oc2);
 console.log('OK', n, 'checks');
