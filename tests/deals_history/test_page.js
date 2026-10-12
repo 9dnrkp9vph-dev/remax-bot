@@ -48,4 +48,12 @@ const bb = T3.brBar();
 ck(bb.includes('כל הסניפים') && bb.includes('קרית ים') && /class="bc on"[^>]*>מוצקין/.test(bb), bb);
 ck(T3.withQ('/a?kind=x', 'branch=motzkin') === '/a?kind=x&branch=motzkin' && T3.withQ('/a', '', 'q=1') === '/a?q=1' && T3.withQ('/a', '') === '/a', 'withQ');
 ck(T3.brQ() === 'branch=motzkin', 'brQ');
+// אייל 12/10: מכירה/קנייה מול שכירות — לכולם
+eval(js.replace(/\(function\(\)\{\s*try\{ TOK[\s\S]*$/, '') + ';global.T4={kindBar,kQ,statsHtml,setK:function(v,e){KF=v;ED=e;}};');
+T4.setK('rent', false);
+const kb = T4.kindBar();
+ck(kb.includes('מכירה וקנייה') && /class="bc on"[^>]*>שכירות/.test(kb) && T4.kQ() === 'deal=rent', kb);
+const sh2 = T4.statsHtml({year: 2026, deal: 'rent', total: {n: 2, commission: 7000}, prev: {n: 0, commission: 0},
+  bySide: {sale: {n: 3, commission: 44000}, rent: {n: 2, commission: 7000}}, byBranch: [], byAgent: [], byMonth: []});
+ck(sh2.includes('שכירויות 2026') && sh2.includes('מכירה וקנייה · ₪44,000') && sh2.includes('שכירות · ₪7,000'), sh2);
 console.log('OK', n, 'checks');
