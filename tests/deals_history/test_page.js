@@ -31,4 +31,12 @@ ck(!/טרם שולם|לא דווח/.test(oh), 'history search card without payme
 const sh = T.statsHtml({year: 2025, total: {n: 2, commission: 23000}, prev: {n: 1, commission: 15000},
   byBranch: [{branch: 'motzkin', n: 1, commission: 18000}], byAgent: [{agent: 'משה כהן', n: 0.5, commission: 18000}], byMonth: [{month: '03', n: 1, commission: 18000}], years: [2025, 2024]});
 ck(sh.includes('₪23,000') && sh.includes('מוצקין') && sh.includes('משה כהן') && sh.includes('2024') && sh.includes('0.5'), sh);
+eval(js.replace(/\(function\(\)\{\s*try\{ TOK[\s\S]*$/, '') + ';global.T2={syncLine,reviewHtml};');
+const sl = T2.syncLine({enabled: true, configured: true, alive: true, branches: {bialik: {ts: new Date(Date.now() - 120000).toISOString(), file: 'מעקב עסקאות 2026.xlsx', error: ''},
+  motzkin: {ts: new Date().toISOString(), error: 'BadPassword: x'}}});
+ck(sl.includes('ביאליק') && sl.includes('לפני 2 דק') && sl.includes('מוצקין') && sl.includes('#C24040'), sl);
+ck(T2.syncLine({enabled: false}).includes('כבוי'), 'off');
+const rv = T2.reviewHtml({missing: [{date: '01/02/2026', street: 'הרצל 2', city: 'קרית ים', agent: 'נדב רייזר', year: 2026}], unmapped: [{branch: 'bialik', name: 'חדש'}]});
+ck(rv.includes('נעלמו מהאקסל') && rv.includes('הרצל 2') && rv.includes('ביאליק') && rv.includes('חדש'), rv);
+ck(T2.reviewHtml({missing: [], unmapped: []}).includes('אין מה לבדוק'), 'empty');
 console.log('OK', n, 'checks');

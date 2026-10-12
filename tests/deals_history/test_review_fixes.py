@@ -40,6 +40,8 @@ ck(D._split_address("הרצל 5 קרית ביאליק") == ("קרית ביאלי
 # 6. הדף: כל קריאת רשת עם catch (לא נתקע על 'טוען…')
 src = open(os.path.join(os.path.dirname(__file__), "..", "..", "deals_history.py"), encoding="utf-8").read()
 a = src.index("<script>", src.index("V2_HISTORY_HTML = ")); b = src.index("</script>", a); js = src[a:b]
-gets = js.count("GET('/v2/api/deals/history/") + js.count("GET(u + encodeURIComponent")
-ck(gets == 4 and js.count("}).catch(function(){ list.innerHTML = emptyHtml(") == 4, ("every list fetch has catch", gets))
+import re as _re
+calls = _re.findall(r"GET\((?:'/v2/api/deals/history/|u \+ encodeURIComponent)", js)
+catches = js.count("}).catch(function(){ list.innerHTML = emptyHtml(") + js.count("}).catch(function(){});")
+ck(len(calls) >= 6 and catches == len(calls), ("every fetch has catch", len(calls), catches))
 print("OK", n, "checks")

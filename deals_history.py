@@ -587,10 +587,29 @@ function statsHtml(j){
     tbl('לפי סוכן', j.byAgent, function(r){ return r.agent; }, 'סוכן') +
     tbl('לפי חודש', j.byMonth, function(r){ return r.month; }, 'חודש');
 }
+function agoTx(iso){ var m = Math.round((Date.now() - Date.parse(iso || 0)) / 60000); return isNaN(m) ? '' : (m < 1 ? 'עכשיו' : 'לפני ' + m + ' דק\''); }
+function syncLine(j){
+  if (!j || !j.enabled) return '<div class="sb">סנכרון קבצי השנה כבוי</div>';
+  if (!j.configured) return '<div class="sb" style="color:#C24040">סנכרון: חסרים מפתחות Dropbox</div>';
+  var b = j.branches || {};
+  return '<div class="sb">' + ['bialik', 'motzkin', 'kiryat_yam'].filter(function(k){ return b[k]; }).map(function(k){
+    var s = b[k];
+    return esc(BR[k]) + ': ' + (s.error ? '<span style="color:#C24040">' + esc(s.error) + '</span>' : 'עודכן ' + esc(agoTx(s.ts)));
+  }).join(' · ') + '</div>';
+}
+function reviewHtml(j){
+  var m = (j && j.missing) || [], u = (j && j.unmapped) || [];
+  if (!m.length && !u.length) return emptyHtml('אין מה לבדוק', 'שורות שנעלמו מקבצי השנה ושמות סוכנים חדשים יופיעו כאן');
+  var h = '';
+  if (m.length) h += '<div class="ad">נעלמו מהאקסל · ' + m.length + '</div>' + m.map(openCard).join('');
+  if (u.length) h += '<div class="card"><div class="ad">שמות סוכנים בלי מיפוי</div><div class="sb">שלח את השמות למיפוי — עד אז הם לא מקושרים לסוכן באפליקציה</div>' +
+    u.map(function(x){ return '<div class="sb">' + esc(BR[x.branch] || x.branch) + ' · ' + esc(x.name) + '</div>'; }).join('') + '</div>';
+  return h;
+}
 function GET(u){ return fetch(u, {headers: {'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
 function setTab(t){ TAB = t; try{ localStorage.setItem('v2st:hist', t); }catch(e){} draw(); }
 function tabsFor(){
-  return ED ? [['stats', 'דוחות'], ['unpaid', 'לא שולם'], ['unrep', 'לא דווח'], ['search', 'חיפוש'], ['comps', 'מחירי השוואה']]
+  return ED ? [['stats', 'דוחות'], ['unpaid', 'לא שולם'], ['unrep', 'לא דווח'], ['review', 'לבדיקה'], ['search', 'חיפוש'], ['comps', 'מחירי השוואה']]
             : [['mine', 'העסקאות שלי'], ['comps', 'מחירי השוואה']];
 }
 function draw(){
@@ -624,6 +643,12 @@ function draw(){
       tools.innerHTML = '<select class="yr" onchange="YEAR=this.value;draw()">' + (j.years || []).map(function(y){
         return '<option' + (String(y) === String(j.year) ? ' selected' : '') + '>' + y + '</option>'; }).join('') + '</select>';
       list.innerHTML = statsHtml(j);
+      GET('/v2/api/deals/history/sync').then(function(sy){ tools.insertAdjacentHTML('beforeend', syncLine(sy)); }).catch(function(){});
+    }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
+  } else if (TAB === 'review'){
+    GET('/v2/api/deals/history/review').then(function(j){
+      if (!j || !j.ok){ list.innerHTML = emptyHtml('אין הרשאה', 'זמין למנהלים ולהנהלת חשבונות'); return; }
+      list.innerHTML = reviewHtml(j);
     }).catch(function(){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'בדוק חיבור ונסה שוב'); });
   } else {
     var kind = TAB === 'unpaid' ? 'unpaid' : 'unreported';
