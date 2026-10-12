@@ -170,9 +170,11 @@ def normalize_row(cells, fields, ctx):
     if not street and "address" in fields:
         c2, street = _split_address(_txt(_cell(cells, fields, "address")))
         city = city or c2
+    ddate = parse_date(_cell(cells, fields, "deal_date"))
+    if not agent and ctx.get("default_agent") and (ddate or amount is not None or street):
+        agent = ctx["default_agent"]   # קרית ים: עמודת הסוכן ריקה — כל העסקאות של קובי חמו (אייל 12/10)
     if not agent:
         return "skip", None   # שורות סיכום חודשיות / הערות — בלי סוכן אין עסקה
-    ddate = parse_date(_cell(cells, fields, "deal_date"))
     if not ddate and amount is None and comm is None and not street:
         return "broken", {"agent": agent, "src_row": ctx["row_idx"], "sheet": ctx["sheet"]}
     name, phone = split_client(_cell(cells, fields, "client"))
@@ -210,3 +212,22 @@ def normalize_row(cells, fields, ctx):
         "raw": raw,
     }
     return "ok", row
+
+
+_AGENT_SPLIT = re.compile(r"\s*[+/\\]\s*")   # לא מפצלים על "ו" — שמות כמו "אלעד ויזמן"; צמדי "ו" הומרו ל-"+" במיפוי
+
+
+def split_agents(name):
+    """'אלי שמול + יהודית שמול' / 'רון/דודו' → רשימת שמות (עסקה משותפת, אייל 12/10)."""
+    return [x.strip() for x in _AGENT_SPLIT.split(str(name or "")) if x.strip()]
+
+
+def canon_agent(raw_name, branch, amap, canon):
+    """שם גולמי מהקובץ → שם קנוני. מיפוי לפי amap ('branch|raw' → שם; '-' = לא סוכן), ואז canon()
+    לכל חבר בעסקה משותפת בנפרד. משותפת נשמרת כ-'א + ב'."""
+    nm = re.sub(r"\s+", " ", str(raw_name or "")).strip()
+    mapped = (amap or {}).get("%s|%s" % (branch, nm), "")
+    if mapped == "-":
+        return ""
+    names = [canon(x) or x for x in split_agents(mapped or nm)]
+    return " + ".join(x for x in names if x)
