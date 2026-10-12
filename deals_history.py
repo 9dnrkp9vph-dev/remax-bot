@@ -439,13 +439,71 @@ def _norm_q(t):
     return normalize_header(t).lower()
 
 
-def comps_search(rows, q, cap=200):
+# ── [DEALS-AREA 12/10] חיפוש לפי שכונה ("איזה עסקאות היו באפקה", אייל) — "המוח" של חיפוש הנכסים:
+# כינויי שכונות מ-_nb_alias_index(_CITY_NB_MAP_HE), ורחוב → שכונה לפי נכסי המשרד ונכס נולד (2+ עדויות) ──
+def _city_n(c):
+    return re.sub(r"\s+", " ", str(c or "").replace("קריית", "קרית")).strip()
+
+
+def _sk(st):
+    return re.sub(r"\s*\d.*$", "", _city_n(st)).strip()
+
+
+def _alias_map(idx):
+    m = {}
+    for cn, e in ((idx or {}).get("nb") or {}).items():
+        for a in list(e.get("aliases") or []) + [cn]:
+            m[_city_n(a)] = cn
+    return m
+
+
+def nb_street_index(street_rows, idx):
+    """[(רחוב, שכונה, עיר)] → {"sc": {(רחוב, עיר): שכונה קנונית}} — רק עם 2+ עדויות לאותה שכונה."""
+    import collections
+    am = _alias_map(idx)
+    votes = collections.defaultdict(collections.Counter)
+    for st, nb, city in street_rows or []:
+        sk, nbn = _sk(st), _city_n(nb)
+        if len(sk) >= 2 and nbn:
+            votes[(sk, _city_n(city))][am.get(nbn, nbn)] += 1
+    sc = {}
+    for k, cnt in votes.items():
+        top, c = cnt.most_common(1)[0]
+        if c >= 2:
+            sc[k] = top
+    return {"sc": sc}
+
+
+def find_area(q, idx):
+    """מילים בחיפוש → שכונה (כינוי חד-משמעי, 3+ תווים; תחילית ב/ה/ל/מ מותרת). אחרת None."""
+    am = _alias_map(idx)
+    amb = {_city_n(a) for a in ((idx or {}).get("ambiguous") or ())}
+    toks = _city_n(q).split()
+    for size in (3, 2, 1):
+        for i in range(len(toks) - size + 1):
+            ph = " ".join(toks[i:i + size])
+            for cand in (ph, ph[1:] if ph[:1] in "בהלמ" else None):
+                if cand and len(cand) >= 3 and cand in am and cand not in amb:
+                    cn = am[cand]
+                    city = ((idx.get("nb") or {}).get(cn) or {}).get("city", "")
+                    return {"nb": cn, "city": city, "label": cn + (" · " + city if city else "")}
+    return None
+
+
+def comps_search(rows, q, cap=200, area_ctx=None):
     toks = [t for t in _norm_q(q).split() if t]
     if not toks:
         return {"results": [], "n_sale": 0, "avg_sale": None, "n_rent": 0, "avg_rent": None}
-    hit = [r for r in rows if all(t in _norm_q(" ".join((r.get("street") or "", r.get("city") or ""))) for t in toks)]
+    area = find_area(q, area_ctx.get("idx")) if area_ctx else None
+    if area:
+        sc = (area_ctx.get("streets") or {}).get("sc") or {}
+        hit = [r for r in rows if sc.get((_sk(r.get("street")), _city_n(r.get("city")))) == area["nb"]]
+    else:
+        hit = [r for r in rows if all(t in _norm_q(" ".join((r.get("street") or "", r.get("city") or ""))) for t in toks)]
     hit = _sort_desc(hit)
     out = {"results": [view_comps(r) for r in hit[:cap]]}
+    if area:
+        out["area"] = area["label"]
     for kind, k in (("מכירה", "sale"), ("השכרה", "rent")):
         sel = [r for r in hit if _kind(r.get("side")) == kind]
         ps = [float(r["deal_amount"]) for r in sel if r.get("deal_amount")]
@@ -638,7 +696,7 @@ function draw(){
   list.innerHTML = '<div class="sb" style="text-align:center;padding:20px 0">טוען…</div>';
   if (TAB === 'comps' || TAB === 'search'){
     tools.innerHTML = '<input class="q" id="q" type="search" enterkeyhint="search" placeholder="' +
-      (TAB === 'comps' ? 'רחוב, שכונה או עיר — למשל הגפן מוצקין' : 'שם לקוח, טלפון, כתובת, סוכן או מספר חשבונית') + '" value="' + esc(Q) + '">';
+      (TAB === 'comps' ? 'רחוב או שכונה — למשל "אפקה" או "הגפן מוצקין"' : 'שם לקוח, טלפון, כתובת, סוכן או מספר חשבונית') + '" value="' + esc(Q) + '">';
     var q = document.getElementById('q');
     q.onkeydown = function(e){ if (e.key === 'Enter'){ Q = q.value.trim(); runQ(); } };
     q.onchange = function(){ Q = q.value.trim(); runQ(); };
@@ -679,11 +737,11 @@ function draw(){
 }
 function runQ(){
   var list = document.getElementById('list');
-  if (!Q){ list.innerHTML = emptyHtml(TAB === 'comps' ? 'מחירי השוואה' : 'חיפוש עסקה', TAB === 'comps' ? 'הקלד רחוב או שכונה וראה מה נמכר שם ובכמה' : 'הקלד שם, טלפון או כתובת'); return; }
+  if (!Q){ list.innerHTML = emptyHtml(TAB === 'comps' ? 'מחירי השוואה' : 'חיפוש עסקה', TAB === 'comps' ? 'הקלד רחוב או שכונה (למשל אפקה) וראה מה נמכר שם ובכמה' : 'הקלד שם, טלפון או כתובת'); return; }
   var u = TAB === 'comps' ? '/v2/api/deals/history/comps?q=' : '/v2/api/deals/history/search?q=';
   GET(u + encodeURIComponent(Q)).then(function(j){
     if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'נסה שוב'); return; }
-    var head = TAB === 'comps' ? '<div class="sum"><div class="card"><b>' + j.n_sale + '</b><span>מכירות · ממוצע ' + esc(fmtP(j.avg_sale) || '—') + '</span></div>' +
+    var head = TAB === 'comps' ? (j.area ? '<div class="sb">שכונת ' + esc(j.area) + '</div>' : '') + '<div class="sum"><div class="card"><b>' + j.n_sale + '</b><span>מכירות · ממוצע ' + esc(fmtP(j.avg_sale) || '—') + '</span></div>' +
       '<div class="card"><b>' + j.n_rent + '</b><span>השכרות · ממוצע ' + esc(fmtP(j.avg_rent) || '—') + '</span></div></div>' : '';
     list.innerHTML = j.results.length ? head + j.results.map(TAB === 'comps' ? compCard : openCard).join('') :
       emptyHtml('לא נמצא', 'אין עסקאות עבור "' + Q + '" — נסה מילה אחרת');
@@ -859,12 +917,26 @@ def register(app, G, page):
         res = [dict(view_agent(r), agent=r.get("agent") or "") for r in _sort_desc(rows)]
         return G["_etag_wrap"]({"ok": True, "results": res, "years": years, "n": len(rows)})
 
+    _AREA = {"ts": 0, "v": None}
+
+    def _area_ctx():
+        """מפת הכינויים + רחוב→שכונה (מטמון שעה). כשל → חיפוש רחוב רגיל."""
+        if _AREA["v"] is not None and time.time() - _AREA["ts"] < 3600:
+            return _AREA["v"]
+        try:
+            idx = G["_nb_alias_idx"]()
+            v = {"idx": idx, "streets": nb_street_index(G["_street_nb_rows"](), idx)}
+        except Exception:
+            v = None
+        _AREA.update(ts=time.time(), v=v)
+        return v
+
     @app.route("/v2/api/deals/history/comps", methods=["GET"])
     def v2_deals_history_comps():
         s, err = _auth()
         if err:
             return err
-        return jsonify(dict(comps_search(active_rows(_rows(sb)), request.args.get("q", "")), ok=True))
+        return jsonify(dict(comps_search(active_rows(_rows(sb)), request.args.get("q", ""), area_ctx=_area_ctx()), ok=True))
 
     @app.route("/v2/api/deals/history/stats", methods=["GET"])
     def v2_deals_history_stats():
