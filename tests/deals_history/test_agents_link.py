@@ -58,3 +58,18 @@ m2 = c.get("/v2/api/deals/history/mine", headers={"X-Auth-Token": "C"}).get_json
 x5 = [x for x in m2["results"] if x["id"] == "5"][0]
 ck(x5["phone"] == "0521234567" and m2["office"] == "רימקס פמילי" and [x for x in m2["results"] if x["id"] == "1"][0]["phone"] == "", (x5, m2.get("office")))
 print("OK", n, "checks")
+# אייל 13/10: שמות קצרים בקובץ 2026 → שם מלא, גם לשורות שכבר נשמרו (בלי ייבוא חוזר)
+AM = {"bialik|ליקה": "ליקה אוברוב", "bialik|בן ובן": "בנימין אביטן + בן קדוש", "bialik|מתן": "מתן הרשקו",
+      "bialik|קובי": "קובי חמו", "bialik|אבירן": ""}
+rr = [dict(id="a", branch="bialik", agent="ליקה"), dict(id="b", branch="bialik", agent="בן ובן"),
+      dict(id="c", branch="bialik", agent="מתן + קובי"), dict(id="d", branch="motzkin", agent="ליקה"),
+      dict(id="e", branch="bialik", agent="אבירן"), dict(id="f", branch="bialik", agent="נדב רייזר")]
+out = {r["id"]: r["agent"] for r in D.apply_agent_map(rr, AM)}
+ck(out == {"a": "ליקה אוברוב", "b": "בנימין אביטן + בן קדוש", "c": "מתן הרשקו + קובי חמו", "d": "ליקה", "e": "אבירן", "f": "נדב רייזר"}, out)
+ck(rr[0]["agent"] == "ליקה", "input untouched")
+import json as _j
+REAL = _j.load(open(os.path.join(os.path.dirname(__file__), "..", "..", "tools", "deals_agent_map.json"), encoding="utf-8"))
+ck(REAL.get("bialik|ליקה") == "ליקה אוברוב" and REAL.get("bialik|רוי") == "רוי אזולאי" and REAL.get("bialik|בן ובן") == "בנימין אביטן + בן קדוש"
+   and REAL.get("bialik|מתן+קובי") == "מתן הרשקו + קובי חמו" and REAL.get("bialik|ירין") == "ירין לוי"
+   and REAL.get("bialik|קבלי וליאור") == "מאור קבלי + ליאור גרונפינקל" and REAL.get("bialik|קובי") == "קובי חמו", "approved map entries")
+print("OK", n, "checks")

@@ -781,6 +781,21 @@ def apply_links(rows, links):
     return out
 
 
+def apply_agent_map(rows, amap):
+    """מיפוי שמות הקבצים (tools/deals_agent_map.json) גם לשורות שכבר נשמרו — 'ליקה' → 'ליקה אוברוב',
+    'בן ובן' → 'בנימין אביטן + בן קדוש' (אייל 13/10). ערך ריק = בלי מיפוי; '-' = לא סוכן (נשאר כמו שהוא)."""
+    out = []
+    for r in rows:
+        mem, new = split_agents(r.get("agent", "")), []
+        for a in mem:
+            v = (amap or {}).get("%s|%s" % (r.get("branch") or "", a), "")
+            for x in (split_agents(v) if v and v != "-" else [a]):
+                if x not in new:
+                    new.append(x)
+        out.append(dict(r, agent=" + ".join(new)) if new != mem else r)
+    return out
+
+
 _LINK_CACHE = {"ts": 0, "src": None, "rows": [], "links": {}, "names": []}
 
 
@@ -1234,9 +1249,10 @@ def register(app, G, page):
         if _LINK_CACHE["src"] is rows and time.time() - _LINK_CACHE["ts"] < 600:
             return _LINK_CACHE["rows"]
         names = _app_names()
-        mem = {a for r in rows for a in split_agents(r.get("agent", ""))}
+        rows_m = apply_agent_map(rows, load_agent_map())
+        mem = {a for r in rows_m for a in split_agents(r.get("agent", ""))}
         links = link_names(mem, names, G["_canon_key"]) if names else {}
-        _LINK_CACHE.update(ts=time.time(), src=rows, rows=apply_links(rows, links), links=links, names=names)
+        _LINK_CACHE.update(ts=time.time(), src=rows, rows=apply_links(rows_m, links), links=links, names=names)
         return _LINK_CACHE["rows"]
 
     def _office():
