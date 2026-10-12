@@ -1,7 +1,10 @@
 # deals_history.py
 """[DEALS-HISTORY 12/10] היסטוריית עסקאות — נרמול שורות מקבצי 'מעקב עסקאות', תצוגות לפי הרשאה,
 סטטיסטיקה, ראוטים ודף /v2/history. ספק: docs/superpowers/specs/2026-10-12-deals-history-design.md"""
+import os
 import re
+import time
+import hmac
 import datetime as _dt
 
 BRANCHES = {"bialik": "ביאליק", "motzkin": "מוצקין", "kiryat_yam": "קרית ים"}
@@ -231,3 +234,38 @@ def canon_agent(raw_name, branch, amap, canon):
         return ""
     names = [canon(x) or x for x in split_agents(mapped or nm)]
     return " + ".join(x for x in names if x)
+
+
+_HIST_CACHE = {"ts": 0, "rows": []}
+
+
+def register(app, G, page):
+    """ראוטי היסטוריית העסקאות + דף /v2/history. page = _page של effie_v2 (מזריק V2_BOOST)."""
+    from flask import request, jsonify
+    sb = G.get("_sbdb")
+    key = (os.environ.get("DEALS_IMPORT_KEY") or "").strip()
+
+    @app.route("/v2/api/deals/history/import", methods=["POST"])
+    def v2_deals_history_import():
+        """ייבוא מסקריפט מקומי (tools/import_deal_history.py) — מוגן במפתח, לא בסשן."""
+        k = (request.headers.get("X-Import-Key") or "").strip()
+        if not key or not k or not hmac.compare_digest(k, key):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        if not (sb and sb.enabled()):
+            return jsonify({"ok": False, "reason": "no_db"}), 503
+        b = request.get_json(silent=True) or {}
+        amap = b.get("amap") or {}
+        out, skipped = [], 0
+        for r in (b.get("rows") or [])[:2000]:
+            raw_agent = str(r.get("agent", "") or "")
+            ag = canon_agent(raw_agent, r.get("branch", ""), amap, G["_canon_agent_name"])
+            if not ag:
+                skipped += 1
+                continue
+            x = dict(r)
+            x["agent_raw"], x["agent"] = raw_agent, ag
+            out.append(x)
+        saved = sb.deal_history_upsert(out) if out else 0
+        _HIST_CACHE["ts"] = 0
+        G["_log_activity"]("ייבוא", "system", "", "היסטוריית עסקאות — ייבוא", "%d שורות" % saved)
+        return jsonify({"ok": True, "saved": saved, "skipped_no_agent": skipped})

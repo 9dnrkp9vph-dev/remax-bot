@@ -11672,6 +11672,13 @@ def register(app, G):
         resp.headers["Cache-Control"] = "private, max-age=30"
         return resp
 
+    # [DEALS-HISTORY 12/10] היסטוריית עסקאות — מודול נפרד (ראוטים + דף /v2/history)
+    try:
+        import deals_history as _dh
+        _dh.register(app, G, _page)   # G = הגלובלים של app.py (כולל _sbdb, _web_auth, _canon_key…)
+    except Exception as _dhe:
+        if log: log.error(f"deals_history register failed: {_dhe}", exc_info=True)
+
     _ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs", "handoff")
 
     @app.route("/v2/icon-<int:sz>.png", methods=["GET"])
