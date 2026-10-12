@@ -6,6 +6,14 @@ import re
 import time
 import hmac
 import datetime as _dt
+try:
+    from tools.osm_street_nb import street_key as _osm_street_key, norm as _osm_norm
+except Exception:   # בלי tools/ (סביבה חלקית) — מפתח רחוב בסיסי
+    def _osm_norm(s):
+        return re.sub(r"\s+", " ", str(s or "").replace("קריית", "קרית")).strip()
+
+    def _osm_street_key(st):
+        return re.sub(r"\s*\d.*$", "", _osm_norm(st)).strip()
 
 BRANCHES = {"bialik": "ביאליק", "motzkin": "מוצקין", "kiryat_yam": "קרית ים"}
 
@@ -446,7 +454,19 @@ def _city_n(c):
 
 
 def _sk(st):
-    return re.sub(r"\s*\d.*$", "", _city_n(st)).strip()
+    """מפתח רחוב: בלי מספר בית, גרשיים ותחיליות (שדרות/שד'/רח'/דרך) — כמו במיפוי OSM."""
+    return _osm_street_key(st)
+
+
+def _label_has(label, aliases):
+    """שם שכונה (גם של יד2 עם פסיקים: 'נאות אפק, אפקה') מכיל אחד הכינויים כמילים שלמות."""
+    norm = _osm_norm
+    parts = [norm(p) for p in str(label or "").split(",") if norm(p)]
+    for a in {norm(x) for x in aliases or () if norm(x)}:
+        for p in parts:
+            if p == a or re.search(r"(^| )" + re.escape(a) + r"($| )", p):
+                return True
+    return False
 
 
 def _alias_map(idx):
@@ -468,9 +488,19 @@ def _city_canon(c, idx):
     return n
 
 
-def nb_street_index(street_rows, idx):
+def load_osm_streets(path=None):
+    """המיפוי המאושר (tools/street_nb_osm.json). אין קובץ (טרם אושר) → {} — החיפוש לפי עדויות הנכסים בלבד."""
+    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "street_nb_osm.json")
+    try:
+        return (_json.load(open(path, encoding="utf-8")) or {}).get("streets") or {}
+    except Exception:
+        return {}
+
+
+def nb_street_index(street_rows, idx, osm=None):
     """[(רחוב, שכונה, עיר)] → {"sc": {(רחוב, עיר): שכונה}, "s": {רחוב: שכונה}} — רק עם 2+ עדויות.
-    "s" = רחוב שכל העדויות שלו בשכונה אחת (לעסקה בלי עיר)."""
+    "s" = רחוב שכל העדויות שלו בשכונה אחת (לעסקה בלי עיר).
+    osm = {עיר: {רחוב: שכונה}} (tools/street_nb_osm.json, מאושר) — משלים רחובות בלי עדויות; העדויות גוברות."""
     import collections
     am = _alias_map(idx)
     votes = collections.defaultdict(collections.Counter)
@@ -483,7 +513,13 @@ def nb_street_index(street_rows, idx):
         top, c = cnt.most_common(1)[0]
         if c >= 2:
             sc[k] = top
-            by_st[k[0]].add(top)
+    for city, m in (osm or {}).items():
+        for st, lab in (m or {}).items():
+            k = (_sk(st), _city_canon(city, idx))
+            if len(k[0]) >= 2 and lab and k not in sc:
+                sc[k] = _city_n(lab)
+    for k, v in sc.items():
+        by_st[k[0]].add(v)
     return {"sc": sc, "s": {st: list(v)[0] for st, v in by_st.items() if len(v) == 1}}
 
 
@@ -499,7 +535,8 @@ def find_area(q, idx):
                 if cand and len(cand) >= 3 and cand in am and cand not in amb:
                     cn = am[cand]
                     city = ((idx.get("nb") or {}).get(cn) or {}).get("city", "")
-                    return {"nb": cn, "city": city, "label": cn + (" · " + city if city else "")}
+                    al = [cn] + list(((idx.get("nb") or {}).get(cn) or {}).get("aliases") or [])
+                    return {"nb": cn, "city": city, "label": cn + (" · " + city if city else ""), "aliases": al}
     return None
 
 
@@ -515,7 +552,7 @@ def comps_search(rows, q, cap=200, area_ctx=None):
         def _nb_of(r):
             sk, city = _sk(r.get("street")), _city_canon(r.get("city"), idx)
             return sc.get((sk, city)) if city else s1.get(sk)
-        hit = [r for r in rows if _nb_of(r) == area["nb"]]
+        hit = [r for r in rows if (lambda v: v and (v == area["nb"] or _label_has(v, area.get("aliases"))))(_nb_of(r))]
     else:
         hit = [r for r in rows if all(t in _norm_q(" ".join((r.get("street") or "", r.get("city") or ""))) for t in toks)]
     hit = _sort_desc(hit)
@@ -943,7 +980,7 @@ def register(app, G, page):
             return _AREA["v"]
         try:
             idx = G["_nb_alias_idx"]()
-            v = {"idx": idx, "streets": nb_street_index(G["_street_nb_rows"](), idx)}
+            v = {"idx": idx, "streets": nb_street_index(G["_street_nb_rows"](), idx, osm=load_osm_streets())}
         except Exception:
             v = None
         _AREA.update(ts=time.time(), v=v)

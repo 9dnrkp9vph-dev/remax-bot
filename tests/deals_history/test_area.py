@@ -40,6 +40,24 @@ cs2 = D.comps_search(R2, "איזה עסקאות היו באפקה", area_ctx=ctx
 ck(sorted(x["date"] for x in cs2["results"]) == ["01/08/2026", "19/09/2026", "28/09/2026"], cs2["results"])
 ck([x["address"] for x in D.comps_search(R2, "נווה גנים", area_ctx=ctx)["results"]] == ["הגפן 4, מוצקין"], "short city name, other area")
 ck(D._city_canon("ק.ביאליק", IDX) == "קרית ביאליק" and D._city_canon("קריית ים", IDX) == "קרית ים", "canon city")
+# [12/10] מיפוי OSM (מאושר) משלים רחובות שלא הופיעו בנכסים; עדויות הנכסים גוברות; שם שכונה של יד2 עם פסיקים
+OSM = {"קרית ביאליק": {"ספי ריבלין": "נאות אפק, אפקה", "שדרות הבנים": "הפרפר", "נעמי שמר": "הפרפר"},
+       "חיפה": {"אנה פרנק": "קרית חיים מערבית", "ביילינסון": "קרית חיים מזרחית"}}
+IDX3 = dict(IDX, nb=dict(IDX["nb"], **{"הפרפר": {"city": "קרית ביאליק", "aliases": []}, "קרית חיים": {"city": "חיפה", "aliases": ["קרית חיים"]},
+                                       "מערבית": {"city": "חיפה", "aliases": ["קרית חיים מערבית"]}}),
+            city=dict(IDX["city"], **{"חיפה": ["חיים", "חיפה", "קרית חיים"]}))
+SI3 = D.nb_street_index(STREETS, IDX3, osm=OSM)
+ctx3 = {"idx": IDX3, "streets": SI3}
+R3 = R2 + [dict(id="9", street="ספי ריבלין 3", city="ביאליק", side="מוכר", deal_amount=1, deal_date="2026-07-01", agent="א", branch="bialik"),
+           dict(id="10", street="שד' הבנים 4", city="ביאליק", side="מוכר", deal_amount=1, deal_date="2026-06-01", agent="א", branch="bialik"),
+           dict(id="11", street="אנה פרנק 7", city="חיים", side="מוכר", deal_amount=1, deal_date="2026-05-01", agent="ד", branch="motzkin"),
+           dict(id="12", street="ביילינסון 2", city="קריית חיים", side="מוכר", deal_amount=1, deal_date="2026-04-01", agent="ד", branch="motzkin")]
+afek = sorted(x["date"] for x in D.comps_search(R3, "באפקה", area_ctx=ctx3)["results"])
+ck(afek == ["01/07/2026", "01/08/2026", "19/09/2026", "28/09/2026"], ("osm street joins; listing votes win for נעמי שמר", afek))
+ck([x["date"] for x in D.comps_search(R3, "הפרפר", area_ctx=ctx3)["results"]] == ["01/06/2026"], "שד' prefix + osm")
+kh = sorted(x["date"] for x in D.comps_search(R3, "עסקאות בקרית חיים", area_ctx=ctx3)["results"])
+ck(kh == ["01/04/2026", "01/05/2026"], ("קרית חיים = מערבית+מזרחית", kh))
+ck([x["date"] for x in D.comps_search(R3, "קרית חיים מערבית", area_ctx=ctx3)["results"]] == ["01/05/2026"], "west only")
 IDX2 = dict(IDX, city=dict(IDX["city"], **{"קרית ים": ["קרית ים"]}))
 ck(D._city_canon("ים", IDX2) == "קרית ים", D._city_canon("ים", IDX2))
 print("OK", n, "checks")
