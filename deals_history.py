@@ -662,6 +662,95 @@ function runQ(){
 _HIST_CACHE = {"ts": 0, "rows": []}
 
 
+import threading as _threading
+
+BRANCH_PW = {"bialik": "DEALS_PW_BIALIK", "motzkin": "DEALS_PW_MOTZKIN_YAM", "kiryat_yam": "DEALS_PW_MOTZKIN_YAM"}
+DEFAULT_AGENT = {"kiryat_yam": "קובי חמו"}
+_DIRS = {"bialik": "/הפרלמנט/אייל/מעקב עסקאות/{y}", "motzkin": "/הפרלמנט/אוהד/מעקב עסקאות מוצקין/{y}",
+         "kiryat_yam": "/הפרלמנט/מעקב עסקאות קרית ים/{y}"}
+_AGENT_MAP_CACHE = {}
+SYNC_STATE = {}
+_SYNC_THREAD = [None]
+_SYNC_LOCK = _threading.Lock()
+
+
+def SYNC_DIRS(year):
+    return {b: (os.environ.get("DEALS_DIR_" + b.upper()) or p).format(y=year) for b, p in _DIRS.items()}
+
+
+def load_agent_map():
+    if _AGENT_MAP_CACHE.get("ts", 0) > time.time() - 600 and "m" in _AGENT_MAP_CACHE:
+        return _AGENT_MAP_CACHE["m"]
+    try:
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "deals_agent_map.json")
+        m = _json.load(open(p, encoding="utf-8"))
+    except Exception:
+        m = {}
+    _AGENT_MAP_CACHE.update(m=m, ts=time.time())
+    return m
+
+
+def sync_branch(branch, year, sb, dbx, canon, now_iso, folder=None, pw=None, last=None, push=None):
+    """קובץ אחד → הטבלה. כל כשל = מצב עם שגיאה, בלי לגעת בטבלה (מקור האמת לא נפגע)."""
+    st = {"file": "", "rev": "", "rows": 0, "upserted": 0, "missing": 0, "back": 0, "guarded": False,
+          "unmapped": [], "error": "", "ts": now_iso, "switched": False}
+    last = last or {}
+    try:
+        folder = folder or SYNC_DIRS(year)[branch]
+        e = pick_latest(dbx.list_folder(folder))
+        if not e:
+            st["error"] = "אין קובץ מעקב בתיקייה"
+            return st
+        st.update(file=e["name"], rev=e["rev"], path=e["path"])
+        st["switched"] = bool(last.get("path")) and last.get("path") != e["path"]
+        if not st["switched"] and last.get("rev") == e["rev"] and not last.get("error"):
+            st.update(skipped=True, rows=last.get("rows", 0), unmapped=last.get("unmapped", []))
+            return st
+        data, _rev = dbx.download(e["path"])
+        wb = open_workbook(data, pw if pw is not None else os.environ.get(BRANCH_PW[branch], ""))
+        sh = pick_main_sheet(wb)
+        if not sh:
+            st["error"] = "לא נמצא גיליון עסקאות בקובץ"
+            return st
+        rows, rep = rows_from_workbook(wb, branch, year, [sh], DEFAULT_AGENT.get(branch, ""))
+        amap = load_agent_map()
+        unm = set()
+        for r in rows:
+            raw = r["agent"]
+            r["agent_raw"] = raw
+            r["agent"] = canon_agent(raw, branch, amap, canon) or raw
+            r["src_path"] = e["path"]
+            if "%s|%s" % (branch, raw) not in amap and raw != DEFAULT_AGENT.get(branch):
+                unm.add(raw)
+        existing = [x for x in sb.deal_history_all() if x.get("branch") == branch and x.get("year") == year]
+        plan = sync_plan(existing, rows, st["switched"])
+        if plan["upsert"]:
+            sb.deal_history_upsert(plan["upsert"])
+        if plan["missing"]:
+            sb.deal_history_set_missing(plan["missing"], now_iso)
+        if plan["back"]:
+            sb.deal_history_set_missing(plan["back"], None)
+        st.update(rows=len(rows), upserted=len(plan["upsert"]), missing=len(plan["missing"]),
+                  back=len(plan["back"]), guarded=plan["guarded"], unmapped=sorted(unm), sheet=sh)
+        if st["switched"] and push:
+            push("מעקב עסקאות — הקובץ הפעיל התחלף", "%s: עכשיו נקרא %s" % (BRANCHES[branch], e["name"]))
+        _HIST_CACHE["ts"] = 0
+    except Exception as ex:
+        st["error"] = "%s: %s" % (type(ex).__name__, str(ex)[:160])
+    return st
+
+
+def sync_tick(sb, dbx, canon, push=None, log=None):
+    year = int(os.environ.get("DEALS_SYNC_YEAR") or _dt.date.today().year)
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    for b in BRANCHES:
+        prev = SYNC_STATE.get(b)
+        st = sync_branch(b, year, sb, dbx, canon, now, last=prev, push=push)
+        SYNC_STATE[b] = st
+        if st["error"] and log and (not prev or prev.get("error") != st["error"]):
+            log.warning("deals sync %s: %s" % (b, st["error"]))
+
+
 def register(app, G, page):
     """ראוטי היסטוריית העסקאות + דף /v2/history. page = _page של effie_v2 (מזריק V2_BOOST)."""
     from flask import request, jsonify
@@ -769,3 +858,44 @@ def register(app, G, page):
     @app.route("/v2/history", methods=["GET"])
     def v2_history_page():
         return page(V2_HISTORY_HTML)
+    import dropbox_api as _dbx
+
+    def _sync_loop():
+        while True:
+            try:
+                sync_tick(sb, _dbx, G["_canon_agent_name"], push=G.get("send_push"), log=G.get("log"))
+            except Exception as e:
+                SYNC_STATE["_loop"] = {"error": str(e)[:160]}
+            time.sleep(300)
+
+    @app.before_request
+    def _deals_sync_ensure():
+        if (os.environ.get("DEALS_SYNC") or "") != "1" or not _dbx.configured():
+            return None
+        with _SYNC_LOCK:
+            th = _SYNC_THREAD[0]
+            if th is None or not th.is_alive():
+                _SYNC_THREAD[0] = _threading.Thread(target=_sync_loop, daemon=True, name="deals-sync")
+                _SYNC_THREAD[0].start()
+        return None
+
+    @app.route("/v2/api/deals/history/sync", methods=["GET"])
+    def v2_deals_history_sync():
+        s, err = _editor()
+        if err:
+            return err
+        th = _SYNC_THREAD[0]
+        return jsonify({"ok": True, "enabled": (os.environ.get("DEALS_SYNC") or "") == "1",
+                        "configured": _dbx.configured(), "alive": bool(th and th.is_alive()),
+                        "year": int(os.environ.get("DEALS_SYNC_YEAR") or _dt.date.today().year),
+                        "branches": {k: v for k, v in SYNC_STATE.items()}})
+
+    @app.route("/v2/api/deals/history/review", methods=["GET"])
+    def v2_deals_history_review():
+        s, err = _editor()
+        if err:
+            return err
+        miss = [view_full(r) for r in _rows(sb) if r.get("missing_since")]
+        unm = [{"branch": b, "name": nm} for b, st in SYNC_STATE.items() if isinstance(st, dict)
+               for nm in (st.get("unmapped") or [])]
+        return jsonify({"ok": True, "missing": miss, "unmapped": unm})
