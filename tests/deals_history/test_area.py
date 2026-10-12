@@ -77,5 +77,12 @@ R5 = R4 + [dict(id="d", street="בגין12 ק.מוצקין", city="", side="מו
            dict(id="e", street="חיננית 9 ק.ביאליק", city="", side="מוכר", deal_amount=1, deal_date="2026-07-01", agent="ג", branch="bialik")]
 cs5 = D.comps_search(R5, "גבעת הרקפות", area_ctx=ctx4)
 ck([x["date"] for x in cs5["results"]] == ["01/07/2026", "01/04/2026", "01/03/2026"], cs5["results"])
+# אייל 12/10: 'קרית חיים' צריך להביא את כל מה שכתוב בקובץ 'חיים' — גם רחוב שלא במפה
+R6 = R3 + [dict(id="13", street="רחוב לא במפה 4", city="חיים", side="מוכר", deal_amount=1, deal_date="2026-03-01", agent="ד", branch="motzkin"),
+           dict(id="14", street="עוד רחוב 1", city="קריית חיים", side="מוכר", deal_amount=1, deal_date="2026-02-01", agent="ד", branch="motzkin"),
+           dict(id="15", street="הרצל 3", city="חיפה", side="מוכר", deal_amount=1, deal_date="2026-01-01", agent="ד", branch="motzkin")]
+kh2 = sorted(x["date"] for x in D.comps_search(R6, "קרית חיים", area_ctx=ctx3)["results"])
+ck(kh2 == ["01/02/2026", "01/03/2026", "01/04/2026", "01/05/2026"], ("city text 'חיים' counts; plain חיפה does not", kh2))
+ck([x["date"] for x in D.comps_search(R6, "קרית חיים מערבית", area_ctx=ctx3)["results"]] == ["01/05/2026"], "west stays by street")
 ck(D._city_from_text("בגין12 ק.מוצקין", IDX4) == "קרית מוצקין" and D._city_from_text("הרצל 5", IDX4) == "", "city from text")
 print("OK", n, "checks")

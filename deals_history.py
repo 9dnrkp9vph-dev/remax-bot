@@ -585,7 +585,12 @@ def area_filter(rows, q, area_ctx=None):
         def _in_city(r):   # שכונה עם עיר קבועה (AREA_FIXED) — רק עסקאות באותה עיר (או בלי עיר)
             c = _row_city(r)
             return not area.get("only_city") or not c or c == _city_n(area["city"])
-        hit = [r for r in rows if _in_city(r) and (lambda v: v and (v == area["nb"] or _label_has(v, area.get("aliases"))))(_nb_of(r))]
+        def _city_is_area(r):
+            # אייל 12/10: בקובץ כתוב 'חיים'/'קרית חיים' בעמודת העיר — שייך לשכונה גם כשהרחוב לא במפה
+            c = _city_n(re.sub(r"^ק\s*\.\s*", "קרית ", str(r.get("city") or "").strip()))
+            return bool(c) and (_label_has(c, area.get("aliases")) or _label_has("קרית " + c, area.get("aliases")))
+        hit = [r for r in rows if _in_city(r) and (_city_is_area(r) or
+               (lambda v: v and (v == area["nb"] or _label_has(v, area.get("aliases"))))(_nb_of(r)))]
     else:
         hit = [r for r in rows if all(t in _norm_q(" ".join((r.get("street") or "", r.get("city") or ""))) for t in toks)]
     return _sort_desc(hit), area
