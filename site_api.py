@@ -65,6 +65,18 @@ def prop_flags(rows):
     return hidden, featured
 
 
+def can_edit_prop(sess, row, owns, is_dev) -> bool:
+    """הסתר/מומלץ: מנהל ומפתח — כל נכס; סוכן — רק נכס שלו."""
+    if not sess:
+        return False
+    if is_dev or sess.get("role") == "admin":
+        return True
+    try:
+        return bool(owns(row, sess.get("name", ""), sess.get("_phones") or [sess.get("phone", "")]))
+    except Exception:
+        return False
+
+
 def register_site(app, G, store=None):
     from flask import request, jsonify
     log = G.get("log")
@@ -120,6 +132,63 @@ def register_site(app, G, store=None):
         except Exception as e:
             if log: log.warning(f"site form: {e}")
             return jsonify({"ok": False})
+
+    # ---- הסתר / מומלץ באתר (כרטיסי הנכסים באפי) ----
+    @app.route("/v2/api/site/state", methods=["GET"])
+    def site_state():
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        rows = st().all()
+        hidden, featured = prop_flags(rows)
+        return jsonify({"ok": True, "hidden": sorted(hidden), "featured": featured, "max_featured": MAX_FEATURED,
+                        "available": bool(getattr(st(), "available", True))})
+
+    @app.route("/v2/api/site/prop", methods=["POST"])
+    def site_prop():
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        b = request.get_json(silent=True) or {}
+        key = str(b.get("key", "") or "").strip()[:80]
+        row = next((r for r in (G["fetch_sheet_rows"]() or []) if str(r.get("מספר מודעה", "") or "").strip() == key), None) if key else None
+        if not row:
+            return jsonify({"ok": False, "reason": "not_found"}), 404
+        sess = dict(s)
+        try:
+            sess["_phones"] = [s.get("phone", "")] + list(G["_phones_for_name"](s.get("name", "")) or [])
+        except Exception:
+            sess["_phones"] = [s.get("phone", "")]
+        is_dev = False
+        try:
+            is_dev = bool(G["_is_dev"](s.get("phone", ""))) or s.get("drole") == "developer"
+        except Exception:
+            pass
+        if not can_edit_prop(sess, row, G["_agent_owns_row"], is_dev):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        rows = st().all()
+        if not getattr(st(), "available", True):
+            return jsonify({"ok": False, "reason": "no_table"})
+        hidden, featured = prop_flags(rows)
+        cur = {"hidden": key in hidden, "featured": key in featured}
+        new = dict(cur)
+        if "hidden" in b:
+            new["hidden"] = bool(b.get("hidden"))
+        if "featured" in b:
+            new["featured"] = bool(b.get("featured"))
+        if new["featured"] and not cur["featured"] and len(featured) >= MAX_FEATURED:
+            return jsonify({"ok": False, "reason": "featured_full"})
+        if not st().put("prop", key, new, s.get("name", "")):
+            return jsonify({"ok": False, "reason": "save_failed"})
+        acts = []
+        if new["hidden"] != cur["hidden"]:
+            acts.append("אתר — הסתרת נכס" if new["hidden"] else "אתר — הצגת נכס")
+        if new["featured"] != cur["featured"]:
+            acts.append("אתר — סימון מומלץ" if new["featured"] else "אתר — ביטול מומלץ")
+        where = " ".join(str(row.get(k, "") or "") for k in ("כתובת", "עיר / ישוב")).strip()
+        for a in acts:
+            G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), a, (where + " · " + key).strip(" ·"))
+        return jsonify({"ok": True, "hidden": new["hidden"], "featured": new["featured"]})
 
 
 class SettingsStore:

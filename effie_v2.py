@@ -6102,7 +6102,33 @@ function orphanBanner(){
   }).join('');
 }
 var HOT_BY = {};   // property_key → שם הסוכן שסימן (לתצוגת מנהל: "נכס חם · שם")
+/* [SITE 13/10] אתר refamily — "הסתר מהאתר" / "מומלץ באתר" בכרטיסי "שלי" (site_api.py) */
+var SITE = {hidden: {}, featured: {}, max: 6, on: false};
+function loadSite(){
+  GET('/v2/api/site/state').then(function(j){
+    if (!j || !j.ok) return;
+    SITE.hidden = {}; SITE.featured = {}; SITE.max = j.max_featured || 6; SITE.on = !!j.available;
+    (j.hidden || []).forEach(function(k){ SITE.hidden[String(k)] = true; });
+    (j.featured || []).forEach(function(k){ SITE.featured[String(k)] = true; });
+    render();
+  }).catch(function(){});
+}
+function siteFeaturedCount(){ var c = 0; for (var k in SITE.featured) if (SITE.featured[k]) c++; return c; }
+function toggleSite(i, field){
+  var p = el('list')._src[i]; if (!p || !p.id) return;
+  var k = String(p.id), map = field === 'hidden' ? SITE.hidden : SITE.featured, on = !map[k];
+  if (field === 'featured' && on && siteFeaturedCount() >= SITE.max){ toast('אפשר עד ' + SITE.max + ' נכסים מומלצים באתר'); return; }
+  if (on) map[k] = true; else delete map[k]; render();
+  var body = {key: k}; body[field] = on;
+  POST('/v2/api/site/prop', body).then(function(j){
+    if (j && j.ok){ toast(field === 'hidden' ? (on ? 'הנכס הוסתר מהאתר' : 'הנכס מוצג שוב באתר') : (on ? 'סומן כמומלץ באתר' : 'הוסר מהמומלצים')); return; }
+    if (on) delete map[k]; else map[k] = true; render();
+    var r = j && j.reason;
+    toast(r === 'featured_full' ? 'אפשר עד ' + SITE.max + ' נכסים מומלצים באתר' : r === 'forbidden' ? 'אפשר לשנות רק נכס שלך' : 'לא נשמר — נסה שוב');
+  }).catch(function(){ if (on) delete map[k]; else map[k] = true; render(); toast('לא נשמר — נסה שוב'); });
+}
 function loadHot(tries){
+  if (!tries) loadSite();
   // מנהל/מתאמת רואים את הנכסים של כל הסוכנים ב"שלי" → טוענים את הנכסים החמים הכלל-משרדיים
   GET('/v2/api/hot' + (MINE_MULTI ? '?all=1' : '')).then(function(j){
     if (j && j.ok){
@@ -6293,6 +6319,13 @@ function propCard(p, i){
     'style="width:100%;padding:11px 0;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;' +
     'cursor:pointer;border:' + (_hot ? 'none' : '1.5px solid #C29435') + ';background:' + (_hot ? '#C29435' : '#fff') +
     ';color:' + (_hot ? '#fff' : '#C29435') + '">' + _lbl + '</button></div>') : '';
+  // [SITE 13/10] האתר — מוצג/מוסתר + מומלץ (רק נכס עם מספר מודעה; ההרשאה נבדקת בשרת)
+  var _sk = String(p.id || ''), _sh = !!SITE.hidden[_sk], _sf = !!SITE.featured[_sk];
+  var siteRow = (isMine && SITE.on && _sk) ? ('<div style="display:flex;gap:8px;margin-top:8px">' +
+    '<button onclick="toggleSite(' + i + ',\'hidden\')" style="flex:1;min-height:44px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
+    (_sh ? 'background:#EBE8DD;color:#5B6472;border:1.5px solid #DCD6C8">מוסתר מהאתר · הצג' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">מוצג באתר · הסתר') + '</button>' +
+    '<button onclick="toggleSite(' + i + ',\'featured\')" aria-pressed="' + _sf + '" style="flex:1;min-height:44px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
+    (_sf ? 'background:#E4C56B;color:#231700;border:none">★ מומלץ באתר' : 'background:#fff;color:#7A5E1C;border:1.5px solid #E4C56B">☆ מומלץ באתר') + '</button></div>') : '';
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
@@ -6308,7 +6341,7 @@ function propCard(p, i){
     (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' +
     (propDate(p) ? '<div style="font-size:11.5px;color:#8B8F99;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
-    acts + hotRow + '</div>';
+    acts + hotRow + siteRow + '</div>';
 }
 function setMode(node){
   MODE = node.getAttribute('data-m');
