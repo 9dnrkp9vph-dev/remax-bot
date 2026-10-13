@@ -67,17 +67,13 @@ def prop_flags(rows):
     return hidden, featured
 
 
+SITE_EDITORS = ("secretary", "manager", "developer")
+
+
 def can_edit_prop(sess, row, owns, is_dev) -> bool:
-    """הסתר/מומלץ: מנהל ומפתח — כל נכס; סוכן — רק נכס שלו."""
-    if not sess:
-        return False
-    # מנהל ומפתח בלבד — לא הנה"ח/מזכירה, שגם הן role=admin באפי (_ROLE_SCOPE)
-    if is_dev or sess.get("drole") in ("manager", "developer"):
-        return True
-    try:
-        return bool(owns(row, sess.get("name", ""), sess.get("_phones") or [sess.get("phone", "")]))
-    except Exception:
-        return False
+    """'הסתר מהאתר' — המזכירה (וגם מנהל ומפתח). סוכן לא משנה כלום באתר (אייל 13/10: 'הכל דרך המזכירה');
+    'מומלץ באתר' = הנכס החם של הסטורי (אחד לסוכן) — לא כפתור נפרד."""
+    return bool(sess) and (bool(is_dev) or sess.get("drole") in SITE_EDITORS)
 
 
 PAGE_LIMITS = {"hero_sub": 220, "approach": 600}
@@ -232,10 +228,13 @@ def register_site(app, G, store=None):
         if not s:
             return jsonify({"ok": False, "auth": False}), 401
         rows = st().all()
-        hidden, featured = prop_flags(rows)
-        act = _active_ids()
-        featured = [k for k in featured if k in act]   # מומלץ שירד מהמלאי לא נספר ולא מוצג
-        return jsonify({"ok": True, "hidden": sorted(hidden), "featured": featured, "max_featured": MAX_FEATURED,
+        hidden, _ = prop_flags(rows)
+        dev = False
+        try:
+            dev = bool(G["_is_dev"](s.get("phone", ""))) or s.get("drole") == "developer"
+        except Exception:
+            pass
+        return jsonify({"ok": True, "hidden": sorted(hidden), "can_edit": can_edit_prop(s, {}, None, dev),
                         "available": bool(getattr(st(), "available", True))})
 
     @app.route("/v2/api/site/prop", methods=["POST"])
@@ -244,6 +243,8 @@ def register_site(app, G, store=None):
         if not s:
             return jsonify({"ok": False, "auth": False}), 401
         b = request.get_json(silent=True) or {}
+        if "hidden" not in b or "featured" in b:
+            return jsonify({"ok": False, "reason": "bad_field"}), 400
         key = str(b.get("key", "") or "").strip()[:80]
         row = next((r for r in (G["fetch_sheet_rows"]() or []) if str(r.get("מספר מודעה", "") or "").strip() == key), None) if key else None
         if not row:
@@ -263,28 +264,16 @@ def register_site(app, G, store=None):
         rows = st().all()
         if not getattr(st(), "available", True):
             return jsonify({"ok": False, "reason": "no_table"})
-        hidden, featured = prop_flags(rows)
-        act = _active_ids()
-        featured = [k for k in featured if k in act]   # מומלצים שנמכרו/ירדו לא תופסים מקום
-        cur = {"hidden": key in hidden, "featured": key in featured}
-        new = dict(cur)
-        if "hidden" in b:
-            new["hidden"] = bool(b.get("hidden"))
-        if "featured" in b:
-            new["featured"] = bool(b.get("featured"))
-        if new["featured"] and not cur["featured"] and len(featured) >= MAX_FEATURED:
-            return jsonify({"ok": False, "reason": "featured_full"})
-        if not st().put("prop", key, new, s.get("name", "")):
+        hidden, _ = prop_flags(rows)
+        new_hidden = bool(b.get("hidden"))
+        if new_hidden == (key in hidden):
+            return jsonify({"ok": True, "hidden": new_hidden})
+        if not st().put("prop", key, {"hidden": new_hidden}, s.get("name", "")):
             return jsonify({"ok": False, "reason": "save_failed"})
-        acts = []
-        if new["hidden"] != cur["hidden"]:
-            acts.append("אתר — הסתרת נכס" if new["hidden"] else "אתר — הצגת נכס")
-        if new["featured"] != cur["featured"]:
-            acts.append("אתר — סימון מומלץ" if new["featured"] else "אתר — ביטול מומלץ")
         where = " ".join(str(row.get(k, "") or "") for k in ("כתובת", "עיר / ישוב")).strip()
-        for a in acts:
-            G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), a, (where + " · " + key).strip(" ·"))
-        return jsonify({"ok": True, "hidden": new["hidden"], "featured": new["featured"]})
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""),
+                           "אתר — הסתרת נכס" if new_hidden else "אתר — הצגת נכס", (where + " · " + key).strip(" ·"))
+        return jsonify({"ok": True, "hidden": new_hidden})
 
     # ---- מסך "האתר" (מנהל/מפתח) ----
     def _admin():
@@ -335,11 +324,11 @@ def register_site(app, G, store=None):
             d = agd.get(nm, {})
             agents.append({"name": nm, "shown": bool(d.get("shown", True)), "order": int(d.get("order", i) or 0),
                            "bio": str(d.get("bio", "") or ""), "count": cnt.get(nk(nm), 0)})
-        hidden, featured = prop_flags(rows)
+        hidden, _ = prop_flags(rows)
         return jsonify({"ok": True, "pages": page.get("pages") or {}, "branches": page.get("branches") or [],
                         "social": page.get("social") or {}, "agents": agents, "cities": cities,
                         "counts": {"shown": max(0, sum(1 for r in props if not str(r.get("ירד מפרסום", "") or "").strip()) - len(hidden)),
-                                   "hidden": len(hidden), "featured": len(featured)},
+                                   "hidden": len(hidden)},
                         "available": bool(getattr(st(), "available", True)),
                         "site_url": (os.environ.get("SITE_PUBLIC_URL") or "https://refamily-site.onrender.com").strip()})
 
@@ -483,8 +472,7 @@ function render(){
   h += '<div class="cc"><div class="h">האתר</div><div class="stats">' +
     '<div class="stat"><b>' + D.counts.shown + '</b><span>נכסים מוצגים</span></div>' +
     '<div class="stat"><b>' + D.counts.hidden + '</b><span>מוסתרים</span></div>' +
-    '<div class="stat"><b>' + D.counts.featured + '</b><span>מומלצים</span></div></div>' +
-    '<div class="s">הסתרה וסימון "מומלץ" — מכרטיס הנכס במסך "הנכסים שלי".</div>' +
+    '</div><div class="s">הסתרה מהאתר — מכרטיס הנכס במסך הנכסים (מזכירה). המומלצים באתר = הנכסים החמים מהסטורי.</div>' +
     '<a class="link" href="' + esc(D.site_url) + '" target="_blank" rel="noopener">צפה באתר</a></div>';
   var P = D.pages || {};
   h += '<div class="cc"><div class="h">טקסטים</div>' + fld('p_hero', 'תת-כותרת בפתיחה', P.hero_sub || '', true, 220) +

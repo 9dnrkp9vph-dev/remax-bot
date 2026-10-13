@@ -9,10 +9,12 @@ owns = lambda row, name, phones: row.get("סוכן 1") == name
 def S(drole, role="admin", name="x"):
     return {"name": name, "role": role, "phone": "0500000000", "drole": drole}
 
-# 1: רק מנהל/מפתח — לא הנה"ח ולא מזכירה (שגם הן role=admin באפי)
+# 1: מסך "האתר" — מנהל/מפתח בלבד (לא הנה"ח ולא מזכירה, שגם הן role=admin באפי).
+#    "הסתר מהאתר" בכרטיס — המזכירה כן (אייל 13/10: "הכל דרך המזכירה"); הנה"ח לא.
 def test_accountant_and_secretary_cannot_manage(make_app):
+    assert not can_edit_prop(S("accountant"), ROWS[1], owns, False)
+    assert can_edit_prop(S("secretary"), ROWS[1], owns, False)
     for dr in ("accountant", "secretary"):
-        assert not can_edit_prop(S(dr), ROWS[1], owns, False)
         app = make_app(store=Store(), _web_auth=lambda dr=dr: S(dr), _load_config=lambda: {"agents": []},
                        fetch_sheet_rows=lambda: ROWS, _is_dev=lambda p: False, _name_key=lambda n: n)
         assert app.test_client().get("/v2/api/site/settings").status_code == 403
@@ -22,17 +24,6 @@ def test_menu_gated_on_manager_drole():
     import pathlib
     src = pathlib.Path("effie_v2.py").read_text(encoding="utf-8")
     assert "el('menuSite')" in src and "j.drole === 'manager'" in src
-
-# 2: מומלצים שירדו מהמלאי לא תופסים מקום
-def test_stale_featured_do_not_block(make_app):
-    store = Store()
-    store.rows = [{"kind": "prop", "key": "gone%d" % i, "data": {"featured": True}} for i in range(6)]
-    app = make_app(store=store, _web_auth=lambda: S("manager"), fetch_sheet_rows=lambda: ROWS,
-                   _agent_owns_row=owns, _is_dev=lambda p: False, _phones_for_name=lambda n: [])
-    r = app.test_client().post("/v2/api/site/prop", json={"key": "a1", "featured": True}).get_json()
-    assert r["ok"] is True
-    st = app.test_client().get("/v2/api/site/state").get_json()
-    assert st["featured"] == ["a1"]
 
 # 3: חיפוש מהאתר מוגבל גם באפי — עד 2 במקביל ותקרה לדקה
 def _search_app(make_app, monkeypatch, per_min="60"):
