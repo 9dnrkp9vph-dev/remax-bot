@@ -77,6 +77,70 @@ def can_edit_prop(sess, row, owns, is_dev) -> bool:
         return False
 
 
+PAGE_LIMITS = {"hero_sub": 220, "approach": 600}
+SOCIAL_HOSTS = {"facebook": ("facebook.com",), "instagram": ("instagram.com",), "youtube": ("youtube.com", "youtu.be")}
+
+
+def _plain(t, n):
+    t = re.sub(r"<[^>]*>", "", str(t or ""))
+    t = t.replace("<", "").replace(">", "")
+    return re.sub(r"[ \t]+", " ", t).strip()[:n]
+
+
+def _phone(v):
+    d = re.sub(r"\D", "", str(v or ""))
+    if d.startswith("972"):
+        d = d[3:]
+    if len(d) == 9 and not d.startswith("0"):
+        d = "0" + d
+    return d if (re.fullmatch(r"05\d{8}", d) or re.fullmatch(r"0[2-9]\d{7}", d)) else None
+
+
+def clean_settings(body, agent_names):
+    """ולידציה להגדרות האתר. מחזיר (pages, branches, social, agents, errors) — הערכים הנקיים + שגיאות לפי שדה."""
+    body = body if isinstance(body, dict) else {}
+    errors = {}
+    pages = {}
+    for k, v in (body.get("pages") or {}).items():
+        k = str(k)
+        if k in PAGE_LIMITS:
+            pages[k] = _plain(v, PAGE_LIMITS[k])
+        elif k.startswith("city:") and len(k) <= 40:
+            pages[k] = _plain(v, 400)
+    branches = []
+    for b in (body.get("branches") or [])[:5]:
+        if not isinstance(b, dict):
+            continue
+        nm, ph = _plain(b.get("name"), 30), _phone(b.get("phone"))
+        if nm and ph:
+            branches.append({"name": nm, "phone": ph})
+        elif nm or str(b.get("phone") or "").strip():
+            errors["branches"] = "שם סניף וטלפון תקין חובה בכל שורה"
+    social = {}
+    for k, v in (body.get("social") or {}).items():
+        if k not in SOCIAL_HOSTS:
+            continue
+        v = str(v or "").strip()[:200]
+        if not v:
+            continue
+        m = re.match(r"^https://(?:www\.|m\.)?([a-z0-9.-]+)(/[^\s<>\"']*)?$", v, re.I)
+        if m and m.group(1).lower() in SOCIAL_HOSTS[k]:
+            social[k] = v
+        else:
+            errors[k] = "קישור https לא תקין"
+    known = set(agent_names)
+    agents = {}
+    for nm, d in (body.get("agents") or {}).items():
+        if nm not in known or not isinstance(d, dict):
+            continue
+        try:
+            order = max(0, min(999, int(d.get("order", 0))))
+        except (TypeError, ValueError):
+            order = 0
+        agents[nm] = {"shown": bool(d.get("shown", True)), "order": order, "bio": _plain(d.get("bio"), 300)}
+    return pages, branches, social, agents, errors
+
+
 def register_site(app, G, store=None):
     from flask import request, jsonify
     log = G.get("log")
@@ -190,6 +254,93 @@ def register_site(app, G, store=None):
             G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), a, (where + " · " + key).strip(" ·"))
         return jsonify({"ok": True, "hidden": new["hidden"], "featured": new["featured"]})
 
+    # ---- מסך "האתר" (מנהל/מפתח) ----
+    def _admin():
+        s = G["_web_auth"]()
+        if not s:
+            return None
+        dev = False
+        try:
+            dev = bool(G["_is_dev"](s.get("phone", ""))) or s.get("drole") == "developer"
+        except Exception:
+            pass
+        return s if (dev or s.get("role") == "admin") else None
+
+    def _agent_names():
+        cfg = G["_load_config"]() or {}
+        nk = G["_name_key"]
+        gone = {nk(n) for n in (cfg.get("removedAgents") or []) + (cfg.get("purgedAgents") or [])}
+        out = []
+        for a in cfg.get("agents") or []:
+            nm = re.sub(r"\s+", " ", str((a or {}).get("name", "") or "")).strip()
+            if nm and nk(nm) not in gone and nm not in out:
+                out.append(nm)
+        return out
+
+    @app.route("/v2/api/site/settings", methods=["GET"])
+    def site_settings_get():
+        s = _admin()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        rows = st().all()
+        page = {r.get("key"): r.get("data") for r in rows if r.get("kind") == "page"}
+        agd = {r.get("key"): (r.get("data") or {}) for r in rows if r.get("kind") == "agent"}
+        props = G["fetch_sheet_rows"]() or []
+        nk = G["_name_key"]
+        cnt = {}
+        cities = []
+        for r in props:
+            if str(r.get("ירד מפרסום", "") or "").strip():
+                continue
+            k = nk(str(r.get("סוכן 1", "") or ""))
+            cnt[k] = cnt.get(k, 0) + 1
+            c = re.sub(r"\s+", " ", str(r.get("עיר / ישוב", "") or "")).strip().replace("קריית", "קרית")
+            if c and c not in cities:
+                cities.append(c)
+        names = _agent_names()
+        agents = []
+        for i, nm in enumerate(names):
+            d = agd.get(nm, {})
+            agents.append({"name": nm, "shown": bool(d.get("shown", True)), "order": int(d.get("order", i) or 0),
+                           "bio": str(d.get("bio", "") or ""), "count": cnt.get(nk(nm), 0)})
+        hidden, featured = prop_flags(rows)
+        return jsonify({"ok": True, "pages": page.get("pages") or {}, "branches": page.get("branches") or [],
+                        "social": page.get("social") or {}, "agents": agents, "cities": cities,
+                        "counts": {"shown": max(0, sum(1 for r in props if not str(r.get("ירד מפרסום", "") or "").strip()) - len(hidden)),
+                                   "hidden": len(hidden), "featured": len(featured)},
+                        "available": bool(getattr(st(), "available", True)),
+                        "site_url": (os.environ.get("SITE_PUBLIC_URL") or "https://refamily-site.onrender.com").strip()})
+
+    @app.route("/v2/api/site/settings", methods=["POST"])
+    def site_settings_post():
+        s = _admin()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        pages, branches, social, agents, errors = clean_settings(b, _agent_names())
+        if errors:
+            return jsonify({"ok": False, "errors": errors})
+        by = s.get("name", "")
+        ok = True
+        if "pages" in b:
+            ok &= st().put("page", "pages", pages, by)
+        if "branches" in b:
+            ok &= st().put("page", "branches", branches, by)
+        if "social" in b:
+            ok &= st().put("page", "social", social, by)
+        for nm, d in agents.items():
+            ok &= st().put("agent", nm, d, by)
+        G["_log_activity"](by, s.get("role", ""), s.get("phone", ""), "אתר — עדכון הגדרות",
+                           ", ".join(k for k in ("pages", "branches", "social", "agents") if k in b))
+        return jsonify({"ok": bool(ok), "errors": {}})
+
+    @app.route("/v2/site", methods=["GET"])
+    def v2_site_page():
+        from flask import Response
+        r = Response(V2_SITE_HTML, mimetype="text/html")
+        r.headers["Cache-Control"] = "no-store"
+        return r
+
 
 class SettingsStore:
     """website_settings ב-Supabase (שורה לכל kind+key). טבלה חסרה/כשל → available=False, all()=[]."""
@@ -230,3 +381,127 @@ class SettingsStore:
             return r.status_code < 300
         except Exception:
             return False
+
+
+V2_SITE_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>האתר</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;color:#1E3A5F;padding-bottom:96px}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 6px;display:flex;align-items:center;justify-content:space-between}
+  .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  .t{font-size:17px;font-weight:800}
+  main{padding:4px 16px 20px;display:flex;flex-direction:column;gap:12px;max-width:680px;margin:0 auto}
+  .cc{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:16px;display:flex;flex-direction:column;gap:10px}
+  .h{font-size:15px;font-weight:800}.s{font-size:12.5px;color:#5B6472;line-height:1.6}
+  .stats{display:flex;gap:8px}.stat{flex:1;background:#F6F4EE;border-radius:14px;padding:10px;text-align:center}
+  .stat b{display:block;font-size:20px}.stat span{font-size:11.5px;color:#5B6472;font-weight:600}
+  label{font-size:12.5px;font-weight:700;display:block;margin-bottom:4px}
+  input,textarea{width:100%;font:400 16px Heebo;border:1.5px solid #DCD6C8;border-radius:12px;padding:10px 12px;color:#1E3A5F;background:#fff;min-height:44px}
+  textarea{min-height:84px;resize:vertical}
+  .err{color:#A32F2F;font-size:12px;font-weight:600;margin-top:3px}
+  .row{display:flex;gap:8px;align-items:center}.row input{flex:1}
+  .btn2{min-height:44px;padding:0 14px;border-radius:12px;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F;font:700 13px Heebo;cursor:pointer}
+  .del{width:44px;height:44px;border-radius:12px;background:#FBEDED;border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 44px}
+  .ag{border-top:1px solid #F0EDE3;padding-top:10px;display:flex;flex-direction:column;gap:8px}
+  .ag:first-of-type{border-top:0;padding-top:0}
+  .agh{display:flex;align-items:center;gap:8px}.agh .nm{flex:1;font-weight:800;font-size:14px}.agh .nm i{font-style:normal;font-weight:600;color:#5B6472;font-size:12px}
+  .mv{width:40px;height:40px;border-radius:10px;border:1.5px solid #DCD6C8;background:#fff;cursor:pointer;font-size:15px;color:#1E3A5F}
+  .sw{position:relative;width:52px;height:30px;border-radius:999px;background:#DCD6C8;border:0;cursor:pointer;flex:0 0 52px}
+  .sw::after{content:"";position:absolute;top:3px;right:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:right .2s}
+  .sw.on{background:#2E6BD6}.sw.on::after{right:25px}
+  .save{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(env(safe-area-inset-bottom,0px) + 12px);background:rgba(242,239,231,.96)}
+  .save button{width:100%;max-width:680px;display:block;margin:0 auto;min-height:52px;border-radius:16px;border:0;background:#2E6BD6;color:#fff;font:800 16px Heebo;cursor:pointer}
+  .link{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:12px;background:#1E3A5F;color:#fff;text-decoration:none;font-weight:700;font-size:14px;align-self:flex-start}
+  .empty{text-align:center;padding:30px 16px}
+  #toast{position:fixed;bottom:92px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:80;white-space:nowrap}
+</style></head><body>
+<header>
+  <button class="backBtn" onclick="location.href='/v2/home'" aria-label="חזרה"><svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <div class="t">האתר</div><div style="width:44px"></div>
+</header>
+<main id="m"><div class="cc empty"><div class="s">טוען…</div></div></main>
+<div class="save" id="saveBar" style="display:none"><button onclick="save()">שמירה</button></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+var TOK = null; try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function toast(m){ var t = el('toast'); t.textContent = m; t.style.opacity = '1'; clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 2000); }
+function api(u, d){ return fetch(u, d ? {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type':'application/json'}, body: JSON.stringify(d)} : {headers:{'X-Auth-Token': TOK}})
+  .then(function(r){ if (r.status === 403) return {forbidden: true}; return r.json(); }); }
+var D = null, ERR = {};
+function load(){
+  api('/v2/api/site/settings').then(function(j){
+    if (j.forbidden){ el('m').innerHTML = '<div class="cc empty"><div class="h">המסך זמין למנהלי המשרד בלבד</div><button class="btn2" style="margin-top:12px" onclick="location.href=\'/v2/home\'">חזרה לבית</button></div>'; return; }
+    if (!j.ok){ el('m').innerHTML = '<div class="cc empty"><div class="s">לא נטען — נסה שוב</div></div>'; return; }
+    D = j; D.agents.sort(function(a, b){ return a.order - b.order; }); render();
+  }).catch(function(){ el('m').innerHTML = '<div class="cc empty"><div class="s">אין חיבור — נסה שוב</div></div>'; });
+}
+function fld(id, label, val, ta, max){
+  return '<div><label for="' + id + '">' + label + '</label>' + (ta ? '<textarea id="' + id + '" maxlength="' + max + '">' + esc(val) + '</textarea>'
+    : '<input id="' + id + '" value="' + esc(val) + '" maxlength="' + max + '">') + (ERR[id] ? '<div class="err">' + esc(ERR[id]) + '</div>' : '') + '</div>';
+}
+function render(){
+  var h = '';
+  if (!D.available) h += '<div class="cc"><div class="h">ההגדרות עוד לא פעילות</div><div class="s">צריך להריץ את קובץ ה-SQL של website_settings ב-Supabase. עד אז האתר עובד עם ברירות המחדל.</div></div>';
+  h += '<div class="cc"><div class="h">האתר</div><div class="stats">' +
+    '<div class="stat"><b>' + D.counts.shown + '</b><span>נכסים מוצגים</span></div>' +
+    '<div class="stat"><b>' + D.counts.hidden + '</b><span>מוסתרים</span></div>' +
+    '<div class="stat"><b>' + D.counts.featured + '</b><span>מומלצים</span></div></div>' +
+    '<div class="s">הסתרה וסימון "מומלץ" — מכרטיס הנכס במסך "הנכסים שלי".</div>' +
+    '<a class="link" href="' + esc(D.site_url) + '" target="_blank" rel="noopener">צפה באתר</a></div>';
+  var P = D.pages || {};
+  h += '<div class="cc"><div class="h">טקסטים</div>' + fld('p_hero', 'תת-כותרת בפתיחה', P.hero_sub || '', true, 220) +
+    fld('p_appr', 'הגישה שלנו', P.approach || '', true, 600);
+  (D.cities || []).forEach(function(c, i){ h += fld('p_city' + i, 'תיאור ' + c, P['city:' + c] || '', true, 400); });
+  h += '</div>';
+  h += '<div class="cc"><div class="h">סניפים</div><div class="s">מופיעים בפתיחה ובתחתית האתר.</div><div id="brs">';
+  (D.branches.length ? D.branches : [{name:'', phone:''}]).forEach(function(b, i){
+    h += '<div class="row"><input aria-label="שם הסניף" class="bn" value="' + esc(b.name) + '" placeholder="שם הסניף" maxlength="30">' +
+      '<input aria-label="טלפון" class="bp" value="' + esc(b.phone) + '" placeholder="טלפון" inputmode="tel" maxlength="20">' +
+      '<button class="del" aria-label="הסרת סניף" onclick="rmBranch(' + i + ')"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round"/></svg></button></div>';
+  });
+  h += '</div>' + (ERR.branches ? '<div class="err">' + esc(ERR.branches) + '</div>' : '') + '<button class="btn2" onclick="addBranch()">+ הוספת סניף</button></div>';
+  var S = D.social || {};
+  h += '<div class="cc"><div class="h">רשתות חברתיות</div>' + fld('facebook', 'פייסבוק', S.facebook || '', false, 200) +
+    fld('instagram', 'אינסטגרם', S.instagram || '', false, 200) + fld('youtube', 'יוטיוב', S.youtube || '', false, 200) + '</div>';
+  h += '<div class="cc"><div class="h">הצוות באתר</div><div class="s">מי מופיע בעמוד הצוות ובדף הבית, באיזה סדר, ותיאור קצר.</div>';
+  D.agents.forEach(function(a, i){
+    h += '<div class="ag"><div class="agh"><div class="nm">' + esc(a.name) + ' <i>' + (a.count ? a.count + ' נכסים' : 'בלי נכסים') + '</i></div>' +
+      '<button class="mv" aria-label="למעלה" onclick="mv(' + i + ',-1)">▲</button><button class="mv" aria-label="למטה" onclick="mv(' + i + ',1)">▼</button>' +
+      '<button class="sw' + (a.shown ? ' on' : '') + '" role="switch" aria-checked="' + a.shown + '" aria-label="מופיע באתר" onclick="tg(' + i + ')"></button></div>' +
+      '<input aria-label="תיאור קצר" class="bio" data-i="' + i + '" value="' + esc(a.bio) + '" placeholder="תיאור קצר (רשות)" maxlength="300"></div>';
+  });
+  h += '</div>';
+  el('m').innerHTML = h; el('saveBar').style.display = 'block';
+}
+function grab(){
+  var P = {}; P.hero_sub = el('p_hero').value; P.approach = el('p_appr').value;
+  (D.cities || []).forEach(function(c, i){ P['city:' + c] = el('p_city' + i).value; });
+  D.pages = P;
+  var bn = document.querySelectorAll('.bn'), bp = document.querySelectorAll('.bp'), br = [];
+  for (var i = 0; i < bn.length; i++) if (bn[i].value.trim() || bp[i].value.trim()) br.push({name: bn[i].value, phone: bp[i].value});
+  D.branches = br;
+  D.social = {facebook: el('facebook').value.trim(), instagram: el('instagram').value.trim(), youtube: el('youtube').value.trim()};
+  document.querySelectorAll('.bio').forEach(function(x){ D.agents[+x.getAttribute('data-i')].bio = x.value; });
+}
+function addBranch(){ grab(); if (D.branches.length >= 5){ toast('עד 5 סניפים'); return; } D.branches.push({name:'', phone:''}); render(); }
+function rmBranch(i){ grab(); D.branches.splice(i, 1); render(); }
+function mv(i, d){ grab(); var j = i + d; if (j < 0 || j >= D.agents.length) return; var t = D.agents[i]; D.agents[i] = D.agents[j]; D.agents[j] = t; render(); }
+function tg(i){ grab(); D.agents[i].shown = !D.agents[i].shown; render(); }
+function save(){
+  grab(); var ag = {};
+  D.agents.forEach(function(a, i){ ag[a.name] = {shown: a.shown, order: i, bio: a.bio}; });
+  api('/v2/api/site/settings', {pages: D.pages, branches: D.branches, social: D.social, agents: ag}).then(function(j){
+    if (j.forbidden){ toast('אין הרשאה'); return; }
+    ERR = {};
+    if (j.errors){ for (var k in j.errors) ERR[k === 'branches' ? 'branches' : k] = j.errors[k]; }
+    if (j.ok){ toast('נשמר — באתר תוך דקה'); render(); } else { render(); toast('יש שדות לתקן'); }
+  }).catch(function(){ toast('לא נשמר — נסה שוב'); });
+}
+load();
+</script></body></html>'''
