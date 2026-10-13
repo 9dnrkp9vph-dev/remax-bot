@@ -12197,6 +12197,13 @@ try:
 except Exception as _effie_err:
     log.error(f"effie v2 init failed (old app unaffected): {_effie_err}")
 
+# ── אתר refamily.co.il — חיפוש/טפסים לאתר + ניהול האתר (שלב ג', 13/10) — מודול נפרד ──
+try:
+    import site_api as _site_api
+    _site_api.register_site(app, globals())
+except Exception as _site_err:
+    log.error(f"site_api init failed (app unaffected): {_site_err}")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # WARMUP — חימום ה-caches הכבדים בעליית התהליך (deploy/restart מרוקן הכל)
 # 05/08: המשתמש הראשון אחרי deploy ספג בנייה קרה — /api/report נמדד 78ש' (מול
