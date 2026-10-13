@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.44
+// @version      13.45
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -51,7 +51,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.44'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='13.45'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -59,6 +59,7 @@ var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גו�
 var POST_TIMEOUT_MS=170000; // Apps Script מותר לו עד 6 דק׳; פסק-זמן = כנראה נשמר, לא שולחים שוב
 const TOKENS_PER_SCAN=60;       // תקרת שליפות token/טלפון בסריקה אחת — חוסמת סריקה שנמשכת שעות
 const ITEM_AGENTS_PER_SCAN=12;  // תקרת שליפות "מי הסוכן" מדף המודעה, פר משרד בכל סריקה (מצטבר יום-יום)
+const EXTRA_DEALS=[{path:'rent',deal:'השכרה'},{path:'commercial',deal:'מסחרי'}];   // v13.45: רק בסניפי Family
 const OFFICES_PER_RUN=12;       // כמה משרדים בסריקה אחת — יד2 חוסם (ShieldSquare) כשסורקים הרבה ברצף · v13.38 (אייל 27/09): 6→12 — שתי ריצות ביום מכסות את כל 22 משרדי הקריות (עם טיימרי ה-Worker משרד ≈ 3-4 דק׳)
 const BLOCK_COOLDOWN_MIN=90;    // נחסמנו? מנוחה לפני ניסיון חדש (הסריקה תמשיך מהמשרד שנחסם)
 // זיהוי חסימה: יד2/Radware מחזירים עמוד CAPTCHA במקום הדף. חובה להבדיל בין "משרד בלי מודעות" ל"נחסמנו".
@@ -2320,7 +2321,7 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
   // v13.9: מחזיר כמה מודעות העמוד באמת הוסיף (חדשות או שודרגו). 0 = העמוד האחרון חוזר על
   //   עצמו — יד2 מחזיר את אותן מודעות אחרי הסוף האמיתי, והלולאות רצו עד עמוד 60 ("עמ׳ 43")
   //   ומתו. הלולאות עוצרות עכשיו על 0 במקום על "ריק".
-  function addItems(items,agent,phone){
+  function addItems(items,agent,phone,deal){
     var touched=0;
     items.forEach(function(it){
       if(!it||!it.token)return;
@@ -2343,6 +2344,7 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
         return;
       }
       var r=exclMapItem(it);r.agent=agent;r.excl=exclIsExclusive(it)?'1':'0';
+      if(deal)r.deal=deal;   // v13.45: השכרה/מסחרי (סניפי Family); בלי = מכירה
       // טלפון הסוכן קודם; טלפון המשרד רק כנפילה (אייל: "מה שמעניין זה מי הסוכן, לא המשרד")
       r.phone=phone||officePhone||''; if(r.phone)diag.phones++;
       if(!diag.sampleItemKeys)diag.sampleItemKeys=Object.keys(it); // לאימות שדות הסוכן במודעה עצמה
@@ -2364,6 +2366,35 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
         else cb();
       }).catch(function(){cb();});
     })();
+  }
+  // v13.45 (אייל 13/10: "למה הוא לא סורק במשרד שלנו גם נכסים להשכרה ונכסים מסחריים?"):
+  // בסניפי Family — אחרי המכירה גם /rent ו-/commercial של הסניף (בלי דפי סוכנים: שם הסוכן
+  // מגיע מדף המודעה, כמו לכל מודעה לא משויכת). diag.deals = סוגי העסקה שנסרקו עד הסוף —
+  // ה-CRM מסמן "ירד מפרסום" רק בתוכם, כך שדף השכרה שנכשל לא מוריד מודעות השכרה.
+  diag.deals=['מכירה'];
+  var extras=isFamId(office.id)?EXTRA_DEALS:[];
+  if(extras.length){
+    var saleDone=done;
+    done=function(rowsArr,d){
+      // הדף הראשון נחסם/נכשל (אין מכירה בכלל) — לא ממשיכים, אחרת סנאפשוט של השכרה בלבד היה נשלח כסריקה מלאה
+      if((d&&d.blocked)||!rowsArr||!rowsArr.length){ saleDone(rowsArr,d); return; }
+      var di=0;
+      (function nextDeal(){
+        if(di>=extras.length){ saleDone(order.map(function(t){return rows[t];}),d); return; }
+        var x=extras[di++], p=1;
+        (function nextPage(){
+          fetchFn(base+'/'+x.path+'?page='+p).then(function(h){
+            var ndx=exclParseNextData(h);
+            if(looksBlocked(h)||!ndx){ gap(x.path+'/'+p, looksBlocked(h)?'blocked':'nodata'); setTimeout(nextDeal,humanGap(1800,2200)); return; }
+            var items=exclFindListings(ndx);
+            var added=addItems(items,office.name+' (לא משויך)','',x.deal);
+            if(onProg)onProg(office.name,x.path,p,items.length);
+            if(added>0&&p<30){ p++; setTimeout(nextPage,humanGap(1800,2200)); }
+            else { d.deals.push(x.deal); setTimeout(nextDeal,humanGap(1800,2200)); }
+          }).catch(function(){ gap(x.path+'/'+p,'fetch'); setTimeout(nextDeal,1200); });
+        })();
+      })();
+    };
   }
   // שלב 1: דף משרד ראשון — רשימת הסוכנים
   fetchFn(base+'/forsale?page=1').then(function(html){
@@ -2422,7 +2453,8 @@ function exclPostOffice(officeName,officeId,rowsArr,cb,opts){
   try{ applyGallery(rowsArr); }catch(e){}   // v13.40: גלריות שמורות — בכל מסלול סריקת משרדים
   // v13.42: סריקה חלקית (חור בדף סוכן/משרד) → feed=partial: Code.gs לא מסמן ירידות ולא מעביר scanFull
   var feed=(opts&&opts.partial)?'partial':'daily';
-  var body='secret='+encodeURIComponent(SECRET)+'&action=importexcl&feed='+feed+'&office='+encodeURIComponent(officeName)+'&officeId='+encodeURIComponent(officeId||'')+'&machine='+encodeURIComponent((function(){try{return machineId();}catch(e){return '';}})())+'&data='+encodeURIComponent(JSON.stringify(rowsArr));
+  var dealsQ=(opts&&opts.deals&&opts.deals.length)?('&deals='+encodeURIComponent(opts.deals.join(','))):'';   // v13.45: סוגי העסקה שנסרקו עד הסוף
+  var body='secret='+encodeURIComponent(SECRET)+'&action=importexcl&feed='+feed+dealsQ+'&office='+encodeURIComponent(officeName)+'&officeId='+encodeURIComponent(officeId||'')+'&machine='+encodeURIComponent((function(){try{return machineId();}catch(e){return '';}})())+'&data='+encodeURIComponent(JSON.stringify(rowsArr));
   var attempt=0;
   (function send(){
     function fail(msg){
@@ -2999,7 +3031,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
           if(diag){ diag.agentsFetched=gotAgents; diag.ag=agStats; diag.noAgent=rowsArr.filter(function(r){return !isRealAgent(r.agent,office.name);}).length; }
           leaseStep('שומר '+office.name+' ('+rowsArr.length+')');
           if(diag&&diag.partial) log('⚠️ '+office.name+': סריקה חלקית ('+diag.gaps.length+' דפים חסרים: '+diag.gaps.slice(0,3).join(', ')+') — נשמרת בלי לסמן ירידות');
-          exclPostOfficeOpts(office.name,office.id,rowsArr,{partial:!!(diag&&diag.partial)},function(err,res){
+          exclPostOfficeOpts(office.name,office.id,rowsArr,{partial:!!(diag&&diag.partial),deals:(diag&&diag.deals)||null},function(err,res){
             // מדווחים גם מה *נבדק*, לא רק מה שנוסף: סריקה תקינה בלי מודעות חדשות
             // נראתה קודם כמו "0 · 0 · 0" — כאילו לא רצה כלל (אייל, 30/08).
             var up=(diag&&diag.upgraded)||0, ag=(res.exclAgentUpd||0)+gotAgents;

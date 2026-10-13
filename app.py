@@ -1861,6 +1861,27 @@ def _swr(key, ttl, build, max_stale=1800):
         _cache_put(key, v)
     return v
 
+# [DEALS 13/10] אייל: "למה הוא לא סורק במשרד שלנו גם נכסים להשכרה ונכסים מסחריים?" — מ-v13.45 הסורק
+# מביא גם השכרה ומסחרי מסניפי Family. fetch_sheet_rows נשאר מכירה בלבד (כל הצרכנים הקיימים);
+# מסך הנכסים מבקש השכרה/מסחרי במפורש (deal=rent/commercial).
+OFFICE_DEALS = {"rent": "השכרה", "commercial": "מסחרי"}
+def fetch_sheet_rows_deal(deal_he) -> list:
+    key = 'sheet_rows:' + deal_he
+    c = _cache_get(key, _src_ttl(PROPS_SOURCE, 60, 90))
+    if c is not None:
+        return c
+    rows = []
+    if PROPS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        try:
+            rows = _sbdb.fetch_properties_rows(deals=(deal_he,)) or []
+        except Exception as _sbe:
+            log.error(f"supabase properties ({deal_he}) read failed: {_sbe}")
+            return []
+    _cache_put(key, rows)
+    return rows
+def _office_rows_for(deal_code):
+    lbl = OFFICE_DEALS.get(str(deal_code or "").strip())
+    return (fetch_sheet_rows_deal(lbl) if lbl else fetch_sheet_rows()), lbl
 def fetch_sheet_rows() -> list:
     c = _cache_get('sheet_rows', _src_ttl(PROPS_SOURCE, 60, 90))
     if c is not None:
@@ -7684,6 +7705,7 @@ def api_search_properties():
     if not s: return jsonify({"ok": False, "auth": False}), 401
     try:
         q = (request.get_json(silent=True) or {}).get("q", "").strip()
+        _rows_all, _deal_lbl = _office_rows_for((request.get_json(silent=True) or {}).get("deal"))   # [DEALS 13/10]
         # [BPAGE-NMFULL 11/10] keys = שליפת נכסים מסוימים לפי pkey (התאמות חדשות לדף קונה שלא בתוצאות
         # החיפוש) — אותו כרטיס בדיוק; בלי רישום חיפוש ביומן
         _keys = (request.get_json(silent=True) or {}).get("keys")
@@ -7736,7 +7758,7 @@ def api_search_properties():
             return jsonify({"ok": True, "results": [_row_out(r) for r in fetch_sheet_rows() if _prop_price_key(r) in _keys]})
         # חיפוש ריק = כל הנכסים הפעילים, ממוינים מהחדש לישן (לפי תאריך יצירה)
         if not q:
-            rows = [r for r in fetch_sheet_rows()
+            rows = [r for r in _rows_all
                     if (r.get("סטטוס", "") or "").strip() in ("", "פעילה")]
             rows.sort(key=_prop_epoch, reverse=True)
             # 24/09 (אייל): חדשים → ירידות מחיר → השאר → ירד מפרסום (כמו ב-CRM; מיון יציב)
@@ -7744,15 +7766,17 @@ def api_search_properties():
                                                         bool(str(r.get("ירד מפרסום", "") or "").strip())))
             out = [_row_out(r) for r in rows]
             return _etag_wrap({"ok": True,   # [SWR 14/09] המסך מצייר מהעותק השמור ומרענן ברקע
-                               "summary": f"כל הנכסים הפעילים ({len(out)}) — מהחדש לישן",
+                               "summary": f"כל הנכסים {('ל' + _deal_lbl) if _deal_lbl == 'השכרה' else ('המסחריים' if _deal_lbl else 'הפעילים')} ({len(out)}) — מהחדש לישן",
                                "updated": _props_updated(rows),
                                "results": out})
 
         parsed = _parse_props_query(q)   # [NB-SEARCH 30/09] משותף עם /api/search/newborn (AI פעם אחת)
-        matches = search_listings_in_sheet(parsed) if parsed else []
+        if parsed and _deal_lbl:   # [DEALS] השכרה/מסחרי — הניקוד מסנן לפי סוג העסקה; עותק (הפירוק במטמון)
+            parsed = dict(parsed, deal_type=_deal_lbl)
+        matches = (search_listings_in_sheet(parsed, _rows_all) if _deal_lbl else search_listings_in_sheet(parsed)) if parsed else []
         out = [_row_out(row, score) for score, row, flex in matches]
         return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "ptype": (parsed or {}).get("property_type", ""),
-                        "updated": _props_updated(fetch_sheet_rows()), "results": out})
+                        "updated": _props_updated(_rows_all), "results": out})
     except Exception as e:
         log.error(f"properties search error: {e}", exc_info=True)
         return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -7793,7 +7817,8 @@ def api_my_properties():
                 eff_phones.add(_last9(s["phone"]))
             keys, phones, multi = _scope_keys_phones(
                 s["role"], eff_name, eff_phones, s.get("agents"), s.get("agent_names"))
-        rows = fetch_sheet_rows()
+        rows, _deal_lbl = _office_rows_for((request.get_json(silent=True) or {}).get("deal")
+                                           or request.args.get("deal", ""))   # [DEALS 13/10]
         mine = [r for r in rows if _row_owned(r, keys, phones)]
         # 24/09: מפות המחירים נבנות *לפני* המיון — המיון המדורג משתמש ב-_pd_map
         # (24/09 ערב: 'שלי' הציג 0 לכולם — UnboundLocalError שנתפס ב-except → 500 → המסך ריק)

@@ -831,13 +831,26 @@ def fetch_invoices_rows(q="", limit=400):
     return r.json() or []
 
 
-def fetch_properties_rows():
+def office_deal(raw):
+    """[DEALS 13/10] סוג העסקה של נכס משרד: 'מכירה' (ברירת מחדל — כל השורות הקיימות) / 'השכרה' / 'מסחרי'."""
+    v = str((raw or {}).get("סוג עסקה") or "").strip()
+    if not v or v in ("מכירה", "למכירה"):
+        return "מכירה"
+    if "שכר" in v:
+        return "השכרה"
+    return "מסחרי" if "מסחר" in v else v
+
+
+def fetch_properties_rows(deals=("מכירה",)):
     """'נכסים במשרד' — זהה 1:1 ל-fetch_sheet_rows (dict לפי כותרות + _desc_ae),
     לפי סדר השורות בגיליון. שורות "ירד מפרסום" (תיוג יד2) לא מוזרמות לאפליקציה —
-    תוויות UI לירד-מפרסום הן צעד נפרד (יומן 01/09)."""
+    תוויות UI לירד-מפרסום הן צעד נפרד (יומן 01/09).
+    [DEALS 13/10] ברירת המחדל — מכירה בלבד: השכרה/מסחרי של סניפי Family (מהסורק מ-v13.45) לא נכנסים
+    לאף צרכן קיים (חיפוש, התאמות, דוחות, מפה, אתר); מסך הנכסים מבקש אותם במפורש. deals=None = הכל."""
     recs = _get_all("properties", "sheet_row,raw", {"order": "sheet_row.asc"})
     return [rec["raw"] for rec in recs
-            if isinstance(rec.get("raw"), dict) and delisted_visible(rec["raw"].get("ירד מפרסום"))]
+            if isinstance(rec.get("raw"), dict) and delisted_visible(rec["raw"].get("ירד מפרסום"))
+            and (deals is None or office_deal(rec["raw"]) in deals)]
 
 
 # ── [STALE-PROPS 05/10] נכס שהסורק הפסיק לשלוח → "ירד מפרסום" (אייל: "3 סריקות + 24 שעות") ──────

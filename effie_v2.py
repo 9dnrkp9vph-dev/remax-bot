@@ -5874,6 +5874,11 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .segs .sg b{font-size:11px;font-weight:700}
   .segs .sg.on{color:#fff;font-weight:700;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
   .segs .sg.on b{background:rgba(255,255,255,.22);padding:1px 8px;border-radius:999px;font-weight:800}
+  /* [DEALS 13/10] מכירה / השכרה / מסחרי — "המשרד שלנו" ו"שלי" (סניפי Family, מהסורק v13.45) */
+  .dealSegs{display:flex;gap:6px}
+  .dealSegs .dl{flex:1;min-height:36px;display:flex;align-items:center;justify-content:center;border-radius:999px;
+    background:#fff;border:1px solid #DCD6C8;font-size:12.5px;font-weight:700;color:#5B6472;cursor:pointer}
+  .dealSegs .dl.on{background:#1E3A5F;border-color:#1E3A5F;color:#fff}
   .srch{display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;
       border-radius:13px;padding:0 14px}
   .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
@@ -5972,6 +5977,11 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <div class="sg" data-m="nb" id="sgNb" onclick="setMode(this)" style="display:none;white-space:nowrap">נכס נולד <b id="cNb"></b></div>
         <div class="sg" data-m="mine" onclick="setMode(this)">שלי <b id="cMine"></b></div>
       </div>
+      <div class="dealSegs" id="dealSegs">
+        <div class="dl on" data-d="" onclick="setDeal(this)">למכירה</div>
+        <div class="dl" data-d="rent" onclick="setDeal(this)">להשכרה</div>
+        <div class="dl" data-d="commercial" onclick="setDeal(this)">מסחרי</div>
+      </div>
       <a id="nbAll" href="/v2/newborn" style="text-align:start;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none">לכל נכס נולד ←</a>
       <div class="srch">
         <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -6058,6 +6068,7 @@ function fmtPrice(p){
 }
 
 var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''}, UPD = {office:'', shtaf:''};
+var DEAL = '';   // [DEALS 13/10] '' = מכירה · 'rent' · 'commercial' (המשרד שלנו + שלי בלבד)
 var NBRES = [], NB_SUM = '', NB_RENT = false;   // [NB-SEARCH 30/09] טאב נכס נולד (רק כשיש חיפוש)
 function _applyNb(j){ NBRES = (j && j.results) || []; NB_SUM = (j && j.summary) || ''; NB_RENT = !!(j && j.rent); }
 function nbKitRows(){ return NBRES; }   // הכרטיסים של הרכיב המשותף מצביעים לתוצאות נכס נולד
@@ -6164,10 +6175,11 @@ function load(q){
     });
   }
   if (!q){ NBRES = []; NB_SUM = ''; NB_RENT = false; }
+  var _dk = DEAL ? ':' + DEAL : '', _dq = DEAL ? '?deal=' + DEAL : '';   // [DEALS] עותק שמור נפרד לכל סוג
   return Promise.all([
-    step(POST(base ? swrU('/api/search/properties', 'props:o') : '/api/search/properties', {q: q || '', nosave: true}), 'props:o', _applyOffice),
+    step(POST(base ? swrU('/api/search/properties', 'props:o' + _dk) : '/api/search/properties', {q: q || '', nosave: true, deal: DEAL}), 'props:o' + _dk, _applyOffice),
     step(POST(base ? swrU('/api/search/exclusives', 'props:s') : '/api/search/exclusives', {q: q || '', nosave: true}), 'props:s', _applyShtaf),
-    step(GET(base ? swrU('/api/my/properties', 'props:m') : '/api/my/properties'), 'props:m', _applyMine),
+    step(GET(base ? swrU('/api/my/properties' + _dq, 'props:m' + _dk) : '/api/my/properties' + _dq), 'props:m' + _dk, _applyMine),
     q ? step(POST('/api/search/newborn', {q: q}), 'props:nb', _applyNb) : Promise.resolve()   // [NB-SEARCH] בנפרד — לא מעכב
   ]);
 }
@@ -6232,6 +6244,8 @@ function render(){
     return;
   }
   var q = el('q').value.trim().toLowerCase();
+  if (el('dealSegs')) el('dealSegs').style.display = (MODE === 'office' || MODE === 'mine') ? 'flex' : 'none';
+  var _dealTxt = DEAL === 'rent' ? 'להשכרה' : DEAL === 'commercial' ? 'מסחריים' : '';
   var src, h = '';
   if (MODE === 'office') src = OFFICE;
   else if (MODE === 'shtaf') src = shtafShown;
@@ -6249,8 +6263,8 @@ function render(){
   var _ob = orphanBanner(); if (_ob) h = _ob + h;   // 24/09: סימון נכס-חם יתום — באנר עם "הסר"
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#C29435" stroke-width="1.4" stroke-linejoin="round"/></svg></div>' +
-    '<div class="t">' + (MODE === 'mine' ? 'אין לך נכסים פעילים' : 'לא נמצאו נכסים') + '</div>' +
-    '<div class="s">' + (MODE === 'mine' ? 'נכסים שמשויכים אליך בגיליון המשרד יופיעו כאן' : 'נסה ניסוח אחר — החיפוש מבין תקציב, חדרים ואזור') + '</div></div>';
+    '<div class="t">' + (_dealTxt && MODE !== 'shtaf' ? 'אין ' + (MODE === 'mine' ? 'לך ' : '') + 'נכסים ' + _dealTxt + ' כרגע' : (MODE === 'mine' ? 'אין לך נכסים פעילים' : 'לא נמצאו נכסים')) + '</div>' +
+    '<div class="s">' + (_dealTxt && MODE !== 'shtaf' ? 'נכסים ' + _dealTxt + ' של סניפי המשרד נאספים מיד2 בכל סריקה' : (MODE === 'mine' ? 'נכסים שמשויכים אליך בגיליון המשרד יופיעו כאן' : 'נסה ניסוח אחר — החיפוש מבין תקציב, חדרים ואזור')) + '</div></div>';
   el('list')._src = src;
 }
 function propDate(p){
@@ -6316,13 +6330,13 @@ function propCard(p, i){
   var _hot = !!HOT[_hk];
   var _hotAg = _hot ? (HOT_BY[_hk] || '') : '';   // בתצוגת מנהל — שם הסוכן שסימן
   var _lbl = _hot ? ('נכס חם · בבריף' + (MINE_MULTI && _hotAg ? ' (' + _hotAg + ')' : '')) : 'סמן כנכס חם';
-  var hotRow = isMine ? ('<div style="margin-top:8px"><button onclick="toggleHot(' + i + ')" ' +
+  var hotRow = (isMine && !DEAL) ? ('<div style="margin-top:8px"><button onclick="toggleHot(' + i + ')" ' +
     'style="width:100%;padding:11px 0;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;' +
     'cursor:pointer;border:' + (_hot ? 'none' : '1.5px solid #C29435') + ';background:' + (_hot ? '#C29435' : '#fff') +
     ';color:' + (_hot ? '#fff' : '#C29435') + '">' + _lbl + '</button></div>') : '';
   // [SITE 13/10] האתר — מוצג/מוסתר (מזכירה/מנהל; בשאר התפקידים הכפתור לא מוצג)
   var _sk = String(p.id || ''), _sh = !!SITE.hidden[_sk];
-  var siteRow = (!isShtaf && SITE.can && SITE.on && _sk) ? ('<div style="margin-top:8px">' +
+  var siteRow = (!isShtaf && !DEAL && SITE.can && SITE.on && _sk) ? ('<div style="margin-top:8px">' +
     '<button onclick="toggleSite(' + i + ')" style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
     (_sh ? 'background:#EBE8DD;color:#5B6472;border:1.5px solid #DCD6C8">מוסתר מהאתר · הצג באתר' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">מוצג באתר · הסתר מהאתר') + '</button></div>') : '';
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
@@ -6341,6 +6355,20 @@ function propCard(p, i){
     '</div>' +
     (propDate(p) ? '<div style="font-size:11.5px;color:#8B8F99;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
     acts + hotRow + siteRow + '</div>';
+}
+function setDeal(node){   // [DEALS 13/10]
+  DEAL = node.getAttribute('data-d') || '';
+  var ds = node.parentNode.children;
+  for (var i = 0; i < ds.length; i++) ds[i].classList.toggle('on', ds[i] === node);
+  OFFICE = []; MINE = [];   // לא מציגים רשימה של סוג אחר בזמן הטעינה
+  try{
+    var o = JSON.parse(localStorage.getItem('v2s:props:o' + (DEAL ? ':' + DEAL : '')) || 'null'),
+        m = JSON.parse(localStorage.getItem('v2s:props:m' + (DEAL ? ':' + DEAL : '')) || 'null');
+    if (o && o.j) _applyOffice(o.j);
+    if (m && m.j) _applyMine(m.j);
+  }catch(e){}
+  render();
+  load(el('q').value.trim());
 }
 function setMode(node){
   MODE = node.getAttribute('data-m');
@@ -10240,7 +10268,17 @@ def y2_norm_office(row, office_id):
             "תמונות": [str(u) for u in (row.get("images") or []) if str(u).startswith("http")][:30],   # [BPAGE 06/10]
             "סטטוס": "פעילה", "_desc_ae": y2_clean_desc(g("description")),
             "_y2_first_seen": y2_first_seen_str(g("imported_at") or g("listing_date") or g("first_seen")),
-            "_y2_office_id": str(office_id or "").strip(), "מקור": "yad2"}
+            "_y2_office_id": str(office_id or "").strip(), "מקור": "yad2",
+            "סוג עסקה": y2_office_deal(g("deal"))}   # [DEALS 13/10] סורק v13.45: השכרה/מסחרי בסניפי Family
+
+def y2_office_deal(v):
+    """[DEALS 13/10] סוג העסקה של שורת משרד מהסורק: ריק/מכירה → 'מכירה'; השכרה; מסחרי."""
+    v = str(v or "").strip()
+    if "שכר" in v:
+        return "השכרה"
+    if "מסחר" in v:
+        return "מסחרי"
+    return "מכירה"
 
 def y2_hot_reconcile(hot_props, rows, canon):
     """נכס חם מול נכסי המשרד החיים (אייל 09/09): מודעה שירדה מפרסום / עברה לסוכן אחר —
@@ -13766,6 +13804,8 @@ def register(app, G):
                 out["shtafN"] += sb.excl_upsert_rows(_xitems)   # 15/09: במנות, לא שורה-שורה
                 if ours:
                     G["_cache_clear"]("sheet_rows")
+                    for _dk in ("השכרה", "מסחרי"):   # [DEALS 13/10]
+                        G["_cache_clear"]("sheet_rows:" + _dk)
                     G["_cache_clear"]("famexcl_index")
                     G["_cache_clear"]("map_props")   # המפה בונה מ-fetch_sheet_rows — שתראה את החדש מיד
                 office_id = batch_oid
@@ -13788,6 +13828,8 @@ def register(app, G):
                     out["delistedN"] += _pn
                     if _pn:
                         G["_cache_clear"]("sheet_rows")
+                        for _dk in ("השכרה", "מסחרי"):   # [DEALS 13/10]
+                            G["_cache_clear"]("sheet_rows:" + _dk)
                         G["_cache_clear"]("famexcl_index")
                         G["_cache_clear"]("map_props")
             out["n"] = len(rows)
@@ -14229,7 +14271,7 @@ def register(app, G):
                 # אווה אזולאי שוחררה — נכללת כסוכנת רגילה (בקשת אייל 13/07)
                 d["_desc_ae"] = vals[30] if len(vals) > 30 else ""
                 new_by[_key(d)] = d
-            cur = _sb.fetch_properties_rows() or []
+            cur = _sb.fetch_properties_rows(deals=None) or []   # [DEALS 13/10] כל סוגי העסקה — אחרת ההחלפה מוחקת השכרות
             cur_active = [d for d in cur if _nm(d.get("סטטוס")) in ("", "פעילה")]
             cur_keys = set(_key(d) for d in cur_active)
             new_keys = set(new_by)
