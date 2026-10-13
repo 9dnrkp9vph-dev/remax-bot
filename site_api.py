@@ -140,6 +140,38 @@ def clean_settings(body, agent_names):
     return pages, branches, social, agents, errors
 
 
+def agents_directory(full, vphones, cfg, name_key):
+    """מדריך הסוכנים לאתר (שרת-לשרת, במפתח): שם, כינויים, נייד אמיתי (לוואטסאפ בלבד — לא מוצג באתר),
+    מספר וירטואלי ורישיון. מקורות: גיליון 'אנשי קשר' (fetch_agents_full), מספרים וירטואליים, וקונפיג אפי."""
+    cfg = cfg or {}
+    gone = {name_key(n) for n in (cfg.get("removedAgents") or []) + (cfg.get("purgedAgents") or [])}
+    lic = cfg.get("v2_licenses") or {}
+    vk = {name_key(k): v for k, v in (vphones or {}).items()}
+    by = {}
+    def slot(nm):
+        nm = re.sub(r"\s+", " ", str(nm or "")).strip()
+        if not nm or name_key(nm) in gone:
+            return None
+        return by.setdefault(name_key(nm), {"name": nm, "aliases": [], "phone": "", "vphone": "", "license": ""})
+    for v in (full or {}).values():
+        a = slot((v or {}).get("name"))
+        if a:
+            a["phone"] = a["phone"] or str(v.get("phone") or "").strip()
+            a["license"] = a["license"] or str(v.get("license") or "").strip()
+    for ag in cfg.get("agents") or []:
+        a = slot((ag or {}).get("name"))
+        if not a:
+            continue
+        a["aliases"] = [str(x) for x in (ag.get("aliases") or []) if str(x).strip()]
+        a["phone"] = a["phone"] or str(ag.get("phone") or "").strip()
+        a["vphone"] = a["vphone"] or str(ag.get("vphone") or "").strip()
+    for k, a in by.items():
+        a["vphone"] = a["vphone"] or str(vk.get(k, "") or "").strip()
+        p9 = re.sub(r"\D", "", a["phone"])[-9:]
+        a["license"] = str(lic.get(p9, "") or "").strip() or a["license"]
+    return list(by.values())
+
+
 def register_site(app, G, store=None):
     from flask import request, jsonify
     log = G.get("log")
@@ -194,6 +226,18 @@ def register_site(app, G, store=None):
             return jsonify({"ok": False})
         finally:
             sem.release()
+
+    @app.route("/site/api/agents", methods=["POST"])
+    def site_api_agents():
+        b = request.get_json(silent=True) or {}
+        if not _site_key_ok(b):
+            return jsonify({"ok": False}), 403
+        try:
+            return jsonify({"ok": True, "agents": agents_directory(G["fetch_agents_full"](), G["fetch_agent_virtual_phones"](),
+                                                                   G["_load_config"]() or {}, G["_name_key"])})
+        except Exception as e:
+            if log: log.warning(f"site agents: {e}")
+            return jsonify({"ok": False})
 
     @app.route("/site/api/form", methods=["POST"])
     def site_api_form():
