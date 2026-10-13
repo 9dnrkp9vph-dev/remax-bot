@@ -9,6 +9,8 @@ import hmac
 import html as _html
 import os
 import re
+import threading
+import time
 
 FORM_KINDS = {"value": "הערכת שווי", "contact": "צור קשר", "career": "קריירה"}
 FIELD_LABELS = {"name": "שם", "phone": "טלפון", "address": "כתובת הנכס", "city": "עיר", "when": "מתי מתכננים למכור",
@@ -69,7 +71,8 @@ def can_edit_prop(sess, row, owns, is_dev) -> bool:
     """הסתר/מומלץ: מנהל ומפתח — כל נכס; סוכן — רק נכס שלו."""
     if not sess:
         return False
-    if is_dev or sess.get("role") == "admin":
+    # מנהל ומפתח בלבד — לא הנה"ח/מזכירה, שגם הן role=admin באפי (_ROLE_SCOPE)
+    if is_dev or sess.get("drole") in ("manager", "developer"):
         return True
     try:
         return bool(owns(row, sess.get("name", ""), sess.get("_phones") or [sess.get("phone", "")]))
@@ -151,6 +154,25 @@ def register_site(app, G, store=None):
             _store["s"] = SettingsStore(G.get("_sbdb"))
         return _store["s"]
 
+    # הגנה על אפי מעומס חיפושי האתר (כל חיפוש חדש = פענוח AI): עד 2 במקביל, ותקרה לדקה לכל האתר
+    sem = threading.BoundedSemaphore(2)
+    app.site_search_sem = sem
+    _minute = {"t": [], "lock": threading.Lock()}
+
+    def _minute_ok():
+        cap = int((os.environ.get("SITE_SEARCH_PER_MIN") or "60").strip() or 60)
+        now = time.time()
+        with _minute["lock"]:
+            _minute["t"] = [t for t in _minute["t"] if now - t < 60]
+            if len(_minute["t"]) >= cap:
+                return False
+            _minute["t"].append(now)
+            return True
+
+    def _active_ids():
+        return {str(r.get("מספר מודעה", "") or "").strip() for r in (G["fetch_sheet_rows"]() or [])
+                if not str(r.get("ירד מפרסום", "") or "").strip()} - {""}
+
     def _site_key_ok(body):
         return key_ok((body or {}).get("key", ""), (os.environ.get("SITE_KEY") or "").strip())
 
@@ -162,7 +184,11 @@ def register_site(app, G, store=None):
         q = re.sub(r"\s+", " ", str(b.get("q", "") or "")).strip()[:120]
         if not q:
             return jsonify({"ok": True, "keys": [], "summary": ""})
+        if not sem.acquire(blocking=False):
+            return jsonify({"ok": False, "reason": "busy"})
         try:
+            if not _minute_ok():
+                return jsonify({"ok": False, "reason": "busy"})
             parsed = G["_parse_props_query"](q) or {}
             matches = G["search_listings_in_sheet"](parsed) if parsed else []
             hidden, _ = prop_flags(st().all())
@@ -170,6 +196,8 @@ def register_site(app, G, store=None):
         except Exception as e:
             if log: log.warning(f"site search: {e}")
             return jsonify({"ok": False})
+        finally:
+            sem.release()
 
     @app.route("/site/api/form", methods=["POST"])
     def site_api_form():
@@ -205,6 +233,8 @@ def register_site(app, G, store=None):
             return jsonify({"ok": False, "auth": False}), 401
         rows = st().all()
         hidden, featured = prop_flags(rows)
+        act = _active_ids()
+        featured = [k for k in featured if k in act]   # מומלץ שירד מהמלאי לא נספר ולא מוצג
         return jsonify({"ok": True, "hidden": sorted(hidden), "featured": featured, "max_featured": MAX_FEATURED,
                         "available": bool(getattr(st(), "available", True))})
 
@@ -234,6 +264,8 @@ def register_site(app, G, store=None):
         if not getattr(st(), "available", True):
             return jsonify({"ok": False, "reason": "no_table"})
         hidden, featured = prop_flags(rows)
+        act = _active_ids()
+        featured = [k for k in featured if k in act]   # מומלצים שנמכרו/ירדו לא תופסים מקום
         cur = {"hidden": key in hidden, "featured": key in featured}
         new = dict(cur)
         if "hidden" in b:
@@ -264,7 +296,7 @@ def register_site(app, G, store=None):
             dev = bool(G["_is_dev"](s.get("phone", ""))) or s.get("drole") == "developer"
         except Exception:
             pass
-        return s if (dev or s.get("role") == "admin") else None
+        return s if (dev or s.get("drole") in ("manager", "developer")) else None
 
     def _agent_names():
         cfg = G["_load_config"]() or {}
@@ -442,7 +474,7 @@ function load(){
   }).catch(function(){ el('m').innerHTML = '<div class="cc empty"><div class="s">אין חיבור — נסה שוב</div></div>'; });
 }
 function fld(id, label, val, ta, max){
-  return '<div><label for="' + id + '">' + label + '</label>' + (ta ? '<textarea id="' + id + '" maxlength="' + max + '">' + esc(val) + '</textarea>'
+  return '<div><label for="' + id + '">' + esc(label) + '</label>' + (ta ? '<textarea id="' + id + '" maxlength="' + max + '">' + esc(val) + '</textarea>'
     : '<input id="' + id + '" value="' + esc(val) + '" maxlength="' + max + '">') + (ERR[id] ? '<div class="err">' + esc(ERR[id]) + '</div>' : '') + '</div>';
 }
 function render(){

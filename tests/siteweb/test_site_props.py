@@ -5,7 +5,7 @@ ROWS = [{"מספר מודעה": "a1", "סוכן 1": "חי חיים אלבז"}, {
 owns = lambda row, name, phones: row.get("סוכן 1") == name
 
 def sess(role="agent", name="חי חיים אלבז", dev=False):
-    return {"name": name, "role": role, "phone": "0521112222", "drole": "developer" if dev else role}
+    return {"name": name, "role": role, "phone": "0521112222", "drole": "developer" if dev else ("manager" if role == "admin" else role)}
 
 def test_prop_flags():
     rows = [{"kind": "prop", "key": "a", "data": {"hidden": True}}, {"kind": "prop", "key": "b", "data": {"featured": True}},
@@ -45,7 +45,10 @@ def test_unauth(make_app):
 def test_featured_cap(make_app):
     store = Store()
     store.rows = [{"kind": "prop", "key": "k%d" % i, "data": {"featured": True}} for i in range(6)]
-    c, store, _ = mk(make_app, sess(role="admin", name="x"), store)
+    active = ROWS + [{"מספר מודעה": "k%d" % i, "סוכן 1": "x"} for i in range(6)]   # 6 מומלצים פעילים
+    app = make_app(store=store, _web_auth=lambda: sess(role="admin", name="x"), fetch_sheet_rows=lambda: active,
+                   _agent_owns_row=owns, _is_dev=lambda ph: False, _phones_for_name=lambda n: [])
+    c = app.test_client()
     r = c.post("/v2/api/site/prop", json={"key": "a1", "featured": True}).get_json()
     assert r == {"ok": False, "reason": "featured_full"}
 

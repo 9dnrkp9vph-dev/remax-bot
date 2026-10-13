@@ -1701,7 +1701,7 @@ el('story').addEventListener('touchmove', function(e){
     var _inImp = false; try{ _inImp = !!localStorage.getItem('fbTokAdmin'); }catch(e){}
     if (j.role === 'admin' && !j.dev && !_inImp) el('menuLoginAs').style.display = 'flex';   // [LOGINAS-MGR] בעל המשרד — מהניהול
     if (['accountant','manager','developer'].indexOf(j.drole) >= 0) el('menuInvoices').style.display = 'flex';
-    if (j.role === 'admin' || j.dev) el('menuSite').style.display = 'flex';   // [SITE 13/10] ניהול האתר
+    if (j.drole === 'manager' || j.dev) el('menuSite').style.display = 'flex';   // [SITE 13/10] ניהול האתר — מנהל/מפתח בלבד
     var impTok = null;
     try{ impTok = localStorage.getItem('fbTokAdmin'); }catch(e){}
     if (impTok && !j.dev){   // מצב "כניסה כסוכן (בדיקה)" — פס חזרה למנהל

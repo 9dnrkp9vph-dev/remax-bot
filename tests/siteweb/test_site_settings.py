@@ -16,7 +16,7 @@ def test_clean_settings_rules():
     assert agents == {"חי חיים אלבז": {"shown": False, "order": 3, "bio": "ב" * 300}}
 
 def mk(make_app, role, store=None):
-    s = {"name": "x", "role": role, "phone": "0500000000", "drole": role}
+    s = {"name": "x", "role": role, "phone": "0500000000", "drole": "manager" if role == "admin" else role}
     store = store or Store()
     cfg = {"agents": [{"name": n} for n in NAMES], "removedAgents": []}
     rows = [{"מספר מודעה": "a1", "סוכן 1": "חי חיים אלבז", "עיר / ישוב": "קרית ביאליק"}]
