@@ -143,7 +143,7 @@ def clean_settings(body, agent_names):
     return pages, branches, social, agents, errors
 
 
-def agents_directory(full, vphones, cfg, name_key):
+def agents_directory(full, vphones, cfg, name_key, phones_for=None):
     """מדריך הסוכנים לאתר (שרת-לשרת, במפתח): שם, כינויים, נייד אמיתי (לוואטסאפ בלבד — לא מוצג באתר),
     מספר וירטואלי ורישיון. מקורות: גיליון 'אנשי קשר' (fetch_agents_full), מספרים וירטואליים, וקונפיג אפי."""
     cfg = cfg or {}
@@ -173,7 +173,13 @@ def agents_directory(full, vphones, cfg, name_key):
         a["vphone"] = a["vphone"] or str(vk.get(k, "") or "").strip()
         p9 = re.sub(r"\D", "", a["phone"])[-9:]
         a["license"] = str(lic.get(p9, "") or "").strip() or a["license"]
-        a["suspended"] = bool(p9 and p9 in susp)   # 14/10: מושהה — האתר לא מציג אותו
+        mine = {p9} if p9 else set()
+        if phones_for:   # לסוכן כמה טלפונים (גיליון/כניסה/קונפיג) — מושהה לפי כל אחד מהם
+            try:
+                mine |= {re.sub(r"\D", "", str(x or ""))[-9:] for x in (phones_for(a["name"]) or [])}
+            except Exception:
+                pass
+        a["suspended"] = bool(mine & susp)   # 14/10: מושהה — האתר לא מציג אותו
     return list(by.values())
 
 
@@ -277,7 +283,8 @@ def register_site(app, G, store=None):
             return jsonify({"ok": False}), 403
         try:
             return jsonify({"ok": True, "agents": agents_directory(G["fetch_agents_full"](), G["fetch_agent_virtual_phones"](),
-                                                                   G["_load_config"]() or {}, G["_name_key"])})
+                                                                   G["_load_config"]() or {}, G["_name_key"],
+                                                                   phones_for=G["_phones_for_name"])})
         except Exception as e:
             if log: log.warning(f"site agents: {e}")
             return jsonify({"ok": False})
