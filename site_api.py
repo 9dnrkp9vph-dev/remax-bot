@@ -77,6 +77,7 @@ def can_edit_prop(sess, row, owns, is_dev) -> bool:
 
 
 PAGE_LIMITS = {"hero_sub": 220, "approach": 600}
+CITY_MAX = 600   # תיאור עיר — כמו שהאתר מציג (היה 400 וקטע טיוטות באמצע משפט, 15/10)
 SOCIAL_HOSTS = {"facebook": ("facebook.com",), "instagram": ("instagram.com",), "youtube": ("youtube.com", "youtu.be")}
 
 
@@ -108,7 +109,7 @@ def clean_settings(body, agent_names):
         if k in PAGE_LIMITS:
             pages[k] = _plain(v, PAGE_LIMITS[k])
         elif k.startswith("city:") and len(k) <= 40:
-            pages[k] = _plain(v, 400)
+            pages[k] = _plain(v, CITY_MAX)
     branches = []
     for b in (body.get("branches") or [])[:5]:
         if not isinstance(b, dict):
@@ -589,6 +590,8 @@ def register_site(app, G, store=None):
             k = nk(str(r.get("סוכן 1", "") or ""))
             cnt[k] = cnt.get(k, 0) + 1
             c = re.sub(r"\s+", " ", str(r.get("עיר / ישוב", "") or "")).strip().replace("קריית", "קרית")
+            if c == "חיפה" and re.search(r"קרי?ית\s*חיים", str(r.get("שכונה", "") or "")):
+                c = "קרית חיים"   # ביד2 קרית חיים היא שכונה של חיפה; באתר יש לה עמוד עיר משלה
             if c and c not in cities:
                 cities.append(c)
         names = _agent_names()
@@ -750,7 +753,7 @@ function render(){
   var P = D.pages || {};
   h += '<div class="cc"><div class="h">טקסטים</div>' + fld('p_hero', 'תת-כותרת בפתיחה', P.hero_sub || '', true, 220) +
     fld('p_appr', 'הגישה שלנו', P.approach || '', true, 600);
-  (D.cities || []).forEach(function(c, i){ h += fld('p_city' + i, 'תיאור ' + c, P['city:' + c] || '', true, 400); });
+  (D.cities || []).forEach(function(c, i){ h += fld('p_city' + i, 'תיאור ' + c, P['city:' + c] || '', true, 600); });
   h += '</div>';
   h += '<div class="cc"><div class="h">סניפים</div><div class="s">מופיעים בפתיחה ובתחתית האתר.</div><div id="brs">';
   (D.branches.length ? D.branches : [{name:'', phone:''}]).forEach(function(b, i){

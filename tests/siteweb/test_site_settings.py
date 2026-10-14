@@ -64,3 +64,17 @@ def test_imported_bio_shows_even_with_other_spelling(make_app):
     c, _, _ = mk(make_app, "admin", store)
     j = c.get("/v2/api/site/settings").get_json()
     assert j["agents"][0]["name"] == "חי חיים אלבז" and j["agents"][0]["bio"] == "שורה א\nשורה ב"
+
+
+def test_kiryat_haim_is_a_city_and_city_text_600(make_app):
+    store = Store()
+    c, _, app = mk(make_app, "admin", store)
+    rows = [{"מספר מודעה": "a1", "סוכן 1": "חי חיים אלבז", "עיר / ישוב": "חיפה", "שכונה": "קרית חיים מזרחית"},
+            {"מספר מודעה": "a2", "סוכן 1": "חי חיים אלבז", "עיר / ישוב": "חיפה", "שכונה": "כרמל"}]
+    app2 = make_app(store=store, _web_auth=lambda: {"name": "x", "role": "admin", "phone": "0500000000", "drole": "manager"},
+                    _load_config=lambda: {"agents": [{"name": n} for n in NAMES], "removedAgents": []},
+                    fetch_sheet_rows=lambda: rows, _is_dev=lambda ph: False, _name_key=lambda n: n.replace(" ", ""))
+    j = app2.test_client().get("/v2/api/site/settings").get_json()
+    assert j["cities"] == ["קרית חיים", "חיפה"]
+    pages, _, _, _, _ = clean_settings({"pages": {"city:קרית חיים": "א" * 900}}, NAMES)
+    assert len(pages["city:קרית חיים"]) == 600
