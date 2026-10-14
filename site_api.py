@@ -193,7 +193,7 @@ def agents_directory(full, vphones, cfg, name_key, phones_for=None, roles_for=No
 
 # ---- 'סוכן AI אישי' (14/10): גולש באתר → הודעה מוכנה לוואטסאפ הרשמי → דף קונה ----
 LEAD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-_LEAD_RE = re.compile(r"^\s*היי,\s*אני\s*מחפש(?:/ת|ת)?:\s*(?P<q>.+?)\s*(?:\(קוד\s*(?P<code>[A-Z2-9]{4})\)\s*)?$", re.S)
+_LEAD_RE = re.compile(r"^\s*היי,\s*אני\s*מחפש(?:/ת|ת)?:\s*(?P<q>.+?)\s*(?:\((?:קוד|חיפוש\s*מס[׳'\u0022]?)\s*(?P<code>[A-Z2-9]{4})\)\s*)?$", re.S)
 
 
 def new_lead_code(rnd=None):
@@ -218,6 +218,13 @@ def lead_reply(first, office, n, url, updated):
     else:
         body = ("מצאתי נכס אחד שמתאים" if n == 1 else "מצאתי %d נכסים שמתאימים" % n) + " למה שחיפשת — הכנתי לך דף אישי:\n"
     return hi + body + url + "\nבדף אפשר לסמן מה מתאים ומה לא, ונחזור אליכם."
+
+
+def lead_ack(first, office):
+    hi = ("שלום %s" % first) if first else "שלום"
+    return ("%s, קיבלתי את הבקשה שלך.\n"
+            "אני עובר עכשיו על כל הנכסים של %s ומדרג אותם לפי מה שכתבת — "
+            "הדף האישי שלך עם הנכסים שהכי מתאימים יגיע כאן בעוד כמה שניות." % (hi, office))
 
 
 def lead_no_match(first, office):
@@ -399,6 +406,10 @@ def register_site(app, G, store=None):
                     _push("ליד מהאתר — הגבלה יומית", "%s (%s) ביקש שוב: %s" % (nm or "ליד", phone, q[:60]), push_to)
                 return "limit"
             _lead_day[phone] = day + [now]
+        try:   # 15/10 (אייל): תשובה מיידית — שהלקוח יחכה בשיחה עד שהדף מגיע
+            G["_d360_send_text"](wa_from, lead_ack(first, office))
+        except Exception as e:
+            if log: log.warning(f"site lead ack: {e}")
         p9 = phone[-9:]
         same = [b for b in (G["_fetch_manual_buyers"]() or []) if re.sub(r"\D", "", str(b.get("phone", "") or ""))[-9:] == p9]
         # קודם ליד קודם מהאתר (גם אם הועבר לסוכן אחר — אותו קונה, אותו דף), אחר כך קונה של סוכן הלידים

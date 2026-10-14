@@ -31,7 +31,8 @@ def test_full_flow_with_code(make_app, monkeypatch):
     assert st == "sent" and writes[0][0] == "addbuyer" and writes[0][1]["search"] == "4 חדרים באפקה"
     assert writes[0][1]["agent"] == "אייל שמול" and writes[0][1]["summary"] == "ליד מהאתר · home"
     assert writes[0][1]["phone"] == "0521234567" and writes[0][1]["name"] == "דנה כהן"
-    assert sent[0][0] == "972521234567" and sent[0][1].startswith("שלום דנה, כאן הסוכן האישי של רימקס פמילי.") and "https://x/b/T" in sent[0][1]
+    assert sent[-1][0] == "972521234567" and sent[-1][1].startswith("שלום דנה, כאן הסוכן האישי של רימקס פמילי.") and "https://x/b/T" in sent[-1][1]
+    assert sent[0][1].startswith("שלום דנה, קיבלתי")                   # 15/10: תשובה מיידית לפני התוצאות
     assert pushes and pushes[0][0] == "ליד חדש מהאתר" and pushes[0][2] == ["505709865"]
 
 def test_expired_code_uses_message_text(make_app, monkeypatch):
@@ -48,7 +49,7 @@ def test_ignored_and_no_match_and_limit(make_app, monkeypatch):
     for _ in range(3):
         app2.site_lead_inbound("972500000001", "", "היי, אני מחפש/ת: דירה בביאליק", sync=True)
     assert app2.site_lead_inbound("972500000001", "", "היי, אני מחפש/ת: דירה בביאליק", sync=True) == "limit"
-    assert len(sent2) == 3 and pushes2[-1][0] == "ליד מהאתר — הגבלה יומית"
+    assert len(sent2) == 6 and pushes2[-1][0] == "ליד מהאתר — הגבלה יומית"   # 3 בקשות × (מיידית + תוצאות)
 
 def test_existing_buyer_updated_and_send_failure(make_app, monkeypatch):
     b = {"row": 7, "name": "דנה", "phone": "052-1234567", "agent": "אייל שמול", "search": "ישן"}

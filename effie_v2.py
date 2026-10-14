@@ -4037,7 +4037,7 @@ function itemKey(it){
 function bpChip(k){
   if (!k) return '';
   if (Object.prototype.hasOwnProperty.call(BP_STATE.keys, k)){
-    var m = BP_STATE.keys[k], t = (m === 'like' || m === 'visit') ? 'בדף · מתאים' : m === 'dislike' ? 'בדף · לא מתאים' : 'בדף הקונה';
+    var m = BP_STATE.keys[k], t = (m === 'like' || m === 'visit') ? 'בדף · מתאים' : m === 'dislike' ? 'בדף · לא מתאים' : m === 'seen' ? 'בדף · ראיתי' : 'בדף הקונה';
     return '<span class="bpc" style="display:inline-block;background:#EAF0FA;color:#2E6BD6;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' + t + '</span>';
   }
   if (BP_STATE.newK[k]) return '<span class="bpc" style="display:inline-block;background:#2E6BD6;color:#fff;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">התאמה חדשה</span>';
@@ -4099,6 +4099,7 @@ function bpLine(b, i){
   var parts = [];
   if (s.expired) parts.push('פג תוקף');
   if ((s.like || 0) + (s.visit || 0)) parts.push(((s.like || 0) + (s.visit || 0)) + ' מתאים');   // 11/10: 'רוצה לראות' ישן = מתאים
+  if (s.seen) parts.push(s.seen + ' ראיתי');   // 15/10
   if (s.dislike) parts.push(s.dislike + ' לא מתאים');
   if (s.newN) parts.push(s.newN + ' התאמות חדשות');
   return '<div onclick="bpSheet(' + i + ')" style="display:flex;align-items:center;gap:8px;min-height:44px;margin:8px 0 0;padding:0 12px;' +
@@ -4109,7 +4110,7 @@ function bpLine(b, i){
 }
 function bpSheetHtml(b, j){
   var it = j.items || [], P = j.page || {};
-  var grp = [['like', 'מתאים'], ['', 'טרם סומן'], ['dislike', 'לא מתאים']];   // 11/10 (אייל): בלי 'רוצה לראות' — סימון ישן נספר כמתאים
+  var grp = [['like', 'מתאים'], ['seen', 'ראיתי'], ['', 'טרם סומן'], ['dislike', 'לא מתאים']];   // ראיתי — 15/10   // 11/10 (אייל): בלי 'רוצה לראות' — סימון ישן נספר כמתאים
   var h = '<h3>דף קונה · ' + esc(b.name || '') + '</h3>' +
     (P.expired ? '<div style="color:#7A5E1C;font-weight:700;font-size:13px;margin-bottom:8px">הקישור פג תוקף — שליחה חדשה מחדשת אותו ל-90 יום</div>' : '');
   grp.forEach(function(g){
@@ -11216,7 +11217,14 @@ def sig_ingest_norm(b):
 # ── [BPAGE 06/10] דף קונה עם התאמות נכסים — פונקציות טהורות (ספק 2026-10-06-buyer-page) ──
 # כללי חשיפה (אייל 06/10): נכס נולד — בלי מספר בית/תמונות/תיאור/בעלים; שת"פ — בלי משרד/קישור;
 # אף קישור ליד2 ואף טלפון שאינו של הסוכן המטפל.
-BPAGE_MARKS = {"like": "מתאים", "dislike": "לא מתאים", "visit": "רוצה לראות"}
+BPAGE_MARKS = {"like": "מתאים", "dislike": "לא מתאים", "visit": "רוצה לראות", "seen": "ראיתי"}   # seen — 15/10 (אייל)
+
+
+def bpage_is_ai(page, buyer, lead_agent):
+    """דף של ליד מ'סוכן AI אישי' שעוד לא הועבר לסוכן — מוצג כ'סוכן AI אישי' של המשרד (אייל 15/10)."""
+    b = buyer or {}
+    return (str(b.get("summary", "") or "").startswith("ליד מהאתר")
+            and " ".join(str(b.get("agent", "") or "").split()) == " ".join(str(lead_agent or "").split()))
 BPAGE_DAYS = 90
 
 
@@ -11519,7 +11527,7 @@ h1{font-size:22px;margin:6px 0 8px;font-weight:800}
 .teaser{background:#F6EEDB;color:#7A5E1C;font-weight:700;font-size:13.5px;border-radius:14px;padding:10px 12px;margin-top:10px}
 .acts{display:flex;gap:8px;margin-top:12px}
 .acts button{flex:1;min-height:44px;border-radius:14px;font-family:inherit;font-weight:800;font-size:14px;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F}
-.acts .lk{border-color:#157A43;color:#157A43}.acts .lk.on{background:#157A43;border-color:#157A43;color:#fff}.acts .dl.on{background:#5B6472;border-color:#5B6472;color:#fff}
+.acts .lk{border-color:#157A43;color:#157A43}.acts .lk.on{background:#157A43;border-color:#157A43;color:#fff}.acts .dl.on{background:#5B6472;border-color:#5B6472;color:#fff}.acts .sn.on{background:#1E3A5F;border-color:#1E3A5F;color:#fff}
 .note{display:none;margin-top:8px}.note.open{display:flex;gap:8px}
 .note input{flex:1;font-size:16px;font-family:inherit;border:1.5px solid #DCD6C8;border-radius:12px;padding:10px;min-height:44px}
 .note button{min-height:44px;border-radius:12px;border:none;background:#2E6BD6;color:#fff;font-weight:800;padding:0 16px;font-family:inherit}
@@ -11575,7 +11583,8 @@ function cardHtml(it, i){
     (nb ? '<div class="teaser">נכס חדש לפני פרסום · פרטים אצל ' + esc(D.agent.first || D.agent.name) + '</div>' : '') +
     (it.gone ? '<span class="gonetag">כבר לא זמין</span>' :
       '<div class="acts"><button class="lk' + (it.mark === 'like' || it.mark === 'visit' ? ' on' : '') + '" onclick="mark(' + i + ',\'like\')">מתאים</button>' +
-      '<button class="dl' + (it.mark === 'dislike' ? ' on' : '') + '" onclick="mark(' + i + ',\'dislike\')">לא מתאים</button></div>' +
+      '<button class="dl' + (it.mark === 'dislike' ? ' on' : '') + '" onclick="mark(' + i + ',\'dislike\')">לא מתאים</button>' +
+      '<button class="sn' + (it.mark === 'seen' ? ' on' : '') + '" onclick="mark(' + i + ',\'seen\')">ראיתי</button></div>' +
       '<div class="note" id="n' + i + '"><input id="ni' + i + '" maxlength="200" placeholder="למה? (לא חובה)" value="' + esc(it.note || '') + '">' +
       '<button onclick="saveNote(' + i + ')">שמור</button></div>') +
     '</div></div>';
@@ -11597,11 +11606,12 @@ function render(){
 /* [BPAGE-UP 08/10] עדכון חיפוש במלל חופשי → וואטסאפ עסקי לסוכן; שיתוף הדף */
 function srchHtml(){
   var who = D.agent.first || D.agent.name || 'הסוכן', n = D.scanN ? Number(D.scanN).toLocaleString('he-IL') + ' ' : '';
+  var ai = !!D.agent.ai;   // 15/10: דף של סוכן ה-AI — בלי 'X יחזור אליך'
   return '<div class="srch" id="srch"><div class="t">מחפש משהו אחר?</div>' +
-    '<div class="s">כתוב מה חשוב לך — אזור, תקציב, חדרים. סוכן ה-AI שלנו יסרוק ' + esc(n) + 'מודעות למכירה בקריות, ו' + esc(who) + ' יחזור אליך עם התאמות.</div>' +
-    (ST.sent ? '<div class="ok">נשלח! ' + esc(who) + ' יחזור אליך בקרוב</div>' :
+    '<div class="s">כתוב מה חשוב לך — אזור, תקציב, חדרים. סוכן ה-AI שלנו יסרוק ' + esc(n) + 'מודעות למכירה בקריות' + (ai ? '.' : ', ו' + esc(who) + ' יחזור אליך עם התאמות.') + '</div>' +
+    (ST.sent ? '<div class="ok">' + (ai ? 'נשלח! נעדכן אותך בקרוב' : 'נשלח! ' + esc(who) + ' יחזור אליך בקרוב') + '</div>' :
       '<textarea id="sq" maxlength="500" placeholder="למשל: 4 חדרים בקרית ביאליק עם מעלית, עד 2.2 מיליון">' + esc(ST.sq || '') + '</textarea>' +
-      '<button id="sb" onclick="sendSearch()">שלח ל' + esc(who) + '</button>') + '</div>';
+      '<button id="sb" onclick="sendSearch()">' + (ai ? 'שלח' : 'שלח ל' + esc(who)) + '</button>') + '</div>';
 }
 function sendSearch(){
   var t = document.getElementById('sq'), b = document.getElementById('sb');
@@ -12796,7 +12806,7 @@ def register(app, G):
             for p in pages:
                 its = by_page.get(p["id"], [])
                 seen = bpage_iso_ep(p.get("seen_at"))
-                cnt = {"like": 0, "visit": 0, "dislike": 0}
+                cnt = {"like": 0, "visit": 0, "dislike": 0, "seen": 0}
                 for i in its:
                     if i.get("mark") in cnt:
                         cnt[i["mark"]] += 1
@@ -12856,8 +12866,14 @@ def register(app, G):
             lic = str((_load_config().get("v2_licenses") or {}).get(d[-9:], "") or "").strip() if d else ""
         except Exception:
             lic = ""
-        return {"name": nm, "first": nm.split()[0] if nm else "", "phone": tel, "tel": tel, "license": lic,
-                "wa": G["_wa_phone"](ph) if ph else "", "avatar": ("/v2/api/avatar?p=" + d[-9:]) if d else ""}
+        ctx = {"name": nm, "first": nm.split()[0] if nm else "", "phone": tel, "tel": tel, "license": lic,
+               "wa": G["_wa_phone"](ph) if ph else "", "avatar": ("/v2/api/avatar?p=" + d[-9:]) if d else ""}
+        try:   # 15/10: ליד מהאתר שעוד אצל סוכן הלידים — 'סוכן AI אישי' של המשרד (אחרי העברה — הסוכן האמיתי)
+            if bpage_is_ai(page, _bp_buyer(page.get("row")), os.environ.get("SITE_LEAD_AGENT") or "אייל שמול"):
+                ctx.update(name="סוכן AI אישי", first="סוכן ה-AI", license="", ai=True)
+        except Exception:
+            pass
+        return ctx
 
     def _bp_resp(html, code):
         return Response(html, status=code, headers={"Cache-Control": "no-store",

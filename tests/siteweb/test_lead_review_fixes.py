@@ -20,7 +20,7 @@ def test_codeless_leads_capped_per_day(make_app, monkeypatch):   # C2: הודע�
     monkeypatch.setenv("SITE_LEAD_NOCODE_DAY", "2")
     app, sent, _, _ = _setup(make_app, monkeypatch)
     st = [app.site_lead_inbound("97250000000%d" % i, "", MSG, sync=True) for i in range(3)]
-    assert st[:2] != ["ignored", "ignored"] and st[2] == "nocode_cap" and len(sent) == 2
+    assert st[:2] != ["ignored", "ignored"] and st[2] == "nocode_cap" and len(sent) == 4
 
 def test_transferred_buyer_reused(make_app, monkeypatch):        # I1: קונה שהועבר לסוכנת — לא נוצר כפול
     b = {"row": 7, "name": "דנה", "phone": "0521234567", "agent": "דנה לוי", "summary": "ליד מהאתר · home"}
@@ -38,7 +38,7 @@ def test_duplicate_message_id_ignored(make_app, monkeypatch):    # I4: ניסי�
     app, sent, _, writes = _setup(make_app, monkeypatch)
     assert app.site_lead_inbound("972521234567", "", MSG, sync=True, mid="wamid.1") != "ignored"
     assert app.site_lead_inbound("972521234567", "", MSG, sync=True, mid="wamid.1") == "duplicate"
-    assert len(sent) == 1 and len(writes) == 1
+    assert len(sent) == 2 and len(writes) == 1
 
 def test_no_agent_phone_push_goes_to_default(make_app, monkeypatch):
     monkeypatch.setenv("SITE_LEAD_AGENT", "לא קיים")
