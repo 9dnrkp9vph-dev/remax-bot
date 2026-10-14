@@ -7,13 +7,16 @@ def test_clean_settings_rules():
     body = {"pages": {"hero_sub": "x" * 900, "approach": "<script>alert(1)</script>שלום", "city:קרית ביאליק": "עיר יפה", "bogus": "z"},
             "branches": [{"name": "ביאליק", "phone": "04-6000800"}, {"name": "רע", "phone": "abc"}],
             "social": {"facebook": "javascript:alert(1)", "instagram": "https://www.instagram.com/remax.family", "youtube": "https://evil.com/x"},
-            "agents": {"חי חיים אלבז": {"shown": False, "order": 3, "bio": "ב" * 900}, "לא קיים": {"shown": True}}}
+            "agents": {"חי חיים אלבז": {"shown": False, "order": 3, "bio": "ב" * 2000}, "לא קיים": {"shown": True}}}
     pages, branches, social, agents, errors = clean_settings(body, NAMES)
     assert len(pages["hero_sub"]) == 220 and "<" not in pages["approach"] and "bogus" not in pages
     assert pages["city:קרית ביאליק"] == "עיר יפה"
     assert branches == [{"name": "ביאליק", "phone": "046000800"}] and "branches" in errors
     assert social == {"instagram": "https://www.instagram.com/remax.family"} and "facebook" in errors and "youtube" in errors
-    assert agents == {"חי חיים אלבז": {"shown": False, "order": 3, "bio": "ב" * 300}}
+    assert agents == {"חי חיים אלבז": {"shown": False, "order": 3, "bio": "ב" * 1500}}
+    # תיאור עם כמה שורות (ייבוא מהאתר הישן) — השורות נשמרות
+    _, _, _, ag2, _ = clean_settings({"agents": {"חי חיים אלבז": {"bio": "שורה א\nשורה ב"}}}, NAMES)
+    assert ag2["חי חיים אלבז"]["bio"] == "שורה א\nשורה ב"
 
 def mk(make_app, role, store=None):
     s = {"name": "x", "role": role, "phone": "0500000000", "drole": "manager" if role == "admin" else role}
@@ -53,3 +56,11 @@ def test_site_page(make_app):
     c, _, _ = mk(make_app, "admin")
     h = c.get("/v2/site").get_data(as_text=True)
     assert "הצוות באתר" in h and 'dir="rtl"' in h
+
+def test_imported_bio_shows_even_with_other_spelling(make_app):
+    """ייבוא מהאתר הישן נשמר בשם כפי שהיה שם; במסך 'האתר' הוא מוצג גם אם הרווחים/איות שונים."""
+    store = Store()
+    store.rows.append({"kind": "agent", "key": "חי  חיים אלבז", "data": {"bio": "שורה א\nשורה ב"}})
+    c, _, _ = mk(make_app, "admin", store)
+    j = c.get("/v2/api/site/settings").get_json()
+    assert j["agents"][0]["name"] == "חי חיים אלבז" and j["agents"][0]["bio"] == "שורה א\nשורה ב"

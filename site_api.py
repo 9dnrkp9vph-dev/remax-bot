@@ -80,6 +80,9 @@ PAGE_LIMITS = {"hero_sub": 220, "approach": 600}
 SOCIAL_HOSTS = {"facebook": ("facebook.com",), "instagram": ("instagram.com",), "youtube": ("youtube.com", "youtu.be")}
 
 
+BIO_MAX = 1500   # תיאור סוכן באתר — כולל שורות (ייבוא מהאתר הישן 14/10; היה 300 ושורה אחת)
+
+
 def _plain(t, n):
     t = re.sub(r"<[^>]*>", "", str(t or ""))
     t = t.replace("<", "").replace(">", "")
@@ -136,7 +139,7 @@ def clean_settings(body, agent_names):
             order = max(0, min(999, int(d.get("order", 0))))
         except (TypeError, ValueError):
             order = 0
-        agents[nm] = {"shown": bool(d.get("shown", True)), "order": order, "bio": _plain(d.get("bio"), 300)}
+        agents[nm] = {"shown": bool(d.get("shown", True)), "order": order, "bio": _plain(d.get("bio"), BIO_MAX)}
     return pages, branches, social, agents, errors
 
 
@@ -558,6 +561,7 @@ def register_site(app, G, store=None):
         rows = st().all()
         page = {r.get("key"): r.get("data") for r in rows if r.get("kind") == "page"}
         agd = {r.get("key"): (r.get("data") or {}) for r in rows if r.get("kind") == "agent"}
+        agk = {G["_name_key"](k): v for k, v in agd.items()}
         props = G["fetch_sheet_rows"]() or []
         nk = G["_name_key"]
         cnt = {}
@@ -573,7 +577,7 @@ def register_site(app, G, store=None):
         names = _agent_names()
         agents = []
         for i, nm in enumerate(names):
-            d = agd.get(nm, {})
+            d = agd.get(nm) or agk.get(nk(nm), {})   # רשומה שנשמרה באיות אחר של השם (ייבוא)
             agents.append({"name": nm, "shown": bool(d.get("shown", True)), "order": int(d.get("order", i) or 0),
                            "bio": str(d.get("bio", "") or ""), "count": cnt.get(nk(nm), 0)})
         hidden, _ = prop_flags(rows)
@@ -741,12 +745,12 @@ function render(){
   var S = D.social || {};
   h += '<div class="cc"><div class="h">רשתות חברתיות</div>' + fld('facebook', 'פייסבוק', S.facebook || '', false, 200) +
     fld('instagram', 'אינסטגרם', S.instagram || '', false, 200) + fld('youtube', 'יוטיוב', S.youtube || '', false, 200) + '</div>';
-  h += '<div class="cc"><div class="h">הצוות באתר</div><div class="s">מי מופיע בעמוד הצוות ובדף הבית, באיזה סדר, ותיאור קצר.</div>';
+  h += '<div class="cc"><div class="h">הצוות באתר</div><div class="s">מי מופיע בעמוד הצוות ובדף הבית, באיזה סדר, ותיאור הסוכן לעמוד שלו באתר.</div>';
   D.agents.forEach(function(a, i){
     h += '<div class="ag"><div class="agh"><div class="nm">' + esc(a.name) + ' <i>' + (a.count ? a.count + ' נכסים' : 'בלי נכסים') + '</i></div>' +
       '<button class="mv" aria-label="למעלה" onclick="mv(' + i + ',-1)">▲</button><button class="mv" aria-label="למטה" onclick="mv(' + i + ',1)">▼</button>' +
       '<button class="sw' + (a.shown ? ' on' : '') + '" role="switch" aria-checked="' + a.shown + '" aria-label="מופיע באתר" onclick="tg(' + i + ')"></button></div>' +
-      '<input aria-label="תיאור קצר" class="bio" data-i="' + i + '" value="' + esc(a.bio) + '" placeholder="תיאור קצר (רשות)" maxlength="300"></div>';
+      '<textarea aria-label="תיאור הסוכן" class="bio" data-i="' + i + '" rows="3" placeholder="תיאור הסוכן (רשות) — מופיע בעמוד הסוכן באתר" maxlength="1500">' + esc(a.bio) + '</textarea></div>';
   });
   h += '</div>';
   el('m').innerHTML = h; el('saveBar').style.display = 'block';
