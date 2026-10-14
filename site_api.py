@@ -168,10 +168,12 @@ def agents_directory(full, vphones, cfg, name_key):
         a["aliases"] = [str(x) for x in (ag.get("aliases") or []) if str(x).strip()]
         a["phone"] = a["phone"] or str(ag.get("phone") or "").strip()
         a["vphone"] = a["vphone"] or str(ag.get("vphone") or "").strip()
+    susp = {re.sub(r"\D", "", str(x or ""))[-9:] for x in (cfg.get("suspended") or [])} - {""}
     for k, a in by.items():
         a["vphone"] = a["vphone"] or str(vk.get(k, "") or "").strip()
         p9 = re.sub(r"\D", "", a["phone"])[-9:]
         a["license"] = str(lic.get(p9, "") or "").strip() or a["license"]
+        a["suspended"] = bool(p9 and p9 in susp)   # 14/10: מושהה — האתר לא מציג אותו
     return list(by.values())
 
 
