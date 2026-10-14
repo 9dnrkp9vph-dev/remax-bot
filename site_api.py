@@ -180,6 +180,7 @@ def agents_directory(full, vphones, cfg, name_key, phones_for=None, roles_for=No
             except Exception:
                 pass
         a["suspended"] = bool(mine & susp)   # 14/10: מושהה — האתר לא מציג אותו
+        a["phones"] = sorted(x for x in mine if x)   # 15/10: תמונה באפי שמורה לפי טלפון הכניסה — האתר מנסה את כולם
         a["role"] = ""
         if roles_for and p9:   # 15/10: האתר מציג רק סוכנים/מנהלים (לא הנה"ח/מזכירה/מתאמת)
             try:

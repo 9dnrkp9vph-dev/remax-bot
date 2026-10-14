@@ -8,7 +8,7 @@ def test_agents_directory_merges_sources():
            "v2_licenses": {"521112222": "12345"}, "removedAgents": ["נמחק"]}
     out = {a["name"]: a for a in agents_directory(full, vph, cfg, lambda n: n.replace(" ", ""))}
     assert out["חי חיים אלבז"] == {"name": "חי חיים אלבז", "aliases": ["חי אלבז"], "phone": "0521112222",
-                                    "vphone": "0529125944", "license": "12345", "suspended": False, "role": ""}
+                                    "vphone": "0529125944", "license": "12345", "suspended": False, "role": "", "phones": ["521112222"]}
     assert out["קובי חמו"]["license"] == "777" and out["קובי חמו"]["vphone"] == ""
     assert "מנהל בדיקה" in out and "נמחק" not in out
 

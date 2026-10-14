@@ -19,3 +19,8 @@ def test_directory_sends_role():
     roles = {"523333333": "accountant", "522222222": "agent"}
     out = {a["name"]: a for a in site_api.agents_directory(full, {}, {}, lambda s: s, roles_for=lambda p9: roles.get(p9, ""))}
     assert out["חגית"]["role"] == "accountant" and out["דנה לוי"]["role"] == "agent"
+
+def test_directory_sends_all_phones():
+    full = {"1": {"name": "מתן הרשקו", "phone": "0521111111"}}
+    out = site_api.agents_directory(full, {}, {}, lambda s: s, phones_for=lambda n: {"521111111", "547777777"})
+    assert set(out[0]["phones"]) == {"521111111", "547777777"}
