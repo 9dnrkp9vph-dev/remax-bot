@@ -301,6 +301,99 @@ def register_site(app, G, store=None):
             if log: log.warning(f"site lead: {e}")
             return jsonify({"ok": False})
 
+    # ---- 'סוכן AI אישי': הודעה נכנסת בוואטסאפ הרשמי (נקרא מה-webhook של 360 ב-app.py) ----
+    _lead_day = {}   # טלפון → חותמות זמן (עד 3 דפים ביום)
+    _lead_lock = threading.Lock()
+
+    def _lead_handle(wa_from, name, text):
+        if not _leads_on():
+            return "ignored"
+        m = parse_lead_message(text)
+        if not m:
+            return "ignored"
+        cfg = G["_load_config"]() or {}
+        stored = (cfg.get("v2_site_leads") or {}).get(m["code"]) if m["code"] else None
+        if stored and time.time() - (stored.get("ts") or 0) > 86400:
+            stored = None   # קוד שפג — לפי טקסט ההודעה
+        q, src = (stored["q"], stored.get("src", "")) if stored else (m["q"], "")
+        digits = re.sub(r"\D", "", str(wa_from or ""))
+        phone = "0" + digits[-9:]
+        agent = (os.environ.get("SITE_LEAD_AGENT") or "אייל שמול").strip()
+        aph = str((G["fetch_agents_phones"]() or {}).get(agent, "") or "")
+        to9 = G["_last9"](aph)
+        push_to = [to9] if to9 else None
+        office = str((cfg.get("v2_office") or {}).get("name", "") or "").strip() or "המשרד"
+        nm = re.sub(r"\s+", " ", str(name or "")).strip()[:60]
+        first = nm.split()[0] if nm else ""
+        with _lead_lock:
+            day = [t for t in _lead_day.get(phone, []) if time.time() - t < 86400]
+            if len(day) >= 3:
+                G["send_push"]("ליד מהאתר — הגבלה יומית", "%s (%s) ביקש שוב: %s" % (nm or "ליד", phone, q[:60]), push_to)
+                return "limit"
+            _lead_day[phone] = day + [time.time()]
+        p9 = phone[-9:]
+        buyer = next((b for b in (G["_fetch_manual_buyers"]() or [])
+                      if re.sub(r"\D", "", str(b.get("phone", "") or ""))[-9:] == p9
+                      and str(b.get("agent", "") or "").strip() == agent), None)
+        if buyer:
+            G["_buyers_write"]("updatebuyer", {"row": buyer["row"], "search": q})
+            buyer = dict(buyer, search=q)
+        else:
+            import datetime as _dt
+            payload = {"date": _dt.datetime.now().strftime("%d/%m/%Y %H:%M"), "name": nm or "ליד מהאתר", "phone": phone,
+                       "budget": "", "summary": "ליד מהאתר" + (" · " + src if src else ""), "agent": agent,
+                       "agent_phone": aph, "search": q}
+            j = G["_buyers_write"]("addbuyer", payload) or {}
+            buyer = dict(payload, row=j.get("row"))
+        try:
+            G["_cache_clear"]("buyers")
+        except Exception:
+            pass
+        res, keys = None, []
+        if buyer.get("row"):
+            try:
+                keys = app.bpage_lead_pick(q) or []
+                res = app.bpage_lead_send(buyer, keys, q) if keys else None
+            except Exception as e:
+                if log: log.warning(f"site lead page: {e}")
+                G["send_push"]("ליד מהאתר — לא נוצר דף", "%s %s · %s" % (nm, phone, q[:60]), push_to)
+                res, keys = None, []
+        if res and res.get("n"):
+            msg, status = lead_reply(first, office, res["n"], res["url"], not res.get("first")), "sent"
+        else:
+            msg, status = lead_no_match(first, office), "no_match"
+        ok = G["_d360_send_text"](wa_from, msg)
+        try:
+            G["_log_activity"](agent, "site", "", "ליד מהאתר — סוכן AI אישי", ((nm or phone) + " · " + q)[:60])
+        except Exception:
+            pass
+        if not ok:
+            G["send_push"]("ליד מהאתר — לא נשלח אוטומטית", "%s %s · %s" % (nm, phone, q[:60]), push_to)
+            return "send_failed"
+        G["send_push"]("ליד חדש מהאתר", "%s · %s · %s" % (nm or phone, q[:50],
+                       ("נשלחו %d נכסים" % res["n"]) if status == "sent" else "אין התאמה — לחזור ללקוח"), push_to)
+        return status
+
+    def site_lead_inbound(wa_from, name, text, sync=False):
+        """נקרא לכל הודעת טקסט נכנסת; רק הפורמט של 'סוכן AI אישי' מטופל (ב-thread — ה-webhook עונה מיד)."""
+        if not _leads_on() or parse_lead_message(text) is None:
+            return "ignored"
+        if sync:
+            return _lead_handle(wa_from, name, text)
+
+        def _run():
+            try:
+                _lead_handle(wa_from, name, text)
+            except Exception as e:
+                if log: log.error(f"site lead inbound: {e}", exc_info=True)
+        threading.Thread(target=_run, daemon=True, name="site-lead").start()
+        return "queued"
+    app.site_lead_inbound = site_lead_inbound
+    try:
+        G["_site_lead_inbound"] = site_lead_inbound
+    except Exception:
+        pass
+
     @app.route("/site/api/form", methods=["POST"])
     def site_api_form():
         b = request.get_json(silent=True) or {}

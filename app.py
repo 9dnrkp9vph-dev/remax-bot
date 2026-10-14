@@ -522,6 +522,14 @@ def _d360_webhook(body):
             v = ch.get("value") or {}
             for m in v.get("messages") or []:
                 _wa_window_mark(m.get("from", ""))
+                try:   # [SITE-LEAD 14/10] 'סוכן AI אישי' מהאתר — רק הפורמט המדויק, מטופל ב-thread
+                    _sli = globals().get("_site_lead_inbound")
+                    if _sli and m.get("type") == "text":
+                        _nm = next((str((c.get("profile") or {}).get("name", "") or "") for c in (v.get("contacts") or [])
+                                    if c.get("wa_id") == m.get("from")), "")
+                        _sli(m.get("from", ""), _nm, (m.get("text") or {}).get("body", ""))
+                except Exception as _le:
+                    log.warning(f"site lead hook: {_le}")
             for st in v.get("statuses") or []:
                 rec = {"to": st.get("recipient_id"), "status": st.get("status"), "ts": st.get("timestamp")}
                 if st.get("errors"):
