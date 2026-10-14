@@ -5459,12 +5459,15 @@ def api_sign_submit():
         docs1, docs2 = list(docs), None
     # ⚡ מהירות (בקשת אייל 13/07): סינכרוני רק שמירת המסמך החתום (חיוני); שורות
     # הגיליון, הקונה, הפוש וה-SMS לסוכן — ברקע. _recent_signs_add שומר נראות מיידית.
+    _sprices = _sign_header_prices(header)   # 14/10: המחיר שהסוכן הקליד בטופס
     recs = []
     for d in docs:
         _is_x = bool(token2) and "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()
         _srec = {"event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
                  "client_name": client, "address": address, "city": city,
                  "commission_pct": (link2 if _is_x else link), "received_at": now_iso, "notes": notes}
+        if _sprices and str(d.get("deal_type", "")).upper().startswith("CLIENT"):
+            _srec["budget"] = str(sum(_sprices) // len(_sprices))   # 14/10: המחיר מהטופס — לתקציב הקונה בהמשך
         recs.append(_srec)
     doc_saved = False; doc_resp = ""
     try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה) — סינכרוני, זה המסמך החתום
@@ -5499,6 +5502,7 @@ def api_sign_submit():
             # רק חתימת קונה (לא מוכר/בלעדיות) נכנסת אוטומטית ל"קונים שלי" של הסוכן
             if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
                 _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית",
+                                        price="|".join(str(x) for x in _sprices),
                                         deal_kind=("rent" if any("RENT" in str(d.get("deal_type", "")).upper() for d in docs) else "sale"))
             # פוש לכל המנהלים על חתימה חדשה + SMS לסוכן
             _notify_managers_signing("נחתם", client, agent, address)
@@ -5730,6 +5734,28 @@ def _merge_buyer_search(r, desc, budget_txt=""):
     except Exception:
         pass
 
+def _sign_header_prices(header):
+    """[14/10 אייל] המחירים שהסוכן הקליד בטופס ההחתמה (שורות 'מחיר מבוקש' בכותרת ההסכם) → [int]."""
+    return [p for p in (_sig_price(x.get("price")) for x in (_parse_sign_header(header).get("props") or [])) if p]
+
+
+def _buyer_desc_for(infos, cur):
+    """תיאור הנכס ל'מה מחפש' של הקונה. [14/10 אייל: 'למה התקציב 2,480,000 אם נדב שלח 1,830,000?']
+    כתובת של בניין עם כמה דירות (אהוד מנור 13) מזהה לפעמים דירה אחרת: כשהמחיר שהוקלד רחוק ביותר מ-15%
+    ממחיר המודעה שזוהתה — רק המיקום (בלי חדרים/מ"ר/מחיר של הדירה האחרת) + 'עד <המחיר שהוקלד>'."""
+    info = next((x for x in (infos or []) if x.get("desc")), None)
+    if not info:
+        return ""
+    lp = int(info.get("price") or 0)
+    if not cur or not lp:
+        return info["desc"]
+    avg = sum(cur) // len(cur)
+    if abs(lp - avg) <= 0.15 * avg:
+        return info["desc"]
+    parts = [x.strip() for x in str(info["desc"]).split("·") if x.strip() and not re.search(r"\d", x)]
+    return " · ".join(parts + ["עד {:,}".format(avg)])
+
+
 def _add_buyer_from_signing(agent, client, phone="", address="", origin="החתמה דיגיטלית", deal_kind="sale", price=""):
     """כל מתעניין שחותם / שנשלחה לו חתימה — נכנס אוטומטית כקונה אצל הסוכן (אם עוד לא קיים).
     אם הנכס מזוהה בנכסי המשרד/שת"פ — הקונה נכנס עם תיאור הנכס (search) ותקציב = ממוצע הנצפים;
@@ -5750,11 +5776,11 @@ def _add_buyer_from_signing(agent, client, phone="", address="", origin="החת�
             excl = fetch_external_exclusives() or []
             infos = [x for x in (_sign_prop_lookup(a.strip(), idx=idx, excl=excl)
                                  for a in str(address or "").split("|")) if x]
-            if infos:
-                info_desc = next((x["desc"] for x in infos if x.get("desc")), "")
             # 01/10 (אייל): התקציב = החתימה האחרונה (ממוצע אם היו בה כמה נכסים), לא ממוצע כל ההיסטוריה.
-            # מחיר מפיירברי (budget) גובר על זיהוי הכתובת; החתימה הנוכחית נספרת גם אם טרם ברשימה.
-            cur = [_sig_price(price)] if _sig_price(price) else [x["price"] for x in infos if x.get("price")]
+            # מחיר מפיירברי (budget) / מהטופס באפליקציה (14/10) גובר על זיהוי הכתובת; כמה נכסים — 'א|ב'.
+            typed = [p for p in (_sig_price(x) for x in str(price or "").split("|")) if p]
+            info_desc = _buyer_desc_for(infos, typed)
+            cur = typed or [x["price"] for x in infos if x.get("price")]
             _avg, budget_day = _client_last_sign_budget(client, kind=deal_kind, idx=idx, excl=excl, extra=cur)
             if _avg:
                 budget_txt = "{:,}".format(_avg)
@@ -5982,12 +6008,15 @@ def api_sign_send_remote():
         docs1, docs2 = _sign_split_excl(docs, _excl_i, token, token2)
     else:
         docs1, docs2 = list(docs), None
+    _sprices = _sign_header_prices(header)   # 14/10: המחיר שהסוכן הקליד בטופס
     recs = []
     for d in docs:
         _ev = token2 if (token2 and "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()) else token
         _srec = {"event_id": _ev, "doc_token": _ev, "deal_type": d.get("deal_type", ""), "agent": agent,
                  "client_name": client, "address": address, "city": city,
                  "commission_pct": "", "received_at": now_iso, "notes": notes}
+        if _sprices and str(d.get("deal_type", "")).upper().startswith("CLIENT"):
+            _srec["budget"] = str(sum(_sprices) // len(_sprices))   # 14/10: המחיר מהטופס — לתקציב הקונה בהמשך
         recs.append(_srec)
     # שמירת המסמכים במצב 'pending' — סינכרוני: הקישור ב-SMS חייב לעבוד, וגם הסכם ההמשך
     doc_saved = False
@@ -6047,6 +6076,7 @@ def api_sign_send_remote():
             # רק חתימת קונה (לא מוכר/בלעדיות) — גם אם עוד לא חתם — נכנסת ל"קונים שלי"
             if any(str(d.get("deal_type", "")).startswith("CLIENT") for d in docs):
                 _add_buyer_from_signing(agent, client, phone, address, "נשלחה חתימה",
+                                        price="|".join(str(x) for x in _sprices),
                                         deal_kind=("rent" if any("RENT" in str(d.get("deal_type", "")).upper() for d in docs) else "sale"))
         except Exception as _bge:
             log.error(f"sign send_remote bg error: {_bge}")
