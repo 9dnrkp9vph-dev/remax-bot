@@ -3361,6 +3361,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .buyer .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .buyer .nm{font-size:16.5px;font-weight:800;display:flex;align-items:center;gap:7px}
   .buyer .tag{font-size:10.5px;font-weight:800;color:#231700;background:#C29435;padding:2px 8px;border-radius:999px}
+  .buyer .tag.site{background:#EAF1FD;color:#2E6BD6;margin-inline-start:4px}
   .buyer .sb{font-size:12px;color:#6B7280}
   .buyer .bdg{font-size:11.5px;font-weight:700;color:#7A5E1C;background:#F6EEDB;padding:3px 9px;
       border-radius:999px;white-space:nowrap;cursor:pointer}
@@ -3645,7 +3646,7 @@ function buyerCardHtml(b, i, extra){   // [BUYER-AI 01/10] כרטיס קונה �
     var sub = [b.phone, MULTI ? b.agent : '', b.date].filter(Boolean).join(' · ');
     return '<div class="buyer' + (hot ? ' hot' : '') + '">' +
       '<div class="top"><div>' +
-      '<div class="nm">' + esc(b.name || b.phone || 'ללא שם') + (hot ? '<span class="tag">חם</span>' : '') + '</div>' +
+      '<div class="nm">' + esc(b.name || b.phone || 'ללא שם') + (hot ? '<span class="tag">חם</span>' : '') + (/^ליד מהאתר/.test(b.summary || '') ? '<span class="tag site">מהאתר</span>' : '') + '</div>' +
       '<div class="sb">' + esc(sub) + '</div></div>' +
       '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">' +
       (b.budget ? '<div class="bdg" onclick="pickStatus(' + i + ')">עד ' + esc(fmtBd(b.budget)) + '</div>' :
