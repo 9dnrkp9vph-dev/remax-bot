@@ -143,7 +143,7 @@ def clean_settings(body, agent_names):
     return pages, branches, social, agents, errors
 
 
-def agents_directory(full, vphones, cfg, name_key, phones_for=None):
+def agents_directory(full, vphones, cfg, name_key, phones_for=None, roles_for=None):
     """מדריך הסוכנים לאתר (שרת-לשרת, במפתח): שם, כינויים, נייד אמיתי (לוואטסאפ בלבד — לא מוצג באתר),
     מספר וירטואלי ורישיון. מקורות: גיליון 'אנשי קשר' (fetch_agents_full), מספרים וירטואליים, וקונפיג אפי."""
     cfg = cfg or {}
@@ -180,6 +180,12 @@ def agents_directory(full, vphones, cfg, name_key, phones_for=None):
             except Exception:
                 pass
         a["suspended"] = bool(mine & susp)   # 14/10: מושהה — האתר לא מציג אותו
+        a["role"] = ""
+        if roles_for and p9:   # 15/10: האתר מציג רק סוכנים/מנהלים (לא הנה"ח/מזכירה/מתאמת)
+            try:
+                a["role"] = str(roles_for(p9) or "")
+            except Exception:
+                pass
     return list(by.values())
 
 
@@ -284,7 +290,8 @@ def register_site(app, G, store=None):
         try:
             return jsonify({"ok": True, "agents": agents_directory(G["fetch_agents_full"](), G["fetch_agent_virtual_phones"](),
                                                                    G["_load_config"]() or {}, G["_name_key"],
-                                                                   phones_for=G["_phones_for_name"])})
+                                                                   phones_for=G["_phones_for_name"],
+                                                                   roles_for=lambda p9: (G["_resolve_roles"](p9) or ("", ""))[1])})
         except Exception as e:
             if log: log.warning(f"site agents: {e}")
             return jsonify({"ok": False})

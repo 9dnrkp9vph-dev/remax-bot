@@ -13,3 +13,9 @@ def test_suspended_by_any_phone_of_agent():
     out = site_api.agents_directory(full, {}, cfg, lambda s: s,
                                     phones_for=lambda n: {"528234924", "521111111"} if n == "ענבר אלון" else set())
     assert out[0]["suspended"] is True
+
+def test_directory_sends_role():
+    full = {"1": {"name": "חגית", "phone": "0523333333"}, "2": {"name": "דנה לוי", "phone": "0522222222"}}
+    roles = {"523333333": "accountant", "522222222": "agent"}
+    out = {a["name"]: a for a in site_api.agents_directory(full, {}, {}, lambda s: s, roles_for=lambda p9: roles.get(p9, ""))}
+    assert out["חגית"]["role"] == "accountant" and out["דנה לוי"]["role"] == "agent"
