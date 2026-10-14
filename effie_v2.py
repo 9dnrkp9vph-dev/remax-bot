@@ -11341,6 +11341,21 @@ def bpage_new_matches(query, src_rows, sent, since_ep, budget, score_fn, cap=30)
     return out[:cap]
 
 
+def bpage_lead_pick(office_rows, parsed, budget, score_fn, cap=5):
+    """'סוכן AI אישי' (14/10): עד cap נכסי משרד הכי קרובים — אותו סף 60 ותקציב ±20% כמו 'התאמות חדשות'."""
+    got = bpage_new_matches(parsed, {"office": office_rows or {}}, set(), -1, int(budget or 0), score_fn, cap=cap)
+    return [g["key"] for g in got]
+
+
+def bpage_agent_for(page, buyer, phones):
+    """הסוכן שמוצג בדף ומקבל התראות = הסוכן הנוכחי של הקונה (העברה לסוכן — 14/10); בלי קונה — הערך השמור."""
+    nm = str((buyer or {}).get("agent", "") or "").strip()
+    if nm and nm not in ("מנהל", "סוכן"):
+        ph = str((buyer or {}).get("agent_phone", "") or "").strip() or str((phones or {}).get(nm, "") or "")
+        return nm, ph or str((page or {}).get("agent_phone", "") or "")
+    return str((page or {}).get("agent_name", "") or ""), str((page or {}).get("agent_phone", "") or "")
+
+
 def bpage_push_gate(st, now, window=600):
     """פוש ראשון מיד; סימונים נוספים בתוך החלון נצברים (st['n']) לפוש מסכם בסוף החלון."""
     if not st.get("t") or now - st["t"] >= window:
@@ -12524,6 +12539,43 @@ def register(app, G):
             _bp_newmatches_cached([(page, items)])
         return ck[1]
 
+    def _bp_send_items(buyer, good, query, agent, aph):
+        """יצירה/עדכון של דף הקונה והוספת הנכסים — משותף לשליחה מאפי ולליד מהאתר (14/10). → (page, first, added)."""
+        import secrets as _secrets, datetime as _dtb
+        sb = _bp_sb()
+        now = _dtb.datetime.now(_dtb.timezone.utc)
+        exp = (now + _dtb.timedelta(days=BPAGE_DAYS)).isoformat()
+        page = sb.bpage_by_row(buyer["row"])
+        first = page is None
+        if first:
+            page = sb.bpage_create(buyer["row"], _secrets.token_urlsafe(16), agent, aph, exp, query)
+            if not page:
+                return None, True, []
+        else:
+            sb.bpage_update(page["id"], {"last_sent_at": now.isoformat(), "expires_at": exp, "query": query,
+                                         "agent_name": agent, "agent_phone": aph})
+        added = sb.bpage_add_items(page["id"], good)
+        _bp_cache["new"].pop(page["id"], None)
+        return page, first, added
+
+    def _bp_lead_pick(qtext):
+        """'סוכן AI אישי': עד 5 נכסי משרד לבקשה מהאתר."""
+        p = G["_parse_props_query"](qtext) or {}
+        return bpage_lead_pick(_bp_sources().get("office") or {}, p, bai_budget(qtext),
+                               lambda r, qq: G["score_match"](r, qq, 0))
+
+    def _bp_lead_send(buyer, keys, qtext):
+        office = _bp_sources().get("office") or {}
+        good = [{"source": "office", "prop_key": k, "snapshot": bpage_snapshot("office", office[k])} for k in keys if k in office]
+        agent = str(buyer.get("agent", "") or "").strip()
+        aph = str(buyer.get("agent_phone", "") or "").strip() or str((G["fetch_agents_phones"]() or {}).get(agent, "") or "")
+        query = {"q": qtext, "p": G["_parse_props_query"](qtext) or {}, "budget": bai_budget(qtext)}
+        page, first, added = _bp_send_items(buyer, good, query, agent, aph)
+        if not page:
+            raise RuntimeError("bpage create failed")
+        return {"url": _bp_url(page["token"]), "n": len(added), "first": first}
+    app.bpage_lead_pick, app.bpage_lead_send = _bp_lead_pick, _bp_lead_send
+
     @app.route("/v2/api/bpage/send", methods=["POST"])
     def v2_api_bpage_send():
         if not _BPAGE_ON:
@@ -12553,9 +12605,6 @@ def register(app, G):
                 log.warning("bpage send: %d keys not found: %s" % (len(missing), ",".join(missing)[:300]))
             if not good:
                 return jsonify({"ok": False, "reason": "no_items", "missing": missing})
-            import secrets as _secrets, datetime as _dtb
-            now = _dtb.datetime.now(_dtb.timezone.utc)
-            exp = (now + _dtb.timedelta(days=BPAGE_DAYS)).isoformat()
             agent = str(buyer.get("agent", "") or "").strip()
             aph = str(buyer.get("agent_phone", "") or "").strip() or str((G["fetch_agents_phones"]() or {}).get(agent, "") or "")
             # 07/10 (אייל: בראש הדף הופיע "מנהל"): שם גנרי → השם האמיתי לפי הטלפון; בלי טלפון → השולח
@@ -12566,17 +12615,9 @@ def register(app, G):
             qtext = str(b.get("q") or "").strip()[:200]
             query = {"q": qtext, "p": (G["_parse_props_query"](qtext) or {}) if qtext else {},
                      "budget": bai_budget(buyer.get("budget", "")) or bai_budget(buyer.get("search", ""))}
-            page = sb.bpage_by_row(buyer["row"])
-            first = page is None
-            if first:
-                page = sb.bpage_create(buyer["row"], _secrets.token_urlsafe(16), agent, aph, exp, query)
-                if not page:
-                    return jsonify({"ok": False, "reason": "create_failed"}), 500
-            else:
-                sb.bpage_update(page["id"], {"last_sent_at": now.isoformat(), "expires_at": exp, "query": query,
-                                             "agent_name": agent, "agent_phone": aph})
-            added = sb.bpage_add_items(page["id"], good)
-            _bp_cache["new"].pop(page["id"], None)
+            page, first, added = _bp_send_items(buyer, good, query, agent, aph)
+            if not page:
+                return jsonify({"ok": False, "reason": "create_failed"}), 500
             name = str(buyer.get("name", "") or "").strip()
             url = _bp_url(page["token"])
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "דף קונה — שליחה",
@@ -12706,10 +12747,18 @@ def register(app, G):
         if not sb or not _BP_TOKEN_RE.match(str(token or "")):
             return None
         try:
-            return sb.bpage_by_token(token)
+            page = sb.bpage_by_token(token)
         except Exception as e:
             if log: log.warning(f"bpage token: {e}")
             return None
+        if page:   # 14/10: הסוכן בדף = הסוכן הנוכחי של הקונה (העברה לסוכן אחר)
+            try:
+                page = dict(page)
+                page["agent_name"], page["agent_phone"] = bpage_agent_for(page, _bp_buyer(page.get("row")),
+                                                                          G["fetch_agents_phones"]() or {})
+            except Exception as e:
+                if log: log.warning(f"bpage agent: {e}")
+        return page
 
     @app.route("/b/<token>", methods=["GET"])
     def bpage_public(token):
