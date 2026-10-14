@@ -304,37 +304,90 @@ def register_site(app, G, store=None):
     # ---- 'סוכן AI אישי': הודעה נכנסת בוואטסאפ הרשמי (נקרא מה-webhook של 360 ב-app.py) ----
     _lead_day = {}   # טלפון → חותמות זמן (עד 3 דפים ביום)
     _lead_lock = threading.Lock()
+    _lead_work = threading.Lock()     # קונה+דף לליד אחד בכל רגע — שתי הודעות מהירות לא יוצרות שני קונים
+    _lead_seen = {}                   # מזהה הודעה מ-360 → זמן (ניסיון חוזר של ה-webhook)
+    _lead_nocode = []                 # הודעות בלי קוד תקף היום (תקרה כללית — הגנה מהודעות מזויפות)
+    _lead_limit_pushed = {}           # טלפון → יום שבו כבר נשלח פוש 'הגבלה יומית'
 
-    def _lead_handle(wa_from, name, text):
+    def _push(title, body, push_to):
+        G["send_push"](title, body, *([push_to] if push_to else []))
+
+    def _use_code(code):
+        """קוד תקף (פחות מ-24 שעות) — מוחזר ונמחק (שימוש אחד); אחרת None."""
+        got = {}
+        def _take(cfg):
+            leads = cfg.get("v2_site_leads") or {}
+            v = leads.get(code)
+            if v and time.time() - (v.get("ts") or 0) <= 86400:
+                got["v"] = v
+            leads.pop(code, None)
+            cfg["v2_site_leads"] = leads
+        try:
+            G["_config_mutate"](_take)
+        except Exception as e:
+            if log: log.warning(f"site lead code: {e}")
+        return got.get("v")
+
+    def _lead_handle(wa_from, name, text, mid=""):
         if not _leads_on():
             return "ignored"
         m = parse_lead_message(text)
         if not m:
             return "ignored"
+        now = time.time()
+        with _lead_lock:
+            if mid:
+                for k in [k for k, t in _lead_seen.items() if now - t > 3600]:
+                    _lead_seen.pop(k, None)
+                if mid in _lead_seen:
+                    return "duplicate"
+                _lead_seen[mid] = now
+        with _lead_work:
+            return _lead_work_one(wa_from, name, m, now)
+
+    def _lead_work_one(wa_from, name, m, now):
         cfg = G["_load_config"]() or {}
-        stored = (cfg.get("v2_site_leads") or {}).get(m["code"]) if m["code"] else None
-        if stored and time.time() - (stored.get("ts") or 0) > 86400:
-            stored = None   # קוד שפג — לפי טקסט ההודעה
+        stored = _use_code(m["code"]) if m["code"] else None   # קוד שפג/משומש — לפי טקסט ההודעה
         q, src = (stored["q"], stored.get("src", "")) if stored else (m["q"], "")
+        if not stored:
+            cap = int(os.environ.get("SITE_LEAD_NOCODE_DAY", "10") or 10)
+            with _lead_lock:
+                _lead_nocode[:] = [t for t in _lead_nocode if now - t < 86400]
+                if len(_lead_nocode) >= cap:
+                    if log: log.warning("site lead: daily cap for codeless messages reached")
+                    return "nocode_cap"
+                _lead_nocode.append(now)
         digits = re.sub(r"\D", "", str(wa_from or ""))
         phone = "0" + digits[-9:]
         agent = (os.environ.get("SITE_LEAD_AGENT") or "אייל שמול").strip()
         aph = str((G["fetch_agents_phones"]() or {}).get(agent, "") or "")
         to9 = G["_last9"](aph)
-        push_to = [to9] if to9 else None
+        push_to = [to9] if to9 else None   # בלי טלפון לסוכן — send_push בלי יעד (ברירת המחדל: הבעלים)
         office = str((cfg.get("v2_office") or {}).get("name", "") or "").strip() or "המשרד"
         nm = re.sub(r"\s+", " ", str(name or "")).strip()[:60]
         first = nm.split()[0] if nm else ""
         with _lead_lock:
             day = [t for t in _lead_day.get(phone, []) if time.time() - t < 86400]
+            for k in [k for k, d in _lead_limit_pushed.items() if now - d > 86400]:
+                _lead_limit_pushed.pop(k, None)
+            for k in [k for k, v in _lead_day.items() if not any(now - t < 86400 for t in v)]:
+                _lead_day.pop(k, None)
             if len(day) >= 3:
-                G["send_push"]("ליד מהאתר — הגבלה יומית", "%s (%s) ביקש שוב: %s" % (nm or "ליד", phone, q[:60]), push_to)
+                if phone not in _lead_limit_pushed:      # פוש אחד ביום לכל טלפון
+                    _lead_limit_pushed[phone] = now
+                    _push("ליד מהאתר — הגבלה יומית", "%s (%s) ביקש שוב: %s" % (nm or "ליד", phone, q[:60]), push_to)
                 return "limit"
-            _lead_day[phone] = day + [time.time()]
+            _lead_day[phone] = day + [now]
         p9 = phone[-9:]
-        buyer = next((b for b in (G["_fetch_manual_buyers"]() or [])
-                      if re.sub(r"\D", "", str(b.get("phone", "") or ""))[-9:] == p9
-                      and str(b.get("agent", "") or "").strip() == agent), None)
+        same = [b for b in (G["_fetch_manual_buyers"]() or []) if re.sub(r"\D", "", str(b.get("phone", "") or ""))[-9:] == p9]
+        # קודם ליד קודם מהאתר (גם אם הועבר לסוכן אחר — אותו קונה, אותו דף), אחר כך קונה של סוכן הלידים
+        buyer = next((b for b in same if str(b.get("summary", "") or "").startswith("ליד מהאתר")), None) \
+            or next((b for b in same if str(b.get("agent", "") or "").strip() == agent), None)
+        if buyer and str(buyer.get("agent", "") or "").strip() not in ("", agent):
+            agent = str(buyer["agent"]).strip()           # הועבר — ההתראות לסוכן הנוכחי
+            aph = str(buyer.get("agent_phone", "") or "") or str((G["fetch_agents_phones"]() or {}).get(agent, "") or "")
+            to9 = G["_last9"](aph)
+            push_to = [to9] if to9 else None
         if buyer:
             G["_buyers_write"]("updatebuyer", {"row": buyer["row"], "search": q})
             buyer = dict(buyer, search=q)
@@ -356,7 +409,7 @@ def register_site(app, G, store=None):
                 res = app.bpage_lead_send(buyer, keys, q) if keys else None
             except Exception as e:
                 if log: log.warning(f"site lead page: {e}")
-                G["send_push"]("ליד מהאתר — לא נוצר דף", "%s %s · %s" % (nm, phone, q[:60]), push_to)
+                _push("ליד מהאתר — לא נוצר דף", "%s %s · %s" % (nm, phone, q[:60]), push_to)
                 res, keys = None, []
         if res and res.get("n"):
             msg, status = lead_reply(first, office, res["n"], res["url"], not res.get("first")), "sent"
@@ -368,22 +421,22 @@ def register_site(app, G, store=None):
         except Exception:
             pass
         if not ok:
-            G["send_push"]("ליד מהאתר — לא נשלח אוטומטית", "%s %s · %s" % (nm, phone, q[:60]), push_to)
+            _push("ליד מהאתר — לא נשלח אוטומטית", "%s %s · %s" % (nm, phone, q[:60]), push_to)
             return "send_failed"
-        G["send_push"]("ליד חדש מהאתר", "%s · %s · %s" % (nm or phone, q[:50],
+        _push("ליד חדש מהאתר", "%s · %s · %s" % (nm or phone, q[:50],
                        ("נשלחו %d נכסים" % res["n"]) if status == "sent" else "אין התאמה — לחזור ללקוח"), push_to)
         return status
 
-    def site_lead_inbound(wa_from, name, text, sync=False):
+    def site_lead_inbound(wa_from, name, text, sync=False, mid=""):
         """נקרא לכל הודעת טקסט נכנסת; רק הפורמט של 'סוכן AI אישי' מטופל (ב-thread — ה-webhook עונה מיד)."""
         if not _leads_on() or parse_lead_message(text) is None:
             return "ignored"
         if sync:
-            return _lead_handle(wa_from, name, text)
+            return _lead_handle(wa_from, name, text, mid)
 
         def _run():
             try:
-                _lead_handle(wa_from, name, text)
+                _lead_handle(wa_from, name, text, mid)
             except Exception as e:
                 if log: log.error(f"site lead inbound: {e}", exc_info=True)
         threading.Thread(target=_run, daemon=True, name="site-lead").start()

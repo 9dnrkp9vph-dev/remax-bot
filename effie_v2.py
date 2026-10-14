@@ -11349,12 +11349,29 @@ def bpage_lead_pick(office_rows, parsed, budget, score_fn, cap=5):
 
 
 def bpage_agent_for(page, buyer, phones):
-    """הסוכן שמוצג בדף ומקבל התראות = הסוכן הנוכחי של הקונה (העברה לסוכן — 14/10); בלי קונה — הערך השמור."""
+    """הסוכן שמוצג בדף ומקבל התראות = הסוכן הנוכחי של הקונה (העברה לסוכן — 14/10); בלי קונה — הערך השמור.
+    שם וטלפון תמיד יחד: סוכן אחר שלא נמצא לו טלפון → הזוג השמור (לא שם חדש עם הטלפון של הקודם)."""
+    pn = str((page or {}).get("agent_name", "") or "")
+    pp = str((page or {}).get("agent_phone", "") or "")
     nm = str((buyer or {}).get("agent", "") or "").strip()
-    if nm and nm not in ("מנהל", "סוכן"):
-        ph = str((buyer or {}).get("agent_phone", "") or "").strip() or str((phones or {}).get(nm, "") or "")
-        return nm, ph or str((page or {}).get("agent_phone", "") or "")
-    return str((page or {}).get("agent_name", "") or ""), str((page or {}).get("agent_phone", "") or "")
+    if not nm or nm in ("מנהל", "סוכן"):
+        return pn, pp
+    if nm == pn.strip():
+        return pn, str((buyer or {}).get("agent_phone", "") or "").strip() or pp or str((phones or {}).get(nm, "") or "")
+    bp = str((buyer or {}).get("agent_phone", "") or "").strip()
+    ph = str((phones or {}).get(nm, "") or "") or (bp if bp and bp[-9:] != pp[-9:] else "")
+    return (nm, ph) if ph else (pn, pp)
+
+
+def bpage_base_url():
+    """כתובת הבסיס לקישורי /b/ — בתוך בקשה לפי הבקשה; ב-thread (ליד מהאתר) לפי APP_BASE_URL."""
+    try:
+        from flask import has_request_context, request as _rq
+        if has_request_context():
+            return (os.environ.get("APP_BASE_URL") or _rq.url_root or "").rstrip("/")
+    except Exception:
+        pass
+    return (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
 
 
 def bpage_push_gate(st, now, window=600):
@@ -12473,8 +12490,7 @@ def register(app, G):
         return lambda b: (ck(b.get("agent", "")) in keys) or (l9(b.get("agent_phone", "")) in phones)
 
     def _bp_url(token):
-        base = (G.get("APP_BASE_URL") or request.url_root or "").rstrip("/")
-        return base + "/b/" + token
+        return bpage_base_url() + "/b/" + token
 
     def _bp_auth_buyer(row):
         """(session, buyer, error_response)."""

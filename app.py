@@ -527,7 +527,7 @@ def _d360_webhook(body):
                     if _sli and m.get("type") == "text":
                         _nm = next((str((c.get("profile") or {}).get("name", "") or "") for c in (v.get("contacts") or [])
                                     if c.get("wa_id") == m.get("from")), "")
-                        _sli(m.get("from", ""), _nm, (m.get("text") or {}).get("body", ""))
+                        _sli(m.get("from", ""), _nm, (m.get("text") or {}).get("body", ""), mid=str(m.get("id", "") or ""))
                 except Exception as _le:
                     log.warning(f"site lead hook: {_le}")
             for st in v.get("statuses") or []:
