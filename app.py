@@ -2492,7 +2492,7 @@ def fetch_calls_for_agent(agent_phone: str) -> list:
             if r.status_code != 200:
                 log.error(f"Apps Script error {r.status_code}: {r.text[:200]}")
                 return []
-            all_rows = r.json().get("rows", [])
+            all_rows = _strip_call_reviews(r.json().get("rows", []))
             _buyer_calls_cache["data"] = all_rows
             _buyer_calls_cache["ts"] = time.time()
             log.info(f"Loaded {len(all_rows)} call rows from Apps Script")
@@ -3727,6 +3727,28 @@ def _sf_lock(key):
 # תקרת ההמתנה לנעילת ה-singleflight. 13/08 01:30: fetch שנתלה החזיק את הנעילה,
 # כל הבקשות נערמו מאחוריה בהמתנה אינסופית → כל 8 ה-threads נחנקו → השירות נפל.
 _SF_WAIT = 20
+# ביקורת קצרה על השיחה (15/10): Make מוסיף לסיכום שבפיירברי קטע שמתחיל בשורה "ביקורת קצרה".
+# הקטע נחתך כאן מ-transcript_summary כבר בקריאת השיחות — כך הוספת קונה, התאמות, חיפוש קונים
+# וחילוץ התקציב לא רואים אותו לעולם — ונשמר בנפרד ב-call_review להצגה לסוכן ולמנהל בלבד.
+_CALL_REVIEW_RX = re.compile(r"(?m)^[ \t*_•\-]*ביקורת קצרה")
+def _split_call_review(text):
+    t = str(text or "")
+    m = _CALL_REVIEW_RX.search(t)
+    if not m:
+        return t, ""
+    rev = t[m.start():]
+    rev = re.sub(r"^[ \t*_•\-]*ביקורת קצרה:?\**[ \t]*", "", rev).strip()
+    return t[:m.start()].rstrip(), rev
+
+def _strip_call_reviews(rows):
+    out = []
+    for r in rows or []:
+        if isinstance(r, dict) and "ביקורת קצרה" in str(r.get("transcript_summary", "") or ""):
+            r = dict(r)
+            r["transcript_summary"], r["call_review"] = _split_call_review(r.get("transcript_summary", ""))
+        out.append(r)
+    return out
+
 def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
     _ck = "raw:" + str(type_he) + ":" + str(frm) + ":" + str(to)
     _ttl = 60
@@ -3750,6 +3772,8 @@ def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
         if c is not None:
             return c
         rows = _web_fetch_raw_uncached(type_he, frm, to)
+        if type_he == "שיחות":
+            rows = _strip_call_reviews(rows)
         if rows:
             _cache_put(_ck, rows)
         return rows
@@ -6680,6 +6704,7 @@ def api_history():
             "agent": (c.get("agent", "") or "").strip(),
             "summary": text,
             "clientDetails": client_details,
+            "review": str(c.get("call_review", "") or "").replace("*", "").strip(),
             "callback": callback,
             "id": _call_uid(c),
             "ts": _epoch_from_iso(c.get("received_at", "")),
@@ -10635,8 +10660,9 @@ def _wa_call_parts(c):
     payload = json.dumps({"phone": (disp or tel or ""), "summary": text[:600]}, ensure_ascii=False)
     tok = _b64c.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
     code = _ab_link_make(tok)   # קישור קצר — וואטסאפ שובר URL ארוך
+    review = re.sub(r"[ \t]+", " ", str(c.get("call_review", "") or "").replace("*", "")).strip()
     return {"disp": disp, "agent": str(c.get("agent", "") or "").strip(), "when": when,
-            "status": st_he, "text": text, "code": code, "link": base + "/l/" + code}
+            "status": st_he, "text": text, "review": review, "code": code, "link": base + "/l/" + code}
 
 def _wa_call_message(c):
     """בונה את הודעת הוואטסאפ לסוכן: תמלול/סיכום השיחה + קישור עמוק להוספת הקונה."""
@@ -10646,6 +10672,10 @@ def _wa_call_message(c):
     if p["when"]: lines.append("🕐 " + p["when"] + " · " + p["status"])
     lines.append("")
     lines.append("📝 " + (p["text"] if p["text"] else "אין סיכום לשיחה זו"))
+    if p.get("review"):
+        lines.append("")
+        lines.append("🧭 ביקורת קצרה:")
+        lines.append(p["review"])
     lines.append("")
     lines.append('➕ להוספת הקונה ל"קונים שלי":')
     lines.append(p["link"])
@@ -10669,6 +10699,8 @@ def send_call_notice(to, c):
         return x if x.strip() else dflt
     _t = re.sub(r"^\s*סיכום השיחה:?\s*", "", p["text"])   # בתבנית כבר יש 📝
     summary = _v(re.sub(r"\s*\n\s*[•\-]?\s*", " • ", _t).strip(" •"), "אין סיכום לשיחה זו")
+    if p.get("review"):
+        summary += " · ביקורת: " + re.sub(r"\s*\n\s*[•\-]?\s*", " · ", p["review"]).strip(" ·")
     params = [_v(p["disp"], "מספר לא ידוע"), _v(p["agent"]), _v(p["when"]), _v(p["status"]), summary[:700]]
     payload = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": _wa_digits(to),
                "type": "template",

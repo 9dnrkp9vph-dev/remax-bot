@@ -3198,6 +3198,7 @@ function showSummary(i){
     '<div style="font-size:12px;color:#6B7280">' + esc((c.caller || '') + ' · ' + (c.time || '')) + '</div>' +
     '<div style="background:#fff;border-radius:13px;padding:13px 15px;font-size:13.5px;color:#1E3A5F;line-height:1.7">' + esc(c.summary) + '</div>' +
     (c.clientDetails ? '<div style="background:#F6EEDB;border-radius:13px;padding:13px 15px;font-size:13px;color:#5B6472;line-height:1.7">' + esc(c.clientDetails) + '</div>' : '') +
+    (c.review ? '<div style="background:#fff;border:1px solid #E4C56B;border-radius:13px;padding:13px 15px;font-size:13px;color:#1E3A5F;line-height:1.7;white-space:pre-line"><b style="color:#7A5E1C">ביקורת קצרה</b>\n' + esc(c.review) + '</div>' : '') +
     '<button class="btn btn-blue" onclick="closeSheet();addBuyer(' + i + ')">הוסף כקונה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">סגירה</button>');
 }
