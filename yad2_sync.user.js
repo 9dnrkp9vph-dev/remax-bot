@@ -3,10 +3,11 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      13.45
+// @version      14.0
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
+// @match        https://www.yad2.co.il/realestate-plus*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
 // @grant        GM_getValue
@@ -51,7 +52,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='13.45'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='14.0'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -1018,6 +1019,7 @@ function profileLabel(){ var a=activeProfile(); return a?a.label:''; }
 // והם משתנים לפי מה שנתפס בכל סריקה, כך שנוצרו 7 מזהים לאותם שני מלאים
 // וזיהוי "ירד מפרסום" הושבת בפועל. עכשיו: האזור (area) בלבד — הוא המבדיל בין הפרופילים.
 function srcKey(){
+  if(NP_SRC) return NP_SRC;   // v14.0: האתר החדש — המקור נקבע לפי הסניף הפעיל (npRunScan)
   var t=latestApiTemplate()||'';
   var m=t.match(/[?&]area(?:ID|_id)?=([^&]+)/i);
   if(m)return 'area:'+decodeURIComponent(m[1]).trim();
@@ -1196,6 +1198,7 @@ var EMPTY_RETRY_MS=60000;
 var scanDeps={};   // בדיקות בלבד: החלפת מקורות העמודים/השמירה (הקוד רץ בתוך IIFE)
 // הסריקה המלאה — משמשת גם ידני וגם אוטומטי: כל העמודים + token/טלפון + זיהוי "ירד מפרסום"
 function runFullScan(statusFn, done, emptyRetried){
+  if(IS_NEWPLUS){ npRunScan(statusFn,done); return; }   // v14.0: באתר החדש — API ישירות (גם כפתור "שמור לגיליון")
   var dUi=scanDeps.uiPaginateAll||uiPaginateAll, dFetch=scanDeps.activeFetchAllPages||activeFetchAllPages,
       dExtract=scanDeps.extractRows||extractRows, dSave=scanDeps.saveRows||saveRows;
   var W=(typeof unsafeWindow!=='undefined')?unsafeWindow:window;
@@ -3133,10 +3136,160 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;}}};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
+// ═══ v14.0 · האתר החדש של Yad2+ (www.yad2.co.il/realestate-plus) ═══════════════════
+// 14/10: יד2 העבירו את Yad2+ לאתר חדש; plus.yad2.co.il מפנה אליו והסריקה הפרטית נעצרה (19:14).
+// באתר החדש הרשימה מגיעה מ-API מסודר (נבדק בקונסול אצל אייל, 14/10):
+//   GET gw.yad2.co.il/plus-realestate-new-properties/?page=N&perPage=100&sort=updated_at&dir=desc
+//   GET gw.yad2.co.il/plus-realestate-new-properties/<token>/phone   ← הטלפון (וירטואלי) — בקשה לכל מודעה
+//   GET gw.yad2.co.il/plus-realestate-broker/   ← custId של הסניף הפעיל
+//   POST gw.yad2.co.il/auth/broker/switch-office {custId}   ← החלפת סניף (ואז ריענון)
+// אין דפדוף בממשק: עמוד-עמוד ישירות מה-API. טלפונים בהדרגה (תקרה לסריקה + זיכרון קבוע).
+var IS_NEWPLUS=location.host==='www.yad2.co.il' && /^\/realestate-plus/.test(location.pathname||'');
+var NP_API='https://gw.yad2.co.il/plus-realestate-new-properties/';
+var NP_AREA={'5628636':'area:6','8532791':'area:5'};   // קריות=area:6 · חיפה=area:5 — אותם מקורות כמו באתר הישן (רצף ב-CRM)
+var NP_PER_PAGE=100, NP_PAGES_MAX=40, NP_PHONES_PER_SCAN=25, NP_PHONE_CACHE_MAX=8000;
+var NP_SRC='';   // מקור הסריקה הפעילה באתר החדש — srcKey מחזיר אותו
+function npDate(s){ var m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m?(m[3]+'/'+m[2]+'/'+m[1]):''; }
+function npDeal(id){ return id===1?'למכירה':(id===2?'להשכרה':''); }
+// פריט מה-API החדש → אותה שורה כמו mapApiRow (כדי ש-Code.gs והאפליקציה לא ירגישו בהבדל)
+function npMapItem(it,phones){
+  it=it||{}; var a=it.address||{}, tok=String(it.token||''), pc=(phones&&tok&&phones[tok])||null;
+  var city=String(a.city||'').trim();
+  var street=[a.street,a.houseNumber].map(function(x){return String(x==null?'':x).trim();}).filter(Boolean).join(' ');
+  var r={
+    deal_type:npDeal(it.subcategoryId), address:[city,street].filter(Boolean).join(' '),
+    property_type:String((it.propertyType&&it.propertyType.text)||''),
+    rooms:it.roomsCount==null?'':it.roomsCount, floor:it.floor==null?'':it.floor,
+    total_floors:it.buildingTopFloor==null?'':it.buildingTopFloor,
+    price:String(it.price==null?'':it.price), contact:String(it.contactName||'').trim(),
+    phone:pc?String(pc.p||''):'', price_update:'',
+    sqm:it.squareMeters==null?'':it.squareMeters, neighborhood:String(a.neighborhood||''),
+    link:tok?('https://www.yad2.co.il/realestate/item/'+tok):'',
+    image:'', images:[], listing_date:npDate(it.updatedAt),
+    city:city, street:street, description:''
+  };
+  r._orderId=it.orderId; r._token=tok; r._hasPhone=!!it.hasPhone;
+  return r;
+}
+function npPhonesLoad(){ try{ return JSON.parse(gmGet('ysNpPhones','{}'))||{}; }catch(e){ return {}; } }
+function npPhonesSave(m){
+  try{ var ks=Object.keys(m); if(ks.length>NP_PHONE_CACHE_MAX){ ks.sort(function(x,y){return (m[x].t||0)-(m[y].t||0);}); ks.slice(0,ks.length-NP_PHONE_CACHE_MAX).forEach(function(k){delete m[k];}); }
+       gmSet('ysNpPhones',JSON.stringify(m)); }catch(e){}
+}
+function npJson(fetchFn,url,opts){
+  return fetchFn(url,opts).then(function(t){ var j=null; try{ j=JSON.parse(t); }catch(e){} if(!j||!j.data) throw new Error('bad '+String(t||'').slice(0,60)); return j.data; });
+}
+// הסניף הפעיל + הסניף השני (לסירוגין)
+function npOffices(fetchFn){
+  return npJson(fetchFn,'https://gw.yad2.co.il/plus-realestate-broker/').then(function(cur){
+    return npJson(fetchFn,'https://gw.yad2.co.il/plus-realestate-broker/offices').catch(function(){ return {offices:[]}; }).then(function(o){
+      var others=((o&&o.offices)||[]).map(function(x){return String(x.custId||'');}).filter(function(x){return x&&x!==String(cur.custId||'');});
+      return {cur:String(cur.custId||''), other:others[0]||''};
+    });
+  });
+}
+// כל העמודים. מחזיר {items, full} — full=false כשעמוד נכשל באמצע (אז Code.gs לא מסמן "ירד מפרסום")
+function npFetchAll(fetchFn,onProg){
+  var items=[], p=1;
+  return new Promise(function(resolve){
+    (function next(){
+      npJson(fetchFn,NP_API+'?page='+p+'&perPage='+NP_PER_PAGE+'&sort=updated_at&dir=desc').then(function(d){
+        var arr=(d&&d.items)||[], pg=(d&&d.pagination)||{};
+        items=items.concat(arr);
+        var total=Number(pg.totalPages||0);
+        if(onProg)onProg(p,total,items.length);
+        if(arr.length && p<total && p<NP_PAGES_MAX){ p++; setTimeout(next,humanGap(1200,2000)); }
+        else resolve({items:items, full: !!total && p>=total});
+      }).catch(function(e){ log('📭 עמוד '+p+' נכשל: '+(e&&e.message||e)); resolve({items:items, full:false}); });
+    })();
+  });
+}
+// טלפונים: רק למודעות עם טלפון שעוד לא בזיכרון, החדשות קודם (הרשימה כבר ממוינת לפי עדכון), עד התקרה
+function npFetchPhones(fetchFn,items,phones,onProg){
+  var need=items.filter(function(it){ return it&&it.token&&it.hasPhone&&!phones[it.token]; }).slice(0,NP_PHONES_PER_SCAN);
+  var i=0, got=0;
+  return new Promise(function(resolve){
+    (function next(){
+      if(i>=need.length){ resolve(got); return; }
+      var it=need[i++];
+      npJson(fetchFn,NP_API+encodeURIComponent(it.token)+'/phone').then(function(d){
+        var ph=String((d&&(d.phone||d.brokerPhone))||'').trim();
+        if(ph){ phones[it.token]={p:ph, v:d.isVirtualPhoneNumber?1:0, t:Date.now()}; got++; }
+      }).catch(function(){}).then(function(){ if(onProg)onProg(i,need.length,got); setTimeout(next,humanGap(1500,2600)); });
+    })();
+  });
+}
+// סריקה פרטית מלאה באתר החדש. statusFn/done כמו runFullScan.
+function npRunScan(statusFn,done){
+  var W=(typeof unsafeWindow!=='undefined')?unsafeWindow:window;
+  var fetchFn=function(u,o){return fetchT(W,u,o);};
+  if(scanStart && (Date.now()-scanStart) < SCAN_MAX_MIN*60000){ statusFn('⏳ סריקה כבר רצה — ממתין לסיומה'); if(done)done(); return; }
+  scanStart=Date.now(); lastScanMsg='רץ מ-'+new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+  var fin=once(function(msg){ scanStart=0; if(msg)lastScanMsg=msg; if(done)done(); });
+  npOffices(fetchFn).then(function(of){
+    var src=NP_AREA[of.cur]||'';
+    if(!src){ statusFn('⚠️ סניף לא מוכר ('+(of.cur||'?')+') — לא שומרים'); fin('סניף לא מוכר '+(of.cur||'')); return; }
+    NP_SRC=src; gmSet('ysNpOther',of.other||'');
+    statusFn('קורא את כל הנכסים ('+src+')...');
+    return npFetchAll(fetchFn,function(p,t,n){ statusFn('עמוד '+p+'/'+(t||'?')+' · '+n+' נכסים...'); }).then(function(res){
+      if(!res.items.length){ statusFn('לא נמצאו נכסים'); fin('אין נכסים'); return; }
+      var phones=npPhonesLoad();
+      return npFetchPhones(fetchFn,res.items,phones,function(i,n,g){ if(i%5===0||i===n) statusFn('טלפונים '+i+'/'+n+' ('+g+' נמצאו)…'); }).then(function(){
+        npPhonesSave(phones);
+        var rows=res.items.map(function(it){ return npMapItem(it,phones); });
+        if(!res.full) pgDiag='סריקה חלקית ('+rows.length+')';
+        saveRows(rows,[],res.full,function(m){ fin(m); });
+      });
+    });
+  }).catch(function(e){ statusFn('⚠️ '+(e&&e.message||e)); fin('שגיאה: '+(e&&e.message||e)); });
+}
+// החלפה לסניף השני (POST ואז ריענון). מחזיר false אם אין סניף שני / נכשל.
+function npSwitch(done){
+  var other=gmGet('ysNpOther','');
+  if(!other){ if(done)done(false,'אין סניף שני'); return; }
+  var W=(typeof unsafeWindow!=='undefined')?unsafeWindow:window;
+  try{ gmSet('ysSwitchAttemptAt',String(Date.now())); }catch(e){}
+  W.fetch('https://gw.yad2.co.il/auth/broker/switch-office',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({custId:Number(other)})})
+    .then(function(r){ return r.text(); }).then(function(t){
+      var ok=false; try{ ok=!!(JSON.parse(t).data||{}).success; }catch(e){}
+      switchLog((ok?'✓':'✗')+' אתר חדש: החלפה ל-'+other);
+      if(!ok){ if(done)done(false,'השרת סירב'); return; }
+      if(done)done(true,'');
+      setTimeout(function(){ try{ location.reload(); }catch(e){} },1500);
+    }).catch(function(e){ if(done)done(false,String(e)); });
+}
+function npAfterScan(){
+  paused=false;
+  var src=NP_SRC; if(src && lastScanMsg!=='אין נכסים') scanStampSave(src);
+  var stamps={}; try{ stamps=JSON.parse(localStorage.getItem('ysScanBySrc')||'{}')||{}; }catch(e){}
+  if(src && pairDecision(src, stamps, Date.now(), userActive(), true)){
+    log('🔁 סיימנו '+src+' — עוברים לסניף השני');
+    npSwitch(function(ok,why){ if(!ok){ log('לא הוחלף ('+why+') — ממתינים כרגיל'); npScheduleNext(); } });
+    return;
+  }
+  npScheduleNext();
+}
+// בלי ריענון: הסריקה היא API בלבד, ולכן לא מפריעים לאייל אם הוא עובד בטאב
+function npScheduleNext(){
+  if(!isActive()){ log('💤 מחוץ לשעות הפעילות. ישן עד '+nextActive().toLocaleString()); setTimeout(npScheduleNext,10*60000); return; }
+  var d=rDelay(); log('next scan in '+(d/60000).toFixed(1)+' min');
+  setTimeout(function(){ if(!isActive()||!mayScan()){ npScheduleNext(); return; } paused=true; npRunScan(log,npAfterScan); },d);
+}
+function initNew(){
+  try{ ['mousemove','mousedown','keydown','wheel','touchstart'].forEach(function(t){ document.addEventListener(t,noteUserInput,{passive:true,capture:true}); }); }catch(e){}
+  step('פאנל', function(){ buildPanel(); setInterval(panelKeeper,5000); });
+  log('starting Yad2 Plus sync v'+VER+' — האתר החדש (realestate-plus)');
+  step('סימן-חיים', function(){ postHB('ok'); setInterval(healthTick,60000); });
+  step('לופ סריקה', function(){
+    if(!isActive()||!mayScan()){ npScheduleNext(); return; }
+    setTimeout(function(){ paused=true; npRunScan(log,npAfterScan); },6000);
+  });
+  step('תזמון משרדים', function(){ setInterval(exclSchedTick,60000);setTimeout(exclSchedTick,5000); });
+}
 function step(name, fn){ try{ fn(); }catch(e){ log('⚠️ אתחול "'+name+'" נכשל: '+(e&&e.message||e)); } }
 // v13.29 · מגע אמיתי של המשתמש (isTrusted בלבד — האירועים הסינתטיים שלנו לא נספרים)
 var USER_IDLE_MS=3*60000, lastUserInput=0;   // v13.36: 3 דק׳ (ההחלפה הישירה = ריענון בלבד, בלי תפריט על המסך)
@@ -3166,10 +3319,10 @@ function boot(){
   // v13.30 · ראיה: דף כניסה נפתח — כמה זמן אחרי ניסיון ההחלפה האחרון? (נקרא ב"JSON לניתוח" → switchLog)
   try{ if(/login/i.test(location.pathname||'')){ var la=Number(gmGet('ysSwitchAttemptAt','0')||0); switchLog('⚠️ דף כניסה: '+String(location.pathname).slice(0,40)+(la?' · '+Math.round((Date.now()-la)/60000)+' דק׳ אחרי ניסיון החלפה':' · בלי ניסיון החלפה רשום')); } }catch(e){}                      // הגנה מאתחול כפול (טיימרים כפולים = סריקות כפולות)
   booted=true;
-  try{ IS_PLUS?init():initPublic(); }catch(e){ log('🔴 boot נכשל: '+(e&&e.message||e)); }
+  try{ IS_PLUS?init():(IS_NEWPLUS?initNew():initPublic()); }catch(e){ log('🔴 boot נכשל: '+(e&&e.message||e)); }
 }
 // גם DOMContentLoaded וגם גיבוי בזמן — יד2 הוא SPA, ולפעמים ה-body נבנה אחרי האירוע
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
 else boot();
-setTimeout(function(){ if(!booted)boot(); else if(IS_PLUS)panelKeeper(); }, 8000); // רשת ביטחון
+setTimeout(function(){ if(!booted)boot(); else if(IS_PLUS||IS_NEWPLUS)panelKeeper(); }, 8000); // רשת ביטחון
 })();
