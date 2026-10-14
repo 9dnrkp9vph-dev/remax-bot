@@ -3817,10 +3817,23 @@ function openEdit(i){
       '<button type="button" onclick="var t=el(\'edSearch\');t.value=\'\';t.focus()" style="flex-shrink:0;min-height:44px;padding:0 14px;' +
       'border-radius:999px;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F;font-weight:700;font-size:13px;font-family:inherit">נקה חיפוש</button></div>' +
       '<textarea id="edSearch" rows="3" placeholder="לדוגמה: 4 חדרים בקריות עד 1.5M, קומה נמוכה, מעלית">' + esc(b.search || '') + '</textarea></div>' +
+    '<div id="edAgentBox"></div>' +
     '<div style="font-size:11px;color:#6B7280;line-height:1.5">שם הקונה נערך בינתיים בגיליון.</div>' +
     '<button class="btn btn-blue" onclick="saveEdit(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
   el('sheet')._st = cur;
+  GET('/v2/api/buyers/agents').then(function(j){
+    var box = el('edAgentBox');
+    if (box && j && j.ok) box.innerHTML = agentPickHtml(j.agents, String(b.agent || '').trim());
+  }).catch(function(){});
+}
+function agentPickHtml(list, cur){   // [BUYER-TRANSFER 14/10] העברת קונה לסוכן אחר — מנהלים בלבד
+  var names = (list || []).slice();
+  if (cur && names.indexOf(cur) < 0) names.unshift(cur);
+  return '<div class="fld"><span>סוכן מטפל — העברה לסוכן אחר מעבירה גם את דף הקונה וההתראות</span>' +
+    '<select id="edAgent" style="min-height:44px;font-size:16px">' +
+    names.map(function(n){ return '<option' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') +
+    '</select></div>';
 }
 function pickEdSt(node){
   el('sheet')._st = node.getAttribute('data-st');
@@ -3859,6 +3872,12 @@ function saveEdit(i){
   if (st !== stOf(b))
     jobs.push(POST('/v2/api/buyers/status', {row: b.row, phone: b.phone || '', status: st}).then(function(j){
       if (j.ok){ if (st === 'active') delete STATUSES[bKey(b)]; else STATUSES[bKey(b)] = st; delete STATUSES[b.row]; }
+      return j;
+    }));
+  var ag = el('edAgent') ? el('edAgent').value : '';
+  if (ag && ag !== String(b.agent || '').trim())
+    jobs.push(POST('/v2/api/buyers/transfer', {row: b.row, agent: ag}).then(function(j){
+      if (j.ok){ b.agent = ag; try{ localStorage.removeItem('v2c:bp:' + b.row); }catch(e){} }
       return j;
     }));
   if (!jobs.length){ closeSheet(); return; }
@@ -11363,6 +11382,89 @@ def bpage_agent_for(page, buyer, phones):
     return (nm, ph) if ph else (pn, pp)
 
 
+def _bt_can(G, s):
+    """העברת קונה — בעל המשרד/מפתח ומנהלים בלבד (לא הנה"ח/מזכירה, שגם הן role=admin)."""
+    if not s:
+        return False
+    p9 = G["_last9"](s.get("phone", ""))
+    if p9 and G["_is_dev"](p9):
+        return True
+    try:
+        return (G["_resolve_roles"](p9) or ("", ""))[1] in ("manager", "developer")
+    except Exception:
+        return False
+
+
+def buyer_transfer_targets(G, s):
+    """(status, json): הסוכנים שאפשר להעביר אליהם קונה — כל מי שיש לו טלפון ואינו הנה"ח/נמחק."""
+    if not _bt_can(G, s):
+        return 403, {"ok": False, "reason": "forbidden"}
+    canon, norm, l9 = G["_canon_key"], G["_norm_name"], G["_last9"]
+    try:
+        removed, nk = G["_removed_agent_keys"]() or set(), G["_name_key"]
+    except Exception:
+        removed, nk = set(), (lambda x: x)
+    by_canon = {}
+    for n in (list((G["web_contacts_phone_name"]() or {}).values())
+              + [ag.get("name", "") for ag in ((G["_load_config"]() or {}).get("agents") or [])]
+              + list((G["web_phone_name_map"]() or {}).values())):
+        nn = norm(n)
+        if nn and nn not in ("מנהל", "סוכן") and canon(nn) not in by_canon:
+            by_canon[canon(nn)] = nn
+    out = []
+    for nn in sorted(by_canon.values()):
+        if nk(nn) in removed:
+            continue
+        phones = [l9(x) for x in (G["_phones_for_name"](nn) or []) if l9(x)]
+        if not phones:
+            continue
+        try:
+            drole = (G["_resolve_roles"](phones[0]) or ("", ""))[1]
+        except Exception:
+            drole = ""
+        if drole in ("accountant", "secretary"):
+            continue
+        out.append(nn)
+    return 200, {"ok": True, "agents": out}
+
+
+def buyer_transfer(G, s, row, agent):
+    """(status, json): הקונה עובר לסוכן — שם+טלפון בשורת הקונה (הדף הציבורי וההתראות עוקבים אחריהם),
+    פוש לסוכן החדש ושורה ביומן."""
+    if not _bt_can(G, s):
+        return 403, {"ok": False, "reason": "forbidden"}
+    agent = " ".join(str(agent or "").split())
+    st, tj = buyer_transfer_targets(G, s)
+    if agent not in (tj.get("agents") or []):
+        return 400, {"ok": False, "reason": "bad_agent"}
+    b = next((x for x in (G["_fetch_manual_buyers"]() or []) if str(x.get("row")) == str(row)), None)
+    if not b:
+        return 404, {"ok": False, "reason": "no_buyer"}
+    phones = G["_phones_for_name"](agent) or []
+    aph = str(phones[0]) if phones else ""
+    j = G["_buyers_write"]("updatebuyer", {"row": str(row), "agent": agent, "agent_phone": aph}) or {}
+    if not j.get("ok"):
+        return 502, {"ok": False, "reason": j.get("error", "update_failed")}
+    try:
+        G["_cache_clear"]("buyers")
+    except Exception:
+        pass
+    old = str(b.get("agent", "") or "")
+    to9 = G["_last9"](aph)
+    if to9:
+        try:
+            G["send_push"]("הועבר אליך קונה", "%s · %s" % (b.get("name") or b.get("phone") or "קונה",
+                                                            str(b.get("search") or "")[:60]), [to9])
+        except Exception:
+            pass
+    try:
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""),
+                           "העברת קונה לסוכן", ("%s · %s → %s" % (b.get("name") or "", old, agent))[:80])
+    except Exception:
+        pass
+    return 200, {"ok": True, "agent": agent, "agent_phone": aph}
+
+
 def bpage_base_url():
     """כתובת הבסיס לקישורי /b/ — בתוך בקשה לפי הבקשה; ב-thread (ליד מהאתר) לפי APP_BASE_URL."""
     try:
@@ -14121,6 +14223,18 @@ def register(app, G):
         return jsonify(dict(_IBS_JOB, ok=True))
 
     # ── [LOGINAS-MGR 04/10] "כניסה כסוכן" גם למנהלים (אייל): רשימת היעדים המותרים ──────────────
+    # ── העברת קונה לסוכן אחר (אייל 14/10) ─────────────────────────────────────
+    @app.route("/v2/api/buyers/agents", methods=["GET"])
+    def v2_api_buyers_agents():
+        st, j = buyer_transfer_targets(G, _web_auth())
+        return jsonify(j), st
+
+    @app.route("/v2/api/buyers/transfer", methods=["POST"])
+    def v2_api_buyers_transfer():
+        b = request.get_json(silent=True) or {}
+        st, j = buyer_transfer(G, _web_auth(), b.get("row"), b.get("agent"))
+        return jsonify(j), st
+
     @app.route("/v2/api/loginas/targets", methods=["GET"])
     def v2_api_loginas_targets():
         """מנהל: סוכנים ומתאמות שאפשר להיכנס בשמם (לא מנהלים ולא בעל המשרד — נאכף גם ב-/api/admin/loginas)."""
