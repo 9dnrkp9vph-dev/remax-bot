@@ -12,7 +12,8 @@ def _G(writes, pushes, logs, buyers=None):
         _norm_name=lambda n: " ".join(str(n or "").split()), _canon_key=lambda n: " ".join(str(n or "").split()),
         _name_key=lambda n: n, _removed_agent_keys=lambda: set(), _is_dev=lambda p: False,
         web_contacts_phone_name=lambda: {}, web_phone_name_map=lambda: {}, _load_config=lambda: {"agents": [{"name": n} for n in names]},
-        _phones_for_name=lambda n: names.get(n, []),
+        _phones_for_name=lambda n: set(names.get(n, [])) | ({"529125944"} if n == "דנה לוי" else set()),   # כמו באמת: set, כולל וירטואלי
+        fetch_agents_phones=lambda: {n: v[0] for n, v in names.items()},
         _fetch_manual_buyers=lambda: buyers if buyers is not None else [{"row": 7, "name": "רון כהן", "agent": "אייל שמול", "search": "4 חדרים באפקה"}],
         _buyers_write=lambda a, p: (writes.append((a, p)), {"ok": True})[1], _cache_clear=lambda *a: None,
         send_push=lambda t, b, to=None: pushes.append((t, b, to)), _log_activity=lambda *a: logs.append(a))

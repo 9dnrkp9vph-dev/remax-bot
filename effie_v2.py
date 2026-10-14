@@ -3885,7 +3885,7 @@ function saveEdit(i){
     closeSheet();
     toast(rs.every(function(j){ return j.ok; }) ? 'נשמר' : 'חלק מהשינויים לא נשמרו');
     load();   // רענון מהשרת — העדכון מופיע מיד בכרטיס ובחיפוש
-  });
+  }).catch(function(){ closeSheet(); toast('השמירה נכשלה — נסה שוב'); load(); });
 }
 function delBuyer(i){
   var b = el('list')._src[i];
@@ -11440,8 +11440,10 @@ def buyer_transfer(G, s, row, agent):
     b = next((x for x in (G["_fetch_manual_buyers"]() or []) if str(x.get("row")) == str(row)), None)
     if not b:
         return 404, {"ok": False, "reason": "no_buyer"}
-    phones = G["_phones_for_name"](agent) or []
-    aph = str(phones[0]) if phones else ""
+    # הנייד האמיתי מאנשי הקשר (כמו בשאר המערכת); _phones_for_name מחזיר set וכולל גם וירטואלי — רק נפילה
+    aph = str((G["fetch_agents_phones"]() or {}).get(agent, "") or "")
+    if not aph:
+        aph = next(iter(sorted(G["_phones_for_name"](agent) or [])), "")
     j = G["_buyers_write"]("updatebuyer", {"row": str(row), "agent": agent, "agent_phone": aph}) or {}
     if not j.get("ok"):
         return 502, {"ok": False, "reason": j.get("error", "update_failed")}
