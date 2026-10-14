@@ -172,6 +172,44 @@ def agents_directory(full, vphones, cfg, name_key):
     return list(by.values())
 
 
+# ---- 'סוכן AI אישי' (14/10): גולש באתר → הודעה מוכנה לוואטסאפ הרשמי → דף קונה ----
+LEAD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+_LEAD_RE = re.compile(r"^\s*היי,\s*אני\s*מחפש(?:/ת|ת)?:\s*(?P<q>.+?)\s*(?:\(קוד\s*(?P<code>[A-Z2-9]{4})\)\s*)?$", re.S)
+
+
+def new_lead_code(rnd=None):
+    import secrets
+    pick = rnd or secrets.choice
+    return "".join(pick(LEAD_ALPHABET) for _ in range(4))
+
+
+def parse_lead_message(text):
+    """הודעת 'סוכן AI אישי' → {'q', 'code'}; כל הודעה אחרת → None (רק הפורמט המדויק מפעיל)."""
+    m = _LEAD_RE.match(str(text or ""))
+    if not m:
+        return None
+    q = re.sub(r"\s+", " ", m.group("q")).strip()[:300]
+    return {"q": q, "code": m.group("code") or ""} if q else None
+
+
+def lead_reply(first, office, n, url, updated):
+    hi = "שלום" + (" " + first if first else "") + ", כאן הסוכן האישי של " + office + ".\n"
+    if updated:
+        body = "עדכנתי לך את הדף האישי — %s:\n" % ("נכס אחד נוסף" if n == 1 else "%d נכסים נוספים" % n)
+    else:
+        body = ("מצאתי נכס אחד שמתאים" if n == 1 else "מצאתי %d נכסים שמתאימים" % n) + " למה שחיפשת — הכנתי לך דף אישי:\n"
+    return hi + body + url + "\nבדף אפשר לסמן מה מתאים ומה לא, ונחזור אליכם."
+
+
+def lead_no_match(first, office):
+    return ("שלום" + (" " + first if first else "") + ", כאן הסוכן האישי של " + office + ".\n"
+            "קיבלנו את הבקשה שלכם. כרגע אין נכס שמתאים בדיוק, ונחזור אליכם עם אפשרויות.")
+
+
+def _leads_on():
+    return (os.environ.get("SITE_LEADS") or "1").strip() != "0"
+
+
 def register_site(app, G, store=None):
     from flask import request, jsonify
     log = G.get("log")
@@ -237,6 +275,30 @@ def register_site(app, G, store=None):
                                                                    G["_load_config"]() or {}, G["_name_key"])})
         except Exception as e:
             if log: log.warning(f"site agents: {e}")
+            return jsonify({"ok": False})
+
+    @app.route("/site/api/lead", methods=["POST"])
+    def site_api_lead():
+        """האתר שומר את הבקשה ומקבל קוד שנכנס להודעת הוואטסאפ (תוקף 24 שעות)."""
+        b = request.get_json(silent=True) or {}
+        if not _site_key_ok(b):
+            return jsonify({"ok": False}), 403
+        q = re.sub(r"\s+", " ", str(b.get("q", "") or "")).strip()[:300]
+        if len(q.split()) < 2 or not _leads_on():
+            return jsonify({"ok": False})
+        src = re.sub(r"[^a-z]", "", str(b.get("src", "") or ""))[:12]
+        code = new_lead_code()
+
+        def _put(cfg):
+            now = time.time()
+            leads = {k: v for k, v in (cfg.get("v2_site_leads") or {}).items() if now - (v.get("ts") or 0) < 86400}
+            leads[code] = {"q": q, "src": src, "ts": now}
+            cfg["v2_site_leads"] = dict(sorted(leads.items(), key=lambda kv: -kv[1]["ts"])[:500])
+        try:
+            G["_config_mutate"](_put)
+            return jsonify({"ok": True, "code": code})
+        except Exception as e:
+            if log: log.warning(f"site lead: {e}")
             return jsonify({"ok": False})
 
     @app.route("/site/api/form", methods=["POST"])
