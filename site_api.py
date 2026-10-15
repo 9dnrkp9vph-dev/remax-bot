@@ -183,11 +183,14 @@ def agents_directory(full, vphones, cfg, name_key, phones_for=None, roles_for=No
         a["suspended"] = bool(mine & susp)   # 14/10: מושהה — האתר לא מציג אותו
         a["phones"] = sorted(x for x in mine if x)   # 15/10: תמונה באפי שמורה לפי טלפון הכניסה — האתר מנסה את כולם
         a["role"] = ""
-        if roles_for and p9:   # 15/10: האתר מציג רק סוכנים/מנהלים (לא הנה"ח/מזכירה/מתאמת)
-            try:
-                a["role"] = str(roles_for(p9) or "")
-            except Exception:
-                pass
+        if roles_for:   # 15/10: תפקיד לפי כל הטלפונים של האדם — הנה"ח גוברת (חגית הופיעה באתר)
+            rs = []
+            for x in ([p9] if p9 else []) + sorted(mine - {p9}):
+                try:
+                    rs.append(str(roles_for(x) or ""))
+                except Exception:
+                    pass
+            a["role"] = "accountant" if "accountant" in rs else next((r for r in rs if r and r != "agent"), rs[0] if rs else "")
     return list(by.values())
 
 

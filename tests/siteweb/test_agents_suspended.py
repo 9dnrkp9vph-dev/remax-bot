@@ -24,3 +24,11 @@ def test_directory_sends_all_phones():
     full = {"1": {"name": "מתן הרשקו", "phone": "0521111111"}}
     out = site_api.agents_directory(full, {}, {}, lambda s: s, phones_for=lambda n: {"521111111", "547777777"})
     assert set(out[0]["phones"]) == {"521111111", "547777777"}
+
+def test_role_from_any_phone():
+    """15/10: חגית מנהלת חשבונות הופיעה באתר — התפקיד רשום על טלפון הכניסה, לא על הטלפון באנשי הקשר."""
+    full = {"1": {"name": "חגית", "phone": "0521111111"}}
+    roles = {"547777777": "accountant"}
+    out = site_api.agents_directory(full, {}, {}, lambda s: s, phones_for=lambda n: {"521111111", "547777777"},
+                                    roles_for=lambda p9: roles.get(p9, "agent"))
+    assert out[0]["role"] == "accountant"
