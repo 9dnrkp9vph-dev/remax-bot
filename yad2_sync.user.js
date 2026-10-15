@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      14.0
+// @version      14.1
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -52,7 +52,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='14.0'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='14.1'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -1085,7 +1085,8 @@ function buildPanel(){
   box.appendChild(mk('ys-reveal','#2563eb','📞 חשוף מספרים',revealAll));
   box.appendChild(mk('ys-save','#16a34a','💾 שמור לגיליון',manualSave));
   box.appendChild(mk('ys-net','#7c3aed','🔎 JSON לניתוח',copyNetReport,';font-size:13px;padding:9px'));
-  box.appendChild(mk('ys-dswitch','#0e7490','🔁 החלפת פרופיל ישירה',function(){ status('מחליף פרופיל דרך ה-API…'); directSwitch(function(ok,why){ status(ok?'✓ הוחלף — הדף נטען מחדש':('⚠️ לא הוחלף: '+why)); }); },';font-size:13px;padding:9px'));
+  box.appendChild(mk('ys-dswitch','#0e7490','🔁 החלפת פרופיל ישירה',function(){ status('מחליף פרופיל דרך ה-API…'); privClaim(); directSwitch(function(ok,why){ status(ok?'✓ הוחלף — הדף נטען מחדש':('⚠️ לא הוחלף: '+why)); }); },';font-size:13px;padding:9px'));
+  box.appendChild(mk('ys-dsre','#334155','↺ אפשר החלפה ישירה',function(){ dsReEnable(); status('✓ ההחלפה הישירה פעילה שוב'); },';font-size:12px;padding:7px'));
   // v13.31: הוסר כפתור 'הקלטת החלפה' — הפנה לפונקציה שלא קיימת (switchRecordStart) → buildPanel קרס והפאנל נעלם (אייל 24/09)
   box.appendChild(mk('ys-prof','#475569','👤 בחר פרופיל שני',function(){
     // v13.6: פותחים את תפריט החשבון בפועל ומרעננים את הרשימה חי — כדי שמה שמוצג הוא מה
@@ -1195,6 +1196,20 @@ function saveRows(rows,dom,full,done){
 // v13.44 (אייל 12/10, "אין נכסים" כמה פעמים ביום): מיד אחרי החלפת פרופיל הסריקה מתחילה לפני
 // שהטבלה של יד2 נטענת ונגמרת ריקה, והסבב של אותו פרופיל הולך לאיבוד. סריקה ריקה מנסה שוב פעם אחת.
 var EMPTY_RETRY_MS=60000;
+// v14.1 · טאב סורק יחיד (אייל 15/10): טאב באתר הישן וטאב באתר החדש רצו יחד — כל אחד סרק והחליף סניף,
+// וכל החלפה מזיזה את הסניף גם לטאב השני (הסניף הפעיל הוא של החשבון). רק הטאב שמחזיק את הנעילה סורק
+// נכס נולד ומחליף סניפים. הנעילה מתחדשת כל דקה; טאב שנסגר משחרר אותה אחרי 3 דק׳. לחיצה ידנית לוקחת אותה.
+var PRIV_LOCK_MS=3*60000;
+var TAB_ID=(function(){ var r=Math.random().toString(36).slice(2,10); try{ var v=sessionStorage.getItem('ysTabId'); if(!v){ v=r; sessionStorage.setItem('ysTabId',v); } return v; }catch(e){ return r; } })();
+function privLockRead(){ try{ return JSON.parse(gmGet('ysPrivTab','')||'null'); }catch(e){ return null; } }
+function privClaim(){ try{ gmSet('ysPrivTab',JSON.stringify({id:TAB_ID,t:Date.now(),h:location.host})); }catch(e){} }
+function privOwner(){
+  var l=privLockRead();
+  if(!l||!l.id||l.id===TAB_ID||(Date.now()-Number(l.t||0))>PRIV_LOCK_MS){ privClaim(); return true; }
+  return false;
+}
+function privTick(){ var l=privLockRead(); if(l&&l.id===TAB_ID) privClaim(); }
+function privOtherMsg(){ var l=privLockRead()||{}; return 'טאב אחר סורק נכס נולד ('+(l.h==='plus.yad2.co.il'?'האתר הישן':'האתר החדש')+') — הטאב הזה ממתין'; }
 var scanDeps={};   // בדיקות בלבד: החלפת מקורות העמודים/השמירה (הקוד רץ בתוך IIFE)
 // הסריקה המלאה — משמשת גם ידני וגם אוטומטי: כל העמודים + token/טלפון + זיהוי "ירד מפרסום"
 function runFullScan(statusFn, done, emptyRetried){
@@ -1252,7 +1267,7 @@ function runFullScan(statusFn, done, emptyRetried){
       });
   }catch(e){log('scan error (start): '+e);fin('שגיאה: '+e);}
 }
-function manualSave(){ paused=true; runFullScan(status, function(){paused=false;}); }
+function manualSave(){ privClaim(); paused=true; runFullScan(status, function(){paused=false;}); }   // v14.1: לחיצה = הטאב הזה סורק
 // שומר-ראש: סריקה שנמשכת מעל SCAN_MAX_MIN דקות (חניקת טיימרים ברקע / בקשה תקועה / חסימת יד2)
 // אינה "מתאוששת" מעצמה — ריענון הדף מנקה הכול ומתחיל סריקה חדשה מאפס.
 function scanWatchdog(){
@@ -1623,7 +1638,10 @@ function dsPlan(resp, target, before, after){
   return {set:set, user:user, jwtsFound:jwts.length, serverSetCookies:DS_COOKIES.filter(changed)};
 }
 function dsEnabled(){ try{ var until=Number(gmGet('ysDirectSwitchOff','0')||0); return !(until&&Date.now()<until); }catch(e){ return true; } }
-function dsDisable(why){ try{ gmSet('ysDirectSwitchOff', String(Date.now()+24*3600000)); switchLog('⛔ החלפה ישירה הושבתה ל-24ש׳: '+why); }catch(e){} }
+// v14.1: 2 שעות במקום 24 — ההשבתה של 14/10 (שני טאבים שהחליפו זה לזה) תקעה את הסורק על חיפה יום שלם
+var DS_OFF_MS=2*3600000;
+function dsDisable(why){ try{ gmSet('ysDirectSwitchOff', String(Date.now()+DS_OFF_MS)); switchLog('⛔ החלפה ישירה הושבתה לשעתיים: '+why); }catch(e){} }
+function dsReEnable(){ try{ gmSet('ysDirectSwitchOff','0'); switchLog('✓ החלפה ישירה הופעלה מחדש (ידני)'); }catch(e){} }
 function dsFetch(url, bearer){
   var h={'Accept':'application/json, text/plain, */*','Client-Version':'3.64'}; if(bearer) h['Authorization']='Bearer '+bearer;
   return fetch(url,{method:'GET',headers:h,credentials:'include'}).then(function(r){ return r.text().then(function(t){ var j=null; try{ j=JSON.parse(t); }catch(e){} return {status:r.status,json:j,text:t}; }); });
@@ -1864,6 +1882,7 @@ function waitScrape(attempt){
   attempt=attempt||0;
   if(attempt>30){log('rows never appeared');scheduleNext();return;}
   if(!latestApiTemplate()){ setTimeout(function(){waitScrape(attempt+1);},1000); return; } // ממתין שהטבלה/API ייטענו
+  if(!privOwner()){ var _om=privOtherMsg(); log('⏸️ '+_om); lastScanMsg=_om; status('⏸️ '+_om); scheduleNext(); return; }   // v14.1
   paused=true; // חוסם ריענון אוטומטי בזמן הסריקה הארוכה
   swTried=[];   // v13.24: מחזור החלפה חדש — הניסיון השני של הסבב הזה לא יחזור על מה שלא הגיב
   log('auto full scan starting…');
@@ -3136,7 +3155,7 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;}}};window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;}}};window.__ysPriv={owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
@@ -3277,16 +3296,16 @@ function npAfterScan(){
 function npScheduleNext(){
   if(!isActive()){ log('💤 מחוץ לשעות הפעילות. ישן עד '+nextActive().toLocaleString()); setTimeout(npScheduleNext,10*60000); return; }
   var d=rDelay(); log('next scan in '+(d/60000).toFixed(1)+' min');
-  setTimeout(function(){ if(!isActive()||!mayScan()){ npScheduleNext(); return; } paused=true; npRunScan(log,npAfterScan); },d);
+  setTimeout(function(){ if(!isActive()||!mayScan()){ npScheduleNext(); return; } if(!privOwner()){ var _om=privOtherMsg(); log('⏸️ '+_om); lastScanMsg=_om; status('⏸️ '+_om); npScheduleNext(); return; } paused=true; npRunScan(log,npAfterScan); },d);
 }
 function initNew(){
   try{ ['mousemove','mousedown','keydown','wheel','touchstart'].forEach(function(t){ document.addEventListener(t,noteUserInput,{passive:true,capture:true}); }); }catch(e){}
   step('פאנל', function(){ buildPanel(); setInterval(panelKeeper,5000); });
   log('starting Yad2 Plus sync v'+VER+' — האתר החדש (realestate-plus)');
-  step('סימן-חיים', function(){ postHB('ok'); setInterval(healthTick,60000); });
+  step('סימן-חיים', function(){ postHB('ok'); setInterval(healthTick,60000); setInterval(privTick,60000); });
   step('לופ סריקה', function(){
     if(!isActive()||!mayScan()){ npScheduleNext(); return; }
-    setTimeout(function(){ paused=true; npRunScan(log,npAfterScan); },6000);
+    setTimeout(function(){ if(!privOwner()){ var _om=privOtherMsg(); log('⏸️ '+_om); lastScanMsg=_om; status('⏸️ '+_om); npScheduleNext(); return; } paused=true; npRunScan(log,npAfterScan); },6000);
   });
   step('תזמון משרדים', function(){ setInterval(exclSchedTick,60000);setTimeout(exclSchedTick,5000); });
 }
@@ -3299,7 +3318,7 @@ function init(){
   try{ ['mousemove','mousedown','keydown','wheel','touchstart'].forEach(function(t){ document.addEventListener(t,noteUserInput,{passive:true,capture:true}); }); }catch(e){}
   step('פאנל', function(){ buildPanel(); setInterval(panelKeeper,5000); }); // גם אם הדף לא מוכן — יחזור תוך 5ש'
   log('starting Yad2 Plus sync v6.9 (active 08:00-23:00)');
-  step('סימן-חיים', function(){ postHB('ok'); setInterval(healthTick,60000); });
+  step('סימן-חיים', function(){ postHB('ok'); setInterval(healthTick,60000); setInterval(privTick,60000); });
   step('לופ סריקה', function(){
     if(!isActive()){log('💤 מחוץ לשעות (08:00-23:00). ישן עד '+nextActive().toLocaleString());sleepCheck();}
     else setTimeout(function(){waitScrape(0);},3000);
