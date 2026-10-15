@@ -2538,6 +2538,8 @@ function openInvite(prefillName){
     '<button class="btn btn-green" onclick="sendInvite(\'sms\')">' +
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M2.5 3h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5V11H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
       'שלח הזמנה ב-SMS</button>' +
+    // אייל 15/10: לצרף סוכן בלי שיידע כרגע — נרשם (נכסים/עסקאות מתחברים), ההזמנה תישלח מאוחר יותר ב'שלח שוב'
+    '<button class="btn btn-sec" onclick="sendInvite(\'silent\')">הוסף בלי לשלוח הודעה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
   if (prefillName){ el('invNm').value = prefillName; el('invPh').focus(); }
 }
@@ -2553,13 +2555,16 @@ function pickRole(node){
   var cw = el('coordWrap');   // בורר הסוכנים של המתאמת — מוצג מיד עם בחירת התפקיד
   if (cw) cw.style.display = (SEL_ROLE === 'coordinator') ? 'flex' : 'none';
 }
-function sendInvite(){
+function sendInvite(mode){
   var nm = el('invNm').value.trim(), ph = el('invPh').value.replace(/\D/g, '');
   if (!nm || ph.length < 9){ toast('שם ונייד תקין — חובה'); return; }
-  POST('/v2/api/admin/invite', {name: nm, phone: ph, role: SEL_ROLE, via: 'sms'}).then(function(j){
+  var silent = mode === 'silent';
+  var body = {name: nm, phone: ph, role: SEL_ROLE};
+  if (!silent) body.via = 'sms';   // בלי via — השרת רק רושם, לא שולח כלום
+  POST('/v2/api/admin/invite', body).then(function(j){
     if (!j.ok){ toast('שגיאה בשמירה'); return; }
     closeSheet(); boot();
-    toast(j.sms ? 'ההזמנה נשלחה ב-SMS' : 'נשמר — אך שליחת ה-SMS נכשלה');
+    toast(silent ? 'נוסף בלי הודעה · כשתרצה — "שלח שוב" ליד השם' : (j.sms ? 'ההזמנה נשלחה ב-SMS' : 'נשמר — אך שליחת ה-SMS נכשלה'));
   });
 }
 function resend(phone){
