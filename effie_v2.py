@@ -10078,8 +10078,8 @@ function runParity(){show('oPar','מריץ… (עד דקה)');GET('/api/dev/pari
   show('oPar',(j.green?'✅ תואם':'⚠️ פערים')+'\n\n'+(j.report||j.error||''));});}
 
 var QON=false;
-function loadQuiet(){GET('/api/dev/quiet').then(function(j){QON=!!j.on;el('qTg').classList.toggle('on',QON);el('qLbl').textContent=(QON?'מושתק':'פעיל')+(j.env?' · env גובר':'');});}
-function toggleQuiet(){POST('/api/dev/quiet',{on:!QON}).then(function(j){QON=!!j.on;el('qTg').classList.toggle('on',QON);el('qLbl').textContent=(QON?'מושתק':'פעיל')+(j.env?' · env גובר':'');});}
+function loadQuiet(){GET('/api/dev/quiet').then(function(j){QON=!!j.on;el('qTg').classList.toggle('on',QON);el('qLbl').textContent=(QON?'מושתק':'פעיל')+(j.env?' · env גובר':'')+(j.shabbat?' · שבת/חג — אוטומטי':'');});}
+function toggleQuiet(){POST('/api/dev/quiet',{on:!QON}).then(function(j){QON=!!j.on;el('qTg').classList.toggle('on',QON);el('qLbl').textContent=(QON?'מושתק':'פעיל')+(j.env?' · env גובר':'')+(j.shabbat?' · שבת/חג — אוטומטי':'');});}
 
 function loadNbDef(){GET('/api/dev/people').then(function(j){if(j&&j.ok)el('nbDef').value=(j.nbDefault!=null?j.nbDefault:'');});}
 function saveNbDef(){POST('/api/dev/newborn_default',{days:el('nbDef').value.trim()}).then(function(j){show('oNb',j.ok?'נשמר ✓':'שגיאה');});}

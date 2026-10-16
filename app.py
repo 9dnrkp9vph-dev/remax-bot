@@ -63,9 +63,53 @@ _PUSH_LAST = {}   # אבחון אחרון של שליחת Push — לצפייה 
 OWNER_PUSH_ID = "505709865"   # טלפון אייל (9 ספרות) — אליאס הפוש של הבעלים (במקום "owner" שירד)
 _QUIET_PATH = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(__file__), "quiet_mode.json")
 
+# ── [SHABBAT 16/10 אייל] השתקה אוטומטית: שעה לפני כניסת שבת/חג עד שעה אחרי צאתם (זמני חיפה) ──
+# "יש כפתור כיבוי התראות (פוש) וגם כפתור שלא שולח וואטסאפ — שתכבה את שניהם ותדליק שעה אחרי צאת שבת
+# ושעה לפני כניסה בשישי". הזמנים: tools/shabbat_times_haifa.json (hebcal, 2026–2031). כיבוי: SHABBAT_AUTO=0.
+def _shabbat_windows(events):
+    """[['c'|'h', 'YYYY-MM-DDTHH:MM'], ...] → [(הדלקה, הבדלה)] — חג צמוד לשבת = חלון אחד (מההדלקה הראשונה)."""
+    import datetime as _dts
+    out, start = [], None
+    for k, t in sorted(events or [], key=lambda e: e[1]):
+        try:
+            ts = _dts.datetime.strptime(t[:16], "%Y-%m-%dT%H:%M")
+        except Exception:
+            continue
+        if k == "c" and start is None:
+            start = ts
+        elif k == "h" and start is not None:
+            out.append((start, ts))
+            start = None
+    return out
+
+
+def _in_shabbat_window(now, windows, before=60, after=60):
+    import datetime as _dts
+    return any(a - _dts.timedelta(minutes=before) <= now < b + _dts.timedelta(minutes=after) for a, b in windows or [])
+
+
+_SHABBAT_W = {"w": None}
+def _shabbat_quiet_now():
+    if (os.environ.get("SHABBAT_AUTO") or "1").strip() == "0":
+        return False
+    try:
+        if _SHABBAT_W["w"] is None:
+            p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "shabbat_times_haifa.json")
+            with open(p, encoding="utf-8") as f:
+                _SHABBAT_W["w"] = _shabbat_windows(json.load(f).get("events"))
+        from zoneinfo import ZoneInfo
+        import datetime as _dts
+        now = _dts.datetime.now(ZoneInfo("Asia/Jerusalem")).replace(tzinfo=None)
+        return _in_shabbat_window(now, _SHABBAT_W["w"])
+    except Exception:
+        return False
+
+
 def _quiet_mode():
-    """מצב שקט: QUIET_MODE ב-env גובר תמיד; אחרת — המתג מהקונסולה (נשמר לדיסק)."""
+    """מצב שקט: QUIET_MODE ב-env גובר תמיד; שבת/חג אוטומטית (16/10); אחרת — המתג מהקונסולה (נשמר לדיסק)."""
     if (os.environ.get("QUIET_MODE") or "").strip():
+        return True
+    if _shabbat_quiet_now():
         return True
     try:
         with open(_QUIET_PATH, "r", encoding="utf-8") as f:
@@ -4905,7 +4949,7 @@ def api_dev_quiet():
         _quiet_set(on)
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                       "השתקת התראות" if on else "הפעלת התראות", "מהקונסולה")
-    return jsonify({"ok": True, "on": _quiet_mode(), "env": env_forced})
+    return jsonify({"ok": True, "on": _quiet_mode(), "env": env_forced, "shabbat": _shabbat_quiet_now()})
 
 @app.route("/api/dev/smstest", methods=["POST"])
 def api_dev_smstest():
