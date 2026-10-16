@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      14.1
+// @version      14.2
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -52,7 +52,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='14.1'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='14.2'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -1208,7 +1208,16 @@ function privOwner(){
   if(!l||!l.id||l.id===TAB_ID||(Date.now()-Number(l.t||0))>PRIV_LOCK_MS){ privClaim(); return true; }
   return false;
 }
-function privTick(){ var l=privLockRead(); if(l&&l.id===TAB_ID) privClaim(); }
+// v14.2 (16/10): טאב שעבר ל'הנכסים שלי' החזיק את הנעילה (לחיצה ידנית שם) וחידש אותה כל דקה —
+// והטאב שעל 'נכסים חדשים' לא סרק מ-19:04 עד 12:29. מחדשים רק כשהעמוד הנוכחי הוא עמוד שאפשר לסרוק ממנו.
+function privCanScan(){
+  try{
+    if(location.host==='www.yad2.co.il') return /^\/realestate-plus/.test(location.pathname||'');   // האתר החדש — API, מכל עמוד
+    if(location.host==='plus.yad2.co.il') return /new-properties/.test(location.hash||'');          // האתר הישן — רק טבלת 'נכסים חדשים'
+  }catch(e){}
+  return false;
+}
+function privTick(){ var l=privLockRead(); if(l&&l.id===TAB_ID&&privCanScan()) privClaim(); }
 function privOtherMsg(){ var l=privLockRead()||{}; return 'טאב אחר סורק נכס נולד ('+(l.h==='plus.yad2.co.il'?'האתר הישן':'האתר החדש')+') — הטאב הזה ממתין'; }
 var scanDeps={};   // בדיקות בלבד: החלפת מקורות העמודים/השמירה (הקוד רץ בתוך IIFE)
 // הסריקה המלאה — משמשת גם ידני וגם אוטומטי: כל העמודים + token/טלפון + זיהוי "ירד מפרסום"
@@ -3155,7 +3164,7 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;}}};window.__ysPriv={owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;}}};window.__ysPriv={canScan:privCanScan,owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
