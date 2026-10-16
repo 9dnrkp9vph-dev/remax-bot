@@ -620,7 +620,7 @@ def register_site(app, G, store=None):
                         "counts": {"shown": max(0, sum(1 for r in props if not str(r.get("ירד מפרסום", "") or "").strip()) - len(hidden)),
                                    "hidden": len(hidden)},
                         "available": bool(getattr(st(), "available", True)),
-                        "site_url": (os.environ.get("SITE_PUBLIC_URL") or "https://refamily-site.onrender.com").strip()})
+                        "site_url": (os.environ.get("SITE_PUBLIC_URL") or "https://refamily.co.il").strip()})
 
     @app.route("/v2/api/site/settings", methods=["POST"])
     def site_settings_post():
