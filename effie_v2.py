@@ -1892,6 +1892,14 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <button onclick="snapTake()" style="margin-top:10px;width:100%;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">צור גיבוי עכשיו</button>
     </div>
 
+    <!-- השלמת תמונות סוכנים מהאתר הישן (אייל 18/10) -->
+    <div class="card" id="avImpCard">
+      <div class="cardTitle">תמונות סוכנים — אפי והאתר</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">תמונה שמועלית באפי מופיעה גם באתר. סוכנים בלי תמונה באפי יקבלו את התמונה שלהם מהאתר הישן (מי שכבר יש לו תמונה — לא משתנה).</div>
+      <div id="avImpRes" style="margin-top:8px;font-size:13px;line-height:1.6"></div>
+      <button id="avImpBtn" onclick="avImport()" style="margin-top:10px;width:100%;min-height:44px;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">השלם תמונות מהאתר</button>
+    </div>
+
     <!-- [IMPORT-BUYERS 01/10] ייבוא קונים מחתימות פיירברי -->
     <div class="card" id="ibsCard">
       <div class="cardTitle">ייבוא קונים מחתימות פיירברי</div>
@@ -2149,6 +2157,26 @@ function snapTake(){
     if (j && j.ok){ toast('נשמר גיבוי של ' + j.n + ' נכסים'); loadSnaps(); }
     else toast(j && j.reason === 'forbidden' ? 'אין הרשאה' : 'הגיבוי נכשל');
   }).catch(function(){ toast('שגיאה'); });
+}
+function avImpHtml(j){
+  var row = function(t, a){ return a && a.length ? '<div><b>' + t + ' (' + a.length + '):</b> ' + a.map(esc).join(', ') + '</div>' : ''; };
+  return (j.dry ? row('יקבלו תמונה', j.toImport) : row('קיבלו תמונה', j.done) + row('נכשלו', j.failed)) +
+    row('כבר יש תמונה באפי', j.has) + row('אין תמונה גם באתר הישן', j.missing);
+}
+function avImport(){
+  var b = el('avImpBtn'), r = el('avImpRes');
+  POST('/v2/api/admin/avatars/import_site', {dry: true}).then(function(j){
+    if (!j || !j.ok){ toast('הבדיקה נכשלה' + (j && j.reason ? ' (' + j.reason + ')' : '')); return; }
+    r.innerHTML = avImpHtml(j);
+    if (!j.toImport.length){ toast('אין סוכנים להשלים'); return; }
+    if (!confirm('להעתיק לאפי את התמונה מהאתר הישן ל-' + j.toImport.length + ' סוכנים?')) return;
+    b.disabled = true;
+    return POST('/v2/api/admin/avatars/import_site', {}).then(function(k){
+      b.disabled = false;
+      if (k && k.ok){ r.innerHTML = avImpHtml(k); toast('הושלמו ' + k.done.length + ' תמונות'); }
+      else toast('ההשלמה נכשלה');
+    });
+  }).catch(function(){ b.disabled = false; toast('שגיאה'); });
 }
 function snapRestore(i){
   var s = SNAPS[i]; if (!s) return;
@@ -14345,6 +14373,55 @@ def register(app, G):
         except Exception as e:
             if log: log.warning(f"props restore: {e}")
             return jsonify({"ok": False, "reason": "restore_failed"})
+
+    # ── השלמת תמונות סוכנים מהאתר הישן (אייל 18/10: "סנכרון מלא — כל תמונה גם באפי וגם באתר") ──
+    @app.route("/v2/api/admin/avatars/import_site", methods=["POST"])
+    def v2_api_avatars_import_site():
+        s = _dev_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        _sb = _sb_mod()
+        if not _sb:
+            return jsonify({"ok": False, "reason": "no_supabase"})
+        import avatar_import as _ai
+        dry = bool((request.get_json(silent=True) or {}).get("dry"))
+        canon = G["_canon_key"]
+        cfg = G["_load_config"]() or {}
+        removed = {canon(n) for n in (cfg.get("removedAgents") or []) + (cfg.get("purgedAgents") or [])}
+        pmap = {}
+        for src in ("web_phone_name_map", "web_contacts_phone_name"):
+            try:
+                pmap.update({p: n for p, n in (G[src]() or {}).items() if _re.search(r"[א-ת]", str(n or ""))})
+            except Exception as e:
+                if log: log.warning(f"avatars import: {src}: {e}")
+        people = _ai.people_from(pmap, canon, removed)
+        _all = sorted({p for x in people for p in x["phones"]})
+        _db = _sb.avatar_phones(_all)
+        if _db is None:
+            return jsonify({"ok": False, "reason": "avatars_lookup_failed"})
+        def _has(phones):
+            return any(p in _db or os.path.exists(os.path.join(_AV_DIR, p + ".jpg")) for p in phones)
+        plan = _ai.plan(people, _ai.load_index(), canon, _has)
+        done, failed = [], []
+        if not dry:
+            for it in plan["import"]:
+                raw = _ai.photo_bytes(it["file"])
+                ok = bool(raw)
+                if raw:
+                    b64 = _b64.b64encode(raw).decode()   # אותם בייטים בדיוק — האתר מזהה את הגרסה המעובדת לפי sha
+                    for p in it["phones"]:
+                        ok = _sb.avatar_save(p, b64) and ok
+                        try:
+                            os.makedirs(_AV_DIR, exist_ok=True)
+                            with open(os.path.join(_AV_DIR, p + ".jpg"), "wb") as f:
+                                f.write(raw)
+                        except Exception:
+                            pass
+                (done if ok else failed).append(it["name"])
+            _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "השלמת תמונות סוכנים מהאתר",
+                          f"{len(done)} סוכנים" + (f", נכשלו {len(failed)}" if failed else ""))
+        return jsonify({"ok": True, "dry": dry, "toImport": [x["name"] for x in plan["import"]],
+                        "done": done, "failed": failed, "has": plan["has"], "missing": plan["missing"]})
 
     @app.route("/v2/api/admin/invite", methods=["POST"])
     def v2_api_admin_invite():
