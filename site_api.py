@@ -279,6 +279,49 @@ def lead_no_match(first, office):
             "קיבלנו את הבקשה שלכם. כרגע אין נכס שמתאים בדיוק, ונחזור אליכם עם אפשרויות.")
 
 
+# ---- תקרה יומית + מונה לקריאות AI מהאתר (19/10, אייל: 'שלא יריצו סתם חיפושים ויאכלו טוקנים') ----
+# מונה לכל יום (שעון ישראל) ולכל שעה: site_/lead_ × ai (קריאה אמיתית) / cache (מהמטמון של 10 דק') / blocked
+# (מעל התקרה — האתר נופל לפענוח המקומי). נשמר בקונפיג `v2_site_ai_usage` (14 ימים) — בסיס למונה בדשבורד (ספק CRM 6.4).
+AI_KEEP_DAYS = 14
+AI_KINDS = ("site_ai", "site_cache", "site_blocked", "lead_ai", "lead_cache", "lead_blocked")
+
+
+def _now_il():
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        return _dt.datetime.now(ZoneInfo("Asia/Jerusalem"))
+    except Exception:
+        return _dt.datetime.utcnow() + _dt.timedelta(hours=3)
+
+
+def ai_daily_cap():
+    """SITE_AI_DAILY — קריאות AI ביום לאתר (חיפוש + סוכן AI אישי יחד). ברירת מחדל 500; 0 = AI כבוי לאתר."""
+    try:
+        return max(0, int((os.environ.get("SITE_AI_DAILY") or "500").strip()))
+    except ValueError:
+        return 500
+
+
+def ai_usage_merge(store, delta, keep=AI_KEEP_DAYS):
+    """מוסיף מונים (delta) לרשומה השמורה; שעות מתמזגות; 'pushed' נשמר; רק `keep` הימים האחרונים."""
+    out = {d: dict(v, hours={h: dict(c) for h, c in (v.get("hours") or {}).items()})
+           for d, v in (store or {}).items() if isinstance(v, dict)}
+    for day, rec in (delta or {}).items():
+        cur = out.setdefault(day, {"hours": {}})
+        for k in AI_KINDS:
+            if rec.get(k):
+                cur[k] = int(cur.get(k) or 0) + int(rec[k])
+        if rec.get("pushed"):
+            cur["pushed"] = True
+        for h, c in (rec.get("hours") or {}).items():
+            hc = cur["hours"].setdefault(h, {})
+            for k in AI_KINDS:
+                if c.get(k):
+                    hc[k] = int(hc.get(k) or 0) + int(c[k])
+    return {d: out[d] for d in sorted(out)[-keep:]}
+
+
 def _leads_on():
     return (os.environ.get("SITE_LEADS") or "1").strip() != "0"
 
@@ -308,6 +351,86 @@ def register_site(app, G, store=None):
             _minute["t"].append(now)
             return True
 
+    # תקרה יומית: מונים בזיכרון (delta) שנשמרים לקונפיג לכל היותר פעם בדקה (SITE_AI_FLUSH_SEC), ומיד כשהתקרה נחצית.
+    # אתחול שרת טוען את השמור — התקרה לא מתאפסת ב-deploy (אובדן אפשרי: עד דקה של מונים).
+    _ai = {"base": None, "delta": {}, "flushed": 0.0, "flushing": False, "lock": threading.Lock()}
+
+    def _ai_base():
+        if _ai["base"] is None:
+            try:
+                _ai["base"] = dict((G["_load_config"]() or {}).get("v2_site_ai_usage") or {})
+            except Exception:
+                _ai["base"] = {}
+        return _ai["base"]
+
+    def site_ai_usage():
+        with _ai["lock"]:
+            return ai_usage_merge(_ai_base(), _ai["delta"])
+
+    def site_ai_flush(wait=True):
+        for _ in range(100 if wait else 1):          # שמירה אחת בכל רגע; קריאה ישירה מחכה לזו שרצה
+            with _ai["lock"]:
+                if not _ai["flushing"]:
+                    delta, _ai["delta"], _ai["flushing"] = _ai["delta"], {}, True
+                    break
+            time.sleep(0.05)
+        else:
+            return False
+        got = {}
+
+        def _m(cfg):
+            got["v"] = cfg["v2_site_ai_usage"] = ai_usage_merge(cfg.get("v2_site_ai_usage") or {}, delta)
+        ok = False
+        try:
+            G["_config_mutate"](_m)
+            ok = "v" in got
+        except Exception as e:
+            if log: log.warning(f"site ai usage flush: {e}")
+        with _ai["lock"]:
+            if ok:
+                _ai["base"] = got["v"]
+            else:                                   # לא נשמר — המונים חוזרים לזיכרון לניסיון הבא
+                _ai["delta"] = ai_usage_merge(delta, _ai["delta"])
+            _ai["flushed"], _ai["flushing"] = time.time(), False
+        return ok
+    app.site_ai_usage, app.site_ai_flush = site_ai_usage, site_ai_flush
+
+    def _pq_cached(q):
+        """אותו מפתח מטמון כמו _parse_props_query באפי — פענוח שכבר במטמון לא עולה טוקנים."""
+        text = q if q.startswith("מחפש") else ("מחפש דירה " + q)
+        try:
+            return G["_cache_get"]("pq:" + text, G.get("_PARSE_Q_TTL", 600)) is not None
+        except Exception:
+            return False
+
+    def _ai_gate(q, src):
+        """True = מותר להמשיך (מהמטמון, או קריאת AI מתחת לתקרה). False = חסום (מעל התקרה היומית)."""
+        now = _now_il()
+        day, hh = now.strftime("%Y-%m-%d"), now.strftime("%H")
+        hit, cap, push = _pq_cached(q), ai_daily_cap(), False
+        with _ai["lock"]:
+            today = ai_usage_merge(_ai_base(), _ai["delta"]).get(day) or {}
+            used = int(today.get("site_ai") or 0) + int(today.get("lead_ai") or 0)
+            kind = src + ("_cache" if hit else ("_blocked" if used >= cap else "_ai"))
+            rec = _ai["delta"].setdefault(day, {"hours": {}})
+            rec[kind] = rec.get(kind, 0) + 1
+            hr = rec["hours"].setdefault(hh, {})
+            hr[kind] = hr.get(kind, 0) + 1
+            if kind.endswith("_blocked") and not today.get("pushed") and not rec.get("pushed"):
+                rec["pushed"] = push = True
+            due = push or time.time() - _ai["flushed"] >= float(os.environ.get("SITE_AI_FLUSH_SEC") or 60)
+        if push:
+            try:
+                G["send_push"]("חיפושי AI באתר — הגעתם לתקרה היומית",
+                               "%d קריאות AI היום. מעכשיו ועד חצות האתר מחפש בלי AI (SITE_AI_DAILY)." % used)
+            except Exception as e:
+                if log: log.warning(f"site ai cap push: {e}")
+            if log: log.warning(f"site ai: daily cap {cap} reached")
+        if due:
+            threading.Thread(target=site_ai_flush, args=(False,), daemon=True, name="site-ai-flush").start()
+        return not kind.endswith("_blocked")
+    app.site_ai_gate = _ai_gate
+
     def _active_ids():
         return {str(r.get("מספר מודעה", "") or "").strip() for r in (G["fetch_sheet_rows"]() or [])
                 if not str(r.get("ירד מפרסום", "") or "").strip()} - {""}
@@ -328,6 +451,8 @@ def register_site(app, G, store=None):
         try:
             if not _minute_ok():
                 return jsonify({"ok": False, "reason": "busy"})
+            if not _ai_gate(q, "site"):
+                return jsonify({"ok": False, "reason": "daily_cap"})   # האתר נופל לפענוח המקומי
             parsed = G["_parse_props_query"](q) or {}
             matches = G["search_listings_in_sheet"](parsed) if parsed else []
             hidden, _ = prop_flags(st().all())
@@ -482,7 +607,9 @@ def register_site(app, G, store=None):
         except Exception:
             pass
         res, keys = None, []
-        if buyer.get("row"):
+        if buyer.get("row") and not _ai_gate(q, "lead"):     # תקרת AI יומית משותפת עם חיפוש האתר
+            _push("ליד מהאתר — תקרת AI יומית", "%s %s · %s — לא נוצר דף, לחזור ללקוח" % (nm, phone, q[:60]), push_to)
+        elif buyer.get("row"):
             try:
                 keys = app.bpage_lead_pick(q) or []
                 res = app.bpage_lead_send(buyer, keys, q) if keys else None
