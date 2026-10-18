@@ -927,6 +927,38 @@ def stale_office_update(branch_rows, incoming, now_ts):
         return []   # הסבב המלא לא מוכח — לא מורידים כלום
     return [r for r in branch_rows if int(r.get("_y2_miss") or 0) >= STALE_MISSES and now_ts - _last(r) >= day]
 
+_PLACEHOLDER_AGENT_RE = re.compile(r"^(סוכן\s*\d+|משרד(\s*\d+)?)$")
+
+
+def is_placeholder_agent(name):
+    """שם סוכן שאינו שם אמיתי: ריק, 'סוכן 8719' (מזהה דף סוכן ביד2 בלי שם), 'משרד', '… (לא משויך)'."""
+    s = str(name or "").strip()
+    return (not s) or bool(_PLACEHOLDER_AGENT_RE.match(s)) or "(לא משויך)" in s
+
+
+def keep_real_agents(raw_rows, current):
+    """18/10 (אייל: "נעלמו המון נכסים לחי אלבז"): הסורק שולח 'סוכן 8719' כשהשם שלמד מדף
+    המודעה לא זמין לו (זיכרון הסוכנים נמחק עם נתוני האתר), ודרס סוכנים אמיתיים — 60 נכסים
+    נעלמו מ'שלי' ומהאתר. שורה שמגיעה עם שם-ממלא-מקום שומרת את הסוכן (וטלפון הסוכן) מהשורה
+    הקיימת. ה-CRM כבר נוהג כך (isRealAgentName ב-Code.gs). מחזיר כמה שורות תוקנו."""
+    by_tok = {}
+    for rec in current or ():
+        raw = rec.get("raw") if isinstance(rec, dict) else None
+        if isinstance(raw, dict):
+            by_tok[str(raw.get("מספר מודעה") or "")] = raw
+    fixed = 0
+    for r in raw_rows or ():
+        if not is_placeholder_agent(r.get("סוכן 1")):
+            continue
+        ex = by_tok.get(str(r.get("מספר מודעה") or ""))
+        if ex and not is_placeholder_agent(ex.get("סוכן 1")):
+            r["סוכן 1"] = ex.get("סוכן 1")
+            if ex.get("טלפון 1"):
+                r["טלפון 1"] = ex.get("טלפון 1")
+            fixed += 1
+    return fixed
+
+
 def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now_full="", guarded=None):
     """נכסי המשרד מיד2 (שלב ב', החלטת אייל 01/09): מחליף את שורות הסניף office_tag
     ברשימה החדשה ושומר את שאר הסניפים. שורה של הסניף שנעדרת מהסריקה: ב-delisted →
@@ -978,6 +1010,12 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
                         r[k] = ex.get(k)
     # שורה בלי מפתח בכלל (בלי טוקן ובלי כתובת) — לא נכתבת
     raw_rows = [r for r in raw_rows if str(r.get("מספר מודעה") or "").strip()]
+    try:
+        _fx = keep_real_agents(raw_rows, current)   # [AGENT-KEEP 18/10]
+        if _fx:
+            print(f"props merge {office_tag}: kept real agent on {_fx} rows (placeholder from scanner)", flush=True)
+    except Exception:
+        pass   # לעולם לא מפיל את הקליטה
     new_tokens = set(str(r.get("מספר מודעה") or "") for r in raw_rows)
     existing_tokens = set(str(rec["raw"].get("מספר מודעה") or "") for rec in current if isinstance(rec.get("raw"), dict))
     new_rows = [r for r in raw_rows if str(r.get("מספר מודעה") or "") not in existing_tokens]   # לפוש לסוכן
