@@ -824,6 +824,60 @@ def insert_invoice_row(row):
         return True
 
 
+# ── [CRM-1 19/10] זרמים ישירים (Make / תוכנת חשבוניות) — צל עד הניתוק מפיירברי + תמלול מלא ──
+def shadow_upsert(stream, source_key, received_iso, raw):
+    """שורה בטבלת הצל (ingest_shadow) — retry לא מכפיל (on_conflict על office+stream+key)."""
+    row = {"office_id": SB_OFFICE_ID, "stream": stream, "source_key": source_key,
+           "received_at": received_iso or None, "raw": raw}
+    r = requests.post(SUPABASE_URL + "/rest/v1/ingest_shadow",
+                      headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                      params={"on_conflict": "office_id,stream,source_key"},
+                      json=[row], timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def transcript_upsert(source_key, event_id, transcript, recording_url):
+    """תמלול מלא + קישור הקלטה (call_transcripts). בלי שניהם — לא כותבים (False)."""
+    if not (transcript or recording_url):
+        return False
+    import datetime as _dt_t
+    row = {"office_id": SB_OFFICE_ID, "source_key": source_key, "event_id": event_id,
+           "transcript": transcript or None, "recording_url": recording_url or None,
+           "updated_at": _dt_t.datetime.now(_dt_t.timezone.utc).isoformat()}
+    r = requests.post(SUPABASE_URL + "/rest/v1/call_transcripts",
+                      headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                      params={"on_conflict": "office_id,source_key"},
+                      json=[row], timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def call_upsert_direct(source_key, received_iso, raw):
+    """שיחה ישירות לטבלת calls — אותן עמודות ש-_sbCallRecord_ ב-Apps Script כותב."""
+    import datetime as _dt_c
+    g = lambda k: str(raw.get(k, "") or "")
+    row = {"office_id": SB_OFFICE_ID, "source_key": source_key, "event_id": g("event_id"),
+           "status": g("status"), "agent": g("agent"), "agent_phone": g("agent_phone"),
+           "caller_phone": g("caller_phone"), "duration_sec": g("duration_sec"),
+           "transcript_summary": g("transcript_summary"), "received_at": received_iso,
+           "raw": raw, "updated_at": _dt_c.datetime.now(_dt_c.timezone.utc).isoformat()}
+    r = requests.post(SUPABASE_URL + "/rest/v1/calls",
+                      headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                      params={"on_conflict": "office_id,source_key"},
+                      json=[row], timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
+def fetch_shadow(stream, since_iso):
+    """שורות הצל של זרם מאז since_iso (YYYY-MM-DD או ISO) — raw + source_key + received_at."""
+    recs = _get_all("ingest_shadow", "source_key,received_at,raw",
+                    {"stream": "eq." + stream, "received_at": "gte." + since_iso})
+    return [dict(r.get("raw") or {}, _source_key=r.get("source_key"), _received_at=r.get("received_at"))
+            for r in recs]
+
+
 def fetch_newborn_raw_all():
     """[01/10] כל שורות נכס נולד (raw) בלי סינוני התצוגה (ערים/השכרות) — לבדיקת "קונה שמפרסם נכס"."""
     return [rec.get("raw") for rec in _get_all("newborn_listings", "source_key,raw")

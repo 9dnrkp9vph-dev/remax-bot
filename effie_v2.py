@@ -13874,6 +13874,41 @@ def register(app, G):
             if log: log.error(f"v2 invoices ingest error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
+    @app.route("/v2/api/calls/ingest", methods=["POST"])
+    def v2_api_calls_ingest():
+        """[CRM-1 19/10] שיחה ישירות מ-Make. CALLS_DIRECT=shadow (ברירת מחדל) → טבלת הצל בלבד,
+        עד הניתוק מפיירברי; live → טבלת calls. התמלול המלא נשמר בשני המצבים.
+        המשתנים נקראים בכל בקשה — החלפה ב-Render נכנסת עם ה-restart, בלי שינוי קוד."""
+        import hmac as _hmac
+        key = (os.environ.get("CALLS_INGEST_KEY") or "").strip()
+        k = (request.headers.get("X-Ingest-Key", "") or "").strip()
+        if not key or not k or not _hmac.compare_digest(k, key):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        try:
+            norm = call_ingest_norm(request.get_json(silent=True) or {})
+            if not norm:
+                return jsonify({"ok": False, "reason": "empty"})
+            sk, riso, raw, transcript, rec = norm
+            sb = G.get("_sbdb")
+            if not (sb and sb.enabled()):
+                return jsonify({"ok": False, "reason": "no_supabase"}), 500
+            mode = "live" if (os.environ.get("CALLS_DIRECT") or "").strip().lower() == "live" else "shadow"
+            if mode == "live":
+                sb.call_upsert_direct(sk, riso, raw)
+                try:
+                    G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
+                except Exception:
+                    pass
+                G["_log_activity"]("Make", "system", "", "שיחה חדשה (ישירות)",
+                                   ((raw.get("agent") or "") + " " + (raw.get("status") or ""))[:60].strip())
+            else:
+                sb.shadow_upsert("calls", sk, riso, raw)
+            sb.transcript_upsert(sk, sk, transcript, rec)
+            return jsonify({"ok": True, "mode": mode, "source_key": sk})
+        except Exception as e:
+            if log: log.error(f"v2 calls ingest error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
     # ── "שאל את אפי" (ספק 2026-08-30): כרטיסים מחושבים + שאלה חופשית ל-AI ─────
     _EFFIE_QUOTA = {}
 
