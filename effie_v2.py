@@ -11373,6 +11373,93 @@ def call_ingest_norm(b):
     return sk, iso[:10], raw, tr, rec
 
 
+def crm_ts(s):
+    """זמן מכל פורמט במערכת → epoch (או None). ISO עם אזור-זמן/Z כמו שהוא; ISO בלי אזור
+    ו-DD/MM/YYYY HH:MM — שעון ישראל (דרך inv_parse_dt)."""
+    import datetime as _dt
+    t = str(s or "").strip()
+    if not t:
+        return None
+    if _re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*([+-]\d{2}:?\d{2}|Z)$", t):
+        try:
+            return _dt.datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            pass
+    iso = inv_parse_dt(t)
+    if not iso:
+        m = _re.match(r"(\d{4})-(\d{2})-(\d{2})$", t)
+        iso = ("%s-%s-%sT00:00:00+03:00" % m.groups()) if m else None
+    return _dt.datetime.fromisoformat(iso).timestamp() if iso else None
+
+
+def parallel_match_calls(legacy, direct, window=120):
+    """[CRM-1] שיחות דרך פיירברי מול הזרם הישיר: אותו טלפון לקוח + טלפון סוכן, זמן ±window ש'.
+    כל שיחה מותאמת פעם אחת. ברשימות הפער — זמן, סוכן ו-4 ספרות אחרונות בלבד."""
+    def key(r):
+        return inv_phone9(r.get("caller_phone")), inv_phone9(r.get("agent_phone"))
+    def brief(r):
+        return {"at": r.get("received_at", ""), "agent": r.get("agent", ""),
+                "phone": inv_phone9(r.get("caller_phone"))[-4:]}
+    free = [(key(r), crm_ts(r.get("received_at")), r) for r in direct]
+    matched, only_legacy = 0, []
+    for r in legacy:
+        k, ts = key(r), crm_ts(r.get("received_at"))
+        hit = next((i for i, (k2, t2, _) in enumerate(free)
+                    if k2 == k and ts is not None and t2 is not None and abs(ts - t2) <= window), None)
+        if hit is None:
+            only_legacy.append(brief(r))
+        else:
+            free.pop(hit)
+            matched += 1
+    return {"matched": matched, "only_legacy": only_legacy, "only_direct": [brief(r) for _, _, r in free]}
+
+
+def parallel_match_invoices(legacy, direct):
+    """[CRM-1] חשבוניות: מספר מסמך כשיש בשני הצדדים; אחרת טלפון + סכום + יום."""
+    def amt(v):
+        try:
+            return round(float(str(v).replace(",", "")), 2)
+        except ValueError:
+            return None
+    def day(r):
+        ts = crm_ts(r.get("created_at"))
+        return None if ts is None else int((ts + 3 * 3600) // 86400)
+    def same(a, b):
+        if a.get("doc_num") and b.get("doc_num"):
+            return str(a["doc_num"]) == str(b["doc_num"])
+        return (bool(a.get("phone9")) and a.get("phone9") == b.get("phone9")
+                and amt(a.get("amount")) is not None and amt(a.get("amount")) == amt(b.get("amount"))
+                and day(a) is not None and day(a) == day(b))
+    def brief(r):
+        return {"at": r.get("created_at", ""), "doc_num": r.get("doc_num", ""), "amount": r.get("amount", "")}
+    free = list(direct)
+    matched, only_legacy = 0, []
+    for r in legacy:
+        hit = next((i for i, d in enumerate(free) if same(r, d)), None)
+        if hit is None:
+            only_legacy.append(brief(r))
+        else:
+            free.pop(hit)
+            matched += 1
+    return {"matched": matched, "only_legacy": only_legacy, "only_direct": [brief(r) for r in free]}
+
+
+def sig_nonapp_by_agent(sigs, since_iso):
+    """[CRM-1] סוכנים שעוד מחתימים בחתימה טובה (קישור hatimatova בשורה) מאז since_iso —
+    [(סוכן, כמה)] מהגבוה לנמוך. ההחתמה של אפי מקשרת ל-/s/<token> ולא נספרת."""
+    since = crm_ts(since_iso)
+    cnt = {}
+    for g in sigs:
+        if not any("hatimatova" in str(v) for v in g.values()):
+            continue
+        ts = crm_ts(g.get("received_at"))
+        if since is not None and (ts is None or ts < since):
+            continue
+        a = str(g.get("agent") or "").strip() or "(ללא סוכן)"
+        cnt[a] = cnt.get(a, 0) + 1
+    return sorted(cnt.items(), key=lambda x: (-x[1], x[0]))
+
+
 
 # ── [BPAGE 06/10] דף קונה עם התאמות נכסים — פונקציות טהורות (ספק 2026-10-06-buyer-page) ──
 # כללי חשיפה (אייל 06/10): נכס נולד — בלי מספר בית/תמונות/תיאור/בעלים; שת"פ — בלי משרד/קישור;
@@ -13914,6 +14001,43 @@ def register(app, G):
         except Exception as e:
             if log: log.error(f"v2 calls ingest error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    @app.route("/v2/api/crm/parallel", methods=["GET"])
+    def v2_api_crm_parallel():
+        """[CRM-1 19/10] דוח מקבילות לפני הניתוק מפיירברי: לכל יום — שיחות וחשבוניות דרך פיירברי
+        מול הזרם הישיר (צל), ומי עוד מחתים בחתימה טובה. מפתח בלבד."""
+        s = G["_web_auth"]()
+        if not s or not G["_is_dev"](s.get("phone", "")):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        import datetime as _dp
+        from zoneinfo import ZoneInfo as _ZP
+        try:
+            days = max(1, min(14, int(request.args.get("days", "3") or 3)))
+        except ValueError:
+            days = 3
+        sb = G.get("_sbdb")
+        if not (sb and sb.enabled()):
+            return jsonify({"ok": False, "reason": "no_supabase"}), 500
+        today = _dp.datetime.now(_ZP("Asia/Jerusalem")).date()
+        d0 = today - _dp.timedelta(days=days - 1)
+        frm = d0.strftime("%d/%m/%Y")
+        def dkey(v):
+            ts = crm_ts(v)
+            return _dp.datetime.fromtimestamp(ts, _ZP("Asia/Jerusalem")).date().isoformat() if ts else ""
+        legacy_calls = G["web_fetch_raw"]("שיחות", frm, "31/12/2099") or []
+        direct_calls = sb.fetch_shadow("calls", d0.isoformat())
+        legacy_inv = [r for r in (sb.fetch_invoices_rows("", limit=1000) or []) if dkey(r.get("created_at")) >= d0.isoformat()]
+        direct_inv = sb.fetch_shadow("invoices", d0.isoformat())
+        out = []
+        for i in range(days):
+            d = (d0 + _dp.timedelta(days=i)).isoformat()
+            out.append({"day": d,
+                        "calls": parallel_match_calls([r for r in legacy_calls if dkey(r.get("received_at")) == d],
+                                                      [r for r in direct_calls if dkey(r.get("received_at")) == d]),
+                        "invoices": parallel_match_invoices([r for r in legacy_inv if dkey(r.get("created_at")) == d],
+                                                            [r for r in direct_inv if dkey(r.get("created_at")) == d])})
+        return jsonify({"ok": True, "days": out,
+                        "sig_nonapp": sig_nonapp_by_agent(G["get_signings"]() or [], d0.isoformat())})
 
     # ── "שאל את אפי" (ספק 2026-08-30): כרטיסים מחושבים + שאלה חופשית ל-AI ─────
     _EFFIE_QUOTA = {}
