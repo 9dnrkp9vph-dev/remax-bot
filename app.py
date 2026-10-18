@@ -6345,6 +6345,21 @@ def _parse_sign_header(header):
                 out["props"].append({"addr": _re2.sub(r"^\d+\.\s*", "", ln), "price": ""})
     return out
 
+def _pick_avatar_phone(cands, local_has, db_phones):
+    """תמונת הסוכן בדף ההסכם (אייל 18/10, רפי): קודם מספר עם קובץ בדיסק, אחר כך מספר עם
+    תמונה ב-Supabase (הדיסק מתאפס בפריסה). db_phones=None (לא ידוע) → המספר הראשון כמו פעם;
+    ידוע שאין תמונה → '' (האות בלבד, בלי תמונה שבורה)."""
+    for c in cands or []:
+        if local_has(c):
+            return c
+    if db_phones is None:
+        return (cands or [""])[0]
+    for c in cands or []:
+        if c in db_phones:
+            return c
+    return ""
+
+
 @app.route("/s/<token>")
 def public_sign_doc(token):
     """עמוד ציבורי של ההסכם החתום (ללא התחברות) — נפתח מהקישור בשורת החתימה / מה-SMS.
@@ -6497,12 +6512,11 @@ def public_sign_doc(token):
             _ai9 = "".join(ch for ch in str(_ainfo.get("phone", "")) if ch.isdigit())[-9:]
             if _ai9 and _ai9 not in _cands:
                 _cands.append(_ai9)
-            for _c in _cands:
-                if os.path.exists(os.path.join(_av_dir, _c + ".jpg")):
-                    _avraw = _c
-                    break
-            if not _avraw and _cands:
-                _avraw = _cands[0]
+            _haslocal = lambda c: os.path.exists(os.path.join(_av_dir, c + ".jpg"))
+            _dbp = None
+            if _cands and not any(_haslocal(c) for c in _cands):
+                _dbp = _sbdb.avatar_phones(_cands) if _sbdb else None
+            _avraw = _pick_avatar_phone(_cands, _haslocal, _dbp)
         except Exception:
             _avraw = ""
         _aletter = _h.escape(_p["agent"].strip()[:1]) if _p["agent"].strip() else ""

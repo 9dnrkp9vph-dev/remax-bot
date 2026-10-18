@@ -562,6 +562,28 @@ def avatar_save(phone, img_b64):
         return False
 
 
+def avatar_phones(phones):
+    """אילו מהמספרים (9 ספרות) יש להם תמונה ב-avatars — שאילתה אחת. None = לא ידוע (כשל)."""
+    ps = []
+    for p in phones or []:
+        d = "".join(ch for ch in str(p or "") if ch.isdigit())[-9:]
+        if d and d not in ps:
+            ps.append(d)
+    if not ps:
+        return set()
+    if not enabled():
+        return None
+    try:
+        r = requests.get(SUPABASE_URL + "/rest/v1/avatars", headers=_headers(),
+                         params={"select": "phone", "office_id": "eq." + SB_OFFICE_ID,
+                                 "phone": "in.(" + ",".join(ps) + ")"},
+                         timeout=10)
+        r.raise_for_status()
+        return {str(x.get("phone") or "") for x in (r.json() or [])}
+    except Exception:
+        return None
+
+
 def avatar_get(phone):
     """base64 של תמונת הפרופיל מ-Supabase, או '' — fallback כשהדיסק התאפס."""
     if not (enabled() and phone):
