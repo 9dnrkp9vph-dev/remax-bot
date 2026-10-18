@@ -14,17 +14,21 @@ A._is_dev = lambda p: True
 A.web_fetch_raw = lambda t, f, to: [dict(caller_phone="0546631493", agent_phone="0505235330", agent="אלי",
                                         received_at=dmy + " 17:08")]
 A.get_signings = lambda *a, **k: [dict(agent="דידי לוי", commission_pct="https://sign.hatimatova.co.il/x", received_at=dmy + " 10:00")]
+SINCE = []
 class FakeSB:
     def enabled(s): return True
     def fetch_shadow(s, st, since):
+        SINCE.append(since)
         return [dict(caller_phone="546631493", agent_phone="505235330", received_at=dmy + " 17:09")] if st == "calls" else []
     def fetch_invoices_rows(s, q, limit=400): return [dict(doc_num="7", created_at=today.isoformat() + "T10:00:00+03:00")]
 A._sbdb = FakeSB()
 c = A.app.test_client()
 j = c.get("/v2/api/crm/parallel?days=2").get_json()
 ck(j["ok"] and len(j["days"]) == 2 and j["days"][-1]["day"] == today.isoformat(), j)
-ck(j["days"][-1]["calls"]["matched"] == 1 and j["days"][-1]["invoices"]["only_legacy"], j["days"][-1])
+ck(j["calls"]["matched"] == 1 and j["invoices"]["only_legacy"], "matched over the whole range (midnight-safe)")
+ck(j["days"][-1]["calls_legacy"] == 1 and j["days"][-1]["calls_direct"] == 1 and j["days"][-1]["inv_legacy"] == 1, j["days"][-1])
 ck(j["sig_nonapp"] == [["דידי לוי", 1]], j["sig_nonapp"])
+ck(SINCE and all(x == (today - datetime.timedelta(days=2)).isoformat() for x in SINCE), ("shadow fetched from the day before (UTC midnight = 03:00 Israel)", SINCE))
 A._is_dev = lambda p: False
 ck(c.get("/v2/api/crm/parallel").status_code == 403, "dev only")
 print("parallel_route OK", n)

@@ -11432,9 +11432,9 @@ def crm_ts(s):
     return _dt.datetime.fromisoformat(iso).timestamp() if iso else None
 
 
-def parallel_match_calls(legacy, direct, window=120):
-    """[CRM-1] שיחות דרך פיירברי מול הזרם הישיר: אותו טלפון לקוח + טלפון סוכן, זמן ±window ש'.
-    כל שיחה מותאמת פעם אחת. ברשימות הפער — זמן, סוכן ו-4 ספרות אחרונות בלבד."""
+def parallel_match_calls(legacy, direct, window=900):
+    """[CRM-1] שיחות דרך פיירברי מול הזרם הישיר: אותו טלפון לקוח + טלפון סוכן, זמן ±window ש'
+    (15 דק' — ברשומת פיירברי הזמן הוא אחרי התמלול). כל שיחה מותאמת פעם אחת, לקרובה ביותר. ברשימות הפער — זמן, סוכן ו-4 ספרות אחרונות בלבד."""
     def key(r):
         return inv_phone9(r.get("caller_phone")), inv_phone9(r.get("agent_phone"))
     def brief(r):
@@ -11444,8 +11444,9 @@ def parallel_match_calls(legacy, direct, window=120):
     matched, only_legacy = 0, []
     for r in legacy:
         k, ts = key(r), crm_ts(r.get("received_at"))
-        hit = next((i for i, (k2, t2, _) in enumerate(free)
-                    if k2 == k and ts is not None and t2 is not None and abs(ts - t2) <= window), None)
+        cands = [(abs(ts - t2), i) for i, (k2, t2, _) in enumerate(free)
+                 if k2 == k and ts is not None and t2 is not None and abs(ts - t2) <= window]
+        hit = min(cands)[1] if cands else None
         if hit is None:
             only_legacy.append(brief(r))
         else:
@@ -14038,18 +14039,23 @@ def register(app, G):
             ts = crm_ts(v)
             return _dp.datetime.fromtimestamp(ts, _ZP("Asia/Jerusalem")).date().isoformat() if ts else ""
         legacy_calls = G["web_fetch_raw"]("שיחות", frm, "31/12/2099") or []
-        direct_calls = sb.fetch_shadow("calls", d0.isoformat())
+        # gte 'YYYY-MM-DD' ב-Postgres = חצות UTC (03:00 בישראל) — מושכים מיום קודם ומסננים לפי יום ישראלי
+        prev = (d0 - _dp.timedelta(days=1)).isoformat()
+        direct_calls = [r for r in sb.fetch_shadow("calls", prev) if dkey(r.get("received_at")) >= d0.isoformat()]
         legacy_inv = [r for r in (sb.fetch_invoices_rows("", limit=1000) or []) if dkey(r.get("created_at")) >= d0.isoformat()]
-        direct_inv = sb.fetch_shadow("invoices", d0.isoformat())
+        direct_inv = [r for r in sb.fetch_shadow("invoices", prev) if dkey(r.get("created_at")) >= d0.isoformat()]
+        # ההתאמה על כל הטווח (שיחה סביב חצות לא נחתכת בין ימים); ספירות לפי יום לתצוגה
         out = []
         for i in range(days):
             d = (d0 + _dp.timedelta(days=i)).isoformat()
             out.append({"day": d,
-                        "calls": parallel_match_calls([r for r in legacy_calls if dkey(r.get("received_at")) == d],
-                                                      [r for r in direct_calls if dkey(r.get("received_at")) == d]),
-                        "invoices": parallel_match_invoices([r for r in legacy_inv if dkey(r.get("created_at")) == d],
-                                                            [r for r in direct_inv if dkey(r.get("created_at")) == d])})
+                        "calls_legacy": sum(1 for r in legacy_calls if dkey(r.get("received_at")) == d),
+                        "calls_direct": sum(1 for r in direct_calls if dkey(r.get("received_at")) == d),
+                        "inv_legacy": sum(1 for r in legacy_inv if dkey(r.get("created_at")) == d),
+                        "inv_direct": sum(1 for r in direct_inv if dkey(r.get("created_at")) == d)})
         return jsonify({"ok": True, "days": out,
+                        "calls": parallel_match_calls(legacy_calls, direct_calls),
+                        "invoices": parallel_match_invoices(legacy_inv, direct_inv),
                         "sig_nonapp": sig_nonapp_by_agent(G["get_signings"]() or [], d0.isoformat())})
 
     # ── "שאל את אפי" (ספק 2026-08-30): כרטיסים מחושבים + שאלה חופשית ל-AI ─────

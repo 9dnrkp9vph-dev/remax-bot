@@ -10,7 +10,7 @@ match_calls, match_inv, sig_nonapp = ns["parallel_match_calls"], ns["parallel_ma
 L = [dict(caller_phone="0546631493", agent_phone="0505235330", agent="אלי שמול", received_at="2026-10-18T14:08:10.000Z")]
 D = [dict(caller_phone="546631493", agent_phone="505235330", agent="אלי שמול", received_at="18/10/2026 17:09")]
 ck(match_calls(L, D)["matched"] == 1, "±120s, phone formats, Z vs Israel time")
-D2 = [dict(caller_phone="546631493", agent_phone="505235330", received_at="18/10/2026 17:12")]
+D2 = [dict(caller_phone="546631493", agent_phone="505235330", received_at="18/10/2026 17:30")]
 r = match_calls(L, D2)
 ck(len(r["only_legacy"]) == 1 and len(r["only_direct"]) == 1 and r["matched"] == 0, r)
 ck(r["only_legacy"][0]["phone"] == "1493" and r["only_legacy"][0]["agent"] == "אלי שמול", "privacy: last 4 only")
@@ -26,4 +26,11 @@ sigs = [dict(agent="דידי לוי", commission_pct="https://sign.hatimatova.co
         dict(agent="יובל כהן", commission_pct="https://remax-bot.onrender.com/s/tok", received_at="20/10/2026 10:00"),
         dict(agent="רויטל גל", commission_pct="https://sign.hatimatova.co.il/signpad/old/?p=5", received_at="10/10/2026 10:00")]
 ck(sig_nonapp(sigs, "2026-10-19") == [("דידי לוי", 2)], sig_nonapp(sigs, "2026-10-19"))
+# שיחה ארוכה: פיירברי נוצר אחרי התמלול — 9 דק' אחרי תחילת השיחה ב-Make
+LL = [dict(caller_phone="0546631493", agent_phone="0505235330", received_at="2026-10-18T14:17:00.000Z")]
+ck(match_calls(LL, D)["matched"] == 1, "window covers transcription delay")
+# ההתאמה בוחרת את הקרוב ביותר: שתי שיחות לאותו לקוח בהפרש 5 דק'
+L2 = [dict(caller_phone="1", agent_phone="2", received_at="18/10/2026 10:00"), dict(caller_phone="1", agent_phone="2", received_at="18/10/2026 10:05")]
+D3 = [dict(caller_phone="1", agent_phone="2", received_at="18/10/2026 10:05"), dict(caller_phone="1", agent_phone="2", received_at="18/10/2026 10:00")]
+ck(match_calls(L2, D3)["matched"] == 2, "nearest pairing")
 print("parallel OK", _load.n)
