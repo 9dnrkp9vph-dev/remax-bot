@@ -4708,11 +4708,17 @@ function saveSt(){
   try{
     var s = JSON.parse(localStorage.getItem('v2st:buyers') || 'null');
     if (s){
-      FILTER = s.f || FILTER; el('q').value = s.q || ''; _restY = s.y || 0;
+      // 19/10 (אייל): החיפוש לא נשמר בין כניסות — סוכנים 'לא ראו' קונה כי נשאר חיפוש ישן בשדה.
+      // הטאב נשמר; הגלילה רק כשלא היה חיפוש (מיקום ברשימה מסוננת לא שייך לרשימה המלאה).
+      FILTER = s.f || FILTER; el('q').value = ''; _restY = s.q ? 0 : (s.y || 0);
       if (['active', 'hot', 'bpage'].indexOf(FILTER) < 0) FILTER = 'active';   // 07/10: הוסרו בהקפאה/סגרו
     }
   }catch(e){}
   if (/[?&]tab=bpage\b/.test(location.search)){ FILTER = 'bpage'; el('q').value = ''; _restY = 0; }   // [AI-MATCH 08/10] מאריח "התאמות AI" בבית
+  // 19/10: חזרה לדף מזיכרון הדפדפן (כפתור 'אחורה') — גם אז בלי החיפוש הקודם
+  window.addEventListener('pageshow', function(ev){
+    if (ev.persisted && el('q') && el('q').value){ try{ aiClear(); }catch(e){} }
+  });
   var sg = document.querySelector('#filters .sg[data-f="' + FILTER + '"]');
   if (sg){ var cs = sg.parentNode.children;
     for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
