@@ -14058,6 +14058,37 @@ def register(app, G):
                         "invoices": parallel_match_invoices(legacy_inv, direct_inv),
                         "sig_nonapp": sig_nonapp_by_agent(G["get_signings"]() or [], d0.isoformat())})
 
+    @app.route("/v2/api/crm/promote_calls", methods=["POST"])
+    def v2_api_crm_promote_calls():
+        """[CRM-1 ביקורת] ביום הניתוק: שיחות שנכנסו לצל מאז since (YYYY-MM-DD) → calls.
+        מכסה את החלון שבין נטרול הסנכרון ב-Apps Script להחלפת CALLS_DIRECT=live. idempotent (אותו mk:)."""
+        s = G["_web_auth"]()
+        if not s or not G["_is_dev"](s.get("phone", "")):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        since = str((request.get_json(silent=True) or {}).get("since", "") or "").strip()
+        if not _re.match(r"^\d{4}-\d{2}-\d{2}$", since):
+            return jsonify({"ok": False, "reason": "since"})
+        sb = G.get("_sbdb")
+        if not (sb and sb.enabled()):
+            return jsonify({"ok": False, "reason": "no_supabase"}), 500
+        import datetime as _dpr
+        from zoneinfo import ZoneInfo as _ZPR
+        n = 0
+        for r in sb.fetch_shadow("calls", since):
+            sk = r.get("_source_key")
+            raw = {k: v for k, v in r.items() if not k.startswith("_")}
+            ts = crm_ts(raw.get("received_at"))
+            if not sk or ts is None:
+                continue
+            sb.call_upsert_direct(sk, _dpr.datetime.fromtimestamp(ts, _ZPR("Asia/Jerusalem")).date().isoformat(), raw)
+            n += 1
+        try:
+            G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
+        except Exception:
+            pass
+        G["_log_activity"]("אפי", "system", "", "ניתוק פיירברי — שיחות מהצל", str(n))
+        return jsonify({"ok": True, "promoted": n})
+
     # ── "שאל את אפי" (ספק 2026-08-30): כרטיסים מחושבים + שאלה חופשית ל-AI ─────
     _EFFIE_QUOTA = {}
 
