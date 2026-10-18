@@ -13865,6 +13865,12 @@ def register(app, G):
             sb = G.get("_sbdb")
             if not (sb and sb.enabled()):
                 return jsonify({"ok": False, "reason": "no_supabase"}), 500
+            # [CRM-1 19/10] התוכנה החיצונית שולחת ?via=direct. עד הניתוק מפיירברי (INVOICES_DIRECT≠live)
+            # נכתב רק לצל — בלי כפילות בטבלה ובלי וואטסאפ שני ללקוח; דוח המקבילות משווה.
+            if (request.args.get("via", "") == "direct"
+                    and (os.environ.get("INVOICES_DIRECT") or "").strip().lower() != "live"):
+                sb.shadow_upsert("invoices", row["row_hash"], created, row)
+                return jsonify({"ok": True, "mode": "shadow", "new": False, "wa": False})
             inserted = sb.insert_invoice_row(row)
             _log_activity("Fireberry", "system", "", "חשבונית חדשה מפיירברי",
                           (nm + " " + amount)[:60].strip())
