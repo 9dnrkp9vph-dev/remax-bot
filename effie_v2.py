@@ -1923,6 +1923,14 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <button onclick="snapTake()" style="margin-top:10px;width:100%;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">צור גיבוי עכשיו</button>
     </div>
 
+    <!-- תיקון תקציב קונים שנוצרו מהחתמה לפני 14/10 (אייל 18/10) -->
+    <div class="card" id="bbfCard">
+      <div class="cardTitle">תיקון תקציב קונים מהחתמה</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">קונים שנוצרו מהחתמה לפני 14/10 קיבלו לפעמים את המחיר והתיאור של נכס אחר באותה כתובת. מתקנים רק קונה שהתקציב שלו עוד זהה למחיר של אותה מודעה (לא נערך ידנית), לפי המחיר שהוקלד בטופס.</div>
+      <div id="bbfRes" style="margin-top:8px"></div>
+      <button id="bbfBtn" onclick="bbfLoad()" style="margin-top:10px;width:100%;min-height:44px;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">בדוק קונים</button>
+    </div>
+
     <!-- השלמת תמונות סוכנים מהאתר הישן (אייל 18/10) -->
     <div class="card" id="avImpCard">
       <div class="cardTitle">תמונות סוכנים — אפי והאתר</div>
@@ -2187,6 +2195,34 @@ function snapTake(){
   POST('/v2/api/admin/props/snapshot', {}).then(function(j){
     if (j && j.ok){ toast('נשמר גיבוי של ' + j.n + ' נכסים'); loadSnaps(); }
     else toast(j && j.reason === 'forbidden' ? 'אין הרשאה' : 'הגיבוי נכשל');
+  }).catch(function(){ toast('שגיאה'); });
+}
+var BBF = [];
+function bbfHtml(items){
+  if (!items.length) return '<div style="font-size:13px;color:#6B7280;padding:6px 0">אין קונים לתיקון.</div>';
+  return items.map(function(it, i){
+    var sch = it.search_new !== it.search_old ? '<div class="sb">מה מחפש: ' + esc(it.search_new) + '</div>' : '';
+    return '<label class="setRow" style="cursor:pointer;align-items:flex-start"><input type="checkbox" checked data-bbf="' + i + '" style="width:20px;height:20px;margin:4px 0 0 10px;accent-color:#2E6BD6">' +
+      '<div class="mid"><div class="nm">' + esc(it.name) + ' · ' + esc(it.agent) + '</div>' +
+      '<div class="sb">' + esc(it.address) + ' · ' + esc(it.date.split('-').reverse().join('/')) + '</div>' +
+      '<div class="sb">תקציב: <s>' + esc(it.budget_old) + '</s> ← <b>' + esc(it.budget_new) + '</b></div>' + sch + '</div></label>';
+  }).join('') + '<button onclick="bbfApply()" style="margin-top:10px;width:100%;min-height:44px;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">תקן את המסומנים</button>';
+}
+function bbfLoad(){
+  var r = el('bbfRes'); r.innerHTML = '<div style="font-size:13px;color:#6B7280">בודק…</div>';
+  GET('/api/dev/buyer_budget_fix').then(function(j){
+    if (!j || !j.ok){ r.innerHTML = ''; toast('הבדיקה נכשלה' + (j && j.reason ? ' (' + j.reason + ')' : '')); return; }
+    BBF = j.items || []; r.innerHTML = bbfHtml(BBF);
+  }).catch(function(){ r.innerHTML = ''; toast('שגיאה'); });
+}
+function bbfApply(){
+  var rows = [].slice.call(document.querySelectorAll('[data-bbf]')).filter(function(c){ return c.checked; })
+    .map(function(c){ return BBF[+c.getAttribute('data-bbf')].row; });
+  if (!rows.length){ toast('לא נבחרו קונים'); return; }
+  if (!confirm('לתקן ' + rows.length + ' קונים?')) return;
+  POST('/api/dev/buyer_budget_fix', {rows: rows}).then(function(j){
+    if (j && j.ok){ toast('תוקנו ' + j.done.length + (j.failed.length ? ' · נכשלו ' + j.failed.length : '')); bbfLoad(); }
+    else toast('התיקון נכשל');
   }).catch(function(){ toast('שגיאה'); });
 }
 function avImpHtml(j){

@@ -4951,6 +4951,76 @@ def api_dev_quiet():
                       "השתקת התראות" if on else "הפעלת התראות", "מהקונסולה")
     return jsonify({"ok": True, "on": _quiet_mode(), "env": env_forced, "shabbat": _shabbat_quiet_now()})
 
+def _bbfix_build():
+    """תוכנית התיקון על הנתונים החיים (18/10) — קונים, חתימות, נכסי המשרד/שת"פ ומסמכי ההחתמה."""
+    idx = _office_prop_index()
+    excl = fetch_external_exclusives() or []
+    look = {}
+    def infos(g):
+        k = (g.get("address", ""), g.get("city", ""))
+        if k not in look:
+            look[k] = [x for x in (_sign_prop_lookup(a.strip(), g.get("city", ""), idx=idx, excl=excl)
+                                   for a in str(g.get("address", "") or "").split("|")) if x]
+        return look[k]
+    docs = {}
+    def typed(g):
+        b = _sig_price(g.get("budget") or g.get("תקציב"))
+        if b:
+            return [b]
+        m = re.search(r"/s/([\w-]{8,})", str(g.get("commission_pct", "") or ""))
+        tok = m.group(1) if m else str(g.get("event_id", "") or "").strip()
+        if not tok or tok.isdigit():   # אחרי החתימה event_id = ת"ז הלקוח — אין ממנו מסמך
+            return []
+        if tok not in docs:
+            try:
+                j = _signdoc_get(tok) or {}
+                docs[tok] = _sign_header_prices((j.get("doc") or {}).get("header", "")) if j.get("found") else []
+            except Exception:
+                docs[tok] = []
+        return docs[tok]
+    def desc_for(g, tp):
+        inf = infos(g)
+        old = next((x["desc"] for x in inf if x.get("desc")), "")
+        return (old, _buyer_desc_for(inf, tp)) if old else None
+    return _bbfix_plan(_fetch_manual_buyers(), get_signings(), _canon_key, _excl_epoch,
+                       lambda g: [_sig_price(x.get("price")) for x in infos(g) if _sig_price(x.get("price"))],
+                       typed, desc_for)
+
+
+@app.route("/api/dev/buyer_budget_fix", methods=["GET", "POST"])
+def api_dev_buyer_budget_fix():
+    """[18/10 אייל] תיקון חד-פעמי: קונים מהחתמה עם תקציב של נכס אחר באותה כתובת. GET = תצוגה מקדימה,
+    POST {rows:[...]} = מתקן רק את השורות שנבחרו ושעדיין בתוכנית. מפתח בלבד."""
+    s = _web_auth()
+    if not s or not _is_dev(s.get("phone", "")):
+        return jsonify({"ok": False, "reason": "forbidden"}), 403
+    try:
+        plan = _bbfix_build()
+    except Exception as e:
+        log.warning(f"buyer budget fix: {e}")
+        return jsonify({"ok": False, "reason": "plan_failed"})
+    if request.method == "GET":
+        return jsonify({"ok": True, "items": plan})
+    want = {str(x) for x in ((request.get_json(silent=True) or {}).get("rows") or [])}
+    done, failed = [], []
+    for it in plan:
+        if str(it["row"]) not in want:
+            continue
+        up = {"row": str(it["row"]), "budget": it["budget_new"], "budget_day": it["date"]}   # הלולאה לא תחזיר את הישן
+        if it["search_new"] != it["search_old"]:
+            up["search"] = it["search_new"][:480]
+        try:
+            ok = bool((_buyers_write("updatebuyer", up) or {}).get("ok"))
+        except Exception:
+            ok = False
+        (done if ok else failed).append(it["name"])
+    if done:
+        _cache_clear("buyers")
+        _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "תיקון תקציב קונים מהחתמה",
+                      f"{len(done)} קונים: " + ", ".join(done)[:300])
+    return jsonify({"ok": True, "done": done, "failed": failed})
+
+
 @app.route("/api/dev/smstest", methods=["POST"])
 def api_dev_smstest():
     """אבחון ספק SMS (Maskyoo/sms.deals) — מפתח בלבד. שולח הודעת בדיקה ומחזיר את
@@ -5822,6 +5892,55 @@ def _buyer_desc_for(infos, cur):
         return info["desc"]
     parts = [x.strip() for x in str(info["desc"]).split("·") if x.strip() and not re.search(r"\d", x)]
     return " · ".join(parts + ["עד {:,}".format(avg)])
+
+
+def _bbfix_plan(buyers, sigs, canon, epoch, listing_prices, typed_prices, desc_for, tol=0.15):
+    """[18/10 אייל: 'חתם על 1,790,000 — למה 2,350,000?'] קונים שנוצרו מהחתמה לפני התיקון של 14/10 קיבלו
+    תקציב/תיאור של נכס אחר באותה כתובת. מתקנים רק כשבטוח: התקציב שווה (±1%) למחיר המודעה שזוהתה
+    בחתימה האחרונה של הלקוח אצל אותו סוכן, והמחיר שהוקלד בטופס רחוק ממנו ביותר מ-15%.
+    תקציב שהסוכן ערך ידנית — לא נוגעים. התיאור מוחלף רק כשהוא מכיל את התיאור האוטומטי (desc_for)."""
+    import datetime as _dtf
+    out = []
+    for b in buyers or []:
+        bk, ak = canon(b.get("name", "")), canon(b.get("agent", ""))
+        if not bk or not ak:
+            continue
+        days = {}
+        for g in sigs or []:
+            dt = str(g.get("deal_type", "") or "").upper()
+            if not dt.startswith("CLIENT") or "RENT" in dt:
+                continue
+            if canon(g.get("client_name", "")) != bk or canon(g.get("agent", "")) != ak:
+                continue
+            e = epoch(g.get("received_at", ""))
+            if e:
+                days.setdefault(_dtf.datetime.fromtimestamp(e).strftime("%Y-%m-%d"), []).append(g)
+        if not days:
+            continue
+        day = days[max(days)]
+        lp = [p for g in day for p in listing_prices(g) if p]
+        B = _sig_price(b.get("budget"))
+        if not lp or not B or abs(B - sum(lp) // len(lp)) > 0.01 * (sum(lp) // len(lp)):
+            continue   # התקציב לא בא מהמודעה (הסוכן ערך / אין זיהוי) — לא נוגעים; גם חוסך קריאת מסמכים
+        L = sum(lp) // len(lp)
+        typed = {id(g): [p for p in typed_prices(g) if p] for g in day}
+        tp = [p for v in typed.values() for p in v]
+        if not tp:
+            continue
+        T = sum(tp) // len(tp)
+        if abs(L - T) <= tol * T:
+            continue
+        search = str(b.get("search", "") or "")
+        new_search = search
+        for g in day:
+            r = desc_for(g, typed[id(g)]) if typed[id(g)] else None
+            if r and r[0] and r[0] in new_search and r[1] != r[0]:
+                new_search = new_search.replace(r[0], r[1])
+        out.append({"row": b.get("row"), "name": b.get("name", ""), "agent": b.get("agent", ""), "date": max(days),
+                    "address": " | ".join(str(g.get("address", "") or "") for g in day),
+                    "budget_old": str(b.get("budget", "") or ""), "budget_new": "{:,}".format(T),
+                    "search_old": search, "search_new": new_search})
+    return out
 
 
 def _add_buyer_from_signing(agent, client, phone="", address="", origin="החתמה דיגיטלית", deal_kind="sale", price=""):
