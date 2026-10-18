@@ -11335,6 +11335,44 @@ def sig_ingest_norm(b):
     return sk, riso, raw
 
 
+def call_ingest_norm(b):
+    """[CRM-1 19/10] שיחה ישירות מ-Make (במקום Make → פיירברי → גיליון → Supabase) →
+    (source_key, תאריך YYYY-MM-DD לעמודת received_at, raw במפתחות טאב השיחות,
+    תמלול מלא, קישור הקלטה) — או None בלי מזהה שיחה (אין על מה לעשות upsert).
+    התמלול לא נחתך; "No Answer" (פלט התמלול לשיחה ריקה) = אין תמלול."""
+    def f(*names):
+        for n in names:
+            v = b.get(n)
+            if v is not None and str(v).strip() not in ("", "-"):
+                return str(v).strip()
+        return ""
+    uid = f("call_uuid", "uuid", "callid", "call_id")
+    if not uid:
+        return None
+    sk = "mk:" + uid
+    rcv = f("created", "received_at", "date", "תאריך")
+    iso = inv_parse_dt(rcv)
+    if not iso:
+        import datetime as _dc
+        from zoneinfo import ZoneInfo as _ZC
+        iso = _dc.datetime.now(_ZC("Asia/Jerusalem")).strftime("%Y-%m-%dT%H:%M:00+03:00")
+    tr = b.get("transcript")
+    tr = "" if tr is None else str(tr).strip()
+    if tr.lower().strip(" .") == "no answer":
+        tr = ""
+    rec = f("recording_url", "recording", "הקלטה")
+    raw = {"event_id": sk,
+           "status": f("callstatus", "status", "סטטוס"),
+           "agent": f("agent", "סוכן", "שם הסוכן"),
+           "agent_phone": f("agent_phone", "טלפון סוכן"),
+           "caller_phone": f("caller_phone", "טלפון לקוח", "from"),
+           "duration_sec": f("duration_sec", "duration", "משך"),
+           "transcript_summary": f("summary", "transcript_summary", "סיכום"),
+           "received_at": rcv if inv_parse_dt(rcv) else "%s/%s/%s %s" % (iso[8:10], iso[5:7], iso[0:4], iso[11:16]),
+           "recording_url": rec}
+    return sk, iso[:10], raw, tr, rec
+
+
 
 # ── [BPAGE 06/10] דף קונה עם התאמות נכסים — פונקציות טהורות (ספק 2026-10-06-buyer-page) ──
 # כללי חשיפה (אייל 06/10): נכס נולד — בלי מספר בית/תמונות/תיאור/בעלים; שת"פ — בלי משרד/קישור;
