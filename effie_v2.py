@@ -11386,12 +11386,16 @@ def call_ingest_norm(b):
     if not uid:
         return None
     sk = "mk:" + uid
-    rcv = f("created", "received_at", "date", "תאריך")
-    iso = inv_parse_dt(rcv)
-    if not iso:
-        import datetime as _dc
-        from zoneinfo import ZoneInfo as _ZC
-        iso = _dc.datetime.now(_ZC("Asia/Jerusalem")).strftime("%Y-%m-%dT%H:%M:00+03:00")
+    # 🐞 ביקורת 19/10: raw.received_at חייב להיות ISO-Z כמו בסנכרון מהגיליון (toISOString) —
+    # /api/history ממיין לפי _epoch_from_iso, ו-DD/MM נותן 0 → שיחה חדשה נעלמת מתחת להיסטוריה.
+    # crm_ts מכבד Z/אזור-זמן (Make ב-UTC) ו-DD/MM בשעון ישראל; לא פריס → עכשיו.
+    import datetime as _dc
+    from zoneinfo import ZoneInfo as _ZC
+    ts = crm_ts(f("created", "received_at", "date", "תאריך"))
+    when = (_dc.datetime.fromtimestamp(ts, _dc.timezone.utc) if ts is not None
+            else _dc.datetime.now(_dc.timezone.utc)).replace(microsecond=0)
+    iso_z = when.strftime("%Y-%m-%dT%H:%M:%SZ")
+    day_il = when.astimezone(_ZC("Asia/Jerusalem")).date().isoformat()
     tr = b.get("transcript")
     tr = "" if tr is None else str(tr).strip()
     if tr.lower().strip(" .") == "no answer":
@@ -11404,9 +11408,9 @@ def call_ingest_norm(b):
            "caller_phone": f("caller_phone", "טלפון לקוח", "from"),
            "duration_sec": f("duration_sec", "duration", "משך"),
            "transcript_summary": f("summary", "transcript_summary", "סיכום"),
-           "received_at": rcv if inv_parse_dt(rcv) else "%s/%s/%s %s" % (iso[8:10], iso[5:7], iso[0:4], iso[11:16]),
+           "received_at": iso_z,
            "recording_url": rec}
-    return sk, iso[:10], raw, tr, rec
+    return sk, day_il, raw, tr, rec
 
 
 def crm_ts(s):
