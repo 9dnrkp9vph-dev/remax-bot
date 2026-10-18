@@ -10279,6 +10279,42 @@ def inv_name_key(s):
     t = _re.sub(r'["\'׳״]', '', str(s or ''))
     return ' '.join(sorted(t.split()))
 
+
+def inv_ingest_row(b):
+    """[CRM-1 19/10] payload חשבונית (פיירברי / התוכנה החיצונית / שורת CSV מייצוא פיירברי) →
+    שורת invoices עם row_hash. משותף לקליטה החיה ולכלי ייבוא ההיסטוריה — אותו hash.
+    בלי שם לקוח → None."""
+    def f(*names):
+        for n in names:
+            v = b.get(n)
+            if v is not None and str(v).strip() not in ("", "-"):
+                return str(v).strip()
+        return ""
+    nm = f("name", "שם")
+    if not nm:
+        return None
+    phone = f("phone", "טלפון")
+    raw_dt = f("created", "נוצר בתאריך", "date")
+    created = inv_parse_dt(raw_dt)
+    if not created:
+        import datetime as _di
+        from zoneinfo import ZoneInfo as _ZIi
+        created = _di.datetime.now(_ZIi("Asia/Jerusalem")).strftime("%Y-%m-%dT%H:%M:00+03:00")
+    link = f("link", "קישור למסמך")
+    if link and not link.startswith("http"):
+        link = "https://" + link
+    num = f("doc_num", "מספר מסמך")
+    amount = f("amount", "סכום במסמך")
+    import hashlib as _hl
+    base = "|".join([nm, phone, num, raw_dt or created, amount, link])
+    return {"client_name": nm, "name_key": inv_name_key(nm),
+            "phone": phone, "phone9": inv_phone9(phone),
+            "doc_type": inv_norm_type(f("doc_type", "סוג מסמך")),
+            "doc_num": num, "charge_line": f("charge_line", "שורת חיוב"),
+            "created_at": created, "source": f("source", "מקור המסמך"),
+            "link": link, "amount": amount,
+            "row_hash": _hl.sha1(base.encode("utf-8")).hexdigest()}
+
 # ── yad2 ingest שלב א' (ספק 2026-08-30): פרטי→נכס נולד · משרדים→שת"פ ─────────
 Y2_OUR_OFFICE_IDS = {"5625538", "5628636", "8532791"}   # שלושת סניפי רימקס פמילי ביד2
 
@@ -13918,37 +13954,10 @@ def register(app, G):
         if not _INGEST_KEY or not k or not _hmac.compare_digest(k, _INGEST_KEY):
             return jsonify({"ok": False, "reason": "forbidden"}), 403
         try:
-            b = request.get_json(silent=True) or {}
-            def f(*names):
-                for n in names:
-                    v = b.get(n)
-                    if v is not None and str(v).strip() not in ("", "-"):
-                        return str(v).strip()
-                return ""
-            nm = f("name", "שם")
-            if not nm:
+            row = inv_ingest_row(request.get_json(silent=True) or {})
+            if not row:
                 return jsonify({"ok": False, "reason": "no_name"})
-            phone = f("phone", "טלפון")
-            raw_dt = f("created", "נוצר בתאריך", "date")
-            created = inv_parse_dt(raw_dt)
-            if not created:
-                import datetime as _di
-                from zoneinfo import ZoneInfo as _ZIi
-                created = _di.datetime.now(_ZIi("Asia/Jerusalem")).strftime("%Y-%m-%dT%H:%M:00+03:00")
-            link = f("link", "קישור למסמך")
-            if link and not link.startswith("http"):
-                link = "https://" + link
-            num = f("doc_num", "מספר מסמך")
-            amount = f("amount", "סכום במסמך")
-            import hashlib as _hl
-            base = "|".join([nm, phone, num, raw_dt or created, amount, link])
-            row = {"client_name": nm, "name_key": inv_name_key(nm),
-                   "phone": phone, "phone9": inv_phone9(phone),
-                   "doc_type": inv_norm_type(f("doc_type", "סוג מסמך")),
-                   "doc_num": num, "charge_line": f("charge_line", "שורת חיוב"),
-                   "created_at": created, "source": f("source", "מקור המסמך"),
-                   "link": link, "amount": amount,
-                   "row_hash": _hl.sha1(base.encode("utf-8")).hexdigest()}
+            nm, amount, created = row["client_name"], row["amount"], row["created_at"]
             sb = G.get("_sbdb")
             if not (sb and sb.enabled()):
                 return jsonify({"ok": False, "reason": "no_supabase"}), 500

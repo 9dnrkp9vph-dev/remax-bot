@@ -702,16 +702,21 @@ def mark_props_delisted(tokens, stamp, guarded=None):
     return n
 
 
+def signature_record(source_key, received_iso, raw):
+    """שורת signatures במבנה הטבלה — משותף ל-webhook ולייבוא ההיסטוריה (CRM-1)."""
+    return {"office_id": SB_OFFICE_ID, "source_key": source_key,
+            "event_id": raw.get("event_id", ""), "deal_type": raw.get("deal_type", ""),
+            "agent": raw.get("agent", ""), "client_name": raw.get("client_name", ""),
+            "address": raw.get("address", ""), "city": raw.get("city", ""),
+            "commission_pct": raw.get("commission_pct", ""), "notes": raw.get("notes", ""),
+            "received_at": received_iso, "raw": raw}
+
+
 def upsert_signature_row(source_key, received_iso, raw):
     """שורת חתימה מ-webhook פיירברי — upsert לפי (office_id, source_key):
     הטריגר "נוצרה או עודכנה" מעדכן שורה קיימת במקום להכפיל; retry לא מכפיל.
     raw = במבנה getRaw_ (המפתחות ש-fetch_signatures_rows מחזיר 1:1)."""
-    row = {"office_id": SB_OFFICE_ID, "source_key": source_key,
-           "event_id": raw.get("event_id", ""), "deal_type": raw.get("deal_type", ""),
-           "agent": raw.get("agent", ""), "client_name": raw.get("client_name", ""),
-           "address": raw.get("address", ""), "city": raw.get("city", ""),
-           "commission_pct": raw.get("commission_pct", ""), "notes": raw.get("notes", ""),
-           "received_at": received_iso, "raw": raw}
+    row = signature_record(source_key, received_iso, raw)
     r = requests.post(SUPABASE_URL + "/rest/v1/signatures",
                       headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
                       params={"on_conflict": "office_id,source_key"},
@@ -853,21 +858,39 @@ def transcript_upsert(source_key, event_id, transcript, recording_url):
     return True
 
 
-def call_upsert_direct(source_key, received_iso, raw):
-    """שיחה ישירות לטבלת calls — אותן עמודות ש-_sbCallRecord_ ב-Apps Script כותב."""
+def call_record(source_key, received_iso, raw):
+    """שורת calls — אותן עמודות ש-_sbCallRecord_ ב-Apps Script כותב (משותף לזרם הישיר ולייבוא)."""
     import datetime as _dt_c
     g = lambda k: str(raw.get(k, "") or "")
-    row = {"office_id": SB_OFFICE_ID, "source_key": source_key, "event_id": g("event_id"),
-           "status": g("status"), "agent": g("agent"), "agent_phone": g("agent_phone"),
-           "caller_phone": g("caller_phone"), "duration_sec": g("duration_sec"),
-           "transcript_summary": g("transcript_summary"), "received_at": received_iso,
-           "raw": raw, "updated_at": _dt_c.datetime.now(_dt_c.timezone.utc).isoformat()}
+    return {"office_id": SB_OFFICE_ID, "source_key": source_key, "event_id": g("event_id"),
+            "status": g("status"), "agent": g("agent"), "agent_phone": g("agent_phone"),
+            "caller_phone": g("caller_phone"), "duration_sec": g("duration_sec"),
+            "transcript_summary": g("transcript_summary"), "received_at": received_iso,
+            "raw": raw, "updated_at": _dt_c.datetime.now(_dt_c.timezone.utc).isoformat()}
+
+
+def call_upsert_direct(source_key, received_iso, raw):
+    """שיחה ישירות לטבלת calls."""
+    row = call_record(source_key, received_iso, raw)
     r = requests.post(SUPABASE_URL + "/rest/v1/calls",
                       headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
                       params={"on_conflict": "office_id,source_key"},
                       json=[row], timeout=_TIMEOUT)
     r.raise_for_status()
     return True
+
+
+def insert_invoice_rows(rows):
+    """[CRM-1] ייבוא היסטוריה: הרבה חשבוניות, כפילות row_hash נבלעת. מחזיר כמה נשלחו."""
+    n = 0
+    for i in range(0, len(rows), 100):
+        part = [{**r, "office_id": SB_OFFICE_ID} for r in rows[i:i + 100]]
+        r = requests.post(SUPABASE_URL + "/rest/v1/invoices",
+                          headers={**_headers(), "Prefer": "resolution=ignore-duplicates,return=minimal"},
+                          params={"on_conflict": "row_hash"}, json=part, timeout=max(_TIMEOUT, 60))
+        r.raise_for_status()
+        n += len(part)
+    return n
 
 
 def fetch_shadow(stream, since_iso):
