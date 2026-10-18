@@ -11413,6 +11413,51 @@ def call_ingest_norm(b):
     return sk, day_il, raw, tr, rec
 
 
+_CRM_PARALLEL_HTML = r"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>דוח מקבילות — ניתוק פיירברי</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F2EFE7;font-family:Heebo,sans-serif;color:#1E3A5F}
+.wrap{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:24px;font-weight:800;margin:6px 0 4px}.sub{color:#5B6472;font-size:14px;margin-bottom:16px}
+.seg{display:flex;gap:8px;margin-bottom:16px}.seg button{min-height:44px;padding:0 16px;border-radius:12px;border:1px solid #d8d3c6;background:#fff;color:#1E3A5F;font:600 15px Heebo;cursor:pointer}
+.seg button.on{background:#1E3A5F;color:#fff;border-color:#1E3A5F}
+.card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:18px;margin-bottom:14px}
+.card h2{font-size:17px;margin:0 0 10px}
+.big{display:flex;gap:24px;flex-wrap:wrap}.big div{font-size:14px;color:#5B6472}.big b{display:block;font-size:28px;color:#1E3A5F}
+.ok{color:#157A43}.bad{color:#C24040}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:right;padding:7px 6px;border-bottom:1px solid #eee}th{color:#5B6472;font-weight:600}
+.empty{color:#5B6472;font-size:14px}
+</style></head><body><div class="wrap">
+<h1>דוח מקבילות</h1><div class="sub">מה שהגיע דרך פיירברי מול מה שהגיע ישירות לאפי (טבלת הצל). לפני הניתוק: "חסר בישיר" צריך להיות 0.</div>
+<div class="seg" id="seg"><button data-d="1">היום</button><button data-d="3" class="on">3 ימים</button><button data-d="7">7 ימים</button></div>
+<div id="out"><div class="card empty">טוען…</div></div></div>
+<script>
+var D=3;
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function gap(title,list,cols){if(!list.length)return '<div class="empty">'+title+': אין</div>';
+ return '<h2>'+title+' · '+list.length+'</h2><table><tr>'+cols.map(function(c){return '<th>'+c[1]+'</th>';}).join('')+'</tr>'+
+ list.map(function(r){return '<tr>'+cols.map(function(c){return '<td>'+esc(r[c[0]])+'</td>';}).join('')+'</tr>';}).join('')+'</table>';}
+function block(name,m,cols){var bad=m.only_legacy.length;
+ return '<div class="card"><h2>'+name+'</h2><div class="big"><div><b class="ok">'+m.matched+'</b>הותאמו</div><div><b class="'+(bad?'bad':'ok')+'">'+bad+'</b>חסר בישיר</div><div><b>'+m.only_direct.length+'</b>רק בישיר</div></div>'+
+ '<div style="margin-top:12px">'+gap('חסר בישיר (הגיע דרך פיירברי בלבד)',m.only_legacy,cols)+'</div><div style="margin-top:12px">'+gap('רק בישיר',m.only_direct,cols)+'</div></div>';}
+function load(){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){}
+ if(!t){document.getElementById('out').innerHTML='<div class="card">צריך להיות מחובר לאפי בדפדפן הזה. <a href="/v2/home">כניסה לאפי</a> ואז לחזור לעמוד.</div>';return;}
+ document.getElementById('out').innerHTML='<div class="card empty">טוען…</div>';
+ fetch('/v2/api/crm/parallel?days='+D,{headers:{'X-Auth-Token':t}}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){document.getElementById('out').innerHTML='<div class="card bad">'+(j.reason==='forbidden'?'אין הרשאה — העמוד למפתח בלבד.':'שגיאה: '+esc(j.reason))+'</div>';return;}
+  var days='<div class="card"><h2>לפי יום</h2><table><tr><th>יום</th><th>שיחות דרך פיירברי</th><th>שיחות ישירות</th><th>חשבוניות דרך פיירברי</th><th>חשבוניות ישירות</th></tr>'+
+   j.days.map(function(d){return '<tr><td>'+esc(d.day)+'</td><td>'+d.calls_legacy+'</td><td>'+d.calls_direct+'</td><td>'+d.inv_legacy+'</td><td>'+d.inv_direct+'</td></tr>';}).join('')+'</table></div>';
+  var sig='<div class="card"><h2>מי עוד מחתים בחתימה טובה</h2>'+(j.sig_nonapp.length?'<table><tr><th>סוכן</th><th>חתימות</th></tr>'+j.sig_nonapp.map(function(x){return '<tr><td>'+esc(x[0])+'</td><td>'+x[1]+'</td></tr>';}).join('')+'</table>':'<div class="empty ok">אף אחד — כולם מחתימים מאפי</div>')+'</div>';
+  document.getElementById('out').innerHTML=days+block('שיחות',j.calls,[['at','זמן'],['agent','סוכן'],['phone','טלפון (4 אחרונות)']])+block('חשבוניות',j.invoices,[['at','זמן'],['doc_num','מס׳ מסמך'],['amount','סכום']])+sig;
+ }).catch(function(){document.getElementById('out').innerHTML='<div class="card bad">לא הצלחתי לטעון — נסה שוב.</div>';});}
+document.getElementById('seg').onclick=function(e){var b=e.target.closest('button');if(!b)return;D=+b.dataset.d;
+ [].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});load();};
+load();
+</script></body></html>"""
+
+
 def crm_ts(s):
     """זמן מכל פורמט במערכת → epoch (או None). ISO עם אזור-זמן/Z כמו שהוא; ISO בלי אזור
     ו-DD/MM/YYYY HH:MM — שעון ישראל (דרך inv_parse_dt)."""
@@ -14057,6 +14102,11 @@ def register(app, G):
                         "calls": parallel_match_calls(legacy_calls, direct_calls),
                         "invoices": parallel_match_invoices(legacy_inv, direct_inv),
                         "sig_nonapp": sig_nonapp_by_agent(G["get_signings"]() or [], d0.isoformat())})
+
+    @app.route("/v2/crm/parallel", methods=["GET"])
+    def v2_crm_parallel_page():
+        """[CRM-1] עמוד לדוח המקבילות — קורא את ה-API עם טוקן הכניסה של אפי (fbTok), כמו שאר המסכים."""
+        return Response(_CRM_PARALLEL_HTML, mimetype="text/html")
 
     @app.route("/v2/api/crm/promote_calls", methods=["POST"])
     def v2_api_crm_promote_calls():
