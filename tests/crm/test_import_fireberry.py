@@ -15,7 +15,14 @@ H = T.inv_ingest_row(inv)["row_hash"]
 ck(plan("invoices", [inv], {"hashes": {H}, "docnums": set(), "triples": set()})[0]["action"] == "exists", "hash")
 inv2 = dict(inv, **{"מספר מסמך": "25134", "נוצר בתאריך": "15/10/2026 13:07"})
 ck(plan("invoices", [inv2], {"hashes": set(), "docnums": {"25134"}, "triples": set()})[0]["action"] == "exists", "doc_num")
-ck(plan("invoices", [inv], {"hashes": set(), "docnums": set(), "triples": {("508148184", 3422.0, "2026-10-15")}})[0]["action"] == "exists", "phone+amount+day")
+ck(plan("invoices", [inv], {"hashes": set(), "docnums": set(), "triples": {T._inv_triple(dict(phone9="508148184", amount="3422", doc_type="חשבונית מס", created_at="2026-10-15T10:06:00+00:00"))}})[0]["action"] == "exists", "phone+amount+type+day (UTC from DB)")
+# 00:30 בישראל = 21:30Z יום קודם — אותו יום ישראלי
+night = dict(inv, **{"נוצר בתאריך": "16/10/2026 00:30"})
+ck(plan("invoices", [night], {"hashes": set(), "docnums": set(), "triples": {T._inv_triple(dict(phone9="508148184", amount="3422", doc_type="חשבונית מס", created_at="2026-10-15T21:30:00+00:00"))}})[0]["action"] == "exists", "Israel day, not UTC day")
+# קבלה לאותו לקוח/סכום/יום — לא נבלעת בחשבונית
+rcpt = dict(inv, **{"סוג מסמך": "קבלה"})
+ck(plan("invoices", [rcpt], {"hashes": set(), "docnums": set(), "triples": {T._inv_triple(dict(phone9="508148184", amount="3422", doc_type="חשבונית מס", created_at="2026-10-15T10:06:00+00:00"))}})[0]["action"] == "new", "receipt ≠ invoice")
+ck(plan("invoices", [inv], {"hashes": {H}, "docnums": set(), "triples": set()})[0]["reason"] == "hash", "report says why")
 it = plan("invoices", [inv], {"hashes": set(), "docnums": set(), "triples": set()})[0]
 ck(it["action"] == "new" and it["record"]["row_hash"] == H, it)
 ck(plan("invoices", [{"שם": ""}], {"hashes": set(), "docnums": set(), "triples": set()})[0]["action"] == "reject", "no name")

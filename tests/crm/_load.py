@@ -9,7 +9,8 @@ def load(*names, extra=None):
         ns.update(extra)
     want = set(names)
     for node in ast.parse(_SRC).body:
-        if isinstance(node, ast.FunctionDef) and node.name in want:
+        if (isinstance(node, ast.FunctionDef) and node.name in want) or (
+                isinstance(node, ast.Assign) and [getattr(t, "id", "") for t in node.targets] == ["_INV_TYPES"]):
             exec(compile(ast.Module([node], []), "effie_v2.py", "exec"), ns)
     missing = want - set(ns)
     if missing:

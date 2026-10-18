@@ -17,7 +17,8 @@ _NAMES = ("call_ingest_norm", "sig_ingest_norm", "inv_ingest_row", "inv_parse_dt
           "inv_name_key", "inv_norm_type", "crm_ts")
 _ns = {"_re": re, "re": re}
 for _node in ast.parse(open(os.path.join(ROOT, "effie_v2.py"), encoding="utf-8").read()).body:
-    if isinstance(_node, ast.FunctionDef) and _node.name in _NAMES:
+    if (isinstance(_node, ast.FunctionDef) and _node.name in _NAMES) or (
+            isinstance(_node, ast.Assign) and [getattr(t, "id", "") for t in _node.targets] == ["_INV_TYPES"]):
         exec(compile(ast.Module([_node], []), "effie_v2.py", "exec"), _ns)
 call_ingest_norm, sig_ingest_norm, inv_ingest_row = _ns["call_ingest_norm"], _ns["sig_ingest_norm"], _ns["inv_ingest_row"]
 inv_phone9, crm_ts = _ns["inv_phone9"], _ns["crm_ts"]
@@ -45,11 +46,16 @@ def call_triple(caller, agent_phone, when):
 
 
 def _inv_triple(rec):
+    """טלפון + סכום + סוג מסמך + יום בשעון ישראל (מה-DB חוזר UTC; קבלה ≠ חשבונית באותו יום)."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo as _Z
     try:
         amt = round(float(str(rec.get("amount", "")).replace(",", "")), 2)
     except ValueError:
         amt = None
-    return (rec.get("phone9", ""), amt, str(rec.get("created_at", ""))[:10])
+    ts = crm_ts(rec.get("created_at"))
+    day = _dt.datetime.fromtimestamp(ts, _Z("Asia/Jerusalem")).date().isoformat() if ts is not None else ""
+    return (rec.get("phone9", ""), amt, str(rec.get("doc_type", "") or ""), day)
 
 
 def _record(module, sk, riso, raw):
@@ -69,11 +75,11 @@ def fb_plan(module, rows, existing):
                 out.append({"action": "reject", "source_key": "", "reason": "no_name", "record": None})
                 continue
             sk, trip = rec["row_hash"], _inv_triple(rec)
-            if (sk in existing["hashes"] or sk in seen or (rec["doc_num"] and rec["doc_num"] in existing["docnums"])
-                    or (trip[0] and trip[1] is not None and trip in existing["triples"])):
-                out.append({"action": "exists", "source_key": sk, "reason": "", "record": rec})
-            else:
-                out.append({"action": "new", "source_key": sk, "reason": "", "record": rec})
+            why = ("hash" if sk in existing["hashes"] else "dup_in_file" if sk in seen
+                   else "doc_num" if rec["doc_num"] and rec["doc_num"] in existing["docnums"]
+                   else "phone_amount_type_day" if trip[0] and trip[1] is not None and trip in existing["triples"]
+                   else "")
+            out.append({"action": "exists" if why else "new", "source_key": sk, "reason": why, "record": rec})
             seen.add(sk)
             continue
         if module == "calls":
@@ -123,7 +129,7 @@ def _load_existing(module):
     if module == "signatures":
         recs = S._get_all("signatures", "source_key,event_id")
         return {"keys": {r.get("source_key") for r in recs}, "event_ids": {r.get("event_id") for r in recs if r.get("event_id")}}
-    recs = S._get_all("invoices", "row_hash,doc_num,phone9,amount,created_at")
+    recs = S._get_all("invoices", "row_hash,doc_num,phone9,amount,doc_type,created_at")
     return {"hashes": {r.get("row_hash") for r in recs}, "docnums": {r.get("doc_num") for r in recs if r.get("doc_num")},
             "triples": {_inv_triple(r) for r in recs}}
 
@@ -163,6 +169,11 @@ def main(argv):
     for act in ("new", "exists", "reject"):
         lst = by.get(act, [])
         print("\n%s: %d" % (act, len(lst)))
+        if act == "exists":
+            rs = {}
+            for it in lst:
+                rs[it["reason"] or "-"] = rs.get(it["reason"] or "-", 0) + 1
+            print("    לפי סיבה:", rs, "  (בחשבוניות: hash צריך להיות הרוב — אחרת הנוסחה שונה מהממיר המקורי)")
         for it in lst[:10]:
             print("   ", _mask(it["record"]) if it["record"] else it["reason"])
     new = [it["record"] for it in by.get("new", [])]
