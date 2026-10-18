@@ -6175,12 +6175,13 @@ function orphanBanner(){
 var HOT_BY = {};   // property_key → שם הסוכן שסימן (לתצוגת מנהל: "נכס חם · שם")
 /* [SITE 13/10] אתר refamily — "הסתר מהאתר" בכרטיסי הנכסים, למזכירה (וגם מנהל/מפתח) בלבד (site_api.py).
    סוכן לא משנה כלום באתר; המומלצים באתר = הנכס החם של הסטורי (אחד לסוכן) — אייל 13/10 */
-var SITE = {hidden: {}, on: false, can: false};
+var SITE = {hidden: {}, on: false, can: false, fh: {}};
 function loadSite(){
   GET('/v2/api/site/state').then(function(j){
     if (!j || !j.ok) return;
     SITE.hidden = {}; SITE.on = !!j.available; SITE.can = !!j.can_edit;
     (j.hidden || []).forEach(function(k){ SITE.hidden[String(k)] = true; });
+    SITE.fh = {}; (j.first_hand || []).forEach(function(k){ SITE.fh[String(k)] = true; });
     render();
   }).catch(function(){});
 }
@@ -6193,6 +6194,17 @@ function toggleSite(i){
     if (on) delete SITE.hidden[k]; else SITE.hidden[k] = true; render();
     toast(j && j.reason === 'forbidden' ? 'אין הרשאה' : 'לא נשמר — נסה שוב');
   }).catch(function(){ if (on) delete SITE.hidden[k]; else SITE.hidden[k] = true; render(); toast('לא נשמר — נסה שוב'); });
+}
+/* [SITE-FH 18/10] 'יד ראשונה' — הסוכן מסמן נכס שלו (מנהל — כל נכס), והנכס מופיע בעמוד /יד-ראשונה באתר */
+function toggleFH(i){
+  var p = el('list')._src[i]; if (!p || !p.id) return;
+  var k = String(p.id), on = !SITE.fh[k];
+  if (on) SITE.fh[k] = true; else delete SITE.fh[k]; render();
+  POST('/v2/api/site/prop', {key: k, first_hand: on}).then(function(j){
+    if (j && j.ok){ toast(on ? 'סומן כיד ראשונה — יופיע באתר תוך כדקה' : 'הסימון יד ראשונה בוטל'); return; }
+    if (on) delete SITE.fh[k]; else SITE.fh[k] = true; render();
+    toast(j && j.reason === 'forbidden' ? 'אין הרשאה' : 'לא נשמר — נסה שוב');
+  }).catch(function(){ if (on) delete SITE.fh[k]; else SITE.fh[k] = true; render(); toast('לא נשמר — נסה שוב'); });
 }
 function loadHot(tries){
   if (!tries) loadSite();
@@ -6394,6 +6406,10 @@ function propCard(p, i){
   var siteRow = (!isShtaf && !DEAL && SITE.can && SITE.on && _sk) ? ('<div style="margin-top:8px">' +
     '<button onclick="toggleSite(' + i + ')" style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
     (_sh ? 'background:#EBE8DD;color:#5B6472;border:1.5px solid #DCD6C8">מוסתר מהאתר · הצג באתר' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">מוצג באתר · הסתר מהאתר') + '</button></div>') : '';
+  var _fh = !!SITE.fh[_sk];
+  var fhRow = (isMine && !DEAL && SITE.on && _sk) ? ('<div style="margin-top:8px">' +
+    '<button onclick="toggleFH(' + i + ')" style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
+    (_fh ? 'background:#1E3A5F;color:#fff;border:1.5px solid #1E3A5F">יד ראשונה · מוצג באתר (בטל)' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">סמן כיד ראשונה (חדש מקבלן)') + '</button></div>') : '';
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
@@ -6409,7 +6425,7 @@ function propCard(p, i){
     (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' +
     (propDate(p) ? '<div style="font-size:11.5px;color:#8B8F99;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
-    acts + hotRow + siteRow + '</div>';
+    acts + hotRow + fhRow + siteRow + '</div>';
 }
 function setDeal(node){   // [DEALS 13/10]
   DEAL = node.getAttribute('data-d') || '';

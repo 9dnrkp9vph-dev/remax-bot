@@ -67,6 +67,12 @@ def prop_flags(rows):
     return hidden, featured
 
 
+def prop_first_hand(rows):
+    """שורות website_settings → מפתחות הנכסים שסומנו 'יד ראשונה' (עמוד /יד-ראשונה באתר)."""
+    return {str(r.get("key") or "") for r in rows or []
+            if r.get("kind") == "prop" and (r.get("data") or {}).get("first_hand")}
+
+
 SITE_EDITORS = ("secretary", "manager", "developer")
 
 
@@ -522,6 +528,7 @@ def register_site(app, G, store=None):
         except Exception:
             pass
         return jsonify({"ok": True, "hidden": sorted(hidden), "can_edit": can_edit_prop(s, {}, None, dev),
+                        "first_hand": sorted(prop_first_hand(rows)),
                         "available": bool(getattr(st(), "available", True))})
 
     @app.route("/v2/api/site/prop", methods=["POST"])
@@ -530,8 +537,10 @@ def register_site(app, G, store=None):
         if not s:
             return jsonify({"ok": False, "auth": False}), 401
         b = request.get_json(silent=True) or {}
-        if "hidden" not in b or "featured" in b:
+        # שדה אחד בכל בקשה: hidden (מזכירה/מנהל) או first_hand (יד ראשונה — גם הסוכן על הנכס שלו, אייל 18/10)
+        if ("hidden" in b) == ("first_hand" in b) or "featured" in b:
             return jsonify({"ok": False, "reason": "bad_field"}), 400
+        field = "hidden" if "hidden" in b else "first_hand"
         key = str(b.get("key", "") or "").strip()[:80]
         row = next((r for r in (G["fetch_sheet_rows"]() or []) if str(r.get("מספר מודעה", "") or "").strip() == key), None) if key else None
         if not row:
@@ -546,21 +555,29 @@ def register_site(app, G, store=None):
             is_dev = bool(G["_is_dev"](s.get("phone", ""))) or s.get("drole") == "developer"
         except Exception:
             pass
-        if not can_edit_prop(sess, row, G["_agent_owns_row"], is_dev):
+        allowed = can_edit_prop(sess, row, G["_agent_owns_row"], is_dev)
+        if not allowed and field == "first_hand":
+            try:
+                allowed = bool(G["_agent_owns_row"](row, s.get("name", ""), sess["_phones"]))
+            except Exception:
+                allowed = False
+        if not allowed:
             return jsonify({"ok": False, "reason": "forbidden"}), 403
         rows = st().all()
         if not getattr(st(), "available", True):
             return jsonify({"ok": False, "reason": "no_table"})
-        hidden, _ = prop_flags(rows)
-        new_hidden = bool(b.get("hidden"))
-        if new_hidden == (key in hidden):
-            return jsonify({"ok": True, "hidden": new_hidden})
-        if not st().put("prop", key, {"hidden": new_hidden}, s.get("name", "")):
+        cur = next((dict(r.get("data") or {}) for r in rows if r.get("kind") == "prop" and str(r.get("key")) == key), {})
+        new_val = bool(b.get(field))
+        if new_val == bool(cur.get(field)):
+            return jsonify({"ok": True, field: new_val})
+        cur[field] = new_val   # השורה שומרת את כל הסימונים — שינוי אחד לא מוחק את השני
+        if not st().put("prop", key, cur, s.get("name", "")):
             return jsonify({"ok": False, "reason": "save_failed"})
         where = " ".join(str(row.get(k, "") or "") for k in ("כתובת", "עיר / ישוב")).strip()
-        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""),
-                           "אתר — הסתרת נכס" if new_hidden else "אתר — הצגת נכס", (where + " · " + key).strip(" ·"))
-        return jsonify({"ok": True, "hidden": new_hidden})
+        what = ({True: "אתר — הסתרת נכס", False: "אתר — הצגת נכס"} if field == "hidden"
+                else {True: "אתר — סימון יד ראשונה", False: "אתר — ביטול יד ראשונה"})[new_val]
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), what, (where + " · " + key).strip(" ·"))
+        return jsonify({"ok": True, field: new_val})
 
     # ---- מסך "האתר" (מנהל/מפתח) ----
     def _admin():

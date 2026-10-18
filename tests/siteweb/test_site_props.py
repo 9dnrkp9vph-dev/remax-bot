@@ -19,7 +19,7 @@ def mk(make_app, s, store=None):
 
 def test_state_and_toggle(make_app):
     c, store, app = mk(make_app, sess())
-    assert c.get("/v2/api/site/state").get_json() == {"ok": True, "hidden": [], "can_edit": True, "available": True}
+    assert c.get("/v2/api/site/state").get_json() == {"ok": True, "hidden": [], "can_edit": True, "first_hand": [], "available": True}
     r = c.post("/v2/api/site/prop", json={"key": "a1", "hidden": True}).get_json()
     assert r["ok"] and store.puts[-1][:3] == ("prop", "a1", {"hidden": True})
     assert any("הסתרת נכס" in a[3] for a in app.logs)
