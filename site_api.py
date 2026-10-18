@@ -815,6 +815,44 @@ def register_site(app, G, store=None):
                            ", ".join(k for k in ("pages", "branches", "social", "agents") if k in b))
         return jsonify({"ok": bool(ok), "errors": {}})
 
+    # ---- הטקסט של הסוכן באתר — הסוכן עורך בעצמו מהאזור האישי (אייל 18/10) ----
+    def _me_agent(s):
+        """שם הסוכן ברשימת הסוכנים (לפי שם הכניסה או השם לתצוגה); '' כשהמשתמש אינו סוכן ברשימה."""
+        names = _rv_agents()
+        cands = [s.get("name", "")]
+        try:
+            cands.append(G["_display_name_for"](s.get("name", ""), s.get("phone", "")) or "")
+        except Exception:
+            pass
+        for c in cands:
+            hit = next((n for n in names if c and _rv_nk(n) == _rv_nk(c)), "")
+            if hit:
+                return hit
+        return ""
+
+    @app.route("/v2/api/me/bio", methods=["GET", "POST"])
+    def me_bio():
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        nm = _me_agent(s)
+        rows = st().all()
+        row = next((r for r in rows if r.get("kind") == "agent" and nm and _rv_nk(r.get("key")) == _rv_nk(nm)), None)
+        cur = dict((row or {}).get("data") or {})
+        if request.method == "GET":
+            return jsonify({"ok": True, "agent": bool(nm), "bio": str(cur.get("bio", "") or "") if nm else "", "max": BIO_MAX})
+        if not nm:
+            return jsonify({"ok": False, "reason": "not_agent"}), 400
+        if not getattr(st(), "available", True):
+            return jsonify({"ok": False, "reason": "no_table"})
+        b = request.get_json(silent=True) or {}
+        cur.setdefault("shown", True)
+        cur["bio"] = _plain(b.get("bio"), BIO_MAX)
+        if not st().put("agent", (row or {}).get("key") or nm, cur, s.get("name", "")):
+            return jsonify({"ok": False, "reason": "save_failed"})
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "אתר — עדכון הטקסט שלי", nm)
+        return jsonify({"ok": True, "bio": cur["bio"]})
+
     @app.route("/v2/site", methods=["GET"])
     def v2_site_page():
         from flask import Response

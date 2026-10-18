@@ -511,6 +511,9 @@ function v2Me(){
     '<div style="display:flex;gap:8px;margin-top:7px;align-items:center">' +
     '<button onclick="v2MeSaveNbT()" style="padding:10px 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">שמירה</button>' +
     '<button onclick="v2MeResetNbT()" style="padding:10px 12px;border-radius:13px;background:none;border:0;color:#6B7280;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;text-decoration:underline">שחזר לנוסח הקבוע</button></div></div>' +
+    '<div id="v2meBioBox" style="display:none"><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:6px">הטקסט עליי באתר · מופיע בעמוד שלך ב-refamily.co.il</div>' +
+    '<textarea id="v2meBio" rows="5" maxlength="1500" placeholder="כמה מילים עליך: ניסיון, אזורים, במה אתה מתמחה" style="width:100%;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;outline:none;resize:vertical;box-sizing:border-box;line-height:1.6"></textarea>' +
+    '<button onclick="v2MeSaveBio()" style="padding:10px 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:7px">שמירה</button></div>' +
     '<input type="file" id="v2meFile" accept="image/*" style="display:none" onchange="v2MeUpload(this)">' +
     '<button class="v2meBtn" onclick="document.getElementById(\'v2meFile\').click()">החלפת תמונת פרופיל</button>' +
     '<button class="v2meBtn" onclick="v2GcalGo()">סנכרון יומן Google</button>' +
@@ -523,10 +526,22 @@ function v2Me(){
     var f = document.getElementById('v2meLic');
     if (j && j.ok && f) f.value = j.license || '';
   }).catch(function(){});
+  fetch('/v2/api/me/bio', {headers: {'X-Auth-Token': tok}}).then(function(r){ return r.json(); }).then(function(j){
+    var f = document.getElementById('v2meBio'), bx = document.getElementById('v2meBioBox');
+    if (j && j.ok && j.agent && f && bx){ f.value = j.bio || ''; bx.style.display = 'block'; }
+  }).catch(function(){});
   fetch('/v2/api/me/nbtext', {headers: {'X-Auth-Token': tok}}).then(function(r){ return r.json(); }).then(function(j){
     var f = document.getElementById('v2meNbT');
     if (j && j.ok && f){ f.value = j.text || j.default || ''; f._def = j.default || ''; }
   }).catch(function(){});
+}
+function v2MeSaveBio(){
+  var tok = null; try{ tok = localStorage.getItem('fbTok'); }catch(e){}
+  var f = document.getElementById('v2meBio');
+  fetch('/v2/api/me/bio', {method: 'POST', headers: {'X-Auth-Token': tok, 'Content-Type': 'application/json'},
+    body: JSON.stringify({bio: (f && f.value || '').trim()})}).then(function(r){ return r.json(); }).then(function(j){
+    v2meToast(j && j.ok ? 'נשמר — יופיע באתר תוך כדקה' : 'שגיאה בשמירה');
+  }).catch(function(){ v2meToast('שגיאה'); });
 }
 function v2MeSaveNbT(){
   var tok = null; try{ tok = localStorage.getItem('fbTok'); }catch(e){}
@@ -1209,6 +1224,9 @@ function openMe(){
     '<div style="display:flex;gap:8px;margin-top:7px;align-items:center">' +
     '<button onclick="saveNbT()" style="padding:10px 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">שמירה</button>' +
     '<button onclick="resetNbT()" style="padding:10px 12px;border-radius:13px;background:none;border:0;color:#6B7280;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;text-decoration:underline">שחזר לנוסח הקבוע</button></div></div>' +
+    '<div id="meBioBox" style="display:none"><div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:6px">הטקסט עליי באתר · מופיע בעמוד שלך ב-refamily.co.il</div>' +
+    '<textarea id="meBio" rows="5" maxlength="1500" placeholder="כמה מילים עליך: ניסיון, אזורים, במה אתה מתמחה" style="width:100%;background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;outline:none;resize:vertical;box-sizing:border-box;line-height:1.6"></textarea>' +
+    '<button onclick="saveMeBio()" style="padding:10px 18px;border-radius:13px;background:#2E6BD6;color:#fff;border:0;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:7px">שמירה</button></div>' +
     '<input type="file" id="meFile" accept="image/*" style="display:none" onchange="meUpload(this)">' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" onclick="el(\'meFile\').click()">החלפת תמונת פרופיל</button>' +
     '<button style="display:flex;align-items:center;justify-content:center;width:100%;padding:13px 0;border-radius:13px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8" ' +
@@ -1224,10 +1242,19 @@ function openMe(){
   GET('/v2/api/me/license').then(function(j){
     if (j && j.ok && el('meLic')) el('meLic').value = j.license || '';
   }).catch(function(){});
+  GET('/v2/api/me/bio').then(function(j){
+    if (j && j.ok && j.agent && el('meBio')){ el('meBio').value = j.bio || ''; el('meBioBox').style.display = 'block'; }
+  }).catch(function(){});
   GET('/v2/api/me/nbtext').then(function(j){
     var f = el('meNbT');
     if (j && j.ok && f){ f.value = j.text || j.default || ''; f._def = j.default || ''; }
   }).catch(function(){});
+}
+function saveMeBio(){
+  var f = el('meBio');
+  POST('/v2/api/me/bio', {bio: (f && f.value || '').trim()}).then(function(j){
+    toast(j && j.ok ? 'נשמר — יופיע באתר תוך כדקה' : 'שגיאה בשמירה');
+  }).catch(function(){ toast('שגיאה'); });
 }
 function saveNbT(){
   var f = el('meNbT');
