@@ -73,6 +73,44 @@ def prop_first_hand(rows):
             if r.get("kind") == "prop" and (r.get("data") or {}).get("first_hand")}
 
 
+# המלצות לקוחות (אייל 18/10) — website_settings kind='review'. 4 ההמלצות מהאתר הישן (עמוד 'המלצות על סוכנים',
+# תמונות שהוקלדו לטקסט) נזרעות פעם אחת כשעדיין אין אף שורת review.
+OLD_REVIEWS = [
+    {"id": "old-1", "agents": ["רויטל גל"], "title": "לכבוד רויטל היקרה!", "by": "באהבה ובהוקרה, אולג ואולגה אושר", "at": "2025-05-01",
+     "text": "ברצוננו להודות לך מקרב לב על הליווי המסור והמקצועי בתהליך מכירת הדירה שלנו. כבר מהרגע הראשון היה ברור לנו שאנו בידיים טובות - את אדם נעים, סבלני, רגיש ומתחשב, עם גישה אנושית ומרגיעה, בדיוק מה שצריך בתקופה לחוצה כמו זו.\n"
+             "מעבר למקצועיות המרשימה שלך, התרשמנו מאוד מהזמינות שלך בכל שעה - תמיד היית שם בשביל לענות, לעזור, לייעץ, ולכוון - גם מעבר לשעות המקובלות.\n"
+             "תוך שלושה חודשים בלבד הצלחת למכור את הדירה שלנו, וכל זאת תוך שמירה על רמה גבוהה של שירות, דיוק, ויחס אישי. אין ספק שאת עוסקת בתחום מתוך שליחות ואהבה, וזה מורגש בכל שלב בתהליך.\n"
+             "אנו מלאי הערכה ומודים לך על הכל."},
+    {"id": "old-2", "agents": ["קובי חמו"], "title": "לכבוד קובי היקר!", "by": "מוכרי הנכס בבר אילן, מוצקין · קוני הנכס בהגפן, ביאליק", "at": "2025-05-01",
+     "text": "את קובי הכרנו לראשונה שהתעניינו בנכס למכירה. כבר בשיחה המקדימה ניכר היה שקובי הוא מתוך אחר, הראה התעניינות בנכס שאנו חפצים, הקשיב לכל פרט ומיד אף הוביל אותנו להפגש בנכס אחר השייך למשרד שהוא מייצג ולא בהכרח בייצוגו.\n"
+             "שנפגשנו, קובי לא מיהר להעלות את נושא החתימה על מסמכים רלוונטים, הוביל אותנו לנכס ואף גם לא בסיום הסיור. מיד ידענו שזכינו להכיר אדם מיוחד, אמין, ישר וחדור מטרה למען הלקוח. מכאן התחיל מסע ודרך שבו קובי מכר את הנכס שלנו ולא עזב וויתר עד שנמצא הנכס העתידי עבורנו.\n"
+             "תודה לך קובי על הדרך, תודה על המסירות, מאחלים לאחרים ובפרט לך לחוות עוד דרכים שכאלו כי אדם שכמוך אין ספק שקוטף את פרותיו.\n"
+             "יישר כוח, העלה והצלח"},
+    {"id": "old-3", "agents": ["קובי חמו"], "title": "קובי, קודם כל תודה רבה,", "by": "ממוכרי בן צבי 50 קרית חיים וקוני זלמן שזר קרית ים", "at": "2025-05-01",
+     "text": "על כל העבודה וכל המאמצים שעשית בשבילנו. זה באמת לא מובן מאליו. העברת אותנו את שני התהליכים, גם קנייה וגם מכירה, בצורה מקצועית וחלקה ובזמנים שרצינו והבטחת. רואים שאתה רציני ונותן את ה-200 אחוז.\n"
+             "כמובן שאם יהיו לי אנשים שירצו למכור או לקנות דירה אני אמליץ רק עליך.\n"
+             "שיהיה לך חג שמח וכל טוב."},
+    {"id": "old-4", "agents": ["שי גוטמן", "שירלי גוטמן"], "title": "שי ושירלי הם צוות לעניין!", "by": "", "at": "2025-05-01",
+     "text": "מהרגע שהם הבינו את הצרכים שלנו מהדירה, הם דאגו שכל הכוכבים יסתדרו בשבילנו.\n"
+             "הלכנו איתם לראות כמה דירות ודי מהר הבנו שהם איתנו ובשבילנו ודאגו לנו. כשראינו את הדירה שבסוף חתמנו עליה, הדרך לא הייתה קלה אבל הם לא ויתרו ויזמו עוד שיחה וצירוף שלך בתוך העניין עד שהתקבלה התשובה המיוחלת.\n"
+             "רצינו להגיד תודה רבה על הכל!"},
+]
+REVIEW_TEXT_MAX, REVIEW_TITLE_MAX, REVIEW_BY_MAX = 1500, 120, 120
+
+
+def reviews_active(rows):
+    """שורות website_settings → המלצות פעילות (בלי מחוקות), החדשה ראשונה."""
+    out = []
+    for r in rows or []:
+        d = r.get("data") or {}
+        if r.get("kind") != "review" or d.get("deleted") or not d.get("text") or not d.get("agents"):
+            continue
+        out.append({"id": str(r.get("key") or ""), "agents": list(d.get("agents") or []), "title": d.get("title", ""),
+                    "text": d.get("text", ""), "by": d.get("by", ""), "at": d.get("at", ""), "created_by": d.get("created_by", "")})
+    out.sort(key=lambda x: str(x["at"]), reverse=True)
+    return out
+
+
 SITE_EDITORS = ("secretary", "manager", "developer")
 
 
@@ -579,6 +617,121 @@ def register_site(app, G, store=None):
         G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), what, (where + " · " + key).strip(" ·"))
         return jsonify({"ok": True, field: new_val})
 
+    # ---- המלצות לקוחות (מסך 'המלצות' באפי; האתר קורא מאותה טבלה) ----
+    def _rv_sess():
+        s = G["_web_auth"]()
+        if not s:
+            return None, False
+        dev = False
+        try:
+            dev = bool(G["_is_dev"](s.get("phone", ""))) or s.get("drole") == "developer"
+        except Exception:
+            pass
+        return s, bool(dev or s.get("drole") in SITE_EDITORS)
+
+    def _rv_nk(n):
+        try:
+            return G["_name_key"](n) or re.sub(r"\s+", "", str(n or ""))
+        except Exception:
+            return re.sub(r"\s+", "", str(n or ""))
+
+    def _rv_agents():
+        names = []
+        try:
+            names += list((G["fetch_agents_phones"]() or {}).keys())
+        except Exception:
+            pass
+        try:
+            names += _agent_names()
+        except Exception:
+            pass
+        out, seen = [], set()
+        for n in names:
+            n = re.sub(r"\s+", " ", str(n or "")).strip()
+            if n and _rv_nk(n) not in seen and "בדיקה" not in n:
+                seen.add(_rv_nk(n)); out.append(n)
+        return sorted(out)
+
+    def _rv_rows():
+        rows = st().all()
+        if getattr(st(), "available", True) and not any(r.get("kind") == "review" for r in rows):
+            for o in OLD_REVIEWS:   # זריעה חד-פעמית של ההמלצות מהאתר הישן
+                d = {k: v for k, v in o.items() if k != "id"}
+                d["created_by"] = "האתר הישן"
+                st().put("review", o["id"], d, "האתר הישן")
+            rows = st().all()
+        return rows
+
+    def _rv_mine(r, s):
+        me = _rv_nk(s.get("name", ""))
+        return bool(me) and me in {_rv_nk(a) for a in r.get("agents") or []}
+
+    @app.route("/v2/api/site/reviews", methods=["GET"])
+    def site_reviews_get():
+        s, can_all = _rv_sess()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        allr = reviews_active(_rv_rows())
+        mine = allr if can_all else [r for r in allr if _rv_mine(r, s)]
+        return jsonify({"ok": True, "reviews": mine, "can_all": can_all, "me": s.get("name", ""),
+                        "agents": _rv_agents() if can_all else [],
+                        "available": bool(getattr(st(), "available", True))})
+
+    @app.route("/v2/api/site/reviews", methods=["POST"])
+    def site_reviews_add():
+        s, can_all = _rv_sess()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        b = request.get_json(silent=True) or {}
+        text = re.sub(r"\n{3,}", "\n\n", str(b.get("text", "") or "").replace("\r", "")).strip()[:REVIEW_TEXT_MAX]
+        title = re.sub(r"\s+", " ", str(b.get("title", "") or "")).strip()[:REVIEW_TITLE_MAX]
+        by = re.sub(r"\s+", " ", str(b.get("by", "") or "")).strip()[:REVIEW_BY_MAX]
+        if not text:
+            return jsonify({"ok": False, "reason": "no_text"}), 400
+        if can_all:
+            want = re.sub(r"\s+", " ", str(b.get("agent", "") or "")).strip()
+            agent = next((n for n in _rv_agents() if _rv_nk(n) == _rv_nk(want)), "")
+            if not agent:
+                return jsonify({"ok": False, "reason": "bad_agent"}), 400
+        else:
+            agent = s.get("name", "")   # סוכן — תמיד המלצה על עצמו
+        if not getattr(st(), "available", True):
+            return jsonify({"ok": False, "reason": "no_table"})
+        import uuid
+        from datetime import datetime, timezone
+        key = "rv-" + uuid.uuid4().hex[:12]
+        d = {"agents": [agent], "title": title, "text": text, "by": by,
+             "at": datetime.now(timezone.utc).isoformat(), "created_by": s.get("name", "")}
+        if not st().put("review", key, d, s.get("name", "")):
+            return jsonify({"ok": False, "reason": "save_failed"})
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "אתר — הוספת המלצה", agent + (" · " + by if by else ""))
+        return jsonify({"ok": True, "review": dict(d, id=key)})
+
+    @app.route("/v2/api/site/reviews/delete", methods=["POST"])
+    def site_reviews_delete():
+        s, can_all = _rv_sess()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        key = str((request.get_json(silent=True) or {}).get("id", "") or "").strip()[:40]
+        row = next((r for r in st().all() if r.get("kind") == "review" and str(r.get("key")) == key), None)
+        if not row:
+            return jsonify({"ok": False, "reason": "not_found"}), 404
+        d = dict(row.get("data") or {})
+        if not (can_all or _rv_mine(d, s)):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        d["deleted"] = True
+        if not st().put("review", key, d, s.get("name", "")):
+            return jsonify({"ok": False, "reason": "save_failed"})
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "אתר — מחיקת המלצה", ", ".join(d.get("agents") or []))
+        return jsonify({"ok": True})
+
+    @app.route("/v2/reviews", methods=["GET"])
+    def v2_reviews_page():
+        from flask import Response
+        r = Response(V2_REVIEWS_HTML, mimetype="text/html")
+        r.headers["Cache-Control"] = "no-store"
+        return r
+
     # ---- מסך "האתר" (מנהל/מפתח) ----
     def _admin():
         s = G["_web_auth"]()
@@ -829,6 +982,112 @@ function save(){
     if (j.errors){ for (var k in j.errors) ERR[k === 'branches' ? 'branches' : k] = j.errors[k]; }
     if (j.ok){ toast('נשמר — באתר תוך דקה'); render(); } else { render(); toast('יש שדות לתקן'); }
   }).catch(function(){ toast('לא נשמר — נסה שוב'); });
+}
+load();
+</script></body></html>'''
+
+
+# מסך 'המלצות' באפי (אייל 18/10): סוכן — ההמלצות עליו + הוספה; מנהל/מזכירה/מפתח — כל המשרד + בחירת סוכן.
+V2_REVIEWS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>המלצות</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;color:#1E3A5F;padding-bottom:40px}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 6px;display:flex;align-items:center;justify-content:space-between}
+  .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  .t{font-size:17px;font-weight:800}
+  main{padding:4px 16px 20px;display:flex;flex-direction:column;gap:12px;max-width:680px;margin:0 auto}
+  .cc{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:16px;display:flex;flex-direction:column;gap:10px}
+  .h{font-size:15px;font-weight:800}.s{font-size:12.5px;color:#5B6472;line-height:1.6}
+  label{font-size:12.5px;font-weight:700;display:block;margin-bottom:4px}
+  input,textarea,select{width:100%;font:400 16px Heebo;border:1.5px solid #DCD6C8;border-radius:12px;padding:10px 12px;color:#1E3A5F;background:#fff;min-height:44px}
+  textarea{min-height:140px;resize:vertical;line-height:1.6}
+  .err{color:#A32F2F;font-size:12px;font-weight:600}
+  .primary{min-height:48px;border-radius:14px;border:0;background:#2E6BD6;color:#fff;font:800 15px Heebo;cursor:pointer}
+  .primary:disabled{opacity:.6}
+  .rv{border-top:1px solid #F0EDE3;padding-top:12px;display:flex;gap:10px;align-items:flex-start}
+  .rv:first-of-type{border-top:0;padding-top:0}
+  .rv .b{flex:1;min-width:0}.rv .ag{font-size:12px;font-weight:700;color:#7A5E1C}
+  .rv .tt{font-weight:800;font-size:14px;margin-top:2px}.rv .tx{font-size:13.5px;line-height:1.65;white-space:pre-line;margin-top:4px}
+  .rv .by{font-size:12px;color:#5B6472;font-weight:700;margin-top:6px}
+  .del{width:44px;height:44px;border-radius:12px;background:#FBEDED;border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 44px}
+  .empty{text-align:center;padding:28px 16px;align-items:center}
+  .ic{width:52px;height:52px;border-radius:50%;background:#FBF3DD;display:flex;align-items:center;justify-content:center}
+  .link{color:#2E6BD6;font-weight:700;font-size:13px;text-decoration:none}
+  #toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:80;white-space:nowrap}
+</style></head><body>
+<header>
+  <button class="backBtn" onclick="location.href='/v2/home'" aria-label="חזרה"><svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <div class="t">המלצות</div><div style="width:44px"></div>
+</header>
+<main id="m"><div class="cc empty"><div class="s">טוען…</div></div></main>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+var TOK = null; try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function toast(m){ var t = el('toast'); t.textContent = m; t.style.opacity = '1'; clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 2200); }
+function api(u, d){ return fetch(u, d ? {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type':'application/json'}, body: JSON.stringify(d)} : {headers:{'X-Auth-Token': TOK}})
+  .then(function(r){ return r.json().catch(function(){ return {ok:false}; }); }); }
+var D = null, ERR = '', BUSY = false, DRAFT = {agent:'', title:'', text:'', by:''};
+function load(){
+  api('/v2/api/site/reviews').then(function(j){
+    if (!j || !j.ok){ el('m').innerHTML = '<div class="cc empty"><div class="s">לא נטען — נסה שוב</div></div>'; return; }
+    D = j; render();
+  }).catch(function(){ el('m').innerHTML = '<div class="cc empty"><div class="s">אין חיבור — נסה שוב</div></div>'; });
+}
+function keep(){ ['agent','title','text','by'].forEach(function(k){ var e = el('f_' + k); if (e) DRAFT[k] = e.value; }); }
+function render(){
+  var h = '';
+  if (!D.available) h += '<div class="cc"><div class="h">ההמלצות עוד לא פעילות</div><div class="s">צריך להריץ את קובץ ה-SQL של website_settings ב-Supabase.</div></div>';
+  h += '<div class="cc"><div class="h">הוספת המלצה</div><div class="s">' +
+    (D.can_all ? 'ההמלצה תופיע באתר בעמוד של הסוכן ובעמוד ההמלצות של המשרד.' : 'ההמלצה תופיע באתר בעמוד שלך ובעמוד ההמלצות של המשרד. אפשר להעתיק לכאן הודעה שלקוח שלח לך.') + '</div>';
+  if (D.can_all){
+    h += '<div><label for="f_agent">הסוכן</label><select id="f_agent"><option value="">בחרו סוכן</option>' +
+      D.agents.map(function(n){ return '<option' + (n === DRAFT.agent ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></div>';
+  }
+  h += '<div><label for="f_title">פתיחה (רשות)</label><input id="f_title" maxlength="120" placeholder="למשל: תודה רבה לקובי!" value="' + esc(DRAFT.title) + '"></div>' +
+    '<div><label for="f_text">ההמלצה</label><textarea id="f_text" maxlength="1500">' + esc(DRAFT.text) + '</textarea></div>' +
+    '<div><label for="f_by">חתימה (רשות)</label><input id="f_by" maxlength="120" placeholder="למשל: משפחת כהן, קוני דירה בביאליק" value="' + esc(DRAFT.by) + '"></div>' +
+    (ERR ? '<div class="err">' + esc(ERR) + '</div>' : '') +
+    '<button class="primary" id="addBtn" onclick="add()"' + (BUSY ? ' disabled' : '') + '>' + (BUSY ? 'שומר…' : 'הוסף לאתר') + '</button></div>';
+  var L = D.reviews || [];
+  h += '<div class="cc"><div class="h">' + (D.can_all ? 'כל ההמלצות במשרד' : 'ההמלצות עליי') + ' · ' + L.length + '</div>';
+  if (!L.length){
+    h += '<div class="empty" style="display:flex;flex-direction:column;gap:8px"><div class="ic"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M5 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6H5zM14 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6h-5z" fill="#C29435"/></svg></div>' +
+      '<div class="h">עוד אין המלצות</div><div class="s">לקוח שלח לך מילה טובה? הוסף אותה כאן והיא תופיע באתר.</div></div>';
+  } else {
+    L.forEach(function(r, i){
+      h += '<div class="rv"><div class="b">' + (D.can_all ? '<div class="ag">' + esc(r.agents.join(' ו')) + '</div>' : '') +
+        (r.title ? '<div class="tt">' + esc(r.title) + '</div>' : '') + '<div class="tx">' + esc(r.text) + '</div>' +
+        (r.by ? '<div class="by">' + esc(r.by) + '</div>' : '') + '</div>' +
+        '<button class="del" aria-label="מחיקת ההמלצה" onclick="delRv(' + i + ')"><svg width="18" height="18" viewBox="0 0 20 20"><path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10" fill="none" stroke="#C24040" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>';
+    });
+  }
+  h += '<a class="link" href="https://refamily.co.il/המלצות" target="_blank" rel="noopener">לעמוד ההמלצות באתר</a></div>';
+  el('m').innerHTML = h;
+}
+function add(){
+  if (BUSY) return; keep(); ERR = '';
+  if (D.can_all && !DRAFT.agent){ ERR = 'בחרו סוכן'; render(); return; }
+  if (!DRAFT.text.trim()){ ERR = 'כתבו את ההמלצה'; render(); return; }
+  BUSY = true; render();
+  api('/v2/api/site/reviews', {agent: DRAFT.agent, title: DRAFT.title, text: DRAFT.text, by: DRAFT.by}).then(function(j){
+    BUSY = false;
+    if (j && j.ok){ D.reviews.unshift(Object.assign({id: j.review.id}, j.review)); DRAFT = {agent:'', title:'', text:'', by:''}; render(); toast('ההמלצה נוספה — תופיע באתר תוך כדקה'); return; }
+    ERR = (j && j.reason === 'bad_agent') ? 'הסוכן לא נמצא' : 'לא נשמר — נסה שוב'; render();
+  }).catch(function(){ BUSY = false; ERR = 'אין חיבור — נסה שוב'; render(); });
+}
+function delRv(i){
+  var r = D.reviews[i]; if (!r) return; keep();
+  if (!confirm('למחוק את ההמלצה? היא תרד מהאתר.')) return;
+  api('/v2/api/site/reviews/delete', {id: r.id}).then(function(j){
+    if (j && j.ok){ D.reviews.splice(i, 1); render(); toast('ההמלצה נמחקה'); return; }
+    toast(j && j.reason === 'forbidden' ? 'אין הרשאה' : 'לא נמחק — נסה שוב');
+  }).catch(function(){ toast('אין חיבור — נסה שוב'); });
 }
 load();
 </script></body></html>'''

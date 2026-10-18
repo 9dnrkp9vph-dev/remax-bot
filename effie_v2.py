@@ -940,6 +940,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M3 11h16M11 3c2.5 2.6 2.5 13.4 0 16M11 3c-2.5 2.6-2.5 13.4 0 16" fill="none" stroke="#1E3A5F" stroke-width="1.5"/></svg>
       האתר</a>
+    <a id="menuReviews" href="/v2/reviews" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><path d="M5 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6H5zM13 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6h-5z" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      המלצות</a>
     <a id="menuInvoices" href="/v2/invoices" style="display:none;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><rect x="4" y="2.5" width="14" height="17" rx="2.5" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M7.5 7h7M7.5 10.5h7M7.5 14h4" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
