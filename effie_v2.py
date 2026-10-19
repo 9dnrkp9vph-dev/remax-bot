@@ -11693,6 +11693,15 @@ h2{font-size:16px;font-weight:700;margin:0 0 12px}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:right;padding:7px 4px;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:500}
 ul.ins{margin:0;padding-inline-start:18px;line-height:1.7;font-size:14px}
 .ld{padding:40px;text-align:center;color:var(--mut)}
+.ctl{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.sw:last-child{border-bottom:0}.sw .t{font-weight:700}.sw .d{font-size:13px;color:var(--mut)}
+.tg{width:52px;height:30px;border-radius:99px;background:#C9CDD4;position:relative;cursor:pointer;flex:none;border:0}
+.tg::after{content:"";position:absolute;top:3px;right:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:right .15s}
+.tg.on{background:var(--green)}.tg.on::after{right:25px}
+.on-list{display:flex;flex-wrap:wrap;gap:8px}.chip{background:#E6F2EC;color:var(--green);border-radius:99px;padding:5px 12px;font-size:13px;font-weight:500}
+.chip i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-inline-end:6px}
+@media(max-width:1100px){.ctl{grid-template-columns:1fr}}
 @media(max-width:1100px){.health{grid-template-columns:repeat(4,1fr)}.kpis{grid-template-columns:repeat(3,1fr)}.r2,.r3{grid-template-columns:1fr}}
 @media(max-width:600px){.health{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(2,1fr)}header{flex-wrap:wrap}}
 </style></head><body><div class="wrap">
@@ -11722,6 +11731,11 @@ function render(){
  var us=(D.usage_today||[]).map(function(u){return '<tr><td>'+esc(u.name)+'</td><td>'+n(u.min)+' דק׳</td></tr>';}).join('')||'<tr><td class="mut" colspan="2">עוד אין שימוש היום</td></tr>';
  document.getElementById('app').innerHTML=
   '<div class="health">'+h+'</div>'+
+  '<div class="ctl"><div class="card"><h2>מחוברים עכשיו <span class="mut" id="onN"></span></h2><div class="on-list" id="onList"><span class="mut">טוען…</span></div></div>'+
+  '<div class="card"><h2>שליטה</h2>'+
+  '<div class="sw"><div><div class="t">וואטסאפ רשמי</div><div class="d">כל ההודעות האוטומטיות מהמספר הרשמי (שיחות, חתימות, לידים, חשבוניות)</div></div><button class="tg" id="swWa" aria-label="וואטסאפ רשמי"></button></div>'+
+  '<div class="sw"><div><div class="t">התראות פוש</div><div class="d">כל הפושים לטלפונים של הסוכנים</div></div><button class="tg" id="swPush" aria-label="פוש"></button></div>'+
+  '<div class="d mut" id="swQuiet"></div></div></div>'+
   '<div class="seg" id="seg">'+['day','week','month','year'].map(function(k){return '<button data-p="'+k+'" class="'+(k===P?'on':'')+'">'+PL[k]+'</button>';}).join('')+'</div>'+
   '<div class="kpis">'+kpis()+'</div>'+
   '<div class="row r2"><div class="card"><h2>30 הימים האחרונים</h2><div class="chart"><canvas id="c1"></canvas></div><div id="t1"></div></div>'+
@@ -11737,7 +11751,7 @@ function render(){
   '<h2 style="margin-top:16px">מהמספר הרשמי</h2><div class="big">'+n(W.official_today.sent)+' <span class="mut">נשלחו'+(W.official_today.failed?' · '+n(W.official_today.failed)+' נכשלו':'')+'</span></div>'+
   '<div class="mut">נספרת פתיחת הצ׳אט מאפי, לא מסירה. נספר מ-19/10.</div></div></div>';
  document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
- charts();
+ charts();ctl();
 }
 function dd(iso){var p=iso.split('-');return p[2]+'/'+p[1];}
 function charts(){
@@ -11758,6 +11772,21 @@ function charts(){
  if(D.wa)CH.c4=new Chart(document.getElementById('c4'),{type:'bar',options:base,data:{labels:D.ai.days7.map(dd),datasets:[
   {label:'מהטלפון של הסוכנים',data:D.wa.agents_7d,backgroundColor:'#157A43',borderRadius:4},{label:'מהמספר הרשמי',data:D.wa.official_7d,backgroundColor:'#1E3A5F',borderRadius:4}]}});
 }
+function hdr(){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){}return {'X-Auth-Token':t,'Content-Type':'application/json'};}
+function agoS(s){return s<60?'עכשיו':('לפני '+Math.round(s/60)+' דק׳');}
+function online(){fetch('/v2/api/usage_now',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){
+  var el=document.getElementById('onList');if(!el||!j||!j.ok)return;var rows=j.rows||[];
+  document.getElementById('onN').textContent='('+rows.length+')';
+  el.innerHTML=rows.length?rows.map(function(r){return '<span class="chip"><i></i>'+esc(r.name)+' · '+agoS(r.ago)+'</span>';}).join(''):'<span class="mut">אף אחד לא מחובר כרגע</span>';}).catch(function(){});}
+function setSw(j){var w=document.getElementById('swWa'),p=document.getElementById('swPush');if(!w)return;
+  w.classList.toggle('on',!!j.wa_official);p.classList.toggle('on',!!j.push);
+  document.getElementById('swQuiet').textContent=j.quiet?'כרגע במצב השתקה (שבת/חג או ידני) — גם כשהמתגים דלוקים, לא נשלח כלום.':'';}
+function ctl(){online();fetch('/v2/api/crm/switches',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok)setSw(j);});
+  ['swWa','swPush'].forEach(function(id){var b=document.getElementById(id);b.onclick=function(){var on=!b.classList.contains('on');
+    var what=id==='swWa'?'הוואטסאפ הרשמי':'הפושים';if(!on&&!confirm('לכבות את '+what+'? שום הודעה לא תצא עד שתדליק שוב.'))return;
+    var body={};body[id==='swWa'?'wa_official':'push']=on;
+    fetch('/v2/api/crm/switches',{method:'POST',headers:hdr(),body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok)setSw(j);});};});}
+setInterval(function(){if(D)online();},60000);
 function load(fresh){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){}
  if(!t){document.getElementById('app').innerHTML='<div class="card">צריך להיות מחובר לאפי בדפדפן הזה. <a href="/v2/home">כניסה לאפי</a> ואז לחזור לעמוד.</div>';return;}
  fetch('/v2/api/crm/dashboard'+(fresh?'?fresh=1':''),{headers:{'X-Auth-Token':t}}).then(function(r){return r.json();}).then(function(j){
@@ -12028,7 +12057,7 @@ def crm_flow_records(act):
         key = _hf.sha1(("%s|%s|%s|%s" % (a.get("ts"), action, a.get("name"), a.get("detail"))).encode("utf-8")).hexdigest()[:16]
         out.append({"key": key, "date": a["ts"], "direction": m[1], "channel": m[2], "action": action,
                     "name": str(a.get("name") or ""), "detail": str(a.get("detail") or ""),
-                    "failed": "נכשל" in action, "result": "נכשל" if "נכשל" in action else "תקין"})
+                    "failed": "נכשל" in action, "result": "נכשל" if "נכשל" in action else ("מושבת" if "מושבת" in action else "תקין")})
     return out
 
 
@@ -15088,6 +15117,40 @@ def register(app, G):
             allv[module] = lst[:30]
         G["_config_mutate"](mut)
         return jsonify({"ok": True})
+
+    @app.route("/v2/api/crm/switches", methods=["GET", "POST"])
+    def v2_api_crm_switches():
+        """[CRM-2] מתגי לוח הבקרה: וואטסאפ רשמי (כל ההודעות) ופוש (כל ההתראות). True = דלוק."""
+        s = _crm_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        if request.method == "POST":
+            b = request.get_json(silent=True) or {}
+            ch = {}
+            for k, cfgk, lbl in (("wa_official", "wa_official_off", "וואטסאפ רשמי"), ("push", "push_off", "פוש")):
+                if k in b:
+                    ch[cfgk] = (lbl, not bool(b[k]))
+
+            def mut(cfg):
+                sw = cfg.setdefault("v2_switches", {})
+                for cfgk, (_l, off) in ch.items():
+                    if off:
+                        sw[cfgk] = True
+                    else:
+                        sw.pop(cfgk, None)
+            G["_config_mutate"](mut)
+            G["_cache_clear"]("app_config")
+            for cfgk, (lbl, off) in ch.items():
+                G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""),
+                                   "מתג " + lbl + " — " + ("כובה" if off else "הודלק"), "לוח בקרה")
+        sw = (G["_load_config"]() or {}).get("v2_switches") or {}
+        quiet = False
+        try:
+            quiet = bool(G["_quiet_mode"]())
+        except Exception:
+            pass
+        return jsonify({"ok": True, "wa_official": not sw.get("wa_official_off"), "push": not sw.get("push_off"),
+                        "quiet": quiet})
 
     _WA_SCREENS = {"/v2/newborn": "נכס נולד", "/v2/buyers": "קונים", "/v2/calls": "שיחות", "/v2/sigs": "חתימות",
                    "/v2/props": "נכסים", "/v2/meets": "יומן", "/v2/deals": "עסקאות", "/v2/home": "בית",

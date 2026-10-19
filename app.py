@@ -154,6 +154,9 @@ def _send_push_raw(title, body, external_id=OWNER_PUSH_ID):
     if _quiet_hours():   # שעות לילה (22:00–08:00) — לא מטרידים בפוש
         _PUSH_LAST = {"ok": False, "reason": "QUIET_HOURS"}
         return False
+    if _switch_off("push_off"):   # [CRM-2] כיבוי כל הפושים מלוח הבקרה
+        _PUSH_LAST = {"ok": False, "reason": "PUSH_OFF"}
+        return False
     if not ONESIGNAL_REST_KEY:
         _PUSH_LAST = {"ok": False, "reason": "no_rest_key (משתנה הסביבה ONESIGNAL_REST_KEY לא מוגדר ב-Render)"}
         return False
@@ -191,7 +194,7 @@ def _send_push_raw(title, body, external_id=OWNER_PUSH_ID):
 def send_push(title, body, external_id=OWNER_PUSH_ID):
     """[CRM-2 19/10] כל פוש נרשם ביומן ('נכנס ויוצא' ב-CRM): כותרת + מספר נמענים, בלי התוכן."""
     ok = _send_push_raw(title, body, external_id)
-    if _PUSH_LAST.get("reason") not in ("QUIET_MODE", "QUIET_HOURS") if isinstance(_PUSH_LAST, dict) else True:
+    if _PUSH_LAST.get("reason") not in ("QUIET_MODE", "QUIET_HOURS", "PUSH_OFF") if isinstance(_PUSH_LAST, dict) else True:
         try:
             n_to = len(external_id) if isinstance(external_id, list) else 1
             _log_activity("פוש", "system", "", "פוש — " + ("נשלח" if ok else "נכשל"), (str(title)[:40] + " · " + str(n_to)))
@@ -460,7 +463,25 @@ def _tpl_param(text):
     t = re.sub(r"[\t ]{2,}", " ", t)
     return t[:1000]
 
+def _switch_off(name):
+    """[CRM-2 19/10] מתגי כיבוי מלוח הבקרה (config v2_switches): wa_official_off / push_off."""
+    try:
+        return bool((_load_config().get("v2_switches") or {}).get(name))
+    except Exception:
+        return False
+
+class _BlockedResp:
+    ok, status_code, text = False, 0, "blocked by switch (wa_official_off)"
+    def json(self): return {}
+
 def _d360_post_message(payload):
+    if _switch_off("wa_official_off"):   # כיבוי כל הוואטסאפ הרשמי מלוח הבקרה
+        try:
+            _log_activity("וואטסאפ רשמי", "system", "", "וואטסאפ רשמי — מושבת",
+                          "…" + str((payload or {}).get("to", ""))[-4:] + " · " + str((payload or {}).get("type", "")))
+        except Exception:
+            pass
+        return False, _BlockedResp()
     r = requests.post(f"{D360_BASE}/messages", headers=_d360_headers(), json=payload, timeout=20)
     try: j = r.json()
     except Exception: j = {}
