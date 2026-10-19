@@ -11604,14 +11604,18 @@ function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getEleme
     var d = document.getElementById('dlBtn'); if (d) d.onclick = function(){ if (confirm('למחוק את השיחה? (אפשר לשחזר מ"מחוקות")')) act({key:r.key, delete:true}, 'נמחקה'); };
     var s = document.getElementById('rsBtn'); if (s) s.onclick = function(){ act({key:r.key, restore:true}, 'שוחזרה'); };
   }); }
-function collect(){ var f = {}; document.querySelectorAll('#drb [data-f]').forEach(function(e){ f[e.dataset.f] = e.value; }); return f; }
+function collect(cur){ var f = {}; document.querySelectorAll('#drb [data-f]').forEach(function(e){
+  /* רק שדות שבאמת השתנו — אחרת כל השדות "ננעלים" מעל המקור ועדכון עתידי מ-Make לא יוצג */
+  if (!cur || String(cur[e.dataset.f] == null ? '' : cur[e.dataset.f]) !== e.value) f[e.dataset.f] = e.value; }); return f; }
 function act(body, msg){ return api('/v2/api/crm/' + MOD + '/record', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
   .then(function(r){ return r.json(); }).then(function(j){ if (!j.ok){ toast('לא נשמר: ' + (j.reason || '')); return; } toast(msg); closeDr(); refreshAll(); }); }
-function save(key){ var f = collect(); if (!key){ if (!f.agent && !f.caller_phone){ toast('צריך לפחות סוכן או טלפון'); return; } }
+function save(key){ var f = collect(key ? CUR : null);
+  if (!key){ if (!f.agent && !f.caller_phone){ toast('צריך לפחות סוכן או טלפון'); return; } }
+  else if (!Object.keys(f).length){ toast('לא שונה דבר'); return; }
   act(key ? {key:key, fields:f} : {fields:f}, key ? 'נשמר' : 'נוספה שיחה'); }
 function openNew(){ CUR = null; var b = document.getElementById('drb');
   b.innerHTML = '<h2>שיחה חדשה</h2><div class="mut">רשומה ידנית — נכנסת ללוג השיחות של אפי.</div><div class="grid2">' +
-    field('agent', 'סוכן', '') + field('caller_phone', 'טלפון לקוח', '') + field('status', 'סטטוס (ANSWER / NOANSWER / call2call)', 'ANSWER') + '<div></div>' +
+    field('agent', 'סוכן', '') + field('caller_phone', 'טלפון לקוח', '') + field('status', 'סטטוס (ריק = ידנית)', '') + '<div></div>' +
     field('summary', 'סיכום', '', true) + field('note', 'הערה', '', true) + '</div><div class="acts"><button class="tb pri" id="svBtn">הוספה</button></div>';
   document.getElementById('dr').classList.add('open'); document.getElementById('svBtn').onclick = function(){ save(''); }; }
 function closeDr(){ document.getElementById('dr').classList.remove('open'); CUR = null; renderTable(); }
@@ -11901,7 +11905,7 @@ CRM_MODULES = {
 }
 
 _CRM_STATUS = {"ANSWER": "נענתה", "NOANSWER": "לא נענתה", "NO ANSWER": "לא נענתה", "BUSY": "תפוס",
-               "CALLER CANCEL": "בוטלה", "CANCEL": "בוטלה", "CALL2CALL": "יוצאת"}
+               "CALLER CANCEL": "בוטלה", "CANCEL": "בוטלה", "CALL2CALL": "יוצאת", "MANUAL": "ידנית"}
 
 
 def crm_calls_records(rows, overrides, hidden):
@@ -11945,7 +11949,7 @@ def crm_query(records, q, filters, sort, direction, page, size, now):
     words, phones = [], []
     for t in str(q or "").split():
         dg = _re.sub(r"\D", "", t)
-        (phones if len(dg) >= 7 else words).append(inv_phone9(dg) if len(dg) >= 7 else _crm_norm(t))
+        (phones if len(dg) >= 8 else words).append(inv_phone9(dg) if len(dg) >= 8 else _crm_norm(t))
 
     def keep(r):
         if view == "hidden":
@@ -11998,7 +12002,12 @@ def crm_csv(records, columns):
             v = r.get(k)
             if typ == "date" and v:
                 v = _dc2.datetime.fromtimestamp(v, _ZC2("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
-            line.append("" if v is None else v)
+            v = "" if v is None else str(v)
+            if typ == "phone" and v:
+                v = '="%s"' % _re.sub(r"[^0-9+\-]", "", v)       # טקסט — לא מאבד את ה-0 המוביל באקסל
+            elif v[:1] in ("=", "+", "-", "@"):
+                v = "'" + v                                       # לא נוסחה (הגנה מ-CSV injection)
+            line.append(v)
         w.writerow(line)
     return b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8")
 
@@ -14769,11 +14778,14 @@ def register(app, G):
 
     def _crm_records(module):
         sb = G.get("_sbdb")
-        try:
-            ov = sb.crm_overrides_fetch(module) if (sb and sb.enabled()) else {}
-        except Exception as e:
-            if log: log.warning(f"crm overrides read failed: {e}")
-            ov = {}
+        ov = G["_cache_get"]("crmov:" + module, 30)
+        if ov is None:
+            try:
+                ov = sb.crm_overrides_fetch(module) if (sb and sb.enabled()) else {}
+                G["_cache_put"]("crmov:" + module, ov)
+            except Exception as e:
+                if log: log.warning(f"crm overrides read failed: {e}")
+                ov = {}
         if module == "calls":
             try:
                 hidden = set(G["_fetch_hidden_calls"]() or set())
@@ -14828,9 +14840,12 @@ def register(app, G):
         if t or not rec.get("date"):
             return t
         import datetime as _dtr
+        if rec["date"] < 1792360800:          # 19/10/2026 — לפני הזרם הישיר אין תמלולים
+            return None
         since = _dtr.datetime.utcfromtimestamp(rec["date"] - 86400).date().isoformat()
+        until = _dtr.datetime.utcfromtimestamp(rec["date"] + 86400).date().isoformat()
         best, best_d = None, 901
-        for r in sb.fetch_shadow("calls", since) or []:
+        for r in sb.fetch_shadow("calls", since, until) or []:
             if inv_phone9(r.get("caller_phone")) != inv_phone9(rec.get("caller_phone")):
                 continue
             if inv_phone9(r.get("agent_phone")) != inv_phone9(rec.get("agent_phone")):
@@ -14884,18 +14899,20 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "no_supabase"}), 500
         if key:
             sb.crm_override_upsert(module, key, fields, who)
+            G["_cache_clear"]("crmov:" + module)
             G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — עריכת שיחה", key + " · " + ",".join(fields))
             return jsonify({"ok": True, "key": key})
         import uuid as _uu, datetime as _dn
         nk = "crm:" + _uu.uuid4().hex[:12]
         now = _dn.datetime.now(_dn.timezone.utc)
-        raw = {"event_id": nk, "status": fields.get("status", ""), "agent": fields.get("agent", ""), "agent_phone": "",
+        raw = {"event_id": nk, "manual": "1", "status": fields.get("status", "") or "MANUAL", "agent": fields.get("agent", ""), "agent_phone": "",
                "caller_phone": fields.get("caller_phone", ""), "duration_sec": "",
                "transcript_summary": fields.get("summary", ""), "received_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
         from zoneinfo import ZoneInfo as _ZN
         sb.call_upsert_direct(nk, now.astimezone(_ZN("Asia/Jerusalem")).date().isoformat(), raw)
         if fields.get("note"):
             sb.crm_override_upsert(module, nk, {"note": fields["note"]}, who)
+            G["_cache_clear"]("crmov:" + module)
         G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
         G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — שיחה חדשה (ידנית)", nk)
         return jsonify({"ok": True, "key": nk})

@@ -920,10 +920,11 @@ def transcript_get(source_key):
     return recs[0] if recs else None
 
 
-def fetch_shadow(stream, since_iso):
-    """שורות הצל של זרם מאז since_iso (YYYY-MM-DD או ISO) — raw + source_key + received_at."""
+def fetch_shadow(stream, since_iso, until_iso=None):
+    """שורות הצל של זרם מאז since_iso (ועד until_iso, אם ניתן) — raw + source_key + received_at."""
+    conds = ["received_at.gte." + since_iso] + (["received_at.lte." + until_iso] if until_iso else [])
     recs = _get_all("ingest_shadow", "source_key,received_at,raw",
-                    {"stream": "eq." + stream, "received_at": "gte." + since_iso})
+                    {"stream": "eq." + stream, "and": "(" + ",".join(conds) + ")"})
     return [dict(r.get("raw") or {}, _source_key=r.get("source_key"), _received_at=r.get("received_at"))
             for r in recs]
 

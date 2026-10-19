@@ -27,4 +27,7 @@ ck(j[0]["fields"] == {"agent": "דנה", "status": "ANSWER"} and j[0]["updated_b
 ck(S.transcript_get("mk:u1")["transcript"] == "שלום" and GET[-1][1]["source_key"] == "eq.mk:u1", GET[-1])
 DB["call_transcripts"] = []
 ck(S.transcript_get("nope") is None, "missing")
+DB["ingest_shadow"] = []
+S.fetch_shadow("calls", "2026-10-18", "2026-10-20")
+ck("lte.2026-10-20" in str(GET[-1][1]), ("upper bound", GET[-1]))
 print("crm_db OK", n)

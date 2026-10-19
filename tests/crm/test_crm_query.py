@@ -40,4 +40,13 @@ ck([r["key"] for r in p2["rows"]] == ["e3"] and p2["total"] == 3, "paging")
 cols = ns["CRM_MODULES"]["calls"]["columns"]
 data = csv(R[:1], cols)
 ck(data.startswith(b"\xef\xbb\xbf") and "דנה לוי".encode() in data and b"549572532" in data, "csv with BOM")
+# CSV: הגנה מנוסחאות (= + - @) וטלפון נשאר עם 0
+evil = [{"agent": "=HYPERLINK(1)", "caller_phone": "0549572532", "summary": "- סיכום", "date": 0}]
+d2 = csv(evil, [("agent", "a", "text"), ("caller_phone", "p", "phone"), ("summary", "s", "long")]).decode("utf-8-sig")
+ck("'=HYPERLINK(1)" in d2 and "'- סיכום" in d2, d2)
+import csv as _csv, io as _io
+_cells = list(_csv.reader(_io.StringIO(d2)))[1]
+ck(_cells[1] == '="0549572532"', ("phone as text (parsed CSV cell)", _cells))
+# 7 ספרות לא תואמות שורה בלי טלפון סוכן
+ck(q(q="1234567")["total"] == 0, "short phone token doesn't match empty")
 print("crm_query OK", _load.n)
