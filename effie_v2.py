@@ -11477,6 +11477,55 @@ def crm_ts(s):
     return _dt.datetime.fromisoformat(iso).timestamp() if iso else None
 
 
+# ── [CRM-3 19/10] דשבורד: בריאות זרמים ──────────────────────────────────────────
+# (key, תווית, פער מקסימלי בשעות, רק שעות עבודה)
+CRM_STREAMS = [
+    ("calls", "שיחות", 3, True),
+    ("signatures", "חתימות", 30, False),
+    ("invoices", "חשבוניות", 30, False),
+    ("newborn", "נכס נולד (סורק פרטי)", 3, True),
+    ("office", "נכסי המשרד (סורק)", 8, False),
+    ("shtaf", "שת\"פ (סורק)", 30, False),
+    ("site_leads", "לידים מהאתר", 72, False),
+    ("app_usage", "שימוש באפי", 3, True),
+]
+
+
+def _work_hours_between(a, b):
+    """שעות עבודה בין שני epoch (שעון ישראל): א'–ה' 08:00–20:00, ו' 08:00–13:00."""
+    import datetime as _dw
+    from zoneinfo import ZoneInfo as _ZW
+    if b <= a:
+        return 0.0
+    il = _ZW("Asia/Jerusalem")
+    s = _dw.datetime.fromtimestamp(a, il)
+    e = _dw.datetime.fromtimestamp(b, il)
+    total, d = 0.0, s.date()
+    while d <= e.date():
+        wd = d.weekday()                       # 0=שני … 4=שישי, 5=שבת, 6=ראשון
+        hours = (8, 13) if wd == 4 else (None if wd == 5 else (8, 20))
+        if hours:
+            o = _dw.datetime(d.year, d.month, d.day, hours[0], tzinfo=il)
+            c = _dw.datetime(d.year, d.month, d.day, hours[1], tzinfo=il)
+            lo, hi = max(o, s), min(c, e)
+            if hi > lo:
+                total += (hi - lo).total_seconds() / 3600
+        d += _dw.timedelta(days=1)
+    return total
+
+
+def crm_health(last_ts, now, max_gap_h, work_only, quiet):
+    """ok / warn (עד פי 2 מהפער) / bad / quiet (שבת-חג) / none (אין נתון)."""
+    if quiet:
+        return "quiet"
+    if last_ts is None:
+        return "none"
+    gap = _work_hours_between(last_ts, now) if work_only else max(0.0, (now - last_ts) / 3600)
+    if gap <= max_gap_h:
+        return "ok"
+    return "warn" if gap <= 2 * max_gap_h else "bad"
+
+
 def parallel_match_calls(legacy, direct, window=900):
     """[CRM-1] שיחות דרך פיירברי מול הזרם הישיר: אותו טלפון לקוח + טלפון סוכן, זמן ±window ש'
     (15 דק' — ברשומת פיירברי הזמן הוא אחרי התמלול). כל שיחה מותאמת פעם אחת, לקרובה ביותר. ברשימות הפער — זמן, סוכן ו-4 ספרות אחרונות בלבד."""
