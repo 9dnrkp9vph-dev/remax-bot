@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 import _load
 from _load import ck
-ns = _load.load("crm_sig_records", "_crm_int", "CRM_VIEWS", "CRM_MODULES", "_crm_day", "crm_query", "_crm_norm", "inv_phone9")
+ns = _load.load("crm_unify_agents", "crm_sig_records", "_crm_int", "CRM_VIEWS", "CRM_MODULES", "_crm_day", "crm_query", "_crm_norm", "inv_phone9")
 rec, q = ns["crm_sig_records"], ns["crm_query"]
 NOW = 1_800_000_000.0
 lab = {"CLIENT_SALE": "קונים", "OWNER_SALE": "מוכר", "OWNER_EXCLUSIVE": "בלעדיות", "CLIENT_RENT": "שכירות"}
@@ -39,4 +39,8 @@ Q = rec([{"event_id": "KE90D8L4YOf1guDF", "deal_type": "CLIENT_SALE", "client_na
          {"event_id": "3f2a1b4c-1111-2222-3333-444455556666", "deal_type": "OWNER_SALE", "client_name": "פיירברי", "commission_pct": "", "received_at": str(NOW)},
          {"event_id": "314970617", "deal_type": "OWNER_SALE", "client_name": "תז", "commission_pct": "", "received_at": str(NOW)}], h)
 ck([x["source"] for x in Q] == ["אפי", "פיירברי", "פיירברי"] and Q[0]["link"] == "/s/KE90D8L4YOf1guDF", ("16-char Effie token id = Effie", Q))
+U = ns["crm_unify_agents"]
+recs = [{"agent": "אירנה טנדשוילי"}, {"agent": "אירנה טנדשווילי"}, {"agent": "אירנה טנדשוילי"}, {"agent": "אוהד\u200f פלד"}, {"agent": "אוהד  פלד"}, {"agent": ""}]
+U(recs, lambda n: n.replace(" ", "").replace("וו", "ו"))
+ck([r["agent"] for r in recs] == ["אירנה טנדשוילי"] * 3 + ["אוהד פלד", "אוהד פלד", ""], ("one name per agent, most common spelling", recs))
 print("sig_records OK", _load.n)

@@ -12325,6 +12325,30 @@ def _crm_int(v):
     return int(d) if d else ""
 
 
+def crm_unify_agents(records, keyfn, field="agent", also=("contact",)):
+    """שם סוכן אחד לכל סוכן: מסיר תווים נסתרים ורווחים כפולים, ומאחד כתיב שונה (keyfn = _canon_key)
+    לכתיב הנפוץ ביותר — אחרת בסינון לפי סוכן כל שם מופיע פעמיים והחתימות מתפצלות ביניהם."""
+    def clean(n):
+        return " ".join(_re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]", "", str(n or "")).split())
+    counts = {}
+    for r in records or []:
+        nm = clean(r.get(field))
+        if nm:
+            k = keyfn(nm) or nm
+            counts.setdefault(k, {}).setdefault(nm, 0)
+            counts[k][nm] += 1
+    best = {k: sorted(v.items(), key=lambda kv: (-kv[1], kv[0]))[0][0] for k, v in counts.items()}
+    for r in records or []:
+        old = r.get(field)
+        nm = clean(old)
+        new = best.get(keyfn(nm) or nm, nm) if nm else ""
+        r[field] = new
+        for f in also:
+            if f in r and old and clean(r.get(f)) == nm:
+                r[f] = new
+    return records
+
+
 def crm_sig_records(sigs, h):
     """[CRM מתעניינים 19/10] שורות החתימות (get_signings) → רשומות לטבלת ה-CRM, כמו תצוגת 'מתעניינים' בפיירברי.
     נחתם = יש קישור למסמך או עמלה (הכלל של מסך החתימות). מקור: קישור hatimatova → חתימה טובה; קישור /s/ או
@@ -15348,7 +15372,8 @@ def register(app, G):
             return out
         if module == "signatures":
             def _build_sigs():
-                return crm_sig_records(G["get_signings"]() or [], {"ep": G["_excl_epoch"], "label": G["_deal_label"]})
+                return crm_unify_agents(crm_sig_records(G["get_signings"]() or [], {"ep": G["_excl_epoch"], "label": G["_deal_label"]}),
+                                        lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
             return swr("crmsigs", 120, _build_sigs) if swr else _build_sigs()
         if module == "props":
@@ -15372,7 +15397,8 @@ def register(app, G):
                     pd = G["_price_dropped_map"]() or {}
                 except Exception:
                     pd = {}
-                return crm_props_records(G["fetch_newborn"]() or [], G["fetch_external_exclusives"]() or [], office, pd, _tp.time(), h)
+                return crm_unify_agents(crm_props_records(G["fetch_newborn"]() or [], G["fetch_external_exclusives"]() or [], office, pd, _tp.time(), h),
+                                        lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
             return swr("crmprops", 120, _build_props) if swr else _build_props()
         if module in ("flows", "automations"):
