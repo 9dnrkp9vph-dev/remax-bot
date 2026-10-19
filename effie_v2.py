@@ -11650,23 +11650,29 @@ function load(){ return api('/v2/api/crm/' + MOD + '/list?' + qs()).then(functio
 function loadSaved(){ return api('/v2/api/crm/views?module=' + MOD).then(function(r){ return r.json(); }).then(function(j){ SAVED = (j && j.views) || []; renderViews(); }); }
 function waLink(ph, txt){ var d = String(ph || '').replace(/\D/g, ''); if (d.indexOf('972') === 0) d = d.slice(3); if (d.charAt(0) === '0') d = d.slice(1);
   return 'https://wa.me/972' + d + (txt ? '?text=' + encodeURIComponent(txt) : ''); }
-function field(k, label, v, wide){ return '<label class="f' + (wide ? ' wide' : '') + '"><b>' + esc(label) + '</b>' + (wide ? '<textarea rows="3" data-f="' + k + '">' + esc(v) + '</textarea>' : '<input data-f="' + k + '" value="' + esc(v) + '">') + '</label>'; }
+function field(k, label, v, wide){
+  if (MOD === 'buyers' && k === 'status') return '<label class="f"><b>' + esc(label) + '</b><select data-f="status">' + ['פעיל', 'חם', 'בהקפאה', 'סגר'].map(function(o){ return '<option' + (o === (v || 'פעיל') ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select></label>';
+  if (MOD === 'buyers' && (k === 'search' || k === 'summary')) wide = true;
+  return '<label class="f' + (wide ? ' wide' : '') + '"><b>' + esc(label) + '</b>' + (wide ? '<textarea rows="3" data-f="' + k + '">' + esc(v) + '</textarea>' : '<input data-f="' + k + '" value="' + esc(v) + '">') + '</label>'; }
 function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getElementById('drb'); b.innerHTML = '<div class="mut">טוען…</div>'; document.getElementById('dr').classList.add('open');
   api('/v2/api/crm/' + MOD + '/record?key=' + encodeURIComponent(key)).then(function(r){ return r.json(); }).then(function(j){
     if (!j.ok){ b.innerHTML = '<div class="mut">לא נמצא.</div>'; return; }
     var r = j.record; CUR = r;
     if (MOD !== 'calls' && META.editable.length){   /* מודול לעריכה (צוות): שדות + תמונה + השבתה */
       var hh = '<div style="display:flex;gap:14px;align-items:center">' + (r.photo ? '<img class="av big" src="' + esc(r.photo) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '') +
-        '<div><h2>' + esc(r.name) + '</h2><span class="st ' + stCls(r.active ? 'פעילה' : 'כבויה') + '">' + esc(r.status) + '</span></div></div>' +
+        '<div><h2>' + esc(r.name) + '</h2><span class="st ' + stCls(MOD === 'buyers' ? (r.status === 'סגר' ? 'כבויה' : 'פעילה') : (r.active ? 'פעילה' : 'כבויה')) + '">' + esc(r.status) + '</span>' + (MOD === 'buyers' && r.date ? ' <span class="mut">נכנס ' + fdate(r.date) + ' · ' + esc(r.source) + '</span>' : '') + '</div></div>' +
         '<div class="grid2">' + META.editable.map(function(e){ return field(e[0], e[1], r[e[0]]); }).join('') + '</div>' +
-        (r.phone ? '<label class="tb" style="margin-top:4px">החלפת תמונה<input type="file" accept="image/*" id="avIn" style="display:none"></label>' : '') +
+        (MOD === 'buyers' && r.phone ? '<a class="tb" style="margin-top:4px;color:#157A43;border-color:#BFE0CC" target="_blank" rel="noopener" href="' + waLink(r.phone) + '">וואטסאפ לקונה</a>' : '') +
+        (MOD === 'team' && r.phone ? '<label class="tb" style="margin-top:4px">החלפת תמונה<input type="file" accept="image/*" id="avIn" style="display:none"></label>' : '') +
         '<div class="acts"><button class="tb pri" id="svBtn">שמירה</button>' +
         (r.active ? '<button class="del" id="dlBtn" aria-label="השבתה" title="השבתה (אפשר לשחזר)"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 5h12M7 5V3h4v2M5 5l1 10h6l1-10" fill="none" stroke="#C24040" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
                   : '<button class="tb" id="rsBtn">שחזור</button>') + '</div>' +
-        '<div class="mut" style="margin-top:10px">השבתה = לא יכול להיכנס לאפי ולא מופיע בספרייה ובאתר (אחרי המעבר לטבלה).</div>';
+        (MOD === 'team' ? '<div class="mut" style="margin-top:10px">השבתה = לא יכול להיכנס לאפי ולא מופיע בספרייה ובאתר (אחרי המעבר לטבלה).</div>'
+                        : '<div class="mut" style="margin-top:10px">שינויים כאן נשמרים לקונה באפי — הסוכן רואה אותם מיד במסך הקונים.</div>');
       b.innerHTML = hh;
       document.getElementById('svBtn').onclick = function(){ save(r.key); };
-      var dl = document.getElementById('dlBtn'); if (dl) dl.onclick = function(){ if (confirm('להשבית את ' + r.name + '?')) act({key:r.key, delete:true}, 'הושבת'); };
+      var dl = document.getElementById('dlBtn'); if (dl) dl.onclick = function(){ if (MOD === 'buyers'){ if (confirm('למחוק את ' + r.name + ' מהקונים? (לא ניתן לשחזר)')) act({key:r.key, delete:true}, 'נמחק'); return; }
+        if (confirm('להשבית את ' + r.name + '?')) act({key:r.key, delete:true}, 'הושבת'); };
       var rs = document.getElementById('rsBtn'); if (rs) rs.onclick = function(){ act({key:r.key, restore:true}, 'שוחזר'); };
       var ai = document.getElementById('avIn'); if (ai) ai.onchange = function(){ upAvatar(r, ai.files[0]); };
       return; }
@@ -12075,6 +12081,17 @@ def crm_daily_series(rows, get_when, days, today_iso):
 
 # ── [CRM-2 19/10] מסכי CRM במבנה פיירברי — הגדרת מודולים + מנוע שאילתות (טהור) ──────────
 CRM_MODULES = {
+    "buyers": {
+        "title": "קונים",
+        "columns": [("date", "תאריך כניסה", "date"), ("name", "שם", "text"), ("phone", "טלפון", "phone"), ("agent", "סוכן", "text"),
+                    ("budget", "תקציב", "price"), ("search", "מה מחפש", "long"), ("status", "סטטוס", "status"),
+                    ("source", "מקור", "text"), ("summary", "סיכום", "long")],
+        "default_cols": ["date", "name", "phone", "agent", "budget", "search", "status", "source"],
+        "editable": [("name", "שם"), ("phone", "טלפון"), ("agent", "סוכן"), ("budget", "תקציב"), ("search", "מה מחפש"),
+                     ("summary", "סיכום"), ("status", "סטטוס")],
+        "views": [("all", "כל הקונים"), ("active", "פעילים"), ("hot", "חמים"), ("frozen", "בהקפאה"), ("closed", "סגרו"),
+                  ("today", "נכנסו היום"), ("site", "מהאתר"), ("signing", "מהחתמה"), ("no_phone", "בלי טלפון"), ("no_budget", "בלי תקציב")],
+    },
     "signatures": {
         "title": "מתעניינים (חתימות)",
         "columns": [("date", "תאריך", "date"), ("type", "סוג הסכם", "text"), ("client", "שם לקוח", "text"), ("phone", "סלולרי", "phone"),
@@ -12286,6 +12303,15 @@ CRM_VIEWS = {
              "no_vphone": lambda r, t: bool(r.get("active")) and not r.get("vphone"),
              "no_email": lambda r, t: bool(r.get("active")) and "@" not in (r.get("email") or "") and "@" not in (r.get("license") or ""),
              "no_license": lambda r, t: bool(r.get("active")) and not "".join(ch for ch in (r.get("license") or "") if ch.isdigit())},
+    "buyers": {"active": lambda r, t: r.get("status") in ("פעיל", "חם"),
+               "hot": lambda r, t: r.get("status") == "חם",
+               "frozen": lambda r, t: r.get("status") == "בהקפאה",
+               "closed": lambda r, t: r.get("status") == "סגר",
+               "today": lambda r, t: _crm_day(r.get("date"), t),
+               "site": lambda r, t: r.get("source") == "אתר",
+               "signing": lambda r, t: r.get("source") == "החתמה",
+               "no_phone": lambda r, t: not "".join(ch for ch in str(r.get("phone") or "") if ch.isdigit()),
+               "no_budget": lambda r, t: not r.get("budget")},
     "signatures": {"today": lambda r, t: _crm_day(r.get("date"), t),
                    "buyers": lambda r, t: r.get("type") == "קונים",
                    "owners": lambda r, t: r.get("type") in ("מוכר", "בלעדיות"),
@@ -12386,6 +12412,28 @@ def _crm_int(v):
 
 
 _SIG_HDR_CACHE = {}
+
+
+_CRM_BSTAT = {"active": "פעיל", "hot": "חם", "frozen": "בהקפאה", "closed": "סגר"}
+
+
+def crm_buyer_records(buyers, statuses, ep):
+    """[CRM קונים 20/10] שורות הקונים (_fetch_manual_buyers) → רשומות. סטטוס מקובץ הסטטוסים של מסך הקונים
+    (מפתח: 9 ספרות הטלפון, אחרת 'r<שורה>'); מקור לפי תחילת הסיכום: 'ליד מהאתר' → אתר, 'מהחתמת' → החתמה."""
+    out = []
+    for b in buyers or []:
+        row = b.get("row")
+        ph9 = "".join(ch for ch in str(b.get("phone") or "") if ch.isdigit())[-9:]
+        code = (statuses or {}).get(ph9) if ph9 else None
+        code = code or (statuses or {}).get("r" + str(row)) or (statuses or {}).get(str(row)) or "active"
+        sm = str(b.get("summary") or "").strip()
+        src = "אתר" if sm.startswith("ליד מהאתר") else ("החתמה" if sm.startswith("מהחתמת") else "ידני")
+        out.append({"key": "b:" + str(row), "row": row, "date": ep(b.get("date") or "") or 0,
+                    "name": str(b.get("name") or "").strip(), "phone": str(b.get("phone") or "").strip(),
+                    "agent": str(b.get("agent") or "").strip(), "budget": _crm_int(b.get("budget")),
+                    "search": str(b.get("search") or "").strip(), "summary": sm,
+                    "status": _CRM_BSTAT.get(code, "פעיל"), "status_code": code, "source": src, "active": True})
+    return out
 
 
 def _crm_sig_token(g):
@@ -15516,6 +15564,16 @@ def register(app, G):
                             "photo": ("/v2/api/avatar?p=" + _photo_phone(str(t.get("id")))) if _photo_phone(str(t.get("id"))) else "",
                             "updated_by": str(t.get("updated_by") or ""), "date": 0})
             return out
+        if module == "buyers":
+            def _build_buyers():
+                try:
+                    st = _bstat_load()
+                except Exception:
+                    st = {}
+                return crm_unify_agents(crm_buyer_records(G["_fetch_manual_buyers"]() or [], st, G["_excl_epoch"]),
+                                        lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
+            swr = G.get("_swr")
+            return swr("crmbuyers", 60, _build_buyers) if swr else _build_buyers()
         if module == "signatures":
             def _sig_doc_headers(toks):
                 """כותרות מסמכי החתימה (נשמרות לתמיד בזיכרון — כותרת של מסמך לא משתנה)."""
@@ -15657,6 +15715,8 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "read_only"}), 400
         if request.method == "POST" and module == "team":
             return _team_write(s, request.get_json(silent=True) or {})
+        if request.method == "POST" and module == "buyers":
+            return _buyer_crm_write(s, request.get_json(silent=True) or {})
         if request.method == "GET":
             key = request.args.get("key", "")
             try:
@@ -15765,6 +15825,64 @@ def register(app, G):
         return jsonify({"ok": True})
 
     # ── [TEAM 19/10] אנשי צוות במקום גיליון 'אנשי קשר' ──
+    def _buyer_crm_write(s, b):
+        """[CRM קונים 20/10] עריכה/הוספה/מחיקה דרך מסלולי הכתיבה הקיימים של הקונים (_buyers_write),
+        והסטטוס — לאותו קובץ סטטוסים של מסך הקונים (מפתח: 9 ספרות הטלפון, אחרת 'r<שורה>')."""
+        who = _team_actor(s)
+        key = str(b.get("key") or "").strip()
+        allowed = {f for f, _l in CRM_MODULES["buyers"]["editable"]}
+        fields = {k: str(v).strip()[:500] for k, v in (b.get("fields") or {}).items() if k in allowed}
+        rev = {v: k for k, v in _CRM_BSTAT.items()}
+        status = fields.pop("status", None)
+        if status is not None and status not in rev and status not in _CRM_BSTAT:
+            return jsonify({"ok": False, "reason": "bad_status"})
+        code = rev.get(status, status) if status is not None else None
+        def _done(act, detail):
+            G["_cache_clear"]("crmbuyers")
+            G["_cache_clear"]("buyers")
+            G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "קונים (CRM) — " + act, detail)
+            return jsonify({"ok": True})
+        if not key:
+            if not fields.get("name"):
+                return jsonify({"ok": False, "reason": "no_name"})
+            import datetime as _dbn
+            from zoneinfo import ZoneInfo as _ZB
+            new = {k: fields.get(k, "") for k in ("name", "phone", "budget", "summary", "agent", "search")}
+            new["date"] = _dbn.datetime.now(_ZB("Asia/Jerusalem")).strftime("%d/%m/%Y")
+            j = G["_buyers_write"]("addbuyer", new) or {}
+            if not j.get("ok"):
+                return jsonify({"ok": False, "reason": j.get("error") or "save_failed"})
+            return _done("הוספה", new["name"])
+        try:
+            row = int(key.split(":", 1)[1])
+        except Exception:
+            return jsonify({"ok": False, "reason": "bad_key"}), 400
+        cur = next((x for x in (G["_fetch_manual_buyers"]() or []) if str(x.get("row")) == str(row)), None)
+        if cur is None:
+            return jsonify({"ok": False, "reason": "not_found"}), 404
+        if b.get("delete"):
+            j = G["_buyers_write"]("deletebuyer", {"row": row}) or {}
+            if not j.get("ok"):
+                return jsonify({"ok": False, "reason": j.get("error") or "delete_failed"})
+            return _done("מחיקה", str(cur.get("name") or row))
+        if "name" in fields and not fields["name"]:
+            return jsonify({"ok": False, "reason": "no_name"})
+        ch = {k: v for k, v in fields.items() if str(cur.get(k) or "").strip() != v}
+        if ch:
+            j = G["_buyers_write"]("updatebuyer", dict(ch, row=row)) or {}
+            if not j.get("ok"):
+                return jsonify({"ok": False, "reason": j.get("error") or "save_failed"})
+        if code:
+            sk = "".join(c for c in str(ch.get("phone", cur.get("phone")) or "") if c.isdigit())[-9:] or ("r" + str(row))
+            with _BSTAT_LOCK:
+                m = _bstat_load()
+                if code == "active":
+                    m.pop(sk, None)
+                else:
+                    m[sk] = code
+                _bstat_save(m)
+        return _done("עריכה", str(cur.get("name") or row) + " · " + ",".join(list(ch) + (["סטטוס"] if code else [])))
+
     def _team_actor(s):
         """שם אמיתי ל'עודכן ע"י' — מנהל נכנס עם השם הגנרי 'מנהל', ממפים לפי הטלפון."""
         nm = s.get("name", "")
