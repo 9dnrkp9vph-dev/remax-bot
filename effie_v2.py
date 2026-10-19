@@ -11552,6 +11552,8 @@ td.long div{overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box
 .box{background:#FBFAF7;border-radius:14px;padding:12px;line-height:1.65;margin-top:10px;white-space:pre-wrap}
 .box h3{margin:0 0 6px;font-size:14px;white-space:normal}.gold{border-right:4px solid var(--gold)}
 .acts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
+.ra{width:1%;white-space:nowrap}.rb{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--navy);display:inline-grid;place-items:center;cursor:pointer;margin-inline-start:4px;vertical-align:middle}
+.rb.rdel{background:#FBEDED;border-color:#FBEDED}
 .del{width:44px;height:44px;border-radius:12px;background:#FBEDED;border:0;display:grid;place-items:center;cursor:pointer;margin-inline-start:auto}
 .av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#EEE9DD;display:block}
 .av.big{width:88px;height:88px;border:3px solid var(--gold)}
@@ -11595,6 +11597,7 @@ function toast(t){ var e = document.getElementById('toast'); e.textContent = t; 
 function fdate(ts){ if(!ts) return ''; var d = new Date(ts*1000); return d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ' ' + d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); }
 function stCls(l){ return (l === 'נענתה' || l === 'פעילה' || l === 'תקין') ? 'st-a' : (l === 'יוצאת' ? 'st-o' : (l === 'לא נענתה' || l === 'בוטלה' || l === 'תפוס' || l === 'נכשל' || l === 'כבויה' ? 'st-n' : 'st-x')); }
 function fmtPh(v){ var d = String(v || '').replace(/\D/g, '');
+  if (d.indexOf('972') === 0 && (d.length === 12 || d.length === 11)) d = '0' + d.slice(3);
   if (d.length === 10 && d.charAt(0) === '0') return d.slice(0, 3) + '-' + d.slice(3);
   if (d.length === 9 && d.charAt(0) === '0') return d.slice(0, 2) + '-' + d.slice(2);
   return String(v || ''); }
@@ -11602,7 +11605,7 @@ function cell(r, c){ var v = r[c[0]], t = c[2];
   if (t === 'date') return fdate(v);
   if (t === 'phone') return v ? '<span class="ph">' + esc(fmtPh(v)) + '</span>' : '';
   if (t === 'price') return v ? ((r.dropped && r.price_old ? '<s class="old">₪' + Number(r.price_old).toLocaleString('en-US') + '</s> ' : '') + '<b>₪' + Number(v).toLocaleString('en-US') + '</b>' + (r.dropped ? ' <span class="st st-y">↓ ירידה</span>' : '') + (r.new ? ' <span class="st st-new">חדש</span>' : '')) : '';
-  if (t === 'link') return /^(https?:\/\/|\/[a-z])/.test(v || '') ? '<a class="lnk" href="' + esc(v) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">למודעה</a>' : '';
+  if (t === 'link') return /^(https?:\/\/|\/[a-z])/.test(v || '') ? '<a class="lnk" href="' + esc(v) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + esc(c[3] || 'למודעה') + '</a>' : '';
   if (t === 'status') return '<span class="st ' + stCls(v) + '">' + esc(v) + '</span>';
   if (t === 'score') return v ? v + '/5' : '—';
   if (t === 'long') return '<div>' + esc(v) + '</div>';
@@ -11632,12 +11635,20 @@ function renderViews(){ var h = '';
     ST.page = 1; renderViews(); load(); }; }
 function renderTable(){ var cs = cols(), h = '<tr>';
   cs.forEach(function(c){ h += '<th data-k="' + c[0] + '" class="' + (ST.sort === c[0] ? 's' : '') + '">' + esc(c[1]) + (ST.sort === c[0] ? (ST.dir === 'asc' ? ' ↑' : ' ↓') : '') + '</th>'; });
+  var RA = MOD === 'buyers';   // [CRM קונים 20/10] עריכה/מחיקה ישר מהשורה
+  if (RA) h += '<th class="ra">פעולות</th>';
   h += '</tr>';
-  if (!ROWS.length) h += '<tr><td colspan="' + cs.length + '" class="empty">אין תוצאות. נסה חיפוש אחר או תצוגה אחרת.</td></tr>';
+  if (!ROWS.length) h += '<tr><td colspan="' + (cs.length + (RA ? 1 : 0)) + '" class="empty">אין תוצאות. נסה חיפוש אחר או תצוגה אחרת.</td></tr>';
   ROWS.forEach(function(r, i){ h += '<tr data-i="' + i + '" class="' + (CUR && CUR.key === r.key ? 'sel' : '') + '">';
-    cs.forEach(function(c){ h += '<td class="' + (c[2] === 'long' ? 'long' : '') + '">' + cell(r, c) + '</td>'; }); h += '</tr>'; });
+    cs.forEach(function(c){ h += '<td class="' + (c[2] === 'long' ? 'long' : '') + '">' + cell(r, c) + '</td>'; });
+    if (RA) h += '<td class="ra"><button class="rb" data-ed="' + i + '" title="עריכה" aria-label="עריכה"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>' +
+      '<button class="rb rdel" data-rm="' + i + '" title="מחיקה" aria-label="מחיקה"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C24040" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg></button></td>';
+    h += '</tr>'; });
   var t = document.getElementById('tbl'); t.innerHTML = h;
-  t.onclick = function(ev){ var th = ev.target.closest('th');
+  t.onclick = function(ev){ var rm = ev.target.closest('[data-rm]');
+    if (rm){ var x = ROWS[+rm.dataset.rm]; if (confirm('למחוק את ' + (x.name || 'הקונה') + ' מהקונים? (לא ניתן לשחזר)')) act({key:x.key, delete:true}, 'נמחק'); return; }
+    var ed = ev.target.closest('[data-ed]'); if (ed){ openRec(ROWS[+ed.dataset.ed].key); return; }
+    var th = ev.target.closest('th[data-k]');
     if (th){ var k = th.dataset.k; if (ST.sort === k) ST.dir = ST.dir === 'asc' ? 'desc' : 'asc'; else { ST.sort = k; ST.dir = k === 'date' ? 'desc' : 'asc'; } ST.page = 1; load(); return; }
     var tr = ev.target.closest('tr[data-i]'); if (tr) openRec(ROWS[+tr.dataset.i].key); };
   var a = (ST.page - 1) * 50 + 1, b = Math.min(TOTAL, ST.page * 50);
@@ -12087,12 +12098,14 @@ CRM_MODULES = {
         "title": "קונים",
         "columns": [("date", "תאריך כניסה", "date"), ("name", "שם", "text"), ("phone", "טלפון", "phone"), ("agent", "סוכן", "text"),
                     ("budget", "תקציב", "price"), ("search", "מה מחפש", "long"), ("status", "סטטוס", "status"),
-                    ("source", "מקור", "text"), ("summary", "סיכום", "long")],
-        "default_cols": ["date", "name", "phone", "agent", "budget", "search", "status", "source"],
+                    ("source", "מקור", "text"), ("bpage", "דף קונה", "link", "דף קונה"), ("bpage_sum", "סימונים בדף", "text"),
+                    ("summary", "סיכום", "long")],
+        "default_cols": ["date", "name", "phone", "agent", "budget", "search", "status", "source", "bpage", "bpage_sum"],
         "editable": [("name", "שם"), ("phone", "טלפון"), ("agent", "סוכן"), ("budget", "תקציב"), ("search", "מה מחפש"),
                      ("summary", "סיכום"), ("status", "סטטוס")],
         "views": [("all", "כל הקונים"), ("active", "פעילים"), ("hot", "חמים"), ("frozen", "בהקפאה"), ("closed", "סגרו"),
-                  ("today", "נכנסו היום"), ("site", "מהאתר"), ("signing", "מהחתמה"), ("no_phone", "בלי טלפון"), ("no_budget", "בלי תקציב")],
+                  ("today", "נכנסו היום"), ("site", "מהאתר"), ("signing", "מהחתמה"), ("no_phone", "בלי טלפון"), ("no_budget", "בלי תקציב"),
+                  ("bpage", "עם דף קונה")],
     },
     "signatures": {
         "title": "מתעניינים (חתימות)",
@@ -12313,7 +12326,8 @@ CRM_VIEWS = {
                "site": lambda r, t: r.get("source") == "אתר",
                "signing": lambda r, t: r.get("source") == "החתמה",
                "no_phone": lambda r, t: not "".join(ch for ch in str(r.get("phone") or "") if ch.isdigit()),
-               "no_budget": lambda r, t: not r.get("budget")},
+               "no_budget": lambda r, t: not r.get("budget"),
+               "bpage": lambda r, t: bool(r.get("bpage"))},
     "signatures": {"today": lambda r, t: _crm_day(r.get("date"), t),
                    "buyers": lambda r, t: r.get("type") == "קונים",
                    "owners": lambda r, t: r.get("type") in ("מוכר", "בלעדיות"),
@@ -12419,7 +12433,49 @@ _SIG_HDR_CACHE = {}
 _CRM_BSTAT = {"active": "פעיל", "hot": "חם", "frozen": "בהקפאה", "closed": "סגר"}
 
 
-def crm_buyer_records(buyers, statuses, ep):
+def crm_buyer_pages(pages, items, now_ep):
+    """[CRM קונים 20/10 'תוסיף גם דף קונה'] דפי הקונים → {שורה: קישור, נכסים, מתאים, לא מתאים, ראה, פג}.
+    'visit' (רוצה לראות, ישן) נספר כ'מתאים' — כמו בדף הלקוח."""
+    by_id, out = {}, {}
+    for pg in pages or []:
+        if pg.get("row") is None or not pg.get("token"):
+            continue
+        rec = {"link": "/b/" + str(pg["token"]), "n": 0, "like": 0, "dislike": 0, "seen": 0,
+               "expired": bool(bpage_expired(pg, now_ep))}
+        out.setdefault(str(pg["row"]), rec)          # bpage_all ממוין מהחדש — הדף העדכני גובר
+        if out[str(pg["row"])] is rec:
+            by_id[pg.get("id")] = rec
+    for it in items or []:
+        rec = by_id.get(it.get("page_id"))
+        if rec is None:
+            continue
+        rec["n"] += 1
+        m = it.get("mark") or ""
+        if m in ("like", "visit"):
+            rec["like"] += 1
+        elif m == "dislike":
+            rec["dislike"] += 1
+        elif m == "seen":
+            rec["seen"] += 1
+    return out
+
+
+def _crm_bpage_sum(p):
+    if not p:
+        return ""
+    parts = ["%d נכסים" % p["n"]]
+    if p["like"]:
+        parts.append("%d מתאים" % p["like"])
+    if p["dislike"]:
+        parts.append("%d לא מתאים" % p["dislike"])
+    if p["seen"]:
+        parts.append("%d ראה" % p["seen"])
+    if p["expired"]:
+        parts.append("פג תוקף")
+    return " · ".join(parts)
+
+
+def crm_buyer_records(buyers, statuses, ep, pages=None):
     """[CRM קונים 20/10] שורות הקונים (_fetch_manual_buyers) → רשומות. סטטוס מקובץ הסטטוסים של מסך הקונים
     (מפתח: 9 ספרות הטלפון, אחרת 'r<שורה>'); מקור לפי תחילת הסיכום: 'ליד מהאתר' → אתר, 'מהחתמת' → החתמה."""
     out = []
@@ -12434,7 +12490,9 @@ def crm_buyer_records(buyers, statuses, ep):
                     "name": str(b.get("name") or "").strip(), "phone": str(b.get("phone") or "").strip(),
                     "agent": str(b.get("agent") or "").strip(), "budget": _crm_int(b.get("budget")),
                     "search": str(b.get("search") or "").strip(), "summary": sm,
-                    "status": _CRM_BSTAT.get(code, "פעיל"), "status_code": code, "source": src, "active": True})
+                    "status": _CRM_BSTAT.get(code, "פעיל"), "status_code": code, "source": src, "active": True,
+                    "bpage": ((pages or {}).get(str(row)) or {}).get("link", ""),
+                    "bpage_sum": _crm_bpage_sum((pages or {}).get(str(row)))})
     return out
 
 
@@ -12702,7 +12760,7 @@ def crm_csv(records, columns):
     w.writerow([c[1] for c in columns])
     for r in records:
         line = []
-        for k, _lbl, typ in columns:
+        for k, _lbl, typ, *_x in columns:
             v = r.get(k)
             if typ == "date" and v:
                 v = _dc2.datetime.fromtimestamp(v, _ZC2("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
@@ -15577,7 +15635,14 @@ def register(app, G):
                     st = _bstat_load()
                 except Exception:
                     st = {}
-                return crm_unify_agents(crm_buyer_records(G["_fetch_manual_buyers"]() or [], st, G["_excl_epoch"]),
+                try:
+                    _sbp = _bp_sb()
+                    _pgs = _sbp.bpage_all() or []
+                    pages = crm_buyer_pages(_pgs, _sbp.bpage_items([p.get("id") for p in _pgs if p.get("id")]), time.time())
+                except Exception as e:
+                    log.warning("crm buyers: buyer pages unavailable: %s", e)
+                    pages = {}
+                return crm_unify_agents(crm_buyer_records(G["_fetch_manual_buyers"]() or [], st, G["_excl_epoch"], pages),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
             return swr("crmbuyers", 60, _build_buyers) if swr else _build_buyers()

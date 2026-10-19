@@ -28,9 +28,16 @@ def bw(action, p):
 A._buyers_write = bw
 A._fetch_manual_buyers = lambda: [dict(r) for r in ROWS]
 LOG = []; A._log_activity = lambda *a: LOG.append(a)
+import effie_v2 as E
+class BPSB:
+    def bpage_all(s): return [{"id": "p1", "row": 5, "token": "TOKfive1", "expires_at": "2099-01-01T00:00:00+00:00"}]
+    def bpage_items(s, ids): return [{"page_id": "p1", "mark": "like"}, {"page_id": "p1", "mark": ""}]
+E._BP_SB = BPSB()
 c = A.app.test_client()
 m = c.get("/v2/api/crm/buyers/meta").get_json()
 ck(m["ok"] and m["title"] == "קונים" and m["counts"]["all"] == 2 and m["counts"]["site"] == 1, m.get("counts"))
+L = c.get("/v2/api/crm/buyers/list?view=bpage").get_json()
+ck(L["total"] == 1 and L["rows"][0]["bpage"] == "/b/TOKfive1" and L["rows"][0]["bpage_sum"] == "2 נכסים · 1 מתאים", L)
 r = c.post("/v2/api/crm/buyers/record", json={"key": "b:5", "fields": {"budget": "1,300,000", "status": "חם", "bogus": "x"}}).get_json()
 ck(r["ok"] and ("updatebuyer", {"row": 5, "budget": "1,300,000"}) in W, (r, W))
 ck(c.get("/v2/api/crm/buyers/list?view=hot").get_json()["total"] == 1, "status saved to the buyers status store (same as the buyers screen)")
@@ -46,4 +53,9 @@ ck(any("קונים" in str(x[3]) for x in LOG), "activity logged")
 ck("גדזיי" in c.get("/v2/api/crm/buyers/export").get_data(as_text=True), "export")
 h = c.get("/v2/crm/buyers").get_data(as_text=True)
 ck("MOD === 'buyers' && k === 'status'" in h and "וואטסאפ לקונה" in h and "לא ניתן לשחזר" in h, "buyers drawer: status select, WhatsApp, permanent delete")
+ck('data-rm="' in h and 'data-ed="' in h and "c[3] || 'למודעה'" in h, "row edit/delete buttons + link label")
+import re, subprocess
+js = re.search(r"function fmtPh\(v\)\{.*?return String\(v \|\| ''\); \}", h, re.S).group(0)
+out = subprocess.run(["node", "-e", js + ";console.log([fmtPh('+972532254463'),fmtPh('972532254463'),fmtPh('0532254463'),fmtPh('048008283')].join('|'))"], capture_output=True, text=True).stdout.strip()
+ck(out == "053-2254463|053-2254463|053-2254463|04-8008283", out)
 print("buyer_api OK", n)
