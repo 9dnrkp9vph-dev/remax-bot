@@ -1357,6 +1357,9 @@ function todayStr(){
   return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
 }
 function parseDMY(s){
+  // 20/10: פגישות שמורות 'YYYY-MM-DDTHH:MM' — בלי זה כל הפגישות נחשבו 'בלי תאריך' (צ'יפ ריק, סדר שרירותי ב'דורש טיפול')
+  var iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(s || '').trim());
+  if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
   var m = /(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})/.exec(String(s || ''));
   if (!m) return null;
   var y = +m[3]; if (y < 100) y += 2000;
@@ -1511,7 +1514,9 @@ function renderDash(){
                s: 'נכס נולד · ' + (m.agent || '') + (m.date ? ' · ' + String(m.date).replace('T', ' ') : ''),
                chip: dd < 0 ? 'late' : dd === 0 ? 'today' : 'soon',
                chipTx: chipTx,
-               ord: dd < 0 ? -1000 + dd : dd,   // באיחור קודם, אחר כך לפי קרבה
+               // 20/10 (אייל): "מה שיש להיום יופיע בדרוש טיפול" — היום קודם, אחר כך הקרובים,
+               // ובאיחור בסוף (האחרון שפוספס ראשון). בתוך אותו יום — לפי השעה.
+               ord: dd < 0 ? 1000 - dd : dd, k: String(m.date || ''),
                meeting: m.status === 'meeting'});
   });
   (M.drafts || []).forEach(function(d, di){   // טיוטות החתמה — משימות פתוחות בלי תאריך
@@ -1519,7 +1524,7 @@ function renderDash(){
                s: 'חתימות · ' + (d.addr || (d.kind === 'buyer' ? 'מתעניין' : 'בעל נכס')),
                chip: 'soon', chipTx: 'טיוטא', ord: 2.5, draft: di});
   });
-  care.sort(function(a, b){ return a.ord - b.ord; });
+  care.sort(function(a, b){ return (a.ord - b.ord) || ((a.ord >= 1000 ? -1 : 1) * ((a.k || '') < (b.k || '') ? -1 : (a.k || '') > (b.k || '') ? 1 : 0)); });
   var h = '';
   care.slice(0, 4).forEach(function(c, i){
     var isDraft = c.draft !== undefined;
@@ -9491,19 +9496,20 @@ function render(){
   var late = isDone ? [] : withD.filter(function(x){ return !x.m.done && x.d && x.dd < 0; });
   var rest = isDone ? withD : withD.filter(function(x){ return x.m.done || !(x.d && x.dd < 0); });
   rest.sort(function(a, b){ return isDone ? (b.d || 0) - (a.d || 0) : (a.d || 0) - (b.d || 0); });
+  late.sort(function(a, b){ return (b.d || 0) - (a.d || 0); });   // באיחור: האחרון שפוספס ראשון
   var nDrafts = (FILTER === 'all' && !q) ? DRAFTS.length : 0;
   el('cnt').textContent = late.length + rest.length + nDrafts;
+  // 20/10 (אייל): הלבנים (היום והקרובים) למעלה, הוורודים (באיחור) למטה; טיוטות ההחתמה ביניהם
   var h = '';
-  if (late.length){
-    h += '<div class="late" style="margin-bottom:13px">' +
-      late.map(function(x){ return itemRow(x.m, x.i); }).join('') + '</div>';
+  if (rest.length){
+    h += '<div class="card" style="margin-bottom:13px">' + rest.map(function(x){ return itemRow(x.m, x.i); }).join('') + '</div>';
   }
-  if (nDrafts){   // טיוטות החתמה — אחרי הבאיחור, לפני הפגישות המתוזמנות
+  if (nDrafts){
     h += '<div class="card" style="margin-bottom:13px">' +
       DRAFTS.map(function(d, di){ return draftRow(d, di); }).join('') + '</div>';
   }
-  if (rest.length){
-    h += '<div class="card">' + rest.map(function(x){ return itemRow(x.m, x.i); }).join('') + '</div>';
+  if (late.length){
+    h += '<div class="late">' + late.map(function(x){ return itemRow(x.m, x.i); }).join('') + '</div>';
   }
   el('list').innerHTML = h ||
     (q ? '<div class="empty"><div class="ic"><svg width="26" height="26" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="#C29435" stroke-width="2"/><path d="M10.5 10.5L14 14" stroke="#C29435" stroke-width="2" stroke-linecap="round"/></svg></div>' +
