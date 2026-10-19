@@ -2893,9 +2893,9 @@ function saveOffice(){
   POST('/v2/api/admin/office', {name: el('offNm').value.trim(), vphone: el('offVp').value.trim(),
                                 instagram: el('offIg').value.trim(), madlan: el('offMd').value.trim(), review: el('offRv').value.trim()})
     .then(function(j){
-      if (!j.ok){ toast('שגיאה בשמירה'); return; }
+      if (!j || !j.ok){ toast('שגיאה בשמירה'); return; }
       closeSheet(); toast('נשמר'); boot();
-    });
+    }, function(){ toast('שגיאה בשמירה — נסה שוב'); });
 }
 
 function togglePolicy(key, node){
@@ -17281,7 +17281,7 @@ def register(app, G):
                 if log: log.warning(f"effie v2: offices.name update failed: {e}")
         _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                       "עדכון פרטי משרד", name or vphone)
-        return jsonify({"ok": True, "name": _office_name(cfg), "vphone": vphone})
+        return jsonify({"ok": True, "name": _office_name(_load_config()), "vphone": vphone})   # היה cfg לא מוגדר → 500 אחרי שמירה מוצלחת
 
     if log:
         log.info("effie v2 registered: /v2, /v2/home, /v2/admin")
