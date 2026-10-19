@@ -16730,6 +16730,7 @@ def register(app, G):
                 "vphone": v2o.get("vphone", "") or os.environ.get("VIRTUAL_PHONE_DISPLAY", ""),
                 "instagram": v2o.get("instagram", ""),
                 "madlan": v2o.get("madlan", ""),
+                "review": v2o.get("review", ""),
                 "sheet_connected": bool(G.get("APPS_SCRIPT_URL") and G.get("APPS_SCRIPT_TOKEN")),
             },
             "policies": _policies(cfg),
