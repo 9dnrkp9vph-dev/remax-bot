@@ -11514,6 +11514,27 @@ def _work_hours_between(a, b):
     return total
 
 
+def crm_daily_series(rows, get_when, days, today_iso):
+    """ספירה לכל יום ישראלי ב-days הימים האחרונים (האחרון = today_iso). בלי תאריך / מחוץ לטווח — לא נספר."""
+    import datetime as _dd
+    from zoneinfo import ZoneInfo as _ZD
+    il = _ZD("Asia/Jerusalem")
+    today = _dd.date.fromisoformat(today_iso)
+    first = today - _dd.timedelta(days=days - 1)
+    out = [0] * days
+    for r in rows or []:
+        try:
+            ts = crm_ts(get_when(r))
+        except Exception:
+            ts = None
+        if ts is None:
+            continue
+        d = _dd.datetime.fromtimestamp(ts, il).date()
+        if first <= d <= today:
+            out[(d - first).days] += 1
+    return out
+
+
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
     """ok / warn (עד פי 2 מהפער) / bad / quiet (שבת-חג) / none (אין נתון)."""
     if quiet:
