@@ -2258,8 +2258,15 @@ def get_signings(frm="01/01/2020", to="31/12/2099"):
         if _cur is None:
             _best[_k] = g
             _order.append(_k)
-        elif str(g.get("commission_pct", "") or "") and not str(_cur.get("commission_pct", "") or ""):
-            _best[_k] = g   # השורה החתומה (עם קישור המסמך) גוברת
+        else:
+            if str(g.get("commission_pct", "") or "") and not str(_cur.get("commission_pct", "") or ""):
+                _cur, g = g, _cur
+                _best[_k] = _cur   # השורה החתומה (עם קישור המסמך) גוברת
+            # [CRM 19/10] 'למה אין תקציב?' — העותק החתום (מהגיליון) בלי תקציב/נייד; משלימים מהעותק השני
+            _miss = {f: g.get(f) for f in ("budget", "phone", "doc_token", "notes")
+                     if g.get(f) and not str(_cur.get(f, "") or "").strip()}
+            if _miss:
+                _best[_k] = dict(_cur, **_miss)
     allsig = [_best[_k] for _k in _order]
     lo = _excl_epoch(frm); hi = _excl_epoch(to) + 86399
     out = []
@@ -5752,7 +5759,7 @@ def api_sign_submit():
     for d in docs:
         _is_x = bool(token2) and "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()
         _srec = {"event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
-                 "client_name": client, "address": address, "city": city,
+                 "client_name": client, "phone": phone, "address": address, "city": city,
                  "commission_pct": (link2 if _is_x else link), "received_at": now_iso, "notes": notes}
         if _sprices and str(d.get("deal_type", "")).upper().startswith("CLIENT"):
             _srec["budget"] = str(sum(_sprices) // len(_sprices))   # 14/10: המחיר מהטופס — לתקציב הקונה בהמשך
@@ -6350,7 +6357,7 @@ def api_sign_send_remote():
     for d in docs:
         _ev = token2 if (token2 and "OWNER_EXCLUSIVE" in str(d.get("deal_type", "")).upper()) else token
         _srec = {"event_id": _ev, "doc_token": _ev, "deal_type": d.get("deal_type", ""), "agent": agent,
-                 "client_name": client, "address": address, "city": city,
+                 "client_name": client, "phone": phone, "address": address, "city": city,
                  "commission_pct": "", "received_at": now_iso, "notes": notes}
         if _sprices and str(d.get("deal_type", "")).upper().startswith("CLIENT"):
             _srec["budget"] = str(sum(_sprices) // len(_sprices))   # 14/10: המחיר מהטופס — לתקציב הקונה בהמשך
