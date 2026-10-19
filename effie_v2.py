@@ -11571,6 +11571,7 @@ s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-ne
 <div class="tool">
 <input class="search" id="q" placeholder="חיפוש: שם, טלפון, מילה מהסיכום…" aria-label="חיפוש">
 <select class="tb" id="fAgent" aria-label="סוכן"><option value="">כל הסוכנים</option></select>
+<select class="tb" id="fPeriod" aria-label="תקופה" style="display:none"><option value="">כל התקופות</option></select>
 <button class="tb" id="colsBtn">עמודות</button>
 <button class="tb" id="saveView">שמור תצוגה</button>
 <button class="tb" id="exp">ייצוא לאקסל</button>
@@ -11610,7 +11611,7 @@ function cell(r, c){ var v = r[c[0]], t = c[2];
 function cols(){ var saved = null; try{ saved = JSON.parse(localStorage.getItem('crmcols:' + MOD) || 'null'); }catch(e){}
   var keys = saved || META.default_cols; return META.columns.filter(function(c){ return keys.indexOf(c[0]) >= 0; }); }
 function qs(extra){ var p = new URLSearchParams({q:ST.q, view:ST.view, sort:ST.sort, dir:ST.dir, page:String(ST.page)});
-  if (ST.agent) p.set('f_agent', ST.agent); return p.toString() + (extra || ''); }
+  if (ST.agent) p.set('f_agent', ST.agent); if (ST.period) p.set('period', ST.period); return p.toString() + (extra || ''); }
 function renderTop(){ var h = '<span class="logo">CRM · ' + esc(META.title) + '</span>';
   META.modules.forEach(function(m){ h += '<a class="mod' + (m[0] === MOD ? ' on' : '') + '" href="/v2/crm/' + m[0] + '">' + esc(m[1]) + '</a>'; });
   SOON.forEach(function(m){ if (!META.modules.some(function(x){ return x[0] === m[0]; })) h += '<span class="mod soon">' + m[1] + '<small>בקרוב</small></span>'; });
@@ -11626,8 +11627,8 @@ function renderViews(){ var h = '';
     if (d){ var sv = SAVED[+d.dataset.del]; if (confirm('להסיר את התצוגה "' + sv.name + '"?')) api('/v2/api/crm/views?module=' + MOD, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name: sv.name, delete: true})}).then(loadSaved); ev.stopPropagation(); return; }
     var b = ev.target.closest('.v'); if (!b) return;
     if (b.dataset.v){ ST.view = b.dataset.v; ST.saved = ''; }
-    else { var s = SAVED[+b.dataset.s]; ST.saved = s.name; ST.view = s.view || 'all'; ST.q = s.q || ''; ST.agent = (s.filters || {}).agent || '';
-      document.getElementById('q').value = ST.q; document.getElementById('fAgent').value = ST.agent; }
+    else { var s = SAVED[+b.dataset.s]; ST.saved = s.name; ST.view = s.view || 'all'; ST.q = s.q || ''; ST.agent = (s.filters || {}).agent || ''; ST.period = (s.filters || {}).period || '';
+      document.getElementById('q').value = ST.q; document.getElementById('fAgent').value = ST.agent; document.getElementById('fPeriod').value = ST.period; }
     ST.page = 1; renderViews(); load(); }; }
 function renderTable(){ var cs = cols(), h = '<tr>';
   cs.forEach(function(c){ h += '<th data-k="' + c[0] + '" class="' + (ST.sort === c[0] ? 's' : '') + '">' + esc(c[1]) + (ST.sort === c[0] ? (ST.dir === 'asc' ? ' ↑' : ' ↓') : '') + '</th>'; });
@@ -11775,6 +11776,10 @@ function loadMeta(){ var code = 0; return api('/v2/api/crm/' + MOD + '/meta').th
     ST.sort = (m.columns.filter(function(c){ return c[2] !== 'photo'; })[0] || m.columns[0])[0]; ST.dir = 'asc'; }
   var sel = document.getElementById('fAgent'), cur = ST.agent;
   sel.innerHTML = '<option value="">כל הסוכנים</option>' + m.agents.map(function(a){ return '<option' + (a === cur ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('');
+  var ps = m.periods || [], fp = document.getElementById('fPeriod');
+  fp.style.display = ps.length ? '' : 'none';
+  fp.innerHTML = '<option value="">כל התקופות</option>' + ps.map(function(p){ var y = p[0].length === 4;
+    return '<option value="' + esc(p[0]) + '"' + (p[0] === ST.period ? ' selected' : '') + (y ? ' style="font-weight:700"' : '') + '>' + (y ? '' : '\u00a0\u00a0') + esc(p[1]) + ' (' + p[2].toLocaleString('en-US') + ')</option>'; }).join('');
   renderTop(); renderViews(); }); }
 function colsPop(ev){ var old = document.getElementById('pop'); if (old){ old.remove(); return; }
   var keys = cols().map(function(c){ return c[0]; }), p = document.createElement('div'); p.className = 'pop'; p.id = 'pop';
@@ -11787,11 +11792,12 @@ document.getElementById('colsBtn').onclick = colsPop;
 document.addEventListener('click', function(ev){ var p = document.getElementById('pop'); if (p && !p.contains(ev.target) && ev.target.id !== 'colsBtn') p.remove(); });
 var _qt; document.getElementById('q').oninput = function(){ clearTimeout(_qt); var v = this.value; _qt = setTimeout(function(){ ST.q = v.trim(); ST.page = 1; ST.saved = ''; renderViews(); load(); }, 300); };
 document.getElementById('fAgent').onchange = function(){ ST.agent = this.value; ST.page = 1; load(); };
+document.getElementById('fPeriod').onchange = function(){ ST.period = this.value; ST.page = 1; load(); };
 document.getElementById('prev').onclick = function(){ if (ST.page > 1){ ST.page--; load(); } };
 document.getElementById('next').onclick = function(){ ST.page++; load(); };
 document.getElementById('newBtn').onclick = openNew;
 document.getElementById('saveView').onclick = function(){ var n = prompt('שם לתצוגה:'); if (!n) return;
-  api('/v2/api/crm/views?module=' + MOD, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name:n, q:ST.q, view:ST.view, filters: ST.agent ? {agent:ST.agent} : {}})})
+  api('/v2/api/crm/views?module=' + MOD, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name:n, q:ST.q, view:ST.view, filters: Object.assign(ST.agent ? {agent:ST.agent} : {}, ST.period ? {period:ST.period} : {})})})
     .then(function(){ ST.saved = n; toast('התצוגה נשמרה'); loadSaved(); }); };
 document.getElementById('exp').onclick = function(){ toast('מכין קובץ…');
   api('/v2/api/crm/' + MOD + '/export?' + qs()).then(function(r){ return r.blob(); }).then(function(bl){
@@ -12564,6 +12570,27 @@ def crm_props_records(nb, excl, office, pd_map, now, h):
     return out
 
 
+_CRM_MONTHS = ("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
+
+
+def crm_periods(records):
+    """רשימת התקופות לבורר: [ערך, תווית, כמה] — שנה ואחריה החודשים שלה, מהחדש לישן (שעון ישראל)."""
+    import datetime as _dp
+    from zoneinfo import ZoneInfo as _ZP
+    cnt = {}
+    for r in records or []:
+        d = r.get("date")
+        if d:
+            ym = _dp.datetime.fromtimestamp(d, _ZP("Asia/Jerusalem")).strftime("%Y-%m")
+            cnt[ym] = cnt.get(ym, 0) + 1
+    out = []
+    for y in sorted({k[:4] for k in cnt}, reverse=True):
+        out.append([y, y, sum(v for k, v in cnt.items() if k.startswith(y))])
+        for ym in sorted((k for k in cnt if k.startswith(y)), reverse=True):
+            out.append([ym, _CRM_MONTHS[int(ym[5:]) - 1] + " " + y, cnt[ym]])
+    return out
+
+
 def crm_query(records, q, filters, sort, direction, page, size, now, module="calls"):
     """חיפוש (כל המילים; טלפון לפי 9 ספרות אחרונות) + סינון + תצוגה + מיון + דפדוף → {rows, total}."""
     import datetime as _dq
@@ -12571,6 +12598,9 @@ def crm_query(records, q, filters, sort, direction, page, size, now, module="cal
     filters = dict(filters or {})
     view = filters.pop("view", "all") or "all"
     today = _dq.datetime.fromtimestamp(now, _ZQ("Asia/Jerusalem")).date()
+    period = str(filters.pop("period", "") or "").strip()      # 'YYYY' או 'YYYY-MM' (אייל: 'לפי חודשים ושנים')
+    if not _re.fullmatch(r"\d{4}(-\d{2})?", period):
+        period = ""
     words, phones = [], []
     for t in str(q or "").split():
         dg = _re.sub(r"\D", "", t)
@@ -12584,6 +12614,12 @@ def crm_query(records, q, filters, sort, direction, page, size, now, module="cal
                 return False
         if vfn and not vfn(r, today):
             return False
+        if period:
+            d = r.get("date")
+            if not d:
+                return False
+            if not _dq.datetime.fromtimestamp(d, _ZQ("Asia/Jerusalem")).strftime("%Y-%m").startswith(period):
+                return False
         for f, v in filters.items():
             if v not in (None, "") and str(r.get(f, "")) != str(v):
                 return False
@@ -15542,6 +15578,8 @@ def register(app, G):
         a = request.args
         filters = {k[2:]: v for k, v in a.items() if k.startswith("f_") and v}
         filters["view"] = a.get("view", "all")
+        if a.get("period"):
+            filters["period"] = a.get("period")
         return a.get("q", ""), filters, a.get("sort", "date"), a.get("dir", "desc")
 
     @app.route("/v2/api/crm/<module>/meta", methods=["GET"])
@@ -15558,9 +15596,10 @@ def register(app, G):
             return _crm_read_err(e)
         counts = {v: crm_query(recs, "", {"view": v}, "date", "desc", 1, 1, now, module=module)["total"] for v, _l in mod["views"]}
         agents = sorted({r.get("agent") for r in recs if r.get("agent") and not r.get("hidden")})
+        periods = crm_periods(recs) if any(c[0] == "date" for c in mod["columns"]) else []
         return jsonify({"ok": True, "module": module, "title": mod["title"], "columns": mod["columns"],
                         "default_cols": mod["default_cols"], "editable": mod["editable"], "views": mod["views"],
-                        "counts": counts, "agents": agents,
+                        "counts": counts, "agents": agents, "periods": periods,
                         "modules": [[k, v["title"]] for k, v in CRM_MODULES.items()]})
 
     @app.route("/v2/api/crm/<module>/list", methods=["GET"])
