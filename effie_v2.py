@@ -11504,6 +11504,7 @@ td.long div{overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box
 .av.big{width:88px;height:88px;border:3px solid var(--gold)}
 .banner{margin:0 18px 12px;border-radius:14px;padding:12px 14px;background:#FBF6E8;border:1px solid #EADBB0;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .banner.ok{background:#E6F2EC;border-color:#BFE0CC}.banner b{font-weight:700}
+.warnTxt{color:#7A5E1C;font-size:13px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;border-radius:12px;padding:10px 16px;display:none;z-index:40}
 @media(max-width:900px){.page{grid-template-columns:1fr}.views{position:static}}
 </style></head><body>
@@ -11537,9 +11538,13 @@ function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c
 function toast(t){ var e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(function(){ e.style.display = 'none'; }, 2600); }
 function fdate(ts){ if(!ts) return ''; var d = new Date(ts*1000); return d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ' ' + d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); }
 function stCls(l){ return (l === 'נענתה' || l === 'פעילה' || l === 'תקין') ? 'st-a' : (l === 'יוצאת' ? 'st-o' : (l === 'לא נענתה' || l === 'בוטלה' || l === 'תפוס' || l === 'נכשל' || l === 'כבויה' ? 'st-n' : 'st-x')); }
+function fmtPh(v){ var d = String(v || '').replace(/\D/g, '');
+  if (d.length === 10 && d.charAt(0) === '0') return d.slice(0, 3) + '-' + d.slice(3);
+  if (d.length === 9 && d.charAt(0) === '0') return d.slice(0, 2) + '-' + d.slice(2);
+  return String(v || ''); }
 function cell(r, c){ var v = r[c[0]], t = c[2];
   if (t === 'date') return fdate(v);
-  if (t === 'phone') return v ? '<span class="ph">' + esc(v) + '</span>' : '';
+  if (t === 'phone') return v ? '<span class="ph">' + esc(fmtPh(v)) + '</span>' : '';
   if (t === 'status') return '<span class="st ' + stCls(v) + '">' + esc(v) + '</span>';
   if (t === 'score') return v ? v + '/5' : '—';
   if (t === 'long') return '<div>' + esc(v) + '</div>';
@@ -11653,6 +11658,22 @@ function upAvatar(r, file){ if (!file) return; var fr = new FileReader();
       api('/v2/api/crm/team/avatar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone:r.phone, img:c.toDataURL('image/jpeg', .85)})})
         .then(function(x){ return x.json(); }).then(function(j){ toast(j.ok ? 'התמונה עודכנה' : 'לא עודכנה: ' + (j.reason || '')); if (j.ok) openRec(r.key); }); };
     im.src = fr.result; }; fr.readAsDataURL(file); }
+function teamFixes(){ api('/v2/api/crm/team/fix').then(function(x){ return x.json(); }).then(function(f){
+    var slot = document.getElementById('fixSlot'); if (!slot || !f.ok) return;
+    var ch = f.fixes.filter(function(x){ return Object.keys(x.changes).length; }), wn = [];
+    f.fixes.forEach(function(x){ x.warn.forEach(function(w){ wn.push(x.name + ' · ' + w); }); });
+    var h = '';
+    if (ch.length) h += ' <button class="tb" id="fixBtn">תיקון נתונים (' + ch.length + ')</button>';
+    if (wn.length) h += ' <span class="warnTxt">לבדיקה ידנית: ' + esc(wn.slice(0, 5).join(' | ')) + (wn.length > 5 ? '…' : '') + '</span>';
+    slot.innerHTML = h;
+    var b = document.getElementById('fixBtn'); if (!b) return;
+    b.onclick = function(){ var lbl = {phone:'נייד', vphone:'וירטואלי', license:'רישיון', email:'מייל', updated_by:'עודכן ע"י'}, lines = [];
+      ch.forEach(function(x){ Object.keys(x.changes).forEach(function(k){ var v = x.changes[k]; lines.push(x.name + ' · ' + lbl[k] + ': "' + v[0] + '" ← "' + v[1] + '"'); }); });
+      if (!confirm('לתקן ' + ch.length + ' אנשים?\n\n' + lines.slice(0, 25).join('\n') + (lines.length > 25 ? '\n… ועוד ' + (lines.length - 25) : ''))) return;
+      b.disabled = true;
+      api('/v2/api/crm/team/fix', {method:'POST'}).then(function(x){ return x.json(); }).then(function(r){
+        toast(r.ok ? ('תוקנו ' + r.applied + (r.failed && r.failed.length ? ' · נכשלו ' + r.failed.length : '')) : 'נכשל: ' + (r.reason || ''));
+        refreshAll(); }); }; }); }
 function teamBanner(){ var el = document.getElementById('banner'); if (MOD !== 'team'){ el.innerHTML = ''; return; }
   api('/v2/api/crm/team/status').then(function(x){ return x.json(); }).then(function(j){ if (!j.ok) return;
     var c = j.compare || {}, nd = (c.diffs || []).length + (c.only_sheet || []).length + (c.only_table || []).length;
@@ -11663,7 +11684,8 @@ function teamBanner(){ var el = document.getElementById('banner'); if (MOD !== '
     else h += nd ? ('<b>' + nd + ' הבדלים מול הגיליון</b>: ' + esc([].concat((c.only_sheet || []).map(function(n){ return 'רק בגיליון: ' + n; }), (c.only_table || []).map(function(n){ return 'רק בטבלה: ' + n; }), (c.diffs || []).map(function(d){ return d.name + ' · ' + d.field + ': "' + d.sheet + '" ← "' + d.table + '"'; })).slice(0, 8).join(' | ')) + (nd > 8 ? '…' : ''))
                : '<b>0 הבדלים — אפשר להחליף מקור</b>';
     if (j.source !== 'supabase' || (!j.table_count && !j.table_error)) h += ' <button class="tb" id="impBtn">' + (j.table_count ? 'ייבוא חוזר מהגיליון' : 'ייבוא מהגיליון') + '</button>';
-    el.innerHTML = '<div class="banner' + (j.table_count && !nd ? ' ok' : '') + '">' + h + '</div>';
+    el.innerHTML = '<div class="banner' + (j.table_count && !nd ? ' ok' : '') + '">' + h + '<span id="fixSlot"></span></div>';
+    if (j.table_count) teamFixes();
     var ib = document.getElementById('impBtn'); if (ib) ib.onclick = function(){ if (!confirm('לייבא את כל אנשי הקשר מהגיליון לטבלה? (מעדכן לפי שם, לא מוחק)')) return;
       api('/v2/api/crm/team/import', {method:'POST'}).then(function(x){ return x.json(); }).then(function(r){ toast(r.ok ? ('יובאו ' + r.imported + (r.duplicates && r.duplicates.length ? ' · כפולים: ' + r.duplicates.join(', ') : '')) : (r.reason === 'already_live' ? 'הטבלה כבר המקור — ייבוא חסום' : 'נכשל: ' + (r.reason || ''))); refreshAll(); }); }; }); }
 function closeDr(){ document.getElementById('dr').classList.remove('open'); CUR = null; renderTable(); }
@@ -12000,7 +12022,7 @@ CRM_MODULES = {
     "team": {
         "title": "צוות",
         "columns": [("photo", "תמונה", "photo"), ("name", "שם", "text"), ("phone", "נייד אישי", "phone"),
-                    ("vphone", "וירטואלי", "phone"), ("email", "מייל", "text"), ("license", "רישיון / עמודה D", "text"),
+                    ("vphone", "וירטואלי", "phone"), ("email", "מייל", "text"), ("license", "רישיון", "text"),
                     ("status", "מצב", "status"), ("updated_by", "עודכן ע\"י", "text")],
         "default_cols": ["photo", "name", "phone", "vphone", "email", "license", "status"],
         "editable": [("name", "שם"), ("phone", "נייד אישי"), ("vphone", "מספר וירטואלי"), ("email", "מייל"),
@@ -12077,6 +12099,53 @@ def team_rows_from_sheet(values):
     return rows, dups
 
 
+_TEAM_GENERIC_BY = ("מנהל", "סוכן", "")
+
+
+def team_phone_norm(v):
+    """טלפון → (ספרות בלבד בפורמט 0XXXXXXXXX, תקין?). 972 → 0, נייד בלי 0 מוביל → עם 0.
+    מספר לא תקין חוזר כמו שהוא ומסומן (לא מנחשים)."""
+    raw = str(v or "").strip()
+    d = "".join(ch for ch in raw if ch.isdigit())
+    if not d:
+        return "", True
+    if d.startswith("972"):
+        d = "0" + d[3:]
+    if len(d) == 9 and d[0] == "5":
+        d = "0" + d
+    ok = (len(d) == 10 and d.startswith("05")) or (len(d) == 9 and d[0] == "0" and d[1] in "234689")
+    return (d, True) if ok else (raw, False)
+
+
+def team_fix_plan(rows, licenses, actor):
+    """תיקוני נתונים לאנשי הצוות (תצוגה מקדימה): מייל שישב בעמודת הרישיון עובר לשדה המייל,
+    רישיון חסר נלקח מהאזור האישי (licenses: last9 → מספר), טלפונים מנורמלים, 'עודכן ע"י' גנרי → actor.
+    מחזיר רק שורות עם שינוי/אזהרה: [{id, name, changes:{field:[old,new]}, warn:[...]}]."""
+    out = []
+    for r in rows or []:
+        cur = {f: str(r.get(f) or "").strip() for f in ("phone", "vphone", "license", "email", "updated_by")}
+        new, warn = dict(cur), []
+        if "@" in new["license"]:
+            if "@" not in new["email"]:
+                new["email"] = new["license"].lower()
+            new["license"] = ""
+        for f in ("phone", "vphone"):
+            v, ok = team_phone_norm(new[f])
+            if ok:
+                new[f] = v
+            else:
+                warn.append(("טלפון לא תקין: " if f == "phone" else "וירטואלי לא תקין: ") + new[f])
+        if not new["license"]:
+            l9 = "".join(ch for ch in new["phone"] if ch.isdigit())[-9:]
+            new["license"] = str((licenses or {}).get(l9, "") or "").strip() if l9 else ""
+        changes = {f: [cur[f], new[f]] for f in ("phone", "vphone", "license", "email") if new[f] != cur[f]}
+        if cur["updated_by"] in _TEAM_GENERIC_BY and actor and actor not in _TEAM_GENERIC_BY:
+            changes["updated_by"] = [cur["updated_by"], actor]
+        if changes or warn:
+            out.append({"id": str(r.get("id")), "name": str(r.get("name") or ""), "changes": changes, "warn": warn})
+    return out
+
+
 def team_compare(values, table):
     """הגיליון מול team_contacts (הפעילים): מי רק בגיליון, מי רק בטבלה, ואילו שדות שונים — לפי שם."""
     sheet = {r["name"]: r for r in team_rows_from_sheet(values)[0]}
@@ -12113,7 +12182,7 @@ CRM_VIEWS = {
              "inactive": lambda r, t: not r.get("active"),
              "no_vphone": lambda r, t: bool(r.get("active")) and not r.get("vphone"),
              "no_email": lambda r, t: bool(r.get("active")) and "@" not in (r.get("email") or "") and "@" not in (r.get("license") or ""),
-             "no_license": lambda r, t: bool(r.get("active")) and not (r.get("license") or "").strip().isdigit()},
+             "no_license": lambda r, t: bool(r.get("active")) and not "".join(ch for ch in (r.get("license") or "") if ch.isdigit())},
     "automations": {"on": lambda r, t: r.get("status") == "פעילה",
                     "off": lambda r, t: r.get("status") == "כבויה",
                     "in": lambda r, t: r.get("direction") == "נכנס",
@@ -15273,13 +15342,35 @@ def register(app, G):
         return jsonify({"ok": True})
 
     # ── [TEAM 19/10] אנשי צוות במקום גיליון 'אנשי קשר' ──
+    def _team_actor(s):
+        """שם אמיתי ל'עודכן ע"י' — מנהל נכנס עם השם הגנרי 'מנהל', ממפים לפי הטלפון."""
+        nm = s.get("name", "")
+        try:
+            return G["_display_name_for"](nm, s.get("phone", "")) or nm
+        except Exception:
+            return nm
+
+    def _team_norm_fields(fields):
+        """כתיבה חדשה נשמרת נקייה: טלפונים מנורמלים (תקין בלבד), מייל שהוקלד ברישיון עובר לשדה המייל."""
+        f = dict(fields)
+        for k in ("phone", "vphone"):
+            if k in f:
+                v, ok = team_phone_norm(f[k])
+                if ok:
+                    f[k] = v
+        if "@" in f.get("license", ""):
+            if "@" not in f.get("email", ""):
+                f["email"] = f["license"].lower()
+            f["license"] = ""
+        return f
+
     def _team_write(s, b):
         sb = G.get("_sbdb")
         if not (sb and sb.enabled()):
             return jsonify({"ok": False, "reason": "no_supabase"}), 500
-        who, key = s.get("name", ""), str(b.get("key") or "").strip()
+        who, key = _team_actor(s), str(b.get("key") or "").strip()
         allowed = {f for f, _l in CRM_MODULES["team"]["editable"]}
-        fields = {k: str(v).strip()[:200] for k, v in (b.get("fields") or {}).items() if k in allowed}
+        fields = _team_norm_fields({k: str(v).strip()[:200] for k, v in (b.get("fields") or {}).items() if k in allowed})
         if key and (b.get("delete") or b.get("restore")):
             sb.team_update(key, {"active": bool(b.get("restore"))}, who)
             act = "צוות — " + ("שחזור" if b.get("restore") else "השבתה")
@@ -15321,6 +15412,44 @@ def register(app, G):
         return jsonify({"ok": True, "source": G["_contacts_source"](), "table_count": len(table),
                         "compare": team_compare(sheet, table)})
 
+    @app.route("/v2/api/crm/team/fix", methods=["GET", "POST"])
+    def v2_api_crm_team_fix():
+        """תיקוני נתונים: GET = תצוגה מקדימה, POST = החלה (מייל מעמודה D, רישיון מהאזור האישי, טלפונים, 'עודכן ע"י')."""
+        s = _crm_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        sb = G.get("_sbdb")
+        if not (sb and sb.enabled()):
+            return jsonify({"ok": False, "reason": "no_supabase"}), 500
+        try:
+            rows = sb.team_fetch()
+        except Exception as e:
+            return jsonify({"ok": False, "reason": "table_error", "detail": str(e)[:300]})
+        try:
+            lic = G["_load_config"]().get("v2_licenses") or {}
+        except Exception:
+            lic = {}
+        actor = _team_actor(s)
+        fixes = team_fix_plan(rows, lic, actor)
+        if request.method == "GET":
+            return jsonify({"ok": True, "fixes": fixes})
+        applied, failed = 0, []
+        for fx in fixes:
+            fields = {k: v[1] for k, v in fx["changes"].items() if k != "updated_by"}
+            if not fx["changes"]:
+                continue
+            try:
+                sb.team_update(fx["id"], fields, actor)
+                applied += 1
+            except Exception as e:
+                failed.append(fx["name"] + ": " + str(e)[:80])
+        G["_contacts_cache_clear"]()
+        G["_cache_clear"]("crmov:team")
+        G["_log_activity"](actor, s.get("role", ""), s.get("phone", ""), "צוות — תיקון נתונים",
+                           "%d שורות" % applied + (" · נכשלו %d" % len(failed) if failed else ""))
+        return jsonify({"ok": True, "applied": applied, "failed": failed,
+                        "warn": [w for fx in fixes for w in [fx["name"] + " · " + x for x in fx["warn"]]]})
+
     @app.route("/v2/api/crm/team/import", methods=["POST"])
     def v2_api_crm_team_import():
         s = _crm_guard()
@@ -15340,7 +15469,7 @@ def register(app, G):
         if not sheet:
             return jsonify({"ok": False, "reason": "sheet_unavailable"})
         rows, dups = team_rows_from_sheet(sheet)
-        n = sb.team_upsert(rows, s.get("name", ""))
+        n = sb.team_upsert(rows, _team_actor(s))
         G["_contacts_cache_clear"]()
         G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "צוות — ייבוא מהגיליון", "%d שורות" % n)
         return jsonify({"ok": True, "imported": n, "duplicates": dups})
