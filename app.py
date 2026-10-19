@@ -9912,6 +9912,7 @@ def api_wa_log():
                     "template_call": WA_TPL_CALL or None,
                     "persistent_disk": bool(os.environ.get("MAP_CACHE_DIR")),
                     "seen_calls": len(_seen_calls), "pid": os.getpid(),
+                    "calls_thread": bool(_CALLS_THREAD[0] and _CALLS_THREAD[0].is_alive() and _CALLS_THREAD[1] == os.getpid()),
                     "heartbeat": (_wa_diag_read().get("heartbeat") or {}),
                     "calls": (_wa_diag_read().get("calls") or _WA_CALL_LOG)[-25:][::-1],
                     "statuses": (_wa_diag_read().get("statuses") or _WA_STATUS_LOG)[-30:][::-1]})
@@ -12464,10 +12465,28 @@ def _calls_wa_loop():
         try: check_new_calls()
         except Exception: pass
         _t.sleep(180)
-try:
-    threading.Thread(target=_calls_wa_loop, daemon=True).start()
-except Exception:
-    pass
+# 19/10: כמו הדוח היומי (15/09) — thread שנולד בזמן הייבוא מת/רץ בתהליך הלא נכון אחרי ה-fork של השרת,
+# ואז אף שיחה חדשה לא נשלחה לסוכנים. מתחילים את הלולאה בתוך תהליך ההגשה, בבקשה הראשונה, פעם אחת לכל pid.
+_CALLS_THREAD = [None, 0]
+_CALLS_THREAD_LOCK = threading.Lock()
+def _calls_ensure_thread():
+    with _CALLS_THREAD_LOCK:
+        th = _CALLS_THREAD[0]
+        if th is not None and th.is_alive() and _CALLS_THREAD[1] == os.getpid():
+            return True
+        _CALLS_THREAD[0] = threading.Thread(target=_calls_wa_loop, daemon=True, name="calls-wa")
+        _CALLS_THREAD[0].start()
+        _CALLS_THREAD[1] = os.getpid()
+        return True
+
+@app.before_request
+def _calls_thread_kick():
+    try:
+        th = _CALLS_THREAD[0]
+        if th is None or not th.is_alive() or _CALLS_THREAD[1] != os.getpid():
+            _calls_ensure_thread()
+    except Exception as e:
+        log.warning(f"calls WA thread kick: {e}")
 
 # ── אֶפִי (/v2) — מודול נפרד; כשל כאן לא מפיל את האפליקציה הרצה ─────────────────
 try:
