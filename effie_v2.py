@@ -11413,6 +11413,108 @@ def call_ingest_norm(b):
     return sk, day_il, raw, tr, rec
 
 
+_CRM_DASH_HTML = r"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>לוח בקרה</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--cream:#F2EFE7;--navy:#1E3A5F;--blue:#2E6BD6;--gold:#C29435;--goldt:#7A5E1C;--green:#157A43;--red:#C24040;--mut:#5B6472;--line:#ECE8DD}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);font-family:Heebo,sans-serif;color:var(--navy)}
+.wrap{max-width:1360px;margin:0 auto;padding:22px 20px 60px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:18px}h1{font-size:26px;font-weight:800;margin:0}
+.upd{color:var(--mut);font-size:14px}.sp{flex:1}
+.btn{min-height:44px;padding:0 18px;border-radius:12px;border:1px solid #d8d3c6;background:#fff;color:var(--navy);font:600 15px Heebo;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff}
+.card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:18px}
+h2{font-size:16px;font-weight:700;margin:0 0 12px}
+.health{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:16px}
+.hc{background:#fff;border-radius:16px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:12px 12px 10px;border-top:4px solid #ccc}
+.hc .t{font-size:13px;font-weight:700;line-height:1.3;min-height:34px}.hc .a{font-size:12px;color:var(--mut);margin-top:4px}
+.hc .s{font-size:12px;font-weight:700;margin-top:2px}
+.ok{border-color:var(--green)}.ok .s{color:var(--green)}.warn{border-color:var(--gold)}.warn .s{color:var(--goldt)}
+.bad{border-color:var(--red)}.bad .s{color:var(--red)}.quiet,.none{border-color:#B9BEC7}.quiet .s,.none .s{color:var(--mut)}
+.seg{display:inline-flex;background:#fff;border-radius:12px;padding:4px;gap:4px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+.seg button{min-height:38px;padding:0 14px;border:0;border-radius:9px;background:none;font:600 14px Heebo;color:var(--navy);cursor:pointer}
+.seg button.on{background:var(--navy);color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:12px 0 16px}
+.kpi .l{font-size:14px;color:var(--mut);font-weight:500}.kpi .v{font-size:34px;font-weight:800;line-height:1.15;margin:4px 0}.kpi .x{font-size:13px;color:var(--mut)}
+.row{display:grid;gap:16px;margin-bottom:16px}.r2{grid-template-columns:2fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
+.row>*,.kpis>*,.health>*{min-width:0}.chart{position:relative;height:260px;width:100%}.chart canvas{max-width:100%}
+.bar{height:12px;border-radius:8px;background:#F4EEDD;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--gold)}
+.bar.hot i{background:var(--red)}
+.big{font-size:30px;font-weight:800}.mut{color:var(--mut);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:right;padding:7px 4px;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:500}
+ul.ins{margin:0;padding-inline-start:18px;line-height:1.7;font-size:14px}
+.ld{padding:40px;text-align:center;color:var(--mut)}
+@media(max-width:1100px){.health{grid-template-columns:repeat(4,1fr)}.kpis{grid-template-columns:repeat(3,1fr)}.r2,.r3{grid-template-columns:1fr}}
+@media(max-width:600px){.health{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(2,1fr)}header{flex-wrap:wrap}}
+</style></head><body><div class="wrap">
+<header><h1>לוח בקרה</h1><span class="upd" id="upd"></span><span class="sp"></span>
+<a class="btn" href="/v2/crm/parallel">דוח מקבילות</a><button class="btn pri" id="rf">רענן</button></header>
+<div id="app"><div class="card ld">טוען… (בפעם הראשונה עד כחצי דקה)</div></div></div>
+<script>
+var P='month', D=null, CH={};
+var PL={day:'היום',week:'השבוע',month:'החודש',year:'השנה'};
+var ST={ok:'תקין',warn:'איטי מהרגיל',bad:'תקלה',quiet:'שבת/חג',none:'אין נתון'};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function ago(ts){if(!ts)return '—';var m=Math.round((Date.now()/1000-ts)/60);if(m<1)return 'עכשיו';if(m<60)return 'לפני '+m+' דק׳';var h=Math.round(m/60);if(h<48)return 'לפני '+h+' שע׳';return 'לפני '+Math.round(h/24)+' ימים';}
+function n(v){return (v==null?0:v).toLocaleString('he-IL');}
+function pv(o){return o&&o[P]!=null?o[P]:0;}
+function kpis(){var p=D.periods,ca=pv(p.calls),an=pv(p.calls_answered),ex=pv((p.signings_by_label||{})['בלעדיות']);
+ var k=[['שיחות נכנסות',n(ca),ca?('נענו '+Math.round(an*100/ca)+'%'):'—'],['חתימות',n(pv(p.signings)),'מתוכן בלעדיות '+n(ex)],
+  ['קונים חדשים',n(pv(p.buyers)),''],['נכס נולד',n(pv(p.newborn)),'שת״פ חדשות '+n(pv(p.shtaf))],
+  ['עסקאות',n(pv(p.deals_closed))+' נסגרו','נפתחו '+n(pv(p.deals_opened))+' · פתוחים '+n(p.open_now)+' · אצל עו״ד '+n(p.lawyer_now)],
+  ['נכסי המשרד בפרסום',n(p.office_active),'כרגע']];
+ return k.map(function(x){return '<div class="card kpi"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+'</div><div class="x">'+esc(x[2])+'</div></div>';}).join('');}
+function render(){
+ var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
+ var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
+ var ins=(D.insights||[]).map(function(t){return '<li>'+esc(t)+'</li>';}).join('')||'<li class="mut">אין תובנות כרגע</li>';
+ var us=(D.usage_today||[]).map(function(u){return '<tr><td>'+esc(u.name)+'</td><td>'+n(u.min)+' דק׳</td></tr>';}).join('')||'<tr><td class="mut" colspan="2">עוד אין שימוש היום</td></tr>';
+ document.getElementById('app').innerHTML=
+  '<div class="health">'+h+'</div>'+
+  '<div class="seg" id="seg">'+['day','week','month','year'].map(function(k){return '<button data-p="'+k+'" class="'+(k===P?'on':'')+'">'+PL[k]+'</button>';}).join('')+'</div>'+
+  '<div class="kpis">'+kpis()+'</div>'+
+  '<div class="row r2"><div class="card"><h2>30 הימים האחרונים</h2><div class="chart"><canvas id="c1"></canvas></div><div id="t1"></div></div>'+
+  '<div class="card"><h2>חיפושי AI באתר היום</h2><div class="big">'+n(a.today)+' <span class="mut">מתוך תקרה של '+n(a.cap)+'</span></div>'+
+  '<div class="bar'+(pct>=90?' hot':'')+'"><i style="width:'+pct+'%"></i></div><div class="mut">מהמטמון (בלי טוקנים): '+n(a.cache)+' · נחסמו בתקרה: '+n(a.blocked)+'</div>'+
+  '<h2 style="margin-top:16px">חיפושי AI באפי היום</h2><table><tr><td>חיפוש נכסים</td><td>'+n(e.props)+'</td></tr><tr><td>חיפוש נכס נולד</td><td>'+n(e.newborn)+'</td></tr><tr><td>חיפוש קונה AI</td><td>'+n(e.buyers_ai)+'</td></tr><tr><td>שאל את אפי</td><td>'+n(e.ask)+'</td></tr></table></div></div>'+
+  '<div class="row r3"><div class="card"><h2>AI באתר לפי שעה (היום)</h2><div class="chart"><canvas id="c2"></canvas></div></div>'+
+  '<div class="card"><h2>AI — אתר מול אפי, 7 ימים</h2><div class="chart"><canvas id="c3"></canvas></div></div>'+
+  '<div class="card"><h2>הכי פעילים באפי היום</h2><table>'+us+'</table></div></div>'+
+  '<div class="card"><h2>תובנות</h2><ul class="ins">'+ins+'</ul></div>';
+ document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
+ charts();
+}
+function dd(iso){var p=iso.split('-');return p[2]+'/'+p[1];}
+function charts(){
+ if(!window.Chart){document.getElementById('t1').innerHTML='<div class="mut">הגרפים לא נטענו — הצגת מספרים: שיחות היום '+n(D.series.calls[29])+' · חתימות '+n(D.series.signings[29])+'</div>';return;}
+ Object.keys(CH).forEach(function(k){CH[k].destroy();});CH={};
+ Chart.defaults.font.family='Heebo';Chart.defaults.color='#5B6472';
+ var s=D.series,base={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',rtl:true}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}};
+ CH.c1=new Chart(document.getElementById('c1'),{type:'line',options:base,data:{labels:s.days.map(dd),datasets:[
+  {label:'שיחות',data:s.calls,borderColor:'#1E3A5F',backgroundColor:'#1E3A5F',tension:.3,pointRadius:0},
+  {label:'חתימות',data:s.signings,borderColor:'#C29435',backgroundColor:'#C29435',tension:.3,pointRadius:0},
+  {label:'קונים חדשים',data:s.buyers,borderColor:'#2E6BD6',backgroundColor:'#2E6BD6',tension:.3,pointRadius:0},
+  {label:'נכס נולד',data:s.newborn,borderColor:'#157A43',backgroundColor:'#157A43',tension:.3,pointRadius:0}]}});
+ var hrs=[];for(var i=0;i<24;i++)hrs.push((i<10?'0':'')+i);
+ CH.c2=new Chart(document.getElementById('c2'),{type:'bar',options:Object.assign({},base,{plugins:{legend:{display:false}}}),data:{labels:hrs,
+  datasets:[{data:hrs.map(function(h){return D.ai.site.hours[h]||0;}),backgroundColor:'#C29435',borderRadius:4}]}});
+ CH.c3=new Chart(document.getElementById('c3'),{type:'bar',options:base,data:{labels:D.ai.days7.map(dd),datasets:[
+  {label:'אתר',data:D.ai.site_7d,backgroundColor:'#C29435',borderRadius:4},{label:'אפי',data:D.ai.effie_7d,backgroundColor:'#1E3A5F',borderRadius:4}]}});
+}
+function load(fresh){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){}
+ if(!t){document.getElementById('app').innerHTML='<div class="card">צריך להיות מחובר לאפי בדפדפן הזה. <a href="/v2/home">כניסה לאפי</a> ואז לחזור לעמוד.</div>';return;}
+ fetch('/v2/api/crm/dashboard'+(fresh?'?fresh=1':''),{headers:{'X-Auth-Token':t}}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){document.getElementById('app').innerHTML='<div class="card">'+(j.reason==='forbidden'?'אין הרשאה — לוח הבקרה לבעל המשרד בלבד.':'שגיאה: '+esc(j.reason))+'</div>';return;}
+  D=j;document.getElementById('upd').textContent='עודכן '+new Date(j.built_at*1000).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});render();
+ }).catch(function(){if(!D)document.getElementById('app').innerHTML='<div class="card">לא הצלחתי לטעון — נסה שוב.</div>';});}
+document.getElementById('rf').onclick=function(){load(true);};
+load(false);setInterval(function(){load(false);},15*60*1000);
+</script></body></html>"""
+
+
 _CRM_PARALLEL_HTML = r"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>דוח מקבילות — ניתוק פיירברי</title>
@@ -14269,6 +14371,11 @@ def register(app, G):
                         "calls": parallel_match_calls(legacy_calls, direct_calls),
                         "invoices": parallel_match_invoices(legacy_inv, direct_inv),
                         "sig_nonapp": sig_nonapp_by_agent(G["get_signings"]() or [], d0.isoformat())})
+
+    @app.route("/v2/crm/dashboard", methods=["GET"])
+    def v2_crm_dashboard_page():
+        """[CRM-3] עמוד הדשבורד — מחשב, אייל בלבד (ההרשאה נבדקת ב-API)."""
+        return Response(_CRM_DASH_HTML, mimetype="text/html")
 
     @app.route("/v2/api/crm/dashboard", methods=["GET"])
     def v2_api_crm_dashboard():
