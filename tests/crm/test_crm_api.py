@@ -60,6 +60,21 @@ A._load_config = lambda: CFG
 ck(c.post("/v2/api/crm/views?module=calls", json={"name": "דנה היום", "q": "דנה", "view": "today"}).get_json()["ok"], "save view")
 ck(c.get("/v2/api/crm/views?module=calls").get_json()["views"][0]["name"] == "דנה היום", "list views")
 ck(c.get("/v2/api/crm/nope/meta").status_code == 404, "unknown module")
+# נכנס ויוצא + אוטומציות — מיומן הפעילות (מטמון 60ש')
+import time as _t
+CACHE.pop("crmact30", None)
+A._activity_fetch = lambda t0, today=True: [{"ts": _t.time() - 60, "name": "Fireberry", "role": "system", "action": "חתימה מפיירברי", "detail": "x"},
+                                            {"ts": _t.time() - 90, "name": "אלי", "role": "agent", "action": "חיפוש נכסים", "detail": "y"}]
+fm = c.get("/v2/api/crm/flows/meta").get_json()
+ck(fm["ok"] and fm["counts"]["all"] == 1 and fm["counts"]["in"] == 1 and fm["editable"] == [], fm.get("counts"))
+fl = c.get("/v2/api/crm/flows/list").get_json()
+ck(fl["rows"][0]["channel"] == "חתימות", fl)
+ck(c.post("/v2/api/crm/flows/record", json={"fields": {}}).status_code == 400, "read only")
+fr = c.get("/v2/api/crm/flows/record?key=" + fl["rows"][0]["key"]).get_json()
+ck(fr["ok"] and fr["record"]["action"] == "חתימה מפיירברי", fr)
+am = c.get("/v2/api/crm/automations/list?sort=name&dir=asc").get_json()
+ck(am["ok"] and am["total"] >= 15 and any(r["key"] == "sig_ingest" and r["count7"] == 1 for r in am["rows"]), am["total"])
+ck(c.get("/v2/crm/flows").status_code == 200 and c.get("/v2/crm/automations").status_code == 200, "pages")
 A._is_dev = lambda p: False
 ck(c.get("/v2/api/crm/calls/list").status_code == 403, "dev only")
 print("crm_api OK", n)

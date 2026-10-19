@@ -11531,7 +11531,7 @@ function api(path, opt){ opt = opt || {}; opt.headers = Object.assign({'X-Auth-T
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function toast(t){ var e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(function(){ e.style.display = 'none'; }, 2600); }
 function fdate(ts){ if(!ts) return ''; var d = new Date(ts*1000); return d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ' ' + d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); }
-function stCls(l){ return l === 'נענתה' ? 'st-a' : (l === 'יוצאת' ? 'st-o' : (l === 'לא נענתה' || l === 'בוטלה' || l === 'תפוס' ? 'st-n' : 'st-x')); }
+function stCls(l){ return (l === 'נענתה' || l === 'פעילה' || l === 'תקין') ? 'st-a' : (l === 'יוצאת' ? 'st-o' : (l === 'לא נענתה' || l === 'בוטלה' || l === 'תפוס' || l === 'נכשל' || l === 'כבויה' ? 'st-n' : 'st-x')); }
 function cell(r, c){ var v = r[c[0]], t = c[2];
   if (t === 'date') return fdate(v);
   if (t === 'phone') return v ? '<span class="ph">' + esc(v) + '</span>' : '';
@@ -11586,6 +11586,10 @@ function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getEleme
   api('/v2/api/crm/' + MOD + '/record?key=' + encodeURIComponent(key)).then(function(r){ return r.json(); }).then(function(j){
     if (!j.ok){ b.innerHTML = '<div class="mut">לא נמצא.</div>'; return; }
     var r = j.record; CUR = r;
+    if (!META.editable.length){   /* מודול לקריאה בלבד: כל העמודות ככרטיס */
+      b.innerHTML = '<h2>' + esc(r.name || r.action || META.title) + '</h2><div class="grid2">' +
+        META.columns.map(function(c){ return '<div class="f' + (c[2] === 'long' ? ' wide' : '') + '"><b>' + esc(c[1]) + '</b>' + (c[2] === 'date' ? fdate(r[c[0]]) : (c[2] === 'status' ? cell(r, c) : esc(r[c[0]] == null ? '—' : r[c[0]]))) + '</div>'; }).join('') + '</div>';
+      return; }
     var h = '<div class="mut">שיחה · ' + fdate(r.date) + (r.edited ? ' · נערכה ב-CRM' : '') + (r.hidden ? ' · מחוקה' : '') + '</div>' +
       '<h2><span class="ph">' + esc(r.caller_phone || '—') + '</span> ← ' + esc(r.agent || '') + '</h2>' +
       '<div class="grid2">' + field('agent', 'סוכן', r.agent) + field('caller_phone', 'טלפון לקוח', r.caller_phone) +
@@ -11623,6 +11627,9 @@ function refreshAll(){ return loadMeta().then(load); }
 function loadMeta(){ return api('/v2/api/crm/' + MOD + '/meta').then(function(r){ return r.json(); }).then(function(m){
   if (!m.ok){ document.getElementById('title').textContent = m.reason === 'forbidden' ? 'אין הרשאה' : 'מודול לא קיים'; throw new Error(m.reason); }
   META = m; document.title = 'CRM · ' + m.title; document.getElementById('title').textContent = m.title;
+  document.getElementById('newBtn').style.display = m.editable.length ? '' : 'none';
+  document.getElementById('fAgent').style.display = m.agents.length ? '' : 'none';
+  if (MOD !== 'calls' && ST.sort === 'date' && !m.columns.some(function(c){ return c[0] === 'date'; })) ST.sort = m.columns[0][0];
   var sel = document.getElementById('fAgent'), cur = ST.agent;
   sel.innerHTML = '<option value="">כל הסוכנים</option>' + m.agents.map(function(a){ return '<option' + (a === cur ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('');
   renderTop(); renderViews(); }); }
@@ -11902,6 +11909,23 @@ CRM_MODULES = {
         "views": [("all", "כל השיחות"), ("today", "שיחות היום"), ("missed", "לא נענו — לחזור"),
                   ("outgoing", "שיחות יוצאות (click2call)"), ("low_score", "ביקורת ציון 1–2"), ("hidden", "מחוקות")],
     },
+    "flows": {
+        "title": "נכנס ויוצא",
+        "columns": [("date", "זמן", "date"), ("direction", "כיוון", "text"), ("channel", "ערוץ", "text"),
+                    ("action", "מה קרה", "text"), ("name", "מי", "text"), ("detail", "פרטים", "long"), ("result", "תוצאה", "status")],
+        "default_cols": ["date", "direction", "channel", "action", "name", "detail", "result"],
+        "editable": [],
+        "views": [("all", "הכל (30 יום)"), ("today", "היום"), ("in", "נכנס"), ("out", "יוצא"), ("failed", "כשלים")],
+    },
+    "automations": {
+        "title": "אוטומציות",
+        "columns": [("name", "אוטומציה", "text"), ("trigger", "מה מפעיל", "long"), ("what", "מה עושה", "long"),
+                    ("direction", "כיוון", "text"), ("status", "מצב", "status"), ("last", "רצה לאחרונה", "date"),
+                    ("count7", "פעמים ב-7 ימים", "text"), ("env", "מתג (Render)", "text"), ("tracked", "נרשם ביומן", "text")],
+        "default_cols": ["name", "trigger", "what", "status", "last", "count7"],
+        "editable": [],
+        "views": [("all", "כל האוטומציות"), ("on", "פעילות"), ("off", "כבויות"), ("in", "נכנס"), ("out", "יוצא")],
+    },
 }
 
 _CRM_STATUS = {"ANSWER": "נענתה", "NOANSWER": "לא נענתה", "NO ANSWER": "לא נענתה", "BUSY": "תפוס",
@@ -11930,9 +11954,99 @@ def crm_calls_records(rows, overrides, hidden, uid=None):
                     "agent": str(g("agent")), "agent_phone": str(r.get("agent_phone") or ""),
                     "caller_phone": str(g("caller_phone")), "status": status,
                     "status_label": _CRM_STATUS.get(status.upper(), status or "—"),
-                    "duration": dur, "summary": str(g("summary", "transcript_summary")),
+                    "duration": dur, "summary": _re.sub(r"^\s*\*?AI מתמלל ומסכם שיחות\*?\s*(\*?סיכום השיחה:\*?)?\s*-?\s*", "",
+                                                        str(g("summary", "transcript_summary"))),
                     "review": review, "score": int(m.group(1)) if m else None, "note": str(ov.get("note") or ""),
                     "hidden": key in (hidden or set()), "edited": bool(ov)})
+    return out
+
+
+def _crm_day(ts, today):
+    import datetime as _dv
+    from zoneinfo import ZoneInfo as _ZV
+    return bool(ts) and _dv.datetime.fromtimestamp(ts, _ZV("Asia/Jerusalem")).date() == today
+
+
+# תצוגות מובנות לכל מודול: שם → (רשומה, היום) → bool. 'all' = בלי תנאי.
+CRM_VIEWS = {
+    "calls": {"today": lambda r, t: _crm_day(r.get("date"), t),
+              "missed": lambda r, t: r.get("status_label") in ("לא נענתה", "תפוס", "בוטלה"),
+              "outgoing": lambda r, t: r.get("status_label") == "יוצאת",
+              "low_score": lambda r, t: bool(r.get("score")) and r["score"] <= 2},
+    "flows": {"today": lambda r, t: _crm_day(r.get("date"), t),
+              "in": lambda r, t: r.get("direction") == "נכנס",
+              "out": lambda r, t: r.get("direction") == "יוצא",
+              "failed": lambda r, t: bool(r.get("failed"))},
+    "automations": {"on": lambda r, t: r.get("status") == "פעילה",
+                    "off": lambda r, t: r.get("status") == "כבויה",
+                    "in": lambda r, t: r.get("direction") == "נכנס",
+                    "out": lambda r, t: r.get("direction") == "יוצא"},
+}
+
+# פעולה ביומן → (כיוון, ערוץ). רק פעולות שמופיעות כאן נכנסות ל'נכנס ויוצא'.
+CRM_FLOW_MAP = [
+    ("שיחה חדשה (ישירות)", "נכנס", "שיחות"), ("חתימה מפיירברי", "נכנס", "חתימות"),
+    ("חשבונית חדשה", "נכנס", "חשבוניות"), ("ליד מהאתר", "נכנס", "אתר"), ("פנייה מהאתר", "נכנס", "אתר"),
+    ("סריקת יד2", "נכנס", "יד2"), ("סימון בדף קונה", "נכנס", "דף קונה"), ("עדכון חיפוש בדף קונה", "נכנס", "דף קונה"),
+    ("וואטסאפ רשמי —", "יוצא", "וואטסאפ רשמי"), ("וואטסאפ מהטלפון —", "יוצא", "וואטסאפ מהטלפון"),
+    ("חשבונית נשלחה", "יוצא", "וואטסאפ רשמי"), ("חשבונית — שליחה", "יוצא", "וואטסאפ רשמי"),
+    ("קונה שמפרסם נכס", "יוצא", "וואטסאפ רשמי"), ("פוש —", "יוצא", "פוש"), ("SMS —", "יוצא", "SMS"),
+    ("דוח יומי", "יוצא", "מייל"), ("סיכום שבועי", "יוצא", "מייל"),
+]
+
+# (key, שם, מה מפעיל, מה עושה, כיוון, (env, 'set'=פעילה אם מוגדר | 'not0'=פעילה אלא אם 0 | None), קידומות ביומן)
+CRM_AUTOMATIONS = [
+    ("calls_ingest", "קליטת שיחות (Make)", "כל שיחה במרכזיה (Maskyoo)", "סיכום AI + תמלול מלא נכנסים לאפי", "נכנס", ("CALLS_INGEST_KEY", "set"), ("שיחה חדשה (ישירות)",)),
+    ("sig_ingest", "חתימות מפיירברי", "חתימה נוצרה או עודכנה בפיירברי", "שורת חתימה באפי + קונה אוטומטי", "נכנס", ("SIGN_INGEST_KEY", "set"), ("חתימה מפיירברי",)),
+    ("inv_ingest", "חשבוניות נכנסות", "חשבונית חדשה (פיירברי / תוכנת החשבוניות)", "שמירה במסך החשבוניות", "נכנס", ("INVOICES_INGEST_KEY", "set"), ("חשבונית חדשה",)),
+    ("yad2_ingest", "סריקות יד2", "הסורק שולח מנה (כל כמה דקות)", "נכס נולד, שת\"פ ונכסי המשרד מתעדכנים", "נכנס", None, ("סריקת יד2",)),
+    ("site_lead", "סוכן AI אישי (אתר)", "גולש שולח בקשה בוואטסאפ", "קונה + דף קונה + תשובה ללקוח", "נכנס", None, ("ליד מהאתר",)),
+    ("site_form", "טפסי האתר", "שליחת טופס באתר", "מייל לנמענים", "נכנס", None, ("פנייה מהאתר",)),
+    ("bpage_marks", "סימונים בדף קונה", "לקוח מסמן נכס / מבקש חיפוש אחר", "פוש לסוכן", "נכנס", None, ("סימון בדף קונה", "עדכון חיפוש בדף קונה")),
+    ("invoice_wa", "חשבונית ללקוח בוואטסאפ", "חשבונית חדשה עם טלפון", "וואטסאפ רשמי ללקוח", "יוצא", ("INVOICE_WA", "not0"), ("חשבונית נשלחה", "חשבונית — שליחה")),
+    ("buyer_seller", "קונה שמפרסם נכס", "קונה חדש או מודעה חדשה באותו טלפון", "וואטסאפ לסוכן של הקונה", "יוצא", ("BS_ALERTS", "not0"), ("קונה שמפרסם נכס",)),
+    ("official_wa", "וואטסאפ רשמי", "כל הודעה אוטומטית (שיחות, חתימות, לידים…)", "הודעה מהמספר הרשמי (360dialog)", "יוצא", None, ("וואטסאפ רשמי —",)),
+    ("push", "התראות פוש", "שיחה, חתימה, נכס נולד, דף קונה…", "פוש לטלפון של הסוכן (OneSignal)", "יוצא", None, ("פוש —",)),
+    ("sms", "SMS", "קוד כניסה / קישור חתימה", "SMS ללקוח או לסוכן", "יוצא", None, ("SMS —",)),
+    ("daily_report", "דוח יומי במייל", "כל יום ב-07:00", "מייל לנמענים", "יוצא", ("DAILY_REPORT", "not0"), ("דוח יומי",)),
+    ("weekly_report", "סיכום שבועי", "יום ראשון ב-07:00", "מייל לנמענים", "יוצא", ("WEEKLY_REPORT", "not0"), ("סיכום שבועי",)),
+    ("bpage_digest", "התאמות חדשות — פוש יומי", "כל יום ב-10:00", "פוש לסוכנים על התאמות חדשות לדפי קונה", "יוצא", ("BPAGE_DIGEST", "not0"), ()),
+    ("wa_click", "וואטסאפ מהטלפון", "סוכן פותח וואטסאפ מאפי", "נספר ביומן לפי מסך", "יוצא", None, ("וואטסאפ מהטלפון —",)),
+    ("shabbat", "השתקה בשבת וחג", "שעה לפני כניסת שבת/חג", "עוצר פוש ווואטסאפ עד שעה אחרי היציאה", "מערכת", ("SHABBAT_AUTO", "not0"), ()),
+]
+
+
+def crm_flow_records(act):
+    """יומן הפעילות → 'נכנס ויוצא': רק פעולות שב-CRM_FLOW_MAP, עם כיוון, ערוץ וסימון כשל."""
+    import hashlib as _hf
+    out = []
+    for a in act or []:
+        action = str(a.get("action") or "")
+        m = next((x for x in CRM_FLOW_MAP if action.startswith(x[0])), None)
+        if not m or not a.get("ts"):
+            continue
+        key = _hf.sha1(("%s|%s|%s|%s" % (a.get("ts"), action, a.get("name"), a.get("detail"))).encode("utf-8")).hexdigest()[:16]
+        out.append({"key": key, "date": a["ts"], "direction": m[1], "channel": m[2], "action": action,
+                    "name": str(a.get("name") or ""), "detail": str(a.get("detail") or ""),
+                    "failed": "נכשל" in action, "result": "נכשל" if "נכשל" in action else "תקין"})
+    return out
+
+
+def crm_automation_records(act, env, now):
+    """קטלוג האוטומציות: מצב (לפי env), מתי רצה לאחרונה וכמה פעמים ב-7 ימים (לפי היומן)."""
+    out = []
+    for key, name, trig, what, direction, flag, prefixes in CRM_AUTOMATIONS:
+        hits = [a.get("ts") for a in (act or []) if a.get("ts") and prefixes
+                and str(a.get("action") or "").startswith(prefixes)]
+        on = True
+        if flag:
+            v = str((env or {}).get(flag[0], "") or "").strip()
+            on = bool(v) if flag[1] == "set" else v != "0"
+        last = max(hits) if hits else None
+        out.append({"key": key, "name": name, "trigger": trig, "what": what, "direction": direction,
+                    "status": "פעילה" if on else "כבויה", "last": last, "date": last or 0,
+                    "count7": sum(1 for t in hits if t >= now - 7 * 86400),
+                    "env": flag[0] if flag else "", "tracked": "כן" if prefixes else "לא נרשם ביומן"})
     return out
 
 
@@ -11940,7 +12054,7 @@ def _crm_norm(s):
     return _re.sub(r"[\"'׳״]", "", str(s or "")).lower()
 
 
-def crm_query(records, q, filters, sort, direction, page, size, now):
+def crm_query(records, q, filters, sort, direction, page, size, now, module="calls"):
     """חיפוש (כל המילים; טלפון לפי 9 ספרות אחרונות) + סינון + תצוגה + מיון + דפדוף → {rows, total}."""
     import datetime as _dq
     from zoneinfo import ZoneInfo as _ZQ
@@ -11952,26 +12066,19 @@ def crm_query(records, q, filters, sort, direction, page, size, now):
         dg = _re.sub(r"\D", "", t)
         (phones if len(dg) >= 8 else words).append(inv_phone9(dg) if len(dg) >= 8 else _crm_norm(t))
 
+    vfn = (CRM_VIEWS.get(module) or {}).get(view)
+
     def keep(r):
-        if view == "hidden":
-            if not r.get("hidden"):
+        if module == "calls":
+            if (view == "hidden") != bool(r.get("hidden")):
                 return False
-        elif r.get("hidden"):
-            return False
-        if view == "today" and (not r.get("date") or _dq.datetime.fromtimestamp(r["date"], _ZQ("Asia/Jerusalem")).date() != today):
-            return False
-        if view == "missed" and r.get("status_label") not in ("לא נענתה", "תפוס", "בוטלה"):
-            return False
-        if view == "outgoing" and r.get("status_label") != "יוצאת":
-            return False
-        if view == "low_score" and not (r.get("score") and r["score"] <= 2):
+        if vfn and not vfn(r, today):
             return False
         for f, v in filters.items():
             if v not in (None, "") and str(r.get(f, "")) != str(v):
                 return False
         if words or phones:
-            hay = _crm_norm(" ".join(str(r.get(k, "")) for k in ("agent", "caller_phone", "agent_phone", "summary",
-                                                                     "review", "note", "status_label")))
+            hay = _crm_norm(" ".join(str(v) for k, v in r.items() if k not in ("key", "date", "last") and isinstance(v, str)))
             if any(w not in hay for w in words):
                 return False
             ph = {inv_phone9(r.get("caller_phone")), inv_phone9(r.get("agent_phone"))}
@@ -14793,6 +14900,20 @@ def register(app, G):
             except Exception:
                 hidden = set()
             return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden, uid=G.get("_call_uid"))
+        if module in ("flows", "automations"):
+            import time as _tf
+            now = _tf.time()
+            act = G["_cache_get"]("crmact30", 60)
+            if act is None:
+                try:
+                    act = G["_activity_fetch"](now - 30 * 86400, today=False) or []
+                except Exception as e:
+                    if log: log.warning(f"crm activity read failed: {e}")
+                    act = []
+                G["_cache_put"]("crmact30", act)
+            if module == "flows":
+                return crm_flow_records(act)
+            return crm_automation_records(act, dict(os.environ), now)
         return []
 
     def _crm_args():
@@ -14810,7 +14931,7 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
         import time as _tm
         recs, now = _crm_records(module), _tm.time()
-        counts = {v: crm_query(recs, "", {"view": v}, "date", "desc", 1, 1, now)["total"] for v, _l in mod["views"]}
+        counts = {v: crm_query(recs, "", {"view": v}, "date", "desc", 1, 1, now, module=module)["total"] for v, _l in mod["views"]}
         agents = sorted({r.get("agent") for r in recs if r.get("agent") and not r.get("hidden")})
         return jsonify({"ok": True, "module": module, "title": mod["title"], "columns": mod["columns"],
                         "default_cols": mod["default_cols"], "editable": mod["editable"], "views": mod["views"],
@@ -14829,7 +14950,7 @@ def register(app, G):
             page = int(request.args.get("page", "1") or 1)
         except ValueError:
             page = 1
-        res = crm_query(_crm_records(module), q, filters, sort, direction, page, 50, _tm.time())
+        res = crm_query(_crm_records(module), q, filters, sort, direction, page, 50, _tm.time(), module=module)
         return jsonify({"ok": True, "rows": res["rows"], "total": res["total"], "page": page, "size": 50})
 
     def _crm_transcript(rec):
@@ -14865,11 +14986,15 @@ def register(app, G):
         if not mod:
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
         sb = G.get("_sbdb")
+        if request.method == "POST" and not mod["editable"]:
+            return jsonify({"ok": False, "reason": "read_only"}), 400
         if request.method == "GET":
             key = request.args.get("key", "")
             rec = next((r for r in _crm_records(module) if r["key"] == key), None)
             if not rec:
                 return jsonify({"ok": False, "reason": "not_found"}), 404
+            if module != "calls":
+                return jsonify({"ok": True, "record": rec, "transcript": "", "recording": ""})
             try:
                 t = _crm_transcript(rec) or {}
             except Exception as e:
@@ -14928,11 +15053,11 @@ def register(app, G):
         import time as _tm
         q, filters, sort, direction = _crm_args()
         recs = _crm_records(module)
-        allrows = crm_query(recs, q, filters, sort, direction, 1, 200, _tm.time())
+        allrows = crm_query(recs, q, filters, sort, direction, 1, 200, _tm.time(), module=module)
         total = allrows["total"]
         rows = []
         for p in range(1, total // 200 + 2):
-            rows += crm_query(recs, q, filters, sort, direction, p, 200, _tm.time())["rows"]
+            rows += crm_query(recs, q, filters, sort, direction, p, 200, _tm.time(), module=module)["rows"]
         data = crm_csv(rows, mod["columns"])
         return Response(data, mimetype="text/csv; charset=utf-8",
                         headers={"Content-Disposition": "attachment; filename=crm-%s.csv" % module})
@@ -15431,6 +15556,13 @@ def register(app, G):
                 if log: log.warning(f"yad2 ingest: delisted ignored — sent as active <48h: {_guarded[:40]}")
             if log: log.info(f"yad2 ingest: stream={stream} machine={b.get('machine','')} "
                              f"n={out['n']} nb={out['nbN']} shtaf={out['shtafN']} our={out['ourN']} delisted={out['delistedN']}")
+            if out["n"] or out["delistedN"]:   # [CRM-2] 'נכנס ויוצא' — שורה אחת למנה, עם המספרים
+                try:
+                    G["_log_activity"]("סורק יד2", "system", "", "סריקת יד2 — נקלטה",
+                                       ("%s · %d שורות · נכס נולד %d · שת\"פ %d · שלנו %d · ירדו %d" % (
+                                           stream, out["n"], out["nbN"], out["shtafN"], out["ourN"], out["delistedN"]))[:120])
+                except Exception:
+                    pass
             return jsonify(out)
         except Exception as e:
             if log: log.error(f"yad2 ingest error: {e}", exc_info=True)

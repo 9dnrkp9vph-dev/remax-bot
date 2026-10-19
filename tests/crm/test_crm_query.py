@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import _load
 from _load import ck
 from zoneinfo import ZoneInfo
-ns = _load.load("crm_calls_records", "crm_query", "crm_csv", "CRM_MODULES", "_CRM_STATUS", "_crm_norm", "crm_ts", "inv_parse_dt", "inv_phone9")
+ns = _load.load("crm_calls_records", "crm_query", "crm_csv", "CRM_MODULES", "_CRM_STATUS", "_crm_norm", "CRM_VIEWS", "_crm_day", "crm_ts", "inv_parse_dt", "inv_phone9")
 recs_f, query, csv = ns["crm_calls_records"], ns["crm_query"], ns["crm_csv"]
 IL = ZoneInfo("Asia/Jerusalem")
 now = datetime.datetime(2026, 10, 19, 15, 0, tzinfo=IL).timestamp()

@@ -143,7 +143,7 @@ def _quiet_hours():
         return _QUIET_START <= h < _QUIET_END
     return h >= _QUIET_START or h < _QUIET_END   # חלון שחוצה חצות (22→8)
 
-def send_push(title, body, external_id=OWNER_PUSH_ID):
+def _send_push_raw(title, body, external_id=OWNER_PUSH_ID):
     """שולח התראת Push דרך OneSignal לפי external_id (alias). מחזיר True/False.
     שומר אבחון מלא ב-_PUSH_LAST (סטטוס + תגובת OneSignal) לצורך /api/push/test."""
     global _PUSH_LAST
@@ -188,6 +188,16 @@ def send_push(title, body, external_id=OWNER_PUSH_ID):
         _PUSH_LAST = {"ok": False, "ids": ids, "reason": str(e)[:300]}
         log.error(f"push error: {e}")
         return False
+def send_push(title, body, external_id=OWNER_PUSH_ID):
+    """[CRM-2 19/10] כל פוש נרשם ביומן ('נכנס ויוצא' ב-CRM): כותרת + מספר נמענים, בלי התוכן."""
+    ok = _send_push_raw(title, body, external_id)
+    if _PUSH_LAST.get("reason") not in ("QUIET_MODE", "QUIET_HOURS") if isinstance(_PUSH_LAST, dict) else True:
+        try:
+            n_to = len(external_id) if isinstance(external_id, list) else 1
+            _log_activity("פוש", "system", "", "פוש — " + ("נשלח" if ok else "נכשל"), (str(title)[:40] + " · " + str(n_to)))
+        except Exception:
+            pass
+    return ok
 # ── Temp dir for processing ────────────────────────────────────────────────────
 WORK_DIR = Path(tempfile.gettempdir()) / "remax_bot"
 WORK_DIR.mkdir(exist_ok=True)
@@ -3742,7 +3752,7 @@ def _send_sms_dealsmaskyoo(last9, body):
         log.error(f"sms.deals error: {e}")
         return False
 
-def web_send_sms(last9, body):
+def _web_send_sms_raw(last9, body):
     res = _send_sms_dealsmaskyoo(last9, body)
     if res is not None:
         return res
@@ -3762,6 +3772,15 @@ def web_send_sms(last9, body):
     except Exception as e:
         log.error(f"Twilio send error: {e}")
         return False
+
+def web_send_sms(last9, body):
+    """[CRM-2 19/10] כל SMS נרשם ביומן — רק 4 ספרות אחרונות, לעולם לא התוכן (קודי כניסה)."""
+    ok = _web_send_sms_raw(last9, body)
+    try:
+        _log_activity("SMS", "system", "", "SMS — " + ("נשלח" if ok else "נכשל"), "…" + str(last9 or "")[-4:])
+    except Exception:
+        pass
+    return ok
 
 # Single-flight: כשהרבה בקשות נכשלות במטמון בו-זמנית (למשל 20 סוכנים בבוקר על מטמון קר),
 # רק חוט אחד מבצע את הקריאה ל-Apps Script והשאר ממתינים לתוצאה — במקום 20 קריאות מקבילות.
@@ -11899,7 +11918,7 @@ def _report_story_files(rep):
         log.warning(f"daily report: story images failed: {e}")
         return []
 
-def _report_send_email(subject, html, text, to=None, attachments=None):
+def _report_send_email_raw(subject, html, text, to=None, attachments=None):
     """שליחת הדוח במייל דרך SMTP (Gmail app password ב-env). מחזיר (ok, הודעה).
     attachments = [(שם, bytes)] — תמונות JPEG מצורפות (סטורי, 05/10)."""
     to = (to or ",".join(_report_recipients()) or "").strip()
@@ -11946,6 +11965,17 @@ def _report_send_email(subject, html, text, to=None, attachments=None):
     except Exception as e:
         log.warning(f"daily report mail failed: {e}")
         return False, f"שליחה נכשלה: {type(e).__name__}"
+
+
+def _report_send_email(subject, html, text, to=None, attachments=None):
+    """[CRM-2 19/10] כל שליחת דוח במייל נרשמת ביומן (דוח יומי / סיכום שבועי)."""
+    res = _report_send_email_raw(subject, html, text, to, attachments=attachments)
+    try:
+        kind = "סיכום שבועי" if "שבועי" in str(subject) else "דוח יומי"
+        _log_activity("מייל", "system", "", kind + " — " + ("נשלח" if res and res[0] else "נכשל"), str(subject)[:60])
+    except Exception:
+        pass
+    return res
 
 def _report_auth_ok():
     """מפתח משותף (?k=DIGEST_KEY) או סשן מנהל/מפתח."""
