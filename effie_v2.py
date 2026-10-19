@@ -11500,6 +11500,10 @@ td.long div{overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box
 .box h3{margin:0 0 6px;font-size:14px;white-space:normal}.gold{border-right:4px solid var(--gold)}
 .acts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
 .del{width:44px;height:44px;border-radius:12px;background:#FBEDED;border:0;display:grid;place-items:center;cursor:pointer;margin-inline-start:auto}
+.av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#EEE9DD;display:block}
+.av.big{width:88px;height:88px;border:3px solid var(--gold)}
+.banner{margin:0 18px 12px;border-radius:14px;padding:12px 14px;background:#FBF6E8;border:1px solid #EADBB0;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.banner.ok{background:#E6F2EC;border-color:#BFE0CC}.banner b{font-weight:700}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;border-radius:12px;padding:10px 16px;display:none;z-index:40}
 @media(max-width:900px){.page{grid-template-columns:1fr}.views{position:static}}
 </style></head><body>
@@ -11516,6 +11520,7 @@ td.long div{overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box
 <button class="tb" id="exp">ייצוא לאקסל</button>
 <button class="tb pri" id="newBtn">+ חדש</button>
 </div>
+<div id="banner"></div>
 <div class="wrapt"><table id="tbl"></table></div>
 <div class="foot"><span id="range"></span><span><button class="tb" id="prev">הקודם</button> <button class="tb" id="next">הבא</button></span></div>
 </section></div>
@@ -11538,6 +11543,7 @@ function cell(r, c){ var v = r[c[0]], t = c[2];
   if (t === 'status') return '<span class="st ' + stCls(v) + '">' + esc(v) + '</span>';
   if (t === 'score') return v ? v + '/5' : '—';
   if (t === 'long') return '<div>' + esc(v) + '</div>';
+  if (t === 'photo') return v ? '<img class="av" loading="lazy" src="' + esc(v) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '';
   return esc(v); }
 function cols(){ var saved = null; try{ saved = JSON.parse(localStorage.getItem('crmcols:' + MOD) || 'null'); }catch(e){}
   var keys = saved || META.default_cols; return META.columns.filter(function(c){ return keys.indexOf(c[0]) >= 0; }); }
@@ -11586,6 +11592,21 @@ function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getEleme
   api('/v2/api/crm/' + MOD + '/record?key=' + encodeURIComponent(key)).then(function(r){ return r.json(); }).then(function(j){
     if (!j.ok){ b.innerHTML = '<div class="mut">לא נמצא.</div>'; return; }
     var r = j.record; CUR = r;
+    if (MOD !== 'calls' && META.editable.length){   /* מודול לעריכה (צוות): שדות + תמונה + השבתה */
+      var hh = '<div style="display:flex;gap:14px;align-items:center">' + (r.photo ? '<img class="av big" src="' + esc(r.photo) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '') +
+        '<div><h2>' + esc(r.name) + '</h2><span class="st ' + stCls(r.active ? 'פעילה' : 'כבויה') + '">' + esc(r.status) + '</span></div></div>' +
+        '<div class="grid2">' + META.editable.map(function(e){ return field(e[0], e[1], r[e[0]]); }).join('') + '</div>' +
+        (r.phone ? '<label class="tb" style="margin-top:4px">החלפת תמונה<input type="file" accept="image/*" id="avIn" style="display:none"></label>' : '') +
+        '<div class="acts"><button class="tb pri" id="svBtn">שמירה</button>' +
+        (r.active ? '<button class="del" id="dlBtn" aria-label="השבתה" title="השבתה (אפשר לשחזר)"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 5h12M7 5V3h4v2M5 5l1 10h6l1-10" fill="none" stroke="#C24040" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
+                  : '<button class="tb" id="rsBtn">שחזור</button>') + '</div>' +
+        '<div class="mut" style="margin-top:10px">השבתה = לא יכול להיכנס לאפי ולא מופיע בספרייה ובאתר (אחרי המעבר לטבלה).</div>';
+      b.innerHTML = hh;
+      document.getElementById('svBtn').onclick = function(){ save(r.key); };
+      var dl = document.getElementById('dlBtn'); if (dl) dl.onclick = function(){ if (confirm('להשבית את ' + r.name + '?')) act({key:r.key, delete:true}, 'הושבת'); };
+      var rs = document.getElementById('rsBtn'); if (rs) rs.onclick = function(){ act({key:r.key, restore:true}, 'שוחזר'); };
+      var ai = document.getElementById('avIn'); if (ai) ai.onchange = function(){ upAvatar(r, ai.files[0]); };
+      return; }
     if (!META.editable.length){   /* מודול לקריאה בלבד: כל העמודות ככרטיס */
       b.innerHTML = '<h2>' + esc(r.name || r.action || META.title) + '</h2><div class="grid2">' +
         META.columns.map(function(c){ return '<div class="f' + (c[2] === 'long' ? ' wide' : '') + '"><b>' + esc(c[1]) + '</b>' + (c[2] === 'date' ? fdate(r[c[0]]) : (c[2] === 'status' ? cell(r, c) : esc(r[c[0]] == null ? '—' : r[c[0]]))) + '</div>'; }).join('') + '</div>';
@@ -11618,18 +11639,41 @@ function save(key){ var f = collect(key ? CUR : null);
   else if (!Object.keys(f).length){ toast('לא שונה דבר'); return; }
   act(key ? {key:key, fields:f} : {fields:f}, key ? 'נשמר' : 'נוספה שיחה'); }
 function openNew(){ CUR = null; var b = document.getElementById('drb');
+  if (MOD !== 'calls'){ b.innerHTML = '<h2>חדש · ' + esc(META.title) + '</h2><div class="grid2">' + META.editable.map(function(e){ return field(e[0], e[1], ''); }).join('') +
+      '</div><div class="acts"><button class="tb pri" id="svBtn">הוספה</button></div>';
+    document.getElementById('dr').classList.add('open'); document.getElementById('svBtn').onclick = function(){ var f = collect(null);
+      if (!f.name){ toast('צריך שם'); return; } act({fields:f}, 'נוסף'); }; return; }
   b.innerHTML = '<h2>שיחה חדשה</h2><div class="mut">רשומה ידנית — נכנסת ללוג השיחות של אפי.</div><div class="grid2">' +
     field('agent', 'סוכן', '') + field('caller_phone', 'טלפון לקוח', '') + field('status', 'סטטוס (ריק = ידנית)', '') + '<div></div>' +
     field('summary', 'סיכום', '', true) + field('note', 'הערה', '', true) + '</div><div class="acts"><button class="tb pri" id="svBtn">הוספה</button></div>';
   document.getElementById('dr').classList.add('open'); document.getElementById('svBtn').onclick = function(){ save(''); }; }
+function upAvatar(r, file){ if (!file) return; var fr = new FileReader();
+  fr.onload = function(){ var im = new Image(); im.onload = function(){ var c = document.createElement('canvas'), s = Math.min(im.width, im.height), z = Math.min(512, s);
+      c.width = c.height = z; c.getContext('2d').drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, z, z);
+      api('/v2/api/crm/team/avatar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone:r.phone, img:c.toDataURL('image/jpeg', .85)})})
+        .then(function(x){ return x.json(); }).then(function(j){ toast(j.ok ? 'התמונה עודכנה' : 'לא עודכנה: ' + (j.reason || '')); if (j.ok) openRec(r.key); }); };
+    im.src = fr.result; }; fr.readAsDataURL(file); }
+function teamBanner(){ var el = document.getElementById('banner'); if (MOD !== 'team'){ el.innerHTML = ''; return; }
+  api('/v2/api/crm/team/status').then(function(x){ return x.json(); }).then(function(j){ if (!j.ok) return;
+    var c = j.compare || {}, nd = (c.diffs || []).length + (c.only_sheet || []).length + (c.only_table || []).length;
+    var src = j.source === 'supabase' ? '<b>המקור הפעיל: הטבלה הזו</b> (CONTACTS_SOURCE=supabase)' : '<b>המקור הפעיל עדיין גיליון "אנשי קשר"</b> — עריכות כאן ייכנסו לתוקף אחרי המעבר';
+    var h = src + ' · בטבלה ' + j.table_count + ' · ';
+    if (!j.table_count) h += 'הטבלה ריקה. ';
+    else h += nd ? ('<b>' + nd + ' הבדלים מול הגיליון</b>: ' + esc([].concat((c.only_sheet || []).map(function(n){ return 'רק בגיליון: ' + n; }), (c.only_table || []).map(function(n){ return 'רק בטבלה: ' + n; }), (c.diffs || []).map(function(d){ return d.name + ' · ' + d.field + ': "' + d.sheet + '" ← "' + d.table + '"'; })).slice(0, 8).join(' | ')) + (nd > 8 ? '…' : ''))
+               : '<b>0 הבדלים — אפשר להחליף מקור</b>';
+    if (j.source !== 'supabase') h += ' <button class="tb" id="impBtn">' + (j.table_count ? 'ייבוא חוזר מהגיליון' : 'ייבוא מהגיליון') + '</button>';
+    el.innerHTML = '<div class="banner' + (j.table_count && !nd ? ' ok' : '') + '">' + h + '</div>';
+    var ib = document.getElementById('impBtn'); if (ib) ib.onclick = function(){ if (!confirm('לייבא את כל אנשי הקשר מהגיליון לטבלה? (מעדכן לפי שם, לא מוחק)')) return;
+      api('/v2/api/crm/team/import', {method:'POST'}).then(function(x){ return x.json(); }).then(function(r){ toast(r.ok ? ('יובאו ' + r.imported + (r.duplicates && r.duplicates.length ? ' · כפולים: ' + r.duplicates.join(', ') : '')) : 'נכשל: ' + (r.reason || '')); refreshAll(); }); }; }); }
 function closeDr(){ document.getElementById('dr').classList.remove('open'); CUR = null; renderTable(); }
-function refreshAll(){ return loadMeta().then(load); }
+function refreshAll(){ teamBanner(); return loadMeta().then(load); }
 function loadMeta(){ return api('/v2/api/crm/' + MOD + '/meta').then(function(r){ return r.json(); }).then(function(m){
   if (!m.ok){ document.getElementById('title').textContent = m.reason === 'forbidden' ? 'אין הרשאה' : 'מודול לא קיים'; throw new Error(m.reason); }
   META = m; document.title = 'CRM · ' + m.title; document.getElementById('title').textContent = m.title;
   document.getElementById('newBtn').style.display = m.editable.length ? '' : 'none';
   document.getElementById('fAgent').style.display = m.agents.length ? '' : 'none';
-  if (MOD !== 'calls' && ST.sort === 'date' && !m.columns.some(function(c){ return c[0] === 'date'; })) ST.sort = m.columns[0][0];
+  if (MOD !== 'calls' && ST.sort === 'date' && !m.columns.some(function(c){ return c[0] === 'date'; })){
+    ST.sort = (m.columns.filter(function(c){ return c[2] !== 'photo'; })[0] || m.columns[0])[0]; ST.dir = 'asc'; }
   var sel = document.getElementById('fAgent'), cur = ST.agent;
   sel.innerHTML = '<option value="">כל הסוכנים</option>' + m.agents.map(function(a){ return '<option' + (a === cur ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('');
   renderTop(); renderViews(); }); }
@@ -11655,7 +11699,7 @@ document.getElementById('exp').onclick = function(){ toast('מכין קובץ…
     var a = document.createElement('a'); a.href = URL.createObjectURL(bl); a.download = 'crm-' + MOD + '.csv'; document.body.appendChild(a); a.click(); a.remove(); }); };
 document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') closeDr(); });
 if (!tok()) { document.getElementById('title').innerHTML = 'צריך להיות מחובר לאפי בדפדפן הזה. <a href="/v2/home">כניסה לאפי</a>'; }
-else { loadMeta().then(function(){ loadSaved(); return load(); }).catch(function(){}); }
+else { loadMeta().then(function(){ loadSaved(); teamBanner(); return load(); }).catch(function(){}); }
 </script></body></html>"""
 
 
@@ -11946,6 +11990,17 @@ CRM_MODULES = {
         "editable": [],
         "views": [("all", "הכל (30 יום)"), ("today", "היום"), ("in", "נכנס"), ("out", "יוצא"), ("failed", "כשלים")],
     },
+    "team": {
+        "title": "צוות",
+        "columns": [("photo", "תמונה", "photo"), ("name", "שם", "text"), ("phone", "נייד אישי", "phone"),
+                    ("vphone", "וירטואלי", "phone"), ("email", "מייל", "text"), ("license", "רישיון / עמודה D", "text"),
+                    ("status", "מצב", "status"), ("updated_by", "עודכן ע\"י", "text")],
+        "default_cols": ["photo", "name", "phone", "vphone", "email", "license", "status"],
+        "editable": [("name", "שם"), ("phone", "נייד אישי"), ("vphone", "מספר וירטואלי"), ("email", "מייל"),
+                     ("license", "רישיון תיווך")],
+        "views": [("all", "פעילים"), ("no_vphone", "בלי וירטואלי"), ("no_email", "בלי מייל"), ("no_license", "בלי רישיון"),
+                  ("inactive", "מושבתים")],
+    },
     "automations": {
         "title": "אוטומציות",
         "columns": [("name", "אוטומציה", "text"), ("trigger", "מה מפעיל", "long"), ("what", "מה עושה", "long"),
@@ -11990,6 +12045,45 @@ def crm_calls_records(rows, overrides, hidden, uid=None):
     return out
 
 
+# ── [TEAM 19/10] אנשי צוות: ייבוא חד-פעמי מגיליון 'אנשי קשר' + השוואה (לפני החלפת CONTACTS_SOURCE) ──
+TEAM_FILLER = ("שם מלא", "משרד", "משרד ביאליק", "רישיון תיווך", "טלפון וירטואלי")
+_TEAM_COLS = ("phone", "vphone", "license", "email")
+
+
+def team_rows_from_sheet(values):
+    """שורות הגיליון [A..E] → רשומות team_contacts. עמודה D נשמרת כמו שהיא (הקוראים מחליטים מייל/רישיון,
+    כמו היום). שורות כותרת/מילוי ובלי שם מדולגות. שם כפול — הראשון נשמר, הכפולים מוחזרים לדיווח."""
+    rows, seen, dups = [], set(), []
+    for i, row in enumerate(values or []):
+        cell = lambda k: (str(row[k]) if len(row) > k and row[k] is not None else "").strip()
+        name = cell(0)
+        if not name or name in TEAM_FILLER:
+            continue
+        if name in seen:
+            dups.append(name)
+            continue
+        seen.add(name)
+        rows.append({"name": name, "phone": cell(1), "vphone": cell(2), "license": cell(3), "email": cell(4),
+                     "active": True, "sort": i})
+    return rows, dups
+
+
+def team_compare(values, table):
+    """הגיליון מול team_contacts (הפעילים): מי רק בגיליון, מי רק בטבלה, ואילו שדות שונים — לפי שם."""
+    sheet = {r["name"]: r for r in team_rows_from_sheet(values)[0]}
+    tab = {str(t.get("name") or "").strip(): t for t in (table or []) if t.get("active")}
+    diffs, same = [], 0
+    for nm in sheet:
+        if nm not in tab:
+            continue
+        d = [{"name": nm, "field": f, "sheet": sheet[nm][f], "table": str(tab[nm].get(f) or "").strip()}
+             for f in _TEAM_COLS if sheet[nm][f] != str(tab[nm].get(f) or "").strip()]
+        diffs += d
+        same += 0 if d else 1
+    return {"same": same, "diffs": diffs,
+            "only_sheet": [n for n in sheet if n not in tab], "only_table": [n for n in tab if n not in sheet]}
+
+
 def _crm_day(ts, today):
     import datetime as _dv
     from zoneinfo import ZoneInfo as _ZV
@@ -12006,6 +12100,11 @@ CRM_VIEWS = {
               "in": lambda r, t: r.get("direction") == "נכנס",
               "out": lambda r, t: r.get("direction") == "יוצא",
               "failed": lambda r, t: bool(r.get("failed"))},
+    "team": {"all": lambda r, t: bool(r.get("active")),
+             "inactive": lambda r, t: not r.get("active"),
+             "no_vphone": lambda r, t: bool(r.get("active")) and not r.get("vphone"),
+             "no_email": lambda r, t: bool(r.get("active")) and "@" not in (r.get("email") or "") and "@" not in (r.get("license") or ""),
+             "no_license": lambda r, t: bool(r.get("active")) and not (r.get("license") or "").strip().isdigit()},
     "automations": {"on": lambda r, t: r.get("status") == "פעילה",
                     "off": lambda r, t: r.get("status") == "כבויה",
                     "in": lambda r, t: r.get("direction") == "נכנס",
@@ -14437,6 +14536,43 @@ def register(app, G):
             if log: log.error(f"buyer-sellers send: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": "failed"})
 
+    def _avatar_store(pp, img):
+        """תמונת פרופיל (data URL) → ריבוע 256px JPEG על הדיסק + עותק עמיד ב-Supabase. (ok, סיבה)."""
+        m = _re.match(r"data:image/(?:jpeg|jpg|png);base64,(.+)", img or "")
+        if not m:
+            return False, "bad_image"
+        try:
+            raw = _b64.b64decode(m.group(1))
+        except Exception:
+            return False, "bad_image"
+        if len(raw) > 400000:
+            return False, "too_big"
+        # הקטנה בשרת (לא סומכים על הקליינט): ריבוע ממורכז 256px, JPEG q82 → ~15-25KB לקובץ
+        try:
+            from PIL import Image as _PImg
+            import io as _io
+            im = _PImg.open(_io.BytesIO(raw)).convert("RGB")
+            side = min(im.size)
+            l, t = (im.width - side) // 2, (im.height - side) // 2
+            im = im.crop((l, t, l + side, t + side))
+            if side > 256:
+                im = im.resize((256, 256), _PImg.LANCZOS)
+            buf = _io.BytesIO()
+            im.save(buf, "JPEG", quality=82, optimize=True)
+            raw = buf.getvalue()
+        except Exception:
+            return False, "bad_image"
+        os.makedirs(_AV_DIR, exist_ok=True)
+        with open(os.path.join(_AV_DIR, pp + ".jpg"), "wb") as f:
+            f.write(raw)
+        try:   # עותק עמיד ב-Supabase — שורד deploy (best-effort; הדיסק נשאר ה-cache המהיר)
+            _sbav = _sb_mod()
+            if _sbav:
+                _sbav.avatar_save(pp, _b64.b64encode(raw).decode("ascii"))
+        except Exception:
+            pass
+        return True, ""
+
     @app.route("/v2/api/avatar", methods=["GET", "POST"])
     def v2_api_avatar():
         """תמונת פרופיל של סוכן: GET לפי ?p=<טלפון> (ציבורי, כמו הלוגו); POST — המשתמש לעצמו."""
@@ -14467,43 +14603,12 @@ def register(app, G):
         s = _web_auth()
         if not s:
             return jsonify({"ok": False, "auth": False}), 401
-        img = str((request.get_json(silent=True) or {}).get("img", "") or "")
-        m = _re.match(r"data:image/(?:jpeg|jpg|png);base64,(.+)", img)
-        if not m:
-            return jsonify({"ok": False, "reason": "bad_image"}), 400
-        try:
-            raw = _b64.b64decode(m.group(1))
-        except Exception:
-            return jsonify({"ok": False, "reason": "bad_image"}), 400
-        if len(raw) > 400000:
-            return jsonify({"ok": False, "reason": "too_big"}), 400
         pp = _last9(s.get("phone", ""))
         if not pp:
             return jsonify({"ok": False, "reason": "no_phone"}), 400
-        # הקטנה בשרת (לא סומכים על הקליינט): ריבוע ממורכז 256px, JPEG q82 → ~15-25KB לקובץ
-        try:
-            from PIL import Image as _PImg
-            import io as _io
-            im = _PImg.open(_io.BytesIO(raw)).convert("RGB")
-            side = min(im.size)
-            l, t = (im.width - side) // 2, (im.height - side) // 2
-            im = im.crop((l, t, l + side, t + side))
-            if side > 256:
-                im = im.resize((256, 256), _PImg.LANCZOS)
-            buf = _io.BytesIO()
-            im.save(buf, "JPEG", quality=82, optimize=True)
-            raw = buf.getvalue()
-        except Exception:
-            return jsonify({"ok": False, "reason": "bad_image"}), 400
-        os.makedirs(_AV_DIR, exist_ok=True)
-        with open(os.path.join(_AV_DIR, pp + ".jpg"), "wb") as f:
-            f.write(raw)
-        try:   # עותק עמיד ב-Supabase — שורד deploy (best-effort; הדיסק נשאר ה-cache המהיר)
-            _sbav = _sb_mod()
-            if _sbav:
-                _sbav.avatar_save(pp, _b64.b64encode(raw).decode("ascii"))
-        except Exception:
-            pass
+        ok, reason = _avatar_store(pp, str((request.get_json(silent=True) or {}).get("img", "") or ""))
+        if not ok:
+            return jsonify({"ok": False, "reason": reason}), 400
         return jsonify({"ok": True})
 
     @app.route("/v2/api/brief", methods=["GET"])
@@ -14929,6 +15034,19 @@ def register(app, G):
             except Exception:
                 hidden = set()
             return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden, uid=G.get("_call_uid"))
+        if module == "team":
+            if not (sb and sb.enabled()):
+                return []
+            out = []
+            for t in sb.team_fetch() or []:
+                ph = str(t.get("phone") or "")
+                out.append({"key": str(t.get("id")), "name": str(t.get("name") or ""), "phone": ph,
+                            "vphone": str(t.get("vphone") or ""), "email": str(t.get("email") or ""),
+                            "license": str(t.get("license") or ""), "active": bool(t.get("active")),
+                            "status": "פעיל" if t.get("active") else "מושבת",
+                            "photo": ("/v2/api/avatar?p=" + G["_last9"](ph)) if ph else "",
+                            "updated_by": str(t.get("updated_by") or ""), "date": 0})
+            return out
         if module in ("flows", "automations"):
             import time as _tf
             now = _tf.time()
@@ -15017,6 +15135,8 @@ def register(app, G):
         sb = G.get("_sbdb")
         if request.method == "POST" and not mod["editable"]:
             return jsonify({"ok": False, "reason": "read_only"}), 400
+        if request.method == "POST" and module == "team":
+            return _team_write(s, request.get_json(silent=True) or {})
         if request.method == "GET":
             key = request.args.get("key", "")
             rec = next((r for r in _crm_records(module) if r["key"] == key), None)
@@ -15116,6 +15236,78 @@ def register(app, G):
                 lst.append(item)
             allv[module] = lst[:30]
         G["_config_mutate"](mut)
+        return jsonify({"ok": True})
+
+    # ── [TEAM 19/10] אנשי צוות במקום גיליון 'אנשי קשר' ──
+    def _team_write(s, b):
+        sb = G.get("_sbdb")
+        if not (sb and sb.enabled()):
+            return jsonify({"ok": False, "reason": "no_supabase"}), 500
+        who, key = s.get("name", ""), str(b.get("key") or "").strip()
+        allowed = {f for f, _l in CRM_MODULES["team"]["editable"]}
+        fields = {k: str(v).strip()[:200] for k, v in (b.get("fields") or {}).items() if k in allowed}
+        if key and (b.get("delete") or b.get("restore")):
+            sb.team_update(key, {"active": bool(b.get("restore"))}, who)
+            act = "צוות — " + ("שחזור" if b.get("restore") else "השבתה")
+        elif key:
+            if "name" in fields and not fields["name"]:
+                return jsonify({"ok": False, "reason": "no_name"})
+            sb.team_update(key, fields, who)
+            act = "צוות — עריכה (" + ",".join(fields) + ")"
+        else:
+            if not fields.get("name"):
+                return jsonify({"ok": False, "reason": "no_name"})
+            sb.team_upsert([dict(fields, active=True)], who)
+            act = "צוות — הוספה"
+        G["_contacts_cache_clear"]()
+        G["_cache_clear"]("crmov:team")
+        G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), act, fields.get("name") or key)
+        return jsonify({"ok": True})
+
+    @app.route("/v2/api/crm/team/status", methods=["GET"])
+    def v2_api_crm_team_status():
+        if not _crm_guard():
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        sb = G.get("_sbdb")
+        try:
+            table = sb.team_fetch() if (sb and sb.enabled()) else []
+        except Exception as e:
+            return jsonify({"ok": True, "source": G["_contacts_source"](), "table_count": 0, "table_error": str(e)[:120],
+                            "compare": None})
+        sheet = G["_contacts_rows_sheet"]() or []
+        return jsonify({"ok": True, "source": G["_contacts_source"](), "table_count": len(table),
+                        "compare": team_compare(sheet, table)})
+
+    @app.route("/v2/api/crm/team/import", methods=["POST"])
+    def v2_api_crm_team_import():
+        s = _crm_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        sb = G.get("_sbdb")
+        if not (sb and sb.enabled()):
+            return jsonify({"ok": False, "reason": "no_supabase"}), 500
+        sheet = G["_contacts_rows_sheet"]()
+        if not sheet:
+            return jsonify({"ok": False, "reason": "sheet_unavailable"})
+        rows, dups = team_rows_from_sheet(sheet)
+        n = sb.team_upsert(rows, s.get("name", ""))
+        G["_contacts_cache_clear"]()
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "צוות — ייבוא מהגיליון", "%d שורות" % n)
+        return jsonify({"ok": True, "imported": n, "duplicates": dups})
+
+    @app.route("/v2/api/crm/team/avatar", methods=["POST"])
+    def v2_api_crm_team_avatar():
+        s = _crm_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        pp = _last9(str(b.get("phone") or ""))
+        if not pp:
+            return jsonify({"ok": False, "reason": "no_phone"}), 400
+        ok, reason = _avatar_store(pp, str(b.get("img") or ""))
+        if not ok:
+            return jsonify({"ok": False, "reason": reason}), 400
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "צוות — תמונה", "…" + pp[-4:])
         return jsonify({"ok": True})
 
     @app.route("/v2/api/crm/switches", methods=["GET", "POST"])
