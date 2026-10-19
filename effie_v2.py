@@ -11676,6 +11676,125 @@ def crm_daily_series(rows, get_when, days, today_iso):
     return out
 
 
+# ── [CRM-2 19/10] מסכי CRM במבנה פיירברי — הגדרת מודולים + מנוע שאילתות (טהור) ──────────
+CRM_MODULES = {
+    "calls": {
+        "title": "לוג שיחות",
+        "columns": [("agent", "שם הסוכן", "text"), ("caller_phone", "טלפון לקוח", "phone"),
+                    ("date", "תאריך", "date"), ("status_label", "סטטוס", "status"),
+                    ("duration", "משך", "text"), ("summary", "סיכום", "long"), ("score", "ציון", "score"),
+                    ("agent_phone", "טלפון סוכן", "phone"), ("note", "הערה", "long")],
+        "default_cols": ["agent", "caller_phone", "date", "status_label", "duration", "summary", "score"],
+        "editable": [("agent", "שם הסוכן"), ("caller_phone", "טלפון לקוח"), ("status", "סטטוס (ANSWER / NOANSWER / call2call…)"),
+                     ("summary", "סיכום"), ("note", "הערה")],
+        "views": [("all", "כל השיחות"), ("today", "שיחות היום"), ("missed", "לא נענו — לחזור"),
+                  ("outgoing", "שיחות יוצאות (click2call)"), ("low_score", "ביקורת ציון 1–2"), ("hidden", "מחוקות")],
+    },
+}
+
+_CRM_STATUS = {"ANSWER": "נענתה", "NOANSWER": "לא נענתה", "NO ANSWER": "לא נענתה", "BUSY": "תפוס",
+               "CALLER CANCEL": "בוטלה", "CANCEL": "בוטלה", "CALL2CALL": "יוצאת"}
+
+
+def crm_calls_records(rows, overrides, hidden):
+    """שורות השיחות (web_fetch_raw) → רשומות CRM. העריכות (crm_overrides) מעל המקור; hidden = event_ids מוסתרים."""
+    out = []
+    for r in rows or []:
+        key = str(r.get("event_id") or "").strip()
+        if not key:
+            continue
+        ov = dict((overrides or {}).get(key) or {})
+        g = lambda f, src=None: ov[f] if f in ov else (r.get(src or f) or "")
+        status = str(g("status")).strip()
+        review = str(r.get("call_review") or "")
+        m = _re.search(r"ציון\s*:\s*([1-5])\s*/\s*5", review)
+        try:
+            sec = int(float(str(r.get("duration_sec") or "").strip()))
+            dur = "%d:%02d" % (sec // 60, sec % 60) if sec > 0 else ""
+        except ValueError:
+            dur = ""
+        out.append({"key": key, "date": crm_ts(r.get("received_at")) or 0,
+                    "agent": str(g("agent")), "agent_phone": str(r.get("agent_phone") or ""),
+                    "caller_phone": str(g("caller_phone")), "status": status,
+                    "status_label": _CRM_STATUS.get(status.upper(), status or "—"),
+                    "duration": dur, "summary": str(g("summary", "transcript_summary")),
+                    "review": review, "score": int(m.group(1)) if m else None, "note": str(ov.get("note") or ""),
+                    "hidden": key in (hidden or set()), "edited": bool(ov)})
+    return out
+
+
+def _crm_norm(s):
+    return _re.sub(r"[\"'׳״]", "", str(s or "")).lower()
+
+
+def crm_query(records, q, filters, sort, direction, page, size, now):
+    """חיפוש (כל המילים; טלפון לפי 9 ספרות אחרונות) + סינון + תצוגה + מיון + דפדוף → {rows, total}."""
+    import datetime as _dq
+    from zoneinfo import ZoneInfo as _ZQ
+    filters = dict(filters or {})
+    view = filters.pop("view", "all") or "all"
+    today = _dq.datetime.fromtimestamp(now, _ZQ("Asia/Jerusalem")).date()
+    words, phones = [], []
+    for t in str(q or "").split():
+        dg = _re.sub(r"\D", "", t)
+        (phones if len(dg) >= 7 else words).append(inv_phone9(dg) if len(dg) >= 7 else _crm_norm(t))
+
+    def keep(r):
+        if view == "hidden":
+            if not r.get("hidden"):
+                return False
+        elif r.get("hidden"):
+            return False
+        if view == "today" and (not r.get("date") or _dq.datetime.fromtimestamp(r["date"], _ZQ("Asia/Jerusalem")).date() != today):
+            return False
+        if view == "missed" and r.get("status_label") not in ("לא נענתה", "תפוס", "בוטלה"):
+            return False
+        if view == "outgoing" and r.get("status_label") != "יוצאת":
+            return False
+        if view == "low_score" and not (r.get("score") and r["score"] <= 2):
+            return False
+        for f, v in filters.items():
+            if v not in (None, "") and str(r.get(f, "")) != str(v):
+                return False
+        if words or phones:
+            hay = _crm_norm(" ".join(str(r.get(k, "")) for k in ("agent", "caller_phone", "agent_phone", "summary",
+                                                                     "review", "note", "status_label")))
+            if any(w not in hay for w in words):
+                return False
+            ph = {inv_phone9(r.get("caller_phone")), inv_phone9(r.get("agent_phone"))}
+            if any(p not in ph for p in phones):
+                return False
+        return True
+
+    rows = [r for r in records if keep(r)]
+    def sk(r):
+        v = r.get(sort)
+        return (v is None or v == "", v if isinstance(v, (int, float)) else str(v or ""))
+    rows.sort(key=sk, reverse=(direction != "asc"))
+    if direction != "asc":                       # ריקים תמיד בסוף
+        rows = [r for r in rows if not sk(r)[0]] + [r for r in rows if sk(r)[0]]
+    page, size = max(1, int(page or 1)), max(1, min(200, int(size or 50)))
+    return {"rows": rows[(page - 1) * size: page * size], "total": len(rows)}
+
+
+def crm_csv(records, columns):
+    """CSV עם BOM (נפתח באקסל בעברית תקינה)."""
+    import csv as _csv, io as _io, datetime as _dc2
+    from zoneinfo import ZoneInfo as _ZC2
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow([c[1] for c in columns])
+    for r in records:
+        line = []
+        for k, _lbl, typ in columns:
+            v = r.get(k)
+            if typ == "date" and v:
+                v = _dc2.datetime.fromtimestamp(v, _ZC2("Asia/Jerusalem")).strftime("%d/%m/%Y %H:%M")
+            line.append("" if v is None else v)
+        w.writerow(line)
+    return b"\xef\xbb\xbf" + buf.getvalue().encode("utf-8")
+
+
 _CRM_EFFIE_AI = {"props": ("חיפוש נכסים",), "newborn": ("חיפוש נכס נולד",),
                  "buyers_ai": ("חיפוש קונה AI",), "ask": ("שאל את אפי",)}
 
