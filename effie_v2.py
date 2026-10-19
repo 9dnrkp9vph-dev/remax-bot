@@ -11658,6 +11658,12 @@ function upAvatar(r, file){ if (!file) return; var fr = new FileReader();
       api('/v2/api/crm/team/avatar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone:r.phone, img:c.toDataURL('image/jpeg', .85)})})
         .then(function(x){ return x.json(); }).then(function(j){ toast(j.ok ? 'התמונה עודכנה' : 'לא עודכנה: ' + (j.reason || '')); if (j.ok) openRec(r.key); }); };
     im.src = fr.result; }; fr.readAsDataURL(file); }
+function teamPhotosFromSite(){ var post = function(body){ return api('/v2/api/admin/avatars/import_site', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(function(x){ return x.json(); }); };
+  post({dry: true}).then(function(j){
+    if (!j || !j.ok){ toast('הבדיקה נכשלה' + (j && j.reason ? ' (' + j.reason + ')' : '')); return; }
+    if (!j.toImport.length){ toast('אין תמונות להשלים · ' + (j.has || []).length + ' כבר עם תמונה · ' + (j.missing || []).length + ' בלי תמונה גם באתר'); return; }
+    if (!confirm('להעתיק לאפי את התמונה מהאתר הישן ל-' + j.toImport.length + ' אנשים?\n\n' + j.toImport.slice(0, 30).join(', ') + '\n\nלא דורס תמונה קיימת.')) return;
+    post({}).then(function(k){ toast(k && k.ok ? ('הושלמו ' + k.done.length + (k.failed.length ? ' · נכשלו ' + k.failed.length : '')) : 'נכשל'); refreshAll(); }); }); }
 function teamFixes(){ api('/v2/api/crm/team/fix').then(function(x){ return x.json(); }).then(function(f){
     var slot = document.getElementById('fixSlot'); if (!slot || !f.ok) return;
     var ch = f.fixes.filter(function(x){ return Object.keys(x.changes).length; }), wn = [];
@@ -11684,7 +11690,9 @@ function teamBanner(){ var el = document.getElementById('banner'); if (MOD !== '
     else h += nd ? ('<b>' + nd + ' הבדלים מול הגיליון</b>: ' + esc([].concat((c.only_sheet || []).map(function(n){ return 'רק בגיליון: ' + n; }), (c.only_table || []).map(function(n){ return 'רק בטבלה: ' + n; }), (c.diffs || []).map(function(d){ return d.name + ' · ' + d.field + ': "' + d.sheet + '" ← "' + d.table + '"'; })).slice(0, 8).join(' | ')) + (nd > 8 ? '…' : ''))
                : (showCmp ? '<b>0 הבדלים — אפשר להחליף מקור</b>' : 'הגיליון הישן קפוא כגיבוי. ');
     if (j.source !== 'supabase' || (!j.table_count && !j.table_error)) h += ' <button class="tb" id="impBtn">' + (j.table_count ? 'ייבוא חוזר מהגיליון' : 'ייבוא מהגיליון') + '</button>';
+    if (j.table_count) h += ' <button class="tb" id="avSiteBtn">השלמת תמונות מהאתר</button>';
     el.innerHTML = '<div class="banner' + (j.table_count && !nd ? ' ok' : '') + '">' + h + '<span id="fixSlot"></span></div>';
+    var avb = document.getElementById('avSiteBtn'); if (avb) avb.onclick = teamPhotosFromSite;
     if (j.table_count) teamFixes();
     var ib = document.getElementById('impBtn'); if (ib) ib.onclick = function(){ if (!confirm('לייבא את כל אנשי הקשר מהגיליון לטבלה? (מעדכן לפי שם, לא מוחק)')) return;
       api('/v2/api/crm/team/import', {method:'POST'}).then(function(x){ return x.json(); }).then(function(r){ toast(r.ok ? ('יובאו ' + r.imported + (r.duplicates && r.duplicates.length ? ' · כפולים: ' + r.duplicates.join(', ') : '')) : (r.reason === 'already_live' ? 'הטבלה כבר המקור — ייבוא חסום' : 'נכשל: ' + (r.reason || ''))); refreshAll(); }); }; }); }
@@ -15102,6 +15110,31 @@ def register(app, G):
     class _CrmReadError(Exception):
         pass
 
+    def _person_phone_index():
+        """שם (קנוני) → טלפונים (9 ספרות) מכל מקורות הזהות: טלפוני הכניסה ואנשי הקשר.
+        התמונה באפי נשמרת לפי טלפון הכניסה, והוא לא תמיד הנייד שבאנשי הקשר."""
+        canon, idx = G["_canon_key"], {}
+        for src in ("web_phone_name_map", "web_contacts_phone_name"):
+            try:
+                for ph, nm in (G[src]() or {}).items():
+                    d = "".join(ch for ch in str(ph) if ch.isdigit())[-9:]
+                    if d and nm:
+                        idx.setdefault(canon(nm), [])
+                        if d not in idx[canon(nm)]:
+                            idx[canon(nm)].append(d)
+            except Exception as e:
+                if log: log.warning(f"person phones: {src}: {e}")
+        return idx
+
+    def _person_phones(name, phone, idx=None):
+        """הטלפונים של אדם: הנייד שלו קודם, ואחריו טלפוני כניסה תחת אותו שם."""
+        first = "".join(ch for ch in str(phone or "") if ch.isdigit())[-9:]
+        out = [first] if first else []
+        for d in (idx if idx is not None else _person_phone_index()).get(G["_canon_key"](name), []):
+            if d not in out:
+                out.append(d)
+        return out
+
     def _crm_records(module):
         try:
             return _crm_records_raw(module)
@@ -15131,14 +15164,24 @@ def register(app, G):
         if module == "team":
             if not (sb and sb.enabled()):
                 return []
-            out = []
-            for t in sb.team_fetch() or []:
+            out, teams = [], sb.team_fetch() or []
+            idx = _person_phone_index()
+            phones_of = {str(t.get("id")): _person_phones(t.get("name"), t.get("phone"), idx) for t in teams}
+            try:
+                have = _sb_mod().avatar_phones(sorted({p for v in phones_of.values() for p in v}))
+            except Exception:
+                have = None
+            def _photo_phone(tid):
+                ps = phones_of.get(tid) or []
+                hit = [p for p in ps if have and p in have] or [p for p in ps if os.path.exists(os.path.join(_AV_DIR, p + ".jpg"))]
+                return hit[0] if hit else (ps[0] if (ps and have is None) else "")
+            for t in teams:
                 ph = str(t.get("phone") or "")
                 out.append({"key": str(t.get("id")), "name": str(t.get("name") or ""), "phone": ph,
                             "vphone": str(t.get("vphone") or ""), "email": str(t.get("email") or ""),
                             "license": str(t.get("license") or ""), "active": bool(t.get("active")),
                             "status": "פעיל" if t.get("active") else "מושבת",
-                            "photo": ("/v2/api/avatar?p=" + G["_last9"](ph)) if ph else "",
+                            "photo": ("/v2/api/avatar?p=" + _photo_phone(str(t.get("id")))) if _photo_phone(str(t.get("id"))) else "",
                             "updated_by": str(t.get("updated_by") or ""), "date": 0})
             return out
         if module in ("flows", "automations"):
@@ -15501,10 +15544,25 @@ def register(app, G):
         pp = _last9(str(b.get("phone") or ""))
         if not pp:
             return jsonify({"ok": False, "reason": "no_phone"}), 400
-        ok, reason = _avatar_store(pp, str(b.get("img") or ""))
+        # התמונה נשמרת לכל הטלפונים של האדם — כך היא מופיעה גם באפי (לפי טלפון הכניסה) וגם באתר
+        nm = str(b.get("name") or "").strip()
+        if not nm:
+            try:
+                sbt = G.get("_sbdb")
+                nm = next((str(t.get("name") or "") for t in (sbt.team_fetch() if (sbt and sbt.enabled()) else [])
+                           if "".join(ch for ch in str(t.get("phone") or "") if ch.isdigit())[-9:] == pp), "")
+            except Exception:
+                nm = ""
+        phones = _person_phones(nm, pp) if nm else [pp]
+        img = str(b.get("img") or "")
+        ok, reason = _avatar_store(pp, img)
         if not ok:
             return jsonify({"ok": False, "reason": reason}), 400
-        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "צוות — תמונה", "…" + pp[-4:])
+        for p2 in phones:
+            if p2 != pp:
+                _avatar_store(p2, img)
+        G["_log_activity"](_team_actor(s), s.get("role", ""), s.get("phone", ""), "צוות — תמונה",
+                           (nm or "") + " · " + ", ".join("…" + p[-4:] for p in phones))
         return jsonify({"ok": True})
 
     @app.route("/v2/api/crm/switches", methods=["GET", "POST"])

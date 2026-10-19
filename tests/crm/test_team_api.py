@@ -92,6 +92,17 @@ _S.enabled = lambda: True
 _S.avatar_save = lambda p, b64: sb.av.__setitem__(p, b64)
 av = c.post("/v2/api/crm/team/avatar", json={"phone": "0501111111", "img": img}).get_json()
 ck(av["ok"] and "501111111" in sb.av, (av, list(sb.av)))
+# סנכרון תמונות (אייל: מקור אחד): התמונה נמצאת דרך כל הטלפונים של האדם, והעלאה מהצוות נשמרת לכולם
+A.web_phone_name_map = lambda: {"529000000": "דנה לוי"}       # טלפון הכניסה של דנה שונה מהנייד באנשי הקשר
+A.web_contacts_phone_name = lambda: {}
+A._canon_key = lambda n: " ".join(str(n or "").split())
+sb.av.clear()
+av2 = c.post("/v2/api/crm/team/avatar", json={"phone": "0501111111", "img": img}).get_json()
+ck(av2["ok"] and {"501111111", "529000000"} <= set(sb.av), ("upload saved for every phone of the person", list(sb.av)))
+_S.avatar_phones = lambda phones: {"529000000"} & {"".join(ch for ch in str(x) if ch.isdigit())[-9:] for x in phones}
+import shutil; shutil.rmtree(A._AV_DIR if hasattr(A, "_AV_DIR") else "v2_avatars", ignore_errors=True)
+dn = c.get("/v2/api/crm/team/list?q=דנה").get_json()["rows"][0]
+ck(dn["photo"].endswith("p=529000000"), ("photo found via the login phone", dn["photo"]))
 ck(any("צוות" in str(x[3]) for x in LOG), "activity logged")
 A._is_dev = lambda p: False
 ck(c.get("/v2/api/crm/team/status").status_code == 403 and c.post("/v2/api/crm/team/avatar", json={}).status_code == 403, "dev only")
