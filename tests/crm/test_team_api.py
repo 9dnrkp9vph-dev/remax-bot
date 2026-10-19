@@ -57,6 +57,9 @@ ren = c.post("/v2/api/crm/team/record", json={"key": key, "fields": {"name": "ר
 ck(ren.get("reason") == "name_taken" and sb.rows[0]["name"] == "דנה לוי", ("rename to taken name", ren))
 os.environ["CONTACTS_SOURCE"] = "supabase"
 ck(c.post("/v2/api/crm/team/import").get_json().get("reason") == "already_live", "no re-import after the switch")
+_saved = sb.rows; sb.rows = []
+ck(c.post("/v2/api/crm/team/import").get_json().get("ok") is True and len(sb.rows) == 2, "empty table after the switch: import allowed")
+sb.rows = _saved
 os.environ.pop("CONTACTS_SOURCE", None)
 from PIL import Image
 buf = io.BytesIO(); Image.new("RGB", (600, 400), (30, 58, 95)).save(buf, "JPEG")

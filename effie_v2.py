@@ -11662,7 +11662,7 @@ function teamBanner(){ var el = document.getElementById('banner'); if (MOD !== '
     else if (!j.table_count) h += 'הטבלה ריקה (הכניסה ממשיכה מהגיליון). ';
     else h += nd ? ('<b>' + nd + ' הבדלים מול הגיליון</b>: ' + esc([].concat((c.only_sheet || []).map(function(n){ return 'רק בגיליון: ' + n; }), (c.only_table || []).map(function(n){ return 'רק בטבלה: ' + n; }), (c.diffs || []).map(function(d){ return d.name + ' · ' + d.field + ': "' + d.sheet + '" ← "' + d.table + '"'; })).slice(0, 8).join(' | ')) + (nd > 8 ? '…' : ''))
                : '<b>0 הבדלים — אפשר להחליף מקור</b>';
-    if (j.source !== 'supabase') h += ' <button class="tb" id="impBtn">' + (j.table_count ? 'ייבוא חוזר מהגיליון' : 'ייבוא מהגיליון') + '</button>';
+    if (j.source !== 'supabase' || (!j.table_count && !j.table_error)) h += ' <button class="tb" id="impBtn">' + (j.table_count ? 'ייבוא חוזר מהגיליון' : 'ייבוא מהגיליון') + '</button>';
     el.innerHTML = '<div class="banner' + (j.table_count && !nd ? ' ok' : '') + '">' + h + '</div>';
     var ib = document.getElementById('impBtn'); if (ib) ib.onclick = function(){ if (!confirm('לייבא את כל אנשי הקשר מהגיליון לטבלה? (מעדכן לפי שם, לא מוחק)')) return;
       api('/v2/api/crm/team/import', {method:'POST'}).then(function(x){ return x.json(); }).then(function(r){ toast(r.ok ? ('יובאו ' + r.imported + (r.duplicates && r.duplicates.length ? ' · כפולים: ' + r.duplicates.join(', ') : '')) : (r.reason === 'already_live' ? 'הטבלה כבר המקור — ייבוא חסום' : 'נכשל: ' + (r.reason || ''))); refreshAll(); }); }; }); }
@@ -15330,7 +15330,12 @@ def register(app, G):
         if not (sb and sb.enabled()):
             return jsonify({"ok": False, "reason": "no_supabase"}), 500
         if G["_contacts_source"]() == "supabase":   # אחרי המעבר הטבלה היא המקור — ייבוא היה דורס עריכות ומחזיר מושבתים
-            return jsonify({"ok": False, "reason": "already_live"})
+            try:
+                has_rows = bool(sb.team_fetch())
+            except Exception as e:
+                return jsonify({"ok": False, "reason": "table_error", "detail": str(e)[:300]})
+            if has_rows:                             # טבלה ריקה (הכניסה רצה מהגיליון) — ייבוא ראשון מותר
+                return jsonify({"ok": False, "reason": "already_live"})
         sheet = G["_contacts_rows_sheet"]()
         if not sheet:
             return jsonify({"ok": False, "reason": "sheet_unavailable"})
