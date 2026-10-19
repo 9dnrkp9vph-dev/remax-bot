@@ -15141,14 +15141,18 @@ def register(app, G):
         if module in ("flows", "automations"):
             import time as _tf
             now = _tf.time()
-            act = G["_cache_get"]("crmact30", 60)
-            if act is None:
+            def _build_act():
+                # רק סוגי הפעולות של 'נכנס ויוצא' והאוטומציות — סינון בשרת, לא כל 30 הימים
+                prefixes = sorted({x[0] for x in CRM_FLOW_MAP} | {p for a in CRM_AUTOMATIONS for p in (a[6] or ())})
+                t0 = _tf.time() - 30 * 86400
                 try:
-                    act = G["_activity_fetch"](now - 30 * 86400, today=False) or []
+                    if sb and sb.enabled() and hasattr(sb, "fetch_activity_actions"):
+                        return sb.fetch_activity_actions(t0, prefixes) or []
                 except Exception as e:
-                    if log: log.warning(f"crm activity read failed: {e}")
-                    act = []
-                G["_cache_put"]("crmact30", act)
+                    if log: log.warning(f"crm activity filtered read failed — full read: {e}")
+                return G["_activity_fetch"](t0, today=False) or []
+            swr = G.get("_swr")
+            act = swr("crmact30", 120, _build_act) if swr else _build_act()
             if module == "flows":
                 return crm_flow_records(act)
             return crm_automation_records(act, dict(os.environ), now)

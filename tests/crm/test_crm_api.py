@@ -63,8 +63,9 @@ ck(c.get("/v2/api/crm/nope/meta").status_code == 404, "unknown module")
 # נכנס ויוצא + אוטומציות — מיומן הפעילות (מטמון 60ש')
 import time as _t
 CACHE.pop("crmact30", None)
-A._activity_fetch = lambda t0, today=True: [{"ts": _t.time() - 60, "name": "Fireberry", "role": "system", "action": "חתימה מפיירברי", "detail": "x"},
-                                            {"ts": _t.time() - 90, "name": "אלי", "role": "agent", "action": "חיפוש נכסים", "detail": "y"}]
+_T0 = _t.time()
+A._activity_fetch = lambda t0, today=True: [{"ts": _T0 - 60, "name": "Fireberry", "role": "system", "action": "חתימה מפיירברי", "detail": "x"},
+                                            {"ts": _T0 - 90, "name": "אלי", "role": "agent", "action": "חיפוש נכסים", "detail": "y"}]
 fm = c.get("/v2/api/crm/flows/meta").get_json()
 ck(fm["ok"] and fm["counts"]["all"] == 1 and fm["counts"]["in"] == 1 and fm["editable"] == [], fm.get("counts"))
 fl = c.get("/v2/api/crm/flows/list").get_json()

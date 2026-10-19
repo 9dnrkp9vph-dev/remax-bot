@@ -196,8 +196,11 @@ def send_push(title, body, external_id=OWNER_PUSH_ID):
     ok = _send_push_raw(title, body, external_id)
     if _PUSH_LAST.get("reason") not in ("QUIET_MODE", "QUIET_HOURS", "PUSH_OFF") if isinstance(_PUSH_LAST, dict) else True:
         try:
-            n_to = len(external_id) if isinstance(external_id, list) else 1
-            _log_activity("פוש", "system", "", "פוש — " + ("נשלח" if ok else "נכשל"), (str(title)[:40] + " · " + str(n_to)))
+            ids = external_id if isinstance(external_id, list) else [external_id]
+            who = [_flow_to(x).split(" ·")[0] for x in ids[:3]]
+            to = ", ".join(w for w in who if w) + (" ועוד %d" % (len(ids) - 3) if len(ids) > 3 else "")
+            _log_activity("פוש", "system", "", "פוש — " + ("נשלח" if ok else "נכשל"),
+                          " · ".join(x for x in (to, str(title)[:40], _flow_snip(body, 60)) if x))
         except Exception:
             pass
     return ok
@@ -470,6 +473,77 @@ def _switch_off(name):
     except Exception:
         return False
 
+# ── [CRM-FLOW 19/10] פירוט ל'נכנס ויוצא' (אייל: "תוסיף פירוט בלוג"): למי, מטרה, תוכן קצר בלי קישורים ──
+def _buyer_phone_names():
+    """last9 → 'שם (קונה)' — מטמון 10 דק' (רק לפירוט ביומן)."""
+    m = _cache_get("flow_buyer_names", 600)
+    if m is not None:
+        return m
+    m = {}
+    try:
+        for b in _fetch_manual_buyers() or []:
+            l9 = _last9(str(b.get("phone") or ""))
+            if l9 and b.get("name"):
+                m.setdefault(l9, str(b.get("name")).strip() + " (קונה)")
+    except Exception:
+        pass
+    _cache_put("flow_buyer_names", m)
+    return m
+
+def _flow_to(phone):
+    """נמען לתצוגה ביומן: שם לפי הטלפון (צוות, ואז קונים) + 4 ספרות אחרונות."""
+    l9 = _last9(str(phone or ""))
+    if not l9:
+        return ""
+    nm = ""
+    for src in (web_phone_name_map, web_contacts_phone_name, _buyer_phone_names):
+        try:
+            nm = str((src() or {}).get(l9) or "").strip()
+        except Exception:
+            nm = ""
+        if nm:
+            break
+    return (nm + " ·…" + l9[-4:]) if nm else ("…" + l9[-4:])
+
+def _flow_snip(text, n=70):
+    """תוכן קצר לשורה אחת — קישורים מוחלפים ב-[קישור] (טוקנים של חתימה/דף קונה לא נכנסים ליומן)."""
+    t = re.sub(r"https?://\S+", "[קישור]", str(text or ""))
+    t = " ".join(t.split())
+    return (t[:n] + "…") if len(t) > n else t
+
+def _sms_purpose(body):
+    """מטרת ה-SMS בלי התוכן (קודי כניסה לא נרשמים לעולם)."""
+    b = str(body or "")
+    if re.search(r"קוד|code", b, re.I):
+        return "קוד כניסה"
+    if "/s/" in b:
+        return "קישור חתימה"
+    if "/b/" in b:
+        return "דף קונה"
+    if "הוזמנת" in b or "הזמנה" in b:
+        return "הזמנה לאפליקציה"
+    return "הודעה"
+
+def _wa_payload_detail(payload):
+    """פירוט שליחת וואטסאפ רשמי: למי · תבנית/סוג · תוכן קצר."""
+    p = payload or {}
+    typ = str(p.get("type") or "")
+    parts = [_flow_to(p.get("to"))]
+    if typ == "template":
+        tpl = p.get("template") or {}
+        parts.append(str(tpl.get("name") or "template"))
+        txt = " | ".join(str(x.get("text") or "") for c in (tpl.get("components") or []) for x in (c.get("parameters") or [])
+                         if isinstance(x, dict) and x.get("type") == "text")
+        if txt:
+            parts.append(_flow_snip(txt))
+    elif typ == "text":
+        parts.append(_flow_snip((p.get("text") or {}).get("body")))
+    elif typ == "document":
+        parts.append("מסמך " + str((p.get("document") or {}).get("filename") or ""))
+    else:
+        parts.append(typ)
+    return " · ".join(x for x in parts if x)
+
 class _BlockedResp:
     ok, status_code, text = False, 0, "blocked by switch (wa_official_off)"
     def json(self): return {}
@@ -477,8 +551,7 @@ class _BlockedResp:
 def _d360_post_message(payload):
     if _switch_off("wa_official_off"):   # כיבוי כל הוואטסאפ הרשמי מלוח הבקרה
         try:
-            _log_activity("וואטסאפ רשמי", "system", "", "וואטסאפ רשמי — מושבת",
-                          "…" + str((payload or {}).get("to", ""))[-4:] + " · " + str((payload or {}).get("type", "")))
+            _log_activity("וואטסאפ רשמי", "system", "", "וואטסאפ רשמי — מושבת", _wa_payload_detail(payload))
         except Exception:
             pass
         return False, _BlockedResp()
@@ -488,8 +561,7 @@ def _d360_post_message(payload):
     ok = bool(r.ok and isinstance(j, dict) and j.get("messages"))
     # [CRM-3 19/10] אייל: "כמה הודעות יצאו מתוך הוואטסאפ הרשמי" — כל שליחה (טקסט/תבנית/מסמך) עוברת כאן
     try:
-        _log_activity("וואטסאפ רשמי", "system", "", "וואטסאפ רשמי — " + ("נשלח" if ok else "נכשל"),
-                      "…" + str((payload or {}).get("to", ""))[-4:] + " · " + str((payload or {}).get("type", "")))
+        _log_activity("וואטסאפ רשמי", "system", "", "וואטסאפ רשמי — " + ("נשלח" if ok else "נכשל"), _wa_payload_detail(payload))
     except Exception:
         pass
     return ok, r
@@ -3830,7 +3902,7 @@ def web_send_sms(last9, body):
     """[CRM-2 19/10] כל SMS נרשם ביומן — רק 4 ספרות אחרונות, לעולם לא התוכן (קודי כניסה)."""
     ok = _web_send_sms_raw(last9, body)
     try:
-        _log_activity("SMS", "system", "", "SMS — " + ("נשלח" if ok else "נכשל"), "…" + str(last9 or "")[-4:])
+        _log_activity("SMS", "system", "", "SMS — " + ("נשלח" if ok else "נכשל"), _flow_to(last9) + " · " + _sms_purpose(body))
     except Exception:
         pass
     return ok

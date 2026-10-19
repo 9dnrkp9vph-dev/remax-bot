@@ -376,6 +376,25 @@ def fetch_activity_today(t0_epoch):
     return out
 
 
+def fetch_activity_actions(t0_epoch, prefixes):
+    """[CRM-FLOW 19/10] activity_log מ-t0 רק לפעולות שמתחילות באחת הקידומות — סינון בשרת
+    ('נכנס ויוצא' קרא את כל 30 הימים, כולל כל חיפוש וכניסה, ולכן נטען לאט)."""
+    iso = _dt.datetime.fromtimestamp(float(t0_epoch), _dt.timezone.utc).isoformat()
+    conds = ",".join('action.like."%s*"' % str(p).replace('"', "").replace("*", "") for p in prefixes if str(p).strip())
+    recs = _get_all("activity_log", "user_name,role,phone,action,target,ts",
+                    {"and": "(ts.gte." + iso + ")", "or": "(" + conds + ")", "order": "ts.desc"})
+    out = []
+    for rec in recs:
+        try:
+            ep = _dt.datetime.fromisoformat(str(rec.get("ts"))).timestamp()
+        except Exception:
+            continue
+        out.append({"ts": float(ep), "name": rec.get("user_name") or "", "role": rec.get("role") or "",
+                    "phone": rec.get("phone") or "", "action": rec.get("action") or "",
+                    "detail": rec.get("target") or ""})
+    return out
+
+
 def hidden_add(event_id):
     """הסתרת שיחה — כתיבה ישירה ל-hidden_calls (ignore-duplicates: הסתרה חוזרת לא מכפילה)."""
     r = requests.post(SUPABASE_URL + "/rest/v1/hidden_calls",
