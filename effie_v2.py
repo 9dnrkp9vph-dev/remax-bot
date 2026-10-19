@@ -11505,6 +11505,7 @@ td.long div{overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box
 .banner{margin:0 18px 12px;border-radius:14px;padding:12px 14px;background:#FBF6E8;border:1px solid #EADBB0;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .banner.ok{background:#E6F2EC;border-color:#BFE0CC}.banner b{font-weight:700}
 .warnTxt{color:#7A5E1C;font-size:13px}
+.hero{width:100%;max-height:260px;object-fit:cover;border-radius:14px;margin:6px 0 12px;display:block}.grid2 .f{overflow-wrap:anywhere;min-width:0}
 s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-new{background:#F4EEDD;color:#7A5E1C}.lnk{color:#2E6BD6;font-weight:500}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;border-radius:12px;padding:10px 16px;display:none;z-index:40}
 @media(max-width:900px){.page{grid-template-columns:1fr}.views{position:static}}
@@ -11616,8 +11617,13 @@ function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getEleme
       var ai = document.getElementById('avIn'); if (ai) ai.onchange = function(){ upAvatar(r, ai.files[0]); };
       return; }
     if (!META.editable.length){   /* מודול לקריאה בלבד: כל העמודות ככרטיס */
-      b.innerHTML = '<h2>' + esc(r.name || r.action || META.title) + '</h2><div class="grid2">' +
-        META.columns.map(function(c){ return '<div class="f' + (c[2] === 'long' ? ' wide' : '') + '"><b>' + esc(c[1]) + '</b>' + (c[2] === 'date' ? fdate(r[c[0]]) : (c[2] === 'status' ? cell(r, c) : esc(r[c[0]] == null ? '—' : r[c[0]]))) + '</div>'; }).join('') + '</div>';
+      var pc = META.columns.filter(function(c){ return c[2] === 'photo'; })[0];
+      var hero = pc && r[pc[0]] ? '<img class="hero" src="' + esc(r[pc[0]]) + '" alt="" onerror="this.remove()">' : '';
+      var ttl = MOD === 'props' ? ([r.address, r.city].filter(Boolean).join(', ') || r.type || META.title) : (r.name || r.action || META.title);
+      b.innerHTML = '<h2>' + esc(ttl) + '</h2>' + hero + '<div class="grid2">' +
+        META.columns.filter(function(c){ return c[2] !== 'photo'; }).map(function(c){ var v = r[c[0]];
+          var val = c[2] === 'date' ? fdate(v) : (['status', 'price', 'phone', 'link'].indexOf(c[2]) >= 0 ? cell(r, c) : esc(v == null || v === '' ? '—' : v));
+          return '<div class="f' + (c[2] === 'long' ? ' wide' : '') + '"><b>' + esc(c[1]) + '</b>' + (val || '—') + '</div>'; }).join('') + '</div>';
       return; }
     var h = '<div class="mut">שיחה · ' + fdate(r.date) + (r.edited ? ' · נערכה ב-CRM' : '') + (r.hidden ? ' · מחוקה' : '') + '</div>' +
       '<h2><span class="ph">' + esc(r.caller_phone || '—') + '</span> ← ' + esc(r.agent || '') + '</h2>' +
