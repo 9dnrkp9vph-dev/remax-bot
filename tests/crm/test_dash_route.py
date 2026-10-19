@@ -27,11 +27,26 @@ A._sbdb = FakeSB()
 c = A.app.test_client()
 j = c.get("/v2/api/crm/dashboard").get_json()
 ck(j["ok"] and SWR and SWR[0][0] == "crmdash" and SWR[0][1] == 900, (SWR, j.get("ok")))
-ck(set(["health", "periods", "series", "ai", "usage_today", "insights"]) <= set(j), list(j))
+ck(set(["health", "periods", "series", "ai", "usage_today"]) <= set(j), list(j))
 ck({h["key"]: h for h in j["health"]}["invoices"]["last"] is not None, "invoice last wired")
 ck(j["periods"]["calls"] == {"day": 1}, "report wired")
-c.get("/v2/api/crm/dashboard?fresh=1")
-ck(SWR[-1][0] != "crmdash" or len(SWR) == 1, "fresh bypasses swr")
 A._is_dev = lambda p: False
 ck(c.get("/v2/api/crm/dashboard").status_code == 403, "dev only")
 print("dash_route OK", n)
+# רענן: לא בונה בתוך הבקשה ולא במקביל — בנייה אחת ברקע שנכנסת למטמון; אבחון הדוח היומי לא נדרס
+import time as _t
+A._is_dev = lambda p: True
+PUT = []; A._cache_put = lambda k, v: PUT.append(k)
+A._REPORT_LAST.clear(); A._REPORT_LAST.update({"stage": "sent", "day": "2026-10-18"})
+def slow_report(day=None):
+    A._REPORT_LAST["stage"] = "calls"; _t.sleep(0.3); return {"data": {}}
+A.build_office_report = slow_report
+SWR.clear()
+A._swr = lambda key, ttl, build, max_stale=1800: (SWR.append((key, ttl)), {"ok": True, "cached": 1})[1]   # מטמון חם
+j1 = c.get("/v2/api/crm/dashboard?fresh=1").get_json()
+j2 = c.get("/v2/api/crm/dashboard?fresh=1").get_json()
+ck(j1.get("refreshing") and j2.get("refreshing"), (j1.get("refreshing"), j2.get("refreshing")))
+_t.sleep(1.0)
+ck(PUT.count("crmdash") == 1, ("one background build", PUT))
+ck(A._REPORT_LAST.get("stage") == "sent", ("daily report diagnostics kept", A._REPORT_LAST))
+print("dash_route refresh OK", n)

@@ -14,7 +14,9 @@ rep = {"calls": {"day": 5, "week": 20, "month": 80, "year": 900}, "calls_answere
        "shtaf": {"day": 1, "week": 2, "month": 3, "year": 4}, "deals_opened": {"day": 0, "week": 1, "month": 2, "year": 3},
        "deals_closed": {"day": 0, "week": 0, "month": 1, "year": 5}, "office_active": 410, "open_now": 7, "lawyer_now": 2,
        "scans": {"office": "19/10/2026 13:30", "shtaf": "19/10/2026 09:00", "newborn": "19/10/2026 14:40"}, "insights": ["תובנה"]}
-act = [{"ts": now - 600, "role": "agent", "action": "חיפוש נכסים", "name": "א"},
+act = [{"ts": now - 600, "role": "agent", "action": "חיפוש נכסים", "name": "א", "detail": "4 חדרים באפקה"},
+       {"ts": now - 650, "role": "agent", "action": "חיפוש נכסים", "name": "א", "detail": "(כל הנכסים)"},
+       {"ts": now - 60, "role": "client", "action": "סימון בדף קונה", "name": "לקוח"},
        {"ts": now - 700, "role": "agent", "action": "שאל את אפי", "name": "א"},
        {"ts": now - 3600, "role": "site", "action": "ליד מהאתר — סוכן AI אישי", "name": "ליד"}]
 def boom(*a): raise RuntimeError("down")
@@ -39,7 +41,9 @@ ck(d["series"]["signings"] == [0] * 30, "failed source → zeros")
 ck(d["ai"]["site"]["today"] == 14 and d["ai"]["site"]["cap"] == 500 and d["ai"]["site"]["hours"]["14"] == 5, d["ai"]["site"])
 ck(d["ai"]["effie_today"]["props"] == 1 and d["ai"]["effie_today"]["ask"] == 1, d["ai"]["effie_today"])
 ck(len(d["ai"]["site_7d"]) == 7 and d["ai"]["site_7d"][-1] == 14, d["ai"]["site_7d"])
-ck(d["usage_today"] == [{"name": "א", "min": 40}] and d["insights"] == ["תובנה"], "usage + insights")
+ck(d["usage_today"] == [{"name": "א", "min": 40}], "usage")
+ck("insights" not in d, "no yesterday-worded insights on a partial day")
+ck(H["app_usage"]["last"] == now - 600, "client (buyer page) activity is not Effie usage")
 q = build(src, now, True, "2026-10-19")
 ck(all(h["status"] == "quiet" for h in q["health"] if h["key"] in ("calls", "newborn", "app_usage")), "shabbat quiet for work-hours streams")
 ck(build({"report": boom}, now, False, "2026-10-19")["periods"]["calls"] == {}, "everything down → still builds")

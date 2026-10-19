@@ -11476,7 +11476,6 @@ function kpis(){var p=D.periods,ca=pv(p.calls),an=pv(p.calls_answered),ex=pv((p.
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
- var ins=(D.insights||[]).map(function(t){return '<li>'+esc(t)+'</li>';}).join('')||'<li class="mut">אין תובנות כרגע</li>';
  var us=(D.usage_today||[]).map(function(u){return '<tr><td>'+esc(u.name)+'</td><td>'+n(u.min)+' דק׳</td></tr>';}).join('')||'<tr><td class="mut" colspan="2">עוד אין שימוש היום</td></tr>';
  document.getElementById('app').innerHTML=
   '<div class="health">'+h+'</div>'+
@@ -11489,7 +11488,7 @@ function render(){
   '<div class="row r3"><div class="card"><h2>AI באתר לפי שעה (היום)</h2><div class="chart"><canvas id="c2"></canvas></div></div>'+
   '<div class="card"><h2>AI — אתר מול אפי, 7 ימים</h2><div class="chart"><canvas id="c3"></canvas></div></div>'+
   '<div class="card"><h2>הכי פעילים באפי היום</h2><table>'+us+'</table></div></div>'+
-  '<div class="card"><h2>תובנות</h2><ul class="ins">'+ins+'</ul></div>';
+  '';
  document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
  charts();
 }
@@ -11516,7 +11515,7 @@ function load(fresh){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){
   if(!j.ok){document.getElementById('app').innerHTML='<div class="card">'+(j.reason==='forbidden'?'אין הרשאה — לוח הבקרה לבעל המשרד בלבד.':'שגיאה: '+esc(j.reason))+'</div>';return;}
   D=j;document.getElementById('upd').textContent='עודכן '+new Date(j.built_at*1000).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});render();
  }).catch(function(){if(!D)document.getElementById('app').innerHTML='<div class="card">לא הצלחתי לטעון — נסה שוב.</div>';});}
-document.getElementById('rf').onclick=function(){load(true);};
+document.getElementById('rf').onclick=function(){document.getElementById('upd').textContent='מתעדכן…';load(true);setTimeout(function(){load(false);},25000);};
 load(false);setInterval(function(){load(false);},15*60*1000);
 </script></body></html>"""
 
@@ -11582,7 +11581,11 @@ def crm_ts(s):
     if not iso:
         m = _re.match(r"(\d{4})-(\d{2})-(\d{2})$", t)
         iso = ("%s-%s-%sT00:00:00+03:00" % m.groups()) if m else None
-    return _dt.datetime.fromisoformat(iso).timestamp() if iso else None
+    if not iso:
+        return None
+    # inv_parse_dt מצמיד +03:00 קבוע; כאן — שעון ישראל אמיתי (חורף +02:00 מ-25/10)
+    from zoneinfo import ZoneInfo as _ZT
+    return _dt.datetime.fromisoformat(iso[:16]).replace(tzinfo=_ZT("Asia/Jerusalem")).timestamp()
 
 
 # ── [CRM-3 19/10] דשבורד: בריאות זרמים ──────────────────────────────────────────
@@ -11690,7 +11693,7 @@ def crm_dashboard_data(src, now, quiet, today_iso):
         "office": crm_ts(scans.get("office")),
         "shtaf": crm_ts(scans.get("shtaf")),
         "site_leads": latest_act(lambda a: str(a.get("action", "")).startswith(("ליד מהאתר", "פנייה מהאתר"))),
-        "app_usage": latest_act(lambda a: a.get("role") not in ("system", "site", "")),
+        "app_usage": latest_act(lambda a: a.get("role") not in ("system", "site", "client", "")),
     }
     health = [{"key": k, "label": lbl, "last": last.get(k),
                "status": crm_health(last.get(k), now, gap, work, quiet and work)}
@@ -11721,6 +11724,8 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     eff_7d = [0] * 7
     for a in act:
         kind = next((k for k, acts in _CRM_EFFIE_AI.items() if a.get("action") in acts), None)
+        if kind == "props" and str(a.get("detail") or "").startswith("(כל"):
+            kind = None              # טעינת מסך הנכסים בלי חיפוש — לא חיפוש AI
         if not kind or not a.get("ts"):
             continue
         d = _dx.datetime.fromtimestamp(a["ts"], il).date().isoformat()
@@ -11737,7 +11742,7 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     t0 = _dx.datetime.fromisoformat(today_iso).replace(tzinfo=il).timestamp()
     usage = [{"name": r.get("name", ""), "min": r.get("min", 0)} for r in (get("usage", t0, default=[]) or [])][:10]
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
-            "usage_today": usage, "insights": list(rep.get("insights") or []), "scans": scans}
+            "usage_today": usage, "scans": scans}
 
 
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
@@ -14383,6 +14388,9 @@ def register(app, G):
         """[CRM-3] עמוד הדשבורד — מחשב, אייל בלבד (ההרשאה נבדקת ב-API)."""
         return Response(_CRM_DASH_HTML, mimetype="text/html")
 
+    import threading as _thd0
+    _CRM_DASH_BUSY = {"lock": _thd0.Lock(), "on": False}
+
     @app.route("/v2/api/crm/dashboard", methods=["GET"])
     def v2_api_crm_dashboard():
         """[CRM-3] נתוני הדשבורד. מפתח בלבד. נבנה דרך _swr (15 דק'); ?fresh=1 בונה עכשיו."""
@@ -14426,9 +14434,39 @@ def register(app, G):
                 quiet = False
             return crm_dashboard_data(src, now, quiet, today.isoformat())
 
+        def build_keep_diag():
+            # build_office_report כותב את שלבי ההפקה ל-_REPORT_LAST (כרטיס הדוח היומי בניהול) — לא לדרוס
+            rl = G.get("_REPORT_LAST")
+            saved = dict(rl) if isinstance(rl, dict) else None
+            try:
+                return build()
+            finally:
+                if saved is not None:
+                    rl.clear(); rl.update(saved)
+
         try:
-            data = build() if request.args.get("fresh") == "1" else G["_swr"]("crmdash", 900, build)
-            return jsonify(data)
+            if request.args.get("fresh") == "1":
+                # רענן: בנייה אחת ברקע (לא בתוך הבקשה, לא במקביל); מחזירים מיד את מה שיש
+                with _CRM_DASH_BUSY["lock"]:
+                    start = not _CRM_DASH_BUSY["on"]
+                    _CRM_DASH_BUSY["on"] = True
+                if start:
+                    def _bg():
+                        try:
+                            v = build_keep_diag()
+                            if v is not None:
+                                G["_cache_put"]("crmdash", v)
+                        except Exception as _e:
+                            if log: log.warning(f"crm dashboard refresh failed: {_e}")
+                        finally:
+                            with _CRM_DASH_BUSY["lock"]:
+                                _CRM_DASH_BUSY["on"] = False
+                    import threading as _thd
+                    _thd.Thread(target=_bg, daemon=True, name="crmdash").start()
+                data = dict(G["_swr"]("crmdash", 900, build_keep_diag))
+                data["refreshing"] = True
+                return jsonify(data)
+            return jsonify(G["_swr"]("crmdash", 900, build_keep_diag))
         except Exception as e:
             if log: log.error(f"crm dashboard error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
