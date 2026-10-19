@@ -14,7 +14,7 @@ import time
 
 FORM_KINDS = {"value": "הערכת שווי", "contact": "צור קשר", "career": "קריירה"}
 FIELD_LABELS = {"name": "שם", "phone": "טלפון", "address": "כתובת הנכס", "city": "עיר", "when": "מתי מתכננים למכור",
-                "experience": "ניסיון בנדל\"ן", "message": "הודעה", "page": "עמוד"}
+                "experience": "ניסיון בנדל\"ן", "message": "הודעה", "page": "עמוד", "src": "מקור"}
 MAX_FEATURED = 6
 
 
@@ -672,9 +672,19 @@ def register_site(app, G, store=None):
             subject, html, text = form_email(kind, fields, office or "המשרד")
             res = G["_report_send_email"](subject, html, text)
             ok = bool(res[0]) if isinstance(res, (tuple, list)) else bool(res)
+            # פוש מיידי לבעל המשרד (פרסום ממומן 20/10 — ליד שלא חוזרים אליו תוך שעה מת); נכשל המייל — הפוש מספיק
+            pushed = False
+            try:
+                where = " ".join(x for x in (fields.get("address", ""), fields.get("city", "")) if x).strip()
+                body = " · ".join(x for x in (fields.get("name", ""), fields.get("phone", ""), where,
+                                               ("מקור: " + fields["src"]) if fields.get("src") else "") if x)
+                G["send_push"](FORM_KINDS[kind] + " מהאתר", body[:180])
+                pushed = True
+            except Exception as e:
+                if log: log.warning(f"site form push: {e}")
             G["_log_activity"]("אתר", "site", "", "פנייה מהאתר — " + FORM_KINDS[kind],
-                               (fields.get("name", "") + " · " + fields.get("page", "")).strip(" ·"))
-            return jsonify({"ok": ok})
+                               " · ".join(x for x in (fields.get("name", ""), fields.get("page", ""), fields.get("src", "")) if x))
+            return jsonify({"ok": ok or pushed})
         except Exception as e:
             if log: log.warning(f"site form: {e}")
             return jsonify({"ok": False})

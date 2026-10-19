@@ -40,5 +40,22 @@ def test_form_route(make_app, monkeypatch):
     r = c.post("/site/api/form", json={"key": "secret", "kind": "value", "fields": {"name": "דנה", "phone": "0521234567"}})
     assert r.get_json() == {"ok": True} and sent and app.logs
     assert c.post("/site/api/form", json={"key": "secret", "kind": "zzz", "fields": {}}).status_code == 400
-    app2 = make_app(_report_send_email=lambda s, h, t: (False, "no channel"))
+    def no_push(*a):
+        raise RuntimeError("no push")
+    app2 = make_app(_report_send_email=lambda s, h, t: (False, "no channel"), send_push=no_push)
     assert app2.test_client().post("/site/api/form", json={"key": "secret", "kind": "contact", "fields": {"name": "א"}}).get_json() == {"ok": False}
+
+
+def test_form_pushes_owner_with_source(make_app, monkeypatch):
+    """ליד מהאתר (פרסום ממומן) — פוש מיידי לבעל המשרד עם מקור; גם כשהמייל נכשל הליד נחשב 'נשלח'."""
+    monkeypatch.setenv("SITE_KEY", "secret")
+    pushes = []
+    app = make_app(_report_send_email=lambda s, h, t: (False, "down"), send_push=lambda *a: pushes.append(a))
+    r = app.test_client().post("/site/api/form", json={"key": "secret", "kind": "value", "fields": {
+        "name": "דנה", "phone": "0521234567", "address": "אהוד מנור 4", "city": "קרית ביאליק", "src": "facebook / sellers"}})
+    assert r.get_json() == {"ok": True}
+    title, body = pushes[0][0], pushes[0][1]
+    assert title == "הערכת שווי מהאתר"
+    assert "0521234567" in body and "אהוד מנור 4 קרית ביאליק" in body and "מקור: facebook / sellers" in body
+    from site_api import form_email
+    assert "מקור" in form_email("value", {"src": "facebook / sellers"}, "X")[2]
