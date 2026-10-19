@@ -12379,6 +12379,48 @@ def _crm_int(v):
     return int(d) if d else ""
 
 
+_SIG_HDR_CACHE = {}
+
+
+def _crm_sig_token(g):
+    """טוקן מסמך אפי של שורת חתימה: doc_token, קישור /s/<token>, או מזהה בפורמט טוקן (16 תווים)."""
+    tok = str(g.get("doc_token") or "").strip()
+    if tok:
+        return tok
+    m = _re.search(r"/s/([A-Za-z0-9_-]{8,64})", str(g.get("commission_pct") or ""))
+    if m:
+        return m.group(1)
+    eid = str(g.get("event_id") or "")
+    return eid if (_re.fullmatch(r"[A-Za-z0-9_-]{16}", eid) and _re.search(r"[A-Za-z]", eid)) else ""
+
+
+def crm_sig_fill_budget(sigs, fetch_headers, header_prices):
+    """[CRM 20/10 'בוריס עדיין לא מופיע'] שורות חתימה בלי תקציב/מחיר — המחיר מכותרת המסמך החתום באפי
+    ('מחיר מבוקש' בכותרת; כמה נכסים = ממוצע). שאילתה אחת לכל הטוקנים; כשל = בלי שינוי. לא משנה את הקלט."""
+    need = {}
+    for i, g in enumerate(sigs or []):
+        if not str(g.get("budget") or "").strip():
+            tok = _crm_sig_token(g)
+            if tok:
+                need.setdefault(tok, []).append(i)
+    if not need:
+        return list(sigs or [])
+    try:
+        hdrs = fetch_headers(sorted(need)) or {}
+    except Exception:
+        return list(sigs or [])
+    out = list(sigs)
+    for tok, idxs in need.items():
+        try:
+            ps = [p for p in (header_prices(hdrs.get(tok) or "") or []) if p]
+        except Exception:
+            ps = []
+        if ps:
+            for i in idxs:
+                out[i] = dict(out[i], budget=str(sum(ps) // len(ps)))
+    return out
+
+
 def crm_unify_agents(records, keyfn, field="agent", also=("contact",)):
     """שם סוכן אחד לכל סוכן: מסיר תווים נסתרים ורווחים כפולים, ומאחד כתיב שונה (keyfn = _canon_key)
     לכתיב הנפוץ ביותר — אחרת בסינון לפי סוכן כל שם מופיע פעמיים והחתימות מתפצלות ביניהם."""
@@ -15439,8 +15481,15 @@ def register(app, G):
                             "updated_by": str(t.get("updated_by") or ""), "date": 0})
             return out
         if module == "signatures":
+            def _sig_doc_headers(toks):
+                """כותרות מסמכי החתימה (נשמרות לתמיד בזיכרון — כותרת של מסמך לא משתנה)."""
+                miss = [t for t in toks if t not in _SIG_HDR_CACHE]
+                if miss:
+                    _SIG_HDR_CACHE.update(_sb_mod().signdoc_headers(miss) or {})
+                return {t: _SIG_HDR_CACHE.get(t, "") for t in toks}
             def _build_sigs():
-                return crm_unify_agents(crm_sig_records(G["get_signings"]() or [], {"ep": G["_excl_epoch"], "label": G["_deal_label"]}),
+                sigs = crm_sig_fill_budget(G["get_signings"]() or [], _sig_doc_headers, G["_sign_header_prices"])
+                return crm_unify_agents(crm_sig_records(sigs, {"ep": G["_excl_epoch"], "label": G["_deal_label"]}),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
             return swr("crmsigs", 120, _build_sigs) if swr else _build_sigs()

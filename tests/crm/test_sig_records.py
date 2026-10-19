@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 import _load
 from _load import ck
-ns = _load.load("crm_unify_agents", "crm_sig_records", "_crm_dmy", "_crm_int", "CRM_VIEWS", "CRM_MODULES", "_crm_day", "crm_query", "_crm_norm", "inv_phone9")
+ns = _load.load("crm_sig_fill_budget", "_crm_sig_token", "crm_unify_agents", "crm_sig_records", "_crm_dmy", "_crm_int", "CRM_VIEWS", "CRM_MODULES", "_crm_day", "crm_query", "_crm_norm", "inv_phone9")
 rec, q = ns["crm_sig_records"], ns["crm_query"]
 NOW = 1_800_000_000.0
 lab = {"CLIENT_SALE": "קונים", "OWNER_SALE": "מוכר", "OWNER_EXCLUSIVE": "בלעדיות", "CLIENT_RENT": "שכירות"}
@@ -43,4 +43,17 @@ U = ns["crm_unify_agents"]
 recs = [{"agent": "אירנה טנדשוילי"}, {"agent": "אירנה טנדשווילי"}, {"agent": "אירנה טנדשוילי"}, {"agent": "אוהד\u200f פלד"}, {"agent": "אוהד  פלד"}, {"agent": ""}]
 U(recs, lambda n: n.replace(" ", "").replace("וו", "ו"))
 ck([r["agent"] for r in recs] == ["אירנה טנדשוילי"] * 3 + ["אוהד פלד", "אוהד פלד", ""], ("one name per agent, most common spelling", recs))
+F = ns["crm_sig_fill_budget"]
+sg = [{"event_id": "307600478", "commission_pct": "https://remax-bot.onrender.com/s/DpBmo_M09njPnuoF", "budget": ""},
+      {"event_id": "Tq2hP6JNy8nP67Ju", "doc_token": "Tq2hP6JNy8nP67Ju", "commission_pct": ""},
+      {"event_id": "fb:1", "commission_pct": "", "budget": "900000"},
+      {"event_id": "12345", "commission_pct": "2"}]
+asked = []
+def fh(toks):
+    asked.extend(toks); return {"DpBmo_M09njPnuoF": "HDR-3280000", "Tq2hP6JNy8nP67Ju": "HDR-2000000|HDR-2400000"}
+hp = lambda hdr: [int(x.split("-")[1]) for x in hdr.split("|")]
+out = F(sg, fh, hp)
+ck([g.get("budget") for g in out] == ["3280000", "2200000", "900000", None], ("price from the signed document", out))
+ck(sorted(asked) == ["DpBmo_M09njPnuoF", "Tq2hP6JNy8nP67Ju"] and "budget" not in sg[1], ("only rows without budget, input not mutated", asked))
+ck(F(sg, lambda t: (_ for _ in ()).throw(RuntimeError("down")), hp)[0].get("budget") == "", "lookup failure = unchanged")
 print("sig_records OK", _load.n)

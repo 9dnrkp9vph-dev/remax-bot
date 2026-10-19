@@ -746,6 +746,22 @@ def upsert_signature_row(source_key, received_iso, raw):
 
 
 
+def signdoc_headers(tokens):
+    """{token: header} של מסמכי חתימה — במנות של 100 (מחיר מבוקש לשורות חתימה בלי תקציב, CRM)."""
+    out, toks = {}, [t for t in dict.fromkeys(str(x) for x in (tokens or [])) if t and all(c.isalnum() or c in "-_" for c in t)]
+    for i in range(0, len(toks), 100):
+        part = toks[i:i + 100]
+        r = requests.get(SUPABASE_URL + "/rest/v1/sign_docs", headers=_headers(),
+                         params={"select": "token,header", "office_id": "eq." + SB_OFFICE_ID,
+                                 "token": "in.(" + ",".join(part) + ")"}, timeout=20)
+        r.raise_for_status()
+        for rec in r.json() or []:
+            out[str(rec.get("token"))] = rec.get("header") or ""
+        for t in part:
+            out.setdefault(t, "")
+    return out
+
+
 def signdoc_save(doc):
     """upsert מסמך חתימה לפי token (טבלת sign_docs). doc במבנה של savesigndoc:
     doc_token, event_id, status, header, docs (מחרוזת JSON), signature, signed_at."""
