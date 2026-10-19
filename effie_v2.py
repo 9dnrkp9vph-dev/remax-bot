@@ -11548,7 +11548,7 @@ function cell(r, c){ var v = r[c[0]], t = c[2];
   if (t === 'date') return fdate(v);
   if (t === 'phone') return v ? '<span class="ph">' + esc(fmtPh(v)) + '</span>' : '';
   if (t === 'price') return v ? ((r.dropped && r.price_old ? '<s class="old">₪' + Number(r.price_old).toLocaleString('en-US') + '</s> ' : '') + '<b>₪' + Number(v).toLocaleString('en-US') + '</b>' + (r.dropped ? ' <span class="st st-y">↓ ירידה</span>' : '') + (r.new ? ' <span class="st st-new">חדש</span>' : '')) : '';
-  if (t === 'link') return /^https?:\/\//.test(v || '') ? '<a class="lnk" href="' + esc(v) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">למודעה</a>' : '';
+  if (t === 'link') return /^(https?:\/\/|\/[a-z])/.test(v || '') ? '<a class="lnk" href="' + esc(v) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">למודעה</a>' : '';
   if (t === 'status') return '<span class="st ' + stCls(v) + '">' + esc(v) + '</span>';
   if (t === 'score') return v ? v + '/5' : '—';
   if (t === 'long') return '<div>' + esc(v) + '</div>';
@@ -12335,9 +12335,14 @@ def crm_sig_records(sigs, h):
         link = cp if cp.lower().startswith(("http://", "https://")) else ""
         signed = bool(link) or bool(cp and any(ch.isdigit() for ch in cp))
         eid = str(g.get("event_id") or "")
+        tok = str(g.get("doc_token") or "").strip()     # שורה שנוצרה באפי — גם לפני שנחתמה
+        if not tok and _re.fullmatch(r"[A-Za-z0-9_-]{16}", eid) and _re.search(r"[A-Za-z]", eid):
+            tok = eid    # עותק מהגיליון: מזהה = טוקן אפי (token_urlsafe(12) = 16 תווים; פיירברי = GUID, ת"ז = ספרות)
+        if not link and tok and _re.fullmatch(r"[A-Za-z0-9_-]{6,64}", tok):
+            link = "/s/" + tok                           # מסמך שממתין לחתימה — נפתח בדף ההסכם
         if "hatimatova" in link.lower():
             src = "חתימה טובה"
-        elif "/s/" in link or eid.startswith("app:"):
+        elif tok or "/s/" in link or eid.startswith("app:"):
             src = "אפי"
         else:
             src = "פיירברי"

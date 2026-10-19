@@ -32,4 +32,11 @@ ck({v: V(v) for v in ("all", "buyers", "owners", "exclusive", "rent", "pending",
    {v: V(v) for v in ("all", "buyers", "owners", "exclusive", "rent", "pending", "hatimatova", "app")})
 ck(q(R, "0532254463", {"view": "all"}, "date", "desc", 1, 50, NOW, module="signatures")["total"] == 1, "search by client phone")
 ck(q(R, "", {"view": "all", "agent": "רפי"}, "date", "desc", 1, 50, NOW, module="signatures")["total"] == 2, "agent filter")
+P = rec([{"event_id": "KE90D8L4YOf1guDF", "doc_token": "KE90D8L4YOf1guDF", "status": "pending", "deal_type": "CLIENT_SALE",
+            "client_name": "אגומאס ג'מבר", "agent": "נדב רייזר", "address": "אלי כהן 5", "commission_pct": "", "received_at": str(NOW)}], h)[0]
+ck(P["source"] == "אפי" and P["status"] == "ממתין" and P["link"] == "/s/KE90D8L4YOf1guDF", ("pending Effie doc = Effie, link to the doc", P))
+Q = rec([{"event_id": "KE90D8L4YOf1guDF", "deal_type": "CLIENT_SALE", "client_name": "עותק מהגיליון", "commission_pct": "", "received_at": str(NOW)},
+         {"event_id": "3f2a1b4c-1111-2222-3333-444455556666", "deal_type": "OWNER_SALE", "client_name": "פיירברי", "commission_pct": "", "received_at": str(NOW)},
+         {"event_id": "314970617", "deal_type": "OWNER_SALE", "client_name": "תז", "commission_pct": "", "received_at": str(NOW)}], h)
+ck([x["source"] for x in Q] == ["אפי", "פיירברי", "פיירברי"] and Q[0]["link"] == "/s/KE90D8L4YOf1guDF", ("16-char Effie token id = Effie", Q))
 print("sig_records OK", _load.n)
