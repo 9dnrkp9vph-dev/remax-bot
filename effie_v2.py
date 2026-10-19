@@ -14554,6 +14554,190 @@ def register(app, G):
                         "invoices": parallel_match_invoices(legacy_inv, direct_inv),
                         "sig_nonapp": sig_nonapp_by_agent(G["get_signings"]() or [], d0.isoformat())})
 
+    # ── [CRM-2 19/10] API של מסכי ה-CRM (מפתח בלבד) ──────────────────────────
+    def _crm_guard():
+        s = G["_web_auth"]()
+        return s if (s and G["_is_dev"](s.get("phone", ""))) else None
+
+    def _crm_records(module):
+        sb = G.get("_sbdb")
+        try:
+            ov = sb.crm_overrides_fetch(module) if (sb and sb.enabled()) else {}
+        except Exception as e:
+            if log: log.warning(f"crm overrides read failed: {e}")
+            ov = {}
+        if module == "calls":
+            try:
+                hidden = set(G["_fetch_hidden_calls"]() or set())
+            except Exception:
+                hidden = set()
+            return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden)
+        return []
+
+    def _crm_args():
+        a = request.args
+        filters = {k[2:]: v for k, v in a.items() if k.startswith("f_") and v}
+        filters["view"] = a.get("view", "all")
+        return a.get("q", ""), filters, a.get("sort", "date"), a.get("dir", "desc")
+
+    @app.route("/v2/api/crm/<module>/meta", methods=["GET"])
+    def v2_api_crm_meta(module):
+        if not _crm_guard():
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        mod = CRM_MODULES.get(module)
+        if not mod:
+            return jsonify({"ok": False, "reason": "unknown_module"}), 404
+        import time as _tm
+        recs, now = _crm_records(module), _tm.time()
+        counts = {v: crm_query(recs, "", {"view": v}, "date", "desc", 1, 1, now)["total"] for v, _l in mod["views"]}
+        agents = sorted({r.get("agent") for r in recs if r.get("agent") and not r.get("hidden")})
+        return jsonify({"ok": True, "module": module, "title": mod["title"], "columns": mod["columns"],
+                        "default_cols": mod["default_cols"], "editable": mod["editable"], "views": mod["views"],
+                        "counts": counts, "agents": agents,
+                        "modules": [[k, v["title"]] for k, v in CRM_MODULES.items()]})
+
+    @app.route("/v2/api/crm/<module>/list", methods=["GET"])
+    def v2_api_crm_list(module):
+        if not _crm_guard():
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        if module not in CRM_MODULES:
+            return jsonify({"ok": False, "reason": "unknown_module"}), 404
+        import time as _tm
+        q, filters, sort, direction = _crm_args()
+        try:
+            page = int(request.args.get("page", "1") or 1)
+        except ValueError:
+            page = 1
+        res = crm_query(_crm_records(module), q, filters, sort, direction, page, 50, _tm.time())
+        return jsonify({"ok": True, "rows": res["rows"], "total": res["total"], "page": page, "size": 50})
+
+    def _crm_transcript(rec):
+        """תמלול: לפי המפתח (שיחה ישירה mk:), אחרת השיחה התואמת בטבלת הצל (טלפונים + ±15 דק')."""
+        sb = G.get("_sbdb")
+        if not (sb and sb.enabled()):
+            return None
+        t = sb.transcript_get(rec["key"]) if rec["key"].startswith("mk:") else None
+        if t or not rec.get("date"):
+            return t
+        import datetime as _dtr
+        since = _dtr.datetime.utcfromtimestamp(rec["date"] - 86400).date().isoformat()
+        best, best_d = None, 901
+        for r in sb.fetch_shadow("calls", since) or []:
+            if inv_phone9(r.get("caller_phone")) != inv_phone9(rec.get("caller_phone")):
+                continue
+            if inv_phone9(r.get("agent_phone")) != inv_phone9(rec.get("agent_phone")):
+                continue
+            ts = crm_ts(r.get("received_at"))
+            if ts is not None and abs(ts - rec["date"]) < best_d:
+                best, best_d = r, abs(ts - rec["date"])
+        return sb.transcript_get(best.get("_source_key")) if best else None
+
+    @app.route("/v2/api/crm/<module>/record", methods=["GET", "POST"])
+    def v2_api_crm_record(module):
+        s = _crm_guard()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        mod = CRM_MODULES.get(module)
+        if not mod:
+            return jsonify({"ok": False, "reason": "unknown_module"}), 404
+        sb = G.get("_sbdb")
+        if request.method == "GET":
+            key = request.args.get("key", "")
+            rec = next((r for r in _crm_records(module) if r["key"] == key), None)
+            if not rec:
+                return jsonify({"ok": False, "reason": "not_found"}), 404
+            try:
+                t = _crm_transcript(rec) or {}
+            except Exception as e:
+                if log: log.warning(f"crm transcript lookup failed: {e}")
+                t = {}
+            return jsonify({"ok": True, "record": rec, "transcript": t.get("transcript") or "",
+                            "recording": t.get("recording_url") or ""})
+        b = request.get_json(silent=True) or {}
+        key = str(b.get("key") or "").strip()
+        who = s.get("name", "")
+        if key and b.get("delete"):
+            j = G["_hidden_write"]("hidecall", key)
+            if not j or not j.get("ok"):
+                return jsonify({"ok": False, "reason": "fail"}), 502
+            G["_cache_clear"]("hidden_calls")
+            G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — מחיקת שיחה", key)
+            return jsonify({"ok": True})
+        if key and b.get("restore"):
+            j = G["_hidden_write"]("unhidecall", key)
+            if not j or not j.get("ok"):
+                return jsonify({"ok": False, "reason": "fail"}), 502
+            G["_cache_clear"]("hidden_calls")
+            G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — שחזור שיחה", key)
+            return jsonify({"ok": True})
+        allowed = {f for f, _l in mod["editable"]}
+        fields = {k: str(v)[:4000] for k, v in (b.get("fields") or {}).items() if k in allowed}
+        if not (sb and sb.enabled()):
+            return jsonify({"ok": False, "reason": "no_supabase"}), 500
+        if key:
+            sb.crm_override_upsert(module, key, fields, who)
+            G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — עריכת שיחה", key + " · " + ",".join(fields))
+            return jsonify({"ok": True, "key": key})
+        import uuid as _uu, datetime as _dn
+        nk = "crm:" + _uu.uuid4().hex[:12]
+        now = _dn.datetime.now(_dn.timezone.utc)
+        raw = {"event_id": nk, "status": fields.get("status", ""), "agent": fields.get("agent", ""), "agent_phone": "",
+               "caller_phone": fields.get("caller_phone", ""), "duration_sec": "",
+               "transcript_summary": fields.get("summary", ""), "received_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+        from zoneinfo import ZoneInfo as _ZN
+        sb.call_upsert_direct(nk, now.astimezone(_ZN("Asia/Jerusalem")).date().isoformat(), raw)
+        if fields.get("note"):
+            sb.crm_override_upsert(module, nk, {"note": fields["note"]}, who)
+        G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
+        G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — שיחה חדשה (ידנית)", nk)
+        return jsonify({"ok": True, "key": nk})
+
+    @app.route("/v2/api/crm/<module>/export", methods=["GET"])
+    def v2_api_crm_export(module):
+        if not _crm_guard():
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        mod = CRM_MODULES.get(module)
+        if not mod:
+            return jsonify({"ok": False, "reason": "unknown_module"}), 404
+        import time as _tm
+        q, filters, sort, direction = _crm_args()
+        recs = _crm_records(module)
+        allrows = crm_query(recs, q, filters, sort, direction, 1, 200, _tm.time())
+        total = allrows["total"]
+        rows = []
+        for p in range(1, total // 200 + 2):
+            rows += crm_query(recs, q, filters, sort, direction, p, 200, _tm.time())["rows"]
+        data = crm_csv(rows, mod["columns"])
+        return Response(data, mimetype="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": "attachment; filename=crm-%s.csv" % module})
+
+    @app.route("/v2/api/crm/views", methods=["GET", "POST"])
+    def v2_api_crm_views():
+        if not _crm_guard():
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        module = request.args.get("module", "")
+        if module not in CRM_MODULES:
+            return jsonify({"ok": False, "reason": "unknown_module"}), 404
+        if request.method == "GET":
+            views = ((G["_load_config"]() or {}).get("v2_crm_views") or {}).get(module) or []
+            return jsonify({"ok": True, "views": views})
+        b = request.get_json(silent=True) or {}
+        name = str(b.get("name") or "").strip()[:40]
+        if not name:
+            return jsonify({"ok": False, "reason": "no_name"})
+        item = {"name": name, "q": str(b.get("q") or "")[:200], "view": str(b.get("view") or "all")[:20],
+                "filters": {k: str(v)[:80] for k, v in (b.get("filters") or {}).items()},
+                "delete": bool(b.get("delete"))}
+
+        def mut(cfg):
+            allv = cfg.setdefault("v2_crm_views", {})
+            lst = [v for v in (allv.get(module) or []) if v.get("name") != name]
+            if not item.pop("delete"):
+                lst.append(item)
+            allv[module] = lst[:30]
+        G["_config_mutate"](mut)
+        return jsonify({"ok": True})
+
     _WA_SCREENS = {"/v2/newborn": "נכס נולד", "/v2/buyers": "קונים", "/v2/calls": "שיחות", "/v2/sigs": "חתימות",
                    "/v2/props": "נכסים", "/v2/meets": "יומן", "/v2/deals": "עסקאות", "/v2/home": "בית",
                    "/v2/invoices": "חשבוניות", "/v2/history": "היסטוריית עסקאות"}
