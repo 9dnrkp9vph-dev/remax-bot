@@ -679,6 +679,27 @@ window.c2cDial = c2cDial;
     return out;
   }
   window.waWebUrl = waWebUrl; window.waIsDesktop = waIsDesktop;
+  /* [CRM-3 19/10] אייל: "כמה הודעות וואטסאפ הסוכנים שלחו מאצלם" — כל פתיחת וואטסאפ מאפי (כל מכשיר)
+     נרשמת בשרת לפי המסך. נספרת כוונת שליחה (פתיחת הצ'אט), לא מסירה. */
+  var _waLast = 0;
+  function waBeacon(u){
+    try{
+      var s = String(u || '');
+      if (!waWebUrl(s) && !/^https?:\/\/web\.whatsapp\.com\/send/i.test(s)) return;
+      var now = Date.now(); if (now - _waLast < 1500) return; _waLast = now;
+      var t = ''; try{ t = localStorage.getItem('fbTok') || ''; }catch(_e){}
+      if (!t) return;
+      fetch('/v2/api/wa/click', {method:'POST', keepalive:true,
+        headers:{'Content-Type':'application/json','X-Auth-Token':t},
+        body: JSON.stringify({page: location.pathname})}).catch(function(){});
+    }catch(_e){}
+  }
+  var _open0 = window.open;
+  window.open = function(u){ waBeacon(u); return _open0.apply(window, arguments); };
+  document.addEventListener('click', function(ev){
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+    if (a) waBeacon(a.getAttribute('href'));
+  }, true);
   if (!waIsDesktop()) return;
   /* טאב אחד קבוע (אייל 27/09: "כל פעם פותח חלון חדש"): שם-חלון קבוע → הדפדפן מנווט את אותו
      טאב במקום לפתוח חדש, ומביאים אותו לחזית. (טאב וואטסאפ ווב שנפתח ידנית הדפדפן לא חושף לנו.) */
@@ -11471,11 +11492,14 @@ function kpis(){var p=D.periods,ca=pv(p.calls),an=pv(p.calls_answered),ex=pv((p.
  var k=[['שיחות נכנסות',n(ca),ca?('נענו '+Math.round(an*100/ca)+'%'):'—'],['חתימות',n(pv(p.signings)),'מתוכן בלעדיות '+n(ex)],
   ['קונים חדשים',n(pv(p.buyers)),''],['נכס נולד',n(pv(p.newborn)),'שת״פ חדשות '+n(pv(p.shtaf))],
   ['עסקאות',n(pv(p.deals_closed))+' נסגרו','נפתחו '+n(pv(p.deals_opened))+' · פתוחים '+n(p.open_now)+' · אצל עו״ד '+n(p.lawyer_now)],
-  ['נכסי המשרד בפרסום',n(p.office_active),'כרגע']];
+  ['נכסי המשרד בפרסום',n(p.office_active),'בלעדי '+n(p.office_active_excl)+' · רגיל '+n((p.office_active||0)-(p.office_active_excl||0))]];
  return k.map(function(x){return '<div class="card kpi"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+'</div><div class="x">'+esc(x[2])+'</div></div>';}).join('');}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
+ var W=D.wa||{agents_today:{},agents_7d:[0,0,0,0,0,0,0],official_today:{sent:0,failed:0},official_7d:[0,0,0,0,0,0,0]};
+ var wk=Object.keys(W.agents_today).sort(function(x,y){return W.agents_today[y]-W.agents_today[x];}),wt=0;
+ var wr=wk.map(function(k){wt+=W.agents_today[k];return '<tr><td>'+esc(k)+'</td><td>'+n(W.agents_today[k])+'</td></tr>';}).join('');
  var us=(D.usage_today||[]).map(function(u){return '<tr><td>'+esc(u.name)+'</td><td>'+n(u.min)+' דק׳</td></tr>';}).join('')||'<tr><td class="mut" colspan="2">עוד אין שימוש היום</td></tr>';
  document.getElementById('app').innerHTML=
   '<div class="health">'+h+'</div>'+
@@ -11488,7 +11512,11 @@ function render(){
   '<div class="row r3"><div class="card"><h2>AI באתר לפי שעה (היום)</h2><div class="chart"><canvas id="c2"></canvas></div></div>'+
   '<div class="card"><h2>AI — אתר מול אפי, 7 ימים</h2><div class="chart"><canvas id="c3"></canvas></div></div>'+
   '<div class="card"><h2>הכי פעילים באפי היום</h2><table>'+us+'</table></div></div>'+
-  '';
+  '<div class="row r2"><div class="card"><h2>וואטסאפ — 7 ימים</h2><div class="chart"><canvas id="c4"></canvas></div></div>'+
+  '<div class="card"><h2>וואטסאפ היום</h2><div class="big">'+n(wt)+' <span class="mut">נפתחו מהטלפון של הסוכנים</span></div>'+
+  '<table>'+(wr||'<tr><td class="mut" colspan="2">עוד לא נפתח וואטסאפ היום</td></tr>')+'</table>'+
+  '<h2 style="margin-top:16px">מהמספר הרשמי</h2><div class="big">'+n(W.official_today.sent)+' <span class="mut">נשלחו'+(W.official_today.failed?' · '+n(W.official_today.failed)+' נכשלו':'')+'</span></div>'+
+  '<div class="mut">נספרת פתיחת הצ׳אט מאפי, לא מסירה. נספר מ-19/10.</div></div></div>';
  document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
  charts();
 }
@@ -11508,6 +11536,8 @@ function charts(){
   datasets:[{data:hrs.map(function(h){return D.ai.site.hours[h]||0;}),backgroundColor:'#C29435',borderRadius:4}]}});
  CH.c3=new Chart(document.getElementById('c3'),{type:'bar',options:base,data:{labels:D.ai.days7.map(dd),datasets:[
   {label:'אתר',data:D.ai.site_7d,backgroundColor:'#C29435',borderRadius:4},{label:'אפי',data:D.ai.effie_7d,backgroundColor:'#1E3A5F',borderRadius:4}]}});
+ if(D.wa)CH.c4=new Chart(document.getElementById('c4'),{type:'bar',options:base,data:{labels:D.ai.days7.map(dd),datasets:[
+  {label:'מהטלפון של הסוכנים',data:D.wa.agents_7d,backgroundColor:'#157A43',borderRadius:4},{label:'מהמספר הרשמי',data:D.wa.official_7d,backgroundColor:'#1E3A5F',borderRadius:4}]}});
 }
 function load(fresh){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){}
  if(!t){document.getElementById('app').innerHTML='<div class="card">צריך להיות מחובר לאפי בדפדפן הזה. <a href="/v2/home">כניסה לאפי</a> ואז לחזור לעמוד.</div>';return;}
@@ -11702,7 +11732,7 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     pk = ("calls", "calls_answered", "signings", "signings_by_label", "buyers", "newborn", "shtaf",
           "deals_opened", "deals_closed")
     periods = {k: rep.get(k) or {} for k in pk}
-    for k in ("office_active", "open_now", "lawyer_now"):
+    for k in ("office_active", "office_active_excl", "open_now", "lawyer_now"):
         periods[k] = rep.get(k) or 0
 
     first = _dx.date.fromisoformat(today_iso) - _dx.timedelta(days=29)
@@ -11710,7 +11740,9 @@ def crm_dashboard_data(src, now, quiet, today_iso):
               "calls": crm_daily_series(calls, lambda r: r.get("received_at"), 30, today_iso),
               "signings": crm_daily_series(sigs, lambda r: r.get("received_at"), 30, today_iso),
               "buyers": crm_daily_series(buyers, lambda r: r.get("date"), 30, today_iso),
-              "newborn": crm_daily_series(newborn, lambda r: r.get("נוצר בתאריך"), 30, today_iso)}
+              # 19/10 (אייל: "מה קרה היום שפתאום הגרף קפץ"): 'נוצר בתאריך' = עריכה/הקפצה אחרונה ביד2;
+              # 'נראה לראשונה' = מתי המודעה באמת נולדה אצלנו — כמו בכל שאר האפליקציה (_newborn_created_epoch)
+              "newborn": crm_daily_series(newborn, lambda r: r.get("נראה לראשונה") or r.get("נוצר בתאריך"), 30, today_iso)}
 
     usage_ai = get("site_ai", default={}) or {}
     def site_total(day):
@@ -11739,10 +11771,30 @@ def crm_dashboard_data(src, now, quiet, today_iso):
           "site_7d": [site_total(d) for d in days7], "days7": days7,
           "effie_today": eff_today, "effie_7d": eff_7d}
 
+    # [CRM-3] וואטסאפ: מהטלפון של הסוכנים (פתיחה מאפי, לפי מסך) ומהמספר הרשמי (360dialog)
+    wa = {"agents_today": {}, "agents_7d": [0] * 7, "official_today": {"sent": 0, "failed": 0}, "official_7d": [0] * 7}
+    for a in act:
+        act_s, ts = str(a.get("action") or ""), a.get("ts")
+        if not ts:
+            continue
+        d = _dx.datetime.fromtimestamp(ts, il).date().isoformat()
+        if act_s.startswith("וואטסאפ מהטלפון — "):
+            if d == today_iso:
+                scr = act_s.split("— ", 1)[1]
+                wa["agents_today"][scr] = wa["agents_today"].get(scr, 0) + 1
+            if d in days7:
+                wa["agents_7d"][days7.index(d)] += 1
+        elif act_s.startswith("וואטסאפ רשמי — "):
+            okk = act_s.endswith("נשלח")
+            if d == today_iso:
+                wa["official_today"]["sent" if okk else "failed"] += 1
+            if okk and d in days7:
+                wa["official_7d"][days7.index(d)] += 1
+
     t0 = _dx.datetime.fromisoformat(today_iso).replace(tzinfo=il).timestamp()
     usage = [{"name": r.get("name", ""), "min": r.get("min", 0)} for r in (get("usage", t0, default=[]) or [])][:10]
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
-            "usage_today": usage, "scans": scans}
+            "usage_today": usage, "scans": scans, "wa": wa}
 
 
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
@@ -14382,6 +14434,21 @@ def register(app, G):
                         "calls": parallel_match_calls(legacy_calls, direct_calls),
                         "invoices": parallel_match_invoices(legacy_inv, direct_inv),
                         "sig_nonapp": sig_nonapp_by_agent(G["get_signings"]() or [], d0.isoformat())})
+
+    _WA_SCREENS = {"/v2/newborn": "נכס נולד", "/v2/buyers": "קונים", "/v2/calls": "שיחות", "/v2/sigs": "חתימות",
+                   "/v2/props": "נכסים", "/v2/meets": "יומן", "/v2/deals": "עסקאות", "/v2/home": "בית",
+                   "/v2/invoices": "חשבוניות", "/v2/history": "היסטוריית עסקאות"}
+
+    @app.route("/v2/api/wa/click", methods=["POST"])
+    def v2_api_wa_click():
+        """[CRM-3] פתיחת וואטסאפ מאפי (מהטלפון/מחשב של הסוכן) — שורה ביומן הפעילות לפי מסך."""
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        page = str((request.get_json(silent=True) or {}).get("page", "") or "")[:60]
+        screen = _WA_SCREENS.get(page.rstrip("/"), "אחר")
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "וואטסאפ מהטלפון — " + screen, page)
+        return jsonify({"ok": True})
 
     @app.route("/v2/crm/dashboard", methods=["GET"])
     def v2_crm_dashboard_page():

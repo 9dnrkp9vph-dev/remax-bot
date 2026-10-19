@@ -455,6 +455,12 @@ def _d360_post_message(payload):
     try: j = r.json()
     except Exception: j = {}
     ok = bool(r.ok and isinstance(j, dict) and j.get("messages"))
+    # [CRM-3 19/10] אייל: "כמה הודעות יצאו מתוך הוואטסאפ הרשמי" — כל שליחה (טקסט/תבנית/מסמך) עוברת כאן
+    try:
+        _log_activity("וואטסאפ רשמי", "system", "", "וואטסאפ רשמי — " + ("נשלח" if ok else "נכשל"),
+                      "…" + str((payload or {}).get("to", ""))[-4:] + " · " + str((payload or {}).get("type", "")))
+    except Exception:
+        pass
     return ok, r
 
 def _d360_send_text(to: str, text: str, force_template=False):
