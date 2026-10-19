@@ -833,6 +833,7 @@ V2_HISTORY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .brs{display:flex;gap:6px;flex-wrap:wrap}
   .brs .bc{padding:10px 14px;min-height:44px;display:flex;align-items:center;font-size:13px;font-weight:700;border-radius:12px;background:#fff;border:1.5px solid #DCD6C8;color:#5B6472;cursor:pointer}
   .brs .bc.on{background:#1E3A5F;border-color:#1E3A5F;color:#fff}
+  a.wa.rv{background:#fff;color:#7A5E1C;border:1.5px solid #E4C56B}
   a.wa{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;margin-top:10px;border-radius:12px;background:#157A43;color:#fff;font-weight:700;font-size:14px;text-decoration:none}
   .sum{display:flex;gap:10px}.sum .card{flex:1;text-align:center}.sum b{display:block;font-size:20px;font-weight:800}
   .sum span{font-size:12px;color:#6B7280}
@@ -855,7 +856,7 @@ V2_HISTORY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
 </main>
 <div id="toast"></div>
 <script>
-var TOK = '', ED = false, TAB = '', YEAR = '', Q = '', ME = '', BRF = '', MQ = '', KF = '', OFFICE = '';
+var TOK = '', ED = false, TAB = '', YEAR = '', Q = '', ME = '', BRF = '', MQ = '', KF = '', OFFICE = '', REVIEW = '';
 var BR = {bialik: 'ביאליק', motzkin: 'מוצקין', kiryat_yam: 'קרית ים'};
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtP(p){ if (p == null || p === '') return ''; var n = Math.round(Number(p)); if (isNaN(n)) return ''; return '₪' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
@@ -877,12 +878,28 @@ function remindText(x, agent){
     (addr ? ' ב' + addr : '') + (yr ? ' ב-' + yr : '') + ', ורציתי להזכיר שאני כאן בשבילכם. ' +
     'אם אתם או מישהו שאתם מכירים חושבים לקנות, למכור או להשכיר נכס, אשמח לעזור.\n' + agent;
 }
+// אייל 20/10 (GEO): בקשת ביקורת בגוגל — רק כשהוגדר קישור בניהול, ורק לעסקאות מהשנה האחרונה
+function reviewText(x, agent){
+  var first = String(x.client || '').trim().split(/\s+/)[0] || '';
+  var acts = {'מוכר': 'במכירת הנכס', 'קונה': 'בקניית הנכס', 'משכיר': 'בהשכרת הנכס', 'שוכר': 'בשכירת הדירה'};
+  var act = acts[String(x.side || '').trim()] || 'בעסקת הנדל"ן';
+  return 'שלום' + (first ? ' ' + first : '') + ', כאן ' + agent + (OFFICE ? ' מ' + OFFICE : '') + '. היה לי תענוג ללוות אתכם ' + act + '. ' +
+    'אם הייתם מרוצים, אשמח מאוד אם תכתבו עלינו ביקורת קצרה בגוגל — זה עוזר לנו מאוד:\n' + REVIEW + '\nתודה רבה!\n' + agent;
+}
+function recentDeal(x){
+  var m = /(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})$/.exec(String(x.date || ''));
+  if (!m) return false;
+  return (Date.now() - new Date(+m[3], +m[2] - 1, +m[1]).getTime()) < 365 * 86400000;
+}
 function waBtn(x, agent){
   var ph = waPhone(x.phone || x.client_phone);
   if (!ph) return '';
+  var rv = (REVIEW && recentDeal(x)) ? '<a class="wa rv" target="_blank" rel="noopener" href="https://wa.me/' + ph + '?text=' + encodeURIComponent(reviewText(x, agent || '')) + '">' +
+    '<svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
+    'בקשת ביקורת בגוגל</a>' : '';
   return '<a class="wa" target="_blank" rel="noopener" href="https://wa.me/' + ph + '?text=' + encodeURIComponent(remindText(x, agent || '')) + '">' +
     '<svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
-    'תזכורת ללקוח בוואטסאפ</a>';
+    'תזכורת ללקוח בוואטסאפ</a>' + rv;
 }
 function agentCard(x, me){
   // היסטוריה (עד 2025): תאריך/כתובת/לקוח/סכום. 2026: גם עמלה/שולם/דווח (אייל 12/10)
@@ -1016,7 +1033,7 @@ function draw(){
   if (TAB === 'mine'){
     GET(withQ('/v2/api/deals/history/mine', YEAR ? 'year=' + YEAR : '', MQ ? 'q=' + encodeURIComponent(MQ) : '', kQ())).then(function(j){
       if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לטעון', 'נסה שוב בעוד רגע'); return; }
-      OFFICE = j.office || OFFICE;
+      OFFICE = j.office || OFFICE; REVIEW = j.review || REVIEW;
       // אייל 12/10: הסוכן מחפש שכונה/רחוב רק בעסקאות שלו
       tools.innerHTML = kindBar() + '<input class="q" id="mq" style="margin-top:10px" type="search" enterkeyhint="search" placeholder="שכונה או רחוב — למשל אפקה" value="' + esc(MQ) + '">' +
         '<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><select class="yr" onchange="YEAR=this.value;draw()"><option value="">כל השנים</option>' +
@@ -1052,7 +1069,7 @@ function draw(){
     var kind = TAB === 'unpaid' ? 'unpaid' : 'unreported';
     GET(withQ('/v2/api/deals/history/open?kind=' + kind, brQ(), kQ())).then(function(j){
       if (!j || !j.ok){ list.innerHTML = emptyHtml('אין הרשאה', 'זמין למנהלים ולהנהלת חשבונות'); return; }
-      OFFICE = j.office || OFFICE;
+      OFFICE = j.office || OFFICE; REVIEW = j.review || REVIEW;
       tools.innerHTML = bars() + (j.results.length ? '<div class="sb" style="margin-top:8px">' + j.results.length + ' צדדים ב-' + j.since + ' והלאה, מהחדש לישן</div>' : '');
       list.innerHTML = j.results.length ? j.results.map(openCard).join('') :
         emptyHtml(kind === 'unpaid' ? 'אין כרגע מה לגבות' : 'אין כרגע מה לדווח', 'הרשימה מתמלאת מקבצי המעקב של ' + j.since + ' — אחרי חיבור הקבצים לאפי');
@@ -1066,7 +1083,7 @@ function searchMore(off){
   if (!off) list.innerHTML = '<div class="sb" style="text-align:center;padding:20px 0">טוען…</div>';
   GET(withQ('/v2/api/deals/history/search?q=' + encodeURIComponent(Q || ''), brQ(), kQ(), off ? 'offset=' + off : '')).then(function(j){
     if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'נסה שוב'); return; }
-    OFFICE = j.office || OFFICE;
+    OFFICE = j.office || OFFICE; REVIEW = j.review || REVIEW;
     var cards = j.results.map(openCard).join('');
     var btn = j.more ? '<div id="more" class="bc" style="justify-content:center;background:#fff;border:1.5px solid #DCD6C8;border-radius:12px;min-height:44px;display:flex;align-items:center;font-weight:700;cursor:pointer" onclick="searchMore(' + (j.offset + j.results.length) + ')">הצג עוד</div>' : '';
     if (!off){
@@ -1081,7 +1098,7 @@ function runQ(){
   if (!Q){ list.innerHTML = emptyHtml('מחירי השוואה', 'הקלד רחוב או שכונה (למשל אפקה) וראה מה נמכר שם ובכמה'); return; }
   GET(withQ('/v2/api/deals/history/comps?q=' + encodeURIComponent(Q), brQ(), kQ())).then(function(j){
     if (!j || !j.ok){ list.innerHTML = emptyHtml('לא ניתן לחפש', 'נסה שוב'); return; }
-    OFFICE = j.office || OFFICE;
+    OFFICE = j.office || OFFICE; REVIEW = j.review || REVIEW;
     var head = (j.area ? '<div class="sb">שכונת ' + esc(j.area) + '</div>' : '') + '<div class="sum"><div class="card"><b>' + j.n_sale + '</b><span>מכירות · ממוצע ' + esc(fmtP(j.avg_sale) || '—') + '</span></div>' +
       '<div class="card"><b>' + j.n_rent + '</b><span>השכרות · ממוצע ' + esc(fmtP(j.avg_rent) || '—') + '</span></div></div>';
     list.innerHTML = j.results.length ? head + j.results.map(compCard).join('') :
@@ -1261,6 +1278,14 @@ def register(app, G, page):
         except Exception:
             return ""
 
+    def _review():
+        """קישור 'כתבו ביקורת בגוגל' של המשרד (ניהול ← פרטי המשרד) — לכפתור בקשת ביקורת (GEO 20/10)."""
+        try:
+            u = str(((G["_load_config"]() or {}).get("v2_office") or {}).get("review", "") or "").strip()
+            return u if u.startswith("https://") else ""
+        except Exception:
+            return ""
+
     def _auth():
         s = G["_web_auth"]()
         if not s:
@@ -1298,7 +1323,7 @@ def register(app, G, page):
         if y.isdigit():
             rows = [r for r in rows if r.get("year") == int(y)]
         res = [dict(view_agent(r), agent=r.get("agent") or "") for r in _sort_desc(rows)]
-        out = {"ok": True, "results": res, "years": years, "n": len(rows), "office": _office()}
+        out = {"ok": True, "results": res, "years": years, "n": len(rows), "office": _office(), "review": _review()}
         if area:
             out["area"] = area["label"]
         return G["_etag_wrap"](out)
@@ -1350,7 +1375,7 @@ def register(app, G, page):
             return err
         fn = unreported if request.args.get("kind") == "unreported" else unpaid
         rows = by_kind(by_branch(active_rows(_lrows(sb)), request.args.get("branch", "")), request.args.get("deal", ""))
-        return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(rows)], "since": DETAIL_FROM_YEAR, "office": _office()})
+        return G["_etag_wrap"]({"ok": True, "results": [view_full(r) for r in fn(rows)], "since": DETAIL_FROM_YEAR, "office": _office(), "review": _review()})
 
     @app.route("/v2/api/deals/history/search", methods=["GET"])
     def v2_deals_history_search():
@@ -1371,7 +1396,7 @@ def register(app, G, page):
             lim, off = 100, 0
         hits = _sort_desc(rows)
         return jsonify({"ok": True, "results": [view_full(r) for r in hits[off:off + lim]], "total": len(hits),
-                        "more": off + lim < len(hits), "offset": off, "office": _office()})
+                        "more": off + lim < len(hits), "offset": off, "office": _office(), "review": _review()})
 
     @app.route("/v2/history", methods=["GET"])
     def v2_history_page():

@@ -2882,6 +2882,7 @@ function openOffice(){
     '<div class="fld"><span>המספר הווירטואלי</span><input id="offVp" value="' + esc(OV.office.vphone || '') + '" placeholder="05X-XXXXXXX"></div>' +
     '<div class="fld"><span>אינסטגרם של המשרד</span><input id="offIg" dir="ltr" type="url" value="' + esc(OV.office.instagram || '') + '" placeholder="https://instagram.com/..."></div>' +
     '<div class="fld"><span>עמוד המשרד במדלן</span><input id="offMd" dir="ltr" type="url" value="' + esc(OV.office.madlan || '') + '" placeholder="https://www.madlan.co.il/..."></div>' +
+    '<div class="fld"><span>קישור לכתיבת ביקורת בגוגל</span><input id="offRv" dir="ltr" type="url" value="' + esc(OV.office.review || '') + '" placeholder="https://g.page/r/.../review"></div>' +
     '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E9E4D8;border-radius:13px;padding:10px 13px">' +
       '<img src="/assets/logo" style="width:34px;height:34px;object-fit:contain" onerror="this.style.display=\'none\'">' +
       '<div style="font-size:11.5px;color:#6B7280;line-height:1.5">הלוגו מוצג מ-offices.settings.logo_url — החלפה דרך מנהל המערכת. הקישורים מוצגים לצוות בתפריט הצד.</div></div>' +
@@ -2890,7 +2891,7 @@ function openOffice(){
 }
 function saveOffice(){
   POST('/v2/api/admin/office', {name: el('offNm').value.trim(), vphone: el('offVp').value.trim(),
-                                instagram: el('offIg').value.trim(), madlan: el('offMd').value.trim()})
+                                instagram: el('offIg').value.trim(), madlan: el('offMd').value.trim(), review: el('offRv').value.trim()})
     .then(function(j){
       if (!j.ok){ toast('שגיאה בשמירה'); return; }
       closeSheet(); toast('נשמר'); boot();
@@ -14887,7 +14888,7 @@ def register(app, G):
         """שם/לוגו/קישורי המשרד — פתוח (אין עדיין טוקן בכניסה). white-label פר-משרד."""
         v2o = _load_config().get("v2_office") or {}
         out = {"ok": True, "name": _office_name(), "logo": "/assets/logo",
-               "instagram": v2o.get("instagram", ""), "madlan": v2o.get("madlan", ""),
+               "instagram": v2o.get("instagram", ""), "madlan": v2o.get("madlan", ""), "review": v2o.get("review", ""),
                "reveal": BRAND_REVEAL}
         if BRAND_REVEAL:
             out["name"] = "אֶפִי"
@@ -17260,7 +17261,7 @@ def register(app, G):
             if name:
                 v2o["name"] = name
             v2o["vphone"] = vphone
-            for _lk in ("instagram", "madlan"):   # קישורי המשרד (white-label — פר-משרד)
+            for _lk in ("instagram", "madlan", "review"):   # קישורי המשרד (white-label — פר-משרד); review = ביקורת בגוגל
                 if _lk in b:
                     v2o[_lk] = (b.get(_lk) or "").strip()
         ok, _ = _config_mutate(_mut)
