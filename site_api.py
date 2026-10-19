@@ -781,8 +781,10 @@ def register_site(app, G, store=None):
 
     def _rv_rows():
         rows = st().all()
-        if getattr(st(), "available", True) and not any(r.get("kind") == "review" for r in rows):
-            for o in OLD_REVIEWS:   # זריעה חד-פעמית של ההמלצות מהאתר הישן
+        have = {str(r.get("key")) for r in rows if r.get("kind") == "review"}
+        missing = [o for o in OLD_REVIEWS if o["id"] not in have]   # כל המלצה ישנה בנפרד; מחוקה נשארת מחוקה
+        if getattr(st(), "available", True) and missing:
+            for o in missing:
                 d = {k: v for k, v in o.items() if k != "id"}
                 d["created_by"] = "האתר הישן"
                 st().put("review", o["id"], d, "האתר הישן")

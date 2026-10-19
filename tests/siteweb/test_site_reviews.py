@@ -60,3 +60,18 @@ def test_delete_permissions(make_app):
 def test_unauth(make_app):
     c, _, _ = mk(make_app, None)
     assert c.get("/v2/api/site/reviews").status_code == 401
+
+
+def test_seeds_old_reviews_even_if_a_new_one_exists_first(make_app):
+    store = Store()
+    store.rows = [{"kind": "review", "key": "rv-1", "data": {"agents": ["רויטל גל"], "text": "חדש", "at": "2026-10-19"}}]
+    c, store, _ = mk(make_app, sess("manager", "מנהל"), store)
+    assert len(c.get("/v2/api/site/reviews").get_json()["reviews"]) == 5
+
+
+def test_deleted_old_review_not_reseeded(make_app):
+    store = Store()
+    store.rows = [{"kind": "review", "key": "old-1", "data": {"agents": ["רויטל גל"], "text": "x", "deleted": True}}]
+    c, store, _ = mk(make_app, sess("manager", "מנהל"), store)
+    j = c.get("/v2/api/site/reviews").get_json()
+    assert len(j["reviews"]) == 3 and "old-1" not in [r["id"] for r in j["reviews"]]
