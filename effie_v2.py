@@ -11633,7 +11633,7 @@ function collect(cur){ var f = {}; document.querySelectorAll('#drb [data-f]').fo
   /* רק שדות שבאמת השתנו — אחרת כל השדות "ננעלים" מעל המקור ועדכון עתידי מ-Make לא יוצג */
   if (!cur || String(cur[e.dataset.f] == null ? '' : cur[e.dataset.f]) !== e.value) f[e.dataset.f] = e.value; }); return f; }
 function act(body, msg){ return api('/v2/api/crm/' + MOD + '/record', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
-  .then(function(r){ return r.json(); }).then(function(j){ if (!j.ok){ toast('לא נשמר: ' + (j.reason || '')); return; } toast(msg); closeDr(); refreshAll(); }); }
+  .then(function(r){ return r.json(); }).then(function(j){ if (!j.ok){ toast({name_taken:'השם הזה כבר קיים בצוות', no_name:'חסר שם', already_live:'הטבלה כבר המקור — ייבוא חסום'}[j.reason] || ('לא נשמר: ' + (j.reason || ''))); return; } toast(msg); closeDr(); refreshAll(); }); }
 function save(key){ var f = collect(key ? CUR : null);
   if (!key){ if (!f.agent && !f.caller_phone){ toast('צריך לפחות סוכן או טלפון'); return; } }
   else if (!Object.keys(f).length){ toast('לא שונה דבר'); return; }
@@ -11664,7 +11664,7 @@ function teamBanner(){ var el = document.getElementById('banner'); if (MOD !== '
     if (j.source !== 'supabase') h += ' <button class="tb" id="impBtn">' + (j.table_count ? 'ייבוא חוזר מהגיליון' : 'ייבוא מהגיליון') + '</button>';
     el.innerHTML = '<div class="banner' + (j.table_count && !nd ? ' ok' : '') + '">' + h + '</div>';
     var ib = document.getElementById('impBtn'); if (ib) ib.onclick = function(){ if (!confirm('לייבא את כל אנשי הקשר מהגיליון לטבלה? (מעדכן לפי שם, לא מוחק)')) return;
-      api('/v2/api/crm/team/import', {method:'POST'}).then(function(x){ return x.json(); }).then(function(r){ toast(r.ok ? ('יובאו ' + r.imported + (r.duplicates && r.duplicates.length ? ' · כפולים: ' + r.duplicates.join(', ') : '')) : 'נכשל: ' + (r.reason || '')); refreshAll(); }); }; }); }
+      api('/v2/api/crm/team/import', {method:'POST'}).then(function(x){ return x.json(); }).then(function(r){ toast(r.ok ? ('יובאו ' + r.imported + (r.duplicates && r.duplicates.length ? ' · כפולים: ' + r.duplicates.join(', ') : '')) : (r.reason === 'already_live' ? 'הטבלה כבר המקור — ייבוא חסום' : 'נכשל: ' + (r.reason || ''))); refreshAll(); }); }; }); }
 function closeDr(){ document.getElementById('dr').classList.remove('open'); CUR = null; renderTable(); }
 function refreshAll(){ teamBanner(); return loadMeta().then(load); }
 function loadMeta(){ return api('/v2/api/crm/' + MOD + '/meta').then(function(r){ return r.json(); }).then(function(m){
@@ -12052,19 +12052,21 @@ _TEAM_COLS = ("phone", "vphone", "license", "email")
 
 def team_rows_from_sheet(values):
     """שורות הגיליון [A..E] → רשומות team_contacts. עמודה D נשמרת כמו שהיא (הקוראים מחליטים מייל/רישיון,
-    כמו היום). שורות כותרת/מילוי ובלי שם מדולגות. שם כפול — הראשון נשמר, הכפולים מוחזרים לדיווח."""
-    rows, seen, dups = [], set(), []
+    כמו היום). שורות כותרת/מילוי ובלי שם מדולגות. שם כפול — שדה לא-ריק מהשורה המאוחרת גובר (כמו הקוראים), הכפולים מוחזרים לדיווח."""
+    rows, by, dups = [], {}, []
     for i, row in enumerate(values or []):
         cell = lambda k: (str(row[k]) if len(row) > k and row[k] is not None else "").strip()
         name = cell(0)
         if not name or name in TEAM_FILLER:
             continue
-        if name in seen:
+        rec = {"name": name, "phone": cell(1), "vphone": cell(2), "license": cell(3), "email": cell(4),
+               "active": True, "sort": i}
+        if name in by:   # כפול — שדה לא-ריק מהשורה המאוחרת גובר, כמו ארבעת הקוראים של הגיליון
             dups.append(name)
+            by[name].update({k: v for k, v in rec.items() if v != ""})
             continue
-        seen.add(name)
-        rows.append({"name": name, "phone": cell(1), "vphone": cell(2), "license": cell(3), "email": cell(4),
-                     "active": True, "sort": i})
+        by[name] = rec
+        rows.append(rec)
     return rows, dups
 
 
@@ -15252,12 +15254,21 @@ def register(app, G):
         elif key:
             if "name" in fields and not fields["name"]:
                 return jsonify({"ok": False, "reason": "no_name"})
-            sb.team_update(key, fields, who)
+            if "name" in fields and any(str(t.get("name") or "").strip() == fields["name"] and str(t.get("id")) != key
+                                        for t in sb.team_fetch()):
+                return jsonify({"ok": False, "reason": "name_taken"})
+            try:
+                sb.team_update(key, fields, who)
+            except Exception as e:
+                return jsonify({"ok": False, "reason": "save_failed", "detail": str(e)[:120]})
             act = "צוות — עריכה (" + ",".join(fields) + ")"
         else:
             if not fields.get("name"):
                 return jsonify({"ok": False, "reason": "no_name"})
-            sb.team_upsert([dict(fields, active=True)], who)
+            cur = sb.team_fetch()
+            if any(str(t.get("name") or "").strip() == fields["name"] for t in cur):
+                return jsonify({"ok": False, "reason": "name_taken"})
+            sb.team_upsert([dict(fields, active=True, sort=1 + max([int(t.get("sort") or 0) for t in cur] or [0]))], who)
             act = "צוות — הוספה"
         G["_contacts_cache_clear"]()
         G["_cache_clear"]("crmov:team")
@@ -15286,6 +15297,8 @@ def register(app, G):
         sb = G.get("_sbdb")
         if not (sb and sb.enabled()):
             return jsonify({"ok": False, "reason": "no_supabase"}), 500
+        if G["_contacts_source"]() == "supabase":   # אחרי המעבר הטבלה היא המקור — ייבוא היה דורס עריכות ומחזיר מושבתים
+            return jsonify({"ok": False, "reason": "already_live"})
         sheet = G["_contacts_rows_sheet"]()
         if not sheet:
             return jsonify({"ok": False, "reason": "sheet_unavailable"})

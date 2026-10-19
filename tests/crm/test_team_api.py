@@ -49,6 +49,15 @@ ck(c.post("/v2/api/crm/team/record", json={"key": key, "restore": True}).get_jso
 nj = c.post("/v2/api/crm/team/record", json={"fields": {"name": "סוכנת חדשה", "phone": "0503333333"}}).get_json()
 ck(nj["ok"] and any(r["name"] == "סוכנת חדשה" for r in sb.rows), nj)
 ck(c.post("/v2/api/crm/team/record", json={"fields": {"phone": "050"}}).get_json()["reason"] == "no_name", "name required")
+# ביקורת: שם קיים, שינוי שם לשם תפוס, ייבוא אחרי המעבר
+dup = c.post("/v2/api/crm/team/record", json={"fields": {"name": "דנה לוי", "phone": "0"}}).get_json()
+ck(dup.get("reason") == "name_taken" and sb.rows[0]["phone"] == "0501111111", ("new with existing name rejected", dup))
+ck(next(r for r in sb.rows if r["name"] == "סוכנת חדשה")["sort"] > max(r["sort"] for r in sb.rows if r["name"] != "סוכנת חדשה"), "new member sorts last")
+ren = c.post("/v2/api/crm/team/record", json={"key": key, "fields": {"name": "רועי"}}).get_json()
+ck(ren.get("reason") == "name_taken" and sb.rows[0]["name"] == "דנה לוי", ("rename to taken name", ren))
+os.environ["CONTACTS_SOURCE"] = "supabase"
+ck(c.post("/v2/api/crm/team/import").get_json().get("reason") == "already_live", "no re-import after the switch")
+os.environ.pop("CONTACTS_SOURCE", None)
 from PIL import Image
 buf = io.BytesIO(); Image.new("RGB", (600, 400), (30, 58, 95)).save(buf, "JPEG")
 img = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()

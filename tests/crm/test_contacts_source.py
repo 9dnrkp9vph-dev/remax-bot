@@ -45,5 +45,18 @@ class Broken(FakeSB):
 A._sbdb = Broken()
 fb = snap()
 ck(fb == sheet and CALLS, "supabase down → falls back to the sheet")
+class Empty(FakeSB):
+    def team_fetch(s, active_only=False): return []
+A._sbdb = Empty(); CALLS.clear()
+ck(snap() == sheet and CALLS, "empty table (before import) → falls back to the sheet, nobody locked out")
+class Down:
+    status_code = 500; text = "err"
+    def json(s): return {}
+A._sbdb = Broken()
+A.requests.get = lambda url, timeout=None: Down()
+A._contacts_cache_clear()
+ck(A.fetch_agents_phones() == {} and A._agents_cache["data"] is None, "total failure is not cached (next request retries)")
+A.requests.get = lambda url, timeout=None: (CALLS.append(url), R())[1]
+ck(A.fetch_agents_phones() == sheet[0], "recovers on the next request")
 os.environ.pop("CONTACTS_SOURCE", None)
 print("contacts_source OK", n)

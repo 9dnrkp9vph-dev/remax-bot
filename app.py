@@ -1783,15 +1783,21 @@ def _contacts_rows():
             except Exception as e:
                 log.error(f"team_contacts read failed — falling back to the sheet: {e}")
                 rows = None
+            if rows is not None and not rows:   # טבלה ריקה (לפני ייבוא) — לא נועלים את כולם בחוץ
+                log.error("team_contacts empty — falling back to the sheet")
+                rows = None
         if rows is None:
             rows = _contacts_rows_sheet()
         if rows is None:              # כשל גם בגיליון — לא שומרים במטמון, מחזירים את האחרון שהצליח
-            return c["data"] or []
+            if c["data"]:
+                return c["data"]
+            raise RuntimeError("contacts unavailable")   # הקוראים לא שומרים ריק במטמון — הבקשה הבאה מנסה שוב
         c.update({"data": rows, "ts": time.time(), "src": src})
         return rows
 def _contacts_cache_clear():
     """אחרי עריכה במסך הצוות / החלפת מקור — כל ארבעת הקוראים נטענים מחדש."""
-    _contacts_rows_cache.update({"data": None, "ts": 0})
+    with _contacts_rows_lock:     # לא באמצע מילוי (שהיה כותב נתונים מלפני העריכה)
+        _contacts_rows_cache.update({"data": None, "ts": 0})
     for _c in (_agents_cache, _agents_full_cache, _agent_emails_cache, _vphone_cache):
         _c.update({"data": None, "ts": 0})
 
