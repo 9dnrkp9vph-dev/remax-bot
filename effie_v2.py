@@ -11676,13 +11676,13 @@ function teamFixes(){ api('/v2/api/crm/team/fix').then(function(x){ return x.jso
         refreshAll(); }); }; }); }
 function teamBanner(){ var el = document.getElementById('banner'); if (MOD !== 'team'){ el.innerHTML = ''; return; }
   api('/v2/api/crm/team/status').then(function(x){ return x.json(); }).then(function(j){ if (!j.ok) return;
-    var c = j.compare || {}, nd = (c.diffs || []).length + (c.only_sheet || []).length + (c.only_table || []).length;
+    var c = j.compare || {}, showCmp = j.source !== 'supabase', nd = showCmp ? (c.diffs || []).length + (c.only_sheet || []).length + (c.only_table || []).length : 0;
     var src = j.source === 'supabase' ? '<b>המקור הפעיל: הטבלה הזו</b> (CONTACTS_SOURCE=supabase)' : '<b>המקור הפעיל עדיין גיליון "אנשי קשר"</b> — עריכות כאן ייכנסו לתוקף אחרי המעבר';
     var h = src + ' · בטבלה ' + j.table_count + ' · ';
     if (j.table_error) h += '<b>קריאת הטבלה נכשלה</b>: ' + esc(j.table_error) + ' · הכניסה ממשיכה מהגיליון. ';
     else if (!j.table_count) h += 'הטבלה ריקה (הכניסה ממשיכה מהגיליון). ';
     else h += nd ? ('<b>' + nd + ' הבדלים מול הגיליון</b>: ' + esc([].concat((c.only_sheet || []).map(function(n){ return 'רק בגיליון: ' + n; }), (c.only_table || []).map(function(n){ return 'רק בטבלה: ' + n; }), (c.diffs || []).map(function(d){ return d.name + ' · ' + d.field + ': "' + d.sheet + '" ← "' + d.table + '"'; })).slice(0, 8).join(' | ')) + (nd > 8 ? '…' : ''))
-               : '<b>0 הבדלים — אפשר להחליף מקור</b>';
+               : (showCmp ? '<b>0 הבדלים — אפשר להחליף מקור</b>' : 'הגיליון הישן קפוא כגיבוי. ');
     if (j.source !== 'supabase' || (!j.table_count && !j.table_error)) h += ' <button class="tb" id="impBtn">' + (j.table_count ? 'ייבוא חוזר מהגיליון' : 'ייבוא מהגיליון') + '</button>';
     el.innerHTML = '<div class="banner' + (j.table_count && !nd ? ' ok' : '') + '">' + h + '<span id="fixSlot"></span></div>';
     if (j.table_count) teamFixes();
@@ -12017,7 +12017,7 @@ CRM_MODULES = {
                     ("action", "מה קרה", "text"), ("name", "מי", "text"), ("detail", "פרטים", "long"), ("result", "תוצאה", "status")],
         "default_cols": ["date", "direction", "channel", "action", "name", "detail", "result"],
         "editable": [],
-        "views": [("all", "הכל (30 יום)"), ("today", "היום"), ("in", "נכנס"), ("out", "יוצא"), ("failed", "כשלים")],
+        "views": [("all", "הכל (30 יום)"), ("noscan", "בלי סריקות יד2"), ("today", "היום"), ("in", "נכנס"), ("out", "יוצא"), ("failed", "כשלים")],
     },
     "team": {
         "title": "צוות",
@@ -12139,7 +12139,9 @@ def team_fix_plan(rows, licenses, actor):
             l9 = "".join(ch for ch in new["phone"] if ch.isdigit())[-9:]
             new["license"] = str((licenses or {}).get(l9, "") or "").strip() if l9 else ""
         changes = {f: [cur[f], new[f]] for f in ("phone", "vphone", "license", "email") if new[f] != cur[f]}
-        if cur["updated_by"] in _TEAM_GENERIC_BY and actor and actor not in _TEAM_GENERIC_BY:
+        _heb = lambda x: any("\u0590" <= ch <= "\u05FF" for ch in x)
+        if (cur["updated_by"] in _TEAM_GENERIC_BY or not _heb(cur["updated_by"])) and actor and actor not in _TEAM_GENERIC_BY \
+                and _heb(actor) and cur["updated_by"] != actor:
             changes["updated_by"] = [cur["updated_by"], actor]
         if changes or warn:
             out.append({"id": str(r.get("id")), "name": str(r.get("name") or ""), "changes": changes, "warn": warn})
@@ -12177,7 +12179,8 @@ CRM_VIEWS = {
     "flows": {"today": lambda r, t: _crm_day(r.get("date"), t),
               "in": lambda r, t: r.get("direction") == "נכנס",
               "out": lambda r, t: r.get("direction") == "יוצא",
-              "failed": lambda r, t: bool(r.get("failed"))},
+              "failed": lambda r, t: bool(r.get("failed")),
+              "noscan": lambda r, t: r.get("channel") != "יד2"},
     "team": {"all": lambda r, t: bool(r.get("active")),
              "inactive": lambda r, t: not r.get("active"),
              "no_vphone": lambda r, t: bool(r.get("active")) and not r.get("vphone"),
@@ -15350,9 +15353,20 @@ def register(app, G):
         """שם אמיתי ל'עודכן ע"י' — מנהל נכנס עם השם הגנרי 'מנהל', ממפים לפי הטלפון."""
         nm = s.get("name", "")
         try:
-            return G["_display_name_for"](nm, s.get("phone", "")) or nm
+            nm = G["_display_name_for"](nm, s.get("phone", "")) or nm
         except Exception:
-            return nm
+            pass
+        if nm in _TEAM_GENERIC_BY or not any("\u0590" <= ch <= "\u05FF" for ch in nm):
+            # שם הכניסה מ-Google ("eyal-shmul") — השם האמיתי מטבלת הצוות לפי הטלפון
+            l9 = "".join(ch for ch in str(s.get("phone", "")) if ch.isdigit())[-9:]
+            try:
+                sb = G.get("_sbdb")
+                for t in (sb.team_fetch() if (sb and sb.enabled() and l9) else []):
+                    if "".join(ch for ch in str(t.get("phone") or "") if ch.isdigit())[-9:] == l9 and t.get("name"):
+                        return str(t["name"])
+            except Exception:
+                pass
+        return nm
 
     def _team_norm_fields(fields):
         """כתיבה חדשה נשמרת נקייה: טלפונים מנורמלים (תקין בלבד), מייל שהוקלד ברישיון עובר לשדה המייל."""

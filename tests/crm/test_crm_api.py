@@ -68,6 +68,7 @@ A._activity_fetch = lambda t0, today=True: [{"ts": _T0 - 60, "name": "Fireberry"
                                             {"ts": _T0 - 90, "name": "אלי", "role": "agent", "action": "חיפוש נכסים", "detail": "y"}]
 fm = c.get("/v2/api/crm/flows/meta").get_json()
 ck(fm["ok"] and fm["counts"]["all"] == 1 and fm["counts"]["in"] == 1 and fm["editable"] == [], fm.get("counts"))
+ck(fm["counts"].get("noscan") == 1, ("view without yad2 scans", fm.get("counts")))
 fl = c.get("/v2/api/crm/flows/list").get_json()
 ck(fl["rows"][0]["channel"] == "חתימות", fl)
 ck(c.post("/v2/api/crm/flows/record", json={"fields": {}}).status_code == 400, "read only")

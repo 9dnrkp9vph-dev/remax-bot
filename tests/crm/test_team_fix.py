@@ -35,4 +35,6 @@ x = plan([{"id": "5", "name": "ש", "phone": "0503333333", "vphone": "", "licens
 ck(x[0]["changes"]["license"] == ["a@b.co", "99"] and "email" not in x[0]["changes"], ("existing email kept", x))
 y = plan([{"id": "6", "name": "נקי", "phone": "0504444444", "vphone": "", "license": "1", "email": "a@b.co", "updated_by": "מנהל"}], {}, "אייל שמול")
 ck(y and y[0]["changes"] == {"updated_by": ["מנהל", "אייל שמול"]}, ("generic updater alone is fixed", y))
+z = plan([{"id": "7", "name": "נקי", "phone": "0504444444", "vphone": "", "license": "1", "email": "a@b.co", "updated_by": "eyal-shmul"}], {}, "אייל שמול")
+ck(z and z[0]["changes"] == {"updated_by": ["eyal-shmul", "אייל שמול"]}, ("login name without Hebrew is fixed too", z))
 print("team_fix OK", _load.n)

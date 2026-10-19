@@ -14,4 +14,5 @@ js = re.findall(r"<script>(.*?)</script>", h, re.S)
 f = tempfile.NamedTemporaryFile("w", suffix=".js", delete=False); f.write("\n".join(js)); f.close()
 subprocess.run(["node", "--check", f.name], check=True)
 assert c.get("/v2/crm/dashboard").get_data(as_text=True).count("לוח בקרה") >= 1, "dashboard route still wins"
+assert "j.source === 'supabase' && !nd" in h or "showCmp" in h, "sheet comparison hidden after the switch"
 print("crm_page OK")

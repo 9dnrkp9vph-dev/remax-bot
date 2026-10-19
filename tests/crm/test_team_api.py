@@ -79,6 +79,11 @@ c.post("/v2/api/crm/team/record", json={"fields": {"name": "חדשה2", "phone":
 nw = next(r for r in sb.rows if r["name"] == "חדשה2")
 ck(nw["phone"] == "0525551234" and nw["email"] == "new@x.co" and nw["license"] == "", ("new writes normalized", nw))
 ck(nw.get("_by") == "אייל שמול", ("real name as updater", nw))
+A._display_name_for = lambda n, p: n
+A._web_auth = lambda: {"phone": "505709865", "name": "eyal-shmul", "role": "admin"}
+sb.rows.append({"id": "idme", "name": "אייל שמול", "phone": "0505709865", "vphone": "", "license": "", "email": "", "active": True, "sort": 1, "updated_by": ""})
+c.post("/v2/api/crm/team/record", json={"fields": {"name": "חדשה3", "phone": "0526666666"}})
+ck(next(r for r in sb.rows if r["name"] == "חדשה3").get("_by") == "אייל שמול", "google login name → real name from the team table")
 from PIL import Image
 buf = io.BytesIO(); Image.new("RGB", (600, 400), (30, 58, 95)).save(buf, "JPEG")
 img = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
