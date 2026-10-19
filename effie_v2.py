@@ -11658,7 +11658,8 @@ function teamBanner(){ var el = document.getElementById('banner'); if (MOD !== '
     var c = j.compare || {}, nd = (c.diffs || []).length + (c.only_sheet || []).length + (c.only_table || []).length;
     var src = j.source === 'supabase' ? '<b>המקור הפעיל: הטבלה הזו</b> (CONTACTS_SOURCE=supabase)' : '<b>המקור הפעיל עדיין גיליון "אנשי קשר"</b> — עריכות כאן ייכנסו לתוקף אחרי המעבר';
     var h = src + ' · בטבלה ' + j.table_count + ' · ';
-    if (!j.table_count) h += 'הטבלה ריקה. ';
+    if (j.table_error) h += '<b>קריאת הטבלה נכשלה</b>: ' + esc(j.table_error) + ' · הכניסה ממשיכה מהגיליון. ';
+    else if (!j.table_count) h += 'הטבלה ריקה (הכניסה ממשיכה מהגיליון). ';
     else h += nd ? ('<b>' + nd + ' הבדלים מול הגיליון</b>: ' + esc([].concat((c.only_sheet || []).map(function(n){ return 'רק בגיליון: ' + n; }), (c.only_table || []).map(function(n){ return 'רק בטבלה: ' + n; }), (c.diffs || []).map(function(d){ return d.name + ' · ' + d.field + ': "' + d.sheet + '" ← "' + d.table + '"'; })).slice(0, 8).join(' | ')) + (nd > 8 ? '…' : ''))
                : '<b>0 הבדלים — אפשר להחליף מקור</b>';
     if (j.source !== 'supabase') h += ' <button class="tb" id="impBtn">' + (j.table_count ? 'ייבוא חוזר מהגיליון' : 'ייבוא מהגיליון') + '</button>';
@@ -11674,7 +11675,7 @@ function loadMeta(){ var code = 0; return api('/v2/api/crm/' + MOD + '/meta').th
     if (META_TRIES++ < 3) setTimeout(refreshAll, 5000);
     throw new Error('meta ' + code); }
   META_TRIES = 0;
-  if (!m.ok){ document.getElementById('title').textContent = m.reason === 'forbidden' ? 'אין הרשאה' : 'מודול לא קיים'; throw new Error(m.reason); }
+  if (!m.ok){ document.getElementById('title').textContent = m.reason === 'forbidden' ? 'אין הרשאה' : (m.reason === 'table_error' ? 'קריאת הטבלה נכשלה: ' + (m.detail || '') : 'מודול לא קיים'); throw new Error(m.reason); }
   META = m; document.title = 'CRM · ' + m.title; document.getElementById('title').textContent = m.title;
   document.getElementById('newBtn').style.display = m.editable.length ? '' : 'none';
   document.getElementById('fAgent').style.display = m.agents.length ? '' : 'none';
@@ -15026,7 +15027,20 @@ def register(app, G):
         s = G["_web_auth"]()
         return s if (s and G["_is_dev"](s.get("phone", ""))) else None
 
+    class _CrmReadError(Exception):
+        pass
+
     def _crm_records(module):
+        try:
+            return _crm_records_raw(module)
+        except Exception as e:
+            if log: log.error(f"crm records read failed ({module}): {e}")
+            raise _CrmReadError(str(e)[:300])
+
+    def _crm_read_err(e):
+        return jsonify({"ok": False, "reason": "table_error", "detail": str(e)})
+
+    def _crm_records_raw(module):
         sb = G.get("_sbdb")
         ov = G["_cache_get"]("crmov:" + module, 30)
         if ov is None:
@@ -15085,7 +15099,10 @@ def register(app, G):
         if not mod:
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
         import time as _tm
-        recs, now = _crm_records(module), _tm.time()
+        try:
+            recs, now = _crm_records(module), _tm.time()
+        except _CrmReadError as e:
+            return _crm_read_err(e)
         counts = {v: crm_query(recs, "", {"view": v}, "date", "desc", 1, 1, now, module=module)["total"] for v, _l in mod["views"]}
         agents = sorted({r.get("agent") for r in recs if r.get("agent") and not r.get("hidden")})
         return jsonify({"ok": True, "module": module, "title": mod["title"], "columns": mod["columns"],
@@ -15105,7 +15122,10 @@ def register(app, G):
             page = int(request.args.get("page", "1") or 1)
         except ValueError:
             page = 1
-        res = crm_query(_crm_records(module), q, filters, sort, direction, page, 50, _tm.time(), module=module)
+        try:
+            res = crm_query(_crm_records(module), q, filters, sort, direction, page, 50, _tm.time(), module=module)
+        except _CrmReadError as e:
+            return _crm_read_err(e)
         return jsonify({"ok": True, "rows": res["rows"], "total": res["total"], "page": page, "size": 50})
 
     def _crm_transcript(rec):
@@ -15147,7 +15167,10 @@ def register(app, G):
             return _team_write(s, request.get_json(silent=True) or {})
         if request.method == "GET":
             key = request.args.get("key", "")
-            rec = next((r for r in _crm_records(module) if r["key"] == key), None)
+            try:
+                rec = next((r for r in _crm_records(module) if r["key"] == key), None)
+            except _CrmReadError as e:
+                return _crm_read_err(e)
             if not rec:
                 return jsonify({"ok": False, "reason": "not_found"}), 404
             if module != "calls":
@@ -15209,7 +15232,10 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
         import time as _tm
         q, filters, sort, direction = _crm_args()
-        recs = _crm_records(module)
+        try:
+            recs = _crm_records(module)
+        except _CrmReadError as e:
+            return _crm_read_err(e)
         allrows = crm_query(recs, q, filters, sort, direction, 1, 200, _tm.time(), module=module)
         total = allrows["total"]
         rows = []
