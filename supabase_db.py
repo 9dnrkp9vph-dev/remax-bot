@@ -920,6 +920,45 @@ def transcript_get(source_key):
     return recs[0] if recs else None
 
 
+# ── [TEAM 19/10] אנשי צוות — מחליף את גיליון 'אנשי קשר' (CONTACTS_SOURCE=supabase) ──
+_TEAM_FIELDS = ("name", "phone", "vphone", "license", "email", "active", "sort")
+
+
+def team_fetch(active_only=False):
+    """כל אנשי הצוות, ממוינים לפי sort ואז שם."""
+    recs = _get_all("team_contacts", "id,name,phone,vphone,license,email,active,sort,updated_at,updated_by")
+    if active_only:
+        recs = [r for r in recs if r.get("active")]
+    return sorted(recs, key=lambda r: (int(r.get("sort") or 0), str(r.get("name") or "")))
+
+
+def team_upsert(rows, by):
+    """הוספה/עדכון לפי שם (ייבוא חד-פעמי מהגיליון וכפתור '+ חדש')."""
+    import datetime as _dt_t
+    now = _dt_t.datetime.now(_dt_t.timezone.utc).isoformat()
+    body = [{**{k: r[k] for k in _TEAM_FIELDS if k in r}, "office_id": SB_OFFICE_ID, "updated_at": now, "updated_by": by or ""}
+            for r in rows if str(r.get("name") or "").strip()]
+    if not body:
+        return 0
+    r = requests.post(SUPABASE_URL + "/rest/v1/team_contacts",
+                      headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                      params={"on_conflict": "office_id,name"}, json=body, timeout=max(_TIMEOUT, 30))
+    r.raise_for_status()
+    return len(body)
+
+
+def team_update(row_id, fields, by):
+    """עדכון שורה לפי id (כולל שינוי שם)."""
+    import datetime as _dt_u
+    body = {k: fields[k] for k in _TEAM_FIELDS if k in fields}
+    body.update({"updated_at": _dt_u.datetime.now(_dt_u.timezone.utc).isoformat(), "updated_by": by or ""})
+    r = requests.patch(SUPABASE_URL + "/rest/v1/team_contacts",
+                       headers={**_headers(), "Prefer": "return=minimal"},
+                       params={"id": "eq." + str(row_id), "office_id": "eq." + SB_OFFICE_ID}, json=body, timeout=_TIMEOUT)
+    r.raise_for_status()
+    return True
+
+
 def fetch_shadow(stream, since_iso, until_iso=None):
     """שורות הצל של זרם מאז since_iso (ועד until_iso, אם ניתן) — raw + source_key + received_at."""
     conds = ["received_at.gte." + since_iso] + (["received_at.lte." + until_iso] if until_iso else [])

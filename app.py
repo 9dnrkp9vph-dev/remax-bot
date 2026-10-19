@@ -1745,6 +1745,56 @@ def parse_search_query(text: str) -> dict:
     except Exception as e:
         log.error(f"Search JSON parse error: {e}")
         return {}
+# ── [TEAM 19/10] מקור אחד לאנשי הקשר: הגיליון (ברירת מחדל) או team_contacts ב-Supabase (CONTACTS_SOURCE=supabase).
+# מחזיר שורות במבנה הגיליון בדיוק — [A=שם, B=טלפון, C=וירטואלי, D=רישיון, E=מייל] — כך שארבעת הקוראים
+# ממשיכים לפרש אותן בדיוק כמו קודם. Supabase נופל → הגיליון. קריאה אחת משרתת את כולם (מטמון 60ש').
+_contacts_rows_cache = {"data": None, "ts": 0, "src": ""}
+_contacts_rows_lock = threading.Lock()
+def _contacts_source():
+    return "supabase" if (os.environ.get("CONTACTS_SOURCE") or "").strip().lower() == "supabase" else "sheets"
+def _contacts_rows_sheet():
+    if not GOOGLE_SHEETS_API_KEY:
+        return []
+    from urllib.parse import quote
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(CONTACTS_SHEET_NAME)}!A1:E200?key={GOOGLE_SHEETS_API_KEY}"
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code != 200:
+            log.error(f"Contacts API error {r.status_code}: {r.text[:300]}")
+            return None
+        return r.json().get("values", []) or []
+    except Exception as e:
+        log.error(f"contacts sheet fetch error: {e}")
+        return None
+def _contacts_rows():
+    src = _contacts_source()
+    c = _contacts_rows_cache
+    if c["data"] is not None and c["src"] == src and (time.time() - c["ts"]) < 60:
+        return c["data"]
+    with _contacts_rows_lock:
+        if c["data"] is not None and c["src"] == src and (time.time() - c["ts"]) < 60:
+            return c["data"]
+        rows = None
+        if src == "supabase" and _sbdb is not None and _sbdb.enabled():
+            try:
+                rows = [[str(t.get("name") or ""), str(t.get("phone") or ""), str(t.get("vphone") or ""),
+                         str(t.get("license") or ""), str(t.get("email") or "")]
+                        for t in (_sbdb.team_fetch(active_only=True) or [])]
+            except Exception as e:
+                log.error(f"team_contacts read failed — falling back to the sheet: {e}")
+                rows = None
+        if rows is None:
+            rows = _contacts_rows_sheet()
+        if rows is None:              # כשל גם בגיליון — לא שומרים במטמון, מחזירים את האחרון שהצליח
+            return c["data"] or []
+        c.update({"data": rows, "ts": time.time(), "src": src})
+        return rows
+def _contacts_cache_clear():
+    """אחרי עריכה במסך הצוות / החלפת מקור — כל ארבעת הקוראים נטענים מחדש."""
+    _contacts_rows_cache.update({"data": None, "ts": 0})
+    for _c in (_agents_cache, _agents_full_cache, _agent_emails_cache, _vphone_cache):
+        _c.update({"data": None, "ts": 0})
+
 _agents_cache = {"data": None, "ts": 0}
 _agents_lock = threading.Lock()
 def fetch_agents_phones() -> dict:
@@ -1757,17 +1807,8 @@ def fetch_agents_phones() -> dict:
             return _agents_cache["data"]
         return _fetch_agents_phones_locked()
 def _fetch_agents_phones_locked() -> dict:
-    if not GOOGLE_SHEETS_API_KEY:
-        return {}
-    from urllib.parse import quote
-    sheet_encoded = quote(CONTACTS_SHEET_NAME)
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{sheet_encoded}!A1:B200?key={GOOGLE_SHEETS_API_KEY}"
     try:
-        r = requests.get(url, timeout=10)
-        if r.status_code != 200:
-            log.error(f"Contacts API error {r.status_code}: {r.text[:300]}")
-            return {}
-        data = r.json().get("values", [])
+        data = _contacts_rows()
         agents = {}
         for row in data:
             if len(row) < 2:
@@ -1789,16 +1830,9 @@ def fetch_agents_full() -> dict:
     """מפה: שם מנורמל -> {name, phone, license} מגיליון 'אנשי קשר' (A=שם, B=טלפון, D=רישיון תיווך)."""
     if _agents_full_cache["data"] is not None and (time.time() - _agents_full_cache["ts"]) < 300:
         return _agents_full_cache["data"]
-    if not GOOGLE_SHEETS_API_KEY:
-        return {}
-    from urllib.parse import quote
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(CONTACTS_SHEET_NAME)}!A1:D200?key={GOOGLE_SHEETS_API_KEY}"
     out = {}
     try:
-        r = requests.get(url, timeout=10)
-        if r.status_code != 200:
-            return {}
-        for row in r.json().get("values", []):
+        for row in _contacts_rows():
             name = (row[0] if len(row) > 0 else "").strip()
             phone = (row[1] if len(row) > 1 else "").strip()
             lic = (row[3] if len(row) > 3 else "").strip()
@@ -1818,14 +1852,9 @@ def web_agent_emails():
     if _agent_emails_cache["data"] is not None and (time.time() - _agent_emails_cache["ts"]) < 300:
         return _agent_emails_cache["data"]
     out = {}
-    if not GOOGLE_SHEETS_API_KEY:
-        return out
-    from urllib.parse import quote
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(CONTACTS_SHEET_NAME)}!A1:E200?key={GOOGLE_SHEETS_API_KEY}"
     try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            for row in r.json().get("values", []):
+        if True:
+            for row in _contacts_rows():
                 name = (row[0] if len(row) > 0 else "").strip()
                 phone = (row[1] if len(row) > 1 else "").strip()
                 # מייל בעמודה D; אם יש עמודה E עם מייל — עדיפה (גמיש לשני המבנים)
@@ -1870,13 +1899,10 @@ def fetch_agent_virtual_phones() -> dict:
         out = dict(cached)
     else:
         out = {}
-        if GOOGLE_SHEETS_API_KEY:
-            from urllib.parse import quote
-            url = f"https://sheets.googleapis.com/v4/spreadsheets/{PROPERTIES_SHEET_ID}/values/{quote(CONTACTS_SHEET_NAME)}!A1:C200?key={GOOGLE_SHEETS_API_KEY}"
+        if True:
             try:
-                r = requests.get(url, timeout=10)
-                if r.status_code == 200:
-                    for row in r.json().get("values", []):
+                if True:
+                    for row in _contacts_rows():
                         if len(row) < 3: continue
                         name = (row[0] or "").strip()
                         vp = _fmt_vphone((row[2] or "").strip())
