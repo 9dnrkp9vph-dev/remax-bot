@@ -893,6 +893,33 @@ def insert_invoice_rows(rows):
     return n
 
 
+# ── [CRM-2 19/10] שכבת העריכות של מסכי ה-CRM ──
+def crm_overrides_fetch(module):
+    """{record_key: fields} — העריכות שנשמרו ב-CRM למודול."""
+    recs = _get_all("crm_overrides", "record_key,fields", {"module": "eq." + module})
+    return {r.get("record_key"): dict(r.get("fields") or {}) for r in recs if r.get("record_key")}
+
+
+def crm_override_upsert(module, key, fields, by):
+    """מיזוג שדות חדשים מעל העריכות הקיימות של הרשומה (שדה ריק = נשמר ריק, לא נמחק)."""
+    import datetime as _dt_o
+    merged = dict(crm_overrides_fetch(module).get(key) or {})
+    merged.update(fields or {})
+    row = {"office_id": SB_OFFICE_ID, "module": module, "record_key": key, "fields": merged,
+           "updated_at": _dt_o.datetime.now(_dt_o.timezone.utc).isoformat(), "updated_by": by or ""}
+    r = requests.post(SUPABASE_URL + "/rest/v1/crm_overrides",
+                      headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                      params={"on_conflict": "office_id,module,record_key"}, json=[row], timeout=_TIMEOUT)
+    r.raise_for_status()
+    return merged
+
+
+def transcript_get(source_key):
+    """התמלול המלא + קישור ההקלטה של שיחה (call_transcripts), או None."""
+    recs = _get_all("call_transcripts", "source_key,transcript,recording_url", {"source_key": "eq." + str(source_key)})
+    return recs[0] if recs else None
+
+
 def fetch_shadow(stream, since_iso):
     """שורות הצל של זרם מאז since_iso (YYYY-MM-DD או ISO) — raw + source_key + received_at."""
     recs = _get_all("ingest_shadow", "source_key,received_at,raw",
