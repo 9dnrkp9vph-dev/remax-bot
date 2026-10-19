@@ -12016,6 +12016,17 @@ def crm_daily_series(rows, get_when, days, today_iso):
 
 # ── [CRM-2 19/10] מסכי CRM במבנה פיירברי — הגדרת מודולים + מנוע שאילתות (טהור) ──────────
 CRM_MODULES = {
+    "signatures": {
+        "title": "מתעניינים (חתימות)",
+        "columns": [("date", "תאריך", "date"), ("type", "סוג הסכם", "text"), ("client", "שם לקוח", "text"), ("phone", "סלולרי", "phone"),
+                    ("agent", "סוכן", "text"), ("address", "כתובת", "text"), ("city", "עיר", "text"), ("n_props", "נכסים", "text"),
+                    ("budget", "תקציב", "price"), ("status", "מצב", "status"), ("source", "נחתם דרך", "text"), ("link", "מסמך", "link"),
+                    ("notes", "הערות", "long")],
+        "default_cols": ["date", "type", "client", "phone", "agent", "address", "city", "budget", "status", "source", "link"],
+        "editable": [],
+        "views": [("all", "כל החתימות"), ("today", "היום"), ("buyers", "קונים"), ("owners", "בעלי נכסים"), ("exclusive", "בלעדיות"),
+                  ("rent", "שכירות"), ("pending", "ממתינות לחתימה"), ("hatimatova", "נחתמו בחתימה טובה"), ("app", "נחתמו באפי")],
+    },
     "props": {
         "title": "נכסים",
         "columns": [("image", "תמונה", "photo"), ("source", "מקור", "text"), ("type", "סוג", "text"), ("city", "עיר", "text"),
@@ -12215,6 +12226,14 @@ CRM_VIEWS = {
              "no_vphone": lambda r, t: bool(r.get("active")) and not r.get("vphone"),
              "no_email": lambda r, t: bool(r.get("active")) and "@" not in (r.get("email") or "") and "@" not in (r.get("license") or ""),
              "no_license": lambda r, t: bool(r.get("active")) and not "".join(ch for ch in (r.get("license") or "") if ch.isdigit())},
+    "signatures": {"today": lambda r, t: _crm_day(r.get("date"), t),
+                   "buyers": lambda r, t: r.get("type") == "קונים",
+                   "owners": lambda r, t: r.get("type") in ("מוכר", "בלעדיות"),
+                   "exclusive": lambda r, t: r.get("type") == "בלעדיות",
+                   "rent": lambda r, t: r.get("type") == "שכירות",
+                   "pending": lambda r, t: r.get("status") == "ממתין",
+                   "hatimatova": lambda r, t: r.get("source") == "חתימה טובה",
+                   "app": lambda r, t: r.get("source") == "אפי"},
     "props": {"all": lambda r, t: not r.get("delisted"),
               "private": lambda r, t: r.get("source") == "פרטי" and not r.get("delisted"),
               "new": lambda r, t: bool(r.get("new")) and not r.get("delisted"),
@@ -12304,6 +12323,36 @@ def _crm_int(v):
     """מחיר/מ"ר → מספר שלם (למיון), או '' כשאין."""
     d = "".join(ch for ch in str(v or "").split(".")[0] if ch.isdigit())
     return int(d) if d else ""
+
+
+def crm_sig_records(sigs, h):
+    """[CRM מתעניינים 19/10] שורות החתימות (get_signings) → רשומות לטבלת ה-CRM, כמו תצוגת 'מתעניינים' בפיירברי.
+    נחתם = יש קישור למסמך או עמלה (הכלל של מסך החתימות). מקור: קישור hatimatova → חתימה טובה; קישור /s/ או
+    מפתח app: → אפי; אחרת פיירברי. h: ep(received_at) → epoch, label(deal_type) → תווית."""
+    out, seen = [], {}
+    for g in sigs or []:
+        cp = str(g.get("commission_pct") or "").strip()
+        link = cp if cp.lower().startswith(("http://", "https://")) else ""
+        signed = bool(link) or bool(cp and any(ch.isdigit() for ch in cp))
+        eid = str(g.get("event_id") or "")
+        if "hatimatova" in link.lower():
+            src = "חתימה טובה"
+        elif "/s/" in link or eid.startswith("app:"):
+            src = "אפי"
+        else:
+            src = "פיירברי"
+        parts = [x.strip() for x in str(g.get("address") or "").split("|") if x.strip()]
+        ep = h["ep"](g.get("received_at") or "") or 0
+        k = "sg:" + (eid or "%s|%s|%s" % (g.get("client_name"), g.get("received_at"), g.get("deal_type")))
+        seen[k] = seen.get(k, 0) + 1
+        if seen[k] > 1:
+            k += "#" + str(seen[k])
+        out.append({"key": k, "date": ep, "type": h["label"](g.get("deal_type")), "client": str(g.get("client_name") or "").strip(),
+                    "phone": str(g.get("phone") or "").strip(), "agent": str(g.get("agent") or "").strip(),
+                    "address": " · ".join(parts), "n_props": len(parts) or "", "city": str(g.get("city") or "").strip(),
+                    "budget": _crm_int(g.get("budget")), "status": "נחתם" if signed else "ממתין", "source": src, "link": link,
+                    "notes": str(g.get("notes") or g.get("הערות") or "").strip()})
+    return out
 
 
 def _crm_rooms(v):
@@ -15292,6 +15341,11 @@ def register(app, G):
                             "photo": ("/v2/api/avatar?p=" + _photo_phone(str(t.get("id")))) if _photo_phone(str(t.get("id"))) else "",
                             "updated_by": str(t.get("updated_by") or ""), "date": 0})
             return out
+        if module == "signatures":
+            def _build_sigs():
+                return crm_sig_records(G["get_signings"]() or [], {"ep": G["_excl_epoch"], "label": G["_deal_label"]})
+            swr = G.get("_swr")
+            return swr("crmsigs", 120, _build_sigs) if swr else _build_sigs()
         if module == "props":
             def _build_props():
                 import time as _tp
