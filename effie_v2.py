@@ -11883,7 +11883,9 @@ function render(){
  var W=D.wa||{agents_today:{},agents_7d:[0,0,0,0,0,0,0],official_today:{sent:0,failed:0},official_7d:[0,0,0,0,0,0,0]};
  var wk=Object.keys(W.agents_today).sort(function(x,y){return W.agents_today[y]-W.agents_today[x];}),wt=0;
  var wr=wk.map(function(k){wt+=W.agents_today[k];return '<tr><td>'+esc(k)+'</td><td>'+n(W.agents_today[k])+'</td></tr>';}).join('');
- var us=(D.usage_today||[]).map(function(u){return '<tr><td>'+esc(u.name)+'</td><td>'+n(u.min)+' דק׳</td></tr>';}).join('')||'<tr><td class="mut" colspan="2">עוד אין שימוש היום</td></tr>';
+ var UB=D.usage_by||{}, ul=(UB[P]||(P==='day'?D.usage_today:null)||[]);
+ var us=ul.map(function(u){return '<tr><td>'+esc(u.name)+'</td><td>'+n(u.min)+' דק׳</td></tr>';}).join('')||'<tr><td class="mut" colspan="2">עוד אין שימוש בתקופה</td></tr>';
+ var uT='הכי פעילים באפי · '+PL[P]+(P==='year'&&UB.year_from?' <span class="mut">(מ-'+UB.year_from.split('-').reverse().join('/')+' — הנתונים נשמרים 60 יום)</span>':'');
  document.getElementById('app').innerHTML=
   '<div class="health">'+h+'</div>'+
   '<div class="ctl"><div class="card"><h2>מחוברים עכשיו <span class="mut" id="onN"></span></h2><div class="on-list" id="onList"><span class="mut">טוען…</span></div></div>'+
@@ -11899,7 +11901,7 @@ function render(){
   '<h2 style="margin-top:16px">חיפושי AI באפי היום</h2><table><tr><td>חיפוש נכסים</td><td>'+n(e.props)+'</td></tr><tr><td>חיפוש נכס נולד</td><td>'+n(e.newborn)+'</td></tr><tr><td>חיפוש קונה AI</td><td>'+n(e.buyers_ai)+'</td></tr><tr><td>שאל את אפי</td><td>'+n(e.ask)+'</td></tr></table></div></div>'+
   '<div class="row r3"><div class="card"><h2>AI באתר לפי שעה (היום)</h2><div class="chart"><canvas id="c2"></canvas></div></div>'+
   '<div class="card"><h2>AI — אתר מול אפי, 7 ימים</h2><div class="chart"><canvas id="c3"></canvas></div></div>'+
-  '<div class="card"><h2>הכי פעילים באפי היום</h2><table>'+us+'</table></div></div>'+
+  '<div class="card"><h2>'+uT+'</h2><table>'+us+'</table></div></div>'+
   '<div class="row r2"><div class="card"><h2>וואטסאפ — 7 ימים</h2><div class="chart"><canvas id="c4"></canvas></div></div>'+
   '<div class="card"><h2>וואטסאפ היום</h2><div class="big">'+n(wt)+' <span class="mut">נפתחו מהטלפון של הסוכנים</span></div>'+
   '<table>'+(wr||'<tr><td class="mut" colspan="2">עוד לא נפתח וואטסאפ היום</td></tr>')+'</table>'+
@@ -12831,8 +12833,13 @@ def crm_dashboard_data(src, now, quiet, today_iso):
 
     t0 = _dx.datetime.fromisoformat(today_iso).replace(tzinfo=il).timestamp()
     usage = [{"name": r.get("name", ""), "min": r.get("min", 0)} for r in (get("usage", t0, default=[]) or [])][:10]
+    ub = get("usage_periods", default={}) or {}
+    usage_by = {k: [{"name": r.get("name", ""), "min": r.get("min", 0)} for r in (ub.get(k) or [])][:10]
+                for k in ("day", "week", "month", "year") if k in ub}
+    if usage_by:
+        usage_by["year_from"] = ub.get("year_from", "")
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
-            "usage_today": usage, "scans": scans, "wa": wa}
+            "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa}
 
 
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
@@ -16156,6 +16163,7 @@ def register(app, G):
                    "last_invoice": last_invoice,
                    "activity": lambda t0: G["_activity_fetch"](t0, today=False),
                    "usage": lambda t0: G["_usage_rows"](_dbd.datetime.fromtimestamp(t0, il)),
+                   "usage_periods": lambda: G["_usage_periods"](_dbd.datetime.fromtimestamp(now, il)),
                    "site_ai": site_ai, "ai_cap": ai_cap}
             try:
                 quiet = bool(G["_shabbat_quiet_now"]())

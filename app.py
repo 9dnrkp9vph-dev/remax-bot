@@ -3566,6 +3566,10 @@ def _display_name_for(name, phone):
                 cands.append(str(_name_for_phone(l9) or "").strip())
             except Exception:
                 pass
+            try:   # [CRM 20/10] טבלת הצוות (מקור אנשי הקשר) — ישירות לפי הטלפון, גם כשמקור אחר נכשל
+                cands.extend(str(r[0] or "").strip() for r in (_contacts_rows() or []) if len(r) > 1 and _last9(r[1]) == l9)
+            except Exception:
+                pass
         real = next((x for x in cands if re.search(r"[\u0590-\u05FF]", x)), "") or next((x for x in cands if x), "")
         return real or nm
     if nm not in _GENERIC_NAMES:
@@ -7645,13 +7649,31 @@ def _activity_merge(c):
 
 import office_presence as _office_presence_mod
 
-def _usage_rows(t_from, t_to=None, no_weekend=False):
+USAGE_RETENTION_DAYS = 60   # הפעימות נגזמות אחרי 60 יום (prune_pings)
+
+
+def _usage_periods(now):
+    """[CRM 20/10 אייל: 'למה זה לא משנה "הכי פעילים" בחודש?'] זמן פעיל לכל תקופה של לוח הבקרה —
+    היום / השבוע (מיום ראשון) / החודש / השנה — משליפה אחת של הפעימות. 'השנה' מוגבלת ל-60 יום (שמירת הנתונים)."""
+    import datetime as _dtp
+    day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week = day - _dtp.timedelta(days=(day.weekday() + 1) % 7)
+    month = day.replace(day=1)
+    year = max(day.replace(month=1, day=1), day - _dtp.timedelta(days=USAGE_RETENTION_DAYS))
+    pings = _sbdb.fetch_pings_today(year.isoformat()) if (_sbdb is not None and _sbdb.enabled()) else []
+    out = {k: _usage_rows(t, pings=pings)[:10] for k, t in (("day", day), ("week", week), ("month", month), ("year", year))}
+    out["year_from"] = year.date().isoformat()
+    return out
+
+
+def _usage_rows(t_from, t_to=None, no_weekend=False, pings=None):
     """[USAGE-REPORT 05/10] זמן-פעיל אמיתי לכל סוכן מפעימות usage_pings, בטווח [t_from, t_to) (datetime עם
     אזור זמן). פער > 90ש' = סשן חדש; פעימה בודדת ≈ 45ש'. משותף ל-/v2/api/usage_today ולדוח היומי."""
     if not (_sbdb is not None and _sbdb.enabled()):
         return []
     tz = t_from.tzinfo
-    pings = _sbdb.fetch_pings_today(t_from.isoformat())
+    if pings is None:
+        pings = _sbdb.fetch_pings_today(t_from.isoformat())
     _places = _usage_places(t_from)
     import datetime as _dt2
     by = {}
@@ -7669,6 +7691,8 @@ def _usage_rows(t_from, t_to=None, no_weekend=False):
         except Exception:
             continue
         if t_to is not None and dt >= t_to:
+            continue
+        if dt < t_from:   # [CRM 20/10] פעימות שנשלפו פעם אחת לכמה תקופות
             continue
         if no_weekend and dt.weekday() in (4, 5):   # שישי=4, שבת=5
             continue
