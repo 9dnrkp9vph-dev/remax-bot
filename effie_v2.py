@@ -11667,7 +11667,13 @@ function teamBanner(){ var el = document.getElementById('banner'); if (MOD !== '
       api('/v2/api/crm/team/import', {method:'POST'}).then(function(x){ return x.json(); }).then(function(r){ toast(r.ok ? ('יובאו ' + r.imported + (r.duplicates && r.duplicates.length ? ' · כפולים: ' + r.duplicates.join(', ') : '')) : (r.reason === 'already_live' ? 'הטבלה כבר המקור — ייבוא חסום' : 'נכשל: ' + (r.reason || ''))); refreshAll(); }); }; }); }
 function closeDr(){ document.getElementById('dr').classList.remove('open'); CUR = null; renderTable(); }
 function refreshAll(){ teamBanner(); return loadMeta().then(load); }
-function loadMeta(){ return api('/v2/api/crm/' + MOD + '/meta').then(function(r){ return r.json(); }).then(function(m){
+var META_TRIES = 0;
+function loadMeta(){ var code = 0; return api('/v2/api/crm/' + MOD + '/meta').then(function(r){ code = r.status; return r.json(); }, function(){ return null; }).catch(function(){ return null; }).then(function(m){
+  if (!m){ var t = document.getElementById('title');
+    t.textContent = 'השרת לא ענה' + (code ? ' (קוד ' + code + ')' : '') + (META_TRIES < 3 ? ' — מנסה שוב…' : ' — רענן את הדף');
+    if (META_TRIES++ < 3) setTimeout(refreshAll, 5000);
+    throw new Error('meta ' + code); }
+  META_TRIES = 0;
   if (!m.ok){ document.getElementById('title').textContent = m.reason === 'forbidden' ? 'אין הרשאה' : 'מודול לא קיים'; throw new Error(m.reason); }
   META = m; document.title = 'CRM · ' + m.title; document.getElementById('title').textContent = m.title;
   document.getElementById('newBtn').style.display = m.editable.length ? '' : 'none';
