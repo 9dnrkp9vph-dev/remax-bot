@@ -9087,6 +9087,10 @@ function submitSign(){
            fee: feeRow ? feeRow.val : '', feeUnit: feeRow ? feeRow.un : '%',
            months: mRow ? mRow.val : '', rentUnit: mRow ? mRow.un : 'חודשים',
            exfrom: exclRow ? exclRow.from : '', exto: exclRow ? exclRow.to : ''};
+  /* [CRM 19/10] התנאים נשמרים גם כשדות בשורת החתימה (לא רק בטקסט ההסכם) — עמלה, חודשי שכירות, בלעדיות מ/עד */
+  var TERMS = {fee: feeRow && feeRow.val ? (feeRow.un === '%' ? feeRow.val + '%' : (feeRow.un === '₪' ? '₪' + feeRow.val : feeRow.val + ' ' + feeRow.un)) : '',
+               rent: mRow && mRow.val ? (mRow.un === '₪' ? '₪' + mRow.val : mRow.val + ' ' + mRow.un) : '',
+               excl_from: v.exfrom, excl_to: v.exto};
   BUSY = true; el('go').disabled = true;
   /* פידבק מיידי — בלי זה השליחה נראית "תקועה" */
   el('go').dataset.t = el('go').dataset.t || el('go').textContent;
@@ -9123,7 +9127,7 @@ function submitSign(){
     };
     if (MODE === 'remote')
       return POST('/api/sign/send_remote', {docs: docs, client: cname, phone: cphone,
-        address: addr, notes: cnotes, header: header}).then(function(j){
+        address: addr, notes: cnotes, header: header, terms: TERMS}).then(function(j){
           BUSY = false; el('go').disabled = false;
           el('go').textContent = el('go').dataset.t || el('go').textContent;
           if (!j.ok){ toast('שגיאה — נסה שוב'); return; }
@@ -9149,7 +9153,7 @@ function submitSign(){
         });
     var sig = el('pad').toDataURL('image/png');
     return POST('/api/sign/submit', {docs: docs, client: cname, cid: cid, phone: cphone,
-      address: addr, notes: cnotes, signature: sig, header: header}).then(function(j){
+      address: addr, notes: cnotes, signature: sig, header: header, terms: TERMS}).then(function(j){
         done(j, 'נחתם ונשמר');
       });
   }).catch(function(){
@@ -11437,6 +11441,9 @@ def sig_ingest_norm(b):
            # 01/10: הטלפון של הלקוח בפיירברי הוא "סלולרי" — כל הכינויים
            "phone": f("phone", "טלפון", "סלולרי", "טלפון נייד", "נייד", "mobile", "cellular", "client_phone"),
            "budget": f("budget", "תקציב", "price", "מחיר"),   # 01/10: מחיר הנכס בחתימה (תקציב הקונה)
+           "fee": f("fee", "עמלה מוסכמת", "דמי תיווך"),
+           "excl_from": f("excl_from", "בלעדיות מ", "תאריך תחילת בלעדיות"),
+           "excl_to": f("excl_to", "בלעדיות עד", "תאריך סיום בלעדיות", "עד תאריך"),
            "received_at": rcv}
     if event_id:
         # 🐞 09/09: שני מסמכי זוג מוכר+בלעדיות חולקים את אותו event_id בפיירברי —
@@ -12066,9 +12073,10 @@ CRM_MODULES = {
         "title": "מתעניינים (חתימות)",
         "columns": [("date", "תאריך", "date"), ("type", "סוג הסכם", "text"), ("client", "שם לקוח", "text"), ("phone", "סלולרי", "phone"),
                     ("agent", "סוכן", "text"), ("address", "כתובת", "text"), ("city", "עיר", "text"), ("n_props", "נכסים", "text"),
-                    ("budget", "תקציב", "price"), ("status", "מצב", "status"), ("source", "נחתם דרך", "text"), ("link", "מסמך", "link"),
+                    ("budget", "תקציב / מחיר", "price"), ("fee", "עמלה", "text"), ("excl_to", "בלעדיות עד", "text"),
+                    ("status", "מצב", "status"), ("source", "נחתם דרך", "text"), ("link", "מסמך", "link"),
                     ("notes", "הערות", "long")],
-        "default_cols": ["date", "type", "client", "phone", "agent", "address", "city", "budget", "status", "source", "link"],
+        "default_cols": ["date", "type", "client", "phone", "agent", "address", "city", "budget", "fee", "excl_to", "status", "source", "link"],
         "editable": [],
         "views": [("all", "כל החתימות"), ("today", "היום"), ("buyers", "קונים"), ("owners", "בעלי נכסים"), ("exclusive", "בלעדיות"),
                   ("rent", "שכירות"), ("pending", "ממתינות לחתימה"), ("hatimatova", "נחתמו בחתימה טובה"), ("app", "נחתמו באפי")],
@@ -12395,6 +12403,13 @@ def crm_unify_agents(records, keyfn, field="agent", also=("contact",)):
     return records
 
 
+def _crm_dmy(v):
+    """תאריך ISO (2027-01-19) → 19/01/2027; אחר — כמו שהוא."""
+    t = str(v or "").strip()
+    m = _re.match(r"^(\d{4})-(\d{2})-(\d{2})", t)
+    return "%s/%s/%s" % (m.group(3), m.group(2), m.group(1)) if m else t
+
+
 def crm_sig_records(sigs, h):
     """[CRM מתעניינים 19/10] שורות החתימות (get_signings) → רשומות לטבלת ה-CRM, כמו תצוגת 'מתעניינים' בפיירברי.
     נחתם = יש קישור למסמך או עמלה (הכלל של מסך החתימות). מקור: קישור hatimatova → חתימה טובה; קישור /s/ או
@@ -12418,6 +12433,9 @@ def crm_sig_records(sigs, h):
             src = "פיירברי"
         parts = [x.strip() for x in str(g.get("address") or "").split("|") if x.strip()]
         ep = h["ep"](g.get("received_at") or "") or 0
+        fee = str(g.get("fee") or "").strip()
+        if not fee and cp and not link and _re.fullmatch(r"\d+(\.\d+)?", cp):
+            fee = cp + "%"                                # פיירברי: עמלה כמספר בשדה העמלה
         k = "sg:" + (eid or "%s|%s|%s" % (g.get("client_name"), g.get("received_at"), g.get("deal_type")))
         seen[k] = seen.get(k, 0) + 1
         if seen[k] > 1:
@@ -12425,7 +12443,8 @@ def crm_sig_records(sigs, h):
         out.append({"key": k, "date": ep, "type": h["label"](g.get("deal_type")), "client": str(g.get("client_name") or "").strip(),
                     "phone": str(g.get("phone") or "").strip(), "agent": str(g.get("agent") or "").strip(),
                     "address": " · ".join(parts), "n_props": len(parts) or "", "city": str(g.get("city") or "").strip(),
-                    "budget": _crm_int(g.get("budget")), "status": "נחתם" if signed else "ממתין", "source": src, "link": link,
+                    "budget": _crm_int(g.get("budget")), "fee": fee, "excl_to": _crm_dmy(g.get("excl_to")),
+                    "status": "נחתם" if signed else "ממתין", "source": src, "link": link,
                     "notes": str(g.get("notes") or g.get("הערות") or "").strip()})
     return out
 

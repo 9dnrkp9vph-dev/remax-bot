@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 import _load
 from _load import ck
-ns = _load.load("crm_unify_agents", "crm_sig_records", "_crm_int", "CRM_VIEWS", "CRM_MODULES", "_crm_day", "crm_query", "_crm_norm", "inv_phone9")
+ns = _load.load("crm_unify_agents", "crm_sig_records", "_crm_dmy", "_crm_int", "CRM_VIEWS", "CRM_MODULES", "_crm_day", "crm_query", "_crm_norm", "inv_phone9")
 rec, q = ns["crm_sig_records"], ns["crm_query"]
 NOW = 1_800_000_000.0
 lab = {"CLIENT_SALE": "קונים", "OWNER_SALE": "מוכר", "OWNER_EXCLUSIVE": "בלעדיות", "CLIENT_RENT": "שכירות"}

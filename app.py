@@ -5774,8 +5774,7 @@ def api_sign_submit():
         _srec = {"event_id": eid, "deal_type": d.get("deal_type", ""), "agent": agent,
                  "client_name": client, "phone": phone, "address": address, "city": city,
                  "commission_pct": (link2 if _is_x else link), "received_at": now_iso, "notes": notes}
-        if _sprices and str(d.get("deal_type", "")).upper().startswith("CLIENT"):
-            _srec["budget"] = str(sum(_sprices) // len(_sprices))   # 14/10: המחיר מהטופס — לתקציב הקונה בהמשך
+        _srec.update(_sign_terms(body.get("terms"), d.get("deal_type", ""), _sprices))   # מחיר/עמלה/בלעדיות עד — לכל סוג הסכם
         recs.append(_srec)
     doc_saved = False; doc_resp = ""
     try:   # שמירת המסמך לעמוד הציבורי (טוקן → הסכם + חתימה) — סינכרוני, זה המסמך החתום
@@ -6041,6 +6040,26 @@ def _merge_buyer_search(r, desc, budget_txt=""):
             _cache_clear("buyers")
     except Exception:
         pass
+
+def _sign_terms(terms, deal_type, prices):
+    """[CRM 19/10 אייל: 'לראות את התקציב גם במוכר ובבלעדיות, עד איזה תאריך וכמה עמלה'] התנאים מטופס ההחתמה
+    → שדות בשורת החתימה: מחיר/תקציב (ממוצע המחירים שהוקלדו — לכל סוג הסכם), עמלה (או חודשי שכירות),
+    ותקופת הבלעדיות (רק בטופס הבלעדיות). עד 40 תווים לשדה."""
+    out = {}
+    if prices:
+        out["budget"] = str(sum(prices) // len(prices))
+    t = terms if isinstance(terms, dict) else {}
+    cap = lambda v: str(v or "").strip()[:40]
+    dt = str(deal_type or "").upper()
+    fee = cap(t.get("rent")) if "RENT" in dt and t.get("rent") else cap(t.get("fee"))
+    if fee:
+        out["fee"] = fee
+    if "EXCLUSIVE" in dt:
+        for k in ("excl_from", "excl_to"):
+            if cap(t.get(k)):
+                out[k] = cap(t.get(k))
+    return out
+
 
 def _sign_header_prices(header):
     """[14/10 אייל] המחירים שהסוכן הקליד בטופס ההחתמה (שורות 'מחיר מבוקש' בכותרת ההסכם) → [int]."""
@@ -6372,8 +6391,7 @@ def api_sign_send_remote():
         _srec = {"event_id": _ev, "doc_token": _ev, "deal_type": d.get("deal_type", ""), "agent": agent,
                  "client_name": client, "phone": phone, "address": address, "city": city,
                  "commission_pct": "", "received_at": now_iso, "notes": notes}
-        if _sprices and str(d.get("deal_type", "")).upper().startswith("CLIENT"):
-            _srec["budget"] = str(sum(_sprices) // len(_sprices))   # 14/10: המחיר מהטופס — לתקציב הקונה בהמשך
+        _srec.update(_sign_terms(body.get("terms"), d.get("deal_type", ""), _sprices))   # מחיר/עמלה/בלעדיות עד — לכל סוג הסכם
         recs.append(_srec)
     # שמירת המסמכים במצב 'pending' — סינכרוני: הקישור ב-SMS חייב לעבוד, וגם הסכם ההמשך
     doc_saved = False

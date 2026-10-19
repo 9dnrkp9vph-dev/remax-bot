@@ -26,5 +26,5 @@ for fn in ("api_sign_submit", "api_sign_send_remote"):
     f = next(x for x in T.body if isinstance(x, ast.FunctionDef) and x.name == fn)
     body = ast.get_source_segment(SRC, f)
     ck("_sign_header_prices(header)" in body and "price=" in body.split("_add_buyer_from_signing(")[1][:400], (fn, "passes typed price"))
-    ck('"budget"' in body, (fn, "budget on signature row"))
+    ck('"budget"' in body or "_sign_terms(" in body, (fn, "budget on signature row (via _sign_terms, tested in tests/crm/test_sig_terms.py)"))
 print("OK", n, "checks")
