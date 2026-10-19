@@ -49,4 +49,8 @@ _cells = list(_csv.reader(_io.StringIO(d2)))[1]
 ck(_cells[1] == '="0549572532"', ("phone as text (parsed CSV cell)", _cells))
 # 7 ספרות לא תואמות שורה בלי טלפון סוכן
 ck(q(q="1234567")["total"] == 0, "short phone token doesn't match empty")
+# שורה בלי event_id (רוב השיחות מהגיליון) — מזהה מפונקציית המזהה של האפליקציה (_call_uid), לא נזרקת
+R2 = recs_f([{"status": "ANSWER", "agent": "x", "caller_phone": "1", "received_at": "2026-10-19T10:00:00Z"}], {}, set(),
+            uid=lambda c: "h-" + c["caller_phone"])
+ck(len(R2) == 1 and R2[0]["key"] == "h-1", R2)
 print("crm_query OK", _load.n)

@@ -11908,11 +11908,12 @@ _CRM_STATUS = {"ANSWER": "נענתה", "NOANSWER": "לא נענתה", "NO ANSWER
                "CALLER CANCEL": "בוטלה", "CANCEL": "בוטלה", "CALL2CALL": "יוצאת", "MANUAL": "ידנית"}
 
 
-def crm_calls_records(rows, overrides, hidden):
-    """שורות השיחות (web_fetch_raw) → רשומות CRM. העריכות (crm_overrides) מעל המקור; hidden = event_ids מוסתרים."""
+def crm_calls_records(rows, overrides, hidden, uid=None):
+    """שורות השיחות (web_fetch_raw) → רשומות CRM. העריכות (crm_overrides) מעל המקור; hidden = מזהים מוסתרים.
+    uid = פונקציית המזהה של האפליקציה (_call_uid): event_id, ואם אין (רוב השורות מהגיליון) — hash יציב."""
     out = []
     for r in rows or []:
-        key = str(r.get("event_id") or "").strip()
+        key = str((uid(r) if uid else r.get("event_id")) or "").strip()
         if not key:
             continue
         ov = dict((overrides or {}).get(key) or {})
@@ -14791,7 +14792,7 @@ def register(app, G):
                 hidden = set(G["_fetch_hidden_calls"]() or set())
             except Exception:
                 hidden = set()
-            return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden)
+            return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden, uid=G.get("_call_uid"))
         return []
 
     def _crm_args():
