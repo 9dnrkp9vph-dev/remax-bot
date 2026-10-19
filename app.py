@@ -4199,7 +4199,20 @@ def _persist_activity(entry):
         _buyers_apps_post("logactivity", {"entry": json.dumps(entry, ensure_ascii=False)})
     except Exception:
         pass
+def _login_where():
+    """[PRESENCE 19/10] פירוט לשורת הכניסה: IP · מכשיר · במשרד/מחוץ (אייל: 'מי במשרד ומי מהבית')."""
+    try:
+        from flask import has_request_context
+        if not has_request_context():
+            return ""
+        import office_presence as _op
+        return _op.where_label(request.headers, request.remote_addr, (_load_config() or {}).get("v2_office_ips") or [])
+    except Exception:
+        return ""
+
 def _log_activity(name, role, phone, action, detail=""):
+    if not detail and str(action or "").startswith("כניסה"):
+        detail = _login_where()
     entry = {
         "ts": time.time(), "name": name or "", "role": role or "",
         "phone": phone or "", "action": action, "detail": str(detail)[:80],
@@ -7612,6 +7625,8 @@ def _activity_merge(c):
     merged.sort(key=lambda x: float(x.get("ts", 0) or 0), reverse=True)
     return merged
 
+import office_presence as _office_presence_mod
+
 def _usage_rows(t_from, t_to=None, no_weekend=False):
     """[USAGE-REPORT 05/10] זמן-פעיל אמיתי לכל סוכן מפעימות usage_pings, בטווח [t_from, t_to) (datetime עם
     אזור זמן). פער > 90ש' = סשן חדש; פעימה בודדת ≈ 45ש'. משותף ל-/v2/api/usage_today ולדוח היומי."""
@@ -7619,6 +7634,7 @@ def _usage_rows(t_from, t_to=None, no_weekend=False):
         return []
     tz = t_from.tzinfo
     pings = _sbdb.fetch_pings_today(t_from.isoformat())
+    _places = _usage_places(t_from)
     import datetime as _dt2
     by = {}
     for p in pings:
@@ -7638,10 +7654,11 @@ def _usage_rows(t_from, t_to=None, no_weekend=False):
             continue
         if no_weekend and dt.weekday() in (4, 5):   # שישי=4, שבת=5
             continue
-        d = by.setdefault(gk, {"name": "", "ts": [], "days": set()})
+        d = by.setdefault(gk, {"name": "", "ts": [], "days": set(), "pts": []})
         if nm:
             d["name"] = nm
         d["ts"].append(dt.timestamp())
+        d["pts"].append((dt.timestamp(), _last9(ph)))
         d["days"].add(dt.date().isoformat())
     rows = []
     for ph, d in by.items():
@@ -7657,10 +7674,24 @@ def _usage_rows(t_from, t_to=None, no_weekend=False):
                     start = ts[i]
             if i < len(ts):
                 prev = ts[i]
-        rows.append({"name": d["name"] or ph, "min": int(round(mins)),
-                     "pings": len(ts), "days": len(d["days"])})
+        row = {"name": d["name"] or ph, "min": int(round(mins)), "pings": len(ts), "days": len(d["days"])}
+        if _places is not None:   # [PRESENCE 19/10] כמה מהזמן ב-WiFi של המשרד
+            row["office"] = min(row["min"], int(round(_office_presence_mod.office_minutes(d["pts"], _places))))
+        rows.append(row)
     rows.sort(key=lambda x: -x["min"])
     return rows
+
+def _usage_places(t_from):
+    """[PRESENCE 19/10] ציר 'במשרד/מחוץ' מיומן הפעילות (מיום לפני הטווח — כדי לדעת איפה כל אחד התחיל).
+    None = לא הוגדרו כתובות משרד (אין עמודת 'במשרד')."""
+    try:
+        if not ((_load_config() or {}).get("v2_office_ips")):
+            return None
+        items = _sbdb.fetch_activity_actions(t_from.timestamp() - 86400, ["מיקום:"])
+        return _office_presence_mod.timeline_from_activity(list(items) + list(_activity[-400:]))
+    except Exception as e:
+        log.warning(f"usage places: {e}")
+        return None
 
 @app.route("/api/activity", methods=["GET"])
 def api_activity():
@@ -10370,7 +10401,7 @@ _PRIVACY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <li><b>נכסים:</b> פרטי נכסים, כתובות ופרטי בעלי נכסים ממקורות פומביים ומהזנה ידנית.</li>
     <li><b>מסמכים חתומים:</b> הסכמי תיווך שנחתמו דיגיטלית.</li>
     <li><b>מיקום:</b> בעת שימוש במפה בלבד, ובאישורך — להצגת "המיקום שלי".</li>
-    <li><b>נתוני שימוש:</b> פעולות באפליקציה (יומן פעילות פנימי למנהל המשרד).</li>
+    <li><b>נתוני שימוש:</b> פעולות באפליקציה (יומן פעילות פנימי למנהל המשרד), וכן כתובת האינטרנט (IP) וסוג המכשיר בכניסה ובזמן השימוש — כדי לדעת אם העבודה נעשית מרשת ה-WiFi של המשרד.</li>
   </ul>
 
   <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">3. הקלטת שיחות והסכמה</h2>
@@ -11292,7 +11323,7 @@ def usage_report_aggregate(time_rows, items):
     acts = _col.Counter()
     for it in items or []:
         a = str(it.get("action", "") or "").strip()
-        if not a:
+        if not a or a.startswith("מיקום:"):   # [PRESENCE 19/10] שורת מיקום אוטומטית — לא פעולה של הסוכן
             continue
         acts[a] += 1
         nm = str(it.get("name", "") or "").strip()
@@ -12663,6 +12694,13 @@ try:
     _site_api.register_site(app, globals())
 except Exception as _site_err:
     log.error(f"site_api init failed (app unaffected): {_site_err}")
+
+# ── במשרד / מחוץ למשרד לפי IP (אייל 19/10) — מודול נפרד ──
+try:
+    import office_presence as _office_presence
+    _office_presence.register(app, globals())
+except Exception as _op_err:
+    log.error(f"office_presence init failed (app unaffected): {_op_err}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # WARMUP — חימום ה-caches הכבדים בעליית התהליך (deploy/restart מרוקן הכל)

@@ -1935,6 +1935,24 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div id="rmvList"></div>
     </div>
 
+    <!-- כתובות המשרד — במשרד / מחוץ למשרד ביומן השימוש (אייל 19/10) -->
+    <div class="card" id="oipCard">
+      <div class="cardTitle">כתובות המשרד (WiFi)</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">כתובת האינטרנט של כל סניף. מי שמחובר ל-WiFi של סניף יסומן ביומן השימוש "במשרד", וכל השאר "מחוץ למשרד" (בית, רכב או סלולר — אי אפשר להבחין ביניהם). לסניף יכולות להיות כמה כתובות.</div>
+      <div id="oipWarn"></div>
+      <div id="oipList" style="margin-top:8px"></div>
+      <div id="oipMine" style="font-size:12.5px;color:#5B6472;margin-top:8px"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <input id="oipBranch" list="oipBranches" placeholder="סניף (למשל ביאליק)" style="flex:1;min-width:120px;min-height:44px;padding:0 12px;border:1.5px solid #DCD6C8;border-radius:12px;font-family:inherit">
+        <datalist id="oipBranches"></datalist>
+        <input id="oipIp" dir="ltr" inputmode="decimal" placeholder="79.180.1.1" style="flex:1;min-width:120px;min-height:44px;padding:0 12px;border:1.5px solid #DCD6C8;border-radius:12px;font-family:inherit">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button onclick="oipMine()" style="flex:1;min-height:44px;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">הכתובת שלי עכשיו</button>
+        <button onclick="oipAdd()" style="flex:1;min-height:44px;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">הוסף כתובת</button>
+      </div>
+    </div>
+
     <!-- גיבוי/שחזור נכסי המשרד (אייל 11/09) -->
     <div class="card" id="snapCard">
       <div class="cardTitle">גיבוי נכסי המשרד</div>
@@ -2163,7 +2181,7 @@ function boot(){
         UNMATCHED = unmMerge(rs[1] || {});
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
-        render(); loadSnaps(); repLoad(); bsLoad();
+        render(); loadSnaps(); repLoad(); bsLoad(); oipLoad();
       });
   }).catch(function(){ location.replace('/v2'); });
 }
@@ -2218,6 +2236,31 @@ function renderSnaps(){
 function loadSnaps(){
   GET('/v2/api/admin/props/snapshots').then(function(j){ if (j && j.ok){ SNAPS = j.snapshots || []; renderSnaps(); } }).catch(function(){});
 }
+/* [PRESENCE 19/10] כתובות המשרד */
+var OIP = {entries: [], my_ip: ''};
+function oipRender(){
+  var e = OIP.entries || [];
+  el('oipWarn').innerHTML = OIP.warn ? '<div style="margin-top:8px;background:#FBF3DF;color:#7A5E1C;border-radius:12px;padding:8px 12px;font-size:12.5px;font-weight:700">היום אף אחד לא זוהה במשרד. ייתכן שכתובת הסניף השתנתה — לחצו "הכתובת שלי עכשיו" מתוך הסניף והוסיפו אותה.</div>' : '';
+  el('oipList').innerHTML = e.length ? e.map(function(x){
+    return '<div class="setRow"><div class="mid"><div class="nm">' + esc(x.branch) + ' · <span dir="ltr">' + esc(x.ip) + '</span></div>' +
+      (x.at ? '<div class="sb">נוספה ' + esc(x.at) + (x.by ? ' · ' + esc(x.by) : '') + '</div>' : '') + '</div>' +
+      '<button onclick="oipDel(\'' + esc(x.ip) + '\')" aria-label="מחק כתובת" style="width:44px;height:44px;border:none;border-radius:12px;background:#FBEDED;color:#C24040;cursor:pointer">' +
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>';
+  }).join('') : '<div style="font-size:12.5px;color:#6B7280;padding:4px 0">עוד לא הוגדרו כתובות — עד אז לא מוצג "במשרד".</div>';
+  el('oipMine').innerHTML = OIP.my_ip ? 'הכתובת שלך עכשיו: <b dir="ltr">' + esc(OIP.my_ip) + '</b>' + (OIP.my_place ? ' · ' + esc(OIP.my_place) : '') : '';
+  var br = {}; e.forEach(function(x){ br[x.branch] = 1; });
+  el('oipBranches').innerHTML = Object.keys(br).map(function(b){ return '<option value="' + esc(b) + '">'; }).join('');
+}
+function oipLoad(){ GET('/v2/api/admin/office_ips').then(function(j){ if (j && j.ok){ OIP = j; oipRender(); } }).catch(function(){}); }
+function oipMine(){ if (OIP.my_ip) el('oipIp').value = OIP.my_ip; else toast('לא זוהתה כתובת'); }
+function oipSave(d, okMsg){
+  POST('/v2/api/admin/office_ips', d).then(function(j){
+    if (j && j.ok){ OIP = j; oipRender(); toast(okMsg); }
+    else toast(j && j.reason === 'bad_ip' ? 'כתובת לא תקינה' : j && j.reason === 'no_branch' ? 'צריך שם סניף' : 'השמירה נכשלה');
+  }).catch(function(){ toast('שגיאה'); });
+}
+function oipAdd(){ oipSave({action: 'add', branch: el('oipBranch').value, ip: el('oipIp').value}, 'הכתובת נוספה'); el('oipIp').value = ''; }
+function oipDel(ip){ if (confirm('למחוק את הכתובת ' + ip + '?')) oipSave({action: 'del', ip: ip}, 'הכתובת נמחקה'); }
 function snapTake(){
   POST('/v2/api/admin/props/snapshot', {}).then(function(j){
     if (j && j.ok){ toast('נשמר גיבוי של ' + j.n + ' נכסים'); loadSnaps(); }
@@ -8404,6 +8447,8 @@ function load(){
     }).join('') || '<div class="empty">אין פעילות עדיין היום</div>';
   }).catch(function(){});
 }
+/* [PRESENCE 19/10] במשרד / מחוץ למשרד (לפי ה-WiFi של הסניף; מוצג רק כשהוגדרו כתובות משרד בניהול) */
+function placeTxt(p){ return (p === undefined || p === null) ? '' : ' · ' + (p ? 'במשרד ' + esc(p) : 'מחוץ למשרד'); }
 /* [USAGE-NOW 07/10] פעילים עכשיו — מתרענן כל 30 שנ' */
 function nowAgo(s){ return s < 60 ? 'עכשיו' : 'לפני ' + Math.round(s / 60) + ' דק\''; }
 function renderNow(rows){
@@ -8414,7 +8459,7 @@ function renderNow(rows){
     '<div style="font-size:14.5px;font-weight:800">פעילים עכשיו · ' + rows.length + '</div></div>' +
     (rows.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + rows.map(function(r){
       return '<span style="background:#E7F7EE;color:#157A43;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:700">' +
-        esc(r.name) + ' <span style="color:#5B6472;font-weight:600">· ' + nowAgo(r.ago) + '</span></span>';
+        esc(r.name) + ' <span style="color:#5B6472;font-weight:600">· ' + nowAgo(r.ago) + placeTxt(r.place) + '</span></span>';
     }).join('') + '</div>' : '<div style="font-size:12.5px;color:#6B7280">אף אחד לא באפליקציה ברגע זה</div>');
 }
 function loadNow(){
@@ -8466,7 +8511,8 @@ function renderUsagePings(rows){
         '<div style="flex:1;height:9px;border-radius:999px;background:#F0EDE3;overflow:hidden">' +
         '<div style="height:100%;width:' + Math.max(4, Math.round(r.min / mx * 100)) + '%;border-radius:999px;background:#2E6BD6"></div></div>' +
         '<div style="font-size:11.5px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.min) +
-        (week && r.days ? ' · ' + r.days + ' ימים' : '') + '</div></div>';
+        (week && r.days ? ' · ' + r.days + ' ימים' : '') +
+        (r.office != null && r.min ? ' · במשרד ' + fmtMin(r.office) : '') + '</div></div>';
     }).join('') +
     '<div style="font-size:10.5px;color:#6B7280;padding:8px 2px 2px">זמן פעיל אמיתי — נמדד לפי נוכחות באפליקציה (פעימה כל 45 שנ\')' +
     (week ? ' · ממוצע יומי = הזמן חלקי מספר הימים' : '') + '</div>';
@@ -11867,7 +11913,7 @@ function agoS(s){return s<60?'עכשיו':('לפני '+Math.round(s/60)+' דק׳
 function online(){fetch('/v2/api/usage_now',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){
   var el=document.getElementById('onList');if(!el||!j||!j.ok)return;var rows=j.rows||[];
   document.getElementById('onN').textContent='('+rows.length+')';
-  el.innerHTML=rows.length?rows.map(function(r){return '<span class="chip"><i></i>'+esc(r.name)+' · '+agoS(r.ago)+'</span>';}).join(''):'<span class="mut">אף אחד לא מחובר כרגע</span>';}).catch(function(){});}
+  el.innerHTML=rows.length?rows.map(function(r){return '<span class="chip"><i></i>'+esc(r.name)+' · '+agoS(r.ago)+(r.place==null?'':' · '+(r.place?'במשרד '+esc(r.place):'מחוץ למשרד'))+'</span>';}).join(''):'<span class="mut">אף אחד לא מחובר כרגע</span>';}).catch(function(){});}
 function setSw(j){var w=document.getElementById('swWa'),p=document.getElementById('swPush');if(!w)return;
   w.classList.toggle('on',!!j.wa_official);p.classList.toggle('on',!!j.push);
   document.getElementById('swQuiet').textContent=j.quiet?'כרגע במצב השתקה (שבת/חג או ידני) — גם כשהמתגים דלוקים, לא נשלח כלום.':'';}
@@ -13300,7 +13346,7 @@ def bpage_cat(source, live):
         return {"cat": "שת\"פ", "who": str(live.get("_office", "") or "").strip()}
     return {"cat": "המשרד", "who": str(live.get("סוכן 1", "") or "").strip()}
 
-def usage_now_rows(pings, now_ep, display, window=150):
+def usage_now_rows(pings, now_ep, display, window=150, place_for=None):
     """[USAGE-NOW 07/10] פעילים עכשיו (אייל): מי ששלח פעימה ב-window השניות האחרונות (פעימה כל 45ש').
     מקובץ לפי טלפון; display(name, phone) → שם לתצוגה. ממוין לפי הפעימה האחרונה."""
     last = {}
@@ -13312,6 +13358,9 @@ def usage_now_rows(pings, now_ep, display, window=150):
         if ph not in last or ep > last[ph][0]:
             last[ph] = (ep, str(p.get("name", "") or "").strip())
     rows = [{"name": display(nm, ph) or nm or ph, "ago": max(0, int(now_ep - ep))} for ph, (ep, nm) in last.items()]
+    if place_for:   # [PRESENCE 19/10] None = לא ידוע (לא הוגדרו כתובות משרד); '' = מחוץ למשרד; אחרת הסניף
+        for r, ph in zip(rows, last.keys()):
+            r["place"] = place_for(ph)
     rows.sort(key=lambda r: r["ago"])
     return rows
 
@@ -16833,7 +16882,8 @@ def register(app, G):
         except Exception as e:
             if log: log.warning(f"usage now: {e}")
             pings = []
-        return jsonify({"ok": True, "rows": usage_now_rows(pings, now, G["_display_name_for"])})
+        return jsonify({"ok": True, "rows": usage_now_rows(pings, now, G["_display_name_for"],
+                                                           place_for=getattr(app, "presence_place", None))})
 
     @app.route("/v2/api/usage_today", methods=["GET"])
     def v2_api_usage_today():
