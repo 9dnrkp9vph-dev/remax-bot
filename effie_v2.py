@@ -11535,6 +11535,103 @@ def crm_daily_series(rows, get_when, days, today_iso):
     return out
 
 
+_CRM_EFFIE_AI = {"props": ("חיפוש נכסים",), "newborn": ("חיפוש נכס נולד",),
+                 "buyers_ai": ("חיפוש קונה AI",), "ask": ("שאל את אפי",)}
+
+
+def crm_dashboard_data(src, now, quiet, today_iso):
+    """[CRM-3] כל נתוני הדשבורד ממקורות מוזרקים (src: שם → פונקציה). מקור שנופל → ברירת מחדל, לא קריסה.
+    quiet (שבת/חג) חל רק על זרמים של שעות עבודה — שיחות/נכס נולד/שימוש באפי."""
+    import datetime as _dx
+    from zoneinfo import ZoneInfo as _ZX
+    il = _ZX("Asia/Jerusalem")
+
+    def get(name, *a, default=None):
+        try:
+            fn = src.get(name)
+            return fn(*a) if fn else default
+        except Exception:
+            return default
+
+    rep = get("report", default={}) or {}
+    calls = get("calls", default=[]) or []
+    sigs = get("signings", default=[]) or []
+    buyers = get("buyers", default=[]) or []
+    newborn = get("newborn", default=[]) or []
+    t7 = now - 7 * 86400
+    act = get("activity", t7, default=[]) or []
+
+    def latest(rows, key):
+        best = None
+        for r in rows:
+            ts = crm_ts(r.get(key)) if isinstance(r, dict) else None
+            if ts is not None and ts <= now + 300 and (best is None or ts > best):
+                best = ts
+        return best
+
+    def latest_act(pred):
+        tss = [a.get("ts") for a in act if pred(a) and a.get("ts")]
+        return max(tss) if tss else None
+
+    scans = rep.get("scans") or {}
+    last = {
+        "calls": latest(calls, "received_at"),
+        "signatures": latest(sigs, "received_at"),
+        "invoices": crm_ts(get("last_invoice", default=None)),
+        "newborn": crm_ts(scans.get("newborn")),
+        "office": crm_ts(scans.get("office")),
+        "shtaf": crm_ts(scans.get("shtaf")),
+        "site_leads": latest_act(lambda a: str(a.get("action", "")).startswith(("ליד מהאתר", "פנייה מהאתר"))),
+        "app_usage": latest_act(lambda a: a.get("role") not in ("system", "site", "")),
+    }
+    health = [{"key": k, "label": lbl, "last": last.get(k),
+               "status": crm_health(last.get(k), now, gap, work, quiet and work)}
+              for k, lbl, gap, work in CRM_STREAMS]
+
+    pk = ("calls", "calls_answered", "signings", "signings_by_label", "buyers", "newborn", "shtaf",
+          "deals_opened", "deals_closed")
+    periods = {k: rep.get(k) or {} for k in pk}
+    for k in ("office_active", "open_now", "lawyer_now"):
+        periods[k] = rep.get(k) or 0
+
+    first = _dx.date.fromisoformat(today_iso) - _dx.timedelta(days=29)
+    series = {"days": [(first + _dx.timedelta(days=i)).isoformat() for i in range(30)],
+              "calls": crm_daily_series(calls, lambda r: r.get("received_at"), 30, today_iso),
+              "signings": crm_daily_series(sigs, lambda r: r.get("received_at"), 30, today_iso),
+              "buyers": crm_daily_series(buyers, lambda r: r.get("date"), 30, today_iso),
+              "newborn": crm_daily_series(newborn, lambda r: r.get("נוצר בתאריך"), 30, today_iso)}
+
+    usage_ai = get("site_ai", default={}) or {}
+    def site_total(day):
+        v = usage_ai.get(day) or {}
+        return int(v.get("site_ai") or 0) + int(v.get("lead_ai") or 0)
+    tv = usage_ai.get(today_iso) or {}
+    hours = {h: int((x or {}).get("site_ai") or 0) + int((x or {}).get("lead_ai") or 0)
+             for h, x in (tv.get("hours") or {}).items()}
+    days7 = [(_dx.date.fromisoformat(today_iso) - _dx.timedelta(days=6 - i)).isoformat() for i in range(7)]
+    eff_today = {k: 0 for k in _CRM_EFFIE_AI}
+    eff_7d = [0] * 7
+    for a in act:
+        kind = next((k for k, acts in _CRM_EFFIE_AI.items() if a.get("action") in acts), None)
+        if not kind or not a.get("ts"):
+            continue
+        d = _dx.datetime.fromtimestamp(a["ts"], il).date().isoformat()
+        if d == today_iso:
+            eff_today[kind] += 1
+        if d in days7:
+            eff_7d[days7.index(d)] += 1
+    ai = {"site": {"today": site_total(today_iso), "cap": get("ai_cap", default=0) or 0,
+                   "blocked": int(tv.get("site_blocked") or 0) + int(tv.get("lead_blocked") or 0),
+                   "cache": int(tv.get("site_cache") or 0) + int(tv.get("lead_cache") or 0), "hours": hours},
+          "site_7d": [site_total(d) for d in days7], "days7": days7,
+          "effie_today": eff_today, "effie_7d": eff_7d}
+
+    t0 = _dx.datetime.fromisoformat(today_iso).replace(tzinfo=il).timestamp()
+    usage = [{"name": r.get("name", ""), "min": r.get("min", 0)} for r in (get("usage", t0, default=[]) or [])][:10]
+    return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
+            "usage_today": usage, "insights": list(rep.get("insights") or []), "scans": scans}
+
+
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
     """ok / warn (עד פי 2 מהפער) / bad / quiet (שבת-חג) / none (אין נתון)."""
     if quiet:
@@ -14172,6 +14269,56 @@ def register(app, G):
                         "calls": parallel_match_calls(legacy_calls, direct_calls),
                         "invoices": parallel_match_invoices(legacy_inv, direct_inv),
                         "sig_nonapp": sig_nonapp_by_agent(G["get_signings"]() or [], d0.isoformat())})
+
+    @app.route("/v2/api/crm/dashboard", methods=["GET"])
+    def v2_api_crm_dashboard():
+        """[CRM-3] נתוני הדשבורד. מפתח בלבד. נבנה דרך _swr (15 דק'); ?fresh=1 בונה עכשיו."""
+        s = G["_web_auth"]()
+        if not s or not G["_is_dev"](s.get("phone", "")):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        import datetime as _dbd, time as _tbd
+        from zoneinfo import ZoneInfo as _ZBD
+        il = _ZBD("Asia/Jerusalem")
+
+        def build():
+            now = _tbd.time()
+            today = _dbd.datetime.fromtimestamp(now, il).date()
+            frm = (today - _dbd.timedelta(days=30)).strftime("%d/%m/%Y")
+            sb = G.get("_sbdb")
+
+            def last_invoice():
+                rows = sb.fetch_invoices_rows("", limit=1) if (sb and sb.enabled()) else []
+                return rows[0].get("created_at") if rows else None
+
+            def site_ai():
+                fn = getattr(app, "site_ai_usage", None)
+                return fn() if fn else {}
+
+            def ai_cap():
+                import site_api as _sa
+                return _sa.ai_daily_cap()
+
+            src = {"report": lambda: (G["build_office_report"](today) or {}).get("data") or {},
+                   "calls": lambda: G["web_fetch_raw"]("שיחות", frm, "31/12/2099"),
+                   "signings": lambda: G["get_signings"](),
+                   "buyers": lambda: G["_fetch_manual_buyers"](),
+                   "newborn": lambda: G["fetch_newborn"](),
+                   "last_invoice": last_invoice,
+                   "activity": lambda t0: G["_activity_fetch"](t0, today=False),
+                   "usage": lambda t0: G["_usage_rows"](_dbd.datetime.fromtimestamp(t0, il)),
+                   "site_ai": site_ai, "ai_cap": ai_cap}
+            try:
+                quiet = bool(G["_shabbat_quiet_now"]())
+            except Exception:
+                quiet = False
+            return crm_dashboard_data(src, now, quiet, today.isoformat())
+
+        try:
+            data = build() if request.args.get("fresh") == "1" else G["_swr"]("crmdash", 900, build)
+            return jsonify(data)
+        except Exception as e:
+            if log: log.error(f"crm dashboard error: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
     @app.route("/v2/crm/parallel", methods=["GET"])
     def v2_crm_parallel_page():
