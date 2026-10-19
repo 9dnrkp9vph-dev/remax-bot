@@ -2051,6 +2051,12 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <div class="tg" id="tgWaAuto" onclick="togglePolicy('wa_auto', this)"></div></div>
     </div>
 
+    <div class="card setRow" style="cursor:pointer" onclick="location.href='/v2/crm/dashboard'">
+      <div class="setIc" style="background:#F6EFDC"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M2 14V9M6 14V5M10 14V8M14 14V2" fill="none" stroke="#C29435" stroke-width="1.7" stroke-linecap="round"/></svg></div>
+      <div class="mid"><div class="nm">לוח בקרה</div><div class="sb">בריאות המערכות · שיחות · חתימות · קונים · סריקות · חיפושי AI</div></div>
+      <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#6E7683" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+
     <div class="card setRow" style="cursor:pointer" onclick="location.href='/v2/dev'">
       <div class="setIc" style="background:#EAF0FA"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M6 4L2 8l4 4M10 4l4 4-4 4" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="mid"><div class="nm">כלי מפתח</div><div class="sb">מקורות · חיבור · SMS · parity · הרשאות · נוסחי הסכמים</div></div>

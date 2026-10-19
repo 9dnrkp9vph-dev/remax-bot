@@ -14,3 +14,8 @@ assert js, "inline script"
 f = tempfile.NamedTemporaryFile("w", suffix=".js", delete=False); f.write("\n".join(js)); f.close()
 subprocess.run(["node", "--check", f.name], check=True)
 print("dash_page OK")
+# קישור מהניהול (בעל המשרד) ללוח הבקרה
+_src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "effie_v2.py"), encoding="utf-8").read()
+_adm = _src[_src.index("location.href='/v2/dev'") - 3000:_src.index("location.href='/v2/dev'")]
+assert "location.href='/v2/crm/dashboard'" in _adm, "admin link to dashboard"
+print("dash_admin_link OK")
