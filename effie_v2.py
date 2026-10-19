@@ -11505,6 +11505,7 @@ td.long div{overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box
 .banner{margin:0 18px 12px;border-radius:14px;padding:12px 14px;background:#FBF6E8;border:1px solid #EADBB0;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .banner.ok{background:#E6F2EC;border-color:#BFE0CC}.banner b{font-weight:700}
 .warnTxt{color:#7A5E1C;font-size:13px}
+s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-new{background:#F4EEDD;color:#7A5E1C}.lnk{color:#2E6BD6;font-weight:500}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;border-radius:12px;padding:10px 16px;display:none;z-index:40}
 @media(max-width:900px){.page{grid-template-columns:1fr}.views{position:static}}
 </style></head><body>
@@ -11545,6 +11546,8 @@ function fmtPh(v){ var d = String(v || '').replace(/\D/g, '');
 function cell(r, c){ var v = r[c[0]], t = c[2];
   if (t === 'date') return fdate(v);
   if (t === 'phone') return v ? '<span class="ph">' + esc(fmtPh(v)) + '</span>' : '';
+  if (t === 'price') return v ? ((r.dropped && r.price_old ? '<s class="old">₪' + Number(r.price_old).toLocaleString('en-US') + '</s> ' : '') + '<b>₪' + Number(v).toLocaleString('en-US') + '</b>' + (r.dropped ? ' <span class="st st-y">↓ ירידה</span>' : '') + (r.new ? ' <span class="st st-new">חדש</span>' : '')) : '';
+  if (t === 'link') return /^https?:\/\//.test(v || '') ? '<a class="lnk" href="' + esc(v) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">למודעה</a>' : '';
   if (t === 'status') return '<span class="st ' + stCls(v) + '">' + esc(v) + '</span>';
   if (t === 'score') return v ? v + '/5' : '—';
   if (t === 'long') return '<div>' + esc(v) + '</div>';
@@ -12007,6 +12010,18 @@ def crm_daily_series(rows, get_when, days, today_iso):
 
 # ── [CRM-2 19/10] מסכי CRM במבנה פיירברי — הגדרת מודולים + מנוע שאילתות (טהור) ──────────
 CRM_MODULES = {
+    "props": {
+        "title": "נכסים",
+        "columns": [("image", "תמונה", "photo"), ("source", "מקור", "text"), ("type", "סוג", "text"), ("city", "עיר", "text"),
+                    ("neighborhood", "שכונה", "text"), ("address", "כתובת", "text"), ("rooms", "חד'", "text"),
+                    ("sqm", "מ\"ר", "text"), ("floor", "קומה", "text"), ("price", "מחיר", "price"), ("deal", "עסקה", "text"),
+                    ("contact", "בעלים / משרד / סוכן", "text"), ("phone", "טלפון", "phone"), ("excl", "בלעדיות", "text"),
+                    ("date", "נראה לראשונה", "date"), ("status", "מצב", "status"), ("link", "מודעה", "link"), ("desc", "תיאור", "long")],
+        "default_cols": ["image", "source", "type", "city", "neighborhood", "address", "rooms", "price", "contact", "phone", "date", "status", "link"],
+        "editable": [],
+        "views": [("all", "כל הפעילים"), ("private", "פרטיים (נכס נולד)"), ("new", "חדשים (עד 2 ימים)"), ("drops", "ירידות מחיר"),
+                  ("shtaf", "מודעות משרדים (שת\"פ)"), ("office", "המשרד שלנו"), ("delisted", "ירד מפרסום"), ("everything", "הכל")],
+    },
     "calls": {
         "title": "לוג שיחות",
         "columns": [("agent", "שם הסוכן", "text"), ("caller_phone", "טלפון לקוח", "phone"),
@@ -12194,6 +12209,14 @@ CRM_VIEWS = {
              "no_vphone": lambda r, t: bool(r.get("active")) and not r.get("vphone"),
              "no_email": lambda r, t: bool(r.get("active")) and "@" not in (r.get("email") or "") and "@" not in (r.get("license") or ""),
              "no_license": lambda r, t: bool(r.get("active")) and not "".join(ch for ch in (r.get("license") or "") if ch.isdigit())},
+    "props": {"all": lambda r, t: not r.get("delisted"),
+              "private": lambda r, t: r.get("source") == "פרטי" and not r.get("delisted"),
+              "new": lambda r, t: bool(r.get("new")) and not r.get("delisted"),
+              "drops": lambda r, t: bool(r.get("dropped")) and not r.get("delisted"),
+              "shtaf": lambda r, t: r.get("source") == "שת\"פ" and not r.get("delisted"),
+              "office": lambda r, t: r.get("source") == "המשרד" and not r.get("delisted"),
+              "delisted": lambda r, t: bool(r.get("delisted")),
+              "everything": lambda r, t: True},
     "automations": {"on": lambda r, t: r.get("status") == "פעילה",
                     "off": lambda r, t: r.get("status") == "כבויה",
                     "in": lambda r, t: r.get("direction") == "נכנס",
@@ -12271,6 +12294,85 @@ def _crm_norm(s):
     return _re.sub(r"[\"'׳״]", "", str(s or "")).lower()
 
 
+def _crm_int(v):
+    """מחיר/מ"ר → מספר שלם (למיון), או '' כשאין."""
+    d = "".join(ch for ch in str(v or "").split(".")[0] if ch.isdigit())
+    return int(d) if d else ""
+
+
+def _crm_rooms(v):
+    try:
+        x = float(str(v or "").replace(",", ".").strip())
+        return x if x > 0 else ""
+    except Exception:
+        return ""
+
+
+def crm_props_records(nb, excl, office, pd_map, now, h):
+    """[CRM נכסים 19/10] נכס נולד (פרטי) + שת"פ + נכסי המשרד → רשומה אחת לטבלת ה-CRM.
+    h: עוזרים מ-app (תאריך נראה-לראשונה, מפתח ירידת מחיר, פענוח תיאור נכס נולד, שם סוכן) — כך הפונקציה טהורה ונבדקת."""
+    out, seen = [], {}
+
+    def add(r):
+        k = r["key"]
+        seen[k] = seen.get(k, 0) + 1
+        if seen[k] > 1:
+            r["key"] = k + "#" + str(seen[k])
+        out.append(r)
+
+    def base(src, pkey, ep, delisted):
+        old = _crm_int((pd_map or {}).get(pkey, "")) if pkey in (pd_map or {}) else ""
+        return {"key": src + ":" + pkey, "date": ep or 0, "new": bool(ep) and (now - ep) <= 2 * 86400,
+                "delisted": bool(delisted), "status": "ירד מפרסום" if delisted else "פעיל", "price_old": old}
+
+    for r in nb or []:
+        try:
+            o = h["nb_office"](r) or {}
+        except Exception:
+            o = {}
+        pk = h["nb_pkey"](r)
+        rec = base("nb", pk, h["nb_ep"](r), r.get("delisted_at") or r.get("ירד מפרסום"))
+        price = _crm_int(r.get("מחיר"))
+        rec.update({"source": "פרטי", "type": str(o.get("סוג נכס") or str(r.get("תיאור נכס") or "").split(" · ")[0]).strip(),
+                    "city": str(r.get("עיר") or r.get("עיר / ישוב") or ""), "neighborhood": str(r.get("שכונה") or ""),
+                    "address": str(r.get("רחוב1") or r.get("רחוב") or ""), "rooms": _crm_rooms(o.get("חדרים") or r.get("חדרים")),
+                    "sqm": _crm_int(o.get('מ"ר') or r.get('מ"ר')), "floor": str(o.get("קומה") or r.get("קומה") or ""),
+                    "price": price, "deal": str(r.get("סוג עסקה") or "מכירה"),
+                    "contact": str(r.get("שם בעל הנכס") or ""), "phone": str(r.get("טלפון בעל הנכס-") or r.get("טלפון בעל הנכס") or ""),
+                    "excl": "", "agent": "", "link": str(r.get("קישור") or ""), "image": "", "desc": str(r.get("תיאור נכס") or "")})
+        rec["dropped"] = bool(rec["price_old"] and price and price < rec["price_old"])
+        add(rec)
+    for r in excl or []:
+        pk = h["excl_pkey"](r)
+        rec = base("ex", pk, h["excl_ep"](r), r.get("delisted_at"))
+        price = _crm_int(r.get("price"))
+        rec.update({"source": "שת\"פ", "type": str(r.get("dest") or "").split(" · ")[0].strip(),
+                    "city": str(r.get("city") or ""), "neighborhood": str(r.get("neighborhood") or ""),
+                    "address": str(r.get("street") or ""), "rooms": _crm_rooms(r.get("rooms")), "sqm": _crm_int(r.get("sqm")),
+                    "floor": str(r.get("floor") or ""), "price": price, "deal": "מכירה",
+                    "contact": str(r.get("office") or ""), "phone": str(r.get("phone") or ""),
+                    "excl": "בלעדי" if str(r.get("excl") or "") in ("1", "True", "true") else "", "agent": "",
+                    "link": str(r.get("link") or ""), "image": str(r.get("image") or ""), "desc": str(r.get("desti") or r.get("dest") or "")})
+        rec["dropped"] = bool(rec["price_old"] and price and price < rec["price_old"])
+        add(rec)
+    for r in office or []:
+        pk = h["prop_pkey"](r)
+        rec = base("of", pk, h["prop_ep"](r), r.get("ירד מפרסום"))
+        price = _crm_int(r.get("מחיר"))
+        ag = h["agent_name"](str(r.get("סוכן 1") or "").strip())
+        addr = " ".join(x for x in (str(r.get("כתובת") or "").strip(), str(r.get("מספר בית") or "").strip()) if x)
+        ex = str(r.get("בלעדיות") or "")
+        rec.update({"source": "המשרד", "type": str(r.get("סוג נכס") or ""), "city": str(r.get("עיר / ישוב") or ""),
+                    "neighborhood": str(r.get("שכונה") or ""), "address": addr, "rooms": _crm_rooms(r.get("חדרים")),
+                    "sqm": _crm_int(r.get('מ"ר')), "floor": str(r.get("קומה") or ""), "price": price,
+                    "deal": str(r.get("סוג עסקה") or "מכירה"), "contact": ag, "phone": "",
+                    "excl": "בלעדי" if ex == "1" else ("רגיל" if ex == "0" else ""), "agent": ag,
+                    "link": str(r.get("קישור") or ""), "image": str(r.get("תמונה") or ""), "desc": str(r.get("תיאור") or r.get("_desc_ae") or "")})
+        rec["dropped"] = bool(rec["price_old"] and price and price < rec["price_old"])
+        add(rec)
+    return out
+
+
 def crm_query(records, q, filters, sort, direction, page, size, now, module="calls"):
     """חיפוש (כל המילים; טלפון לפי 9 ספרות אחרונות) + סינון + תצוגה + מיון + דפדוף → {rows, total}."""
     import datetime as _dq
@@ -12298,7 +12400,7 @@ def crm_query(records, q, filters, sort, direction, page, size, now, module="cal
             hay = _crm_norm(" ".join(str(v) for k, v in r.items() if k not in ("key", "date", "last") and isinstance(v, str)))
             if any(w not in hay for w in words):
                 return False
-            ph = {inv_phone9(r.get("caller_phone")), inv_phone9(r.get("agent_phone"))}
+            ph = {inv_phone9(r.get("caller_phone")), inv_phone9(r.get("agent_phone")), inv_phone9(r.get("phone"))}
             if any(p not in ph for p in phones):
                 return False
         return True
@@ -15184,6 +15286,30 @@ def register(app, G):
                             "photo": ("/v2/api/avatar?p=" + _photo_phone(str(t.get("id")))) if _photo_phone(str(t.get("id"))) else "",
                             "updated_by": str(t.get("updated_by") or ""), "date": 0})
             return out
+        if module == "props":
+            def _build_props():
+                import time as _tp
+                office = []
+                for dc in ("", "rent", "commercial"):
+                    try:
+                        rows, lbl = G["_office_rows_for"](dc)
+                        for r in rows or []:
+                            if lbl and not r.get("סוג עסקה"):
+                                r = dict(r, **{"סוג עסקה": lbl})
+                            office.append(r)
+                    except Exception as e:
+                        if log: log.warning(f"crm props office ({dc}): {e}")
+                h = {"nb_ep": G["_newborn_created_epoch"], "nb_pkey": G["_nb_price_key"], "nb_office": G["_nb_as_office_row"],
+                     "excl_ep": lambda r: G["_excl_epoch"](r.get("first_seen") or r.get("received_at") or ""),
+                     "excl_pkey": G["_excl_price_key"], "prop_ep": G["_prop_epoch"], "prop_pkey": G["_prop_price_key"],
+                     "agent_name": lambda n: (G["_canon_agent_name"](n) or n) if n else ""}
+                try:
+                    pd = G["_price_dropped_map"]() or {}
+                except Exception:
+                    pd = {}
+                return crm_props_records(G["fetch_newborn"]() or [], G["fetch_external_exclusives"]() or [], office, pd, _tp.time(), h)
+            swr = G.get("_swr")
+            return swr("crmprops", 120, _build_props) if swr else _build_props()
         if module in ("flows", "automations"):
             import time as _tf
             now = _tf.time()
