@@ -16655,7 +16655,11 @@ def register(app, G):
         if module == "deals":   # [21/10] שנתי / רבעוני / חודשי / מתחילת החודש — על הסינון הנוכחי (בלי בורר התקופה)
             try:
                 f2 = {k: v for k, v in filters.items() if k != "period"}
-                allr = crm_query(recs, q, f2, sort, direction, 1, 10 ** 6, _tm.time(), module=module)["rows"]
+                # crm_query מחזיר עד 200 בעמוד — הסיכום עובר על כל העמודים (בדיקה חיה 21/10: 200 ו-0 אשתקד)
+                first = crm_query(recs, q, f2, sort, direction, 1, 200, _tm.time(), module=module)
+                allr = list(first["rows"])
+                for pg in range(2, first["total"] // 200 + 2):
+                    allr += crm_query(recs, q, f2, sort, direction, pg, 200, _tm.time(), module=module)["rows"]
                 out["summary"] = crm_deal_summary(allr, _tm.time())
             except Exception as e:
                 if log: log.warning(f"crm deals summary: {e}")

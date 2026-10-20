@@ -33,4 +33,14 @@ ck([x["key"] for x in l.get("summary") or []] == ["year", "quarter", "month", "m
 ck(c.get("/v2/api/crm/deals/list?f_agent=יניב פרי").get_json()["summary"][0]["n"] == 0, "summary follows the agent filter")
 ck("summary" not in c.get("/v2/api/crm/calls/list").get_json(), "only for deals")
 ck("function renderSum" in h and 'id="sumBar"' in h, "summary strip on the page")
+# 21/10 (בדיקה חיה): crm_query מגביל ל-200 שורות — הסיכום חייב לעבור על הכל
+import datetime as _dt
+_many = [{"id": 100 + i, "branch": "bialik", "year": 2025, "deal_date": "2025-%02d-01" % (1 + i % 9), "street": "רחוב %d" % i,
+          "side": "קונה", "agent": "רפי", "deal_amount": 1000} for i in range(250)]
+_many += [{"id": 900 + i, "branch": "bialik", "year": 2026, "deal_date": "2026-%02d-02" % (1 + i % 9), "street": "רחוב ב%d" % i,
+           "side": "קונה", "agent": "רפי", "deal_amount": 1000} for i in range(230)]
+A._deal_history_linked = lambda: _many
+A._cache_clear("crmdeals")
+sm = {x["key"]: x for x in c.get("/v2/api/crm/deals/list").get_json()["summary"]}
+ck(sm["year"]["n"] == 230 and sm["year"]["prev"]["n"] == 250, ("summary over all rows, not the first 200", sm["year"]["n"], sm["year"]["prev"]["n"]))
 print("deal_api OK", n)
