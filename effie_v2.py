@@ -11881,7 +11881,7 @@ ul.ins{margin:0;padding-inline-start:18px;line-height:1.7;font-size:14px}
 .td .cnt{background:#EEF1F5;color:#5B6472;border-radius:99px;padding:1px 9px;font-size:13px}.td .cnt.hot{background:#FBEDED;color:#C24040}
 .ti{padding:6px 0;border-bottom:1px solid #ECE8DD;font-size:13px}.ti a{color:#2E6BD6}.tw{overflow-x:auto}
 table.ag th{text-align:right;color:#5B6472;font-weight:500;padding:8px;border-bottom:1px solid #ECE8DD;white-space:nowrap}table.ag td{padding:8px;white-space:nowrap}
-.todo.s2{grid-template-columns:1fr 1fr}
+.todo.s2{grid-template-columns:1fr 1fr}.td .scr{max-height:420px;overflow-y:auto;padding-inline-end:4px}
 table.ag tr.tot td{background:#FBF6E8;font-weight:700}table.ag tr.z td{color:#6B7280}
 @media(max-width:1100px){.todo{grid-template-columns:1fr 1fr}}@media(max-width:640px){.todo{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
@@ -11927,8 +11927,8 @@ function listingsCard(){var L=D.listings;if(!L||!L.rows)return '';var t=L.total|
   '<div class="mut">כל הסוכנים בצוות מופיעים, גם בלי מודעות. "הכל" כולל מודעות שלא ידוע אם הן בלעדיות. "באתר" = מה שמוצג ב-refamily.co.il (בלי מה שהוסתר מהאתר).</div></div>';}
 function searchesCard(){var S=D.searches;if(!S)return '';
  function col(t,lst,site){var r=(lst||[]).map(function(x){return '<div class="ti"><b>'+esc(x.q)+'</b><span class="mut"> · '+tm(x.ts)+(site?(x.n!==''?' · '+n(+x.n)+' נכסים':''):(x.who?' · '+esc(x.who):''))+'</span></div>';}).join('');
-  return '<div class="td"><h3>'+t+'</h3>'+(r||'<div class="mut">'+(site?'עוד אין — נרשם מ-20/10':'אין חיפושים ב-14 יום')+'</div>')+'</div>';}
- return '<div class="card"><h2>10 חיפושי ה-AI האחרונים (נכסים)</h2><div class="todo s2">'+col('באתר',S.site,true)+col('באפי',S.effie,false)+'</div></div>';}
+  return '<div class="td"><h3>'+t+' <span class="cnt">'+n((lst||[]).length)+'</span></h3><div class="scr">'+(r||'<div class="mut">'+(site?'עוד אין — נרשם מ-20/10':'אין חיפושים ב-14 יום')+'</div>')+'</div></div>';}
+ return '<div class="card"><h2>50 חיפושי ה-AI האחרונים (נכסים)</h2><div class="todo s2">'+col('באתר',S.site,true)+col('באפי',S.effie,false)+'</div></div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -12196,7 +12196,7 @@ _CRM_SEARCH_SITE = "חיפוש AI באתר"
 _CRM_SEARCH_EFFIE = "חיפוש נכסים"     # חיפוש אחד באפי נרשם גם כ'נכס נולד'/'בלעדיות' — סופרים רק את זה
 
 
-def crm_recent_searches(act, n=10):
+def crm_recent_searches(act, n=50):
     """[CRM 20/10 '10 חיפושי AI אחרונים באתר ובאפי'] מתוך היומן: האתר — 'חיפוש AI באתר' (טקסט · N נכסים);
     אפי — 'חיפוש נכסים' עם טקסט (לא '(כל הנכסים)'). אותו חיפוש של אותו אדם תוך 10 דק' = פעם אחת."""
     out = {"site": [], "effie": []}
