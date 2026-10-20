@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      14.3
+// @version      14.4
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -52,7 +52,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='14.3'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='14.4'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -2090,6 +2090,53 @@ function itemImages(it){
 // v13.41 (07/10, אייל: "תפעיל השלמה רק לנכסי פמילי" — לקראת אתר נכסים שיציג את כל נכסי המשרד):
 // השלמה לסניפי Family בלבד (כ-470 מודעות, בתוך אותה תקרה — כיומיים ואז רק חדשות). שת"פ נשאר כבוי.
 var GAL_KEY='ysGal', GAL_MAX_ENTRIES=4000, GALLERY_BACKFILL=false, GALLERY_BACKFILL_FAMILY=true;
+// v14.4 (20/10, אייל: 'למה לא מופיע מעלית?'): המאפיינים מסעיף "מה יש בנכס" בדף המודעה (inProperty.include*),
+// מאותו דף שהסורק כבר פותח — נשמרים ב-GM (שורדים מחיקת נתוני אתר) ומתווספים לתגיות של השורה. רק 'כן' נספר.
+// השלמה לסניפי Family: מודעה שעוד לא נקראו לה מאפיינים נפתחת בתוך אותה תקרה (FEAT_BACKFILL_FAMILY).
+var FEAT_KEY='ysFeat', FEAT_MAX_ENTRIES=4000, FEAT_BACKFILL_FAMILY=true;
+var FEAT_NAMES={includeElevator:'מעלית',includeSecurityRoom:'ממ"ד',includeBalcony:'מרפסת',includeParking:'חניה',
+  includeWarehouse:'מחסן',includeAirconditioner:'מיזוג',includeBoiler:'דוד שמש',includeAccessibility:'גישה לנכים',
+  includeBars:'סורגים',includeRenovated:'משופצת',includeTadiran:'מזגן תדיראן',includeFurniture:'ריהוט'};
+function featLoad(){ try{ return JSON.parse(gmGet(FEAT_KEY,'{}'))||{}; }catch(e){ return {}; } }
+function featSave(g){
+  try{
+    var keys=Object.keys(g);
+    if(keys.length>FEAT_MAX_ENTRIES){
+      keys.sort(function(a,b){return ((g[a]&&g[a].t)||0)-((g[b]&&g[b].t)||0);});
+      keys.slice(0,keys.length-FEAT_MAX_ENTRIES).forEach(function(k){delete g[k];});
+    }
+    gmSet(FEAT_KEY, JSON.stringify(g));
+  }catch(e){}
+}
+// null = הדף בלי "מה יש בנכס" (חסום/אחר) — לא נשמר; [] = נקרא ואין אף 'כן'
+function itemFeatures(html, tok){
+  var nd=exclParseNextData(html); if(!nd)return null;
+  var mine=null, first=null;
+  (function walk(o,d){
+    if(mine||!o||typeof o!=='object'||d>12)return;
+    if(Array.isArray(o)){o.forEach(function(x){walk(x,d+1);});return;}
+    var ip=o.inProperty;
+    if(ip&&typeof ip==='object'&&Object.keys(ip).some(function(k){return /^include/.test(k);})){
+      if(tok&&String(o.token||'')===String(tok)){ mine=ip; return; }
+      if(!first)first=ip;
+    }
+    for(var k in o)walk(o[k],d+1);
+  })(nd,0);
+  var ip=mine||first; if(!ip)return null;
+  var out=[];
+  Object.keys(FEAT_NAMES).forEach(function(k){ if(ip[k]===true)out.push(FEAT_NAMES[k]); });
+  return out;
+}
+function applyFeatures(rows, fs){
+  fs=fs||featLoad();
+  (rows||[]).forEach(function(r){
+    var tok=String(r.link||'').split('/').pop(), e=fs[tok];
+    if(!e||!e.x||!e.x.length)return;
+    var cur=String(r.tags||'').split(';').map(function(t){return t.trim();}).filter(Boolean);
+    e.x.forEach(function(f){ if(cur.indexOf(f)<0)cur.push(f); });
+    r.tags=cur.join(';');
+  });
+}
 function galLoad(){ try{ return JSON.parse(gmGet(GAL_KEY,'{}'))||{}; }catch(e){ return {}; } }
 function galSave(g){
   try{
@@ -2245,21 +2292,23 @@ function itemDesc(html){
 function fetchItemAgents(rows, officeName, fetchFn, cap, onProg, done, stats, officeId){
   done=once(done);
   stats=stats||{};stats.tried=0;stats.ok=0;stats.fail=0;stats.blocked=0;
-  var cache=agentCache(), gal=galLoad(), need=[], seen={}, now=Date.now();
-  stats.gal=0;
+  var cache=agentCache(), gal=galLoad(), feat=featLoad(), need=[], seen={}, now=Date.now();
+  stats.gal=0; stats.feat=0;
   var galFill=GALLERY_BACKFILL||(GALLERY_BACKFILL_FAMILY&&isFamId(officeId));
+  var featFill=FEAT_BACKFILL_FAMILY&&isFamId(officeId);
   (rows||[]).forEach(function(r){
     var tok=String(r.link||'').split('/').pop();
     if(!tok||seen[tok])return; seen[tok]=1;
     var c=cache[tok];
     // v13.40: השלמת גלריה למודעה שאין לה (כבוי כברירת מחדל — ראה GALLERY_BACKFILL)
     var galDone=!!gal[tok]||((r.images&&r.images.length)||0)>1;
-    if(c&&c.a){ if(galFill&&!galDone)need.push({tok:tok,row:r,pri:3}); return; }   // כבר יש סוכן ב-cache
+    var featDone=!!feat[tok];
+    if(c&&c.a){ if((galFill&&!galDone)||(featFill&&!featDone))need.push({tok:tok,row:r,pri:3}); return; }   // כבר יש סוכן ב-cache
     var noAgent=!isRealAgent(r.agent,officeName);
     // כשל נשמר עם מונה+חותמת: עד 3 ניסיונות. מודעה בלי שם סוכן חוזרת אחרי 6 שעות
     // (זה החוסר הבולט בסיכום), מודעה שחסר בה רק תיאור — אחרי יממה.
     if(c&&c.f){ if(c.f>=3 || (now-(c.t||0)) < (noAgent?6:24)*3600000) return; }
-    if(!noAgent && r.phone && r.description){ if(galFill&&!galDone)need.push({tok:tok,row:r,pri:3}); return; }   // יש סוכן+טלפון+תיאור → אין צורך
+    if(!noAgent && r.phone && r.description){ if((galFill&&!galDone)||(featFill&&!featDone))need.push({tok:tok,row:r,pri:3}); return; }   // יש סוכן+טלפון+תיאור → אין צורך
     // דירוג: קודם מי שאין לו שם סוכן, אחריו מי שחסר תיאור, ואז השאר
     need.push({tok:tok,row:r,pri:(noAgent?0:(r.description?2:1))});
   });
@@ -2267,9 +2316,9 @@ function fetchItemAgents(rows, officeName, fetchFn, cap, onProg, done, stats, of
   // סניפי רימקס Family — פי ארבעה, כי זה הסיכום שאייל עובד איתו (וסניף חדש מגיע ריק)
   var isFam=isFamId(officeId);
   need=need.slice(0, cap||jitterCap(isFam?ITEM_AGENTS_PER_SCAN*3:ITEM_AGENTS_PER_SCAN));
-  if(!need.length){ applyAgents(rows,cache,officeName); done(0); return; }
+  if(!need.length){ applyAgents(rows,cache,officeName); applyFeatures(rows,feat); done(0); return; }
   var i=0, got=0;
-  var fin=function(){ agentCacheSave(cache); galSave(gal); applyAgents(rows,cache,officeName); applyGallery(rows,gal); done(got); };
+  var fin=function(){ agentCacheSave(cache); galSave(gal); featSave(feat); applyAgents(rows,cache,officeName); applyGallery(rows,gal); applyFeatures(rows,feat); done(got); };
   (function next(){
     if(i>=need.length){ fin(); return; }
     var it=need[i++];
@@ -2283,15 +2332,18 @@ function fetchItemAgents(rows, officeName, fetchFn, cap, onProg, done, stats, of
       }
       var gi=itemPageImages(html, it.tok);                   // v13.40: הגלריה — מאותו דף, בלי בקשה נוספת
       gal[it.tok]={u:gi.length>1?gi:[], t:Date.now()}; if(gi.length>1)stats.gal++;
+      var fx=itemFeatures(html, it.tok);                     // v14.4: "מה יש בנכס" — מאותו דף
+      if(fx){ feat[it.tok]={x:fx,t:Date.now()}; stats.feat++; }
+      else if(exclParseNextData(html)) feat[it.tok]={x:[],t:Date.now(),miss:1};   // דף תקין בלי "מה יש בנכס" — לא פותחים שוב
       var a=parseItemAgent(html, officeName);
       if(a){ cache[it.tok]={a:a.a,p:a.p,d:a.d||''}; got++; stats.ok++; }  // גם התיאור נשמר ב-cache
-      else { var pf=cache[it.tok]; cache[it.tok]={f:((pf&&pf.f)||0)+1,t:Date.now()}; stats.fail++;
+      else { var pf=cache[it.tok]; if(!(pf&&pf.a))cache[it.tok]={f:((pf&&pf.f)||0)+1,t:Date.now()}; stats.fail++;   // v14.4: לא מוחקים סוכן שכבר ידוע
              if(!stats.sample){ var tm=String(html).match(/<title>([^<]{0,60})/); stats.sample={why:'noagent',title:tm?tm[1]:'',nd:String(html).indexOf('__NEXT_DATA__')>-1,len:String(html).length}; } }
       if(onProg)onProg(i,need.length,got);
       setTimeout(next, humanGap(1400,2600));
     }).catch(function(e){
       stats.tried++;stats.fail++;
-      var pf=cache[it.tok]; cache[it.tok]={f:((pf&&pf.f)||0)+1,t:Date.now()};
+      var pf=cache[it.tok]; if(!(pf&&pf.a))cache[it.tok]={f:((pf&&pf.f)||0)+1,t:Date.now()};
       if(!stats.sample)stats.sample={why:'fetcherr',err:String(e&&e.message||e).slice(0,40)};
       if(onProg)onProg(i,need.length,got); setTimeout(next,humanGap(1800,2600));
     });
@@ -3090,7 +3142,7 @@ function exclScanOffices(OFFICES,fetchFn,dirDiag){
     });
   })();
 }
-try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysItemImages=itemImages;window.__ysItemPageImages=itemPageImages;window.__ysApplyGallery=applyGallery;window.__ysGalLoad=galLoad;window.__ysGalSave=galSave;window.__ysGalConsts={GALLERY_BACKFILL:GALLERY_BACKFILL,GALLERY_BACKFILL_FAMILY:GALLERY_BACKFILL_FAMILY,GAL_MAX_ENTRIES:GAL_MAX_ENTRIES};window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysFamDue=famDue;window.__ysFamTick=famTick;window.__ysSaveRows=saveRows;window.__ysPostHB=postHB;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysLeaseOwn=leaseOwn;window.__ysExclFetchFn=exclFetchFn;window.__ysExclForceArmed=exclForceArmed;window.__ysExclForceArmSet=function(t){exclForceArm=t;};window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysExclRollup=exclRollup;window.__ysNavCollectAdvance=navCollectAdvance;window.__ysNavUrl=navUrl;window.__ysNavState=navState;window.__ysNavSave=navSave;window.__ysNavCollectStart=navCollectStart;window.__ysNavArrange=navArrange;window.__ysNavDirUrl=navDirUrl;window.__ysNavCollectStep=navCollectStep;window.__ysExclPostOffice=exclPostOffice;window.__ysExclPostOfficeOpts=exclPostOfficeOpts;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
+try{window.__ysExclSchedule=exclSchedule;window.__ysExclDue=exclDue;window.__ysExclParseNextData=exclParseNextData;window.__ysExclFindListings=exclFindListings;window.__ysExclMapItem=exclMapItem;window.__ysItemImage=itemImage;window.__ysItemImages=itemImages;window.__ysItemPageImages=itemPageImages;window.__ysApplyGallery=applyGallery;window.__ysItemFeatures=itemFeatures;window.__ysApplyFeatures=applyFeatures;window.__ysFeatLoad=featLoad;window.__ysFeatSave=featSave;window.__ysGalLoad=galLoad;window.__ysGalSave=galSave;window.__ysGalConsts={GALLERY_BACKFILL:GALLERY_BACKFILL,GALLERY_BACKFILL_FAMILY:GALLERY_BACKFILL_FAMILY,GAL_MAX_ENTRIES:GAL_MAX_ENTRIES};window.__ysExclIsExclusive=exclIsExclusive;window.__ysExclBrokerIds=exclBrokerIds;window.__ysExclBrokerName=exclBrokerName;window.__ysExclOfficeName=exclOfficeName;window.__ysExclCrawlOffice=exclCrawlOffice;window.__ysExclLoadState=exclLoadState;window.__ysExclRunPublic=exclRunPublic;window.__ysExclParseDirectory=exclParseDirectory;window.__ysIsRealAgent=isRealAgent;window.__ysLooksBlocked=looksBlocked;window.__ysExclSchedTick=exclSchedTick;window.__ysFamDue=famDue;window.__ysFamTick=famTick;window.__ysSaveRows=saveRows;window.__ysPostHB=postHB;window.__ysTapForTest=tap;window.__ysConstsExcl={OFFICES_PER_RUN:OFFICES_PER_RUN,BLOCK_COOLDOWN_MIN:BLOCK_COOLDOWN_MIN,ITEM_AGENTS_PER_SCAN:ITEM_AGENTS_PER_SCAN};window.__ysParseItemAgent=parseItemAgent;window.__ysItemDesc=itemDesc;window.__ysFetchItemAgents=fetchItemAgents;window.__ysApplyAgents=applyAgents;window.__ysAgentCache=agentCache;window.__ysExclDiscoverOffices=exclDiscoverOffices;window.__ysFamilyIds=FAMILY_IDS;window.__ysIsFamId=isFamId;window.__ysExclScanNow=exclScanNow;window.__ysExclScanFamilyNow=exclScanFamilyNow;window.__ysLeaseLive=leaseLive;window.__ysLeaseWhy=leaseWhy;window.__ysLeaseOpen=leaseOpen;window.__ysLeaseClose=leaseClose;window.__ysLeaseClear=leaseClear;window.__ysLedgerAdd=ledgerAdd;window.__ysLedgerGet=ledgerGet;window.__ysLeaseReap=leaseReap;window.__ysLeaseStep=leaseStep;window.__ysLeaseOwn=leaseOwn;window.__ysExclFetchFn=exclFetchFn;window.__ysExclForceArmed=exclForceArmed;window.__ysExclForceArmSet=function(t){exclForceArm=t;};window.__ysProfCandKey='ysProfCand';window.__ysHumanGap=humanGap;window.__ysJitterCap=jitterCap;window.__ysShuffle=shuffle;window.__ysExclScanOffices=exclScanOffices;window.__ysExclRollup=exclRollup;window.__ysNavCollectAdvance=navCollectAdvance;window.__ysNavUrl=navUrl;window.__ysNavState=navState;window.__ysNavSave=navSave;window.__ysNavCollectStart=navCollectStart;window.__ysNavArrange=navArrange;window.__ysNavDirUrl=navDirUrl;window.__ysNavCollectStep=navCollectStep;window.__ysExclPostOffice=exclPostOffice;window.__ysExclPostOfficeOpts=exclPostOfficeOpts;window.__ysQuietWin=quietWin;window.__ysInQuiet=inQuiet;window.__ysIsActive=isActive;window.__ysPagePhones=pagePhones;window.__ysNormPhone=normPhone;window.__ysExclScanDead=exclScanDead;window.__ysExclRunProg=exclRunProg;window.__ysExclDayStr=exclDayStr;window.__ysBuildPanel=buildPanel;window.__ysPanelKeeper=panelKeeper;window.__ysInit=init;window.__ysStep=step;}catch(e){}
 
 // ===== סימן-חיים + התאוששות SMS אוטומטית =====
 var LOGIN_PHONE='0505709865';  // הנייד שממלאים אוטומטית בכניסה מחדש
