@@ -1749,6 +1749,7 @@ def parse_search_query(text: str) -> dict:
 - "עם מעלית" → must_have כולל "מעלית"
 - "עם ממ"ד" → must_have כולל "ממ\"ד"
 - "עם מרפסת" → must_have כולל "מרפסת"
+- "ללא מעלית" / "בלי מעלית" / "אין צורך במעלית" → must_not כולל "מעלית" (לא must_have!). כך גם ללא ממ"ד/מרפסת/חנייה
 - "קרקע" / "קומת קרקע" / "קומה 0" → must_have כולל "גינה", property_type = "דירת גן"
 חוקי property_type — חשוב מאוד!
 - קבוצת "גן" (כולן נחשבות חיפוש דירת גן): "דירת גן" / "קרקע" / "קומת קרקע" / "קומה 0" / "קוטג'" / "מיני קוטג'" → property_type = "דירת גן" (לא "דירה"! לא פנטהאוז!) וגם must_have כולל "גינה"
@@ -1773,6 +1774,7 @@ def parse_search_query(text: str) -> dict:
 - property_type: סוג נכס מנורמל ("דירה" / "פנטהאוז" / "דופלקס" / "קוטג'" / "וילה" / "דו משפחתי" / null)
 - deal_type: "מכירה" / "השכרה" - ברירת מחדל "מכירה" אם לא צוין
 - must_have: רשימת תכונות חובה לפי החוקים למעלה (מערך, יכול להיות ריק)
+- must_not: תכונות שהלקוח לא רוצה ("ללא מעלית" → ["מעלית"]) (מערך, יכול להיות ריק)
 - summary_he: סיכום קצר בעברית של הבקשה (משפט אחד)
 דוגמאות:
 - "מחפש דירת גן 4 חדרים בביאליק עד 3 מיליון" →
@@ -1813,7 +1815,7 @@ def parse_search_query(text: str) -> dict:
     if match:
         text_out = match.group()
     try:
-        return _enforce_ptype(_enforce_nb_city(json.loads(text_out)), text)
+        return _apply_text_rules(_enforce_ptype(_enforce_nb_city(json.loads(text_out)), text), text)   # [SEARCH-NEG 20/10]
     except Exception as e:
         log.error(f"Search JSON parse error: {e}")
         return {}
@@ -2300,13 +2302,21 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         return 0
     floor_max = query.get("floor_max")
     if floor_max:
-        r_floor_raw = (row.get("קומה", "") or "").strip()
+        # [SEARCH-FLOOR 20/10] בשורות יד2 הקומה בתיאור, לא בעמודה — _row_floor קורא את שניהם
         try:
-            r_floor = int(float(r_floor_raw)) if r_floor_raw else None
-            if r_floor is not None and r_floor > floor_max:
+            r_floor = _row_floor(row)
+            if r_floor is not None and r_floor > int(float(floor_max)):
                 return 0   # "עד קומה X" — סינון קשיח, מעל הקומה לא תואם
-        except ValueError:
+        except (ValueError, TypeError):
             pass
+    # [SEARCH-NEG 20/10] "ללא מעלית" — נכס שידוע שיש בו את התכונה לא מוצג; ידוע שאין = בונוס
+    for _nf in (query.get("must_not") or []):
+        _nf = str(_nf).strip().replace('"', "״")
+        _ns = _row_feature_state(row, _nf, _nf)
+        if _ns is True:
+            return 0
+        if _ns is False:
+            score += 8
     r_city = normalize_city(row.get("עיר / ישוב", "") or "")
     q_cities_raw = query.get("cities") or []
     q_city_single = normalize_city(query.get("city", "") or "")
@@ -2527,6 +2537,7 @@ def _row_feature_state(row, col, feature):
     val = str(row.get(col, "") or "").strip()
     if val:
         return val not in ("ללא", "לא", "0", "אין")
+    feature = str(feature or "").replace('"', "״")
     syn = _FEATURE_SYN.get(feature, (feature,))
     txt = " ".join(str(row.get(k, "") or "") for k in ("תגיות", "_desc_ae", "תיאור", "הערות"))
     if not txt.strip():
@@ -2538,6 +2549,60 @@ def _row_feature_state(row, col, feature):
                 return False
             return True
     return None
+
+_FLOOR_WORDS = {"קרקע": 0, "ראשונה": 1, "שנייה": 2, "שניה": 2, "שלישית": 3, "רביעית": 4,
+                "חמישית": 5, "שישית": 6, "שביעית": 7, "שמינית": 8, "תשיעית": 9, "עשירית": 10}
+
+def _row_floor(row):
+    """[SEARCH-FLOOR 20/10] קומת הנכס: עמודת 'קומה' (גיליון ישן), ואם ריקה — מהתיאור של יד2
+    ('קומה 9 מתוך 24', 'קומה 2/4', 'בקומה ראשונה', 'קומת קרקע'). None = לא ידוע."""
+    v = str(row.get("קומה", "") or "").strip()
+    if v:
+        try:
+            return int(float(v))
+        except ValueError:
+            pass
+    txt = " ".join(str(row.get(k, "") or "") for k in ("_desc_ae", "תיאור", "הערות"))
+    m = re.search(r"קומה\s*(-?\d+)", txt)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"קומ[הת]\s+(" + "|".join(_FLOOR_WORDS) + r")", txt)
+    return _FLOOR_WORDS[m.group(1)] if m else None
+
+_NEG_FEATURES = (("מעלית", ("מעלית",)), ("ממ״ד", ('ממ"ד', "ממ״ד", "ממד")),
+                 ("מרפסת", ("מרפסת",)), ("חנייה", ("חניה", "חנייה")))
+
+def _query_text_rules(text):
+    """[SEARCH-NEG 20/10] כללים שלא סומכים על ה-AI: 'ללא/בלי/אין מעלית' → must_not,
+    'עד קומה N' → floor_max. מחזיר רק מה שנמצא."""
+    t = str(text or "")
+    out = {}
+    neg = []
+    for feat, syns in _NEG_FEATURES:
+        for w in syns:
+            if re.search(r"(?:ללא|בלי|אין|לא צריך)\s+(?:ה)?" + re.escape(w), t):
+                neg.append(feat)
+                break
+    if neg:
+        out["must_not"] = neg
+    m = re.search(r"עד\s+(?:ה)?קומה\s*(\d+)", t)
+    if m:
+        out["floor_max"] = int(m.group(1))
+    return out
+
+def _apply_text_rules(query, text):
+    """מוסיף ל-query המפורק את must_not/floor_max מהטקסט, ומוציא מ-must_have מה שבוקש בלעדיו."""
+    if not isinstance(query, dict):
+        return query
+    r = _query_text_rules(text)
+    if r.get("must_not"):
+        mn = list(dict.fromkeys((query.get("must_not") or []) + r["must_not"]))
+        query["must_not"] = mn
+        norm = lambda f: str(f).replace('"', "״").replace("ממד", "ממ״ד").strip()
+        query["must_have"] = [f for f in (query.get("must_have") or []) if norm(f) not in {norm(x) for x in mn}]
+    if r.get("floor_max") is not None and not query.get("floor_max"):
+        query["floor_max"] = r["floor_max"]
+    return query
 
 def search_listings_in_sheet(query: dict, rows=None, cap=None) -> list:
     # [NB-SEARCH 30/09] rows/cap אופציונליים — אותו סולם flex משמש גם לנכס נולד (rows=שורות ממופות)
