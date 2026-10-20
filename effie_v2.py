@@ -11906,7 +11906,8 @@ function render(){
  var uT='הכי פעילים באפי · '+PL[P]+(P==='year'&&UB.year_from?' <span class="mut">(מ-'+UB.year_from.split('-').reverse().join('/')+' — הנתונים נשמרים 60 יום)</span>':'');
  document.getElementById('app').innerHTML=
   '<div class="health">'+h+'</div>'+
-  '<div class="ctl"><div class="card"><h2>מחוברים עכשיו <span class="mut" id="onN"></span></h2><div class="on-list" id="onList"><span class="mut">טוען…</span></div></div>'+
+  '<div class="ctl"><div class="card"><h2>באתר עכשיו <span class="mut" id="slN"></span></h2><div class="on-list" id="slList"><span class="mut">טוען…</span></div>'+
+  '<h2 style="margin-top:14px">מחוברים לאפי עכשיו <span class="mut" id="onN"></span></h2><div class="on-list" id="onList"><span class="mut">טוען…</span></div></div>'+
   '<div class="card"><h2>שליטה</h2>'+
   '<div class="sw"><div><div class="t">וואטסאפ רשמי</div><div class="d">כל ההודעות האוטומטיות מהמספר הרשמי (שיחות, חתימות, לידים, חשבוניות)</div></div><button class="tg" id="swWa" aria-label="וואטסאפ רשמי"></button></div>'+
   '<div class="sw"><div><div class="t">התראות פוש</div><div class="d">כל הפושים לטלפונים של הסוכנים</div></div><button class="tg" id="swPush" aria-label="פוש"></button></div>'+
@@ -11956,12 +11957,18 @@ function online(){fetch('/v2/api/usage_now',{headers:hdr()}).then(function(r){re
 function setSw(j){var w=document.getElementById('swWa'),p=document.getElementById('swPush');if(!w)return;
   w.classList.toggle('on',!!j.wa_official);p.classList.toggle('on',!!j.push);
   document.getElementById('swQuiet').textContent=j.quiet?'כרגע במצב השתקה (שבת/חג או ידני) — גם כשהמתגים דלוקים, לא נשלח כלום.':'';}
-function ctl(){online();fetch('/v2/api/crm/switches',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok)setSw(j);});
+function ctl(){online();siteLive();fetch('/v2/api/crm/switches',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok)setSw(j);});
   ['swWa','swPush'].forEach(function(id){var b=document.getElementById(id);b.onclick=function(){var on=!b.classList.contains('on');
     var what=id==='swWa'?'הוואטסאפ הרשמי':'הפושים';if(!on&&!confirm('לכבות את '+what+'? שום הודעה לא תצא עד שתדליק שוב.'))return;
     var body={};body[id==='swWa'?'wa_official':'push']=on;
     fetch('/v2/api/crm/switches',{method:'POST',headers:hdr(),body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok)setSw(j);});};});}
-setInterval(function(){if(D)online();},60000);
+var SL={facebook:'פייסבוק / אינסטגרם',google_ads:'גוגל ממומן',google:'גוגל (אורגני)',ai:'צ׳אט בינה מלאכותית',other:'אתר אחר / קמפיין',direct:'ישיר'};
+function siteLive(){fetch('/v2/api/crm/site_live',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){
+  var el=document.getElementById('slList');if(!el)return;
+  if(!j||!j.ok){el.innerHTML='<span class="mut">האתר לא ענה כרגע</span>';document.getElementById('slN').textContent='';return;}
+  document.getElementById('slN').textContent='('+j.now+')';var b=j.by_src||{};
+  el.innerHTML=j.now?Object.keys(SL).filter(function(k){return b[k];}).map(function(k){return '<span class="chip"><i></i>'+SL[k]+' · '+b[k]+'</span>';}).join(''):'<span class="mut">אין מבקרים באתר כרגע</span>';}).catch(function(){});}
+setInterval(function(){if(D)online();},60000);setInterval(function(){if(D)siteLive();},30000);
 function load(fresh){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){}
  if(!t){document.getElementById('app').innerHTML='<div class="card">צריך להיות מחובר לאפי בדפדפן הזה. <a href="/v2/home">כניסה לאפי</a> ואז לחזור לעמוד.</div>';return;}
  fetch('/v2/api/crm/dashboard'+(fresh?'?fresh=1':''),{headers:{'X-Auth-Token':t}}).then(function(r){return r.json();}).then(function(j){
@@ -16213,6 +16220,31 @@ def register(app, G):
         G["_log_activity"](_team_actor(s), s.get("role", ""), s.get("phone", ""), "צוות — תמונה",
                            (nm or "") + " · " + ", ".join("…" + p[-4:] for p in phones))
         return jsonify({"ok": True})
+
+    _site_live_cache = {"t": 0.0, "d": None}
+
+    @app.route("/v2/api/crm/site_live", methods=["GET"])
+    def v2_api_crm_site_live():
+        """מי באתר עכשיו (אייל 21/10): הסיכום מהאתר (/site/live במפתח SITE_KEY) — מספר מבקרים ומקורות. מטמון 10ש'."""
+        if not _crm_guard():
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        now = time.time()
+        if _site_live_cache["d"] is not None and now - _site_live_cache["t"] < 10:
+            return jsonify(_site_live_cache["d"])
+        key = os.environ.get("SITE_KEY", "")
+        base = (os.environ.get("SITE_PUBLIC_URL") or "https://refamily.co.il").strip().rstrip("/")
+        d = {"ok": False}
+        if key:
+            try:
+                r = _requests.get(base + "/site/live", headers={"X-Site-Key": key}, timeout=4)
+                j = r.json() if r.status_code == 200 else {}
+                if j.get("ok"):
+                    d = {"ok": True, "now": int(j.get("now") or 0),
+                         "by_src": {str(k)[:20]: int(v) for k, v in (j.get("by_src") or {}).items()}}
+            except Exception as e:
+                if log: log.warning(f"crm site_live: {e}")
+        _site_live_cache.update(t=now, d=d)
+        return jsonify(d)
 
     @app.route("/v2/api/crm/switches", methods=["GET", "POST"])
     def v2_api_crm_switches():
