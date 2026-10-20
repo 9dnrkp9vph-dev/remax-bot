@@ -705,19 +705,26 @@ def mark_props_delisted(tokens, stamp, guarded=None):
             continue
         if str(raw.get("מספר מודעה") or "").strip() not in toks:
             continue
-        if props_seen_recently(raw):   # [DELIST-GUARD] נשלח כפעיל לאחרונה — לא מסמנים
+        raw = dict(raw)
+        if props_seen_recently(raw):   # [DELIST-GUARD] נשלח כפעיל לאחרונה — לא מסמנים עכשיו
             if guarded is not None:
                 guarded.append(str(raw.get("מספר מודעה") or "").strip())
-            continue
-        raw = dict(raw)
-        raw["ירד מפרסום"] = stamp
-        raw["סטטוס"] = "ירד מפרסום"
+            if raw.get("_y2_delist_pending"):
+                continue
+            # [DELIST-PENDING 20/10] הדיווח נשלח פעם אחת בלבד — שומרים אותו כממתין, ו-merge_office_props
+            # מסמן אחרי שההגנה פגה אם המודעה לא חזרה (68rgph77: נדחה ב-12/10 ונשאר פעיל 8 ימים)
+            raw["_y2_delist_pending"] = stamp
+        else:
+            raw.pop("_y2_delist_pending", None)
+            raw["ירד מפרסום"] = stamp
+            raw["סטטוס"] = "ירד מפרסום"
         r = requests.patch(SUPABASE_URL + "/rest/v1/properties",
                            headers={**_headers(), "Content-Type": "application/json"},
                            params={"office_id": "eq." + SB_OFFICE_ID, "sheet_row": "eq.%s" % rec.get("sheet_row")},
                            json={"raw": raw}, timeout=_TIMEOUT)
         r.raise_for_status()
-        n += 1
+        if raw.get("ירד מפרסום"):
+            n += 1   # ממתין לא נספר — רק מה שקיבל תווית
     return n
 
 
@@ -1226,10 +1233,18 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
             if not raw.get("ירד מפרסום") and props_seen_recently(raw):   # [DELIST-GUARD]
                 if guarded is not None:
                     guarded.append(tok)
+                raw.setdefault("_y2_delist_pending", stamp)   # [DELIST-PENDING] יאושר אחרי ההגנה
             else:
                 if not raw.get("ירד מפרסום"):
                     raw["ירד מפרסום"] = stamp
                 raw["סטטוס"] = "ירד מפרסום"
+                raw.pop("_y2_delist_pending", None)
+        elif raw.get("_y2_delist_pending") and not raw.get("ירד מפרסום") and not props_seen_recently(raw):
+            # [DELIST-PENDING 20/10] הסורק דיווח שירדה, ההגנה פגה והמודעה לא חזרה בסריקה — מסמנים.
+            # מודעה שחזרה מגיעה ב-raw_rows (new_tokens) ומוחלפת בשורה טרייה בלי הממתין.
+            raw["ירד מפרסום"] = stamp or _il_today().strftime("%d/%m/%Y")
+            raw["סטטוס"] = "ירד מפרסום"
+            raw.pop("_y2_delist_pending", None)
         keep.append(raw)
     # [STALE-PROPS 05/10] נכסי הסניף שלא הגיעו — מוני החמצה, ו"ירד מפרסום" לפי הכלל (3 סריקות + 24ש' + כיסוי)
     # ⏸ מושהה (אייל 07/10): "עד שנמצא למה הסורק מפספס — אחרת ~70 נכסים פעילים עלולים להיעלם, גם מדף הקונה".
