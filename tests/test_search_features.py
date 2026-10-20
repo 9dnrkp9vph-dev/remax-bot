@@ -41,7 +41,7 @@ def check(name, cond, detail=""):
         fails += 1
 
 
-g = load("score_match", "_row_floor", "_query_text_rules", "_apply_text_rules")
+g = load("score_match", "_row_floor", "_query_text_rules", "_apply_text_rules", "_row_feats")
 score, row_floor, rules = g["score_match"], g["_row_floor"], g["_query_text_rules"]
 
 def row(desc, floor="", city="קרית ביאליק"):
@@ -87,6 +87,12 @@ check("floor_max filled", qq.get("floor_max") == 2, qq)
 qq2 = g["_apply_text_rules"]({"floor_max": 3, "must_have": ["ממ\"ד"]}, "עד קומה 2 עם ממ\"ד")
 check("AI floor_max kept", qq2.get("floor_max") == 3, qq2)
 check("must_have untouched", qq2.get("must_have") == ['ממ"ד'], qq2)
+
+print("SF 6: _row_feats — card tags, only when present")
+rf = g["_row_feats"]
+check("tags from scanner", rf({"תגיות": "חניה · מעלית · מרפסת"}) == ["מעלית", "מרפסת"], rf({"תגיות": "חניה · מעלית · מרפסת"}))
+check("description, 'ללא ממ\"ד' not counted", rf({"_desc_ae": "דירה עם ממ\"ד, ללא מעלית"}) == ['ממ"ד'], rf({"_desc_ae": "דירה עם ממ\"ד, ללא מעלית"}))
+check("nothing → []", rf({"_desc_ae": "מקלט בבניין"}) == [])
 
 print(f"{fails} FAILURES" if fails else "ALL SEARCH-FEATURE TESTS PASSED")
 sys.exit(1 if fails else 0)

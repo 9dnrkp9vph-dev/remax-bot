@@ -4423,6 +4423,9 @@ function msgLine(p, shtaf){
        p.size ? p.size + ' מ"ר' : ''].filter(Boolean).join(' · ');
   return where + (dt ? '\n' + dt : '') + (p.price ? '\nמחיר: ₪' + p.price : '');
 }
+/* [FEATS 21/10] מעלית / ממ"ד / מרפסת — תגיות קטנות, רק כשכתוב שיש (מהשרת: p.feats) */
+function featChips(p){var f=(p&&p.feats)||[];if(!f.length)return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">'+f.map(function(x){return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px">'+esc(x)+'</span>';}).join('')+'</div>';}
 function propCard(p, b, shtaf){
   var mi = (p._mi != null) ? p._mi : (p._mi = MITEMS.push({p: p, shtaf: shtaf}) - 1);   // [MATCH-TABS] אותו נכס = אותו אינדקס בכל טאב
   // שת"פ באותו פורמט של המשרד: שורת פרטים קצרה; התיאור המלא נפתח באייקון "הרחב לתיאור"
@@ -4435,7 +4438,7 @@ function propCard(p, b, shtaf){
   var did = 'dx' + (DXN++);
   return '<div class="prop' + (shtaf ? ' shtaf' : '') + '">' +
     '<div class="r1"><div><div class="ad">' + esc(where) + '</div>' +
-    '<div class="dt">' + esc(dt) + '</div></div>' +
+    '<div class="dt">' + esc(dt) + '</div>' + featChips(p) + '</div>' +
     '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">' +
     '<div class="pr">' + esc(p.price ? '₪' + p.price : '') + '</div>' + scoreChip(p.score) + bpChip(p.pkey) +
     (p.delisted ? '<span style="display:inline-block;background:#F0EDE3;color:#5B6472;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' +
@@ -6505,6 +6508,9 @@ function propDate(p){
     : 'לפני ' + Math.floor(days / 30) + ' חודשים';
   return 'נכנס: ' + dd + (rel ? ' · ' + rel : '');
 }
+/* [FEATS 21/10] מעלית / ממ"ד / מרפסת — תגיות קטנות, רק כשכתוב שיש (מהשרת: p.feats) */
+function featChips(p){var f=(p&&p.feats)||[];if(!f.length)return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">'+f.map(function(x){return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px">'+esc(x)+'</span>';}).join('')+'</div>';}
 function propCard(p, i){
   var isShtaf = MODE === 'shtaf';
   var isMine = MODE === 'mine';
@@ -6568,7 +6574,7 @@ function propCard(p, i){
     (_fh ? 'background:#1E3A5F;color:#fff;border:1.5px solid #1E3A5F">יד ראשונה · מוצג באתר (בטל)' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">סמן כיד ראשונה (חדש מקבלן)') + '</button></div>') : '';
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
-    '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div></div>' + chip + '</div>' +
+    '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div>' + featChips(p) + '</div>' + chip + '</div>' +
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
     '<div style="display:flex;align-items:center;gap:8px">' +
     ((p.priceDropped && p.priceOld)

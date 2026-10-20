@@ -2531,6 +2531,17 @@ _FEATURE_SYN = {
 }
 _FEATURE_NEG = ("ללא", "בלי", "אין")
 
+def _row_feats(row):
+    """[FEATS 21/10] תגיות לכרטיס באפי: מעלית / ממ"ד / מרפסת — רק כשכתוב שיש (תגיות יד2 / התיאור)."""
+    out = []
+    for f in ("מעלית", "ממ״ד", "מרפסת"):
+        try:
+            if _row_feature_state(row, f, f) is True:
+                out.append(f.replace("״", '"'))
+        except Exception:
+            pass
+    return out
+
 def _row_feature_state(row, col, feature):
     """True/False/None לתכונה בשורת נכס: עמודה מפורשת של הגיליון הישן ('כן'/'לא'), ואם אין —
     תגיות יד2 ('מעלית · חניה · ממ"ד') והתיאור ('… עם מעלית …' / '… ללא מעלית …'). None = לא ידוע."""
@@ -8306,6 +8317,7 @@ def api_search_properties():
                 "desc": (row.get("_desc_ae", "") or "").strip(),
                 "link": (row.get("קישור", "") or "").strip(),   # מודעת יד2 (בקשת אייל 01/09)
                 "delisted": (row.get("ירד מפרסום", "") or "").strip(),   # תווית 3 ימים (09/09)
+                "feats": _row_feats(row),   # [FEATS 21/10] מעלית / ממ"ד / מרפסת — תגיות בכרטיס
                 "excl": _y2_excl_flag(row.get("בלעדיות", "")),          # 27/09: בלעדי/רגיל גם במשרד (רשימת בלעדיות מול רגילות לאייל)
                 "branch": str(row.get("_y2_office_id", "") or ""),
                 "pkey": _prop_price_key(row),   # [BPAGE 06/10] מפתח יציב לדף הקונה
@@ -8428,6 +8440,7 @@ def api_my_properties():
                 "date": (r.get("תאריך יצירה", "") or r.get("_y2_first_seen", "") or "").strip(),
                 "isNew": _prop_is_new(r),
                 # בלעדי/רגיל לפי סימון יד2 (מהסורק) — מוצג רק ב"נכסים שלי" (בקשת אייל 11/09)
+                "feats": _row_feats(r),   # [FEATS 21/10]
                 "excl": _y2_excl_flag(r.get("בלעדיות", "")),
             })
 
