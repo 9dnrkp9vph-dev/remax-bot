@@ -11881,6 +11881,7 @@ ul.ins{margin:0;padding-inline-start:18px;line-height:1.7;font-size:14px}
 .td .cnt{background:#EEF1F5;color:#5B6472;border-radius:99px;padding:1px 9px;font-size:13px}.td .cnt.hot{background:#FBEDED;color:#C24040}
 .ti{padding:6px 0;border-bottom:1px solid #ECE8DD;font-size:13px}.ti a{color:#2E6BD6}.tw{overflow-x:auto}
 table.ag th{text-align:right;color:#5B6472;font-weight:500;padding:8px;border-bottom:1px solid #ECE8DD;white-space:nowrap}table.ag td{padding:8px;white-space:nowrap}
+table.ag tr.tot td{background:#FBF6E8;font-weight:700}table.ag tr.z td{color:#6B7280}
 @media(max-width:1100px){.todo{grid-template-columns:1fr 1fr}}@media(max-width:640px){.todo{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
 <header><h1>לוח בקרה</h1><span class="upd" id="upd"></span><span class="sp"></span>
@@ -11918,6 +11919,11 @@ function agentsCard(){var A=(D.agents||{})[P]||[];
  return '<div class="card"><h2>הסוכנים · '+PL[P]+'</h2><div class="tw"><table class="ag"><tr><th>סוכן</th><th>שיחות שנענו / הכל</th><th>החתמות</th><th>קונים חדשים</th><th>שליחות דף קונה</th><th>פניות לנכס נולד</th><th>זמן באפי</th></tr>'+
   (r||'<tr><td class="mut" colspan="7">אין פעילות בתקופה</td></tr>')+'</table></div>'+
   '<div class="mut">פניות לנכס נולד = וואטסאפ מכרטיס המודעה. זמן באפי בשנה — 60 הימים האחרונים.</div></div>';}
+function listingsCard(){var L=D.listings;if(!L||!L.rows)return '';var t=L.total||{};
+ var r=L.rows.map(function(x){return '<tr'+(x.total?'':' class="z"')+'><td>'+esc(x.name)+'</td><td>'+n(x.excl)+'</td><td>'+n(x.reg)+'</td><td><b>'+n(x.total)+'</b></td><td>'+(x.rent?n(x.rent):'—')+'</td></tr>';}).join('');
+ return '<div class="card"><h2>המודעות של הסוכנים · עכשיו בפרסום</h2><div class="tw"><table class="ag"><tr><th>סוכן</th><th>בלעדי</th><th>רגיל</th><th>הכל</th><th>מתוכן השכרה / מסחרי</th></tr>'+
+  '<tr class="tot"><td>כל המשרד</td><td>'+n(t.excl)+'</td><td>'+n(t.reg)+'</td><td><b>'+n(t.total)+'</b></td><td>'+(t.rent?n(t.rent):'—')+'</td></tr>'+r+'</table></div>'+
+  '<div class="mut">כל הסוכנים בצוות מופיעים, גם בלי מודעות. "הכל" כולל מודעות שלא ידוע אם הן בלעדיות.</div></div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -11936,7 +11942,7 @@ function render(){
   '<div class="sw"><div><div class="t">התראות פוש</div><div class="d">כל הפושים לטלפונים של הסוכנים</div></div><button class="tg" id="swPush" aria-label="פוש"></button></div>'+
   '<div class="d mut" id="swQuiet"></div></div></div>'+
   '<div class="seg" id="seg">'+['day','week','month','year'].map(function(k){return '<button data-p="'+k+'" class="'+(k===P?'on':'')+'">'+PL[k]+'</button>';}).join('')+'</div>'+
-  '<div class="kpis">'+kpis()+'</div>'+todoCard()+agentsCard()+
+  '<div class="kpis">'+kpis()+'</div>'+todoCard()+agentsCard()+listingsCard()+
   '<div class="row r2"><div class="card"><h2>30 הימים האחרונים</h2><div class="chart"><canvas id="c1"></canvas></div><div id="t1"></div></div>'+
   '<div class="card"><h2>חיפושי AI באתר היום</h2><div class="big">'+n(a.today)+' <span class="mut">מתוך תקרה של '+n(a.cap)+'</span></div>'+
   '<div class="bar'+(pct>=90?' hot':'')+'"><i style="width:'+pct+'%"></i></div><div class="mut">מהמטמון (בלי טוקנים): '+n(a.cache)+' · נחסמו בתקרה: '+n(a.blocked)+'</div>'+
@@ -12178,6 +12184,34 @@ def crm_todo(calls, sig_recs, act, newborn, contacts, now, h):
     nbl.sort(key=lambda r: -r["ts"])
     return {"missed": missed[:30], "missed_n": len(missed), "pending_sigs": pend[:30], "pending_n": len(pend),
             "likes": likes[:30], "nb_untouched": {"n": len(nbl), "list": nbl[:10]}}
+
+
+def crm_agent_listings(props, people, canon):
+    """[CRM 20/10 'רשימה של כל הסוכנים כולל כמה מודעות יש להם'] מודעות המשרד בפרסום לכל סוכן: בלעדי / רגיל / הכל
+    (+ כמה מהן השכרה/מסחרי). props = רשומות מודול הנכסים; people = שמות הצוות — גם סוכן בלי מודעות מופיע (0)."""
+    rows = {}
+    def row(nm):
+        return rows.setdefault(nm, {"name": nm, "excl": 0, "reg": 0, "total": 0, "rent": 0})
+    for nm in people or []:
+        nm = str(canon(nm) or "").strip()
+        if nm:
+            row(nm)
+    tot = {"excl": 0, "reg": 0, "total": 0, "rent": 0}
+    for r in props or []:
+        if r.get("source") != "המשרד" or r.get("delisted"):
+            continue
+        nm = str(canon(r.get("agent") or "") or "").strip() or "(לא משויך)"
+        x = row(nm)
+        for d in (x, tot):
+            d["total"] += 1
+            if r.get("excl") == "בלעדי":
+                d["excl"] += 1
+            elif r.get("excl") == "רגיל":
+                d["reg"] += 1
+            if (r.get("deal") or "מכירה") != "מכירה":
+                d["rent"] += 1
+    out = sorted(rows.values(), key=lambda x: (x["name"] == "(לא משויך)", -x["total"], -x["excl"], x["name"]))
+    return {"rows": out, "total": tot}
 
 
 def y2_private_area(rows):
@@ -13131,7 +13165,8 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     todo = crm_todo(calls, get("sig_recs", sigs, default=[]) or [], aact, newborn, get("nb_contacts", default={}) or {}, now, hp)
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
             "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa,
-            "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo}
+            "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo,
+            "listings": get("agent_listings", default=None)}
 
 
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
@@ -16491,6 +16526,23 @@ def register(app, G):
             frm = min(today - _dbd.timedelta(days=30), today.replace(month=1, day=1)).strftime("%d/%m/%Y")
             sb = G.get("_sbdb")
 
+            def agent_listings():
+                """כל הצוות (בלי הנה"ח, מושהים, נמחקים וחשבונות בדיקה) + מודעות המשרד בפרסום לכל אחד."""
+                people, susp, rem = [], G["_suspended_set"](), G["_removed_agent_keys"]()
+                for r in G["_contacts_rows"]() or []:
+                    nm = str((r[0] if r else "") or "").strip()
+                    l9 = G["_last9"](r[1] if len(r) > 1 else "")
+                    if not nm or "בדיקה" in nm or (l9 and l9 in susp) or G["_name_key"](nm) in rem:
+                        continue
+                    try:
+                        if l9 and G["_resolve_roles"](l9)[1] == "accountant":
+                            continue
+                    except Exception:
+                        pass
+                    people.append(nm)
+                canon = lambda n: G["_canon_agent_name"](n) or n
+                return crm_agent_listings(_crm_records("props"), people, canon)
+
             def agent_act(t0):
                 """פעולות הסוכנים לטבלה ול'מחכה לטיפול' — סינון בשרת, עם השם האמיתי לפי הטלפון."""
                 if not (sb and sb.enabled()):
@@ -16531,6 +16583,7 @@ def register(app, G):
                    "agent_act": agent_act,
                    "sig_recs": lambda sigs: crm_sig_records(sigs, {"ep": G["_excl_epoch"], "label": G["_deal_label"]}),
                    "nb_contacts": lambda: G["_fetch_newborn_contacts"]() or {},
+                   "agent_listings": agent_listings,
                    "helpers": lambda: {"answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
                                        "canon": lambda n: G["_canon_agent_name"](n) or n,
                                        "nb_key": G["_nb_key"]}}
