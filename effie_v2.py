@@ -12054,12 +12054,45 @@ CRM_STREAMS = [
     ("calls", "שיחות", 3, True),
     ("signatures", "חתימות", 30, False),
     ("invoices", "חשבוניות", 30, False),
-    ("newborn", "נכס נולד (סורק פרטי)", 3, True),
+    ("newborn_krayot", "נכס נולד — קריות", 3, True),
+    ("newborn_haifa", "נכס נולד — חיפה", 3, True),
     ("office", "נכסי המשרד (סורק)", 8, False),
     ("shtaf", "שת\"פ (סורק)", 30, False),
     ("site_leads", "לידים מהאתר", 72, False),
     ("app_usage", "שימוש באפי", 3, True),
 ]
+
+
+def y2_private_area(rows):
+    """[CRM 20/10 'סריקה חיפה וקריות'] מאיזה פרופיל של הסורק הגיעה מנת נכס נולד — לפי ערי השורות (רוב).
+    חיפה (כולל קרית חיים — שכונה של חיפה ביד2) / קריות / '' כשאין עיר."""
+    hai = kr = 0
+    for r in rows or []:
+        c = str((r or {}).get("city") or (r or {}).get("_city") or (r or {}).get("עיר") or "").replace("קריית", "קרית")
+        if "חיפה" in c:
+            hai += 1
+        elif "קרית" in c:
+            kr += 1
+    return "" if not (hai or kr) else ("חיפה" if hai >= kr else "קריות")
+
+
+def crm_nb_area_last(act, newborn):
+    """מתי נסרק נכס נולד בכל אזור: המנה האחרונה מהסורק (יומן 'סריקת יד2'), ואם אין — המודעה החדשה ביותר באזור."""
+    last = {"קריות": None, "חיפה": None}
+    for a in act or []:
+        if str(a.get("action", "")).startswith("סריקת יד2") and str(a.get("detail", "")).startswith("private"):
+            for k in last:
+                if ("· " + k) in str(a.get("detail", "")) and a.get("ts") and (last[k] is None or a["ts"] > last[k]):
+                    last[k] = a["ts"]
+    for r in newborn or []:
+        txt = " ".join(str(r.get(x) or "") for x in ("עיר", "שכונה", "רחוב")).replace("קריית", "קרית")
+        k = "חיפה" if ("חיפה" in txt or "קרית חיים" in txt) else ("קריות" if "קרית" in txt else "")
+        if not k or (last[k] is not None and any(str(a.get("detail", "")).startswith("private · " + k) for a in act or [])):
+            continue
+        ts = crm_ts(r.get("נראה לראשונה") or r.get("נוצר בתאריך"))
+        if ts is not None and (last[k] is None or ts > last[k]):
+            last[k] = ts
+    return last
 
 
 def _work_hours_between(a, b):
@@ -12883,11 +12916,13 @@ def crm_dashboard_data(src, now, quiet, today_iso):
         return max(tss) if tss else None
 
     scans = rep.get("scans") or {}
+    nb_area = crm_nb_area_last(act, newborn)
     last = {
         "calls": latest(calls, "received_at"),
         "signatures": latest(sigs, "received_at"),
         "invoices": crm_ts(get("last_invoice", default=None)),
-        "newborn": crm_ts(scans.get("newborn")),
+        "newborn_krayot": nb_area["קריות"],
+        "newborn_haifa": nb_area["חיפה"],
         "office": crm_ts(scans.get("office")),
         "shtaf": crm_ts(scans.get("shtaf")),
         "site_leads": latest_act(lambda a: str(a.get("action", "")).startswith(("ליד מהאתר", "פנייה מהאתר"))),
@@ -16750,9 +16785,11 @@ def register(app, G):
                              f"n={out['n']} nb={out['nbN']} shtaf={out['shtafN']} our={out['ourN']} delisted={out['delistedN']}")
             if out["n"] or out["delistedN"]:   # [CRM-2] 'נכנס ויוצא' — שורה אחת למנה, עם המספרים
                 try:
+                    _area = y2_private_area(rows) if stream == "private" else ""
                     G["_log_activity"]("סורק יד2", "system", "", "סריקת יד2 — נקלטה",
-                                       ("%s · %d שורות · נכס נולד %d · שת\"פ %d · שלנו %d · ירדו %d" % (
-                                           stream, out["n"], out["nbN"], out["shtafN"], out["ourN"], out["delistedN"]))[:120])
+                                       ("%s%s · %d שורות · נכס נולד %d · שת\"פ %d · שלנו %d · ירדו %d" % (
+                                           stream, (" · " + _area) if _area else "", out["n"], out["nbN"], out["shtafN"],
+                                           out["ourN"], out["delistedN"]))[:120])
                 except Exception:
                     pass
             return jsonify(out)

@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import _load
 from _load import ck
 from zoneinfo import ZoneInfo
-ns = _load.load("crm_dashboard_data", "_CRM_EFFIE_AI", "CRM_STREAMS", "crm_health", "_work_hours_between", "crm_daily_series", "crm_ts", "inv_parse_dt")
+ns = _load.load("crm_dashboard_data", "_CRM_EFFIE_AI", "CRM_STREAMS", "crm_health", "_work_hours_between", "crm_daily_series", "crm_ts", "inv_parse_dt", "crm_nb_area_last")
 build = ns["crm_dashboard_data"]
 IL = ZoneInfo("Asia/Jerusalem")
 now = datetime.datetime(2026, 10, 19, 15, 0, tzinfo=IL).timestamp()
@@ -57,6 +57,6 @@ ck(H["app_usage"]["last"] == now - 100, "whatsapp click = app usage")
 ck("insights" not in d, "no yesterday-worded insights on a partial day")
 ck(H["app_usage"]["last"] != now - 60, "client (buyer page) activity is not Effie usage")
 q = build(src, now, True, "2026-10-19")
-ck(all(h["status"] == "quiet" for h in q["health"] if h["key"] in ("calls", "newborn", "app_usage")), "shabbat quiet for work-hours streams")
+ck(all(h["status"] == "quiet" for h in q["health"] if h["key"] in ("calls", "newborn_krayot", "newborn_haifa", "app_usage")), "shabbat quiet for work-hours streams")
 ck(build({"report": boom}, now, False, "2026-10-19")["periods"]["calls"] == {}, "everything down → still builds")
 print("dash_data OK", _load.n)
