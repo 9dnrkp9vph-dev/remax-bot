@@ -1,6 +1,7 @@
 # tests/crm/test_inv_api.py — /v2/crm/invoices: הראוט האמיתי מעל invoices מזויף + הצלבת סוכן
 import os, sys, warnings; warnings.filterwarnings("ignore")
 os.environ.setdefault("WARMUP_ON_BOOT", "0"); os.environ.setdefault("CLAUDE_API_KEY", "dummy-test"); os.environ.setdefault("DEALS_SYNC", "0")
+os.environ["CRM_ALLOW_APP_TOKEN"] = "1"   # 21/10: הבדיקות כאן = בעל המשרד בטוקן האפליקציה (מסלול החזרה); הכניסה עם Google נבדקת בנפרד
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 n = 0
 def ck(c, m):
@@ -32,5 +33,5 @@ ck(c.post("/v2/api/crm/invoices/record", json={"fields": {}}).status_code == 400
 ck("1052" in c.get("/v2/api/crm/invoices/export").get_data(as_text=True), "export")
 ck(c.get("/v2/crm/invoices").status_code == 200, "page")
 A._is_dev = lambda p: False
-ck(c.get("/v2/api/crm/invoices/list").status_code == 403, "owner only")
+ck(c.get("/v2/api/crm/invoices/list").status_code in (401, 403), "owner only")
 print("inv_api OK", n)

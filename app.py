@@ -3364,9 +3364,31 @@ def _verify_token(tok):
         if not _hmac.compare_digest(sig, good): return None
         obj = json.loads(_b64u_dec(data))
         if int(obj.get("e", 0)) < time.time(): return None
+        if obj.get("k"): return None   # [ביקורת 21/10] טוקן CRM (k=crm) אינו סשן של האפליקציה
         return _last9(str(obj.get("p", "")))
     except Exception:
         return None
+_CRM_TTL = 12 * 3600
+def _mint_crm_token(phone, email, ttl=_CRM_TTL):
+    """[CRM-ACCESS 21/10] טוקן ל-CRM ולוח הבקרה — נוצר רק בכניסה עם Google (k=crm + המייל).
+    חתום באותו סוד, ולכן עובד גם באפי כאותו אדם; טוקן רגיל של אפי לא נחשב טוקן CRM."""
+    exp = int(time.time() + ttl)
+    data = _b64u(json.dumps({"p": _last9(phone), "e": exp, "k": "crm", "m": str(email or "").strip().lower()}).encode())
+    sig = _b64u(_hmac.new(_SESSION_SECRET, data.encode(), _hashlib.sha256).digest())
+    return data + "." + sig
+
+def _verify_crm_token(tok):
+    """(טלפון, מייל) לטוקן CRM תקף, אחרת None."""
+    try:
+        data, sig = str(tok).split(".", 1)
+        good = _b64u(_hmac.new(_SESSION_SECRET, data.encode(), _hashlib.sha256).digest())
+        if not _hmac.compare_digest(sig, good): return None
+        obj = json.loads(_b64u_dec(data))
+        if obj.get("k") != "crm" or int(obj.get("e", 0)) < time.time() or not obj.get("m"): return None
+        return _last9(str(obj.get("p", ""))), str(obj.get("m"))
+    except Exception:
+        return None
+
 def _session_from_phone(phone):
     """בונה מחדש סשן מהטלפון בלבד (לשחזור אחרי רסטארט) — זהה לכניסה רגילה."""
     phone = _last9(phone)
@@ -4627,14 +4649,55 @@ def _g_link_page(glink, email, dest="/app"):
         "location.replace(" + _json.dumps(dest) + ");});}}"
         "</script>")
 
+def _crm_owner_emails():
+    return [x.strip().lower() for x in (os.environ.get("CRM_OWNER_EMAILS") or "eyalshmul@gmail.com").split(",") if x.strip()]
+
+def _crm_google_done(email):
+    """[CRM-ACCESS] אחרי Google: מי מורשה → טוקן CRM נשמר בדפדפן (crmTok) ומעבר ללוח הבקרה / למודול הראשון שמותר."""
+    import effie_v2 as _ev2
+    linked = _last9((_gauth_all().get(email) or {}).get("phone", ""))
+    ctx = _ev2.crm_access_for(email, linked, _load_config() or {}, _crm_owner_emails(), _is_dev)
+    if not ctx:
+        _log_activity(email, "crm", "", "כניסה ל-CRM נדחתה", email)
+        return _g_msg("אין לך הרשאה ל-CRM", "בקש מבעל המשרד להוסיף את " + email), 200
+    phone = linked or _last9(ctx.get("phone") or "") or (sorted(DEV_PHONES)[0] if ctx["owner"] and DEV_PHONES else "")
+    if phone and _is_suspended(phone) and not _is_dev(phone):
+        return _g_msg("המשתמש מושהה", "פנה למנהל המערכת"), 200
+    token = _mint_crm_token(phone, email)
+    _log_activity(ctx.get("name") or email, "crm", phone, "כניסה ל-CRM עם Google", email)
+    mods = [m for m in ctx["modules"] if m != "access"]
+    _first = [m for m in mods if m != "dashboard"]
+    dest = ("/v2/crm/dashboard" if ("dashboard" in mods and ctx["scope"] == "all")
+            else ("/v2/crm/" + _first[0] if _first else "/crm/login?empty=1"))
+    return ("<!doctype html><html lang='he' dir='rtl'><head><meta charset='utf-8'><title>CRM</title></head>"
+            "<body style='font-family:Heebo,Arial,sans-serif;background:#F2EFE7;color:#1E3A5F;text-align:center;padding:64px'>"
+            "<h2>נכנסת ל-CRM</h2><script>try{localStorage.setItem('crmTok', " + _json.dumps(token) + ");}catch(e){}"
+            "location.replace(" + _json.dumps(dest) + ");</script></body></html>"), 200
+
+@app.route("/crm/login")
+def crm_login_page():
+    """[CRM-ACCESS] כניסה ל-CRM ולוח הבקרה — Google בלבד."""
+    note = "אין לך מודולים פתוחים — בקש מבעל המשרד." if request.args.get("empty") else ""
+    return ("<!doctype html><html lang='he' dir='rtl'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<title>כניסה ל-CRM</title><link href='https://fonts.googleapis.com/css2?family=Heebo:wght@400;700;800&display=swap' rel='stylesheet'></head>"
+            "<body style='margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#F2EFE7;font-family:Heebo,Arial,sans-serif;color:#1E3A5F'>"
+            "<div style='background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:36px 32px;max-width:360px;text-align:center'>"
+            "<h1 style='margin:0 0 6px;font-size:24px'>CRM ולוח בקרה</h1>"
+            "<div style='color:#5B6472;margin-bottom:22px'>הכניסה עם חשבון Google בלבד</div>"
+            + ("<div style='color:#C24040;margin-bottom:14px'>" + note + "</div>" if note else "") +
+            "<a href='/auth/google/login?next=crm' style='display:block;background:#2E6BD6;color:#fff;font-weight:700;padding:14px;border-radius:14px;text-decoration:none'>כניסה עם Google</a>"
+            "<script>try{localStorage.removeItem('crmTok');}catch(e){}</script>"
+            "</div></body></html>"), 200
+
 @app.route("/auth/google/login")
 def auth_google_login():
     if not _gauth_enabled():
         return _g_msg("התחברות Google אינה פעילה עדיין", "פנה למנהל המערכת"), 200
     state = _secrets.token_urlsafe(16)
     native = request.args.get("native") == "1"
+    _nx = request.args.get("next")
     _goauth_state[state] = {"exp": time.time() + 600, "native": native,
-                            "next": ("v2" if request.args.get("next") == "v2" else "")}
+                            "next": (_nx if _nx in ("v2", "crm") else "")}
     params = {"client_id": GOOGLE_CLIENT_ID, "redirect_uri": GOOGLE_REDIRECT_URI,
               "response_type": "code",
               "scope": "openid email profile https://www.googleapis.com/auth/calendar.events",
@@ -4669,6 +4732,10 @@ def auth_google_callback():
     rt = tok.get("refresh_token")
     if not email:
         return _g_msg("לא הצלחנו לקרוא את כתובת האימייל", "נסה שוב")
+    if st.get("next") == "crm":   # [CRM-ACCESS 21/10] כניסה ל-CRM — רק עם Google, רק לבעל המשרד או למי שברשימה
+        if info.get("email_verified") is False:
+            return _g_msg("כתובת המייל לא מאומתת ב-Google", "נסה חשבון אחר"), 200
+        return _crm_google_done(email)
     rec = _gauth_all().get(email)
     if rec and rec.get("phone"):
         if _is_suspended(rec["phone"]):

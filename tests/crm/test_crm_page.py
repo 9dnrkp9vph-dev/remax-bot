@@ -7,7 +7,7 @@ c = A.app.test_client()
 r = c.get("/v2/crm/calls")
 assert r.status_code == 200 and "text/html" in r.content_type, r.status_code
 h = r.get_data(as_text=True)
-for need in ("fbTok", "X-Auth-Token", "/v2/api/crm/", 'dir="rtl"', "Heebo", "/v2/crm/dashboard", "/v2/buyers?add=1", "wa.me"):
+for need in ("crmTok", "/crm/login", "X-Auth-Token", "/v2/api/crm/", 'dir="rtl"', "Heebo", "/v2/crm/dashboard", "/v2/buyers?add=1", "wa.me"):
     assert need in h, need
 assert not re.search("[\U0001F300-\U0001FAFF☀-➿]", h), "no emoji icons in UI"
 js = re.findall(r"<script>(.*?)</script>", h, re.S)

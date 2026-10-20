@@ -1,6 +1,7 @@
 # tests/crm/test_dash_route.py — הראוט האמיתי /v2/api/crm/dashboard: הרשאה, חיווט ל-_swr, מבנה התשובה
 import os, sys, warnings; warnings.filterwarnings("ignore")
 os.environ.setdefault("WARMUP_ON_BOOT", "0"); os.environ.setdefault("CLAUDE_API_KEY", "dummy-test"); os.environ.setdefault("DEALS_SYNC", "0")
+os.environ["CRM_ALLOW_APP_TOKEN"] = "1"   # 21/10: הבדיקות כאן = בעל המשרד בטוקן האפליקציה (מסלול החזרה); הכניסה עם Google נבדקת בנפרד
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 n = 0
 def ck(c, m):
@@ -31,7 +32,7 @@ ck(set(["health", "periods", "series", "ai", "usage_today"]) <= set(j), list(j))
 ck({h["key"]: h for h in j["health"]}["invoices"]["last"] is not None, "invoice last wired")
 ck(j["periods"]["calls"] == {"day": 1}, "report wired")
 A._is_dev = lambda p: False
-ck(c.get("/v2/api/crm/dashboard").status_code == 403, "dev only")
+ck(c.get("/v2/api/crm/dashboard").status_code in (401, 403), "dev only")
 print("dash_route OK", n)
 # רענן: לא בונה בתוך הבקשה ולא במקביל — בנייה אחת ברקע שנכנסת למטמון; אבחון הדוח היומי לא נדרס
 import time as _t

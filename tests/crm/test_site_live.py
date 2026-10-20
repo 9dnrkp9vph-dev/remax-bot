@@ -1,6 +1,7 @@
 # tests/crm/test_site_live.py — 'באתר עכשיו' בלוח הבקרה (אייל 21/10): אפי קוראת /site/live מהאתר במפתח
 import os, sys, warnings; warnings.filterwarnings("ignore")
 os.environ.setdefault("WARMUP_ON_BOOT", "0"); os.environ.setdefault("CLAUDE_API_KEY", "dummy-test"); os.environ.setdefault("DEALS_SYNC", "0")
+os.environ["CRM_ALLOW_APP_TOKEN"] = "1"   # 21/10: הבדיקות כאן = בעל המשרד בטוקן האפליקציה (מסלול החזרה); הכניסה עם Google נבדקת בנפרד
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 n = 0
 def ck(c, m):
@@ -24,7 +25,7 @@ ck(CALLS[0][0] == "https://site.test/site/live" and CALLS[0][1] == {"X-Site-Key"
 c.get("/v2/api/crm/site_live")
 ck(len(CALLS) == 1, "10s cache")
 A._is_dev = lambda p: False
-ck(c.get("/v2/api/crm/site_live").status_code == 403, "owner only")
+ck(c.get("/v2/api/crm/site_live").status_code in (401, 403), "owner only")
 html = E._CRM_DASH_HTML if hasattr(E, "_CRM_DASH_HTML") else ""
 src = open(E.__file__, encoding="utf-8").read()
 ck("באתר עכשיו" in src and "siteLive()" in src and "/v2/api/crm/site_live" in src, "dashboard card")

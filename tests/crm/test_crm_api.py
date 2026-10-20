@@ -1,6 +1,7 @@
 # tests/crm/test_crm_api.py — ה-API של מסכי ה-CRM (ראוט אמיתי, מקורות מזויפים)
 import os, sys, warnings, json; warnings.filterwarnings("ignore")
 os.environ.setdefault("WARMUP_ON_BOOT", "0"); os.environ.setdefault("CLAUDE_API_KEY", "dummy-test"); os.environ.setdefault("DEALS_SYNC", "0")
+os.environ["CRM_ALLOW_APP_TOKEN"] = "1"   # 21/10: הבדיקות כאן = בעל המשרד בטוקן האפליקציה (מסלול החזרה); הכניסה עם Google נבדקת בנפרד
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 n = 0
 def ck(c, m):
@@ -78,5 +79,5 @@ am = c.get("/v2/api/crm/automations/list?sort=name&dir=asc").get_json()
 ck(am["ok"] and am["total"] >= 15 and any(r["key"] == "sig_ingest" and r["count7"] == 1 for r in am["rows"]), am["total"])
 ck(c.get("/v2/crm/flows").status_code == 200 and c.get("/v2/crm/automations").status_code == 200, "pages")
 A._is_dev = lambda p: False
-ck(c.get("/v2/api/crm/calls/list").status_code == 403, "dev only")
+ck(c.get("/v2/api/crm/calls/list").status_code in (401, 403), "dev only")
 print("crm_api OK", n)

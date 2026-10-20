@@ -1,6 +1,7 @@
 # tests/crm/test_parallel_route.py — הראוט האמיתי /v2/api/crm/parallel עם מקורות מזויפים
 import os, sys, warnings, datetime; warnings.filterwarnings("ignore")
 os.environ.setdefault("WARMUP_ON_BOOT", "0"); os.environ.setdefault("CLAUDE_API_KEY", "dummy-test"); os.environ.setdefault("DEALS_SYNC", "0")
+os.environ["CRM_ALLOW_APP_TOKEN"] = "1"   # 21/10: הבדיקות כאן = בעל המשרד בטוקן האפליקציה (מסלול החזרה); הכניסה עם Google נבדקת בנפרד
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 from zoneinfo import ZoneInfo
 n = 0
@@ -30,5 +31,5 @@ ck(j["days"][-1]["calls_legacy"] == 1 and j["days"][-1]["calls_direct"] == 1 and
 ck(j["sig_nonapp"] == [["דידי לוי", 1]], j["sig_nonapp"])
 ck(SINCE and all(x == (today - datetime.timedelta(days=2)).isoformat() for x in SINCE), ("shadow fetched from the day before (UTC midnight = 03:00 Israel)", SINCE))
 A._is_dev = lambda p: False
-ck(c.get("/v2/api/crm/parallel").status_code == 403, "dev only")
+ck(c.get("/v2/api/crm/parallel").status_code in (401, 403), "dev only")
 print("parallel_route OK", n)

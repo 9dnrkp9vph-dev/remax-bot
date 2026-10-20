@@ -1,6 +1,7 @@
 # tests/crm/test_buyer_api.py — /v2/crm/buyers: רשימה, עריכה (שדות + סטטוס), הוספה, מחיקה — דרך מסלולי הכתיבה הקיימים
 import os, sys, warnings, json, tempfile; warnings.filterwarnings("ignore")
 os.environ.setdefault("WARMUP_ON_BOOT", "0"); os.environ.setdefault("CLAUDE_API_KEY", "dummy-test"); os.environ.setdefault("DEALS_SYNC", "0")
+os.environ["CRM_ALLOW_APP_TOKEN"] = "1"   # 21/10: הבדיקות כאן = בעל המשרד בטוקן האפליקציה (מסלול החזרה); הכניסה עם Google נבדקת בנפרד
 os.environ["MAP_CACHE_DIR"] = tempfile.mkdtemp()
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 n = 0

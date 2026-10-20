@@ -11571,6 +11571,8 @@ td.long div{overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box
 .sl{font-size:13px;font-weight:700}.sv{font-size:22px;font-weight:800;margin:4px 0}.sv small{font-size:13px;font-weight:500;color:var(--mut)}.sr{font-size:13px}
 .dup{color:#157A43;font-size:12px;font-weight:700}.ddn{color:#C24040;font-size:12px;font-weight:700}
 @media(max-width:900px){.sums{grid-template-columns:1fr 1fr}}
+body.ro #newBtn,body.ro #svBtn,body.ro #dlBtn,body.ro .ra,body.ro .rb{display:none!important}
+.top .sp{flex:1}.top .who{color:var(--mut);font-size:13px;margin-inline-end:6px}
 .del{width:44px;height:44px;border-radius:12px;background:#FBEDED;border:0;display:grid;place-items:center;cursor:pointer;margin-inline-start:auto}
 .av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#EEE9DD;display:block}
 .av.big{width:88px;height:88px;border:3px solid var(--gold)}
@@ -11607,9 +11609,10 @@ s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-ne
 var MOD = (location.pathname.split('/')[3] || 'calls');
 var META = null, ST = {q:'', view:'all', sort:'date', dir:'desc', page:1, agent:''}, ROWS = [], TOTAL = 0, CUR = null, SAVED = [];
 var SOON = [['signatures','מתעניינים (חתימות)'],['buyers','קונים'],['props','נכסים'],['deals','עסקאות']];
-function tok(){ try{ return localStorage.getItem('fbTok') || ''; }catch(e){ return ''; } }
+function tok(){ try{ return localStorage.getItem('crmTok') || localStorage.getItem('fbTok') || ''; }catch(e){ return ''; } }   // [CRM-ACCESS] Google בלבד; fbTok רק למסלול החזרה
+if (!tok()) location.replace('/crm/login');
 function api(path, opt){ opt = opt || {}; opt.headers = Object.assign({'X-Auth-Token': tok()}, opt.headers || {});
-  return fetch(path, opt); }
+  return fetch(path, opt).then(function(r){ if (r.status === 401) location.replace('/crm/login'); return r; }); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function toast(t){ var e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(function(){ e.style.display = 'none'; }, 2600); }
 function fdate(ts){ if(!ts) return ''; var d = new Date(ts*1000); return d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ' ' + d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); }
@@ -11635,9 +11638,14 @@ function qs(extra){ var p = new URLSearchParams({q:ST.q, view:ST.view, sort:ST.s
   if (ST.agent) p.set('f_agent', ST.agent); if (ST.period) p.set('period', ST.period); return p.toString() + (extra || ''); }
 function renderTop(){ var h = '<span class="logo">CRM · ' + esc(META.title) + '</span>';
   META.modules.forEach(function(m){ h += '<a class="mod' + (m[0] === MOD ? ' on' : '') + '" href="/v2/crm/' + m[0] + '">' + esc(m[1]) + '</a>'; });
-  SOON.forEach(function(m){ if (!META.modules.some(function(x){ return x[0] === m[0]; })) h += '<span class="mod soon">' + m[1] + '<small>בקרוב</small></span>'; });
-  h += '<a class="mod" href="/v2/crm/dashboard">לוח בקרה</a>';
-  document.getElementById('top').innerHTML = h; }
+  var me = META.me || {};
+  if (me.owner) SOON.forEach(function(m){ if (!META.modules.some(function(x){ return x[0] === m[0]; })) h += '<span class="mod soon">' + m[1] + '<small>בקרוב</small></span>'; });
+  if (me.dashboard) h += '<a class="mod" href="/v2/crm/dashboard">לוח בקרה</a>';
+  if (me.access) h += '<a class="mod" href="/v2/crm/access">הרשאות</a>';
+  h += '<span class="sp"></span><span class="who">' + esc(me.name || me.email || '') + '</span><a class="mod" href="/crm/login">יציאה</a>';
+  document.getElementById('top').innerHTML = h;
+  document.body.classList.toggle('ro', !me.edit);
+  var ex = document.getElementById('exp'); if (ex) ex.style.display = me.export ? '' : 'none'; }
 function renderViews(){ var h = '';
   META.views.forEach(function(v){ h += '<div class="v' + (ST.view === v[0] && !ST.saved ? ' on' : '') + '" data-v="' + v[0] + '"><span>' + esc(v[1]) + '</span><small>' + (META.counts[v[0]] || 0).toLocaleString('he-IL') + '</small></div>'; });
   h += '<div class="vh">התצוגות שלי</div>';
@@ -11851,6 +11859,64 @@ else { loadMeta().then(function(){ loadSaved(); teamBanner(); return load(); }).
 </script></body></html>"""
 
 
+_CRM_ACCESS_HTML = r"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>CRM · הרשאות</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#F2EFE7;--navy:#1E3A5F;--blue:#2E6BD6;--gold:#C29435;--green:#157A43;--red:#C24040;--mut:#5B6472;--line:#ECE8DD}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);font-family:Heebo,sans-serif;color:var(--navy);font-size:14px}
+.top{background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 20px;height:60px}
+.top b{font-size:18px;font-weight:800}.top a{color:var(--mut);text-decoration:none}.sp{flex:1}
+.wrap{max-width:1180px;margin:18px auto;padding:0 20px}
+.card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:16px 18px;margin-bottom:12px}
+.mut{color:var(--mut)}.p{display:grid;grid-template-columns:200px 1fr;gap:14px;align-items:start}
+.p h3{margin:0;font-size:16px}.badge{display:inline-block;border-radius:99px;padding:2px 10px;font-size:12px;font-weight:700;margin-top:6px}
+.on{background:#E6F2EC;color:var(--green)}.off{background:#EEF1F5;color:var(--mut)}
+input[type=email]{width:100%;max-width:340px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;font-size:16px}
+.mods{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.mods label,.opt label{border:1px solid var(--line);border-radius:10px;padding:6px 10px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.opt{display:flex;flex-wrap:wrap;gap:8px;align-items:center}select{border:1px solid var(--line);border-radius:10px;padding:7px 10px;font:inherit}
+.btn{min-height:40px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--navy);font:700 14px Heebo;cursor:pointer}
+.pri{background:var(--blue);border-color:var(--blue);color:#fff}.rm{background:#FBEDED;border-color:#FBEDED;color:var(--red)}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;border-radius:12px;padding:10px 16px;display:none}
+@media(max-width:800px){.p{grid-template-columns:1fr}}
+</style></head><body>
+<div class="top"><b>CRM · הרשאות</b><span class="sp"></span><a href="/v2/crm/dashboard">לוח בקרה</a><a href="/v2/crm/meetings">ל-CRM</a><a href="/crm/login">יציאה</a></div>
+<div class="wrap"><div class="card mut">הכניסה ל-CRM ולוח הבקרה — עם חשבון Google בלבד. לכל אדם: המייל שלו ב-Google, אילו טאבים פתוחים לו, ואיזה נתונים הוא רואה.
+<b>הצוות שלו</b> = הסוכנים שמשויכים למתאמת באפי, או חברי הצוות שלו. בעל המשרד (<span id="own"></span>) רואה תמיד הכל.</div>
+<div id="list"><div class="card mut">טוען…</div></div></div><div id="toast" role="status" aria-live="polite"></div>
+<script>
+function tok(){try{return localStorage.getItem('crmTok')||localStorage.getItem('fbTok')||'';}catch(e){return '';}}
+if(!tok())location.replace('/crm/login');
+function api(p,o){o=o||{};o.headers=Object.assign({'X-Auth-Token':tok(),'Content-Type':'application/json'},o.headers||{});
+ return fetch(p,o).then(function(r){if(r.status===401)location.replace('/crm/login');return r.json();});}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function toast(t){var e=document.getElementById('toast');e.textContent=t;e.style.display='block';setTimeout(function(){e.style.display='none';},2600);}
+var D=null,SC={all:'הכל',team:'הצוות שלו',own:'רק שלו'},RL={coordinator:'מתאמת',manager:'מנהל',developer:'בעל המשרד',agent:'סוכן',accountant:'הנה"ח',secretary:'מזכירה'};
+function card(p,i){var a=p.access||{},mods=a.modules||[];
+ return '<div class="card p" data-i="'+i+'"><div><h3>'+esc(p.name)+'</h3><div class="mut">'+esc(RL[p.role]||p.role||'')+(p.phone?' · '+esc(p.phone):'')+'</div>'+
+  '<span class="badge '+(p.access?'on':'off')+'">'+(p.access?'יש גישה':'אין גישה')+'</span></div><div>'+
+  '<input type="email" placeholder="מייל Google" value="'+esc(p.email||'')+'" data-f="email" aria-label="מייל Google">'+
+  '<div class="mods">'+D.modules.map(function(m){return '<label><input type="checkbox" data-m="'+m[0]+'"'+(mods.indexOf(m[0])>=0?' checked':'')+'>'+esc(m[1])+'</label>';}).join('')+'</div>'+
+  '<div class="opt"><select data-f="scope" aria-label="היקף נתונים">'+['team','own','all'].map(function(k){return '<option value="'+k+'"'+((a.scope||'team')===k?' selected':'')+'>רואה: '+SC[k]+'</option>';}).join('')+'</select>'+
+  '<label><input type="checkbox" data-f="export"'+(a.export?' checked':'')+'>ייצוא לאקסל</label><label><input type="checkbox" data-f="edit"'+(a.edit?' checked':'')+'>עריכה</label>'+
+  '<span class="sp"></span><button class="btn pri" data-act="save">שמירה</button>'+(p.access?'<button class="btn rm" data-act="del">הסרת גישה</button>':'')+'</div></div></div>';}
+function render(){document.getElementById('own').textContent=(D.owners||[]).join(', ');
+ document.getElementById('list').innerHTML=D.people.map(card).join('')||'<div class="card mut">אין אנשי צוות</div>';}
+document.getElementById('list').onclick=function(ev){var b=ev.target.closest('button[data-act]');if(!b)return;
+ var c=b.closest('.card'),p=D.people[+c.dataset.i],q=function(s){return c.querySelector(s);};
+ var body={email:q('[data-f=email]').value,name:p.name,phone:p.phone};
+ if(b.dataset.act==='del'){if(!confirm('להסיר את הגישה של '+p.name+'?'))return;body.email=p.email;body.delete=true;}
+ else{body.modules=[].slice.call(c.querySelectorAll('[data-m]:checked')).map(function(x){return x.dataset.m;});
+  body.scope=q('[data-f=scope]').value;body.export=q('[data-f=export]').checked;body.edit=q('[data-f=edit]').checked;
+  if(!body.modules.length){toast('לא סומן אף טאב');return;}}
+ api('/v2/api/crm/access',{method:'POST',body:JSON.stringify(body)}).then(function(j){
+  if(!j.ok){toast(j.reason==='bad_email'?'מייל לא תקין':(j.reason==='owner'?'זה המייל של בעל המשרד':'לא נשמר'));return;}
+  toast(body.delete?'הגישה הוסרה':'נשמר');load();});};
+function load(){api('/v2/api/crm/access').then(function(j){if(!j.ok){document.getElementById('list').innerHTML='<div class="card mut">אין הרשאה — המסך לבעל המשרד בלבד.</div>';return;}D=j;render();});}
+load();
+</script></body></html>"""
+
+
 _CRM_DASH_HTML = r"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>לוח בקרה</title>
@@ -12008,7 +12074,7 @@ function charts(){
  if(D.wa)CH.c4=new Chart(document.getElementById('c4'),{type:'bar',options:base,data:{labels:D.ai.days7.map(dd),datasets:[
   {label:'מהטלפון של הסוכנים',data:D.wa.agents_7d,backgroundColor:'#157A43',borderRadius:4},{label:'מהמספר הרשמי',data:D.wa.official_7d,backgroundColor:'#1E3A5F',borderRadius:4}]}});
 }
-function hdr(){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){}return {'X-Auth-Token':t,'Content-Type':'application/json'};}
+function hdr(){var t='';try{t=localStorage.getItem('crmTok')||localStorage.getItem('fbTok')||'';}catch(e){}return {'X-Auth-Token':t,'Content-Type':'application/json'};}
 function agoS(s){return s<60?'עכשיו':('לפני '+Math.round(s/60)+' דק׳');}
 function online(){fetch('/v2/api/usage_now',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){
   var el=document.getElementById('onList');if(!el||!j||!j.ok)return;var rows=j.rows||[];
@@ -12036,10 +12102,10 @@ function siteLive(){fetch('/v2/api/crm/site_live',{headers:hdr()}).then(function
   document.getElementById('slN').textContent='('+j.now+')';var b=j.by_src||{};
   el.innerHTML=j.now?Object.keys(SL).filter(function(k){return b[k];}).map(function(k){return '<span class="chip"><i></i>'+SL[k]+' · '+b[k]+'</span>';}).join(''):'<span class="mut">אין מבקרים באתר כרגע</span>';}).catch(function(){});}
 setInterval(function(){if(D)online();},60000);setInterval(function(){if(D)siteLive();},30000);
-function load(fresh){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){}
- if(!t){document.getElementById('app').innerHTML='<div class="card">צריך להיות מחובר לאפי בדפדפן הזה. <a href="/v2/home">כניסה לאפי</a> ואז לחזור לעמוד.</div>';return;}
- fetch('/v2/api/crm/dashboard'+(fresh?'?fresh=1':''),{headers:{'X-Auth-Token':t}}).then(function(r){return r.json();}).then(function(j){
-  if(!j.ok){document.getElementById('app').innerHTML='<div class="card">'+(j.reason==='forbidden'?'אין הרשאה — לוח הבקרה לבעל המשרד בלבד.':'שגיאה: '+esc(j.reason))+'</div>';return;}
+function load(fresh){var t='';try{t=localStorage.getItem('crmTok')||localStorage.getItem('fbTok')||'';}catch(e){}
+ if(!t){location.replace('/crm/login');return;}
+ fetch('/v2/api/crm/dashboard'+(fresh?'?fresh=1':''),{headers:{'X-Auth-Token':t}}).then(function(r){if(r.status===401)location.replace('/crm/login');return r.json();}).then(function(j){
+  if(!j.ok){document.getElementById('app').innerHTML='<div class="card">'+(j.reason==='forbidden'?'אין לך הרשאה ללוח הבקרה. <a href="/v2/crm/meetings">ל-CRM</a>':'שגיאה: '+esc(j.reason))+'</div>';return;}
   D=j;document.getElementById('upd').textContent='עודכן '+new Date(j.built_at*1000).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});render();
  }).catch(function(){if(!D)document.getElementById('app').innerHTML='<div class="card">לא הצלחתי לטעון — נסה שוב.</div>';});}
 document.getElementById('rf').onclick=function(){document.getElementById('upd').textContent='מתעדכן…';load(true);setTimeout(function(){load(false);},25000);};
@@ -12076,11 +12142,11 @@ function gap(title,list,cols){if(!list.length)return '<div class="empty">'+title
 function block(name,m,cols){var bad=m.only_legacy.length;
  return '<div class="card"><h2>'+name+'</h2><div class="big"><div><b class="ok">'+m.matched+'</b>הותאמו</div><div><b class="'+(bad?'bad':'ok')+'">'+bad+'</b>חסר בישיר</div><div><b>'+m.only_direct.length+'</b>רק בישיר</div></div>'+
  '<div style="margin-top:12px">'+gap('חסר בישיר (הגיע דרך פיירברי בלבד)',m.only_legacy,cols)+'</div><div style="margin-top:12px">'+gap('רק בישיר',m.only_direct,cols)+'</div></div>';}
-function load(){var t='';try{t=localStorage.getItem('fbTok')||'';}catch(e){}
- if(!t){document.getElementById('out').innerHTML='<div class="card">צריך להיות מחובר לאפי בדפדפן הזה. <a href="/v2/home">כניסה לאפי</a> ואז לחזור לעמוד.</div>';return;}
+function load(){var t='';try{t=localStorage.getItem('crmTok')||localStorage.getItem('fbTok')||'';}catch(e){}
+ if(!t){location.replace('/crm/login');return;}
  document.getElementById('out').innerHTML='<div class="card empty">טוען…</div>';
- fetch('/v2/api/crm/parallel?days='+D,{headers:{'X-Auth-Token':t}}).then(function(r){return r.json();}).then(function(j){
-  if(!j.ok){document.getElementById('out').innerHTML='<div class="card bad">'+(j.reason==='forbidden'?'אין הרשאה — העמוד למפתח בלבד.':'שגיאה: '+esc(j.reason))+'</div>';return;}
+ fetch('/v2/api/crm/parallel?days='+D,{headers:{'X-Auth-Token':t}}).then(function(r){if(r.status===401)location.replace('/crm/login');return r.json();}).then(function(j){
+  if(!j.ok){document.getElementById('out').innerHTML='<div class="card bad">'+(j.reason==='forbidden'?'אין הרשאה — העמוד לבעל המשרד בלבד.':'שגיאה: '+esc(j.reason))+'</div>';return;}
   var days='<div class="card"><h2>לפי יום</h2><table><tr><th>יום</th><th>שיחות דרך פיירברי</th><th>שיחות ישירות</th><th>חשבוניות דרך פיירברי</th><th>חשבוניות ישירות</th></tr>'+
    j.days.map(function(d){return '<tr><td>'+esc(d.day)+'</td><td>'+d.calls_legacy+'</td><td>'+d.calls_direct+'</td><td>'+d.inv_legacy+'</td><td>'+d.inv_direct+'</td></tr>';}).join('')+'</table></div>';
   var sig='<div class="card"><h2>מי עוד מחתים בחתימה טובה</h2>'+(j.sig_nonapp.length?'<table><tr><th>סוכן</th><th>חתימות</th></tr>'+j.sig_nonapp.map(function(x){return '<tr><td>'+esc(x[0])+'</td><td>'+x[1]+'</td></tr>';}).join('')+'</table>':'<div class="empty ok">אף אחד — כולם מחתימים מאפי</div>')+'</div>';
@@ -12743,6 +12809,88 @@ def team_compare(values, table):
         same += 0 if d else 1
     return {"same": same, "diffs": diffs,
             "only_sheet": [n for n in sheet if n not in tab], "only_table": [n for n in tab if n not in sheet]}
+
+
+# ── [CRM-ACCESS 21/10] כניסה עם Google בלבד + הרשאות לפי משתמש (ספק 2026-10-21-crm-access-design) ──
+CRM_ACCESS_MODULES = list(CRM_MODULES) + ["dashboard"]
+_CRM_AGENTLESS = ("flows", "automations", "team")      # אין שדה סוכן → רק להיקף 'הכל'
+
+
+def crm_access_for(email, phone, cfg, owner_emails, is_dev):
+    """מי נכנס ל-CRM ומה מותר לו. בעל המשרד (מייל ב-CRM_OWNER_EMAILS או מייל שמקושר לטלפון מפתח) — הכל + 'הרשאות'.
+    אחר — רק אם הוא ברשימה v2_crm_access (מפתח = מייל); מודול לא מוכר נזרק, היקף לא מוכר = 'רק שלו'."""
+    em = str(email or "").strip().lower()
+    if not em:
+        return None
+    if em in {str(x).strip().lower() for x in owner_emails or ()} or (phone and is_dev(phone)):
+        return {"owner": True, "email": em, "modules": CRM_ACCESS_MODULES + ["access"], "scope": "all",
+                "export": True, "edit": True, "phone": phone or "", "name": ""}
+    rec = ((cfg or {}).get("v2_crm_access") or {}).get(em)
+    if not isinstance(rec, dict):
+        return None
+    sc = rec.get("scope") if rec.get("scope") in ("all", "team", "own") else "own"
+    return {"owner": False, "email": em, "modules": [m for m in (rec.get("modules") or []) if m in CRM_ACCESS_MODULES],
+            "scope": sc, "export": bool(rec.get("export")), "edit": bool(rec.get("edit")),
+            "phone": str(rec.get("phone") or ""), "name": str(rec.get("name") or "")}
+
+
+def crm_access_people(team_rows, gauth, access, role_for):
+    """מסך 'הרשאות': אנשי הצוות (שם, טלפון, תפקיד) + המייל — Google שמקושר לטלפון שלו גובר על המייל באנשי הקשר —
+    וההרשאה הקיימת. גם מייל ברשימה בלי שורת צוות (מישהו שעזב) מוצג. חשבונות בדיקה מוסתרים. בעלי גישה — ראשונים."""
+    p9 = lambda x: _re.sub(r"\D", "", str(x or ""))[-9:]
+    by_phone = {}
+    for em, rec in (gauth or {}).items():
+        if p9((rec or {}).get("phone")):
+            by_phone.setdefault(p9(rec["phone"]), str(em).strip().lower())
+    out, used = [], set()
+    for r in team_rows or []:
+        nm = str((r[0] if r else "") or "").strip()
+        if not nm or "בדיקה" in nm:
+            continue
+        ph = str(r[1] if len(r) > 1 else "").strip()
+        em = by_phone.get(p9(ph)) or str(r[4] if len(r) > 4 else "").strip().lower()
+        if not em:
+            em = next((e for e, a in (access or {}).items() if p9(a.get("phone")) and p9(a.get("phone")) == p9(ph)), "")
+        acc = (access or {}).get(em) if em else None
+        if em:
+            used.add(em)
+        out.append({"name": nm, "phone": ph, "email": em, "role": role_for(p9(ph)) if p9(ph) else "", "access": acc})
+    for em, a in (access or {}).items():
+        if em not in used:
+            out.append({"name": a.get("name") or em, "phone": a.get("phone") or "", "email": em, "role": "", "access": a})
+    return sorted(out, key=lambda x: (x["access"] is None, x["name"]))
+
+
+def crm_access_clean(b):
+    """קלט מהמסך → (מייל, רשומה) או None כשהמייל לא תקין. מודול לא מוכר נזרק; היקף לא מוכר = 'רק שלו'."""
+    em = str((b or {}).get("email") or "").strip().lower()
+    if not _re.fullmatch(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", em):
+        return None
+    d = _re.sub(r"\D", "", str(b.get("phone") or ""))
+    if d.startswith("972"):
+        d = "0" + d[3:]
+    return em, {"name": str(b.get("name") or "").strip()[:80], "phone": d[-10:] if d else "",
+                "modules": [m for m in (b.get("modules") or []) if m in CRM_ACCESS_MODULES],
+                "scope": b.get("scope") if b.get("scope") in ("all", "team", "own") else "own",
+                "export": bool(b.get("export")), "edit": bool(b.get("edit"))}
+
+
+def crm_scope_filter(module, recs, keys, canon):
+    """keys=None → היקף 'הכל'. אחרת: רשומות שהסוכן שלהן (אחד מחברי עסקה משותפת) בהיקף; בפגישות גם 'תיאם';
+    בנכסים — רשומה בלי סוכן (פרטי / שת"פ, מידע שוק משותף) נשארת; מודול בלי שדה סוכן — כלום."""
+    if keys is None:
+        return list(recs or [])
+    if module in _CRM_AGENTLESS:
+        return []
+    def mine(name):
+        return any(canon(a.strip()) in keys for a in _re.split(r"[+·]", str(name or "")) if a.strip())
+    out = []
+    for r in recs or []:
+        if module == "props" and not str(r.get("agent") or "").strip():
+            out.append(r)
+        elif mine(r.get("agent")) or (module == "meetings" and mine(r.get("by"))):
+            out.append(r)
+    return out
 
 
 def _crm_on_or_after(ts, today):
@@ -16094,10 +16242,9 @@ def register(app, G):
     @app.route("/v2/api/crm/parallel", methods=["GET"])
     def v2_api_crm_parallel():
         """[CRM-1 19/10] דוח מקבילות לפני הניתוק מפיירברי: לכל יום — שיחות וחשבוניות דרך פיירברי
-        מול הזרם הישיר (צל), ומי עוד מחתים בחתימה טובה. מפתח בלבד."""
-        s = G["_web_auth"]()
-        if not s or not G["_is_dev"](s.get("phone", "")):
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        מול הזרם הישיר (צל), ומי עוד מחתים בחתימה טובה. בעל המשרד בלבד."""
+        if not _crm_guard(owner=True):
+            return _crm_deny()
         import datetime as _dp
         from zoneinfo import ZoneInfo as _ZP
         try:
@@ -16134,9 +16281,86 @@ def register(app, G):
                         "sig_nonapp": sig_nonapp_by_agent(G["get_signings"]() or [], d0.isoformat())})
 
     # ── [CRM-2 19/10] API של מסכי ה-CRM (מפתח בלבד) ──────────────────────────
-    def _crm_guard():
-        s = G["_web_auth"]()
-        return s if (s and G["_is_dev"](s.get("phone", ""))) else None
+    def _crm_ctx():
+        """[CRM-ACCESS 21/10] מי פונה ל-CRM: טוקן CRM (רק מכניסה עם Google) → ההרשאות שלו; מפתח Claude (קריאה בלבד);
+        CRM_ALLOW_APP_TOKEN=1 → חזרה להתנהגות הקודמת (בעל המשרד עם טוקן האפליקציה). מחזיר (ctx, סיבה)."""
+        import hmac as _hm
+        from flask import g as _fg
+        ak = (os.environ.get("CRM_AGENT_KEY") or "").strip()
+        hk = (request.headers.get("X-CRM-Key") or "").strip()
+        if ak and hk and _hm.compare_digest(hk.encode("utf-8"), ak.encode("utf-8")):
+            if request.method != "GET":
+                return None, "read_only"
+            if time.time() - _CRM_AGENT_LOG[0] > 600:      # שורה ביומן לכל היותר כל 10 דק'
+                _CRM_AGENT_LOG[0] = time.time()
+                try:
+                    G["_log_activity"]("Claude", "system", "", "Claude — קריאת CRM", request.path[:80])
+                except Exception:
+                    pass
+            return {"owner": True, "agent_key": True, "modules": CRM_ACCESS_MODULES + ["access"], "scope": "all", "export": True,
+                    "edit": False, "keys": None, "name": "Claude", "phone": "", "role": "admin", "email": "claude"}, None
+        tok = request.headers.get("X-Auth-Token") or request.args.get("token") or ""
+        v = G["_verify_crm_token"](tok) if tok else None
+        if not v:
+            if (os.environ.get("CRM_ALLOW_APP_TOKEN") or "").strip() == "1":
+                s = G["_web_auth"]()
+                if s and G["_is_dev"](s.get("phone", "")):
+                    return dict(s, owner=True, modules=CRM_ACCESS_MODULES + ["access"], scope="all", export=True, edit=True,
+                                keys=None, email=""), None
+            return None, "login"
+        phone, email = v
+        # [ביקורת 21/10] בעל המשרד — רק לפי המייל או הטלפון שמקושר ל-Google (מאומת ב-SMS), לא לפי טלפון שהוקלד ברשימה
+        try:
+            linked = G["_last9"]((G["_gauth_all"]().get(email) or {}).get("phone", ""))
+        except Exception:
+            linked = ""
+        ctx = crm_access_for(email, linked, G["_load_config"]() or {}, G["_crm_owner_emails"](), G["_is_dev"])
+        if not ctx:
+            return None, "forbidden"
+        if phone and G["_is_suspended"](phone) and not G["_is_dev"](phone):
+            return None, "forbidden"
+        sess = G["_session_from_phone"](phone) if phone else {}
+        name = ctx.get("name") or G["_display_name_for"](sess.get("name", ""), phone)
+        keys = None
+        if ctx["scope"] != "all":
+            role = "coordinator" if (ctx["scope"] == "team" and sess.get("role") == "coordinator") else "agent"
+            keys = set(G["_scope_keys_phones"](role, name, set(), sess.get("agents"), sess.get("agent_names"))[0])
+        ctx.update(keys=keys, name=name, phone=phone, role=sess.get("role", "agent"))
+        return ctx, None
+
+    _CRM_AGENT_LOG = [0.0]
+
+    def _crm_guard(module=None, owner=False, need=None):
+        """ctx או None. module = חייב להיות מותר; owner = רק בעל המשרד; need = 'export' / 'edit' / 'all' (היקף מלא)."""
+        from flask import g as _fg
+        ctx, why = _crm_ctx()
+        _fg._crm_why = why or "forbidden"
+        if not ctx:
+            return None
+        if (module and module not in ctx["modules"]) or (owner and not ctx["owner"]) \
+                or (need == "export" and not ctx["export"]) or (need == "edit" and (not ctx["edit"] or ctx.get("agent_key"))) \
+                or (need == "all" and ctx["scope"] != "all"):
+            _fg._crm_why = "forbidden"
+            return None
+        return ctx
+
+    def _crm_me(ctx):
+        """מה הדף צריך לדעת על המשתמש: מודולים, ייצוא, עריכה, היקף, ומה מוצג בפס."""
+        return {"owner": bool(ctx.get("owner")), "export": bool(ctx.get("export")),
+                "edit": bool(ctx.get("edit")) and not ctx.get("agent_key"), "scope": ctx.get("scope"),
+                "email": ctx.get("email", ""), "name": ctx.get("name", ""),
+                "dashboard": "dashboard" in ctx["modules"] and ctx.get("scope") == "all",
+                "access": bool(ctx.get("owner")) and not ctx.get("agent_key")}
+
+    def _crm_deny():
+        from flask import g as _fg
+        why = getattr(_fg, "_crm_why", "forbidden")
+        return jsonify({"ok": False, "reason": why}), (401 if why == "login" else 403)
+
+    def _crm_scoped(module, ctx):
+        """הרשומות של המודול אחרי סינון ההיקף של המשתמש."""
+        return crm_scope_filter(module, _crm_records(module), ctx.get("keys"),
+                                lambda n: G["_canon_key"](G["_canon_agent_name"](n) or n))
 
     class _CrmReadError(Exception):
         pass
@@ -16356,14 +16580,15 @@ def register(app, G):
 
     @app.route("/v2/api/crm/<module>/meta", methods=["GET"])
     def v2_api_crm_meta(module):
-        if not _crm_guard():
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
         mod = CRM_MODULES.get(module)
         if not mod:
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
+        ctx = _crm_guard(module)
+        if not ctx:
+            return _crm_deny()
         import time as _tm
         try:
-            recs, now = _crm_records(module), _tm.time()
+            recs, now = _crm_scoped(module, ctx), _tm.time()
         except _CrmReadError as e:
             return _crm_read_err(e)
         counts = {v: crm_query(recs, "", {"view": v}, "date", "desc", 1, 1, now, module=module)["total"] for v, _l in mod["views"]}
@@ -16372,14 +16597,16 @@ def register(app, G):
         return jsonify({"ok": True, "module": module, "title": mod["title"], "columns": mod["columns"],
                         "default_cols": mod["default_cols"], "editable": mod["editable"], "views": mod["views"],
                         "counts": counts, "agents": agents, "periods": periods,
-                        "modules": [[k, v["title"]] for k, v in CRM_MODULES.items()]})
+                        "modules": [[k, v["title"]] for k, v in CRM_MODULES.items() if k in ctx["modules"]],
+                        "me": _crm_me(ctx)})
 
     @app.route("/v2/api/crm/<module>/list", methods=["GET"])
     def v2_api_crm_list(module):
-        if not _crm_guard():
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
         if module not in CRM_MODULES:
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
+        ctx = _crm_guard(module)
+        if not ctx:
+            return _crm_deny()
         import time as _tm
         q, filters, sort, direction = _crm_args()
         try:
@@ -16387,14 +16614,15 @@ def register(app, G):
         except ValueError:
             page = 1
         try:
-            res = crm_query(_crm_records(module), q, filters, sort, direction, page, 50, _tm.time(), module=module)
+            recs = _crm_scoped(module, ctx)
+            res = crm_query(recs, q, filters, sort, direction, page, 50, _tm.time(), module=module)
         except _CrmReadError as e:
             return _crm_read_err(e)
         out = {"ok": True, "rows": res["rows"], "total": res["total"], "page": page, "size": 50}
         if module == "deals":   # [21/10] שנתי / רבעוני / חודשי / מתחילת החודש — על הסינון הנוכחי (בלי בורר התקופה)
             try:
                 f2 = {k: v for k, v in filters.items() if k != "period"}
-                allr = crm_query(_crm_records(module), q, f2, sort, direction, 1, 10 ** 6, _tm.time(), module=module)["rows"]
+                allr = crm_query(recs, q, f2, sort, direction, 1, 10 ** 6, _tm.time(), module=module)["rows"]
                 out["summary"] = crm_deal_summary(allr, _tm.time())
             except Exception as e:
                 if log: log.warning(f"crm deals summary: {e}")
@@ -16426,15 +16654,28 @@ def register(app, G):
 
     @app.route("/v2/api/crm/<module>/record", methods=["GET", "POST"])
     def v2_api_crm_record(module):
-        s = _crm_guard()
-        if not s:
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
         mod = CRM_MODULES.get(module)
         if not mod:
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
-        sb = G.get("_sbdb")
         if request.method == "POST" and not mod["editable"]:
             return jsonify({"ok": False, "reason": "read_only"}), 400
+        s = _crm_guard(module, owner=(request.method == "POST" and module == "team"),
+                       need=("edit" if request.method == "POST" else None))
+        if not s:
+            return _crm_deny()
+        sb = G.get("_sbdb")
+        if request.method == "POST" and s.get("keys") is not None:
+            _b = request.get_json(silent=True) or {}
+            _k = str(_b.get("key") or "").strip()
+            _canon = lambda n: G["_canon_key"](G["_canon_agent_name"](n) or n)
+            _ag = str((_b.get("fields") or {}).get("agent") or "").strip()
+            if _ag and not crm_scope_filter(module, [{"agent": _ag}], s["keys"], _canon):
+                return jsonify({"ok": False, "reason": "forbidden"}), 403      # יצירה / העברה לסוכן מחוץ להיקף
+            try:
+                if _k and not any(r["key"] == _k for r in _crm_scoped(module, s)):
+                    return jsonify({"ok": False, "reason": "forbidden"}), 403
+            except _CrmReadError as e:
+                return _crm_read_err(e)
         if request.method == "POST" and module == "team":
             return _team_write(s, request.get_json(silent=True) or {})
         if request.method == "POST" and module == "buyers":
@@ -16442,7 +16683,7 @@ def register(app, G):
         if request.method == "GET":
             key = request.args.get("key", "")
             try:
-                rec = next((r for r in _crm_records(module) if r["key"] == key), None)
+                rec = next((r for r in _crm_scoped(module, s) if r["key"] == key), None)
             except _CrmReadError as e:
                 return _crm_read_err(e)
             if not rec:
@@ -16499,15 +16740,16 @@ def register(app, G):
 
     @app.route("/v2/api/crm/<module>/export", methods=["GET"])
     def v2_api_crm_export(module):
-        if not _crm_guard():
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
         mod = CRM_MODULES.get(module)
         if not mod:
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
+        ctx = _crm_guard(module, need="export")
+        if not ctx:
+            return _crm_deny()
         import time as _tm
         q, filters, sort, direction = _crm_args()
         try:
-            recs = _crm_records(module)
+            recs = _crm_scoped(module, ctx)
         except _CrmReadError as e:
             return _crm_read_err(e)
         allrows = crm_query(recs, q, filters, sort, direction, 1, 200, _tm.time(), module=module)
@@ -16521,14 +16763,19 @@ def register(app, G):
 
     @app.route("/v2/api/crm/views", methods=["GET", "POST"])
     def v2_api_crm_views():
-        if not _crm_guard():
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
         module = request.args.get("module", "")
         if module not in CRM_MODULES:
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
+        _vc = _crm_guard(module)
+        if not _vc:
+            return _crm_deny()
         if request.method == "GET":
+            if not _vc.get("owner"):
+                return jsonify({"ok": True, "views": []})   # [ביקורת 21/10] התצוגות השמורות משותפות — של בעל המשרד בלבד
             views = ((G["_load_config"]() or {}).get("v2_crm_views") or {}).get(module) or []
             return jsonify({"ok": True, "views": views})
+        if not _vc.get("owner") or _vc.get("agent_key"):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
         b = request.get_json(silent=True) or {}
         name = str(b.get("name") or "").strip()[:40]
         if not name:
@@ -16582,6 +16829,9 @@ def register(app, G):
         cur = next((x for x in (G["_fetch_manual_buyers"]() or []) if str(x.get("row")) == str(row)), None)
         if cur is None:
             return jsonify({"ok": False, "reason": "not_found"}), 404
+        if s.get("keys") is not None and not crm_scope_filter("buyers", [cur], s["keys"],
+                                                              lambda n: G["_canon_key"](G["_canon_agent_name"](n) or n)):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403   # [ביקורת 21/10] השורה זזה — כבר של סוכן אחר
         if b.get("delete"):
             j = G["_buyers_write"]("deletebuyer", {"row": row}) or {}
             if not j.get("ok"):
@@ -16674,8 +16924,8 @@ def register(app, G):
 
     @app.route("/v2/api/crm/team/status", methods=["GET"])
     def v2_api_crm_team_status():
-        if not _crm_guard():
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        if not _crm_guard("team", owner=True):
+            return _crm_deny()
         sb = G.get("_sbdb")
         try:
             table = sb.team_fetch() if (sb and sb.enabled()) else []
@@ -16689,9 +16939,9 @@ def register(app, G):
     @app.route("/v2/api/crm/team/fix", methods=["GET", "POST"])
     def v2_api_crm_team_fix():
         """תיקוני נתונים: GET = תצוגה מקדימה, POST = החלה (מייל מעמודה D, רישיון מהאזור האישי, טלפונים, 'עודכן ע"י')."""
-        s = _crm_guard()
+        s = _crm_guard("team", owner=True)
         if not s:
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
+            return _crm_deny()
         sb = G.get("_sbdb")
         if not (sb and sb.enabled()):
             return jsonify({"ok": False, "reason": "no_supabase"}), 500
@@ -16726,9 +16976,9 @@ def register(app, G):
 
     @app.route("/v2/api/crm/team/import", methods=["POST"])
     def v2_api_crm_team_import():
-        s = _crm_guard()
+        s = _crm_guard("team", owner=True)
         if not s:
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
+            return _crm_deny()
         sb = G.get("_sbdb")
         if not (sb and sb.enabled()):
             return jsonify({"ok": False, "reason": "no_supabase"}), 500
@@ -16750,9 +17000,9 @@ def register(app, G):
 
     @app.route("/v2/api/crm/team/avatar", methods=["POST"])
     def v2_api_crm_team_avatar():
-        s = _crm_guard()
+        s = _crm_guard("team", owner=True)
         if not s:
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
+            return _crm_deny()
         b = request.get_json(silent=True) or {}
         pp = _last9(str(b.get("phone") or ""))
         if not pp:
@@ -16783,8 +17033,8 @@ def register(app, G):
     @app.route("/v2/api/crm/site_live", methods=["GET"])
     def v2_api_crm_site_live():
         """מי באתר עכשיו (אייל 21/10): הסיכום מהאתר (/site/live במפתח SITE_KEY) — מספר מבקרים ומקורות. מטמון 10ש'."""
-        if not _crm_guard():
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        if not _crm_guard("dashboard", need="all"):
+            return _crm_deny()
         now = time.time()
         if _site_live_cache["d"] is not None and now - _site_live_cache["t"] < 10:
             return jsonify(_site_live_cache["d"])
@@ -16810,10 +17060,10 @@ def register(app, G):
 
     @app.route("/v2/api/crm/switches", methods=["GET", "POST"])
     def v2_api_crm_switches():
-        """[CRM-2] מתגי לוח הבקרה: וואטסאפ רשמי (כל ההודעות) ופוש (כל ההתראות). True = דלוק."""
-        s = _crm_guard()
-        if not s:
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        """[CRM-2] מתגי לוח הבקרה: וואטסאפ רשמי (כל ההודעות) ופוש (כל ההתראות). True = דלוק. שינוי — בעל המשרד בלבד."""
+        s = _crm_guard("dashboard", owner=(request.method == "POST"), need="all")
+        if not s or (request.method == "POST" and s.get("agent_key")):
+            return _crm_deny()
         if request.method == "POST":
             b = request.get_json(silent=True) or {}
             ch = {}
@@ -16864,6 +17114,60 @@ def register(app, G):
             return Response("לא נמצא", status=404)
         return Response(_CRM_SCREEN_HTML, mimetype="text/html")
 
+    @app.route("/v2/crm/access", methods=["GET"])
+    def v2_crm_access_page():
+        """[CRM-ACCESS] מסך ההרשאות — בעל המשרד בלבד (נבדק ב-API)."""
+        return Response(_CRM_ACCESS_HTML, mimetype="text/html")
+
+    @app.route("/v2/api/crm/access", methods=["GET", "POST"])
+    def v2_api_crm_access():
+        """[CRM-ACCESS] GET — אנשי הצוות + ההרשאות; POST — שמירה / הסרה (בעל המשרד, לא מפתח Claude)."""
+        s = _crm_guard(owner=True)
+        if not s or (request.method == "POST" and s.get("agent_key")):
+            return _crm_deny()
+        if request.method == "GET":
+            try:
+                team = G["_contacts_rows"]() or []
+            except Exception as e:
+                if log: log.warning(f"crm access: contacts: {e}")
+                team = []
+            try:
+                gauth = G["_gauth_all"]() or {}
+            except Exception:
+                gauth = {}
+            acc = (G["_load_config"]() or {}).get("v2_crm_access") or {}
+            def role_for(p9):
+                try:
+                    return (G["_resolve_roles"](p9) or ("", ""))[1]
+                except Exception:
+                    return ""
+            return jsonify({"ok": True, "people": crm_access_people(team, gauth, acc, role_for),
+                            "modules": [[k, v["title"]] for k, v in CRM_MODULES.items()] + [["dashboard", "לוח בקרה"]],
+                            "owners": G["_crm_owner_emails"]()})
+        b = request.get_json(silent=True) or {}
+        cl = crm_access_clean(b)
+        if not cl:
+            return jsonify({"ok": False, "reason": "bad_email"}), 400
+        em, rec = cl
+        if em in G["_crm_owner_emails"]():
+            return jsonify({"ok": False, "reason": "owner"}), 400
+        if rec.get("phone") and G["_is_dev"](G["_last9"](rec["phone"])) and not b.get("delete"):
+            return jsonify({"ok": False, "reason": "dev_phone"}), 400
+        rec.update(by=s.get("name") or s.get("email") or "", ts=int(time.time()))
+        def _mut(cfg):
+            d = cfg.get("v2_crm_access") if isinstance(cfg.get("v2_crm_access"), dict) else {}
+            if b.get("delete"):
+                d.pop(em, None)
+            else:
+                d[em] = rec
+            cfg["v2_crm_access"] = d
+        ok, _ = G["_config_mutate"](_mut)
+        if not ok:
+            return jsonify({"ok": False, "reason": "save_failed"}), 500
+        G["_log_activity"](s.get("name") or "", "crm", s.get("phone", ""), "CRM — הרשאות",
+                           (em + (" · הוסרה" if b.get("delete") else " · " + rec["scope"] + " · " + ",".join(rec["modules"])))[:120])
+        return jsonify({"ok": True})
+
     @app.route("/v2/crm/dashboard", methods=["GET"])
     def v2_crm_dashboard_page():
         """[CRM-3] עמוד הדשבורד — מחשב, אייל בלבד (ההרשאה נבדקת ב-API)."""
@@ -16874,10 +17178,10 @@ def register(app, G):
 
     @app.route("/v2/api/crm/dashboard", methods=["GET"])
     def v2_api_crm_dashboard():
-        """[CRM-3] נתוני הדשבורד. מפתח בלבד. נבנה דרך _swr (15 דק'); ?fresh=1 בונה עכשיו."""
-        s = G["_web_auth"]()
-        if not s or not G["_is_dev"](s.get("phone", "")):
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        """[CRM-3] נתוני הדשבורד. מי שמותר לו 'לוח בקרה' בהיקף 'הכל'. נבנה דרך _swr (15 דק'); ?fresh=1 בונה עכשיו."""
+        s = _crm_guard("dashboard", need="all")
+        if not s:
+            return _crm_deny()
         import datetime as _dbd, time as _tbd
         from zoneinfo import ZoneInfo as _ZBD
         il = _ZBD("Asia/Jerusalem")
@@ -17692,7 +17996,9 @@ def register(app, G):
     # ── השלמת תמונות סוכנים מהאתר הישן (אייל 18/10: "סנכרון מלא — כל תמונה גם באפי וגם באתר") ──
     @app.route("/v2/api/admin/avatars/import_site", methods=["POST"])
     def v2_api_avatars_import_site():
-        s = _dev_guard()
+        s = _dev_guard() or _crm_guard("team", owner=True)
+        if s and s.get("agent_key"):
+            s = None
         if not s:
             return jsonify({"ok": False, "reason": "forbidden"}), 403
         _sb = _sb_mod()
@@ -17912,8 +18218,8 @@ def register(app, G):
 
     @app.route("/v2/api/usage_now", methods=["GET"])
     def v2_api_usage_now():
-        """[USAGE-NOW 07/10] מי מחובר עכשיו — פעימה ב-2.5 הדקות האחרונות. מנהל בלבד."""
-        s = _dev_guard()
+        """[USAGE-NOW 07/10] מי מחובר עכשיו — פעימה ב-2.5 הדקות האחרונות. מנהל בלבד (או לוח הבקרה עם טוקן CRM)."""
+        s = _dev_guard() or _crm_guard("dashboard", need="all")
         if not s:
             return jsonify({"ok": False, "reason": "forbidden"}), 403
         _sb = _sb_mod()

@@ -1,6 +1,7 @@
 # tests/crm/test_team_read_error.py — כשל בקריאת team_contacts: מסך הצוות מקבל הודעה עם הסיבה (לא 500), והבאנר מציג אותה
 import os, sys, warnings; warnings.filterwarnings("ignore")
 os.environ.setdefault("WARMUP_ON_BOOT", "0"); os.environ.setdefault("CLAUDE_API_KEY", "dummy-test"); os.environ.setdefault("DEALS_SYNC", "0")
+os.environ["CRM_ALLOW_APP_TOKEN"] = "1"   # 21/10: הבדיקות כאן = בעל המשרד בטוקן האפליקציה (מסלול החזרה); הכניסה עם Google נבדקת בנפרד
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 import app as A
 A._web_auth = lambda: {"phone": "505709865", "name": "אייל שמול", "role": "admin"}

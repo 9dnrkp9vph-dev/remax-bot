@@ -1,6 +1,7 @@
 # tests/crm/test_switches.py — מתגי כיבוי מהדשבורד: כל הוואטסאפ הרשמי / כל הפושים
 import os, sys, warnings; warnings.filterwarnings("ignore")
 os.environ.setdefault("WARMUP_ON_BOOT", "0"); os.environ.setdefault("CLAUDE_API_KEY", "dummy-test"); os.environ.setdefault("DEALS_SYNC", "0")
+os.environ["CRM_ALLOW_APP_TOKEN"] = "1"   # 21/10: הבדיקות כאן = בעל המשרד בטוקן האפליקציה (מסלול החזרה); הכניסה עם Google נבדקת בנפרד
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 n = 0
 def ck(c, m):
@@ -41,5 +42,5 @@ j = c.post("/v2/api/crm/switches", json={"push": False}).get_json()
 ck(j["ok"] and CFG["v2_switches"]["push_off"] is True and "wa_official_off" not in CFG["v2_switches"], CFG)
 ck(any("פוש" in str(x[3]) and "כובה" in str(x[3]) for x in LOG), "logged who switched")
 A._is_dev = lambda p: False
-ck(c.post("/v2/api/crm/switches", json={"push": True}).status_code == 403, "dev only")
+ck(c.post("/v2/api/crm/switches", json={"push": True}).status_code in (401, 403), "dev only")
 print("switches OK", n)

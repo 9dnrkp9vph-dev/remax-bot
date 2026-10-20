@@ -1,6 +1,7 @@
 # tests/crm/test_team_api.py — מודול 'צוות' ב-CRM: רשימה, עריכה, הוספה, השבתה/שחזור, ייבוא, השוואה, תמונה
 import os, sys, warnings, base64, io; warnings.filterwarnings("ignore")
 os.environ.setdefault("WARMUP_ON_BOOT", "0"); os.environ.setdefault("CLAUDE_API_KEY", "dummy-test"); os.environ.setdefault("DEALS_SYNC", "0")
+os.environ["CRM_ALLOW_APP_TOKEN"] = "1"   # 21/10: הבדיקות כאן = בעל המשרד בטוקן האפליקציה (מסלול החזרה); הכניסה עם Google נבדקת בנפרד
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 n = 0
 def ck(c, m):
@@ -105,5 +106,5 @@ dn = c.get("/v2/api/crm/team/list?q=דנה").get_json()["rows"][0]
 ck(dn["photo"].endswith("p=529000000"), ("photo found via the login phone", dn["photo"]))
 ck(any("צוות" in str(x[3]) for x in LOG), "activity logged")
 A._is_dev = lambda p: False
-ck(c.get("/v2/api/crm/team/status").status_code == 403 and c.post("/v2/api/crm/team/avatar", json={}).status_code == 403, "dev only")
+ck(c.get("/v2/api/crm/team/status").status_code in (401, 403) and c.post("/v2/api/crm/team/avatar", json={}).status_code in (401, 403), "dev only")
 print("team_api OK", n)

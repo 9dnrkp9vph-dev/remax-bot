@@ -6,7 +6,7 @@ import app as A
 r = A.app.test_client().get("/v2/crm/dashboard")
 assert r.status_code == 200 and "text/html" in r.content_type, r.status_code
 h = r.get_data(as_text=True)
-for need in ("fbTok", "X-Auth-Token", "/v2/api/crm/dashboard", 'dir="rtl"', "Heebo",
+for need in ("crmTok", "/crm/login", "X-Auth-Token", "/v2/api/crm/dashboard", 'dir="rtl"', "Heebo",
              "cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js", "/v2/crm/parallel"):
     assert need in h, need
 js = re.findall(r"<script>(.*?)</script>", h, re.S)

@@ -7,6 +7,6 @@ c = A.app.test_client()
 r = c.get("/v2/crm/parallel")
 assert r.status_code == 200 and "text/html" in r.content_type, r.status_code
 h = r.get_data(as_text=True)
-assert "fbTok" in h and "X-Auth-Token" in h and "/v2/api/crm/parallel" in h, "uses app login token"
+assert "crmTok" in h and "/crm/login" in h and "X-Auth-Token" in h and "/v2/api/crm/parallel" in h, "uses app login token"
 assert 'dir="rtl"' in h and "Heebo" in h, "RTL + font"
 print("parallel_page OK")
