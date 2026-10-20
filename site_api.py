@@ -456,7 +456,12 @@ def register_site(app, G, store=None):
             parsed = G["_parse_props_query"](q) or {}
             matches = G["search_listings_in_sheet"](parsed) if parsed else []
             hidden, _ = prop_flags(st().all())
-            return jsonify(search_result(parsed, matches, hidden))
+            res = search_result(parsed, matches, hidden)
+            try:   # [CRM 20/10] לוח הבקרה: 10 החיפושים האחרונים באתר — הטקסט וכמה נכסים חזרו
+                G["_log_activity"]("אתר", "site", "", "חיפוש AI באתר", "%s · %d נכסים" % (q[:90], len(res.get("keys") or [])))
+            except Exception:
+                pass
+            return jsonify(res)
         except Exception as e:
             if log: log.warning(f"site search: {e}")
             return jsonify({"ok": False})

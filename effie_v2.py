@@ -11881,6 +11881,7 @@ ul.ins{margin:0;padding-inline-start:18px;line-height:1.7;font-size:14px}
 .td .cnt{background:#EEF1F5;color:#5B6472;border-radius:99px;padding:1px 9px;font-size:13px}.td .cnt.hot{background:#FBEDED;color:#C24040}
 .ti{padding:6px 0;border-bottom:1px solid #ECE8DD;font-size:13px}.ti a{color:#2E6BD6}.tw{overflow-x:auto}
 table.ag th{text-align:right;color:#5B6472;font-weight:500;padding:8px;border-bottom:1px solid #ECE8DD;white-space:nowrap}table.ag td{padding:8px;white-space:nowrap}
+.todo.s2{grid-template-columns:1fr 1fr}
 table.ag tr.tot td{background:#FBF6E8;font-weight:700}table.ag tr.z td{color:#6B7280}
 @media(max-width:1100px){.todo{grid-template-columns:1fr 1fr}}@media(max-width:640px){.todo{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
@@ -11924,6 +11925,10 @@ function listingsCard(){var L=D.listings;if(!L||!L.rows)return '';var t=L.total|
  return '<div class="card"><h2>המודעות של הסוכנים · עכשיו בפרסום</h2><div class="tw"><table class="ag"><tr><th>סוכן</th><th>בלעדי</th><th>רגיל</th><th>הכל</th><th>באתר</th><th>מתוכן השכרה / מסחרי</th></tr>'+
   '<tr class="tot"><td>כל המשרד</td><td>'+n(t.excl)+'</td><td>'+n(t.reg)+'</td><td><b>'+n(t.total)+'</b></td><td>'+n(t.site)+'</td><td>'+(t.rent?n(t.rent):'—')+'</td></tr>'+r+'</table></div>'+
   '<div class="mut">כל הסוכנים בצוות מופיעים, גם בלי מודעות. "הכל" כולל מודעות שלא ידוע אם הן בלעדיות. "באתר" = מה שמוצג ב-refamily.co.il (בלי מה שהוסתר מהאתר).</div></div>';}
+function searchesCard(){var S=D.searches;if(!S)return '';
+ function col(t,lst,site){var r=(lst||[]).map(function(x){return '<div class="ti"><b>'+esc(x.q)+'</b><span class="mut"> · '+tm(x.ts)+(site?(x.n!==''?' · '+n(+x.n)+' נכסים':''):(x.who?' · '+esc(x.who):''))+'</span></div>';}).join('');
+  return '<div class="td"><h3>'+t+'</h3>'+(r||'<div class="mut">'+(site?'עוד אין — נרשם מ-20/10':'אין חיפושים ב-14 יום')+'</div>')+'</div>';}
+ return '<div class="card"><h2>10 חיפושי ה-AI האחרונים (נכסים)</h2><div class="todo s2">'+col('באתר',S.site,true)+col('באפי',S.effie,false)+'</div></div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -11955,7 +11960,7 @@ function render(){
   '<table>'+(wr||'<tr><td class="mut" colspan="2">עוד לא נפתח וואטסאפ היום</td></tr>')+'</table>'+
   '<h2 style="margin-top:16px">מהמספר הרשמי</h2><div class="big">'+n(W.official_today.sent)+' <span class="mut">נשלחו'+(W.official_today.failed?' · '+n(W.official_today.failed)+' נכשלו':'')+'</span></div>'+
   '<div class="mut">נספרת פתיחת הצ׳אט מאפי, לא מסירה. נספר מ-19/10.</div></div></div>'+
-  todoCard()+agentsCard()+listingsCard();   // 20/10: שלושת הכרטיסים בתחתית (אייל)
+  todoCard()+agentsCard()+listingsCard()+searchesCard();   // 20/10: שלושת הכרטיסים בתחתית (אייל)
  document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
  charts();ctl();
 }
@@ -12185,6 +12190,37 @@ def crm_todo(calls, sig_recs, act, newborn, contacts, now, h):
     nbl.sort(key=lambda r: -r["ts"])
     return {"missed": missed[:30], "missed_n": len(missed), "pending_sigs": pend[:30], "pending_n": len(pend),
             "likes": likes[:30], "nb_untouched": {"n": len(nbl), "list": nbl[:10]}}
+
+
+_CRM_SEARCH_SITE = "חיפוש AI באתר"
+_CRM_SEARCH_EFFIE = "חיפוש נכסים"     # חיפוש אחד באפי נרשם גם כ'נכס נולד'/'בלעדיות' — סופרים רק את זה
+
+
+def crm_recent_searches(act, n=10):
+    """[CRM 20/10 '10 חיפושי AI אחרונים באתר ובאפי'] מתוך היומן: האתר — 'חיפוש AI באתר' (טקסט · N נכסים);
+    אפי — 'חיפוש נכסים' עם טקסט (לא '(כל הנכסים)'). אותו חיפוש של אותו אדם תוך 10 דק' = פעם אחת."""
+    out = {"site": [], "effie": []}
+    seen = {}
+    for a in sorted(act or [], key=lambda x: -(x.get("ts") or 0)):
+        an, det = str(a.get("action") or ""), str(a.get("detail") or "").strip()
+        if an == _CRM_SEARCH_SITE:
+            k, who = "site", ""
+        elif an == _CRM_SEARCH_EFFIE and det and not det.startswith("("):
+            k, who = "effie", str(a.get("name") or "").strip()
+        else:
+            continue
+        q, cnt = det, ""
+        if k == "site":
+            m = _re.match(r"^(.*?) · (\d+) נכסים$", det)
+            if m:
+                q, cnt = m.group(1), m.group(2)
+        dk = (k, who, q)
+        if dk in seen and seen[dk] - (a.get("ts") or 0) < 600:
+            continue
+        seen[dk] = a.get("ts") or 0
+        if len(out[k]) < n:
+            out[k].append({"ts": a.get("ts"), "q": q, "n": cnt, "who": who})
+    return out
 
 
 def crm_agent_listings(props, people, canon, hidden=None):
@@ -13171,7 +13207,7 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
             "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa,
             "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo,
-            "listings": get("agent_listings", default=None)}
+            "listings": get("agent_listings", default=None), "searches": get("searches", default=None)}
 
 
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
@@ -16554,6 +16590,21 @@ def register(app, G):
                     if log: log.warning(f"crm listings: site hidden: {e}")
                 return crm_agent_listings(_crm_records("props"), people, canon, hidden)
 
+            def recent_searches():
+                """10 חיפושי ה-AI האחרונים באתר ובאפי (14 יום אחורה, סינון בשרת)."""
+                if not (sb and sb.enabled()):
+                    return None
+                rows = sb.fetch_activity_actions(now - 14 * 86400, (_CRM_SEARCH_SITE, _CRM_SEARCH_EFFIE)) or []
+                dn = G.get("_display_name_for")
+                for r in rows:
+                    r.setdefault("detail", r.get("target") or "")
+                    if dn and r.get("role") != "site":
+                        try:
+                            r["name"] = dn(r.get("name"), r.get("phone"))
+                        except Exception:
+                            pass
+                return crm_recent_searches(rows)
+
             def agent_act(t0):
                 """פעולות הסוכנים לטבלה ול'מחכה לטיפול' — סינון בשרת, עם השם האמיתי לפי הטלפון."""
                 if not (sb and sb.enabled()):
@@ -16595,6 +16646,7 @@ def register(app, G):
                    "sig_recs": lambda sigs: crm_sig_records(sigs, {"ep": G["_excl_epoch"], "label": G["_deal_label"]}),
                    "nb_contacts": lambda: G["_fetch_newborn_contacts"]() or {},
                    "agent_listings": agent_listings,
+                   "searches": recent_searches,
                    "helpers": lambda: {"answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
                                        "canon": lambda n: G["_canon_agent_name"](n) or n,
                                        "nb_key": G["_nb_key"]}}
