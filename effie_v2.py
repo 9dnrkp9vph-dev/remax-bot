@@ -12192,6 +12192,28 @@ def crm_todo(calls, sig_recs, act, newborn, contacts, now, h):
             "likes": likes[:30], "nb_untouched": {"n": len(nbl), "list": nbl[:10]}}
 
 
+_CRM_MEET_TAG = {"before": "לפני פגישה", "after": "אחרי פגישה"}
+
+
+def crm_meeting_records(statuses):
+    """[CRM פגישות 20/10] פגישות ופולו-אפ (nbStatus) → רשומות. מקור: מפתח 'manual:' = נקבע ידנית ביומן,
+    אחרת מכרטיס של נכס נולד. 'תיאם' = מי שיצר (נשמר גם בעריכה), 'לסוכן' = הסוכן שהפגישה שלו."""
+    out = []
+    for k, st in (statuses or {}).items():
+        if not isinstance(st, dict) or st.get("status") not in ("meeting", "followup"):
+            continue
+        pk = str(st.get("pkey") or str(k).split("::", 1)[-1])
+        agent, by = str(st.get("agent") or "").strip(), str(st.get("by") or "").strip()
+        out.append({"key": "m:" + str(k), "date": crm_ts(st.get("date")) or 0,
+                    "kind": "פגישה" if st.get("status") == "meeting" else "פולו-אפ",
+                    "agent": agent, "by": by or agent, "source": "ידני" if pk.startswith("manual:") else "נכס נולד",
+                    "address": str(st.get("addr") or "").strip(), "owner": str(st.get("owner") or "").strip(),
+                    "phone": str(st.get("ophone") or "").strip(), "tag": _CRM_MEET_TAG.get(st.get("tag") or "", ""),
+                    "state": "בוצע" if st.get("done") else "פתוח", "note": str(st.get("note") or "").strip(),
+                    "created": float(st.get("ts") or 0) or 0})
+    return out
+
+
 _CRM_SEARCH_SITE = "חיפוש AI באתר"
 _CRM_SEARCH_EFFIE = "חיפוש נכסים"     # חיפוש אחד באפי נרשם גם כ'נכס נולד'/'בלעדיות' — סופרים רק את זה
 
@@ -12356,6 +12378,17 @@ CRM_MODULES = {
         "editable": [],
         "views": [("all", "כל החתימות"), ("today", "היום"), ("buyers", "קונים"), ("owners", "בעלי נכסים"), ("exclusive", "בלעדיות"),
                   ("rent", "שכירות"), ("pending", "ממתינות לחתימה"), ("hatimatova", "נחתמו בחתימה טובה"), ("app", "נחתמו באפי")],
+    },
+    "meetings": {
+        "title": "פגישות",
+        "columns": [("date", "מועד", "date"), ("kind", "סוג", "text"), ("agent", "לסוכן", "text"), ("by", "תיאם", "text"),
+                    ("source", "דרך", "text"), ("address", "כתובת", "text"), ("owner", "בעל הנכס", "text"), ("phone", "טלפון", "phone"),
+                    ("tag", "תגית", "text"), ("state", "מצב", "status"), ("note", "הערה", "long"), ("created", "נקבע ב", "date")],
+        "default_cols": ["date", "kind", "agent", "by", "source", "address", "owner", "phone", "state"],
+        "editable": [],
+        "views": [("all", "כל הפגישות והפולו-אפ"), ("today", "היום"), ("upcoming", "קרובות (מהיום)"), ("meetings", "פגישות"),
+                  ("followups", "פולו-אפ"), ("newborn", "מנכס נולד"), ("manual", "נקבעו ידנית"), ("coordinated", "תואמו ע\"י אחר"),
+                  ("done", "בוצעו")],
     },
     "invoices": {
         "title": "מקבלי מסמכים",
@@ -12545,6 +12578,12 @@ def team_compare(values, table):
             "only_sheet": [n for n in sheet if n not in tab], "only_table": [n for n in tab if n not in sheet]}
 
 
+def _crm_on_or_after(ts, today):
+    import datetime as _dw
+    from zoneinfo import ZoneInfo as _ZW
+    return _dw.datetime.fromtimestamp(ts, _ZW("Asia/Jerusalem")).date() >= today
+
+
 def _crm_day(ts, today):
     import datetime as _dv
     from zoneinfo import ZoneInfo as _ZV
@@ -12585,6 +12624,14 @@ CRM_VIEWS = {
                    "pending": lambda r, t: r.get("status") == "ממתין",
                    "hatimatova": lambda r, t: r.get("source") == "חתימה טובה",
                    "app": lambda r, t: r.get("source") == "אפי"},
+    "meetings": {"today": lambda r, t: _crm_day(r.get("date"), t),
+                 "upcoming": lambda r, t: r.get("state") != "בוצע" and bool(r.get("date")) and _crm_on_or_after(r["date"], t),
+                 "meetings": lambda r, t: r.get("kind") == "פגישה",
+                 "followups": lambda r, t: r.get("kind") == "פולו-אפ",
+                 "newborn": lambda r, t: r.get("source") == "נכס נולד",
+                 "manual": lambda r, t: r.get("source") == "ידני",
+                 "coordinated": lambda r, t: bool(r.get("by")) and r.get("by") != r.get("agent"),
+                 "done": lambda r, t: r.get("state") == "בוצע"},
     "invoices": {"today": lambda r, t: _crm_day(r.get("date"), t),
                  "tax": lambda r, t: "חשבונית" in (r.get("type") or ""),
                  "receipt": lambda r, t: r.get("type") == "קבלה",
@@ -15969,6 +16016,9 @@ def register(app, G):
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
             return swr("crmsigs", 120, _build_sigs) if swr else _build_sigs()
+        if module == "meetings":
+            return crm_unify_agents(crm_meeting_records(G["_nb_statuses"]() or {}),
+                                    lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=("by",))
         if module == "invoices":
             def _build_inv():
                 try:
