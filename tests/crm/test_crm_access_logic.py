@@ -11,7 +11,7 @@ cfg = {"v2_crm_access": {"hodaya@gmail.com": {"name": "הודיה צרויה", "
                                               "scope": "team", "export": False, "edit": True}}}
 own = {"eyalshmul@gmail.com"}
 o = acc("eyalshmul@gmail.com", "", cfg, own, lambda p: False)
-ck(o["owner"] and o["scope"] == "all" and o["export"] and o["edit"] and set(o["modules"]) == set(ALL) | {"access"}, o)
+ck(o["owner"] and o["scope"] == "all" and o["export"] and o["edit"] and set(o["modules"]) == set(ALL) | {"access", "ai"}, o)
 ck(acc("x@gmail.com", "505709865", cfg, own, lambda p: p == "505709865")["owner"], "Google email linked to a dev phone = owner")
 h = acc("Hodaya@Gmail.com ", "", cfg, own, lambda p: False)
 ck(h and not h["owner"] and h["modules"] == ["buyers", "meetings"] and h["scope"] == "team" and h["phone"] == "0541111111"

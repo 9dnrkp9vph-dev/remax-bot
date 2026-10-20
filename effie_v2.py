@@ -1997,13 +1997,11 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <button id="ibsGo" onclick="ibsRun(true)" disabled style="margin-top:8px;width:100%;min-height:44px;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer;opacity:.45">ייבא עכשיו</button>
     </div>
 
-    <!-- [BS-CTRL 06/10] בקרה: קונים שמפרסמים נכס -->
+    <!-- [21/10] 'קונים שמפרסמים נכס' עבר ל-CRM ← AI (אייל) -->
     <div class="card" id="bsCard">
       <div class="cardTitle">קונים שמפרסמים נכס</div>
-      <div style="font-size:12px;color:#6B7280;line-height:1.6">קונה שהטלפון שלו מופיע כבעל נכס במודעה פעילה בנכס נולד (מכירה).
-        הודעה לסוכן יוצאת רק כשאחד הצדדים חדש (3 ימים) — התאמות ישנות מוצגות כאן לבקרה בלבד.</div>
-      <div id="bsStats" style="margin-top:8px;font-size:12.5px;line-height:1.7;color:#1E3A5F">טוען…</div>
-      <div id="bsList" style="margin-top:6px"></div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.6">עבר ל-CRM, לטאב <b>AI</b> — יחד עם לקוחות עבר שמפרסמים נכס או נוספו כקונים.
+        <a href="/v2/crm/ai" style="color:#2E6BD6;font-weight:700">לטאב AI ←</a></div>
     </div>
 
     <!-- דוח יומי במייל (אייל 15/09) -->
@@ -2186,7 +2184,7 @@ function boot(){
         UNMATCHED = unmMerge(rs[1] || {});
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
-        render(); loadSnaps(); repLoad(); bsLoad(); oipLoad();
+        render(); loadSnaps(); repLoad(); oipLoad();
       });
   }).catch(function(){ location.replace('/v2'); });
 }
@@ -2327,55 +2325,6 @@ function snapRestore(i){
     if (j && j.ok){ toast('שוחזרו ' + j.n + ' נכסים'); loadSnaps(); }
     else toast('השחזור נכשל' + (j && j.reason ? ' (' + j.reason + ')' : ''));
   }).catch(function(){ toast('שגיאה'); });
-}
-/* [BS-CTRL 06/10] בקרה: קונים שמפרסמים נכס */
-var BS_ST = {pending: ['ממתין לשליחה', '#7A5E1C'], sent: ['נשלח לסוכן', '#157A43'], no_agent: ['לא נשלח — אין טלפון לסוכן', '#C24040'],
-             closed: ['לא נשלח — הקונה סגר', '#6B7280'], old: ['לא נשלח — התאמה ישנה', '#6B7280']};
-var BS_ALL = false, BS_LAST = null;
-function bsRender(j){
-  BS_LAST = j;
-  var t = j.stats || {}, rows = j.rows || [];
-  el('bsStats').innerHTML = '<b>' + (t.matches || 0) + '</b> קונים-מוכרים כרגע · נשלחו ' + rows.filter(function(r){ return r.status === 'sent'; }).length +
-    '<br><span style="color:#6B7280">' + (t.buyers || 0) + ' קונים (' + (t.buyers_mobile || 0) + ' עם נייד) מול ' + (t.listings_phone || 0) +
-    ' מודעות פרטיות פעילות עם נייד' + (t.alerts_on ? '' : ' · ההתראות כבויות') + '</span>';
-  if (!rows.length){ el('bsList').innerHTML = '<div style="font-size:13px;color:#6B7280;padding:6px 0">אין כרגע קונה שמפרסם נכס בנכס נולד.</div>'; return; }
-  var all = rows.length <= 30 || BS_ALL, shown = all ? rows : rows.slice(0, 30);
-  el('bsList').innerHTML = shown.map(function(r, i){
-    var st = BS_ST[r.status] || [r.status, '#6B7280'];
-    var when = r.status === 'sent' || r.status === 'no_agent' ? (r.sent_at ? ' · ' + r.sent_at : '') : '';
-    var dv = r.delivery || {}, dl = '';
-    if (r.status === 'sent'){
-      dl = dv.state === 'delivered' ? '<span style="color:#157A43"> · נמסר</span>'
-         : dv.state === 'failed' ? '<span style="color:#C24040"> · נכשל במסירה' + (dv.error ? ': ' + esc(dv.error) : '') + '</span>'
-         : '<span style="color:#6B7280;font-weight:600"> · אין אישור מסירה</span>';
-      if (r.to) dl += '<span style="color:#6B7280;font-weight:600"> · ל-' + esc(r.to) + '</span>';
-    }
-    var sub = esc(r.addr) + (r.price ? ' · ' + esc(r.price) + ' ₪' : '') + (r.listed ? ' · פורסם ' + esc(r.listed) : '') + (r.gone ? ' · המודעה ירדה' : '');
-    var who = (r.buyer_date ? 'קונה מ-' + esc(r.buyer_date) : '') + (r.after ? ' · פרסם אחרי שנכנס כקונה' : '');
-    return '<div class="setRow" style="cursor:default;align-items:flex-start"><div class="mid">' +
-      '<div class="nm">' + esc(r.buyer || 'קונה') + ' <span style="font-weight:600;color:#5B6472">· ' + esc(r.agent || 'בלי סוכן') + '</span></div>' +
-      '<div class="sb">' + sub + '</div>' + (who ? '<div class="sb">' + who + '</div>' : '') +
-      '<div class="sb" style="color:' + st[1] + ';font-weight:700">' + st[0] + when + dl + '</div></div>' +
-      '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">' +
-      (r.gone ? '' : '<button onclick="bsSend(' + i + ')" style="min-height:40px;padding:8px 12px;border:none;border-radius:11px;background:#157A43;color:#fff;font-size:12px;font-weight:800;font-family:inherit;cursor:pointer">' + (r.status === 'sent' ? 'שלח שוב' : 'שלח לסוכן') + '</button>') +
-      (r.link ? '<a href="' + esc(r.link) + '" target="_blank" rel="noopener" style="padding:4px 8px;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none">למודעה</a>' : '') +
-      '</div></div>';
-  }).join('') + (all ? '' : '<button onclick="BS_ALL=true;bsRender(BS_LAST)" style="margin-top:8px;width:100%;min-height:44px;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">הצג את כל ' + rows.length + '</button>');
-}
-var BS_ERR = {no_agent: 'אין טלפון לסוכן', no_360: 'הוואטסאפ הרשמי לא פעיל', not_found: 'ההתאמה כבר לא קיימת (המודעה ירדה?)', send_failed: 'השליחה נכשלה', forbidden: 'אין הרשאה'};
-function bsSend(i){
-  var r = ((BS_LAST || {}).rows || [])[i]; if (!r) return;
-  if (!confirm('לשלוח ל' + (r.agent || 'סוכן') + ' הודעת וואטסאפ על הקונה ' + (r.buyer || '') + ' שמפרסם את ' + (r.addr || 'הנכס') + '?')) return;
-  POST('/v2/api/admin/buyer_sellers/send', {key: r.key}).then(function(j){
-    if (j && j.ok){ r.status = 'sent'; r.sent_at = j.sent_at; toast('נשלח ל' + (r.agent || 'סוכן')); bsRender(BS_LAST); }
-    else toast('לא נשלח — ' + ((j && (BS_ERR[j.reason] || j.reason)) || 'שגיאה') + (j && j.detail ? ' (' + j.detail + ')' : ''));
-  }).catch(function(){ toast('שגיאה'); });
-}
-function bsLoad(){
-  GET('/v2/api/admin/buyer_sellers').then(function(j){
-    if (j && j.ok) bsRender(j);
-    else el('bsStats').textContent = 'לא נטען' + (j && j.reason ? ' (' + j.reason + ')' : '');
-  }).catch(function(){ el('bsStats').textContent = 'שגיאה בטעינה'; });
 }
 /* [IMPORT-BUYERS 01/10] */
 var IBS_FILE = null, IBS_TIMER = null;
@@ -11608,6 +11557,7 @@ s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-ne
 <script>
 var MOD = (location.pathname.split('/')[3] || 'calls');
 var META = null, ST = {q:'', view:'all', sort:'date', dir:'desc', page:1, agent:''}, ROWS = [], TOTAL = 0, CUR = null, SAVED = [];
+try { var _uq = new URLSearchParams(location.search).get('q'); if (_uq) ST.q = _uq; } catch(e){}   /* [21/10] קישורים מטאב AI: /v2/crm/deals?q=<טלפון> */
 var SOON = [['signatures','מתעניינים (חתימות)'],['buyers','קונים'],['props','נכסים'],['deals','עסקאות']];
 function tok(){ try{ return localStorage.getItem('crmTok') || localStorage.getItem('fbTok') || ''; }catch(e){ return ''; } }   // [CRM-ACCESS] Google בלבד; fbTok רק למסלול החזרה
 if (!tok()) location.replace('/crm/login');
@@ -11728,7 +11678,15 @@ function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getEleme
       b.innerHTML = '<h2>' + esc(ttl) + '</h2>' + hero + '<div class="grid2">' +
         META.columns.filter(function(c){ return c[2] !== 'photo'; }).map(function(c){ var v = r[c[0]];
           var val = c[2] === 'date' ? fdate(v) : (['status', 'price', 'phone', 'link'].indexOf(c[2]) >= 0 ? cell(r, c) : esc(v == null || v === '' ? '—' : v));
-          return '<div class="f' + (c[2] === 'long' ? ' wide' : '') + '"><b>' + esc(c[1]) + '</b>' + (val || '—') + '</div>'; }).join('') + '</div>';
+          return '<div class="f' + (c[2] === 'long' ? ' wide' : '') + '"><b>' + esc(c[1]) + '</b>' + (val || '—') + '</div>'; }).join('') + '</div>' +
+        (MOD === 'ai' && r.bs_key && r.status.indexOf('המודעה ירדה') < 0 ? '<div class="acts"><button class="tb pri" id="bsSend">' + (r.status.indexOf('נשלח') === 0 ? 'שלח שוב לסוכן' : 'שלח לסוכן בוואטסאפ') + '</button></div>' : '');
+      var bsb = document.getElementById('bsSend');
+      if (bsb) bsb.onclick = function(){
+        if (!confirm('לשלוח ל' + (r.agent || 'סוכן') + ' הודעת וואטסאפ על הקונה ' + (r.name || '') + ' שמפרסם נכס?')) return;
+        api('/v2/api/crm/ai/send', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({key: r.bs_key})})
+          .then(function(x){ return x.json(); }).then(function(j){
+            if (j.ok){ toast('נשלח ל' + (r.agent || 'סוכן')); closeDr(); refreshAll(); return; }
+            toast('לא נשלח — ' + ({no_agent:'אין טלפון לסוכן', no_360:'הוואטסאפ הרשמי לא פעיל', not_found:'ההתאמה כבר לא קיימת', send_failed:'השליחה נכשלה', forbidden:'אין הרשאה'}[j.reason] || j.reason || 'שגיאה')); }); };
       return; }
     var h = '<div class="mut">שיחה · ' + fdate(r.date) + (r.edited ? ' · נערכה ב-CRM' : '') + (r.hidden ? ' · מחוקה' : '') + '</div>' +
       '<h2><span class="ph">' + esc(r.caller_phone || '—') + '</span> ← ' + esc(r.agent || '') + '</h2>' +
@@ -11855,7 +11813,7 @@ document.getElementById('exp').onclick = function(){ toast('מכין קובץ…
     var a = document.createElement('a'); a.href = URL.createObjectURL(bl); a.download = 'crm-' + MOD + '.csv'; document.body.appendChild(a); a.click(); a.remove(); }); };
 document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') closeDr(); });
 if (!tok()) { document.getElementById('title').innerHTML = 'צריך להיות מחובר לאפי בדפדפן הזה. <a href="/v2/home">כניסה לאפי</a>'; }
-else { loadMeta().then(function(){ loadSaved(); teamBanner(); return load(); }).catch(function(){}); }
+else { if (ST.q) document.getElementById('q').value = ST.q; loadMeta().then(function(){ loadSaved(); teamBanner(); return load(); }).catch(function(){}); }
 </script></body></html>"""
 
 
@@ -12743,6 +12701,17 @@ CRM_MODULES = {
                   ("review_sent", "נשלחה בקשת ביקורת"), ("review_due", "ממתינות לבקשת ביקורת"),
                   ("check", "לבדיקה")],
     },
+    "ai": {   # [21/10 אייל] רק לבעל המשרד — לא ניתן לתת בהרשאות (CRM_OWNER_ONLY)
+        "title": "AI",
+        "columns": [("date", "מתי", "date"), ("type", "התראה", "status"), ("name", "לקוח", "text"), ("phone", "טלפון", "phone"),
+                    ("agent", "סוכן", "text"), ("what", "מה קרה", "long"), ("past", "לקוח עבר", "long"), ("status", "מצב", "text"),
+                    ("link", "מודעה", "link", "למודעה"), ("deals_link", "עסקאות", "link", "לעסקאות"),
+                    ("inv_link", "מסמכים", "link", "למקבלי מסמכים"), ("buyer_link", "קונה", "link", "לקונה")],
+        "default_cols": ["date", "type", "name", "phone", "agent", "what", "past", "status", "link", "deals_link", "inv_link", "buyer_link"],
+        "editable": [],
+        "views": [("all", "כל ההתראות"), ("recent", "14 הימים האחרונים"), ("past_seller", "לקוח עבר מפרסם נכס"),
+                  ("past_buyer", "לקוח עבר נוסף כקונה"), ("buyer_seller", "קונים שמפרסמים נכס")],
+    },
     "meetings": {
         "title": "פגישות",
         "columns": [("date", "מועד", "date"), ("kind", "סוג", "text"), ("agent", "לסוכן", "text"), ("by", "תיאם", "text"),
@@ -12946,7 +12915,8 @@ def team_compare(values, table):
 
 
 # ── [CRM-ACCESS 21/10] כניסה עם Google בלבד + הרשאות לפי משתמש (ספק 2026-10-21-crm-access-design) ──
-CRM_ACCESS_MODULES = list(CRM_MODULES) + ["dashboard"]
+CRM_OWNER_ONLY = ("ai",)   # [21/10 אייל: 'התראות רק לי'] — לא מופיע במסך ההרשאות
+CRM_ACCESS_MODULES = [m for m in CRM_MODULES if m not in CRM_OWNER_ONLY] + ["dashboard"]
 _CRM_AGENTLESS = ("flows", "automations", "team")      # אין שדה סוכן → רק להיקף 'הכל'
 
 
@@ -12957,7 +12927,7 @@ def crm_access_for(email, phone, cfg, owner_emails, is_dev):
     if not em:
         return None
     if em in {str(x).strip().lower() for x in owner_emails or ()} or (phone and is_dev(phone)):
-        return {"owner": True, "email": em, "modules": CRM_ACCESS_MODULES + ["access"], "scope": "all",
+        return {"owner": True, "email": em, "modules": CRM_ACCESS_MODULES + list(CRM_OWNER_ONLY) + ["access"], "scope": "all",
                 "export": True, "edit": True, "phone": phone or "", "name": ""}
     rec = ((cfg or {}).get("v2_crm_access") or {}).get(em)
     if not isinstance(rec, dict):
@@ -13027,6 +12997,11 @@ def crm_scope_filter(module, recs, keys, canon):
     return out
 
 
+def _crm_td(days):
+    import datetime as _dtd
+    return _dtd.timedelta(days=days)
+
+
 def _crm_on_or_after(ts, today):
     import datetime as _dw
     from zoneinfo import ZoneInfo as _ZW
@@ -13090,6 +13065,11 @@ CRM_VIEWS = {
               "review_sent": lambda r, t: str(r.get("review") or "").startswith("נשלח"),
               "review_due": lambda r, t: r.get("review") == "ממתין",
               "check": lambda r, t: bool(r.get("check"))},
+    "ai": {"all": lambda r, t: True,
+           "recent": lambda r, t: bool(r.get("date")) and _crm_on_or_after(r["date"], t - _crm_td(14)),
+           "past_seller": lambda r, t: r.get("type") == "לקוח עבר מפרסם נכס",
+           "past_buyer": lambda r, t: r.get("type") == "לקוח עבר נוסף כקונה",
+           "buyer_seller": lambda r, t: r.get("type") == "קונה שמפרסם נכס"},
     "meetings": {"today": lambda r, t: _crm_day(r.get("date"), t),
                  "upcoming": lambda r, t: r.get("state") != "בוצע" and bool(r.get("date")) and _crm_on_or_after(r["date"], t),
                  "meetings": lambda r, t: r.get("kind") == "פגישה",
@@ -13436,6 +13416,88 @@ def crm_inv_agent_index(buyers, sigs):
     for g in sigs or []:
         add(ph, bs_p9(g.get("phone")), g.get("agent")); add(nm, inv_name_key(g.get("client_name")), g.get("agent"))
     return {"phone": ph, "name": nm}
+
+
+_CRM_BS_STATUS = {"pending": "ממתין לשליחה לסוכן", "sent": "נשלח לסוכן", "no_agent": "לא נשלח — אין טלפון לסוכן",
+                  "closed": "הקונה סגר", "old": "התאמה ישנה (לא נשלח)"}
+
+
+def crm_ai_records(deals, invoices, owner_idx, buyers, bs_rows, now, buyer_ep, listing_ep):
+    """[21/10 אייל: 'התראות רק לי… אם לקוח קיים (לפי טלפון מעסקאות ומקבלי מסמכים) מפרסם דירה או נוסף כקונה,
+    עם קישורים לכל מידע; ו"הקונים שמפרסמים נכס" מהניהול'] deals/invoices = רשומות מודולי ה-CRM; owner_idx = bs_owner_index
+    של נכס נולד; bs_rows = bs_report. לקוח עבר לפי נייד (9 ספרות)."""
+    import datetime as _dai
+    past = {}
+    for src, rows in (("deal", deals), ("doc", invoices)):
+        for r in rows or []:
+            p9 = bs_p9(r.get("phone"))
+            if not p9:
+                continue
+            d = past.setdefault(p9, {"name": "", "deals": [], "docs": []})
+            d["deals" if src == "deal" else "docs"].append(r)
+            if not d["name"]:
+                d["name"] = str(r.get("client") or "").strip()
+
+    def _d(ep):
+        return _dai.datetime.fromtimestamp(ep).strftime("%d/%m/%Y") if ep else ""
+
+    def _last(xs):
+        return max(xs, key=lambda x: x.get("date") or 0) if xs else {}
+
+    def _past_txt(d):
+        parts = []
+        if d["deals"]:
+            x = _last(d["deals"])
+            parts.append(("%d עסקאות" % len(d["deals"]) if len(d["deals"]) > 1 else "עסקה") + ": " +
+                         " · ".join(v for v in (str(x.get("side") or ""), str(x.get("address") or ""), _d(x.get("date")), str(x.get("agent") or "")) if v))
+        if d["docs"]:
+            x = _last(d["docs"])
+            parts.append(("%d מסמכים" % len(d["docs"]) if len(d["docs"]) > 1 else "מסמך") + ": " +
+                         " · ".join(v for v in (str(x.get("type") or ""), _d(x.get("date")), str(x.get("agent") or "")) if v))
+        return " | ".join(parts)
+
+    def _links(p9, d):
+        ph = "0" + p9
+        return {"deals_link": ("/v2/crm/deals?q=" + ph) if d and d["deals"] else "",
+                "inv_link": ("/v2/crm/invoices?q=" + ph) if d and d["docs"] else ""}
+
+    def _past_agent(d):
+        return str(_last(d["deals"]).get("agent") or _last(d["docs"]).get("agent") or "")
+
+    out = []
+    for p9, d in past.items():
+        for L in (owner_idx or {}).get(p9) or []:
+            pr = str(L.get("price") or "").strip()
+            out.append(dict({"key": "ps:" + p9 + "|" + str(L.get("key")), "date": listing_ep(L.get("raw") or {}) or 0,
+                             "type": "לקוח עבר מפרסם נכס", "name": d["name"], "phone": "0" + p9, "agent": _past_agent(d),
+                             "what": "מפרסם " + ("להשכרה" if L.get("rent") else "למכירה") + ": " + str(L.get("addr") or "") + (" · ₪" + pr if pr else ""),
+                             "past": _past_txt(d), "status": "", "link": str(L.get("link") or ""), "buyer_link": ""}, **_links(p9, d)))
+    for b in buyers or []:
+        p9 = bs_p9(b.get("phone"))
+        d = past.get(p9) if p9 else None
+        if not d:
+            continue
+        out.append(dict({"key": "pb:" + p9 + "|" + str(b.get("row")), "date": buyer_ep(b) or 0,
+                         "type": "לקוח עבר נוסף כקונה", "name": str(b.get("name") or "").strip() or d["name"], "phone": "0" + p9,
+                         "agent": str(b.get("agent") or "").strip(), "what": str(b.get("search") or "").strip(),
+                         "past": _past_txt(d), "status": "", "link": "", "buyer_link": "/v2/crm/buyers?q=0" + p9}, **_links(p9, d)))
+    for r in bs_rows or []:
+        p9 = str(r.get("key") or "").split("|")[0]
+        d = past.get(p9)
+        ep = 0
+        m = _re.match(r"(\d{2})/(\d{2})/(\d{4})$", str(r.get("listed") or ""))
+        if m:
+            ep = _dai.datetime(int(m.group(3)), int(m.group(2)), int(m.group(1))).timestamp()
+        st = _CRM_BS_STATUS.get(r.get("status"), str(r.get("status") or ""))
+        if r.get("status") == "sent" and r.get("sent_at"):
+            st += " " + str(r["sent_at"])
+        out.append(dict({"key": "bs:" + str(r.get("key")), "bs_key": str(r.get("key") or ""), "date": ep or float(r.get("sent_ts") or 0),
+                         "type": "קונה שמפרסם נכס", "name": str(r.get("buyer") or ""), "phone": ("0" + p9) if p9 else "",
+                         "agent": str(r.get("agent") or ""), "what": "מפרסם: " + str(r.get("addr") or "") + (" · ₪" + r["price"] if r.get("price") else ""),
+                         "past": _past_txt(d) if d else "", "status": ("המודעה ירדה · " if r.get("gone") else "") + st,
+                         "link": str(r.get("link") or ""), "buyer_link": ("/v2/crm/buyers?q=0" + p9) if p9 else ""},
+                        **_links(p9, d)))
+    return out
 
 
 def crm_inv_records(rows, idx, wa_sent, ep):
@@ -15947,40 +16009,51 @@ def register(app, G):
         _bsth.Thread(target=_run, daemon=True, name="buyer-seller").start()
     G["_bs_scan_async"] = _bs_scan_async   # app.py: אחרי הוספת קונה (_buyers_write)
 
-    @app.route("/v2/api/admin/buyer_sellers", methods=["GET"])
-    def v2_api_admin_buyer_sellers():
-        """[BS-CTRL 06/10] בקרה: קונים שמפרסמים נכס בנכס נולד — כל ההתאמות ומה נשלח לסוכן (בעל המשרד בלבד)."""
-        if not _dev_guard():
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
+    def _bs_rows():
+        """[BS-CTRL] כל ההתאמות קונה↔מודעת נכס נולד + מה נשלח — משותף לניהול ולטאב AI ב-CRM."""
         sb = G.get("_sbdb")
-        if not (sb and sb.enabled()):
-            return jsonify({"ok": False, "reason": "no_supabase"})
-        try:
-            raws = sb.fetch_newborn_raw_all() or []
-            idx = bs_owner_index(raws, include_rent=os.environ.get("BS_INCLUDE_RENT", "0") == "1")
-            buyers = G["_fetch_manual_buyers"]() or []
-            st, l9 = _bstat_load(), G["_last9"]
-            closed = lambda b: (st.get(l9(b.get("phone", ""))) or st.get("r" + str(b.get("row", "")))
-                                or st.get(str(b.get("row", "")))) == "closed"
-            rows = bs_report(buyers, idx, _load_config().get("v2_bs_sent") or {}, time.time(),
-                             G["_excl_epoch"], G["_newborn_created_epoch"], closed=closed)
-            stats = {"buyers": len(buyers), "buyers_mobile": sum(1 for b in buyers if bs_p9(b.get("phone"))),
-                     "listings": len(raws), "listings_phone": sum(len(v) for v in idx.values()),
-                     "owners": len(idx), "matches": sum(1 for r in rows if not r["gone"]),
-                     "alerts_on": os.environ.get("BS_ALERTS", "1") != "0" and bool(G["_d360_on"]())}
-            try:   # מסירה בפועל (webhook של 360dialog) לשורות שנשלחו
-                sts = (G["_wa_diag_read"]() or {}).get("statuses") or G.get("_WA_STATUS_LOG") or []
-                ag_ph = G["fetch_agents_phones"]() or {}
-                for r in rows[:300]:
-                    if r["status"] == "sent" and r.get("sent_ts"):
-                        r["to"] = _bs_agent_wa({"agent": r["agent"]}, ag_ph)
-                        r["delivery"] = bs_delivery(sts, r["to"], r["sent_ts"])
-            except Exception as _de:
-                if log: log.warning(f"buyer-sellers delivery: {_de}")
-            return jsonify({"ok": True, "stats": stats, "rows": rows[:300]})
-        except Exception as e:
-            if log: log.error(f"buyer-sellers report: {e}", exc_info=True)
-            return jsonify({"ok": False, "reason": "failed"})
+        raws = sb.fetch_newborn_raw_all() or []
+        idx = bs_owner_index(raws, include_rent=os.environ.get("BS_INCLUDE_RENT", "0") == "1")
+        buyers = G["_fetch_manual_buyers"]() or []
+        st, l9 = _bstat_load(), G["_last9"]
+        closed = lambda b: (st.get(l9(b.get("phone", ""))) or st.get("r" + str(b.get("row", "")))
+                            or st.get(str(b.get("row", "")))) == "closed"
+        rows = bs_report(buyers, idx, G["_load_config"]().get("v2_bs_sent") or {}, time.time(),
+                         G["_excl_epoch"], G["_newborn_created_epoch"], closed=closed)
+        return rows, idx, buyers, raws
+
+    def _bs_send_key(key, who):
+        """שליחה (חוזרת) ידנית של ההודעה לסוכן — רק דרך 360dialog. who = (name, role, phone) לרישום ביומן. → dict לתשובה."""
+        sb = G.get("_sbdb")
+        if not key or not (sb and sb.enabled()):
+            return {"ok": False, "reason": "bad_request"}
+        if not G["_d360_on"]():
+            return {"ok": False, "reason": "no_360"}
+        idx = bs_owner_index(sb.fetch_newborn_raw_all() or [], include_rent=os.environ.get("BS_INCLUDE_RENT", "0") == "1")
+        ms = [m for m in bs_find_matches(G["_fetch_manual_buyers"]() or [], idx, time.time(), G["_excl_epoch"],
+                                         G["_newborn_created_epoch"], fresh_days=36500) if m["key"] == key]
+        if not ms:
+            return {"ok": False, "reason": "not_found"}
+        m = ms[0]
+        b = m["buyer"]
+        ag = str(b.get("agent") or "").strip()
+        wa = _bs_agent_wa(b, G["fetch_agents_phones"]() or {})
+        if not wa:
+            return {"ok": False, "reason": "no_agent"}
+        if not G["send_text"](wa, bs_message(m)):
+            last = G.get("_WA_LAST") or {}
+            return {"ok": False, "reason": "send_failed", "detail": str(last.get("reason") or last.get("resp") or "")[:160]}
+        now = time.time()
+        info = {"ag": ag, "bn": str(b.get("name") or "").strip(), "ad": m["listing"]["addr"],
+                "pr": bs_money(m["listing"]["price"]), "ln": m["listing"]["link"]}
+        def _mark(cfg):
+            d = cfg.setdefault("v2_bs_sent", {})
+            d[key] = dict(info, ts=now, r="sent", manual=True)
+        G["_config_mutate"](_mark)
+        G["_log_activity"](who[0] or "מנהל", who[1] or "admin", who[2] or "",
+                           "קונה שמפרסם נכס — שליחה ידנית לסוכן", (ag + " · " + info["bn"] + " · " + info["ad"])[:60])
+        import datetime as _dbs2
+        return {"ok": True, "sent_at": _dbs2.datetime.fromtimestamp(now).strftime("%d/%m/%Y")}
 
     @app.route("/v2/api/admin/buyer_sellers/send", methods=["POST"])
     def v2_api_admin_buyer_sellers_send():
@@ -15988,38 +16061,9 @@ def register(app, G):
         s = _dev_guard()
         if not s:
             return jsonify({"ok": False, "reason": "forbidden"}), 403
-        key = str((request.get_json(silent=True) or {}).get("key") or "").strip()
-        sb = G.get("_sbdb")
-        if not key or not (sb and sb.enabled()):
-            return jsonify({"ok": False, "reason": "bad_request"})
-        if not G["_d360_on"]():
-            return jsonify({"ok": False, "reason": "no_360"})
         try:
-            idx = bs_owner_index(sb.fetch_newborn_raw_all() or [], include_rent=os.environ.get("BS_INCLUDE_RENT", "0") == "1")
-            ms = [m for m in bs_find_matches(G["_fetch_manual_buyers"]() or [], idx, time.time(), G["_excl_epoch"],
-                                             G["_newborn_created_epoch"], fresh_days=36500) if m["key"] == key]
-            if not ms:
-                return jsonify({"ok": False, "reason": "not_found"})
-            m = ms[0]
-            b = m["buyer"]
-            ag = str(b.get("agent") or "").strip()
-            wa = _bs_agent_wa(b, G["fetch_agents_phones"]() or {})
-            if not wa:
-                return jsonify({"ok": False, "reason": "no_agent"})
-            if not G["send_text"](wa, bs_message(m)):
-                last = G.get("_WA_LAST") or {}
-                return jsonify({"ok": False, "reason": "send_failed", "detail": str(last.get("reason") or last.get("resp") or "")[:160]})
-            now = time.time()
-            info = {"ag": ag, "bn": str(b.get("name") or "").strip(), "ad": m["listing"]["addr"],
-                    "pr": bs_money(m["listing"]["price"]), "ln": m["listing"]["link"]}
-            def _mark(cfg):
-                d = cfg.setdefault("v2_bs_sent", {})
-                d[key] = dict(info, ts=now, r="sent", manual=True)
-            G["_config_mutate"](_mark)
-            _log_activity(s.get("name") or "מנהל", s.get("role") or "admin", s.get("phone") or "",
-                          "קונה שמפרסם נכס — שליחה ידנית לסוכן", (ag + " · " + info["bn"] + " · " + info["ad"])[:60])
-            import datetime as _dbs2
-            return jsonify({"ok": True, "sent_at": _dbs2.datetime.fromtimestamp(now).strftime("%d/%m/%Y")})
+            return jsonify(_bs_send_key(str((request.get_json(silent=True) or {}).get("key") or "").strip(),
+                                        (s.get("name"), s.get("role"), s.get("phone"))))
         except Exception as e:
             if log: log.error(f"buyer-sellers send: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": "failed"})
@@ -16517,7 +16561,7 @@ def register(app, G):
                     G["_log_activity"]("Claude", "system", "", "Claude — קריאת CRM", request.path[:80])
                 except Exception:
                     pass
-            return {"owner": True, "agent_key": True, "modules": CRM_ACCESS_MODULES + ["access"], "scope": "all", "export": True,
+            return {"owner": True, "agent_key": True, "modules": CRM_ACCESS_MODULES + list(CRM_OWNER_ONLY) + ["access"], "scope": "all", "export": True,
                     "edit": False, "keys": None, "name": "Claude", "phone": "", "role": "admin", "email": "claude"}, None
         tok = request.headers.get("X-Auth-Token") or request.args.get("token") or ""
         v = G["_verify_crm_token"](tok) if tok else None
@@ -16525,7 +16569,7 @@ def register(app, G):
             if (os.environ.get("CRM_ALLOW_APP_TOKEN") or "").strip() == "1":
                 s = G["_web_auth"]()
                 if s and G["_is_dev"](s.get("phone", "")):
-                    return dict(s, owner=True, modules=CRM_ACCESS_MODULES + ["access"], scope="all", export=True, edit=True,
+                    return dict(s, owner=True, modules=CRM_ACCESS_MODULES + list(CRM_OWNER_ONLY) + ["access"], scope="all", export=True, edit=True,
                                 keys=None, email=""), None
             return None, "login"
         phone, email = v
@@ -16728,6 +16772,26 @@ def register(app, G):
         if module == "meetings":
             return crm_unify_agents(crm_meeting_records(G["_nb_statuses"]() or {}),
                                     lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=("by",))
+        if module == "ai":   # [21/10] רק לבעל המשרד (CRM_OWNER_ONLY)
+            def _build_ai():
+                import time as _tai
+                sbi = G.get("_sbdb")
+                if not (sbi and sbi.enabled()):
+                    raise _CrmReadError("supabase disabled")
+                deals = invs = []
+                try:
+                    deals = _crm_records("deals")
+                except Exception as e:
+                    if log: log.warning(f"crm ai deals: {e}")
+                try:
+                    invs = _crm_records("invoices")
+                except Exception as e:
+                    if log: log.warning(f"crm ai invoices: {e}")
+                bs, idx, buyers, _raws = _bs_rows()
+                return crm_ai_records(deals, invs, idx, buyers, bs, _tai.time(),
+                                      lambda b: G["_excl_epoch"](b.get("date", "")), G["_newborn_created_epoch"])
+            swr = G.get("_swr")
+            return swr("crmai", 120, _build_ai) if swr else _build_ai()
         if module == "invoices":
             def _build_inv():
                 try:
@@ -16825,6 +16889,20 @@ def register(app, G):
                         "counts": counts, "agents": agents, "periods": periods,
                         "modules": [[k, v["title"]] for k, v in CRM_MODULES.items() if k in ctx["modules"]],
                         "me": _crm_me(ctx)})
+
+    @app.route("/v2/api/crm/ai/send", methods=["POST"])
+    def v2_api_crm_ai_send():
+        """[21/10] טאב AI: 'שלח לסוכן' של קונה שמפרסם נכס (עבר מהניהול) — רק לבעל המשרד."""
+        ctx = _crm_guard("ai", owner=True)
+        if not ctx or ctx.get("agent_key"):
+            return _crm_deny()
+        try:
+            out = _bs_send_key(str((request.get_json(silent=True) or {}).get("key") or "").strip(),
+                               (ctx.get("name") or ctx.get("email"), "admin", ctx.get("phone")))
+            return jsonify(out)
+        except Exception as e:
+            if log: log.error(f"crm ai send: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": "failed"})
 
     @app.route("/v2/api/crm/<module>/list", methods=["GET"])
     def v2_api_crm_list(module):
