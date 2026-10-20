@@ -11877,6 +11877,11 @@ ul.ins{margin:0;padding-inline-start:18px;line-height:1.7;font-size:14px}
 @media(max-width:1100px){.ctl{grid-template-columns:1fr}}
 @media(max-width:1100px){.health{grid-template-columns:repeat(4,1fr)}.kpis{grid-template-columns:repeat(3,1fr)}.r2,.r3{grid-template-columns:1fr}}
 @media(max-width:600px){.health{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(2,1fr)}header{flex-wrap:wrap}}
+.todo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.td h3{font-size:14px;margin:0 0 8px;display:flex;gap:6px;align-items:center;justify-content:space-between}
+.td .cnt{background:#EEF1F5;color:#5B6472;border-radius:99px;padding:1px 9px;font-size:13px}.td .cnt.hot{background:#FBEDED;color:#C24040}
+.ti{padding:6px 0;border-bottom:1px solid #ECE8DD;font-size:13px}.ti a{color:#2E6BD6}.tw{overflow-x:auto}
+table.ag th{text-align:right;color:#5B6472;font-weight:500;padding:8px;border-bottom:1px solid #ECE8DD;white-space:nowrap}table.ag td{padding:8px;white-space:nowrap}
+@media(max-width:1100px){.todo{grid-template-columns:1fr 1fr}}@media(max-width:640px){.todo{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
 <header><h1>לוח בקרה</h1><span class="upd" id="upd"></span><span class="sp"></span>
 <a class="btn" href="/v2/crm/calls">CRM</a><a class="btn" href="/v2/crm/parallel">דוח מקבילות</a><button class="btn pri" id="rf">רענן</button></header>
@@ -11895,6 +11900,24 @@ function kpis(){var p=D.periods,ca=pv(p.calls),an=pv(p.calls_answered),ex=pv((p.
   ['עסקאות',n(pv(p.deals_closed))+' נסגרו','נפתחו '+n(pv(p.deals_opened))+' · פתוחים '+n(p.open_now)+' · אצל עו״ד '+n(p.lawyer_now)],
   ['נכסי המשרד בפרסום',n(p.office_active),'בלעדי '+n(p.office_active_excl)+' · רגיל '+n((p.office_active||0)-(p.office_active_excl||0))]];
  return k.map(function(x){return '<div class="card kpi"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+'</div><div class="x">'+esc(x[2])+'</div></div>';}).join('');}
+function tm(ts){if(!ts)return '';var d=new Date(ts*1000);return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
+function ph(v){var d=String(v||'').replace(/\D/g,'');if(d.indexOf('972')===0)d='0'+d.slice(3);return d.length===10?d.slice(0,3)+'-'+d.slice(3):String(v||'');}
+function todoCard(){var T=D.todo;if(!T)return '';
+ function box(title,cnt,rows,empty){return '<div class="td"><h3>'+title+' <span class="cnt'+(cnt?' hot':'')+'">'+n(cnt)+'</span></h3>'+(rows||'<div class="mut">'+empty+'</div>')+'</div>';}
+ var m=(T.missed||[]).slice(0,8).map(function(x){return '<div class="ti"><b>'+esc(ph(x.phone))+'</b> · '+esc(x.agent||'—')+'<span class="mut"> · '+tm(x.ts)+(x.tries>1?' · '+x.tries+' ניסיונות':'')+'</span></div>';}).join('');
+ var s=(T.pending_sigs||[]).slice(0,8).map(function(x){return '<div class="ti">'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.client||'לקוח')+'</a>':'<b>'+esc(x.client||'לקוח')+'</b>')+' · '+esc(x.agent)+'<span class="mut"> · '+esc(x.type)+' · נשלח '+tm(x.ts)+'</span></div>';}).join('');
+ var l=(T.likes||[]).slice(0,8).map(function(x){return '<div class="ti">'+esc(x.detail)+'<span class="mut"> · '+esc(x.agent)+' · '+tm(x.ts)+'</span></div>';}).join('');
+ var nb=T.nb_untouched||{n:0,list:[]},nl=(nb.list||[]).slice(0,8).map(function(x){return '<div class="ti">'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.address||'מודעה')+'</a>':esc(x.address||'מודעה'))+(x.price?'<span class="mut"> · ₪'+Number(x.price).toLocaleString('en-US')+'</span>':'')+'</div>';}).join('');
+ return '<div class="card"><h2>מחכה לטיפול</h2><div class="todo">'+
+  box('שיחות שלא נענו ולא חזרו אליהן (72 שע׳)',T.missed_n||0,m,'אין — חזרו לכולם')+
+  box('חתימות שממתינות יותר מיומיים',T.pending_n||0,s,'אין חתימות תקועות')+
+  box('סימנו "מתאים" בדף קונה (72 שע׳)',(T.likes||[]).length,l,'אין סימונים חדשים')+
+  box('נכס נולד מהיממה — אף אחד לא פנה',nb.n,nl,'פנו לכל המודעות החדשות')+'</div></div>';}
+function agentsCard(){var A=(D.agents||{})[P]||[];
+ var r=A.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+n(x.answered)+'<span class="mut"> / '+n(x.calls)+'</span></td><td>'+n(x.sigs)+'</td><td>'+n(x.buyers)+'</td><td>'+n(x.bpage)+'</td><td>'+n(x.nb)+'</td><td>'+(x.min?n(x.min)+' דק׳':'—')+'</td></tr>';}).join('');
+ return '<div class="card"><h2>הסוכנים · '+PL[P]+'</h2><div class="tw"><table class="ag"><tr><th>סוכן</th><th>שיחות שנענו / הכל</th><th>החתמות</th><th>קונים חדשים</th><th>שליחות דף קונה</th><th>פניות לנכס נולד</th><th>זמן באפי</th></tr>'+
+  (r||'<tr><td class="mut" colspan="7">אין פעילות בתקופה</td></tr>')+'</table></div>'+
+  '<div class="mut">פניות לנכס נולד = וואטסאפ מכרטיס המודעה. זמן באפי בשנה — 60 הימים האחרונים.</div></div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -11913,7 +11936,7 @@ function render(){
   '<div class="sw"><div><div class="t">התראות פוש</div><div class="d">כל הפושים לטלפונים של הסוכנים</div></div><button class="tg" id="swPush" aria-label="פוש"></button></div>'+
   '<div class="d mut" id="swQuiet"></div></div></div>'+
   '<div class="seg" id="seg">'+['day','week','month','year'].map(function(k){return '<button data-p="'+k+'" class="'+(k===P?'on':'')+'">'+PL[k]+'</button>';}).join('')+'</div>'+
-  '<div class="kpis">'+kpis()+'</div>'+
+  '<div class="kpis">'+kpis()+'</div>'+todoCard()+agentsCard()+
   '<div class="row r2"><div class="card"><h2>30 הימים האחרונים</h2><div class="chart"><canvas id="c1"></canvas></div><div id="t1"></div></div>'+
   '<div class="card"><h2>חיפושי AI באתר היום</h2><div class="big">'+n(a.today)+' <span class="mut">מתוך תקרה של '+n(a.cap)+'</span></div>'+
   '<div class="bar'+(pct>=90?' hot':'')+'"><i style="width:'+pct+'%"></i></div><div class="mut">מהמטמון (בלי טוקנים): '+n(a.cache)+' · נחסמו בתקרה: '+n(a.blocked)+'</div>'+
@@ -12061,6 +12084,100 @@ CRM_STREAMS = [
     ("site_leads", "לידים מהאתר", 72, False),
     ("app_usage", "שימוש באפי", 3, True),
 ]
+
+
+def crm_period_bounds(now):
+    """תחילת היום / השבוע (ראשון) / החודש / השנה — שעון ישראל, כמו בדוח היומי."""
+    import datetime as _dpb
+    from zoneinfo import ZoneInfo as _ZPB
+    d = _dpb.datetime.fromtimestamp(now, _ZPB("Asia/Jerusalem")).replace(hour=0, minute=0, second=0, microsecond=0)
+    week = d - _dpb.timedelta(days=(d.weekday() + 1) % 7)
+    return {"day": d.timestamp(), "week": week.timestamp(), "month": d.replace(day=1).timestamp(),
+            "year": d.replace(month=1, day=1).timestamp()}
+
+
+_CRM_NB_CONTACT = ("📲 וואטסאפ — נכס נולד",)
+_CRM_BPAGE_SEND = ("דף קונה — שליחה",)
+
+
+def crm_agent_table(calls, sigs, buyers, act, usage_by, bounds, h):
+    """[CRM 20/10 'טבלת סוכנים'] לכל תקופה: שיחות (ונענו), החתמות, קונים חדשים, שליחות דף קונה, פניות לנכס נולד
+    (וואטסאפ מהכרטיס), דקות באפי. h: ts(str)->epoch, answered(status)->bool, canon(name)->name. ממוין מהפעיל ביותר."""
+    per = {p: {} for p in bounds}
+    def row(p, nm):
+        nm = h["canon"](str(nm or "").strip()) if nm else ""
+        nm = str(nm or "").strip()
+        if not nm or nm in ("מנהל", "אפי", "system"):
+            return None
+        return per[p].setdefault(nm, {"name": nm, "calls": 0, "answered": 0, "sigs": 0, "buyers": 0, "bpage": 0, "nb": 0, "min": 0})
+    def each(ts, nm, fn):
+        if ts is None:
+            return
+        for p, t0 in bounds.items():
+            if ts >= t0:
+                r = row(p, nm)
+                if r is not None:
+                    fn(r)
+    for c in calls or []:
+        a = h["answered"](c.get("status"))
+        each(h["ts"](c.get("received_at")), c.get("agent"), lambda r, a=a: (r.__setitem__("calls", r["calls"] + 1), a and r.__setitem__("answered", r["answered"] + 1)))
+    for g in sigs or []:
+        each(h["ts"](g.get("received_at")), g.get("agent"), lambda r: r.__setitem__("sigs", r["sigs"] + 1))
+    for b in buyers or []:
+        each(h["ts"](b.get("date")), b.get("agent"), lambda r: r.__setitem__("buyers", r["buyers"] + 1))
+    for a in act or []:
+        an = str(a.get("action") or "")
+        col = "bpage" if an.startswith(_CRM_BPAGE_SEND) else ("nb" if an.startswith(_CRM_NB_CONTACT) else "")
+        if col:
+            each(a.get("ts"), a.get("name"), lambda r, col=col: r.__setitem__(col, r[col] + 1))
+    for p, lst in (usage_by or {}).items():
+        if p in per and isinstance(lst, list):
+            for u in lst:
+                r = row(p, u.get("name"))
+                if r is not None:
+                    r["min"] += int(u.get("min") or 0)
+    score = lambda r: r["answered"] + r["sigs"] * 5 + r["buyers"] * 3 + r["bpage"] * 2 + r["nb"] + r["min"] / 30.0
+    return {p: sorted(d.values(), key=lambda r: (-score(r), r["name"])) for p, d in per.items()}
+
+
+def crm_todo(calls, sig_recs, act, newborn, contacts, now, h):
+    """[CRM 20/10 'מחכה לטיפול'] (1) שיחות שלא נענו ב-72 השעות האחרונות ואף אחד לא חזר/דיבר עם המספר אחריהן;
+    (2) חתימות שממתינות יותר מ-48 שעות (עד 30 יום); (3) לקוחות שסימנו 'מתאים' בדף קונה ב-72 שעות;
+    (4) מודעות נכס נולד מ-24 השעות האחרונות שאף סוכן לא פנה אליהן. h: ts, answered, nb_key."""
+    by_p = {}
+    for c in calls or []:
+        p9 = bs_p9(c.get("caller_phone") or c.get("phone"))
+        ts = h["ts"](c.get("received_at"))
+        if p9 and ts is not None:
+            by_p.setdefault(p9, []).append((ts, h["answered"](c.get("status")), c))
+    missed = []
+    for p9, lst in by_p.items():
+        lst.sort(key=lambda x: x[0])
+        last_ok = max([t for t, ok, _ in lst if ok], default=None)
+        miss = [(t, c) for t, ok, c in lst if not ok and t >= now - 72 * 3600 and (last_ok is None or t > last_ok)]
+        if miss:
+            t, c = miss[-1]
+            missed.append({"phone": str(c.get("caller_phone") or c.get("phone") or ""), "agent": str(c.get("agent") or "").strip(),
+                           "ts": t, "tries": len(miss)})
+    missed.sort(key=lambda m: -m["ts"])
+    pend = [{"client": r.get("client", ""), "agent": r.get("agent", ""), "type": r.get("type", ""), "ts": r.get("date"),
+             "link": r.get("link", "")}
+            for r in sig_recs or [] if r.get("status") == "ממתין" and r.get("date") and now - 30 * 86400 <= r["date"] <= now - 48 * 3600]
+    pend.sort(key=lambda r: -r["ts"])
+    likes = [{"agent": a.get("name", ""), "detail": a.get("detail", ""), "ts": a.get("ts")}
+             for a in act or [] if str(a.get("action", "")) == "סימון בדף קונה" and ": מתאים" in str(a.get("detail", ""))
+             and (a.get("ts") or 0) >= now - 72 * 3600]
+    likes.sort(key=lambda r: -r["ts"])
+    nbl = []
+    for r in newborn or []:
+        ts = h["ts"](r.get("נראה לראשונה") or r.get("נוצר בתאריך"))
+        if ts is None or ts < now - 24 * 3600 or (contacts or {}).get(h["nb_key"](r)):
+            continue
+        addr = ", ".join(x for x in (str(r.get("רחוב") or "").strip(), str(r.get("עיר") or "").strip()) if x)
+        nbl.append({"address": addr, "price": str(r.get("מחיר") or ""), "link": str(r.get("קישור") or ""), "ts": ts})
+    nbl.sort(key=lambda r: -r["ts"])
+    return {"missed": missed[:30], "missed_n": len(missed), "pending_sigs": pend[:30], "pending_n": len(pend),
+            "likes": likes[:30], "nb_untouched": {"n": len(nbl), "list": nbl[:10]}}
 
 
 def y2_private_area(rows):
@@ -13001,8 +13118,20 @@ def crm_dashboard_data(src, now, quiet, today_iso):
                 for k in ("day", "week", "month", "year") if k in ub}
     if usage_by:
         usage_by["year_from"] = ub.get("year_from", "")
+    # 20/10: טבלת סוכנים לפי תקופה + 'מחכה לטיפול'
+    hp = dict(get("helpers", default={}) or {})
+    hp.setdefault("answered", lambda st: str(st or "").upper() in ("ANSWER", "CALL2CALL"))
+    hp.setdefault("canon", lambda n: n)
+    hp.setdefault("nb_key", lambda r: "")
+    hp["ts"] = crm_ts
+    bounds = crm_period_bounds(now)
+    aact = get("agent_act", bounds["year"], default=[]) or []
+    agents = crm_agent_table(calls, sigs, buyers, aact, {k: ub.get(k) for k in ("day", "week", "month", "year") if k in ub},
+                             bounds, hp)
+    todo = crm_todo(calls, get("sig_recs", sigs, default=[]) or [], aact, newborn, get("nb_contacts", default={}) or {}, now, hp)
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
-            "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa}
+            "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa,
+            "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo}
 
 
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
@@ -16358,8 +16487,24 @@ def register(app, G):
         def build():
             now = _tbd.time()
             today = _dbd.datetime.fromtimestamp(now, il).date()
-            frm = (today - _dbd.timedelta(days=30)).strftime("%d/%m/%Y")
+            # 20/10: טבלת הסוכנים צריכה את כל השנה — מתחילת השנה (או 30 יום אחורה, המוקדם מביניהם)
+            frm = min(today - _dbd.timedelta(days=30), today.replace(month=1, day=1)).strftime("%d/%m/%Y")
             sb = G.get("_sbdb")
+
+            def agent_act(t0):
+                """פעולות הסוכנים לטבלה ול'מחכה לטיפול' — סינון בשרת, עם השם האמיתי לפי הטלפון."""
+                if not (sb and sb.enabled()):
+                    return []
+                rows = sb.fetch_activity_actions(t0, _CRM_BPAGE_SEND + _CRM_NB_CONTACT + ("סימון בדף קונה",)) or []
+                dn = G.get("_display_name_for")
+                for r in rows:
+                    if dn and r.get("role") != "client":
+                        try:
+                            r["name"] = dn(r.get("name"), r.get("phone"))
+                        except Exception:
+                            pass
+                    r.setdefault("detail", r.get("target") or "")
+                return rows
 
             def last_invoice():
                 rows = sb.fetch_invoices_rows("", limit=1) if (sb and sb.enabled()) else []
@@ -16382,7 +16527,13 @@ def register(app, G):
                    "activity": lambda t0: G["_activity_fetch"](t0, today=False),
                    "usage": lambda t0: G["_usage_rows"](_dbd.datetime.fromtimestamp(t0, il)),
                    "usage_periods": lambda: G["_usage_periods"](_dbd.datetime.fromtimestamp(now, il)),
-                   "site_ai": site_ai, "ai_cap": ai_cap}
+                   "site_ai": site_ai, "ai_cap": ai_cap,
+                   "agent_act": agent_act,
+                   "sig_recs": lambda sigs: crm_sig_records(sigs, {"ep": G["_excl_epoch"], "label": G["_deal_label"]}),
+                   "nb_contacts": lambda: G["_fetch_newborn_contacts"]() or {},
+                   "helpers": lambda: {"answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
+                                       "canon": lambda n: G["_canon_agent_name"](n) or n,
+                                       "nb_key": G["_nb_key"]}}
             try:
                 quiet = bool(G["_shabbat_quiet_now"]())
             except Exception:

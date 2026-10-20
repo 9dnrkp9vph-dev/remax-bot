@@ -19,3 +19,19 @@ _src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
 _adm = _src[_src.index("location.href='/v2/dev'") - 3000:_src.index("location.href='/v2/dev'")]
 assert "location.href='/v2/crm/dashboard'" in _adm, "admin link to dashboard"
 print("dash_admin_link OK")
+# 20/10: 'מחכה לטיפול' + טבלת הסוכנים — הפונקציות האמיתיות מהדף, על נתונים לדוגמה
+import re as _re2, subprocess as _sp2, json as _js2
+_m = _re2.search(r"<script>(\s*var P='month'.*?)</script>", h, _re2.S)
+assert _m, "dashboard script"
+_D = {"todo": {"missed": [{"phone": "972542222222", "agent": "דנה", "ts": 1800000000, "tries": 2}], "missed_n": 1,
+               "pending_sigs": [{"client": "א<b>", "agent": "רפי", "type": "קונים", "ts": 1800000000, "link": "/s/x"}], "pending_n": 1,
+               "likes": [], "nb_untouched": {"n": 1, "list": [{"address": "הנשיא 4", "price": "2000000", "link": "https://y/1"}]}},
+      "agents": {"month": [{"name": "רפי", "calls": 5, "answered": 3, "sigs": 2, "buyers": 1, "bpage": 4, "nb": 0, "min": 90}]}}
+_js = ("var document={getElementById:function(){return {}}},localStorage={getItem:function(){return ''}},fetch=function(){return {then:function(){return {then:function(){return {catch:function(){}}},catch:function(){}}}}},setInterval=function(){};"
+       + _m.group(1).split("function render(){")[0] + ";D=" + _js2.dumps(_D, ensure_ascii=False) + ";console.log(todoCard()+'\\n@@\\n'+agentsCard());")
+_out = _sp2.run(["node", "-e", _js], capture_output=True, text=True)
+assert _out.returncode == 0, _out.stderr[-600:]
+_t, _a = _out.stdout.split("@@")
+assert "054-2222222" in _t and "2 ניסיונות" in _t and "א&lt;b&gt;" in _t and 'href="/s/x"' in _t and "אין סימונים חדשים" in _t and "₪2,000,000" in _t, _t
+assert "<td>רפי</td>" in _a and "3<span" in _a and "90 דק׳" in _a and "החודש" in _a, _a
+print("dash_page todo/agents OK")
