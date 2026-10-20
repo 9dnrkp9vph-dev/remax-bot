@@ -38,6 +38,10 @@ def test_form_route(make_app, monkeypatch):
     app = make_app(_report_send_email=lambda s, h, t: (sent.append(s) or True, ""))
     c = app.test_client()
     r = c.post("/site/api/form", json={"key": "secret", "kind": "value", "fields": {"name": "דנה", "phone": "0521234567"}})
+    import time as _t
+    for _ in range(50):                       # המייל יוצא ברקע אחרי הפוש
+        if sent: break
+        _t.sleep(0.02)
     assert r.get_json() == {"ok": True} and sent and app.logs
     assert c.post("/site/api/form", json={"key": "secret", "kind": "zzz", "fields": {}}).status_code == 400
     def no_push(*a):
@@ -59,3 +63,15 @@ def test_form_pushes_owner_with_source(make_app, monkeypatch):
     assert "0521234567" in body and "אהוד מנור 4 קרית ביאליק" in body and "מקור: facebook / sellers" in body
     from site_api import form_email
     assert "מקור" in form_email("value", {"src": "facebook / sellers"}, "X")[2]
+
+
+def test_form_answers_fast_when_mail_slow(make_app, monkeypatch):
+    """🐞 20/10: מייל איטי (Apps Script) גרם לאתר לחכות ולהציג 'לא הצלחנו לשלוח' — עכשיו הפוש מספיק לתשובה."""
+    import time as _t, threading as _th
+    monkeypatch.setenv("SITE_KEY", "secret")
+    gate = _th.Event()
+    app = make_app(_report_send_email=lambda s, h, t: (gate.wait(5), "")[0:1] + ("",), send_push=lambda *a: None)
+    t0 = _t.time()
+    r = app.test_client().post("/site/api/form", json={"key": "secret", "kind": "value", "fields": {"name": "א", "phone": "0521234567"}})
+    assert r.get_json() == {"ok": True} and _t.time() - t0 < 1.0
+    gate.set()

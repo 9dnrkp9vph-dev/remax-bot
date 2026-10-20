@@ -670,9 +670,7 @@ def register_site(app, G, store=None):
             except Exception:
                 office = ""
             subject, html, text = form_email(kind, fields, office or "המשרד")
-            res = G["_report_send_email"](subject, html, text)
-            ok = bool(res[0]) if isinstance(res, (tuple, list)) else bool(res)
-            # פוש מיידי לבעל המשרד (פרסום ממומן 20/10 — ליד שלא חוזרים אליו תוך שעה מת); נכשל המייל — הפוש מספיק
+            # פוש מיידי לבעל המשרד (פרסום ממומן 20/10 — ליד שלא חוזרים אליו תוך שעה מת)
             pushed = False
             try:
                 where = " ".join(x for x in (fields.get("address", ""), fields.get("city", "")) if x).strip()
@@ -682,9 +680,22 @@ def register_site(app, G, store=None):
                 pushed = True
             except Exception as e:
                 if log: log.warning(f"site form push: {e}")
+
+            def _mail():
+                try:
+                    res = G["_report_send_email"](subject, html, text)
+                    return bool(res[0]) if isinstance(res, (tuple, list)) else bool(res)
+                except Exception as e:
+                    if log: log.warning(f"site form mail: {e}")
+                    return False
             G["_log_activity"]("אתר", "site", "", "פנייה מהאתר — " + FORM_KINDS[kind],
                                " · ".join(x for x in (fields.get("name", ""), fields.get("page", ""), fields.get("src", "")) if x))
-            return jsonify({"ok": ok or pushed})
+            # 🐞 20/10: המייל (Apps Script) לוקח לפעמים 10ש'+ — האתר מחכה עד 10ש' והציג 'לא הצלחנו לשלוח'.
+            # כשהפוש יצא — המייל ברקע והאתר מקבל תשובה מיד; בלי פוש — מחכים למייל (הוא הערוץ היחיד).
+            if pushed:
+                threading.Thread(target=_mail, name="site-form-mail", daemon=True).start()
+                return jsonify({"ok": True})
+            return jsonify({"ok": _mail()})
         except Exception as e:
             if log: log.warning(f"site form: {e}")
             return jsonify({"ok": False})
