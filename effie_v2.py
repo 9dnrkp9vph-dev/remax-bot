@@ -11561,6 +11561,10 @@ td.long div{overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box
 .acts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
 .ra{width:1%;white-space:nowrap}.rb{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--navy);display:inline-grid;place-items:center;cursor:pointer;margin-inline-start:4px;vertical-align:middle}
 .rb.rdel{background:#FBEDED;border-color:#FBEDED}
+.sums{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 18px 12px}.sm{background:#FBFAF7;border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.sl{font-size:13px;font-weight:700}.sv{font-size:22px;font-weight:800;margin:4px 0}.sv small{font-size:13px;font-weight:500;color:var(--mut)}.sr{font-size:13px}
+.dup{color:#157A43;font-size:12px;font-weight:700}.ddn{color:#C24040;font-size:12px;font-weight:700}
+@media(max-width:900px){.sums{grid-template-columns:1fr 1fr}}
 .del{width:44px;height:44px;border-radius:12px;background:#FBEDED;border:0;display:grid;place-items:center;cursor:pointer;margin-inline-start:auto}
 .av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#EEE9DD;display:block}
 .av.big{width:88px;height:88px;border:3px solid var(--gold)}
@@ -11587,6 +11591,7 @@ s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-ne
 <button class="tb pri" id="newBtn">+ חדש</button>
 </div>
 <div id="banner"></div>
+<div id="sumBar"></div>
 <div class="wrapt"><table id="tbl"></table></div>
 <div class="foot"><span id="range"></span><span><button class="tb" id="prev">הקודם</button> <button class="tb" id="next">הבא</button></span></div>
 </section></div>
@@ -11664,7 +11669,15 @@ function renderTable(){ var cs = cols(), h = '<tr>';
   document.getElementById('prev').disabled = ST.page <= 1; document.getElementById('next').disabled = b >= TOTAL; }
 function load(){ return api('/v2/api/crm/' + MOD + '/list?' + qs()).then(function(r){ return r.json(); }).then(function(j){
   if (!j.ok){ document.getElementById('tbl').innerHTML = '<tr><td class="empty">' + (j.reason === 'forbidden' ? 'אין הרשאה — ה-CRM לבעל המשרד בלבד.' : 'שגיאה: ' + esc(j.reason)) + '</td></tr>'; return; }
-  ROWS = j.rows; TOTAL = j.total; renderTable(); }); }
+  ROWS = j.rows; TOTAL = j.total; renderTable(); renderSum(j.summary); }); }
+function renderSum(S){ var el = document.getElementById('sumBar'); if (!el) return;
+  if (!S || !S.length){ el.innerHTML = ''; return; }
+  function m(v){ return '₪' + Math.round(v || 0).toLocaleString('en-US'); }
+  function dlt(a, b){ if (!b) return a ? '<span class="dup">חדש</span>' : ''; var p = Math.round((a - b) * 100 / b); return '<span class="' + (p >= 0 ? 'dup' : 'ddn') + '">' + (p >= 0 ? '+' : '') + p + '%</span>'; }
+  el.innerHTML = '<div class="sums">' + S.map(function(x){ return '<div class="sm"><div class="sl">' + esc(x.label) + ' <span class="mut">' + esc(x.sub) + '</span></div>' +
+    '<div class="sv">' + x.n.toLocaleString('he-IL') + ' <small>עסקאות</small> ' + dlt(x.n, x.prev.n) + '</div>' +
+    '<div class="sr">סכום ' + m(x.amount) + ' · עמלה <b>' + m(x.commission) + '</b> ' + dlt(x.commission, x.prev.commission) + '</div>' +
+    '<div class="mut">אשתקד: ' + x.prev.n + ' עסקאות · עמלה ' + m(x.prev.commission) + '</div></div>'; }).join('') + '</div>'; }
 function loadSaved(){ return api('/v2/api/crm/views?module=' + MOD).then(function(r){ return r.json(); }).then(function(j){ SAVED = (j && j.views) || []; renderViews(); }); }
 function waLink(ph, txt){ var d = String(ph || '').replace(/\D/g, ''); if (d.indexOf('972') === 0) d = d.slice(3); if (d.charAt(0) === '0') d = d.slice(1);
   return 'https://wa.me/972' + d + (txt ? '?text=' + encodeURIComponent(txt) : ''); }
@@ -12239,6 +12252,42 @@ def crm_deal_records(rows, now):
                     "reported": ("דווח" if rep else "לא דווח") if y >= 2026 else "",
                     "invoice": str(r.get("invoice_no") or "").strip(), "notes": str(r.get("notes") or "").strip(),
                     "check": " · ".join(check), "missing": bool(r.get("missing_since"))})
+    return out
+
+
+_CRM_MONTHS_HE = ("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
+
+
+def crm_deal_summary(rows, now):
+    """[CRM עסקאות 21/10 'שנתי רבעוני חודשי ומתחילת החודש'] על הרשומות המסוננות: מספר עסקאות (צדדים), סכום ועמלה —
+    השנה (מ-1/1), הרבעון (מתחילתו), החודש הקודם (מלא) ומתחילת החודש; כל אחד מול אותה תקופה אשתקד."""
+    import datetime as _dds
+    from zoneinfo import ZoneInfo as _ZDS
+    il = _ZDS("Asia/Jerusalem")
+    n = _dds.datetime.fromtimestamp(now, il)
+    m0 = n.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    pm0 = (m0 - _dds.timedelta(days=1)).replace(day=1)
+    q0 = m0.replace(month=(n.month - 1) // 3 * 3 + 1)
+    y0 = m0.replace(month=1)
+    def back(d):
+        try:
+            return d.replace(year=d.year - 1)
+        except ValueError:            # 29/02
+            return d.replace(year=d.year - 1, day=28)
+    def agg(a, b):
+        sel = [r for r in rows or [] if r.get("date") and a.timestamp() <= r["date"] < b.timestamp()]
+        num = lambda v: v if isinstance(v, (int, float)) else 0
+        return {"n": len(sel), "amount": sum(num(r.get("amount")) for r in sel), "commission": sum(num(r.get("commission")) for r in sel)}
+    dm = lambda d: d.strftime("%d/%m")
+    spans = [("year", "שנתי · %d" % n.year, y0, n), ("quarter", "רבעוני · Q%d" % ((n.month - 1) // 3 + 1), q0, n),
+             ("month", "חודשי · " + _CRM_MONTHS_HE[pm0.month - 1], pm0, m0),
+             ("mtd", "מתחילת החודש · " + _CRM_MONTHS_HE[n.month - 1], m0, n)]
+    out = []
+    for key, label, a, b in spans:
+        end_shown = (b - _dds.timedelta(days=1)) if key == "month" else b
+        d = agg(a, b)
+        d.update(key=key, label=label, sub=dm(a) + "–" + dm(end_shown), prev=agg(back(a), back(b)))
+        out.append(d)
     return out
 
 
@@ -16276,7 +16325,15 @@ def register(app, G):
             res = crm_query(_crm_records(module), q, filters, sort, direction, page, 50, _tm.time(), module=module)
         except _CrmReadError as e:
             return _crm_read_err(e)
-        return jsonify({"ok": True, "rows": res["rows"], "total": res["total"], "page": page, "size": 50})
+        out = {"ok": True, "rows": res["rows"], "total": res["total"], "page": page, "size": 50}
+        if module == "deals":   # [21/10] שנתי / רבעוני / חודשי / מתחילת החודש — על הסינון הנוכחי (בלי בורר התקופה)
+            try:
+                f2 = {k: v for k, v in filters.items() if k != "period"}
+                allr = crm_query(_crm_records(module), q, f2, sort, direction, 1, 10 ** 6, _tm.time(), module=module)["rows"]
+                out["summary"] = crm_deal_summary(allr, _tm.time())
+            except Exception as e:
+                if log: log.warning(f"crm deals summary: {e}")
+        return jsonify(out)
 
     def _crm_transcript(rec):
         """תמלול: לפי המפתח (שיחה ישירה mk:), אחרת השיחה התואמת בטבלת הצל (טלפונים + ±15 דק')."""

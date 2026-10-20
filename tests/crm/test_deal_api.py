@@ -28,4 +28,8 @@ ck(c.post("/v2/api/crm/deals/record", json={"fields": {}}).status_code == 400, "
 ck("בית וגן 10" in c.get("/v2/api/crm/deals/export").get_data(as_text=True), "export")
 h = c.get("/v2/crm/deals").get_data(as_text=True)
 ck("['deals','עסקאות']" not in h or True, "page")
+ck([x["key"] for x in l.get("summary") or []] == ["year", "quarter", "month", "mtd"], ("summary with the list", l.get("summary")))
+ck(c.get("/v2/api/crm/deals/list?f_agent=יניב פרי").get_json()["summary"][0]["n"] == 0, "summary follows the agent filter")
+ck("summary" not in c.get("/v2/api/crm/calls/list").get_json(), "only for deals")
+ck("function renderSum" in h and 'id="sumBar"' in h, "summary strip on the page")
 print("deal_api OK", n)
