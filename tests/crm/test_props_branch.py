@@ -23,4 +23,8 @@ V = lambda v: q(R, "", {"view": v}, "date", "desc", 1, 50, NOW, module="props")[
 for oid, n in (("5625538", 1), ("5628636", 2), ("8532791", 1)):
     ck(views.get("br_" + oid) == "המשרד · " + BR[oid] and V("br_" + oid) == n, (oid, views, V("br_" + oid)))
 ck(V("office") == 5, "office view still counts all branches")
+# [21/10 אייל: 'אלי שמול ויהודית תעביר לביאליק'] — סוכן שנמצא בסניף אחר ביד2 משויך לסניף שלו
+of2 = [{"סוכן 1": n, "כתובת": "ש %d" % i, "מחיר": "1", "_y2_office_id": "8532791", "_ep": NOW} for i, n in enumerate(["אלי שמול", "יהודית שמול", "קובי חמו"])]
+R2 = {r["agent"]: r["branch"] for r in rec([], [], of2, {}, NOW, h)}
+ck(R2 == {"אלי שמול": "ביאליק", "יהודית שמול": "ביאליק", "קובי חמו": "קרית ים"}, R2)
 print("props_branch OK", _load.n)

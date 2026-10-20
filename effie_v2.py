@@ -12606,6 +12606,8 @@ def crm_daily_series(rows, get_when, days, today_iso):
 # [21/10 אייל: 'לחלק את הנכסים במשרד לפי 3 המשרדים'] מספר המשרד ביד2 (_y2_office_id) → שם הסניף.
 # 21/10: לפי הסוכנים בכל מספר מול הסניף שלהם בהיסטוריית העסקאות (אייל אישר שאלה המשרדים).
 _CRM_Y2_BRANCH = {"5625538": "מוצקין", "5628636": "ביאליק", "8532791": "קרית ים"}
+# [21/10 אייל: 'אלי שמול ויהודית תעביר לביאליק'] סוכן שמפרסם דרך סניף אחר ביד2 → הסניף שלו (גובר על מספר המשרד)
+_CRM_AGENT_BRANCH = {"אלי שמול": "ביאליק", "יהודית שמול": "ביאליק"}
 
 
 CRM_MODULES = {
@@ -13427,7 +13429,7 @@ def crm_props_records(nb, excl, office, pd_map, now, h):
         addr = " ".join(x for x in (str(r.get("כתובת") or "").strip(), str(r.get("מספר בית") or "").strip()) if x)
         ex = str(r.get("בלעדיות") or "")
         rec.update({"source": "המשרד", "ad_id": str(r.get("מספר מודעה") or "").strip(),
-                    "branch": _CRM_Y2_BRANCH.get(str(r.get("_y2_office_id") or "").strip(), ""),
+                    "branch": _CRM_AGENT_BRANCH.get(ag) or _CRM_Y2_BRANCH.get(str(r.get("_y2_office_id") or "").strip(), ""),
                     "type": str(r.get("סוג נכס") or ""), "city": str(r.get("עיר / ישוב") or ""),
                     "neighborhood": str(r.get("שכונה") or ""), "address": addr, "rooms": _crm_rooms(r.get("חדרים")),
                     "sqm": _crm_int(r.get('מ"ר')), "floor": str(r.get("קומה") or ""), "price": price,

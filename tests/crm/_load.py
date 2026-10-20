@@ -10,7 +10,7 @@ def load(*names, extra=None):
     want = set(names)
     for node in ast.parse(_SRC).body:
         if (isinstance(node, ast.FunctionDef) and node.name in want) or (
-                isinstance(node, ast.Assign) and [getattr(t, "id", "") for t in node.targets][0] in (want | {"_INV_TYPES", "_CRM_Y2_BRANCH"})):
+                isinstance(node, ast.Assign) and [getattr(t, "id", "") for t in node.targets][0] in (want | {"_INV_TYPES", "_CRM_Y2_BRANCH", "_CRM_AGENT_BRANCH"})):
             exec(compile(ast.Module([node], []), "effie_v2.py", "exec"), ns)
     missing = want - set(ns)
     if missing:
