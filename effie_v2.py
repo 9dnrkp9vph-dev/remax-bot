@@ -12855,6 +12855,47 @@ def crm_sig_fill_budget(sigs, fetch_headers, header_prices):
     return out
 
 
+def crm_sig_fill_phone(sigs, fetch_headers, parse_header, buyers, canon):
+    """[CRM 20/10 'למה חסרים מספרי טלפון?'] חתימות מאפי לפני 20/10 לא שמרו את נייד הלקוח בשורה. משלימים, לפי הסדר:
+    (1) כותרת ההסכם באפי ('לקוח: … · טל' …') — שאילתה אחת; (2) שורה אחרת של אותה החתמה (אותו לקוח+סוכן+יום,
+    למשל מוכר ובלעדיות); (3) קונה באותו שם אצל אותו סוכן. לא משנה את הקלט; כשל במקור — ממשיכים לבא."""
+    out = [dict(g) for g in (sigs or [])]
+    empty = lambda g: not bs_p9(g.get("phone"))
+    need = {}
+    for i, g in enumerate(out):
+        if empty(g):
+            tok = _crm_sig_token(g)
+            if tok:
+                need.setdefault(tok, []).append(i)
+    if need:
+        try:
+            hdrs = fetch_headers(sorted(need)) or {}
+        except Exception:
+            hdrs = {}
+        for tok, idxs in need.items():
+            try:
+                ph = str((parse_header(hdrs.get(tok) or "") or {}).get("phone") or "").strip()
+            except Exception:
+                ph = ""
+            if bs_p9(ph):
+                for i in idxs:
+                    out[i]["phone"] = ph
+    day = lambda g: str(g.get("received_at") or "").replace("T", " ").split(" ")[0]
+    ck = lambda g: (inv_name_key(g.get("client_name")), str(canon(g.get("agent") or "") or "").strip())
+    sib = {}
+    for g in out:
+        if not empty(g):
+            sib.setdefault(ck(g) + (day(g),), g["phone"])
+    byr = {}
+    for b in buyers or []:
+        if bs_p9(b.get("phone")):
+            byr.setdefault((inv_name_key(b.get("name")), str(canon(b.get("agent") or "") or "").strip()), str(b.get("phone")).strip())
+    for g in out:
+        if empty(g) and g.get("client_name"):
+            g["phone"] = sib.get(ck(g) + (day(g),)) or byr.get(ck(g)) or g.get("phone") or ""
+    return out
+
+
 def crm_unify_agents(records, keyfn, field="agent", also=("contact",)):
     """שם סוכן אחד לכל סוכן: מסיר תווים נסתרים ורווחים כפולים, ומאחד כתיב שונה (keyfn = _canon_key)
     לכתיב הנפוץ ביותר — אחרת בסינון לפי סוכן כל שם מופיע פעמיים והחתימות מתפצלות ביניהם."""
@@ -16030,6 +16071,12 @@ def register(app, G):
                 return {t: _SIG_HDR_CACHE.get(t, "") for t in toks}
             def _build_sigs():
                 sigs = crm_sig_fill_budget(G["get_signings"]() or [], _sig_doc_headers, G["_sign_header_prices"])
+                try:
+                    _buyers = G["_fetch_manual_buyers"]() or []
+                except Exception:
+                    _buyers = []
+                sigs = crm_sig_fill_phone(sigs, _sig_doc_headers, G["_parse_sign_header"], _buyers,
+                                          lambda n: G["_canon_agent_name"](n) or n)
                 return crm_unify_agents(crm_sig_records(sigs, {"ep": G["_excl_epoch"], "label": G["_deal_label"]}),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
