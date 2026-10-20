@@ -3317,7 +3317,13 @@ ADMIN_PHONES = _DEFAULT_ADMIN_PHONES + [p.strip() for p in os.environ.get("ADMIN
 # דרך DEV_PHONES ב-web_role_for, כך שאין נעילה. להוסיף חזרה: {"<last9>": "<code>"}.
 # חשבון ביקורת App Store: 0501234567 + קוד קבוע — הבודקים של אפל לא מקבלים SMS ישראלי.
 # מקבל role=agent בלבד (לא admin — ראה api_auth_verify). להסרה אחרי האישור: לרוקן ל-{}.
-_BYPASS_LOGINS = {"501234567": "1905"}
+# 20/10 (אייל: "לכבות עכשיו") — כבוי: האפליקציה אושרה ב-Unlisted, והקוד הקבוע פותח כניסת סוכן לכל מי שמכיר אותו.
+# להחזרה לפני הגשת גרסה לאפל: env APPLE_REVIEW_LOGIN=1 ב-Render. כשכבוי — גם סשן קיים של המספר נחסם (_review_blocked).
+_REVIEW_PHONE = "501234567"
+_BYPASS_LOGINS = {_REVIEW_PHONE: "1905"} if os.environ.get("APPLE_REVIEW_LOGIN") == "1" else {}
+
+def _review_blocked(phone):
+    return _last9(phone or "") == _REVIEW_PHONE and _REVIEW_PHONE not in _BYPASS_LOGINS
 
 # --- in-memory OTP + sessions ---
 _otp_store = {}     # last9 -> {"code","exp","tries"}
@@ -3642,7 +3648,7 @@ def _display_name_for(name, phone):
     l9 = _last9(phone or "")
     if not l9:
         return nm
-    if l9 in _BYPASS_LOGINS:
+    if l9 == _REVIEW_PHONE:
         return "חשבון בדיקה"
     try:
         real = str(_name_for_phone(l9) or "").strip()
@@ -4237,7 +4243,7 @@ def _web_auth():
     if not tok: return None
     s = _web_sessions.get(tok)
     if s:
-        if s["exp"] < time.time():
+        if s["exp"] < time.time() or _review_blocked(s.get("phone", "")):
             _web_sessions.pop(tok, None); return None
         if _is_suspended(s.get("phone", "")) and not _is_dev(s.get("phone", "")):
             return None   # סוכן מושהה — חסום (לא נועל את המפתח)
@@ -4246,6 +4252,8 @@ def _web_auth():
     # נפילה לטוקן חתום (stateless) — שורד רסטארט של השרת, בלי לזרוק את המשתמש החוצה
     phone = _verify_token(tok)
     if phone:
+        if _review_blocked(phone):
+            return None
         if _is_suspended(phone) and not _is_dev(phone):
             return None
         sess = _session_from_phone(phone)
