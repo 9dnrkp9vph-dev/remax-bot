@@ -2093,7 +2093,7 @@ var GAL_KEY='ysGal', GAL_MAX_ENTRIES=4000, GALLERY_BACKFILL=false, GALLERY_BACKF
 // v14.4 (20/10, אייל: 'למה לא מופיע מעלית?'): המאפיינים מסעיף "מה יש בנכס" בדף המודעה (inProperty.include*),
 // מאותו דף שהסורק כבר פותח — נשמרים ב-GM (שורדים מחיקת נתוני אתר) ומתווספים לתגיות של השורה. רק 'כן' נספר.
 // השלמה לסניפי Family: מודעה שעוד לא נקראו לה מאפיינים נפתחת בתוך אותה תקרה (FEAT_BACKFILL_FAMILY).
-var FEAT_KEY='ysFeat', FEAT_MAX_ENTRIES=4000, FEAT_BACKFILL_FAMILY=true;
+var FEAT_KEY='ysFeat', FEAT_MAX_ENTRIES=6000, FEAT_BACKFILL_FAMILY=true, FEAT_BACKFILL_ALL=true;   // ALL = גם שת"פ (אייל 20/10)
 var FEAT_NAMES={includeElevator:'מעלית',includeSecurityRoom:'ממ"ד',includeBalcony:'מרפסת',includeParking:'חניה',
   includeWarehouse:'מחסן',includeAirconditioner:'מיזוג',includeBoiler:'דוד שמש',includeAccessibility:'גישה לנכים',
   includeBars:'סורגים',includeRenovated:'משופצת',includeTadiran:'מזגן תדיראן',includeFurniture:'ריהוט'};
@@ -2295,7 +2295,7 @@ function fetchItemAgents(rows, officeName, fetchFn, cap, onProg, done, stats, of
   var cache=agentCache(), gal=galLoad(), feat=featLoad(), need=[], seen={}, now=Date.now();
   stats.gal=0; stats.feat=0;
   var galFill=GALLERY_BACKFILL||(GALLERY_BACKFILL_FAMILY&&isFamId(officeId));
-  var featFill=FEAT_BACKFILL_FAMILY&&isFamId(officeId);
+  var featFill=FEAT_BACKFILL_ALL||(FEAT_BACKFILL_FAMILY&&isFamId(officeId));
   (rows||[]).forEach(function(r){
     var tok=String(r.link||'').split('/').pop();
     if(!tok||seen[tok])return; seen[tok]=1;
