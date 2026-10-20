@@ -4836,7 +4836,7 @@ def api_auth_whoami():
     return jsonify(out)
 
 def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
-                      location=None, tz="Asia/Jerusalem", attendees=None, send_updates="none"):
+                      location=None, tz="Asia/Jerusalem", attendees=None, send_updates="none", color_id=None):
     """יוצר אירוע ביומן הראשי של הסוכן (לפי האימייל המקושר). מחזיר eventId או None.
     attendees = רשימת מיילים שיוזמנו (מקבלים הזמנה במייל אם send_updates='all').
     לעולם לא זורק חריגה — כשל ביומן לא ישבור את הפעולה במערכת.
@@ -4855,6 +4855,8 @@ def gcal_create_event(email, summary, description="", start_iso=None, end_iso=No
         ev = {"summary": summary or "", "description": description or ""}
         if location:
             ev["location"] = location
+        if color_id:
+            ev["colorId"] = str(color_id)   # צבעי Google: 11 = אדום
         if attendees:
             _at = [{"email": a} for a in attendees if a and "@" in a]
             if _at: ev["attendees"] = _at
@@ -8833,17 +8835,53 @@ def _nb_notes_for(key, me9="", is_mgr=False):
     out.sort(key=lambda x: x.get("ts", 0))
     return out
 
+def _nb_cal_text(rec, row):
+    """[20/10 אייל: 'שהפגישות ליומן מאפי יגיעו כמו מנדלן וואן'] → (כותרת, תיאור, מיקום).
+    כותרת 'פגישה עם בעל נכס - <שם>'; המיקום = כתובת מלאה (נפתחת במפות); בתיאור: שורת הנכס
+    (סוג/חדרים/מ"ר/קומה, כתובת, עיר, מחיר), טלפון, הערת הסוכן, והערות בעל הנכס (טקסט המודעה).
+    row = שורת נכס נולד (או None כשלא נמצאה)."""
+    row = row or {}
+    st, owner = rec.get("status"), str(rec.get("owner", "") or "").strip()
+    base = "פגישה עם בעל נכס" if st == "meeting" else "פולו-אפ לבעל נכס" if st == "followup" else "בעל נכס"
+    summary = base + (" - " + owner if owner else "")
+    addr = str(rec.get("addr", "") or "").strip()
+    city = str(row.get("עיר", "") or "").strip()
+    nb = str(row.get("שכונה", "") or "").strip()
+    has = lambda part: part and part.replace("קריית", "קרית") in addr.replace("קריית", "קרית")
+    loc = ", ".join([x for x in [addr, nb if not has(nb) else "", city if not has(city) else ""] if x])
+    dsc = str(row.get("תיאור נכס", "") or "").strip()
+    head, notes = "", dsc
+    m = re.match(r"^([^.\n]*·[^.\n]*)(?:\.\s*|\n|$)(.*)$", dsc, re.S)   # 'דירה · 4 חד' · 110 מ"ר. טקסט'
+    if m:
+        head, notes = ", ".join(x.strip() for x in m.group(1).split("·") if x.strip()), m.group(2).strip()
+    kind = "להשכרה" if "השכר" in str(row.get("סוג עסקה", "") or "") else "למכירה"
+    price = _newborn_price(rec.get("price") or row.get("מחיר", ""))
+    first = ", ".join([x for x in [head, addr, city if not has(city) else ""] if x])
+    lines = [kind + ": " + first + ((" " + price) if price else "")]
+    if rec.get("ophone"):
+        lines.append("טלפון: " + str(rec["ophone"]))
+    if rec.get("note"):
+        lines.append("הערה: " + str(rec["note"]))
+    if notes:
+        lines += ["", "הערות בעל הנכס:", notes]
+    return summary, "\n".join(lines), (loc or addr)
+
+
+def _nb_cal_row(key):
+    """שורת נכס נולד לפי המפתח (מהמטמון הקיים) — לפרטי האירוע ביומן; לא נמצא → None."""
+    try:
+        for r in fetch_newborn() or []:
+            if _nb_key(r) == key:
+                return r
+    except Exception:
+        pass
+    return None
+
+
 def _nb_cal_create(rec, date, organizer_email):
     """יוצר אירועי יומן לפגישה/פולואפ לפי הרשומה והתאריך — ביומן הקובע + הסוכן. מחזיר [{email,id}]."""
-    label = _NB_STATUS_LABELS.get(rec.get("status"), "")
-    addr = rec.get("addr", "")
-    summary = label + " · " + (addr or "נכס נולד")
-    desc = "נכס נולד · נקבע מ-Family Bot"
-    if rec.get("note"):   desc += "\nהערה: " + rec["note"]
-    if rec.get("owner"):  desc += "\nבעל הנכס: " + rec["owner"]
-    if addr:              desc += "\nכתובת: " + addr
-    if rec.get("price"):  desc += "\nמחיר: " + rec["price"]
-    if rec.get("ophone"): desc += "\nטלפון בעל הנכס: " + rec["ophone"]
+    summary, desc, location = _nb_cal_text(rec, _nb_cal_row(rec.get("pkey", "")))
+    color = "11" if rec.get("status") == "meeting" else None   # פגישה — אדום כמו בנדל"ן וואן
     start_iso = date; end_iso = None
     if "T" in date:
         if len(date) == 16: start_iso = date + ":00"
@@ -8864,8 +8902,8 @@ def _nb_cal_create(rec, date, organizer_email):
     cal = []
     for em in targets:
         atts = invite if em == organizer_email else []
-        eid = gcal_create_event(em, summary, desc, start_iso, end_iso,
-                                attendees=atts, send_updates=("all" if atts else "none"))
+        eid = gcal_create_event(em, summary, desc, start_iso, end_iso, location=location,
+                                attendees=atts, send_updates=("all" if atts else "none"), color_id=color)
         if eid: cal.append({"email": em, "id": eid})
     return cal
 
