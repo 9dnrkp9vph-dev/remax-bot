@@ -12603,6 +12603,11 @@ def crm_daily_series(rows, get_when, days, today_iso):
 
 
 # ── [CRM-2 19/10] מסכי CRM במבנה פיירברי — הגדרת מודולים + מנוע שאילתות (טהור) ──────────
+# [21/10 אייל: 'לחלק את הנכסים במשרד לפי 3 המשרדים'] מספר המשרד ביד2 (_y2_office_id) → שם הסניף.
+# ⚠️ השמות ממתינים לאישור אייל (SQL: סוכנים לכל מספר) — עד אז 'סניף <מספר>'.
+_CRM_Y2_BRANCH = {"5625538": "סניף 5625538", "5628636": "סניף 5628636", "8532791": "סניף 8532791"}
+
+
 CRM_MODULES = {
     "buyers": {
         "title": "קונים",
@@ -12673,11 +12678,14 @@ CRM_MODULES = {
                     ("neighborhood", "שכונה", "text"), ("address", "כתובת", "text"), ("rooms", "חד'", "text"),
                     ("sqm", "מ\"ר", "text"), ("floor", "קומה", "text"), ("price", "מחיר", "price"), ("deal", "עסקה", "text"),
                     ("contact", "בעלים / משרד / סוכן", "text"), ("phone", "טלפון", "phone"), ("excl", "בלעדיות", "text"),
+                    ("branch", "סניף", "text"),
                     ("date", "נראה לראשונה", "date"), ("status", "מצב", "status"), ("link", "מודעה", "link"), ("desc", "תיאור", "long")],
-        "default_cols": ["image", "source", "type", "city", "neighborhood", "address", "rooms", "price", "contact", "phone", "date", "status", "link"],
+        "default_cols": ["image", "source", "type", "city", "neighborhood", "address", "rooms", "price", "contact", "phone", "branch", "date", "status", "link"],
         "editable": [],
         "views": [("all", "כל הפעילים"), ("private", "פרטיים (נכס נולד)"), ("new", "חדשים (עד 2 ימים)"), ("drops", "ירידות מחיר"),
-                  ("shtaf", "מודעות משרדים (שת\"פ)"), ("office", "המשרד שלנו"), ("delisted", "ירד מפרסום"), ("everything", "הכל")],
+                  ("shtaf", "מודעות משרדים (שת\"פ)"), ("office", "המשרד שלנו")]
+                 + [("br_" + _oid, "המשרד · " + _bn) for _oid, _bn in _CRM_Y2_BRANCH.items()]
+                 + [("delisted", "ירד מפרסום"), ("everything", "הכל")],
     },
     "calls": {
         "title": "לוג שיחות",
@@ -13008,6 +13016,7 @@ CRM_VIEWS = {
               "drops": lambda r, t: bool(r.get("dropped")) and not r.get("delisted"),
               "shtaf": lambda r, t: r.get("source") == "שת\"פ" and not r.get("delisted"),
               "office": lambda r, t: r.get("source") == "המשרד" and not r.get("delisted"),
+              **{"br_" + _oid: (lambda r, t, _b=_bn: r.get("branch") == _b and not r.get("delisted")) for _oid, _bn in _CRM_Y2_BRANCH.items()},
               "delisted": lambda r, t: bool(r.get("delisted")),
               "everything": lambda r, t: True},
     "automations": {"on": lambda r, t: r.get("status") == "פעילה",
@@ -13418,6 +13427,7 @@ def crm_props_records(nb, excl, office, pd_map, now, h):
         addr = " ".join(x for x in (str(r.get("כתובת") or "").strip(), str(r.get("מספר בית") or "").strip()) if x)
         ex = str(r.get("בלעדיות") or "")
         rec.update({"source": "המשרד", "ad_id": str(r.get("מספר מודעה") or "").strip(),
+                    "branch": _CRM_Y2_BRANCH.get(str(r.get("_y2_office_id") or "").strip(), ""),
                     "type": str(r.get("סוג נכס") or ""), "city": str(r.get("עיר / ישוב") or ""),
                     "neighborhood": str(r.get("שכונה") or ""), "address": addr, "rooms": _crm_rooms(r.get("חדרים")),
                     "sqm": _crm_int(r.get('מ"ר')), "floor": str(r.get("קומה") or ""), "price": price,
