@@ -11872,6 +11872,7 @@ ul.ins{margin:0;padding-inline-start:18px;line-height:1.7;font-size:14px}
 .tg{width:52px;height:30px;border-radius:99px;background:#C9CDD4;position:relative;cursor:pointer;flex:none;border:0}
 .tg::after{content:"";position:absolute;top:3px;right:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:right .15s}
 .tg.on{background:var(--green)}.tg.on::after{right:25px}
+.vt{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}.vt th{font-weight:500;color:var(--mut,#6B7280);text-align:center;padding:4px}.vt td{text-align:center;padding:5px 4px;border-top:1px solid #F0EDE3}.vt td:first-child,.vt th:first-child{text-align:right}.vt tr.tot td{font-weight:800}
 .on-list{display:flex;flex-wrap:wrap;gap:8px}.chip{background:#E6F2EC;color:var(--green);border-radius:99px;padding:5px 12px;font-size:13px;font-weight:500}
 .chip i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-inline-end:6px}
 @media(max-width:1100px){.ctl{grid-template-columns:1fr}}
@@ -11945,7 +11946,7 @@ function render(){
  var uT='הכי פעילים באפי · '+PL[P]+(P==='year'&&UB.year_from?' <span class="mut">(מ-'+UB.year_from.split('-').reverse().join('/')+' — הנתונים נשמרים 60 יום)</span>':'');
  document.getElementById('app').innerHTML=
   '<div class="health">'+h+'</div>'+
-  '<div class="ctl"><div class="card"><h2>באתר עכשיו <span class="mut" id="slN"></span></h2><div class="on-list" id="slList"><span class="mut">טוען…</span></div>'+
+  '<div class="ctl"><div class="card"><h2>באתר עכשיו <span class="mut" id="slN"></span></h2><div class="on-list" id="slList"><span class="mut">טוען…</span></div><div id="slStats"></div>'+
   '<h2 style="margin-top:14px">מחוברים לאפי עכשיו <span class="mut" id="onN"></span></h2><div class="on-list" id="onList"><span class="mut">טוען…</span></div></div>'+
   '<div class="card"><h2>שליטה</h2>'+
   '<div class="sw"><div><div class="t">וואטסאפ רשמי</div><div class="d">כל ההודעות האוטומטיות מהמספר הרשמי (שיחות, חתימות, לידים, חשבוניות)</div></div><button class="tg" id="swWa" aria-label="וואטסאפ רשמי"></button></div>'+
@@ -12003,8 +12004,15 @@ function ctl(){online();siteLive();fetch('/v2/api/crm/switches',{headers:hdr()})
     var body={};body[id==='swWa'?'wa_official':'push']=on;
     fetch('/v2/api/crm/switches',{method:'POST',headers:hdr(),body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok)setSw(j);});};});}
 var SL={facebook:'פייסבוק / אינסטגרם',google_ads:'גוגל ממומן',google:'גוגל (אורגני)',ai:'צ׳אט בינה מלאכותית',other:'אתר אחר / קמפיין',direct:'ישיר'};
+/* [VISITS 20/10] כניסות לאתר לפי תקופה ומקור (מבקר אחד ביום; שבוע/חודש/שנה = סכום הימים) */
+function visitsHtml(v){if(!v||!v.today)return '';var P=['today','week','month','year'],H={today:'היום',week:'השבוע',month:'החודש',year:'השנה'};
+  var srcs=Object.keys(SL).filter(function(k){return P.some(function(p){return (v[p].src||{})[k];});});
+  function row(lb,f,cls){return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lb+'</td>'+P.map(function(p){return '<td>'+f(v[p])+'</td>';}).join('')+'</tr>';}
+  return '<table class="vt"><tr><th>כניסות</th>'+P.map(function(p){return '<th>'+H[p]+'</th>';}).join('')+'</tr>'+
+    row('סה״כ',function(x){return x.v||0;},'tot')+srcs.map(function(k){return row(SL[k],function(x){return (x.src||{})[k]||0;});}).join('')+'</table>'+
+    (v.since?'<div class="mut" style="font-size:11.5px;margin-top:6px">נספר מ-'+v.since.split('-').reverse().join('/')+' · מבקר אחד ביום</div>':'<div class="mut" style="font-size:11.5px;margin-top:6px">הספירה מתחילה עם המבקר הבא באתר</div>');}
 function siteLive(){fetch('/v2/api/crm/site_live',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){
-  var el=document.getElementById('slList');if(!el)return;
+  var el=document.getElementById('slList');if(!el)return;var vs=document.getElementById('slStats');if(vs)vs.innerHTML=visitsHtml(j&&j.visits);
   if(!j||!j.ok){el.innerHTML='<span class="mut">האתר לא ענה כרגע</span>';document.getElementById('slN').textContent='';return;}
   document.getElementById('slN').textContent='('+j.now+')';var b=j.by_src||{};
   el.innerHTML=j.now?Object.keys(SL).filter(function(k){return b[k];}).map(function(k){return '<span class="chip"><i></i>'+SL[k]+' · '+b[k]+'</span>';}).join(''):'<span class="mut">אין מבקרים באתר כרגע</span>';}).catch(function(){});}
@@ -16603,6 +16611,11 @@ def register(app, G):
                          "by_src": {str(k)[:20]: int(v) for k, v in (j.get("by_src") or {}).items()}}
             except Exception as e:
                 if log: log.warning(f"crm site_live: {e}")
+        try:   # [VISITS 20/10] כניסות לפי תקופה — נשמרות באפי, מוצגות גם כשהאתר לא ענה
+            fn = getattr(app, "site_visits_summary", None)
+            d["visits"] = fn() if fn else None
+        except Exception:
+            d["visits"] = None
         _site_live_cache.update(t=now, d=d)
         return jsonify(d)
 

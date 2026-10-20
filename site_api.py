@@ -322,6 +322,90 @@ def ai_usage_merge(store, delta, keep=AI_KEEP_DAYS):
     return {d: out[d] for d in sorted(out)[-keep:]}
 
 
+# ---- כניסות לאתר לפי יום ומקור (אייל 20/10: 'היום השבוע החודש השנה, ואיך הגיעו') ----
+# האתר סופר מבקר אחד ביום (בלי עוגיות) ושולח כל 5 דק' את אתמול+היום, לכל תהליך (boot) בנפרד — המונה שלו מצטבר
+# ומתאפס בפריסה, ולכן לכל boot שומרים את האחרון ומחברים. ימים שנסגרו (2+ ימים אחורה) מקופלים לסכום אחד.
+# קונפיג `v2_site_visits`: {יום: {"b": {boot: {v, src}}} או {"t": {v, src}}} — 400 ימים.
+VISIT_SOURCES = ("google", "google_ads", "facebook", "ai", "direct", "other")
+VISITS_KEEP_DAYS = 400
+
+
+def _visit_rec(v, src):
+    try:
+        n = max(0, min(10 ** 6, int(v or 0)))
+    except (TypeError, ValueError):
+        n = 0
+    out = {}
+    for k, c in (src or {}).items() if isinstance(src, dict) else ():
+        try:
+            c = max(0, min(10 ** 6, int(c or 0)))
+        except (TypeError, ValueError):
+            continue
+        if k in VISIT_SOURCES and c:
+            out[k] = c
+    return {"v": n, "src": out}
+
+
+def visits_day(rec):
+    """רשומת יום → {v, src} (סכום כל התהליכים, או הסכום המקופל)."""
+    if "t" in (rec or {}):
+        return {"v": int(rec["t"].get("v") or 0), "src": dict(rec["t"].get("src") or {})}
+    tot = {"v": 0, "src": {}}
+    for b in ((rec or {}).get("b") or {}).values():
+        tot["v"] += int(b.get("v") or 0)
+        for k, c in (b.get("src") or {}).items():
+            tot["src"][k] = tot["src"].get(k, 0) + int(c or 0)
+    return tot
+
+
+def visits_merge(store, boot, days, keep=VISITS_KEEP_DAYS):
+    boot = str(boot or "")
+    if not re.fullmatch(r"[0-9a-f]{2,16}", boot):
+        return dict(store or {})
+    out = {d: dict(r) for d, r in (store or {}).items()}
+    for d in (days or [])[:3]:
+        day = str((d or {}).get("day") or "")
+        if not re.fullmatch(r"20\d\d-\d\d-\d\d", day):
+            continue
+        rec = out.setdefault(day, {"b": {}})
+        if "t" in rec:            # יום שכבר נסגר — דיווח מאוחר לא משנה אותו
+            continue
+        bs = dict(rec.get("b") or {})
+        if boot in bs or len(bs) < 30:
+            bs[boot] = _visit_rec(d.get("v"), d.get("src"))
+        rec["b"] = bs
+    if out:
+        import datetime as _dt
+        last = _dt.date.fromisoformat(max(out))
+        for day in list(out):
+            if "b" in out[day] and (last - _dt.date.fromisoformat(day)).days >= 2:
+                out[day] = {"t": visits_day(out[day])}
+    return {d: out[d] for d in sorted(out)[-keep:]}
+
+
+def visits_summary(store, today):
+    """היום / השבוע (מיום ראשון) / החודש / השנה → {v, src}; since = היום הראשון שנספר."""
+    import datetime as _dt
+    starts = {"today": today, "week": today - _dt.timedelta(days=(today.weekday() + 1) % 7),
+              "month": today.replace(day=1), "year": today.replace(month=1, day=1)}
+    res = {k: {"v": 0, "src": {}} for k in starts}
+    for day, rec in (store or {}).items():
+        try:
+            d = _dt.date.fromisoformat(day)
+        except ValueError:
+            continue
+        if d > today:
+            continue
+        t = visits_day(rec)
+        for k, st in starts.items():
+            if d >= st:
+                res[k]["v"] += t["v"]
+                for s, c in t["src"].items():
+                    res[k]["src"][s] = res[k]["src"].get(s, 0) + c
+    res["since"] = min(store) if store else ""
+    return res
+
+
 def _leads_on():
     return (os.environ.get("SITE_LEADS") or "1").strip() != "0"
 
@@ -430,6 +514,31 @@ def register_site(app, G, store=None):
             threading.Thread(target=site_ai_flush, args=(False,), daemon=True, name="site-ai-flush").start()
         return not kind.endswith("_blocked")
     app.site_ai_gate = _ai_gate
+
+    def site_visits_summary():
+        try:
+            return visits_summary((G["_load_config"]() or {}).get("v2_site_visits") or {}, _now_il().date())
+        except Exception as e:
+            if log: log.warning(f"site visits summary: {e}")
+            return None
+    app.site_visits_summary = site_visits_summary
+
+    @app.route("/site/api/visits", methods=["POST"])
+    def site_api_visits():
+        """האתר → כניסות אתמול+היום לפי מקור (לכל היותר פעם ב-5 דק')."""
+        b = request.get_json(silent=True) or {}
+        if not _site_key_ok(b):
+            return jsonify({"ok": False}), 403
+        days = b.get("days") if isinstance(b.get("days"), list) else []
+
+        def _m(cfg):
+            cfg["v2_site_visits"] = visits_merge(cfg.get("v2_site_visits") or {}, b.get("boot"), days)
+        try:
+            G["_config_mutate"](_m)
+            return jsonify({"ok": True})
+        except Exception as e:
+            if log: log.warning(f"site visits: {e}")
+            return jsonify({"ok": False})
 
     def _active_ids():
         return {str(r.get("מספר מודעה", "") or "").strip() for r in (G["fetch_sheet_rows"]() or [])

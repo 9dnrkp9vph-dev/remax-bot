@@ -19,7 +19,7 @@ def fake_get(url, headers=None, timeout=None):
 E._requests.get = fake_get
 c = A.app.test_client()
 j = c.get("/v2/api/crm/site_live").get_json()
-ck(j == {"ok": True, "now": 3, "by_src": {"facebook": 2, "direct": 1}}, j)
+ck({k: v for k, v in j.items() if k != "visits"} == {"ok": True, "now": 3, "by_src": {"facebook": 2, "direct": 1}}, j)   # visits — כניסות לפי תקופה (20/10)
 ck(CALLS[0][0] == "https://site.test/site/live" and CALLS[0][1] == {"X-Site-Key": "kk"}, CALLS)
 c.get("/v2/api/crm/site_live")
 ck(len(CALLS) == 1, "10s cache")
