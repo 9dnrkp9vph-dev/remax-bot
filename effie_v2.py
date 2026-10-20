@@ -12205,6 +12205,43 @@ def crm_todo(calls, sig_recs, act, newborn, contacts, now, h):
             "likes": likes[:30], "nb_untouched": {"n": len(nbl), "list": nbl[:10]}}
 
 
+_CRM_BRANCH_HE = {"bialik": "ביאליק", "motzkin": "מוצקין", "kiryat_yam": "קרית ים"}
+
+
+def crm_deal_records(rows, now):
+    """[CRM עסקאות 21/10] שורות היסטוריית העסקאות (deal_history, שמות הסוכנים כמו באפי) → רשומות.
+    שורה בלי תאריך, רחוב ולקוח = לא עסקה. שולם/דווח — רק מ-2026 (הפירוט קיים רק בקבצי 2026).
+    תאריך עתידי (טעות הקלדה בקובץ, למשל 2109) לא קופץ לראש הרשימה — מסומן 'לבדיקה'."""
+    import datetime as _ddr
+    from zoneinfo import ZoneInfo as _ZDR
+    out = []
+    for r in rows or []:
+        if not (r.get("deal_date") or r.get("street") or r.get("client_name")):
+            continue
+        ts = crm_ts(r.get("deal_date")) or 0
+        check = []
+        if ts and ts > now + 30 * 86400:
+            check.append("תאריך שגוי: " + _ddr.datetime.fromtimestamp(ts, _ZDR("Asia/Jerusalem")).strftime("%d/%m/%Y"))
+            ts = 0
+        if r.get("missing_since"):
+            check.append("נעלמה מהקובץ")
+        side = str(r.get("side") or "").strip()
+        y = int(r.get("year") or 0)
+        st = r.get("status") or {}
+        rep = bool(r.get("reported_date")) or (isinstance(st, dict) and st.get("reported_date") == "green")
+        out.append({"key": "d:" + str(r.get("id")), "date": ts, "branch": _CRM_BRANCH_HE.get(r.get("branch"), r.get("branch") or ""),
+                    "year": y, "kind": "השכרה" if any(w in side for w in ("שוכר", "משכיר")) else "מכירה", "side": side,
+                    "address": ", ".join(x for x in (str(r.get("street") or "").strip(), str(r.get("city") or "").strip()) if x),
+                    "agent": str(r.get("agent") or "").strip(), "client": str(r.get("client_name") or "").strip(),
+                    "phone": str(r.get("client_phone") or "").strip(), "other": str(r.get("other_broker") or "").strip(),
+                    "amount": _crm_int(r.get("deal_amount")), "commission": _crm_int(r.get("commission_net")),
+                    "paid": ("שולם" if r.get("paid_amount") else "טרם שולם") if y >= 2026 else "",
+                    "reported": ("דווח" if rep else "לא דווח") if y >= 2026 else "",
+                    "invoice": str(r.get("invoice_no") or "").strip(), "notes": str(r.get("notes") or "").strip(),
+                    "check": " · ".join(check), "missing": bool(r.get("missing_since"))})
+    return out
+
+
 _CRM_MEET_TAG = {"before": "לפני פגישה", "after": "אחרי פגישה"}
 
 
@@ -12403,6 +12440,19 @@ CRM_MODULES = {
         "editable": [],
         "views": [("all", "כל החתימות"), ("today", "היום"), ("buyers", "קונים"), ("owners", "בעלי נכסים"), ("exclusive", "בלעדיות"),
                   ("rent", "שכירות"), ("pending", "ממתינות לחתימה"), ("hatimatova", "נחתמו בחתימה טובה"), ("app", "נחתמו באפי")],
+    },
+    "deals": {
+        "title": "עסקאות",
+        "columns": [("date", "תאריך", "date"), ("branch", "סניף", "text"), ("kind", "סוג", "text"), ("side", "צד", "text"),
+                    ("address", "כתובת", "text"), ("agent", "סוכן", "text"), ("client", "לקוח", "text"), ("phone", "טלפון", "phone"),
+                    ("other", "מתווך שני", "text"), ("amount", "סכום עסקה", "price"), ("commission", "עמלה (לפני מע\"מ)", "price"),
+                    ("paid", "שולם", "text"), ("reported", "דווח", "text"), ("invoice", "חשבונית", "text"),
+                    ("check", "לבדיקה", "text"), ("notes", "הערות", "long")],
+        "default_cols": ["date", "branch", "side", "address", "agent", "client", "phone", "amount", "commission", "paid", "reported"],
+        "editable": [],
+        "views": [("all", "כל העסקאות"), ("year", "השנה"), ("sale", "מכירה וקנייה"), ("rent", "שכירות"), ("unpaid", "טרם שולם (2026)"),
+                  ("unreported", "לא דווח (2026)"), ("bialik", "ביאליק"), ("motzkin", "מוצקין"), ("kiryat_yam", "קרית ים"),
+                  ("check", "לבדיקה")],
     },
     "meetings": {
         "title": "פגישות",
@@ -12649,6 +12699,16 @@ CRM_VIEWS = {
                    "pending": lambda r, t: r.get("status") == "ממתין",
                    "hatimatova": lambda r, t: r.get("source") == "חתימה טובה",
                    "app": lambda r, t: r.get("source") == "אפי"},
+    "deals": {"all": lambda r, t: not r.get("missing"),
+              "year": lambda r, t: not r.get("missing") and r.get("year") == t.year,
+              "sale": lambda r, t: not r.get("missing") and r.get("kind") == "מכירה",
+              "rent": lambda r, t: not r.get("missing") and r.get("kind") == "השכרה",
+              "unpaid": lambda r, t: not r.get("missing") and r.get("paid") == "טרם שולם",
+              "unreported": lambda r, t: not r.get("missing") and r.get("reported") == "לא דווח",
+              "bialik": lambda r, t: not r.get("missing") and r.get("branch") == "ביאליק",
+              "motzkin": lambda r, t: not r.get("missing") and r.get("branch") == "מוצקין",
+              "kiryat_yam": lambda r, t: not r.get("missing") and r.get("branch") == "קרית ים",
+              "check": lambda r, t: bool(r.get("check"))},
     "meetings": {"today": lambda r, t: _crm_day(r.get("date"), t),
                  "upcoming": lambda r, t: r.get("state") != "בוצע" and bool(r.get("date")) and _crm_on_or_after(r["date"], t),
                  "meetings": lambda r, t: r.get("kind") == "פגישה",
@@ -16094,6 +16154,13 @@ def register(app, G):
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
             return swr("crmsigs", 120, _build_sigs) if swr else _build_sigs()
+        if module == "deals":
+            fn = G.get("_deal_history_linked")
+            if not fn:
+                raise _CrmReadError("deal history not loaded")
+            import time as _tdl
+            return crm_unify_agents(crm_deal_records(fn() or [], _tdl.time()),
+                                    lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
         if module == "meetings":
             return crm_unify_agents(crm_meeting_records(G["_nb_statuses"]() or {}),
                                     lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=("by",))

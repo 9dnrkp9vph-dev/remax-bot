@@ -1272,6 +1272,9 @@ def register(app, G, page):
         _LINK_CACHE.update(ts=time.time(), src=rows, rows=apply_links(rows_m, links), links=links, names=names)
         return _LINK_CACHE["rows"]
 
+    # [CRM 21/10] מודול 'עסקאות' ב-CRM קורא את אותן שורות (עם שמות הסוכנים כמו באפי)
+    G["_deal_history_linked"] = lambda: _lrows(sb)
+
     def _office():
         try:
             return ((G["_load_config"]() or {}).get("v2_office") or {}).get("name") or ""
