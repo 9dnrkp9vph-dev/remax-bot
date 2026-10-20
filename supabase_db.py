@@ -1585,7 +1585,7 @@ def bpage_remove_item(page_id, key):
 _DH_COLS = ("id,src_key,branch,year,src_sheet,src_row,src_serial,deal_date,city,street,side,agent,"
             "client_name,client_phone,other_broker,deal_amount,commission_gross,commission_net,discount,"
             "lead_source,paid_amount,deposited,invoice_no,receipt_no,reported_date,remax_approved,"
-            "collection_status,notes,lawyer_notes,app_deal_id,missing_since,updated_at,src_hash,src_path,agent_raw,"
+            "collection_status,notes,lawyer_notes,app_deal_id,missing_since,updated_at,created_at,src_hash,src_path,agent_raw,"
             "status:raw->_status")   # צבעי 'התקבל כסף'/'הופקד'/'דווח' (אייל 12/10)
 
 

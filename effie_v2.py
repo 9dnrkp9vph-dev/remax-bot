@@ -12363,6 +12363,95 @@ def crm_deal_records(rows, now):
     return out
 
 
+def review_phone(ph):
+    """[REVIEW 21/10] נייד ישראלי (05X) → 9 ספרות אחרונות; קווי/ריק → ''."""
+    d = _re.sub(r"\D", "", str(ph or ""))
+    if d.startswith("972"):
+        d = d[3:]
+    d = d.lstrip("0")
+    return d if len(d) == 9 and d.startswith("5") else ""
+
+
+def review_queue(rows, sent, now, max_n, wait_days=7, min_year=2026):
+    """[REVIEW 21/10 אייל: 'וואטסאפ מה-360 לכל לקוח אחרי שבוע שהוא נכנס עם המספר טלפון'] עסקאות שמגיעה להן
+    בקשת ביקורת: מ-2026, נכנסו לאפי (created_at) לפני wait_days+, עם נייד, לא הפנייה, לא נעלמו מהקובץ,
+    בלי תאריך עתידי, טרם נשלח לעסקה ולא לאותו טלפון. טלפון אחד = הודעה אחת. החדשות (לפי תאריך העסקה) קודם."""
+    done_keys = set(sent or {})
+    done_p9 = {str((v or {}).get("p9") or "") for v in (sent or {}).values()}
+    cand = []
+    for r in rows or []:
+        try:
+            if int(r.get("year") or 0) < min_year:
+                continue
+        except Exception:
+            continue
+        if r.get("missing_since") or "הפני" in str(r.get("side") or ""):
+            continue
+        p9 = review_phone(r.get("client_phone"))
+        if not p9 or p9 in done_p9 or ("d:" + str(r.get("id"))) in done_keys:
+            continue
+        ct = crm_ts(r.get("created_at")) or 0
+        if not ct or ct > now - wait_days * 86400:
+            continue
+        dt = crm_ts(r.get("deal_date")) or 0
+        if dt > now + 30 * 86400:
+            continue
+        cand.append((dt, r, p9))
+    cand.sort(key=lambda x: -x[0])
+    out, seen = [], set()
+    for _dt, r, p9 in cand:
+        if p9 in seen:
+            continue
+        seen.add(p9)
+        out.append(r)
+        if len(out) >= max_n:
+            break
+    return out
+
+
+def review_message(r, office, link):
+    """[REVIEW 21/10] אותו נוסח של כפתור 'בקשת ביקורת בגוגל' בהיסטוריית העסקאות — בשם הסוכן (הראשון בעסקה משותפת)."""
+    first = (str(r.get("client_name") or "").strip().split() or [""])[0]
+    agent = _re.split(r"\+| ו", str(r.get("agent") or ""))[0].strip()
+    acts = {"מוכר": "במכירת הנכס", "קונה": "בקניית הנכס", "משכיר": "בהשכרת הנכס", "שוכר": "בשכירת הדירה"}
+    act = acts.get(str(r.get("side") or "").strip(), 'בעסקת הנדל"ן')
+    return ("שלום" + (" " + first if first else "") + ", כאן " + agent + (" מ" + office if office else "") + ". "
+            "היה לי תענוג ללוות אתכם " + act + ". "
+            "אם הייתם מרוצים, אשמח מאוד אם תכתבו עלינו ביקורת קצרה בגוגל — זה עוזר לנו מאוד:\n" + link + "\nתודה רבה!\n" + agent)
+
+
+def review_window(n):
+    """[REVIEW 21/10] שולחים רק בשעות שמתאים לפנות ללקוח: א'-ה' 10:00-19:00, ו' 10:00-13:00 (n = datetime בשעון ישראל)."""
+    wd = n.weekday()   # Mon=0 … Fri=4, Sat=5, Sun=6
+    if wd == 5:
+        return False
+    return 10 <= n.hour < (13 if wd == 4 else 19)
+
+
+def review_sent_today(sent, now):
+    """כמה ניסיונות שליחה היו היום (שעון ישראל) — לתקרה היומית."""
+    import datetime as _drt
+    from zoneinfo import ZoneInfo as _ZRT
+    il = _ZRT("Asia/Jerusalem")
+    day = _drt.datetime.fromtimestamp(now, il).date()
+    return sum(1 for v in (sent or {}).values()
+               if v and _drt.datetime.fromtimestamp(float(v.get("ts") or 0), il).date() == day)
+
+
+def crm_deal_review(recs, sent, due_keys, now):
+    """[REVIEW 21/10 'ותסמן ב-CRM בעסקאות שנשלחה ההודעה לביקורת'] עמודת 'בקשת ביקורת': נשלח DD/MM / נכשל / ממתין / ריק."""
+    import datetime as _drv
+    from zoneinfo import ZoneInfo as _ZRV
+    for r in recs or []:
+        v = (sent or {}).get(r.get("key"))
+        if v:
+            r["review"] = ("נשלח " + _drv.datetime.fromtimestamp(float(v.get("ts") or now), _ZRV("Asia/Jerusalem")).strftime("%d/%m")
+                           if v.get("r") == "sent" else "נכשל")
+        else:
+            r["review"] = "ממתין" if r.get("key") in (due_keys or ()) else ""
+    return recs
+
+
 def crm_deal_fill_phone(recs, buyers, sigs, invoices, canon):
     """[CRM עסקאות 21/10 'טלפון של הלקוח אם יש'] בקבצים לפני 2021 כמעט אין טלפון. משלימים לפי שם הלקוח:
     עם אותו סוכן (אחד מחברי עסקה משותפת) — מהקונים ומהחתימות; לפי השם בלבד — רק לשם מלא (2+ מילים)
@@ -12643,13 +12732,15 @@ CRM_MODULES = {
                     ("other", "מתווך שני", "text"), ("amount", "סכום עסקה", "price"), ("commission", "עמלה (לפני מע\"מ)", "price"),
                     ("paid", "שולם", "text"), ("reported", "דווח", "text"), ("invoice", "חשבונית", "text"),
                     ("source", "מקור הליד", "text"), ("phone_from", "מקור הטלפון", "text"),
+                    ("review", "בקשת ביקורת", "text"),
                     ("check", "לבדיקה", "text"), ("notes", "הערות", "long")],
-        "default_cols": ["date", "branch", "side", "address", "agent", "client", "phone", "amount", "commission", "paid", "reported"],
+        "default_cols": ["date", "branch", "side", "address", "agent", "client", "phone", "amount", "commission", "paid", "reported", "review"],
         "editable": [],
         "views": [("all", "כל העסקאות"), ("year", "השנה"), ("sale", "מכירה וקנייה"), ("rent", "שכירות"),
                   ("buyer", "קונה"), ("seller", "מוכר"), ("tenant", "שוכר"), ("landlord", "משכיר"), ("referral", "הפנייה"),
                   ("unpaid", "טרם שולם (2026)"),
                   ("unreported", "לא דווח (2026)"), ("bialik", "ביאליק"), ("motzkin", "מוצקין"), ("kiryat_yam", "קרית ים"),
+                  ("review_sent", "נשלחה בקשת ביקורת"), ("review_due", "ממתינות לבקשת ביקורת"),
                   ("check", "לבדיקה")],
     },
     "meetings": {
@@ -12996,6 +13087,8 @@ CRM_VIEWS = {
               "bialik": lambda r, t: not r.get("missing") and r.get("branch") == "ביאליק",
               "motzkin": lambda r, t: not r.get("missing") and r.get("branch") == "מוצקין",
               "kiryat_yam": lambda r, t: not r.get("missing") and r.get("branch") == "קרית ים",
+              "review_sent": lambda r, t: str(r.get("review") or "").startswith("נשלח"),
+              "review_due": lambda r, t: r.get("review") == "ממתין",
               "check": lambda r, t: bool(r.get("check"))},
     "meetings": {"today": lambda r, t: _crm_day(r.get("date"), t),
                  "upcoming": lambda r, t: r.get("state") != "בוצע" and bool(r.get("date")) and _crm_on_or_after(r["date"], t),
@@ -13036,6 +13129,7 @@ CRM_FLOW_MAP = [
     ("חשבונית נשלחה", "יוצא", "וואטסאפ רשמי"), ("חשבונית — שליחה", "יוצא", "וואטסאפ רשמי"),
     ("קונה שמפרסם נכס", "יוצא", "וואטסאפ רשמי"), ("פוש —", "יוצא", "פוש"), ("SMS —", "יוצא", "SMS"),
     ("דוח יומי", "יוצא", "מייל"), ("סיכום שבועי", "יוצא", "מייל"),
+    ("בקשת ביקורת", "יוצא", "וואטסאפ רשמי"),
 ]
 
 # (key, שם, מה מפעיל, מה עושה, כיוון, (env, 'set'=פעילה אם מוגדר | 'not0'=פעילה אלא אם 0 | None), קידומות ביומן)
@@ -13056,6 +13150,7 @@ CRM_AUTOMATIONS = [
     ("weekly_report", "סיכום שבועי", "יום ראשון ב-07:00", "מייל לנמענים", "יוצא", ("WEEKLY_REPORT", "not0"), ("סיכום שבועי",)),
     ("bpage_digest", "התאמות חדשות — פוש יומי", "כל יום ב-10:00", "פוש לסוכנים על התאמות חדשות לדפי קונה", "יוצא", ("BPAGE_DIGEST", "not0"), ()),
     ("wa_click", "וואטסאפ מהטלפון", "סוכן פותח וואטסאפ מאפי", "נספר ביומן לפי מסך", "יוצא", None, ("וואטסאפ מהטלפון —",)),
+    ("review_req", "בקשת ביקורת בגוגל", "שבוע אחרי שעסקה נכנסה עם נייד (עד 30 ביום, שעות עבודה)", "וואטסאפ רשמי ללקוח בשם הסוכן + סימון בעסקאות ב-CRM", "יוצא", ("REVIEW_REQUESTS", "not0"), ("בקשת ביקורת",)),
     ("shabbat", "השתקה בשבת וחג", "שעה לפני כניסת שבת/חג", "עוצר פוש ווואטסאפ עד שעה אחרי היציאה", "מערכת", ("SHABBAT_AUTO", "not0"), ()),
 ]
 
@@ -15593,6 +15688,86 @@ def register(app, G):
         return len(plan)
     G["_bp_digest_run"] = _bp_digest_run
 
+    # [REVIEW 21/10 אייל: 'הודעת וואטסאפ מה-360 לכל לקוח אחרי שבוע שהוא נכנס עם המספר טלפון, ותסמן ב-CRM בעסקאות']
+    # שבוע אחרי שעסקה (deal_history) נכנסה לאפי עם נייד — בקשת ביקורת בגוגל בשם הסוכן, מהמספר הרשמי.
+    # עד REVIEW_DAILY_MAX ביום (ברירת מחדל 30), בשעות העבודה, הודעה אחת לטלפון. כיבוי: REVIEW_REQUESTS=0.
+    # הרישום (v2_review_sent, מפתח = מפתח העסקה ב-CRM) הוא גם הסימון במודול 'עסקאות'.
+    _rv_thr = {"started": False}
+    _rv_lock = _bpthr.Lock()
+    _rv_tlock = _bpthr.Lock()
+
+    def _review_link():
+        try:
+            u = str(((G["_load_config"]() or {}).get("v2_office") or {}).get("review", "") or "").strip()
+            return u if u.startswith("https://") else ""
+        except Exception:
+            return ""
+
+    def _review_run(now=None):
+        """סבב אחד: שולח עד התקרה היומית. מחזיר כמה ניסיונות נעשו."""
+        from zoneinfo import ZoneInfo as _ZRR
+        import datetime as _drr
+        now = now or time.time()
+        if os.environ.get("REVIEW_REQUESTS", "1") == "0" or not G["_d360_on"]():
+            return 0
+        if G["_quiet_hours"]() or G["_quiet_mode"]() or G["_switch_off"]("wa_official_off"):
+            return 0
+        if not review_window(_drr.datetime.fromtimestamp(now, _ZRR("Asia/Jerusalem"))):
+            return 0
+        link = _review_link()
+        fn = G.get("_deal_history_linked")
+        if not (link and fn):
+            return 0
+        if not _rv_lock.acquire(blocking=False):
+            return 0
+        try:
+            sent = (G["_load_config"]() or {}).get("v2_review_sent") or {}
+            try:
+                cap = int(os.environ.get("REVIEW_DAILY_MAX", "30") or 30)
+            except ValueError:
+                cap = 30
+            left = min(5, cap - review_sent_today(sent, now))   # עד 5 בכל סבב — מתפזר על פני היום
+            if left <= 0:
+                return 0
+            office = ((G["_load_config"]() or {}).get("v2_office") or {}).get("name") or ""
+            todo = review_queue(fn() or [], sent, now, left)
+            done = {}
+            for r in todo:
+                p9 = review_phone(r.get("client_phone"))
+                ok = bool(G["send_text"]("972" + p9, review_message(r, office, link)))
+                done["d:" + str(r.get("id"))] = {"ts": time.time(), "p9": p9, "r": "sent" if ok else "fail",
+                                                 "ag": str(r.get("agent") or "")[:40], "cl": str(r.get("client_name") or "")[:40]}
+                G["_log_activity"]("אפי", "system", "", "בקשת ביקורת — " + ("נשלחה" if ok else "נכשלה"),
+                              (str(r.get("agent") or "") + " · " + str(r.get("client_name") or ""))[:60])
+            if done:
+                def _mark(cfg):
+                    cfg.setdefault("v2_review_sent", {}).update(done)
+                G["_config_mutate"](_mark)
+                if log: log.info(f"review requests: sent={sum(1 for v in done.values() if v['r'] == 'sent')} failed={sum(1 for v in done.values() if v['r'] != 'sent')}")
+            return len(done)
+        except Exception as e:
+            if log: log.error(f"review requests: {e}", exc_info=True)
+            return 0
+        finally:
+            _rv_lock.release()
+
+    G["_review_run"] = _review_run   # לבדיקות ולהפעלה ידנית
+
+    def _review_loop():
+        while True:
+            _review_run()
+            time.sleep(600)
+
+    @app.before_request
+    def _rv_ensure_thread():
+        if _rv_thr["started"] or os.environ.get("REVIEW_REQUESTS", "1") == "0":
+            return
+        with _rv_tlock:
+            if _rv_thr["started"]:
+                return
+            _rv_thr["started"] = True
+            _bpthr.Thread(target=_review_loop, name="review-requests", daemon=True).start()
+
     _bp_thr = {"started": False}
     _bp_thr_lock = _bpthr.Lock()
 
@@ -16541,6 +16716,12 @@ def register(app, G):
                     if log: log.warning(f"crm deals phone source invoices: {e}")
                     inv = []
                 recs = crm_deal_fill_phone(recs, srcs[0], srcs[1], inv, lambda n: G["_canon_key"](G["_canon_agent_name"](n) or n))
+                try:   # [REVIEW 21/10] סימון בקשת הביקורת (נשלח / נכשל / ממתין)
+                    _rs = (G["_load_config"]() or {}).get("v2_review_sent") or {}
+                    _due = {"d:" + str(r.get("id")) for r in review_queue(fn() or [], _rs, _tdl.time(), 10 ** 6)}
+                    crm_deal_review(recs, _rs, _due, _tdl.time())
+                except Exception as e:
+                    if log: log.warning(f"crm deals review marks: {e}")
                 return crm_unify_agents(recs, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
             return swr("crmdeals", 120, _build_deals) if swr else _build_deals()
