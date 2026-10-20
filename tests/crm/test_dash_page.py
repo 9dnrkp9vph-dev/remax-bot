@@ -29,12 +29,14 @@ _D = {"todo": {"missed": [{"phone": "972542222222", "agent": "דנה", "ts": 180
       "agents": {"month": [{"name": "רפי", "calls": 5, "answered": 3, "sigs": 2, "buyers": 1, "bpage": 4, "nb": 0, "min": 90}]},
       "listings": {"rows": [{"name": "רפי", "excl": 3, "reg": 1, "total": 5, "rent": 1}, {"name": "אוצר", "excl": 0, "reg": 0, "total": 0, "rent": 0}],
                    "total": {"excl": 3, "reg": 1, "total": 5, "rent": 1}},
-      "searches": {"site": [{"ts": 1800000000, "q": "4 חדרים באפקה", "n": "12", "who": ""}], "effie": []}}
+      "searches": {"site": [{"ts": 1800000000, "q": "4 חדרים באפקה", "n": "12", "who": ""}], "effie": []},
+      "meetings_today": {"meetings": 1, "followups": 0, "done": 0, "rows": [{"date": 1800000000, "kind": "פגישה", "agent": "רפי", "by": "אוצר", "source": "נכס נולד", "address": "הנשיא 4", "state": "פתוח"}]}}
 _js = ("var document={getElementById:function(){return {}}},localStorage={getItem:function(){return ''}},fetch=function(){return {then:function(){return {then:function(){return {catch:function(){}}},catch:function(){}}}}},setInterval=function(){};"
-       + _m.group(1).split("function render(){")[0] + ";D=" + _js2.dumps(_D, ensure_ascii=False) + ";console.log(todoCard()+'\\n@@\\n'+agentsCard()+'\\n@@\\n'+listingsCard()+'\\n@@\\n'+searchesCard());")
+       + _m.group(1).split("function render(){")[0] + ";D=" + _js2.dumps(_D, ensure_ascii=False) + ";console.log(todoCard()+'\\n@@\\n'+agentsCard()+'\\n@@\\n'+listingsCard()+'\\n@@\\n'+searchesCard()+'\\n@@\\n'+meetsCard());")
 _out = _sp2.run(["node", "-e", _js], capture_output=True, text=True)
 assert _out.returncode == 0, _out.stderr[-600:]
-_t, _a, _l, _s = _out.stdout.split("@@")
+_t, _a, _l, _s, _mt = _out.stdout.split("@@")
+assert "פגישות היום · 1 פגישות" in _mt and "<td>אוצר</td>" in _mt and "נכס נולד" in _mt and "הנשיא 4" in _mt, _mt
 assert "4 חדרים באפקה" in _s and "12 נכסים" in _s and "אין חיפושים ב-14 יום" in _s, _s
 assert "כל המשרד" in _l and "<td>רפי</td><td>3</td><td>1</td><td><b>5</b></td>" in _l and 'class="z"><td>אוצר' in _l, _l
 assert "054-2222222" in _t and "2 ניסיונות" in _t and "א&lt;b&gt;" in _t and 'href="/s/x"' in _t and "אין סימונים חדשים" in _t and "₪2,000,000" in _t, _t

@@ -11925,6 +11925,11 @@ function listingsCard(){var L=D.listings;if(!L||!L.rows)return '';var t=L.total|
  return '<div class="card"><h2>המודעות של הסוכנים · עכשיו בפרסום</h2><div class="tw"><table class="ag"><tr><th>סוכן</th><th>בלעדי</th><th>רגיל</th><th>הכל</th><th>באתר</th><th>מתוכן השכרה / מסחרי</th></tr>'+
   '<tr class="tot"><td>כל המשרד</td><td>'+n(t.excl)+'</td><td>'+n(t.reg)+'</td><td><b>'+n(t.total)+'</b></td><td>'+n(t.site)+'</td><td>'+(t.rent?n(t.rent):'—')+'</td></tr>'+r+'</table></div>'+
   '<div class="mut">כל הסוכנים בצוות מופיעים, גם בלי מודעות. "הכל" כולל מודעות שלא ידוע אם הן בלעדיות. "באתר" = מה שמוצג ב-refamily.co.il (בלי מה שהוסתר מהאתר).</div></div>';}
+function meetsCard(){var M=D.meetings_today;if(!M)return '';
+ function hm(ts){var d=new Date(ts*1000),h=d.getHours(),m=d.getMinutes();return (h||m)?(('0'+h).slice(-2)+':'+('0'+m).slice(-2)):'כל היום';}
+ var r=(M.rows||[]).map(function(x){return '<tr'+(x.state==='בוצע'?' class="z"':'')+'><td><b>'+hm(x.date)+'</b></td><td>'+esc(x.kind)+'</td><td>'+esc(x.agent)+'</td><td>'+(x.by&&x.by!==x.agent?esc(x.by):'<span class="mut">הסוכן עצמו</span>')+'</td><td>'+esc(x.source)+'</td><td>'+esc(x.address||'—')+'</td><td>'+(x.state==='בוצע'?'בוצע':'')+'</td></tr>';}).join('');
+ return '<div class="card"><h2>פגישות היום · '+n(M.meetings)+' פגישות · '+n(M.followups)+' פולו-אפ'+(M.done?' <span class="mut">('+n(M.done)+' בוצעו)</span>':'')+' <a class="mut" style="font-size:13px;font-weight:400" href="/v2/crm/meetings">לכל הפגישות ←</a></h2>'+
+  '<div class="tw"><table class="ag"><tr><th>שעה</th><th>סוג</th><th>לסוכן</th><th>תיאם</th><th>דרך</th><th>כתובת</th><th></th></tr>'+(r||'<tr><td class="mut" colspan="7">אין פגישות היום</td></tr>')+'</table></div></div>';}
 function searchesCard(){var S=D.searches;if(!S)return '';
  function col(t,lst,site){var r=(lst||[]).map(function(x){return '<div class="ti"><b>'+esc(x.q)+'</b><span class="mut"> · '+tm(x.ts)+(site?(x.n!==''?' · '+n(+x.n)+' נכסים':''):(x.who?' · '+esc(x.who):''))+'</span></div>';}).join('');
   return '<div class="td"><h3>'+t+' <span class="cnt">'+n((lst||[]).length)+'</span></h3><div class="scr">'+(r||'<div class="mut">'+(site?'עוד אין — נרשם מ-20/10':'אין חיפושים ב-14 יום')+'</div>')+'</div></div>';}
@@ -11960,7 +11965,7 @@ function render(){
   '<table>'+(wr||'<tr><td class="mut" colspan="2">עוד לא נפתח וואטסאפ היום</td></tr>')+'</table>'+
   '<h2 style="margin-top:16px">מהמספר הרשמי</h2><div class="big">'+n(W.official_today.sent)+' <span class="mut">נשלחו'+(W.official_today.failed?' · '+n(W.official_today.failed)+' נכשלו':'')+'</span></div>'+
   '<div class="mut">נספרת פתיחת הצ׳אט מאפי, לא מסירה. נספר מ-19/10.</div></div></div>'+
-  todoCard()+agentsCard()+listingsCard()+searchesCard();   // 20/10: שלושת הכרטיסים בתחתית (אייל)
+  meetsCard()+todoCard()+agentsCard()+listingsCard()+searchesCard();   // 20/10: שלושת הכרטיסים בתחתית (אייל)
  document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
  charts();ctl();
 }
@@ -12212,6 +12217,18 @@ def crm_meeting_records(statuses):
                     "state": "בוצע" if st.get("done") else "פתוח", "note": str(st.get("note") or "").strip(),
                     "created": float(st.get("ts") or 0) or 0})
     return out
+
+
+def crm_meetings_today(recs, now):
+    """[CRM 20/10 'פגישות היום'] מתוך רשומות מודול הפגישות: מה שקבוע להיום, לפי השעה (פולו-אפ בלי שעה ראשון)."""
+    import datetime as _dmt
+    from zoneinfo import ZoneInfo as _ZMT
+    today = _dmt.datetime.fromtimestamp(now, _ZMT("Asia/Jerusalem")).date()
+    rows = sorted([r for r in recs or [] if r.get("date") and _crm_day(r["date"], today)], key=lambda r: r["date"])
+    return {"meetings": sum(1 for r in rows if r.get("kind") == "פגישה"),
+            "followups": sum(1 for r in rows if r.get("kind") == "פולו-אפ"),
+            "done": sum(1 for r in rows if r.get("state") == "בוצע"),
+            "rows": [{k: r.get(k, "") for k in ("date", "kind", "agent", "by", "source", "address", "state")} for r in rows][:60]}
 
 
 _CRM_SEARCH_SITE = "חיפוש AI באתר"
@@ -13254,7 +13271,8 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
             "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa,
             "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo,
-            "listings": get("agent_listings", default=None), "searches": get("searches", default=None)}
+            "listings": get("agent_listings", default=None), "searches": get("searches", default=None),
+            "meetings_today": get("meetings_today", default=None)}
 
 
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
@@ -16697,6 +16715,7 @@ def register(app, G):
                    "nb_contacts": lambda: G["_fetch_newborn_contacts"]() or {},
                    "agent_listings": agent_listings,
                    "searches": recent_searches,
+                   "meetings_today": lambda: crm_meetings_today(_crm_records("meetings"), now),
                    "helpers": lambda: {"answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
                                        "canon": lambda n: G["_canon_agent_name"](n) or n,
                                        "nb_key": G["_nb_key"]}}
