@@ -11920,10 +11920,10 @@ function agentsCard(){var A=(D.agents||{})[P]||[];
   (r||'<tr><td class="mut" colspan="7">אין פעילות בתקופה</td></tr>')+'</table></div>'+
   '<div class="mut">פניות לנכס נולד = וואטסאפ מכרטיס המודעה. זמן באפי בשנה — 60 הימים האחרונים.</div></div>';}
 function listingsCard(){var L=D.listings;if(!L||!L.rows)return '';var t=L.total||{};
- var r=L.rows.map(function(x){return '<tr'+(x.total?'':' class="z"')+'><td>'+esc(x.name)+'</td><td>'+n(x.excl)+'</td><td>'+n(x.reg)+'</td><td><b>'+n(x.total)+'</b></td><td>'+(x.rent?n(x.rent):'—')+'</td></tr>';}).join('');
- return '<div class="card"><h2>המודעות של הסוכנים · עכשיו בפרסום</h2><div class="tw"><table class="ag"><tr><th>סוכן</th><th>בלעדי</th><th>רגיל</th><th>הכל</th><th>מתוכן השכרה / מסחרי</th></tr>'+
-  '<tr class="tot"><td>כל המשרד</td><td>'+n(t.excl)+'</td><td>'+n(t.reg)+'</td><td><b>'+n(t.total)+'</b></td><td>'+(t.rent?n(t.rent):'—')+'</td></tr>'+r+'</table></div>'+
-  '<div class="mut">כל הסוכנים בצוות מופיעים, גם בלי מודעות. "הכל" כולל מודעות שלא ידוע אם הן בלעדיות.</div></div>';}
+ var r=L.rows.map(function(x){return '<tr'+(x.total?'':' class="z"')+'><td>'+esc(x.name)+'</td><td>'+n(x.excl)+'</td><td>'+n(x.reg)+'</td><td><b>'+n(x.total)+'</b></td><td>'+n(x.site)+'</td><td>'+(x.rent?n(x.rent):'—')+'</td></tr>';}).join('');
+ return '<div class="card"><h2>המודעות של הסוכנים · עכשיו בפרסום</h2><div class="tw"><table class="ag"><tr><th>סוכן</th><th>בלעדי</th><th>רגיל</th><th>הכל</th><th>באתר</th><th>מתוכן השכרה / מסחרי</th></tr>'+
+  '<tr class="tot"><td>כל המשרד</td><td>'+n(t.excl)+'</td><td>'+n(t.reg)+'</td><td><b>'+n(t.total)+'</b></td><td>'+n(t.site)+'</td><td>'+(t.rent?n(t.rent):'—')+'</td></tr>'+r+'</table></div>'+
+  '<div class="mut">כל הסוכנים בצוות מופיעים, גם בלי מודעות. "הכל" כולל מודעות שלא ידוע אם הן בלעדיות. "באתר" = מה שמוצג ב-refamily.co.il (בלי מה שהוסתר מהאתר).</div></div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -11942,7 +11942,7 @@ function render(){
   '<div class="sw"><div><div class="t">התראות פוש</div><div class="d">כל הפושים לטלפונים של הסוכנים</div></div><button class="tg" id="swPush" aria-label="פוש"></button></div>'+
   '<div class="d mut" id="swQuiet"></div></div></div>'+
   '<div class="seg" id="seg">'+['day','week','month','year'].map(function(k){return '<button data-p="'+k+'" class="'+(k===P?'on':'')+'">'+PL[k]+'</button>';}).join('')+'</div>'+
-  '<div class="kpis">'+kpis()+'</div>'+todoCard()+agentsCard()+listingsCard()+
+  '<div class="kpis">'+kpis()+'</div>'+
   '<div class="row r2"><div class="card"><h2>30 הימים האחרונים</h2><div class="chart"><canvas id="c1"></canvas></div><div id="t1"></div></div>'+
   '<div class="card"><h2>חיפושי AI באתר היום</h2><div class="big">'+n(a.today)+' <span class="mut">מתוך תקרה של '+n(a.cap)+'</span></div>'+
   '<div class="bar'+(pct>=90?' hot':'')+'"><i style="width:'+pct+'%"></i></div><div class="mut">מהמטמון (בלי טוקנים): '+n(a.cache)+' · נחסמו בתקרה: '+n(a.blocked)+'</div>'+
@@ -11954,7 +11954,8 @@ function render(){
   '<div class="card"><h2>וואטסאפ היום</h2><div class="big">'+n(wt)+' <span class="mut">נפתחו מהטלפון של הסוכנים</span></div>'+
   '<table>'+(wr||'<tr><td class="mut" colspan="2">עוד לא נפתח וואטסאפ היום</td></tr>')+'</table>'+
   '<h2 style="margin-top:16px">מהמספר הרשמי</h2><div class="big">'+n(W.official_today.sent)+' <span class="mut">נשלחו'+(W.official_today.failed?' · '+n(W.official_today.failed)+' נכשלו':'')+'</span></div>'+
-  '<div class="mut">נספרת פתיחת הצ׳אט מאפי, לא מסירה. נספר מ-19/10.</div></div></div>';
+  '<div class="mut">נספרת פתיחת הצ׳אט מאפי, לא מסירה. נספר מ-19/10.</div></div></div>'+
+  todoCard()+agentsCard()+listingsCard();   // 20/10: שלושת הכרטיסים בתחתית (אייל)
  document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
  charts();ctl();
 }
@@ -12186,17 +12187,18 @@ def crm_todo(calls, sig_recs, act, newborn, contacts, now, h):
             "likes": likes[:30], "nb_untouched": {"n": len(nbl), "list": nbl[:10]}}
 
 
-def crm_agent_listings(props, people, canon):
+def crm_agent_listings(props, people, canon, hidden=None):
     """[CRM 20/10 'רשימה של כל הסוכנים כולל כמה מודעות יש להם'] מודעות המשרד בפרסום לכל סוכן: בלעדי / רגיל / הכל
     (+ כמה מהן השכרה/מסחרי). props = רשומות מודול הנכסים; people = שמות הצוות — גם סוכן בלי מודעות מופיע (0)."""
     rows = {}
     def row(nm):
-        return rows.setdefault(nm, {"name": nm, "excl": 0, "reg": 0, "total": 0, "rent": 0})
+        return rows.setdefault(nm, {"name": nm, "excl": 0, "reg": 0, "total": 0, "rent": 0, "site": 0})
     for nm in people or []:
         nm = str(canon(nm) or "").strip()
         if nm:
             row(nm)
-    tot = {"excl": 0, "reg": 0, "total": 0, "rent": 0}
+    tot = {"excl": 0, "reg": 0, "total": 0, "rent": 0, "site": 0}
+    hid = set(hidden or ())   # [CRM 20/10 'כמות נכסים באתר'] מה שהוסתר מהאתר (website_settings) לא נספר
     for r in props or []:
         if r.get("source") != "המשרד" or r.get("delisted"):
             continue
@@ -12210,6 +12212,8 @@ def crm_agent_listings(props, people, canon):
                 d["reg"] += 1
             if (r.get("deal") or "מכירה") != "מכירה":
                 d["rent"] += 1
+            if str(r.get("ad_id") or "") not in hid:
+                d["site"] += 1
     out = sorted(rows.values(), key=lambda x: (x["name"] == "(לא משויך)", -x["total"], -x["excl"], x["name"]))
     return {"rows": out, "total": tot}
 
@@ -12921,7 +12925,8 @@ def crm_props_records(nb, excl, office, pd_map, now, h):
         ag = h["agent_name"](str(r.get("סוכן 1") or "").strip())
         addr = " ".join(x for x in (str(r.get("כתובת") or "").strip(), str(r.get("מספר בית") or "").strip()) if x)
         ex = str(r.get("בלעדיות") or "")
-        rec.update({"source": "המשרד", "type": str(r.get("סוג נכס") or ""), "city": str(r.get("עיר / ישוב") or ""),
+        rec.update({"source": "המשרד", "ad_id": str(r.get("מספר מודעה") or "").strip(),
+                    "type": str(r.get("סוג נכס") or ""), "city": str(r.get("עיר / ישוב") or ""),
                     "neighborhood": str(r.get("שכונה") or ""), "address": addr, "rooms": _crm_rooms(r.get("חדרים")),
                     "sqm": _crm_int(r.get('מ"ר')), "floor": str(r.get("קומה") or ""), "price": price,
                     "deal": str(r.get("סוג עסקה") or "מכירה"), "contact": ag, "phone": "",
@@ -16541,7 +16546,13 @@ def register(app, G):
                         pass
                     people.append(nm)
                 canon = lambda n: G["_canon_agent_name"](n) or n
-                return crm_agent_listings(_crm_records("props"), people, canon)
+                hidden = set()
+                try:
+                    import site_api as _sa
+                    hidden, _ = _sa.prop_flags(_sa.SettingsStore(sb).all())
+                except Exception as e:
+                    if log: log.warning(f"crm listings: site hidden: {e}")
+                return crm_agent_listings(_crm_records("props"), people, canon, hidden)
 
             def agent_act(t0):
                 """פעולות הסוכנים לטבלה ול'מחכה לטיפול' — סינון בשרת, עם השם האמיתי לפי הטלפון."""
