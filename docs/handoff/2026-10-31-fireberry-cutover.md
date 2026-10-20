@@ -8,7 +8,7 @@
    **הצלחה:** "Success", ושתי טבלאות חדשות (`ingest_shadow`, `call_transcripts`) ב-Table Editor.
 2. **Render** (env): `CALLS_INGEST_KEY` = מחרוזת אקראית ארוכה. `CALLS_DIRECT` ו-`INVOICES_DIRECT` **לא מגדירים** (ברירת המחדל = צל).
 3. **Make** (סנריו 2934615): גיבוי blueprint, ואחר כך מודול HTTP במקביל לכתיבה לפיירברי (Task 7 בתוכנית). את הכותרת `X-Ingest-Key` מזין אייל. **`created` = זמן תחילת השיחה מ-Maskyoo** (ISO עם אזור-זמן, או DD/MM/YYYY HH:MM בשעון ישראל — שניהם נתמכים).
-   ⚠️ **לבדוק לפני הניתוק:** האם התראות "שיחה חדשה" לסוכנים (וואטסאפ/פוש) יוצאות ממסלול פיירברי/הגיליון. אם כן, הן ייפסקו בניתוק וצריך לחבר אותן לזרם הישיר.
+   ✅ **נבדק 21/10 — התראות "שיחה חדשה" לסוכנים לא תלויות בפיירברי:** `check_new_calls` קורא את טבלת `calls` (`web_fetch_raw("שיחות")`), ובמצב `CALLS_DIRECT=live` הזרם הישיר כותב לאותה טבלה עם כל השדות שההודעה צריכה (agent, agent_phone, caller_phone, status, received_at, transcript_summary, event_id). **תנאי:** `CALLS_SOURCE=supabase` ב-Render — אחרת הלולאה קוראת מהגיליון, שמפסיק להתעדכן בניתוק (צעד 4 ביום הניתוק מוודא).
    **הצלחה:** אחרי שיחה אמיתית, ב-`/v2/api/crm/parallel?days=1` יש `matched ≥ 1`.
 4. **תוכנת החשבוניות:** כתובת `https://remax-bot.onrender.com/v2/api/invoices/ingest?via=direct`, כותרת `X-Ingest-Key` = הערך של `INVOICES_INGEST_KEY`. לשלוח לי דוגמת גוף אחת, כדי לוודא שהשדות מזוהים.
 5. **הודעה לסוכנים** (נוסח למטה).
