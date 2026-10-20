@@ -11595,7 +11595,7 @@ s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-ne
 <script>
 var MOD = (location.pathname.split('/')[3] || 'calls');
 var META = null, ST = {q:'', view:'all', sort:'date', dir:'desc', page:1, agent:''}, ROWS = [], TOTAL = 0, CUR = null, SAVED = [];
-var SOON = [['signatures','מתעניינים (חתימות)'],['invoices','מקבלי מסמכים'],['buyers','קונים'],['props','נכסים'],['deals','עסקאות']];
+var SOON = [['signatures','מתעניינים (חתימות)'],['buyers','קונים'],['props','נכסים'],['deals','עסקאות']];
 function tok(){ try{ return localStorage.getItem('fbTok') || ''; }catch(e){ return ''; } }
 function api(path, opt){ opt = opt || {}; opt.headers = Object.assign({'X-Auth-Token': tok()}, opt.headers || {});
   return fetch(path, opt); }
@@ -12126,6 +12126,17 @@ CRM_MODULES = {
         "views": [("all", "כל החתימות"), ("today", "היום"), ("buyers", "קונים"), ("owners", "בעלי נכסים"), ("exclusive", "בלעדיות"),
                   ("rent", "שכירות"), ("pending", "ממתינות לחתימה"), ("hatimatova", "נחתמו בחתימה טובה"), ("app", "נחתמו באפי")],
     },
+    "invoices": {
+        "title": "מקבלי מסמכים",
+        "columns": [("date", "נוצר בתאריך", "date"), ("client", "שם לקוח", "text"), ("phone", "טלפון", "phone"),
+                    ("type", "סוג מסמך", "text"), ("num", "מספר מסמך", "text"), ("line", "שורת חיוב", "text"),
+                    ("amount", "סכום", "price"), ("agent", "סוכן (לפי הלקוח)", "text"), ("wa", "וואטסאפ ללקוח", "text"),
+                    ("source", "מקור המסמך", "text"), ("link", "מסמך", "link", "למסמך")],
+        "default_cols": ["date", "client", "phone", "type", "num", "line", "amount", "agent", "wa", "link"],
+        "editable": [],
+        "views": [("all", "כל המסמכים"), ("today", "היום"), ("tax", "חשבוניות"), ("receipt", "קבלות"),
+                  ("wa_sent", "נשלחו בוואטסאפ"), ("wa_not", "לא נשלחו"), ("no_phone", "בלי טלפון"), ("no_agent", "בלי סוכן")],
+    },
     "props": {
         "title": "נכסים",
         "columns": [("image", "תמונה", "photo"), ("source", "מקור", "text"), ("type", "סוג", "text"), ("city", "עיר", "text"),
@@ -12343,6 +12354,13 @@ CRM_VIEWS = {
                    "pending": lambda r, t: r.get("status") == "ממתין",
                    "hatimatova": lambda r, t: r.get("source") == "חתימה טובה",
                    "app": lambda r, t: r.get("source") == "אפי"},
+    "invoices": {"today": lambda r, t: _crm_day(r.get("date"), t),
+                 "tax": lambda r, t: "חשבונית" in (r.get("type") or ""),
+                 "receipt": lambda r, t: r.get("type") == "קבלה",
+                 "wa_sent": lambda r, t: r.get("wa") == "נשלח",
+                 "wa_not": lambda r, t: r.get("wa") == "לא נשלח",
+                 "no_phone": lambda r, t: not "".join(ch for ch in str(r.get("phone") or "") if ch.isdigit()),
+                 "no_agent": lambda r, t: not r.get("agent")},
     "props": {"all": lambda r, t: not r.get("delisted"),
               "private": lambda r, t: r.get("source") == "פרטי" and not r.get("delisted"),
               "new": lambda r, t: bool(r.get("new")) and not r.get("delisted"),
@@ -12609,6 +12627,44 @@ def crm_sig_records(sigs, h):
                     "budget": _crm_int(g.get("budget")), "fee": fee, "excl_to": _crm_dmy(g.get("excl_to")),
                     "status": "נחתם" if signed else "ממתין", "source": src, "link": link,
                     "notes": str(g.get("notes") or g.get("הערות") or "").strip()})
+    return out
+
+
+def crm_inv_agent_index(buyers, sigs):
+    """[CRM מקבלי מסמכים 20/10] מי הסוכן של לקוח החשבונית: לפי נייד (9 ספרות) ולפי שם (מילים ממוינות),
+    מהקונים ומהחתימות — אותה הצלבה של מסך החשבוניות, מראש לכל הלקוחות."""
+    ph, nm = {}, {}
+    def add(d, k, a):
+        a = str(a or "").strip()
+        if k and a and a not in d.setdefault(k, []):
+            d[k].append(a)
+    for b in buyers or []:
+        add(ph, bs_p9(b.get("phone")), b.get("agent")); add(nm, inv_name_key(b.get("name")), b.get("agent"))
+    for g in sigs or []:
+        add(ph, bs_p9(g.get("phone")), g.get("agent")); add(nm, inv_name_key(g.get("client_name")), g.get("agent"))
+    return {"phone": ph, "name": nm}
+
+
+def crm_inv_records(rows, idx, wa_sent, ep):
+    """[CRM מקבלי מסמכים 20/10] שורות invoices → רשומות, כמו 'מקבלי מסמכים' בפיירברי. סוכן: לפי הנייד, ואם אין —
+    לפי השם. וואטסאפ: 'נשלח' לפי v2_inv_wa_sent; 'לא נשלח' רק כשהיה אפשר (נייד + קישור)."""
+    out, seen = [], {}
+    for r in rows or []:
+        p9 = bs_p9(r.get("phone9") or r.get("phone"))
+        ags = (idx.get("phone") or {}).get(p9) if p9 else None
+        if not ags:
+            ags = (idx.get("name") or {}).get(inv_name_key(r.get("client_name"))) or []
+        num, link = str(r.get("doc_num") or "").strip(), str(r.get("link") or "").strip()
+        w = (wa_sent or {}).get(p9 + "|" + (num or link)) if p9 else None
+        wa = "נשלח" if (w and (w or {}).get("ok", True)) else ("לא נשלח" if (p9 and link) else "")
+        k = "iv:" + (str(r.get("row_hash") or "") or "%s|%s|%s" % (r.get("client_name"), num, r.get("created_at")))
+        seen[k] = seen.get(k, 0) + 1
+        if seen[k] > 1:
+            k += "#" + str(seen[k])
+        out.append({"key": k, "date": ep(r.get("created_at") or "") or 0, "client": str(r.get("client_name") or "").strip(),
+                    "phone": str(r.get("phone") or "").strip(), "type": str(r.get("doc_type") or "").strip(), "num": num,
+                    "line": str(r.get("charge_line") or "").strip(), "amount": _crm_int(r.get("amount")),
+                    "agent": " · ".join(ags[:2]), "wa": wa, "source": str(r.get("source") or "").strip(), "link": link})
     return out
 
 
@@ -15666,6 +15722,29 @@ def register(app, G):
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
             return swr("crmsigs", 120, _build_sigs) if swr else _build_sigs()
+        if module == "invoices":
+            def _build_inv():
+                try:
+                    buyers = G["_fetch_manual_buyers"]() or []
+                except Exception as e:
+                    if log: log.warning(f"crm invoices buyers: {e}")
+                    buyers = []
+                try:
+                    sigs = G["get_signings"]() or []
+                except Exception as e:
+                    if log: log.warning(f"crm invoices signings: {e}")
+                    sigs = []
+                try:
+                    sent = _load_config().get("v2_inv_wa_sent") or {}
+                except Exception:
+                    sent = {}
+                sbi = G.get("_sbdb")
+                if not (sbi and sbi.enabled()):
+                    raise _CrmReadError("supabase disabled")
+                rows = crm_inv_records(sbi.invoices_all() or [], crm_inv_agent_index(buyers, sigs), sent, G["_excl_epoch"])
+                return crm_unify_agents(rows, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
+            swr = G.get("_swr")
+            return swr("crminv", 120, _build_inv) if swr else _build_inv()
         if module == "props":
             def _build_props():
                 import time as _tp

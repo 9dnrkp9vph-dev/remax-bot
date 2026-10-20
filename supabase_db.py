@@ -1032,6 +1032,12 @@ def fetch_invoices_rows(q="", limit=400):
     return r.json() or []
 
 
+def invoices_all():
+    """[CRM מקבלי מסמכים 20/10] כל החשבוניות של המשרד (מדופדף), החדשות קודם."""
+    return _get_all("invoices", "client_name,phone,phone9,doc_type,doc_num,charge_line,created_at,source,link,amount,row_hash",
+                    {"order": "created_at.desc.nullslast,id.asc"})
+
+
 def office_deal(raw):
     """[DEALS 13/10] סוג העסקה של נכס משרד: 'מכירה' (ברירת מחדל — כל השורות הקיימות) / 'השכרה' / 'מסחרי'."""
     v = str((raw or {}).get("סוג עסקה") or "").strip()
