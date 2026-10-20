@@ -12880,7 +12880,12 @@ def crm_sig_fill_phone(sigs, fetch_headers, parse_header, buyers, canon):
             if bs_p9(ph):
                 for i in idxs:
                     out[i]["phone"] = ph
-    day = lambda g: str(g.get("received_at") or "").replace("T", " ").split(" ")[0]
+    def day(g):
+        """יום בשעון ישראל — אותה החתמה מגיעה לפעמים ב-ISO-UTC ובפעם אחרת כ-DD/MM/YYYY HH:MM."""
+        import datetime as _dsd
+        from zoneinfo import ZoneInfo as _ZSD
+        t = crm_ts(g.get("received_at"))
+        return _dsd.datetime.fromtimestamp(t, _ZSD("Asia/Jerusalem")).date().isoformat() if t else str(g.get("received_at") or "")[:10]
     ck = lambda g: (inv_name_key(g.get("client_name")), str(canon(g.get("agent") or "") or "").strip())
     sib = {}
     for g in out:

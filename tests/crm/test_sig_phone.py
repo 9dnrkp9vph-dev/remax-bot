@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 import _load
 from _load import ck
-ns = _load.load("crm_sig_fill_phone", "_crm_sig_token", "inv_name_key", "bs_p9")
+ns = _load.load("crm_sig_fill_phone", "_crm_sig_token", "inv_name_key", "bs_p9", "crm_ts", "inv_parse_dt")
 f = ns["crm_sig_fill_phone"]
 S = [{"event_id": "AbCdEfGhIjKlMnOp", "client_name": "לילך הדר", "agent": "רויטל גל", "received_at": "19/10/2026 21:04", "phone": ""},     # טוקן אפי → מהכותרת
      {"event_id": "fb:9:OWNER_SALE", "client_name": "אלדד צורדקר", "agent": "חי חיים אלבז", "received_at": "20/10/2026 09:24", "phone": ""},
@@ -21,4 +21,8 @@ ck([g["phone"] for g in out] == ["050-1112233", "054-8022494", "054-8022494", "0
 ck(calls == [["AbCdEfGhIjKlMnOp"]], ("one header query, only for Effie tokens missing a phone", calls))
 ck(S[0]["phone"] == "", "input not modified")
 ck(f(S, lambda t: (_ for _ in ()).throw(RuntimeError("down")), parse, [], lambda n: n)[1]["phone"] == "054-8022494", "header failure → other sources still fill")
+# אותה החתמה בשני פורמטים של זמן (ISO-UTC מהמראה, DD/MM מהגיליון) — עדיין אותו יום בישראל
+M = [{"event_id": "x1", "client_name": "אלדד  צורדקר", "agent": "חי חיים אלבז", "received_at": "2026-10-20T06:24:00Z", "phone": ""},
+     {"event_id": "x2", "client_name": "אלדד צורדקר", "agent": "חי חיים אלבז", "received_at": "20/10/2026 09:24", "phone": "054-8022494"}]
+ck(f(M, lambda t: {}, parse, [], lambda n: n)[0]["phone"] == "054-8022494", "mixed time formats, extra space in the name")
 print("sig_phone OK")
