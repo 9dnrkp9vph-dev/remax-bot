@@ -11987,6 +11987,8 @@ function kpis(){var p=D.periods,ca=pv(p.calls),an=pv(p.calls_answered),ex=pv((p.
   ['קונים חדשים',n(pv(p.buyers)),''],['נכס נולד',n(pv(p.newborn)),'שת״פ חדשות '+n(pv(p.shtaf))],
   ['עסקאות',n(pv(p.deals_closed))+' נסגרו','נפתחו '+n(pv(p.deals_opened))+' · פתוחים '+n(p.open_now)+' · אצל עו״ד '+n(p.lawyer_now)],
   ['נכסי המשרד בפרסום',n(p.office_active),'בלעדי '+n(p.office_active_excl)+' · רגיל '+n((p.office_active||0)-(p.office_active_excl||0))]];
+ var wo=(D.wa_official||{})[P];
+ if(wo)k.push(['וואטסאפ רשמי (360)',n(wo.sent)+' נשלחו',(wo.failed?'נכשלו '+n(wo.failed):'אין כשלים')+(wo.blocked?' · נחסמו במתג '+n(wo.blocked):'')+' · נספר מ-19/10']);
  return k.map(function(x){return '<div class="card kpi"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+'</div><div class="x">'+esc(x[2])+'</div></div>';}).join('');}
 function tm(ts){if(!ts)return '';var d=new Date(ts*1000);return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
 function ph(v){var d=String(v||'').replace(/\D/g,'');if(d.indexOf('972')===0)d='0'+d.slice(3);return d.length===10?d.slice(0,3)+'-'+d.slice(3):String(v||'');}
@@ -12020,6 +12022,10 @@ function searchesCard(){var S=D.searches;if(!S)return '';
  function col(t,lst,site){var r=(lst||[]).map(function(x){return '<div class="ti"><b>'+esc(x.q)+'</b><span class="mut"> · '+tm(x.ts)+(site?(x.n!==''?' · '+n(+x.n)+' נכסים':''):(x.who?' · '+esc(x.who):''))+'</span></div>';}).join('');
   return '<div class="td"><h3>'+t+' <span class="cnt">'+n((lst||[]).length)+'</span></h3><div class="scr">'+(r||'<div class="mut">'+(site?'עוד אין — נרשם מ-20/10':'אין חיפושים ב-14 יום')+'</div>')+'</div></div>';}
  return '<div class="card"><h2>50 חיפושי ה-AI האחרונים (נכסים)</h2><div class="todo s2">'+col('באתר',S.site,true)+col('באפי',S.effie,false)+'</div></div>';}
+function waKinds(){var wo=(D.wa_official||{})[P];if(!wo||!wo.kinds)return '';
+ var ks=Object.keys(wo.kinds).sort(function(a,b){return wo.kinds[b]-wo.kinds[a];});
+ if(!ks.length)return '';
+ return '<div class="mut" style="margin-top:8px">לפי סוג · '+PL[P]+'</div><table>'+ks.map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+n(wo.kinds[k])+'</td></tr>';}).join('')+'</table>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -12050,6 +12056,7 @@ function render(){
   '<div class="card"><h2>וואטסאפ היום</h2><div class="big">'+n(wt)+' <span class="mut">נפתחו מהטלפון של הסוכנים</span></div>'+
   '<table>'+(wr||'<tr><td class="mut" colspan="2">עוד לא נפתח וואטסאפ היום</td></tr>')+'</table>'+
   '<h2 style="margin-top:16px">מהמספר הרשמי</h2><div class="big">'+n(W.official_today.sent)+' <span class="mut">נשלחו'+(W.official_today.failed?' · '+n(W.official_today.failed)+' נכשלו':'')+'</span></div>'+
+  waKinds()+
   '<div class="mut">נספרת פתיחת הצ׳אט מאפי, לא מסירה. נספר מ-19/10.</div></div></div>'+
   meetsCard()+todoCard()+agentsCard()+listingsCard()+searchesCard();   // 20/10: שלושת הכרטיסים בתחתית (אייל)
  document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
@@ -12204,6 +12211,32 @@ def crm_period_bounds(now):
     week = d - _dpb.timedelta(days=(d.weekday() + 1) % 7)
     return {"day": d.timestamp(), "week": week.timestamp(), "month": d.replace(day=1).timestamp(),
             "year": d.replace(month=1, day=1).timestamp()}
+
+
+_CRM_WA_OFFICIAL = "וואטסאפ רשמי — "
+
+
+def crm_wa_official(act, bounds):
+    """[CRM 21/10 'כמות הודעות יוצאות ב-360 דיאלוג'] לכל תקופה: נשלחו / נכשלו / נחסמו במתג, ולפי תבנית
+    (מהפירוט ביומן: 'למי · תבנית · …'; טקסט חופשי בחלון 24 השעות = 'הודעה חופשית'). נספר מ-19/10."""
+    out = {p: {"sent": 0, "failed": 0, "blocked": 0, "kinds": {}} for p in bounds}
+    for a in act or []:
+        an = str(a.get("action") or "")
+        if not an.startswith(_CRM_WA_OFFICIAL):
+            continue
+        res = an[len(_CRM_WA_OFFICIAL):].strip()
+        col = {"נשלח": "sent", "נכשל": "failed", "מושבת": "blocked"}.get(res)
+        if not col:
+            continue
+        parts = [x.strip() for x in str(a.get("detail") or "").split(" · ")]
+        k = parts[1] if len(parts) > 1 else ""
+        kind = k if _re.fullmatch(r"[a-z0-9_]+", k) else ("מסמך" if k.startswith("מסמך") else "הודעה חופשית")
+        for p, t0 in bounds.items():
+            if (a.get("ts") or 0) >= t0:
+                out[p][col] += 1
+                if col == "sent":
+                    out[p]["kinds"][kind] = out[p]["kinds"].get(kind, 0) + 1
+    return out
 
 
 _CRM_NB_CONTACT = ("📲 וואטסאפ — נכס נולד",)
@@ -13629,7 +13662,7 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     todo = crm_todo(calls, get("sig_recs", sigs, default=[]) or [], aact, newborn, get("nb_contacts", default={}) or {}, now, hp)
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
             "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa,
-            "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo,
+            "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo, "wa_official": crm_wa_official(aact, bounds),
             "listings": get("agent_listings", default=None), "searches": get("searches", default=None),
             "meetings_today": get("meetings_today", default=None)}
 
@@ -17235,7 +17268,7 @@ def register(app, G):
                 """פעולות הסוכנים לטבלה ול'מחכה לטיפול' — סינון בשרת, עם השם האמיתי לפי הטלפון."""
                 if not (sb and sb.enabled()):
                     return []
-                rows = sb.fetch_activity_actions(t0, _CRM_BPAGE_SEND + _CRM_NB_CONTACT + ("סימון בדף קונה",)) or []
+                rows = sb.fetch_activity_actions(t0, _CRM_BPAGE_SEND + _CRM_NB_CONTACT + ("סימון בדף קונה", _CRM_WA_OFFICIAL)) or []
                 dn = G.get("_display_name_for")
                 for r in rows:
                     if dn and r.get("role") != "client":

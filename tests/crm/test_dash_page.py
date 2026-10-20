@@ -41,4 +41,5 @@ assert "4 חדרים באפקה" in _s and "12 נכסים" in _s and "אין ח�
 assert "כל המשרד" in _l and "<td>רפי</td><td>3</td><td>1</td><td><b>5</b></td>" in _l and 'class="z"><td>אוצר' in _l, _l
 assert "054-2222222" in _t and "2 ניסיונות" in _t and "א&lt;b&gt;" in _t and 'href="/s/x"' in _t and "אין סימונים חדשים" in _t and "₪2,000,000" in _t, _t
 assert "<td>רפי</td>" in _a and "3<span" in _a and "90 דק׳" in _a and "החודש" in _a, _a
+assert "וואטסאפ רשמי (360)" in h and "function waKinds" in h, "360dialog counter on the dashboard"
 print("dash_page todo/agents OK")
