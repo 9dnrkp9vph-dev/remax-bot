@@ -12257,7 +12257,41 @@ def crm_deal_records(rows, now):
                     "paid": ("שולם" if r.get("paid_amount") else "טרם שולם") if y >= 2026 else "",
                     "reported": ("דווח" if rep else "לא דווח") if y >= 2026 else "",
                     "invoice": str(r.get("invoice_no") or "").strip(), "notes": str(r.get("notes") or "").strip(),
+                    "source": str(r.get("lead_source") or "").strip(),
+                    "sides": [t for t in _re.split(r"[+/,]", side) if t.strip()],
+                    "referral": "הפני" in side or "הפני" in str(r.get("lead_source") or ""),
                     "check": " · ".join(check), "missing": bool(r.get("missing_since"))})
+    return out
+
+
+def crm_deal_fill_phone(recs, buyers, sigs, invoices, canon):
+    """[CRM עסקאות 21/10 'טלפון של הלקוח אם יש'] בקבצים לפני 2021 כמעט אין טלפון. משלימים לפי שם הלקוח:
+    עם אותו סוכן (אחד מחברי עסקה משותפת) — מהקונים ומהחתימות; לפי השם בלבד — רק לשם מלא (2+ מילים)
+    שמתאים לטלפון אחד בכל המקורות (כולל חשבוניות). טלפון מהקובץ גובר. לא משנה את הקלט."""
+    ag_keys = lambda a: {str(canon(x.strip()) or "").strip() for x in _re.split(r"\+| ו", str(a or "")) if x.strip()}
+    by_agent, by_name = {}, {}
+    for src, rows, nmk in (("קונים", buyers, "name"), ("חתימות", sigs, "client_name"), ("חשבוניות", invoices, "client_name")):
+        for r in rows or []:
+            ph = str(r.get("phone") or "").strip()
+            nk = inv_name_key(r.get(nmk))
+            if not (nk and bs_p9(ph)):
+                continue
+            if src != "חשבוניות":
+                for a in ag_keys(r.get("agent")):
+                    by_agent.setdefault((nk, a), (ph, src))
+            by_name.setdefault(nk, {}).setdefault(bs_p9(ph), (ph, src))
+    out = []
+    for r in recs or []:
+        r = dict(r)
+        if len(_re.sub(r"\D", "", r.get("phone") or "")) >= 9:
+            r["phone_from"] = "קובץ"
+        else:
+            nk = inv_name_key(r.get("client"))
+            hit = next((by_agent[(nk, a)] for a in ag_keys(r.get("agent")) if (nk, a) in by_agent), None) if nk else None
+            if not hit and nk and len(nk.split()) >= 2 and len(by_name.get(nk) or {}) == 1:
+                hit = next(iter(by_name[nk].values()))
+            r["phone"], r["phone_from"] = (hit if hit else (r.get("phone") or "", ""))
+        out.append(r)
     return out
 
 
@@ -12502,10 +12536,13 @@ CRM_MODULES = {
                     ("address", "כתובת", "text"), ("agent", "סוכן", "text"), ("client", "לקוח", "text"), ("phone", "טלפון", "phone"),
                     ("other", "מתווך שני", "text"), ("amount", "סכום עסקה", "price"), ("commission", "עמלה (לפני מע\"מ)", "price"),
                     ("paid", "שולם", "text"), ("reported", "דווח", "text"), ("invoice", "חשבונית", "text"),
+                    ("source", "מקור הליד", "text"), ("phone_from", "מקור הטלפון", "text"),
                     ("check", "לבדיקה", "text"), ("notes", "הערות", "long")],
         "default_cols": ["date", "branch", "side", "address", "agent", "client", "phone", "amount", "commission", "paid", "reported"],
         "editable": [],
-        "views": [("all", "כל העסקאות"), ("year", "השנה"), ("sale", "מכירה וקנייה"), ("rent", "שכירות"), ("unpaid", "טרם שולם (2026)"),
+        "views": [("all", "כל העסקאות"), ("year", "השנה"), ("sale", "מכירה וקנייה"), ("rent", "שכירות"),
+                  ("buyer", "קונה"), ("seller", "מוכר"), ("tenant", "שוכר"), ("landlord", "משכיר"), ("referral", "הפנייה"),
+                  ("unpaid", "טרם שולם (2026)"),
                   ("unreported", "לא דווח (2026)"), ("bialik", "ביאליק"), ("motzkin", "מוצקין"), ("kiryat_yam", "קרית ים"),
                   ("check", "לבדיקה")],
     },
@@ -12758,6 +12795,11 @@ CRM_VIEWS = {
               "year": lambda r, t: not r.get("missing") and r.get("year") == t.year,
               "sale": lambda r, t: not r.get("missing") and r.get("kind") == "מכירה",
               "rent": lambda r, t: not r.get("missing") and r.get("kind") == "השכרה",
+              "buyer": lambda r, t: not r.get("missing") and "קונה" in (r.get("sides") or []),
+              "seller": lambda r, t: not r.get("missing") and "מוכר" in (r.get("sides") or []),
+              "tenant": lambda r, t: not r.get("missing") and "שוכר" in (r.get("sides") or []),
+              "landlord": lambda r, t: not r.get("missing") and "משכיר" in (r.get("sides") or []),
+              "referral": lambda r, t: not r.get("missing") and bool(r.get("referral")),
               "unpaid": lambda r, t: not r.get("missing") and r.get("paid") == "טרם שולם",
               "unreported": lambda r, t: not r.get("missing") and r.get("reported") == "לא דווח",
               "bialik": lambda r, t: not r.get("missing") and r.get("branch") == "ביאליק",
@@ -16214,8 +16256,25 @@ def register(app, G):
             if not fn:
                 raise _CrmReadError("deal history not loaded")
             import time as _tdl
-            return crm_unify_agents(crm_deal_records(fn() or [], _tdl.time()),
-                                    lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
+            def _build_deals():
+                recs = crm_deal_records(fn() or [], _tdl.time())
+                srcs = []
+                for nm in ("_fetch_manual_buyers", "get_signings"):
+                    try:
+                        srcs.append(G[nm]() or [])
+                    except Exception as e:
+                        if log: log.warning(f"crm deals phone source {nm}: {e}")
+                        srcs.append([])
+                try:
+                    sbi = G.get("_sbdb")
+                    inv = sbi.invoices_all() if (sbi and sbi.enabled()) else []
+                except Exception as e:
+                    if log: log.warning(f"crm deals phone source invoices: {e}")
+                    inv = []
+                recs = crm_deal_fill_phone(recs, srcs[0], srcs[1], inv, lambda n: G["_canon_key"](G["_canon_agent_name"](n) or n))
+                return crm_unify_agents(recs, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
+            swr = G.get("_swr")
+            return swr("crmdeals", 120, _build_deals) if swr else _build_deals()
         if module == "meetings":
             return crm_unify_agents(crm_meeting_records(G["_nb_statuses"]() or {}),
                                     lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=("by",))
