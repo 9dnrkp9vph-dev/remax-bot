@@ -6046,6 +6046,14 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       border-radius:13px;padding:0 14px}
   .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
       color:#1E3A5F;padding:11px 0}
+  /* [21/10] כפתור 'חפש' (זהב = AI) — החיפוש לא רץ תוך כדי הקלדה */
+  .srchRow{display:flex;gap:8px;align-items:stretch}
+  .srchRow .srch{flex:1;min-width:0}
+  .srch input{min-width:0}
+  .srch input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+  .aiBtn{display:flex;align-items:center;justify-content:center;gap:5px;background:#C29435;color:#231700;
+      border-radius:13px;padding:0 14px;min-height:44px;font-size:13px;font-weight:800;border:0;cursor:pointer;
+      font-family:inherit;box-shadow:0 4px 12px rgba(194,148,53,.28);white-space:nowrap;flex-shrink:0}
   .prop{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
       display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
   .prop.shtaf{background:#F7F5EE;border:1.5px dashed #DCD6C8;box-shadow:none}
@@ -6146,14 +6154,21 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <div class="dl" data-d="commercial" onclick="setDeal(this)">מסחרי</div>
       </div>
       <a id="nbAll" href="/v2/newborn" style="text-align:start;font-size:12px;font-weight:700;color:#2E6BD6;text-decoration:none">לכל נכס נולד ←</a>
+      <div class="srchRow">
       <div class="srch">
         <svg width="15" height="15" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M11 11l3.4 3.4" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input id="q" placeholder="דירת 4 חדרים בקרית ביאליק עד 2 מיליון" oninput="qChanged();qClearBtn()">
+        <input id="q" type="search" enterkeyhint="search" autocomplete="off" placeholder="דירת 4 חדרים בקרית ביאליק עד 2 מיליון"
+               oninput="qTyping()" onkeydown="if(event.key==='Enter'){event.preventDefault();qGo()}">
         <svg id="qSpin" width="16" height="16" viewBox="0 0 16 16" style="display:none;flex-shrink:0"><circle cx="8" cy="8" r="6" fill="none" stroke="#D8DEE9" stroke-width="2"/><path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="#2E6BD6" stroke-width="2" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="0.7s" repeatCount="indefinite"/></path></svg>
-        <button id="qClear" onclick="el('q').value='';qClearBtn();qChanged()" aria-label="ניקוי חיפוש"
-          style="display:none;width:26px;height:26px;border-radius:50%;background:#EBE8DD;border:none;flex-shrink:0;align-items:center;justify-content:center;cursor:pointer;padding:0">
+        <button id="qClear" onclick="el('q').value='';qClearBtn();qGo()" aria-label="ניקוי חיפוש"
+          style="display:none;width:28px;height:28px;border-radius:50%;background:#EBE8DD;border:none;flex-shrink:0;align-items:center;justify-content:center;cursor:pointer;padding:0">
           <svg width="10" height="10" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
+      </div>
+      <button class="aiBtn" id="qGoBtn" onclick="qGo()" aria-label="חיפוש נכסים">
+        <svg width="13" height="13" viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="#231700" stroke-width="2"/><path d="M11 11l3.4 3.4" stroke="#231700" stroke-width="2" stroke-linecap="round"/></svg>
+        חפש
+      </button>
       </div>
       <div style="font-size:11.5px;color:#6B7280" id="sumLine"></div>
     </div>
@@ -6559,11 +6574,18 @@ function setMode(node){
   render();
 }
 var _qT = null;
-function qChanged(){
+/* [21/10 אייל, כרטיס החיפושים בלוח הבקרה: כל חצי משפט נרשם כחיפוש ועלה קריאת AI] החיפוש רץ רק ב'חפש' / Enter / ניקוי —
+   לא תוך כדי הקלדה. מחיקת כל הטקסט ידנית מחזירה את כל הנכסים. */
+function qGo(){
   clearTimeout(_qT);
   if (el('qSpin')) el('qSpin').style.display = 'block';
   if (el('sumLine')){ el('sumLine').textContent = 'מחפש…'; el('sumLine').style.color = '#2E6BD6'; el('sumLine').style.fontWeight = '700'; }
-  _qT = setTimeout(function(){ load(el('q').value.trim()); }, 500);
+  load(el('q').value.trim());
+}
+function qChanged(){ qGo(); }
+function qTyping(){
+  qClearBtn();
+  if (!el('q').value.trim()) qGo();
 }
 function qClearBtn(){ var b = el('qClear'); if (b) b.style.display = el('q').value ? 'flex' : 'none'; }
 /* [MINE-SEARCH 01/10] אייל: "לאלעד לוי יש 5 נכסים שתואמים את החיפוש ומופיעים ב'המשרד שלנו' — למה ב'שלי' לא?"
