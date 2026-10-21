@@ -14,6 +14,14 @@ import threading
 
 ACTION_IN, ACTION_OUT = "מיקום: במשרד · ", "מיקום: מחוץ למשרד"
 MAX_ENTRIES = 20
+_PING_SYNC = False   # בדיקות: כתיבת הפעימה בלי thread
+
+# [CRM-PING 21/10] מסכי ה-CRM (/v2/crm/*) מוגשים בלי שכבת האפליקציה ולכן לא שלחו פעימת נוכחות — מי שעבד ב-CRM
+# לא נראה ב'פעילים עכשיו' ולא צבר זמן ביומן השימוש. הסקריפט מוזרק לכל עמוד CRM ושולח פעימה עם טוקן ה-CRM.
+CRM_PING_JS = ("<script>/* [CRM-PING] פעימת נוכחות ליומן השימוש */(function(){function p(){try{"
+               "if(document.visibilityState==='hidden')return;var t='';try{t=localStorage.getItem('crmTok')||localStorage.getItem('fbTok')||'';}catch(e){}"
+               "if(t)fetch('/v2/api/crm/ping',{method:'POST',headers:{'X-Auth-Token':t},keepalive:true}).catch(function(){});"
+               "}catch(e){}}setTimeout(p,2000);setInterval(p,45000);})();</script>")
 
 
 def _now_il():
@@ -172,6 +180,30 @@ def register(app, G):
         except Exception:
             return []
 
+    via = {}   # טלפון → 'app' / 'crm' (מאיפה הגיעה הפעימה האחרונה)
+
+    def presence_via(phone):
+        with lock:
+            return via.get(str(phone or "")[-9:])
+    app.presence_via = presence_via
+
+    def _seen(name, role, phone, where):
+        """פעימה מהאפליקציה או מה-CRM: מאיפה + במשרד/מחוץ (רק כשהוגדרו כתובות משרד)."""
+        ph = G["_last9"](phone)
+        if not ph:
+            return
+        with lock:
+            via[ph] = where
+        ents = _entries()
+        if not ents:
+            return
+        ip = client_ip(request.headers, request.remote_addr)
+        with lock:
+            act = presence_change(state, ph, place_for_ip(ip, ents), _now_il())
+        if act:
+            dev = device_label(request.headers.get("User-Agent"))
+            G["_log_activity"](name, role, phone, act, " · ".join(x for x in ("IP " + ip if ip else "", dev) if x))
+
     def presence_place(phone):
         """None = לא הוגדרו כתובות משרד / לא נראה; '' = מחוץ למשרד; אחרת שם הסניף."""
         if not _entries():
@@ -186,23 +218,52 @@ def register(app, G):
         if request.method != "POST" or request.path != "/v2/api/ping":
             return None
         try:
-            ents = _entries()
-            if not ents:
-                return None
             s = G["_web_auth"]()
-            if not s:
-                return None
-            ph = G["_last9"](s.get("phone", ""))
-            ip = client_ip(request.headers, request.remote_addr)
-            with lock:
-                act = presence_change(state, ph, place_for_ip(ip, ents), _now_il())
-            if act:
-                dev = device_label(request.headers.get("User-Agent"))
-                G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), act,
-                                   " · ".join(x for x in ("IP " + ip if ip else "", dev) if x))
+            if s:
+                _seen(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "app")
         except Exception as e:
             if log: log.warning(f"presence ping: {e}")
         return None
+
+    @app.route("/v2/api/crm/ping", methods=["POST"])
+    def v2_api_crm_ping():
+        """פעימת נוכחות ממסכי ה-CRM — טוקן CRM (כניסת Google), ובנפילה טוקן האפליקציה."""
+        tok = request.headers.get("X-Auth-Token") or ""
+        v = G["_verify_crm_token"](tok) if tok else None
+        if v:
+            phone, email = v
+            name = G["_display_name_for"](email, phone) or email
+            role = "crm"
+        else:
+            s = G["_web_auth"]()
+            if not s:
+                return jsonify({"ok": False}), 401
+            phone, name, role = s.get("phone", ""), s.get("name", ""), s.get("role", "")
+        ph = G["_last9"](phone)
+        sb = G.get("_sbdb")
+        if ph and sb is not None and sb.enabled():
+            if _PING_SYNC:
+                sb.insert_ping(ph, name)
+            else:
+                threading.Thread(target=lambda: sb.insert_ping(ph, name), daemon=True).start()
+        try:
+            _seen(name, role, phone, "crm")
+        except Exception as e:
+            if log: log.warning(f"crm ping presence: {e}")
+        return jsonify({"ok": True})
+
+    @app.after_request
+    def _crm_ping_inject(resp):
+        try:
+            if request.path.startswith("/v2/crm") and resp.mimetype == "text/html" and not resp.direct_passthrough:
+                body = resp.get_data(as_text=True)
+                if "</body>" in body and "/v2/api/crm/ping" not in body:
+                    resp.set_data(body.replace("</body>", CRM_PING_JS + "</body>", 1))
+                elif "</body>" not in body and "/v2/api/crm/ping" not in body:
+                    resp.set_data(body + CRM_PING_JS)
+        except Exception as e:
+            if log: log.warning(f"crm ping inject: {e}")
+        return resp
 
     def _guard():
         s = G["_web_auth"]()

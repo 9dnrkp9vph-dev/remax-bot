@@ -8431,6 +8431,7 @@ function load(){
   }).catch(function(){});
 }
 /* [PRESENCE 19/10] במשרד / מחוץ למשרד (לפי ה-WiFi של הסניף; מוצג רק כשהוגדרו כתובות משרד בניהול) */
+function viaTxt(v){ return v === 'crm' ? ' · CRM' : ''; }
 function placeTxt(p){ return (p === undefined || p === null) ? '' : ' · ' + (p ? 'במשרד ' + esc(p) : 'מחוץ למשרד'); }
 /* [USAGE-NOW 07/10] פעילים עכשיו — מתרענן כל 30 שנ' */
 function nowAgo(s){ return s < 60 ? 'עכשיו' : 'לפני ' + Math.round(s / 60) + ' דק\''; }
@@ -8442,7 +8443,7 @@ function renderNow(rows){
     '<div style="font-size:14.5px;font-weight:800">פעילים עכשיו · ' + rows.length + '</div></div>' +
     (rows.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + rows.map(function(r){
       return '<span style="background:#E7F7EE;color:#157A43;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:700">' +
-        esc(r.name) + ' <span style="color:#5B6472;font-weight:600">· ' + nowAgo(r.ago) + placeTxt(r.place) + '</span></span>';
+        esc(r.name) + ' <span style="color:#5B6472;font-weight:600">· ' + nowAgo(r.ago) + viaTxt(r.via) + placeTxt(r.place) + '</span></span>';
     }).join('') + '</div>' : '<div style="font-size:12.5px;color:#6B7280">אף אחד לא באפליקציה ברגע זה</div>');
 }
 function loadNow(){
@@ -12066,7 +12067,7 @@ function agoS(s){return s<60?'עכשיו':('לפני '+Math.round(s/60)+' דק׳
 function online(){fetch('/v2/api/usage_now',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){
   var el=document.getElementById('onList');if(!el||!j||!j.ok)return;var rows=j.rows||[];
   document.getElementById('onN').textContent='('+rows.length+')';
-  el.innerHTML=rows.length?rows.map(function(r){return '<span class="chip"><i></i>'+esc(r.name)+' · '+agoS(r.ago)+(r.place==null?'':' · '+(r.place?'במשרד '+esc(r.place):'מחוץ למשרד'))+'</span>';}).join(''):'<span class="mut">אף אחד לא מחובר כרגע</span>';}).catch(function(){});}
+  el.innerHTML=rows.length?rows.map(function(r){return '<span class="chip"><i></i>'+esc(r.name)+' · '+agoS(r.ago)+(r.via==='crm'?' · CRM':'')+(r.place==null?'':' · '+(r.place?'במשרד '+esc(r.place):'מחוץ למשרד'))+'</span>';}).join(''):'<span class="mut">אף אחד לא מחובר כרגע</span>';}).catch(function(){});}
 function setSw(j){var w=document.getElementById('swWa'),p=document.getElementById('swPush');if(!w)return;
   w.classList.toggle('on',!!j.wa_official);p.classList.toggle('on',!!j.push);
   document.getElementById('swQuiet').textContent=j.quiet?'כרגע במצב השתקה (שבת/חג או ידני) — גם כשהמתגים דלוקים, לא נשלח כלום.':'';}
@@ -14514,7 +14515,7 @@ def bpage_cat(source, live):
         return {"cat": "שת\"פ", "who": str(live.get("_office", "") or "").strip()}
     return {"cat": "המשרד", "who": str(live.get("סוכן 1", "") or "").strip()}
 
-def usage_now_rows(pings, now_ep, display, window=150, place_for=None):
+def usage_now_rows(pings, now_ep, display, window=150, place_for=None, via_for=None):
     """[USAGE-NOW 07/10] פעילים עכשיו (אייל): מי ששלח פעימה ב-window השניות האחרונות (פעימה כל 45ש').
     מקובץ לפי טלפון; display(name, phone) → שם לתצוגה. ממוין לפי הפעימה האחרונה."""
     last = {}
@@ -14529,6 +14530,9 @@ def usage_now_rows(pings, now_ep, display, window=150, place_for=None):
     if place_for:   # [PRESENCE 19/10] None = לא ידוע (לא הוגדרו כתובות משרד); '' = מחוץ למשרד; אחרת הסניף
         for r, ph in zip(rows, last.keys()):
             r["place"] = place_for(ph)
+    if via_for:     # [CRM-PING 21/10] 'crm' = הפעימה האחרונה הגיעה ממסכי ה-CRM
+        for r, ph in zip(rows, last.keys()):
+            r["via"] = via_for(ph)
     rows.sort(key=lambda r: r["ago"])
     return rows
 
@@ -18563,7 +18567,8 @@ def register(app, G):
             if log: log.warning(f"usage now: {e}")
             pings = []
         return jsonify({"ok": True, "rows": usage_now_rows(pings, now, G["_display_name_for"],
-                                                           place_for=getattr(app, "presence_place", None))})
+                                                           place_for=getattr(app, "presence_place", None),
+                                                           via_for=getattr(app, "presence_via", None))})
 
     @app.route("/v2/api/usage_today", methods=["GET"])
     def v2_api_usage_today():
