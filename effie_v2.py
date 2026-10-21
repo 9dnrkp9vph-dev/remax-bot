@@ -1040,7 +1040,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       <div class="stat"><div class="n" style="color:#7A5E1C" id="stBuyers">—</div><div class="l">קונים חדשים</div></div>
     </div>
 
-    <div class="briefBar" onclick="openStory()">
+    <div class="briefBar" onclick="openStory(true)">
       <div class="ic"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
       <div style="flex:1;display:flex;flex-direction:column;gap:1px">
         <div class="t" id="briefTitle">סטורי נכסים חמים</div>
@@ -1573,10 +1573,19 @@ GET('/v2/api/brief').then(function(j){
 function seenKey(){ return 'v2BriefSeen'; }
 function openStory(fromBar){
   STORY.open = true; STORY.i = 0;
+  STORY.mode = fromBar ? 'tap' : 'auto'; STORY.max = 1;   /* [21/10] כמה לחצו לראות — לדשבורד ב-CRM */
   el('story').style.display = 'flex';
   renderCard(0);
 }
+function storyLog(){
+  if (!STORY.mode) return;
+  var body = JSON.stringify({mode: STORY.mode, seen: STORY.max || 1, total: total()});
+  STORY.mode = '';
+  try{ fetch('/v2/api/story/view', {method:'POST', keepalive:true, headers:{'Content-Type':'application/json', 'X-Auth-Token': TOK}, body: body}); }catch(e){}
+}
+window.addEventListener('pagehide', function(){ if (STORY.open) storyLog(); });
 function closeStory(){
+  storyLog();
   STORY.open = false;
   clearTimeout(STORY.timer);
   el('story').style.display = 'none';
@@ -1610,6 +1619,7 @@ function card(kicker, n, w, sub, mainTx, mainFn, secTx){
     (secTx ? '<button class="bSec" onclick="nextCard()">' + secTx + '</button>' : '') + '</div>';
 }
 function renderCard(i){
+  STORY.max = Math.max(STORY.max || 0, i + 1);
   clearTimeout(STORY.timer);
   STORY.paused = false;
   el('storyHint').textContent = 'הקש להמשך · החלק למטה לסגירה';
@@ -11969,6 +11979,8 @@ function kpis(){var p=D.periods,ca=pv(p.calls),an=pv(p.calls_answered),ex=pv((p.
   ['עסקאות',n(pv(p.deals_closed))+' נסגרו','נפתחו '+n(pv(p.deals_opened))+' · פתוחים '+n(p.open_now)+' · אצל עו״ד '+n(p.lawyer_now)],
   ['נכסי המשרד בפרסום',n(p.office_active),'בלעדי '+n(p.office_active_excl)+' · רגיל '+n((p.office_active||0)-(p.office_active_excl||0))]];
  var wo=(D.wa_official||{})[P];
+ var so=(D.story||{})[P];
+ if(so)k.push(['סטורי נכסים חמים',n(so.taps)+' לחצו לראות',n(so.tap_people)+' אנשים · נפתח לבד '+n(so.autos)+' · עברו לנכסים '+n(so.past_summary)+' · עד הסוף '+n(so.full)+' · נספר מ-21/10']);
  if(wo)k.push(['וואטסאפ רשמי (360)',n(wo.sent)+' נשלחו',(wo.failed?'נכשלו '+n(wo.failed):'אין כשלים')+(wo.blocked?' · נחסמו במתג '+n(wo.blocked):'')+' · נספר מ-19/10']);
  return k.map(function(x){return '<div class="card kpi"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+'</div><div class="x">'+esc(x[2])+'</div></div>';}).join('');}
 function tm(ts){if(!ts)return '';var d=new Date(ts*1000);return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
@@ -12217,6 +12229,53 @@ def crm_wa_official(act, bounds):
                 out[p][col] += 1
                 if col == "sent":
                     out[p]["kinds"][kind] = out[p]["kinds"].get(kind, 0) + 1
+    return out
+
+
+_CRM_STORY = "סטורי נכסים חמים — "   # [21/10] 'לחיצה' (מהפס בבית) / 'אוטומטי' (נפתח לבד בכניסה)
+
+
+def story_detail(seen, total):
+    """'ראה N/T' — עד איזה כרטיס הגיע (1 = רק כרטיס הסיכום)."""
+    try:
+        t = max(0, int(total))
+        n = max(0, min(int(seen), t)) if t else 0
+    except Exception:
+        t = n = 0
+    return "ראה %d/%d" % (n, t)
+
+
+def crm_story_stats(act, bounds):
+    """[21/10 אייל: 'כמה לחצו לראות את הסטורי (שאדע אם שימושי)'] לכל תקופה: לחיצות ואנשים שלחצו, פתיחות אוטומטיות,
+    כמה עברו את כרטיס הסיכום (ראו נכס חם אחד לפחות), כמה ראו עד הסוף, ומי לחץ הכי הרבה."""
+    out = {p: {"taps": 0, "tap_people": 0, "autos": 0, "auto_people": 0, "past_summary": 0, "full": 0, "top": []} for p in bounds}
+    who = {p: ({}, set()) for p in bounds}
+    for a in act or []:
+        an = str(a.get("action") or "")
+        if not an.startswith(_CRM_STORY):
+            continue
+        kind = an[len(_CRM_STORY):].strip()
+        m = _re.search(r"(\d+)/(\d+)", str(a.get("detail") or ""))
+        seen, tot = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+        nm = str(a.get("name") or "").strip()
+        for p, t0 in bounds.items():
+            if (a.get("ts") or 0) < t0:
+                continue
+            o, (taps, autos) = out[p], who[p]
+            if kind == "לחיצה":
+                o["taps"] += 1
+                taps[nm] = taps.get(nm, 0) + 1
+            else:
+                o["autos"] += 1
+                autos.add(nm)
+            if seen > 1:
+                o["past_summary"] += 1
+            if tot and seen >= tot:
+                o["full"] += 1
+    for p in bounds:
+        taps, autos = who[p]
+        out[p]["tap_people"], out[p]["auto_people"] = len(taps), len(autos)
+        out[p]["top"] = [[k, v] for k, v in sorted(taps.items(), key=lambda x: -x[1])[:5]]
     return out
 
 
@@ -13854,7 +13913,7 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     todo = crm_todo(calls, get("sig_recs", sigs, default=[]) or [], aact, newborn, get("nb_contacts", default={}) or {}, now, hp)
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
             "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa,
-            "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo, "wa_official": crm_wa_official(aact, bounds),
+            "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo, "wa_official": crm_wa_official(aact, bounds), "story": crm_story_stats(aact, bounds),
             "listings": get("agent_listings", default=None), "searches": get("searches", default=None),
             "meetings_today": get("meetings_today", default=None)}
 
@@ -17430,6 +17489,18 @@ def register(app, G):
                    "/v2/props": "נכסים", "/v2/meets": "יומן", "/v2/deals": "עסקאות", "/v2/home": "בית",
                    "/v2/invoices": "חשבוניות", "/v2/history": "היסטוריית עסקאות"}
 
+    @app.route("/v2/api/story/view", methods=["POST"])
+    def v2_api_story_view():
+        """[21/10] צפייה בסטורי הנכסים החמים: לחיצה (מהפס בבית) או אוטומטי (בכניסה) + עד איזה כרטיס הגיע — לדשבורד."""
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        kind = "לחיצה" if b.get("mode") == "tap" else "אוטומטי"
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), _CRM_STORY + kind,
+                           story_detail(b.get("seen") or 0, b.get("total") or 0))
+        return jsonify({"ok": True})
+
     @app.route("/v2/api/wa/click", methods=["POST"])
     def v2_api_wa_click():
         """[CRM-3] פתיחת וואטסאפ מאפי (מהטלפון/מחשב של הסוכן) — שורה ביומן הפעילות לפי מסך."""
@@ -17569,7 +17640,7 @@ def register(app, G):
                 """פעולות הסוכנים לטבלה ול'מחכה לטיפול' — סינון בשרת, עם השם האמיתי לפי הטלפון."""
                 if not (sb and sb.enabled()):
                     return []
-                rows = sb.fetch_activity_actions(t0, _CRM_BPAGE_SEND + _CRM_NB_CONTACT + ("סימון בדף קונה", _CRM_WA_OFFICIAL)) or []
+                rows = sb.fetch_activity_actions(t0, _CRM_BPAGE_SEND + _CRM_NB_CONTACT + ("סימון בדף קונה", _CRM_WA_OFFICIAL, _CRM_STORY)) or []
                 dn = G.get("_display_name_for")
                 for r in rows:
                     if dn and r.get("role") != "client":

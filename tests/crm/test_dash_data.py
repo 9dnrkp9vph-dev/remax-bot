@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import _load
 from _load import ck
 from zoneinfo import ZoneInfo
-ns = _load.load("crm_dashboard_data", "_CRM_EFFIE_AI", "CRM_STREAMS", "crm_health", "_work_hours_between", "crm_daily_series", "crm_ts", "inv_parse_dt", "crm_nb_area_last", "crm_period_bounds", "crm_agent_table", "crm_todo", "bs_p9", "_CRM_NB_CONTACT", "_CRM_BPAGE_SEND", "crm_wa_official", "_CRM_WA_OFFICIAL")
+ns = _load.load("crm_dashboard_data", "_CRM_EFFIE_AI", "CRM_STREAMS", "crm_health", "_work_hours_between", "crm_daily_series", "crm_ts", "inv_parse_dt", "crm_nb_area_last", "crm_period_bounds", "crm_agent_table", "crm_todo", "bs_p9", "_CRM_NB_CONTACT", "_CRM_BPAGE_SEND", "crm_wa_official", "crm_story_stats", "_CRM_WA_OFFICIAL")
 build = ns["crm_dashboard_data"]
 IL = ZoneInfo("Asia/Jerusalem")
 now = datetime.datetime(2026, 10, 19, 15, 0, tzinfo=IL).timestamp()

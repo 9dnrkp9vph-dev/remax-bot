@@ -5,7 +5,7 @@ import _load
 from _load import ck
 from zoneinfo import ZoneInfo
 ns = _load.load("crm_dashboard_data", "_CRM_EFFIE_AI", "CRM_STREAMS", "crm_health", "_work_hours_between", "crm_daily_series", "crm_ts",
-                "inv_parse_dt", "y2_private_area", "crm_nb_area_last", "crm_period_bounds", "crm_agent_table", "crm_todo", "bs_p9", "_CRM_NB_CONTACT", "_CRM_BPAGE_SEND", "crm_wa_official", "_CRM_WA_OFFICIAL")
+                "inv_parse_dt", "y2_private_area", "crm_nb_area_last", "crm_period_bounds", "crm_agent_table", "crm_todo", "bs_p9", "_CRM_NB_CONTACT", "_CRM_BPAGE_SEND", "crm_wa_official", "crm_story_stats", "_CRM_WA_OFFICIAL")
 area = ns["y2_private_area"]
 ck(area([{"city": "חיפה"}, {"city": "חיפה"}, {"_city": "קרית ביאליק"}]) == "חיפה", "majority Haifa")
 ck(area([{"city": "קריית מוצקין"}, {"city": "קרית אתא"}]) == "קריות", "Krayot (קריית spelling)")
