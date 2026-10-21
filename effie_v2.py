@@ -1058,9 +1058,9 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="ic"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#231700" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
         <div class="l">חתימות</div>
       </div>
-      <div class="a lite" onclick="location.href='/v2/buyers?ai=1'">   <!-- [BUYER-AI 01/10] החליף את "חיפוש נכס" (נגיש מ"נכסי המשרד") -->
-        <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><circle cx="6.5" cy="5.5" r="2.6" fill="none" stroke="#C29435" stroke-width="1.6"/><path d="M2 13.5c.5-2.5 2.3-3.9 4.5-3.9 1 0 1.9.3 2.6.8" fill="none" stroke="#C29435" stroke-width="1.6" stroke-linecap="round"/><path d="M12.5 8.5l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z" fill="#C29435"/></svg></div>
-        <div class="l">חיפוש קונה AI</div>
+      <div class="a lite" onclick="location.href='/v2/meets'">   <!-- [HOME 21/10] במקום "חיפוש קונה AI" (נגיש ממסך הקונים) — אייל -->
+        <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2.2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+        <div class="l">יומן ופולו-אפ</div>
       </div>
       <div class="a lite" onclick="location.href='/v2/buyers?tab=bpage'">   <!-- [AI-MATCH 08/10] במקום "שאל את אפי" (מוקפא — /v2/effie נשאר בכתובת) -->
         <div class="ic" style="background:#F6EEDB"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="3" width="8" height="10.5" rx="2" fill="none" stroke="#C29435" stroke-width="1.6"/><path d="M4.5 6.5h3M4.5 9h3" stroke="#C29435" stroke-width="1.5" stroke-linecap="round"/><path d="M12.5 2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z" fill="#C29435"/></svg></div>
