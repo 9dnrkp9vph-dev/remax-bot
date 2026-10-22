@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 import _load
 from _load import ck
-ns = _load.load("crm_buyer_pages", "_crm_bpage_sum", "bpage_expired", "bpage_iso_ep", "crm_buyer_records", "_CRM_BSTAT", "_crm_int", "CRM_VIEWS", "CRM_MODULES", "_crm_day", "crm_query", "_crm_norm", "inv_phone9")
+ns = _load.load("crm_buyer_pages", "_crm_bpage_sum", "bpage_expired", "bpage_iso_ep", "crm_buyer_records", "bstat_of", "bstat_key", "_CRM_BSTAT", "_crm_int", "CRM_VIEWS", "CRM_MODULES", "_crm_day", "crm_query", "_crm_norm", "inv_phone9")
 rec, q = ns["crm_buyer_records"], ns["crm_query"]
 NOW = 1_800_000_000.0
 B = [{"row": 5, "date": str(NOW - 3600), "name": "גדזיי מליקוב", "phone": "053-2254463", "agent": "אירנה טנדשוילי", "budget": "1,285,000",

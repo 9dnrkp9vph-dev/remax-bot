@@ -3837,11 +3837,8 @@ function smartAdd(i){
 var ST_LABEL = {active:'פעיל', hot:'חם', frozen:'בהקפאה', closed:'סגר'};
 var ST_COLOR = {active:'#2E6BD6', hot:'#C29435', frozen:'#5B6472', closed:'#1FAF5E'};
 
-function bKey(b){
-  var d = String(b.phone || '').replace(/[^0-9]/g, '').slice(-9);
-  return d || ('r' + b.row);
-}
-function stOf(b){ return STATUSES[bKey(b)] || STATUSES[b.row] || 'active'; }
+// [BSTAT-PER-BUYER 22/10] השרת מחזיר סטטוס לכל קונה לפי שורה (r<שורה>) — לא לפי טלפון
+function stOf(b){ return STATUSES['r' + b.row] || 'active'; }
 
 function load(){
   return Promise.all([
@@ -3918,8 +3915,7 @@ function pickStatus(i){
 function setStatus(b, st){
   POST('/v2/api/buyers/status', {row: b.row, phone: b.phone || '', status: st}).then(function(j){
     if (!j.ok){ toast('שגיאה בשמירה'); closeSheet(); return; }
-    if (st === 'active') delete STATUSES[bKey(b)]; else STATUSES[bKey(b)] = st;
-    delete STATUSES[b.row];
+    if (st === 'active') delete STATUSES['r' + b.row]; else STATUSES['r' + b.row] = st;
     closeSheet(); toast('הסטטוס עודכן'); render();
   });
 }
@@ -4007,7 +4003,7 @@ function saveEdit(i){
   var st = el('sheet')._st;
   if (st !== stOf(b))
     jobs.push(POST('/v2/api/buyers/status', {row: b.row, phone: b.phone || '', status: st}).then(function(j){
-      if (j.ok){ if (st === 'active') delete STATUSES[bKey(b)]; else STATUSES[bKey(b)] = st; delete STATUSES[b.row]; }
+      if (j.ok){ if (st === 'active') delete STATUSES['r' + b.row]; else STATUSES['r' + b.row] = st; }
       return j;
     }));
   var ag = el('edAgent') ? el('edAgent').value : '';
@@ -13311,15 +13307,89 @@ def _crm_bpage_sum(p):
     return " · ".join(parts)
 
 
-def crm_buyer_records(buyers, statuses, ep, pages=None):
+# ── [BSTAT-PER-BUYER 22/10] סטטוס קונה (חם/בהקפאה/סגר) שייך לקונה אחד ──
+# עד היום המפתח היה 9 ספרות הטלפון בלבד: 'סגר' של קונה ישן נדבק לכל קונה חדש עם אותו נייד — גם אצל סוכן
+# אחר (עוז דנילוב, 22/10) — ומאז 07/10 אין טאב 'סגרו', אז הקונה פשוט נעלם. מפתח חדש: טלפון + הסוכן
+# (קונה אחד לכל סוכן — כלל הדדופ מ-01/10); בלי טלפון — 'r<שורה>' כמו קודם. מספר השורה לא מתאים כמפתח:
+# מחיקת קונה מזיזה את השורות שאחריו (buyers_delete_row).
+_BSTAT_CUTOFF = 1787605200   # 25/08/2026 00:00 שעון ישראל — מאז יומן הפעילות ב-Supabase
+
+
+def bstat_key(b, canon):
+    p9 = _re.sub(r"\D", "", str(b.get("phone") or ""))[-9:]
+    if p9:
+        return p9 + "|" + canon(str(b.get("agent") or "").strip())
+    return "r" + str(b.get("row", ""))
+
+
+def bstat_of(b, m, canon):
+    """הסטטוס של קונה אחד (None = פעיל). קובץ שעוד לא הומר (_v≠2) — גם המפתח הישן לפי טלפון."""
+    m = m or {}
+    k = bstat_key(b, canon)
+    v = m.get(k)
+    if v:
+        return v
+    if "|" not in k:
+        return m.get(str(b.get("row", ""))) or None
+    if m.get("_v") != 2:
+        return m.get(k.split("|", 1)[0]) or None
+    return None
+
+
+def bstat_set_times(acts, buyers, canon):
+    """מתי נקבע לאחרונה כל מפתח-טלפון ישן: 'עדכון סטטוס קונה' ('<9 ספרות> → x'), או עריכת סטטוס ב-CRM
+    ('קונים (CRM) — עריכה', '<שם> · …סטטוס') — לפי הטלפון של הקונה באותו שם."""
+    by_name = {}
+    for b in buyers or []:
+        p9 = _re.sub(r"\D", "", str(b.get("phone") or ""))[-9:]
+        nm = canon(str(b.get("name") or "").strip())
+        if p9 and nm:
+            by_name.setdefault(nm, set()).add(p9)
+    out = {}
+    for a in acts or []:
+        act, det, ts = str(a.get("action") or ""), str(a.get("detail") or ""), float(a.get("ts") or 0)
+        keys = []
+        if act == "עדכון סטטוס קונה":
+            k = det.split(" ", 1)[0]
+            if _re.fullmatch(r"\d{9}", k):
+                keys = [k]
+        elif act.startswith("קונים (CRM)") and "סטטוס" in det:
+            keys = list(by_name.get(canon(det.split(" · ", 1)[0].strip()), ()))
+        for k in keys:
+            if ts > out.get(k, 0):
+                out[k] = ts
+    return out
+
+
+def bstat_migrate(m, buyers, set_times, ep, canon, cutoff=_BSTAT_CUTOFF):
+    """המרה חד-פעמית: מפתח ישן לפי טלפון → מפתח לכל קונה עם המספר שכבר היה קיים כשהסטטוס נקבע
+    (תאריך הכניסה עד מועד הקביעה; בלי רישום ביומן — לפני 25/08). קונים שנכנסו אחר כך — פעילים."""
+    m = dict(m or {})
+    if m.get("_v") == 2:
+        return m
+    out = {k: v for k, v in m.items() if not _re.fullmatch(r"\d{9}", str(k))}
+    for k, s in m.items():
+        if not _re.fullmatch(r"\d{9}", str(k)):
+            continue
+        t = (set_times or {}).get(k)
+        for b in buyers or []:
+            if _re.sub(r"\D", "", str(b.get("phone") or ""))[-9:] != k:
+                continue
+            d = ep(b.get("date") or "") or 0
+            if (d <= t) if t else (d < cutoff):
+                out.setdefault(bstat_key(b, canon), s)
+    out["_v"] = 2
+    return out
+
+
+def crm_buyer_records(buyers, statuses, ep, pages=None, canon=None):
     """[CRM קונים 20/10] שורות הקונים (_fetch_manual_buyers) → רשומות. סטטוס מקובץ הסטטוסים של מסך הקונים
-    (מפתח: 9 ספרות הטלפון, אחרת 'r<שורה>'); מקור לפי תחילת הסיכום: 'ליד מהאתר' → אתר, 'מהחתמת' → החתמה."""
+    (bstat_of — לכל קונה); מקור לפי תחילת הסיכום: 'ליד מהאתר' → אתר, 'מהחתמת' → החתמה."""
+    canon = canon or (lambda s: _re.sub(r"\s", "", s))
     out = []
     for b in buyers or []:
         row = b.get("row")
-        ph9 = "".join(ch for ch in str(b.get("phone") or "") if ch.isdigit())[-9:]
-        code = (statuses or {}).get(ph9) if ph9 else None
-        code = code or (statuses or {}).get("r" + str(row)) or (statuses or {}).get(str(row)) or "active"
+        code = bstat_of(b, statuses, canon) or "active"
         sm = str(b.get("summary") or "").strip()
         src = "אתר" if sm.startswith("ליד מהאתר") else ("החתמה" if sm.startswith("מהחתמת") else "ידני")
         out.append({"key": "b:" + str(row), "row": row, "date": ep(b.get("date") or "") or 0,
@@ -15248,7 +15318,7 @@ def register(app, G):
                 _keys, _phones, _m = G["_scope_keys_phones"](role, _nm, _ph, s.get("agents"), s.get("agent_names"))
                 own = lambda r: (ck(r.get("agent", "")) in _keys) or (l9(r.get("agent_phone", "")) in _phones)
             try:
-                stat = _bstat_load() or {}
+                stat = _bstat_current() or {}
             except Exception:
                 stat = {}
             ag_ph = G["fetch_agents_phones"]() or {}
@@ -15265,7 +15335,7 @@ def register(app, G):
                 if sc < 40:
                     continue
                 row = r.get("row", "")
-                st = stat.get(p9) or stat.get("r" + str(row)) or stat.get(str(row)) or "active"
+                st = bstat_of(r, stat, _bcanon) or "active"
                 name = str(r.get("name", "") or "").strip()
                 if own(r):
                     disp, tel = G["_il_phone"](r.get("phone", ""))
@@ -15948,7 +16018,14 @@ def register(app, G):
         if not _web_auth():
             return jsonify({"ok": False, "auth": False}), 401
         try:
-            return jsonify({"ok": True, "statuses": _bstat_load()})
+            # [BSTAT-PER-BUYER 22/10] הסטטוס כבר מחושב לכל קונה — המסך מקבל {r<שורה>: סטטוס}
+            m = _bstat_current()
+            out = {}
+            for b in (G["_fetch_manual_buyers"]() or []):
+                v = bstat_of(b, m, _bcanon)
+                if v and v != "active":
+                    out["r" + str(b.get("row", ""))] = v
+            return jsonify({"ok": True, "statuses": out, "per_row": True})
         except Exception as e:
             if log: log.warning(f"effie v2: buyers statuses read failed: {e}")
             return jsonify({"ok": True, "statuses": {}})
@@ -15968,16 +16045,23 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "bad_status"}), 400
         # נשמר בקובץ על הדיסק הקבוע (כמו deals.json) — הסנכרון גיליון→Supabase דרס גם את
         # טבלת buyers וגם מפתחות קונפיג חדשים; לדיסק הזה אין לו גישה.
-        # מפתח: טלפון הקונה (עמיד להזזת שורות); בלי טלפון — לפי שורה.
-        key = "".join(ch for ch in str(b.get("phone", "") or "") if ch.isdigit())[-9:] or ("r" + str(row))
+        # [BSTAT-PER-BUYER 22/10] מפתח: טלפון + סוכן של הקונה הזה (bstat_key). השורה מאומתת מול הטלפון
+        # שהמסך שלח — מחיקת קונה מזיזה שורות; קונה שנוסף עכשיו — רענון מטמון הקונים פעם אחת.
+        p9 = "".join(ch for ch in str(b.get("phone", "") or "") if ch.isdigit())[-9:]
+        def _find():
+            cur = next((x for x in (G["_fetch_manual_buyers"]() or []) if str(x.get("row")) == str(row)), None)
+            if cur is not None and p9 and _re.sub(r"\D", "", str(cur.get("phone") or ""))[-9:] != p9:
+                return None
+            return cur
         try:
+            cur = _find()
+            if cur is None:
+                G["_cache_clear"]("buyers")
+                cur = _find()
+            if cur is None:
+                return jsonify({"ok": False, "reason": "not_found"})
             with _BSTAT_LOCK:
-                m = _bstat_load()
-                if status == "active":
-                    m.pop(key, None)   # ברירת המחדל — אין צורך לרשום
-                else:
-                    m[key] = status
-                _bstat_save(m)
+                key = _bstat_set_locked(cur, status)
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                           "עדכון סטטוס קונה", f"{key} → {status}")
             return jsonify({"ok": True})
@@ -16016,6 +16100,49 @@ def register(app, G):
         with open(_BSTAT_PATH, "w", encoding="utf-8") as f:
             _json.dump(m, f, ensure_ascii=False)
 
+    def _bcanon(n):
+        try:
+            return G["_canon_key"](G["_canon_agent_name"](n) or n)
+        except Exception:
+            return _re.sub(r"\s", "", str(n or ""))
+
+    def _bstat_current_locked():
+        """[BSTAT-PER-BUYER 22/10] הקובץ אחרי המרה חד-פעמית של המפתחות הישנים (לפי טלפון) למפתח לכל קונה.
+        כשל בקריאת הקונים/היומן — מחזירים את הקובץ כמו שהוא (bstat_of עדיין קורא את הישנים) ומנסים בפעם הבאה."""
+        m = _bstat_load()
+        if m.get("_v") == 2 or not any(_re.fullmatch(r"\d{9}", str(k)) for k in m):
+            return m
+        try:
+            buyers = G["_fetch_manual_buyers"]() or []
+            sb = G.get("_sbdb")
+            acts = sb.fetch_activity_actions(_BSTAT_CUTOFF - 86400, ["עדכון סטטוס קונה", "קונים (CRM)"]) if sb and sb.enabled() else None
+            if not buyers or acts is None:
+                return m
+            new = bstat_migrate(m, buyers, bstat_set_times(acts, buyers, _bcanon), G["_excl_epoch"], _bcanon)
+            _bstat_save(new)
+            if log: log.info("buyer status: migrated %d phone keys → %d keys",
+                             sum(1 for k in m if _re.fullmatch(r"\d{9}", str(k))), len(new) - 1)
+            return new
+        except Exception as e:
+            if log: log.warning(f"buyer status migrate failed: {e}")
+            return m
+
+    def _bstat_current():
+        with _BSTAT_LOCK:
+            return _bstat_current_locked()
+
+    def _bstat_set_locked(b, status):
+        m = _bstat_current_locked()
+        k = bstat_key(b, _bcanon)
+        if status == "active":
+            m.pop(k, None)
+            if "|" not in k:
+                m.pop(str(b.get("row", "")), None)
+        else:
+            m[k] = status
+        _bstat_save(m)
+        return k
+
     # ── [BUYER-SELLER 01/10] קונה שמפרסם נכס → וואטסאפ רשמי לסוכן של הקונה בלבד (החלטת אייל) ──
     import threading as _bsth
     _BS_LOCK = _bsth.Lock()
@@ -16047,9 +16174,8 @@ def register(app, G):
             if _BS_RAW["rows"] is None or trigger == "listing" or time.time() - _BS_RAW["ts"] > 300:
                 _BS_RAW.update(rows=sb.fetch_newborn_raw_all(), ts=time.time())
             idx = bs_owner_index(_BS_RAW["rows"], include_rent=os.environ.get("BS_INCLUDE_RENT", "0") == "1")
-            st, l9 = _bstat_load(), G["_last9"]
-            closed = lambda b: (st.get(l9(b.get("phone", ""))) or st.get("r" + str(b.get("row", "")))
-                                or st.get(str(b.get("row", "")))) == "closed"
+            st = _bstat_current()
+            closed = lambda b: bstat_of(b, st, _bcanon) == "closed"
             ms = bs_find_matches(G["_fetch_manual_buyers"]() or [], idx, time.time(),
                                  G["_excl_epoch"], G["_newborn_created_epoch"], closed=closed)
             sent = (_load_config().get("v2_bs_sent") or {})
@@ -16103,9 +16229,8 @@ def register(app, G):
         raws = sb.fetch_newborn_raw_all() or []
         idx = bs_owner_index(raws, include_rent=os.environ.get("BS_INCLUDE_RENT", "0") == "1")
         buyers = G["_fetch_manual_buyers"]() or []
-        st, l9 = _bstat_load(), G["_last9"]
-        closed = lambda b: (st.get(l9(b.get("phone", ""))) or st.get("r" + str(b.get("row", "")))
-                            or st.get(str(b.get("row", "")))) == "closed"
+        st = _bstat_current()
+        closed = lambda b: bstat_of(b, st, _bcanon) == "closed"
         rows = bs_report(buyers, idx, G["_load_config"]().get("v2_bs_sent") or {}, time.time(),
                          G["_excl_epoch"], G["_newborn_created_epoch"], closed=closed)
         return rows, idx, buyers, raws
@@ -16794,7 +16919,7 @@ def register(app, G):
         if module == "buyers":
             def _build_buyers():
                 try:
-                    st = _bstat_load()
+                    st = _bstat_current()
                 except Exception:
                     st = {}
                 try:
@@ -16804,7 +16929,7 @@ def register(app, G):
                 except Exception as e:
                     log.warning("crm buyers: buyer pages unavailable: %s", e)
                     pages = {}
-                return crm_unify_agents(crm_buyer_records(G["_fetch_manual_buyers"]() or [], st, G["_excl_epoch"], pages),
+                return crm_unify_agents(crm_buyer_records(G["_fetch_manual_buyers"]() or [], st, G["_excl_epoch"], pages, canon=_bcanon),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
             return swr("crmbuyers", 60, _build_buyers) if swr else _build_buyers()
@@ -17241,14 +17366,8 @@ def register(app, G):
             if not j.get("ok"):
                 return jsonify({"ok": False, "reason": j.get("error") or "save_failed"})
         if code:
-            sk = "".join(c for c in str(ch.get("phone", cur.get("phone")) or "") if c.isdigit())[-9:] or ("r" + str(row))
-            with _BSTAT_LOCK:
-                m = _bstat_load()
-                if code == "active":
-                    m.pop(sk, None)
-                else:
-                    m[sk] = code
-                _bstat_save(m)
+            with _BSTAT_LOCK:   # [BSTAT-PER-BUYER 22/10] לקונה הזה בלבד (טלפון + סוכן אחרי העריכה)
+                _bstat_set_locked(dict(cur, **ch), code)
         return _done("עריכה", str(cur.get("name") or row) + " · " + ",".join(list(ch) + (["סטטוס"] if code else [])))
 
     def _team_actor(s):
