@@ -233,7 +233,7 @@ def fetch_buyers_rows():
     """'קונים' — אותו מבנה בדיוק כמו listbuyers מה-Apps Script:
     [{row, date, name, phone, budget, summary, agent, agent_phone, search}, ...]
     ממוין לפי מספר שורה בגיליון."""
-    recs = _get_all("buyers", "sheet_row,raw",
+    recs = _get_all("buyers", "id,sheet_row,raw",
                     {"order": "sheet_row.asc"})
     rows = []
     for rec in recs:
@@ -242,6 +242,7 @@ def fetch_buyers_rows():
             continue
         obj = dict(raw)
         obj["row"] = rec.get("sheet_row")
+        obj["bid"] = rec.get("id") or ""   # [22/10] מזהה קבוע — סטטוס הקונה נשמר לפיו (השורה זזה במחיקה)
         rows.append(obj)
     return rows
 

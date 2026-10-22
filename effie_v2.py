@@ -13307,15 +13307,18 @@ def _crm_bpage_sum(p):
     return " · ".join(parts)
 
 
-# ── [BSTAT-PER-BUYER 22/10] סטטוס קונה (חם/בהקפאה/סגר) שייך לקונה אחד ──
+# ── [BSTAT-PER-BUYER 22/10] סטטוס קונה (חם/בהקפאה/סגר) שייך לרשומת קונה אחת ──
 # עד היום המפתח היה 9 ספרות הטלפון בלבד: 'סגר' של קונה ישן נדבק לכל קונה חדש עם אותו נייד — גם אצל סוכן
-# אחר (עוז דנילוב, 22/10) — ומאז 07/10 אין טאב 'סגרו', אז הקונה פשוט נעלם. מפתח חדש: טלפון + הסוכן
-# (קונה אחד לכל סוכן — כלל הדדופ מ-01/10); בלי טלפון — 'r<שורה>' כמו קודם. מספר השורה לא מתאים כמפתח:
-# מחיקת קונה מזיזה את השורות שאחריו (buyers_delete_row).
+# אחר (עוז דנילוב, 22/10) — ומאז 07/10 אין טאב 'סגרו', אז הקונה פשוט נעלם. אייל: "שסוכן יוכל להכניס את
+# אותו קונה כמה פעמים ושלא יהיה קשר בין הסוכנים והקונים שלהם" → המפתח = המזהה הקבוע של הרשומה בטבלת
+# buyers ('id:<uuid>', שדה bid). מספר השורה לא מתאים: מחיקת קונה מזיזה את השורות שאחריו (buyers_delete_row).
+# בלי מזהה (מצב חזרה לגיליון) — טלפון + סוכן, ובלי טלפון — 'r<שורה>'.
 _BSTAT_CUTOFF = 1787605200   # 25/08/2026 00:00 שעון ישראל — מאז יומן הפעילות ב-Supabase
 
 
 def bstat_key(b, canon):
+    if b.get("bid"):
+        return "id:" + str(b["bid"])
     p9 = _re.sub(r"\D", "", str(b.get("phone") or ""))[-9:]
     if p9:
         return p9 + "|" + canon(str(b.get("agent") or "").strip())
@@ -13329,11 +13332,13 @@ def bstat_of(b, m, canon):
     v = m.get(k)
     if v:
         return v
-    if "|" not in k:
-        return m.get(str(b.get("row", ""))) or None
-    if m.get("_v") != 2:
-        return m.get(k.split("|", 1)[0]) or None
-    return None
+    if m.get("_v") != 2:   # קובץ שעוד לא הומר — המפתח הישן לפי טלפון
+        p9 = _re.sub(r"\D", "", str(b.get("phone") or ""))[-9:]
+        if p9 and m.get(p9):
+            return m.get(p9)
+    if not k.startswith("r"):
+        return None
+    return m.get(str(b.get("row", ""))) or None
 
 
 def bstat_set_times(acts, buyers, canon):
