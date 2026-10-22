@@ -4507,11 +4507,19 @@ def _gauth_all():
         return disk
 
 def _gauth_email_for_phone(phone):
+    # [GAUTH-LATEST 22/10] לאותו טלפון יכולים להיות כמה מיילים (מי שקישר חשבון נוסף). עד היום הראשון
+    # בקובץ ניצח תמיד, ולכן אי אפשר היה להחליף חשבון יומן (ירין לוי). עכשיו: חשבון עם טוקן יומן קודם,
+    # ומביניהם — האחרון שקושר.
     phone = _last9(phone)
+    best, key = "", None
     for em, rec in _gauth_all().items():
-        if _last9((rec or {}).get("phone", "")) == phone:
-            return em
-    return ""
+        rec = rec or {}
+        if _last9(rec.get("phone", "")) != phone:
+            continue
+        k = (1 if rec.get("refresh_token") else 0, int(rec.get("ts") or 0))
+        if key is None or k > key:
+            best, key = em, k
+    return best
 
 def _gauth_link(email, phone, refresh_token=None, name=""):
     """מקשר אימייל-גוגל ↔ טלפון-סוכן ושומר refresh_token לשימוש ביומן. בדיסק הקבוע."""
