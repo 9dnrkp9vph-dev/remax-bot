@@ -9444,6 +9444,9 @@ function itemRow(m, i){
         '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 8a4 4 0 1 1 1.2 2.8M4 8V5M4 8h3" fill="none" stroke="#6B7280" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
       : '<button class="sq" style="background:#E7F7EE" onclick="doneMeet(' + i + ')" aria-label="בוצע">' +
         '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>') +
+    // [MEET-DEL 22/10] מחיקה — אייל: "כפתור מחק ושימחק גם את הפגישה מהיומן"
+    '<button class="sq" style="background:#FBEDED" onclick="delMeet(' + i + ')" aria-label="מחיקה">' +
+      '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9M6.7 7v4.5M9.3 7v4.5" fill="none" stroke="#C24040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
     '</div>';
   // תגית לפני/אחרי פגישה — צ'יפ קטן על הפולו-אפ
   var tagChip = (!meet && m.tag)
@@ -9655,6 +9658,15 @@ function doneMeet(i){
   POST('/api/newborn/status/done', {skey: m.skey || '', done: true}).then(function(j){
     if (!j.ok){ toast(j.reason === 'forbidden' ? 'אין הרשאה' : 'שגיאה'); return; }
     toast('סומן כבוצע · עבר לקטגוריית "בוצע"'); load();
+  });
+}
+function delMeet(i){   // [MEET-DEL] מחיקה לצמיתות — השרת מוחק גם את האירוע ביומן Google
+  var m = MEETS[i]; if (!m) return;
+  var kind = m.status === 'meeting' ? 'הפגישה' : 'הפולו-אפ';
+  if (!confirm('למחוק את ' + kind + ' · ' + (m.addr || '') + '?\nהיא תימחק גם מיומן Google. לא ניתן לשחזר.')) return;
+  POST('/api/newborn/status/delete', {skey: m.skey || ''}).then(function(j){
+    if (!j.ok){ toast(j.reason === 'forbidden' ? 'אין הרשאה למחיקה' : 'שגיאה במחיקה'); return; }
+    toast((m.status === 'meeting' ? 'הפגישה נמחקה' : 'הפולו-אפ נמחק') + ' · גם מהיומן'); load();
   });
 }
 function undoneMeet(i){   // החזרה מ'בוצע' לפעיל
