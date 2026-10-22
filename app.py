@@ -10702,6 +10702,13 @@ _PRIVACY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   <h2 style="font-size:19px; font-weight:800; margin:26px 0 8px;">9. יצירת קשר</h2>
   <p style="margin:0; font-size:15.5px; color:#3D5273;">לשאלות בנושא פרטיות: eyalshmul@gmail.com · 050-5709865 · יגאל בשן 2, קרית ביאליק. נשיב תוך 30 יום.</p>
 
+  <div dir="ltr" lang="en" style="margin-top:30px; padding:20px 22px; background:#fff; border-radius:20px; text-align:left;">
+    <h2 style="font-size:18px; font-weight:800; margin:0 0 8px;">Google user data (English summary)</h2>
+    <p style="margin:0 0 8px; font-size:15px; color:#3D5273;">Effie is operated by Family Real Estate &amp; Investments Ltd. for its invited agents. When you sign in with Google, Effie receives your name, email address and profile picture to identify you. If you connect Google Calendar (scope <code>calendar.events</code>), Effie creates, updates and deletes only the events of meetings and follow-ups you schedule in Effie. Effie does not read other events, does not sell Google user data, does not use it for advertising, and does not share it with third parties except as required to provide the service or by law.</p>
+    <p style="margin:0 0 8px; font-size:15px; color:#3D5273;">Effie's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+    <p style="margin:0; font-size:15px; color:#3D5273;">You can revoke access at any time at myaccount.google.com/permissions, or ask us to delete your data: eyalshmul@gmail.com.</p>
+  </div>
+
   <div style="margin-top:36px; padding-top:18px; border-top:1px solid #DCD6C8; font-size:13px; color:#8B8F99;">
     מסמך זה עשוי להתעדכן מעת לעת; הודעה על שינוי מהותי תוצג באפליקציה.
   </div>
@@ -10713,6 +10720,59 @@ def privacy_page():
     resp = Response(_PRIVACY_HTML, mimetype="text/html")
     resp.headers["Cache-Control"] = "public, max-age=3600"
     return resp
+
+# ── דף הבית של האפליקציה (אייל 22/10) — נדרש לאימות 'אפי · Effie' מול גוגל (OAuth consent screen):
+# דו-לשוני, מסביר מה האפליקציה עושה ולמה היא צריכה את Google Calendar, ומקשר למדיניות הפרטיות.
+_ABOUT_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>אפי · Effie — העוזר של המתווך</title>
+<meta name="description" content="אפי (Effie) — אפליקציה פנימית לסוכני הנדל״ן של משרד התיווך: שיחות, קונים, נכסים, חתימות ויומן פגישות.">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F2EFE7;color:#1E3A5F;font-family:Heebo,Arial,sans-serif;line-height:1.75}
+.w{max-width:760px;margin:0 auto;padding:48px 24px 72px}
+.hd{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+.hd h1{margin:0;font-size:30px;font-weight:800}.hd small{display:block;color:#5B6472;font-size:15px}
+.c{background:#fff;border-radius:22px;padding:24px 26px;box-shadow:0 6px 20px rgba(30,58,95,.06);margin-bottom:18px}
+h2{font-size:19px;margin:0 0 8px}p,li{font-size:15.5px;color:#3D5273;margin:0 0 8px}ul{margin:0;padding-inline-start:22px}
+a{color:#2E6BD6}.ft{font-size:13px;color:#6B7280;margin-top:26px}
+</style></head><body><div class="w">
+<div class="hd">LOGO<div><h1>אפי · Effie</h1><small>העוזר של המתווך · The real-estate agent's assistant</small></div></div>
+
+<div class="c"><h2>מה זה אפי</h2>
+<p>אפי היא אפליקציה פנימית לסוכני הנדל״ן ולצוות של משרד התיווך פמילי נדל״ן והשקעות בע״מ (RE/MAX Family, קריית ביאליק). הכניסה לחברי צוות שהוזמנו על ידי המשרד בלבד — אין הרשמה פתוחה ואין תשלום.</p>
+<ul><li>סיכומי שיחות נכנסות והתאמת קונים לנכסים.</li><li>ניהול קונים, נכסי המשרד וחתימה דיגיטלית על הסכמי תיווך.</li>
+<li>יומן פגישות ופולו-אפ עם בעלי נכסים.</li></ul></div>
+
+<div class="c"><h2>למה אפי מתחברת לחשבון Google</h2>
+<p><b>כניסה:</b> הסוכן נכנס עם חשבון Google (שם, מייל ותמונה) במקום סיסמה.</p>
+<p><b>יומן (Google Calendar):</b> כשהסוכן קובע באפי פגישה או פולו-אפ עם בעל נכס, אפי יוצרת אירוע ביומן Google שלו, ומעדכנת או מוחקת אותו כשהפגישה משתנה. אפי לא קוראת אירועים אחרים ביומן ולא משתפת את המידע עם אף אחד.</p>
+<p>אפשר לבטל את הגישה בכל עת מהגדרות חשבון Google. פרטים מלאים ב<a href="/privacy">מדיניות הפרטיות</a>.</p></div>
+
+<div class="c" dir="ltr" lang="en"><h2>About Effie</h2>
+<p>Effie is an internal app for the real-estate agents and staff of Family Real Estate &amp; Investments Ltd. (RE/MAX Family, Kiryat Bialik, Israel). Access is by invitation from the office only — there is no public sign-up and no payment.</p>
+<p><b>Why Effie uses your Google account:</b> agents sign in with Google (name, email, profile picture). With the <code>https://www.googleapis.com/auth/calendar.events</code> scope, when an agent schedules a meeting or follow-up in Effie, Effie creates the event in the agent's own Google Calendar and updates or deletes it when the meeting changes. Effie does not read other calendar events and does not share Google user data with anyone.</p>
+<p>Effie's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+<p>Privacy policy: <a href="/privacy">remax-bot.onrender.com/privacy</a> · Contact: eyalshmul@gmail.com</p></div>
+
+<div class="ft">פמילי נדל״ן והשקעות בע״מ · ח.פ. 515506293 · יגאל בשן 2, קריית ביאליק · <a href="/privacy">מדיניות פרטיות</a></div>
+</div></body></html>'''.replace("LOGO", '<svg width="56" height="50" viewBox="0 0 118 106" aria-hidden="true"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#C29435"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>')
+
+
+@app.route("/about", methods=["GET"])
+def about_page():
+    resp = Response(_ABOUT_HTML, mimetype="text/html")
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+
+# קובץ האימות של Google Search Console (שיטת 'קובץ HTML') — שם הקובץ מ-env, בלי שינוי קוד
+@app.route("/<fname>.html", methods=["GET"])
+def google_site_verification(fname):
+    want = (os.environ.get("GOOGLE_SITE_VERIFICATION_FILE", "") or "").strip()
+    if want and fname + ".html" == want and want.startswith("google"):
+        return Response("google-site-verification: " + want, mimetype="text/html")
+    return Response("Not found", status=404, mimetype="text/plain")
 
 # ── תנאי שימוש ופרטיות לחותמים (העמוד הציבורי /s/<token> מקשר לכאן) ─────────────
 # נכתב בניסוח מקורי של אפי — לא העתקה של פלטפורמות אחרות.
