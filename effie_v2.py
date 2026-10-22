@@ -12027,6 +12027,8 @@ function render(){
  var wr=wk.map(function(k){wt+=W.agents_today[k];return '<tr><td>'+esc(k)+'</td><td>'+n(W.agents_today[k])+'</td></tr>';}).join('');
  var UB=D.usage_by||{}, ul=(UB[P]||(P==='day'?D.usage_today:null)||[]);
  var us=ul.map(function(u){return '<tr><td>'+esc(u.name)+'</td><td>'+n(u.min)+' דק׳</td></tr>';}).join('')||'<tr><td class="mut" colspan="2">עוד אין שימוש בתקופה</td></tr>';
+ var ut=(UB.totals||{})[P];   /* [22/10 אייל] סה״כ של כל המשתמשים בתקופה (לא רק 10 המובילים) */
+ if(ut&&ut.users)us='<tr class="tot"><td><b>סה״כ · '+n(ut.users)+' משתמשים</b></td><td><b>'+n(ut.min)+' דק׳</b>'+(ut.min>=60?' <span class="mut">('+(Math.round(ut.min/6)/10)+' ש׳)</span>':'')+'</td></tr>'+us;
  var uT='הכי פעילים באפי · '+PL[P]+(P==='year'&&UB.year_from?' <span class="mut">(מ-'+UB.year_from.split('-').reverse().join('/')+' — הנתונים נשמרים 60 יום)</span>':'');
  document.getElementById('app').innerHTML=
   '<div class="health">'+h+'</div>'+
@@ -13900,6 +13902,7 @@ def crm_dashboard_data(src, now, quiet, today_iso):
                 for k in ("day", "week", "month", "year") if k in ub}
     if usage_by:
         usage_by["year_from"] = ub.get("year_from", "")
+        usage_by["totals"] = ub.get("totals") or {}
     # 20/10: טבלת סוכנים לפי תקופה + 'מחכה לטיפול'
     hp = dict(get("helpers", default={}) or {})
     hp.setdefault("answered", lambda st: str(st or "").upper() in ("ANSWER", "CALL2CALL"))

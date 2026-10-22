@@ -7843,7 +7843,13 @@ def _usage_periods(now):
     month = day.replace(day=1)
     year = max(day.replace(month=1, day=1), day - _dtp.timedelta(days=USAGE_RETENTION_DAYS))
     pings = _sbdb.fetch_pings_today(year.isoformat()) if (_sbdb is not None and _sbdb.enabled()) else []
-    out = {k: _usage_rows(t, pings=pings)[:10] for k, t in (("day", day), ("week", week), ("month", month), ("year", year))}
+    out, tot = {}, {}
+    for k, t in (("day", day), ("week", week), ("month", month), ("year", year)):
+        rows = _usage_rows(t, pings=pings)
+        out[k] = rows[:10]
+        # [22/10 אייל: 'סה"כ של כל המשתמשים'] — כל מי שהשתמש בתקופה, לא רק 10 המובילים
+        tot[k] = {"users": len(rows), "min": sum(int(r.get("min") or 0) for r in rows)}
+    out["totals"] = tot
     out["year_from"] = year.date().isoformat()
     return out
 

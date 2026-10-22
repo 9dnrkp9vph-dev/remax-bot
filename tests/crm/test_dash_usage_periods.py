@@ -26,13 +26,19 @@ ck(len(calls) == 1, ("one fetch for all four periods", calls))
 names = lambda k: [r["name"] for r in U[k]]
 ck(names("day") == ["דנה"] and sorted(names("week")) == ["דנה", "רועי"] and sorted(names("month")) == ["דנה", "מיכל", "רועי"], U)
 ck(sorted(names("year")) == ["דנה", "יוסי", "מיכל", "רועי"] and U["year_from"] == "2026-08-21", ("year capped to 60 days of retention", U.get("year_from")))
+# [22/10 אייל: 'סה"כ של כל המשתמשים'] — מכל המשתמשים בתקופה, לא רק 10 הראשונים
+T = U.get("totals") or {}
+ck(T.get("day", {}).get("users") == 1 and T.get("month", {}).get("users") == 3 and T.get("year", {}).get("users") == 4, T)
+ck(T["month"]["min"] == sum(r["min"] for r in U["month"]), T)
 src = {"usage_periods": lambda: U}
 D = E.crm_dashboard_data(dict(src, report=lambda: {}, calls=lambda: [], signings=lambda: [], buyers=lambda: [], newborn=lambda: [],
                               last_invoice=lambda: None, activity=lambda t0: [], usage=lambda t0: [], site_ai=lambda: {}, ai_cap=lambda: 500),
                          now.timestamp(), False, "2026-10-20")
 ck(D.get("usage_by", {}).get("month") and D["usage_by"]["year_from"] == "2026-08-21", ("dashboard carries usage per period", D.get("usage_by")))
+ck((D.get("usage_by") or {}).get("totals", {}).get("month", {}).get("users") == 3, ("dashboard carries the totals", D.get("usage_by")))
 h = open(os.path.join(os.path.dirname(E.__file__), "effie_v2.py"), encoding="utf-8").read()
 ck("D.usage_by" in h and "הכי פעילים באפי · " in h, "the card follows the selected period")
+ck("UB.totals" in h and "סה״כ · " in h, "card shows the total row")
 A2 = A
 A2.web_phone_name_map = lambda: {"505709865": "eyal-shmul"}
 A2.web_contacts_phone_name = lambda: (_ for _ in ()).throw(RuntimeError("down"))
