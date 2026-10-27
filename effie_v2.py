@@ -980,6 +980,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M5 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6H5zM13 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6h-5z" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linejoin="round"/></svg>
       המלצות</a>
+    <a id="menuTutorials" href="/v2/tutorials" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><rect x="2.5" y="4.5" width="17" height="13" rx="3" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M9.2 8.3v5.4l4.6-2.7z" fill="#1E3A5F"/></svg>
+      מדריכים</a>
     <a id="menuInvoices" href="/v2/invoices" style="display:none;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><rect x="4" y="2.5" width="14" height="17" rx="2.5" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M7.5 7h7M7.5 10.5h7M7.5 14h4" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -7981,6 +7985,173 @@ function copyTxt(){
 
 
 # ── עדכונים למשרד (31b) — Supabase announcements + אישורי קריאה ─────────────
+# [TUTORIALS 27/10] מסך 'מדריכים' — 10 סרטוני הדרכה + תדמית וגיוס (קבצים ב-tutorials/, מוגשים רק אחרי כניסה)
+V2_TUT_LIST = [
+    ("01-calls",   "תמלול וסיכום שיחות", "0:34", "סיכום חכם בוואטסאפ אחרי כל שיחה."),
+    ("02-buyer",   "הוספת קונה",          "0:27", "שם, טלפון, תקציב ומה מחפש."),
+    ("03-sign",    "חתימה דיגיטלית",      "0:37", "הסכם תיווך מהטלפון, בלי נייר."),
+    ("04-match",   "התאמת נכסים לקונה",   "0:33", "משרד, שת\"פ ונכס נולד במקום אחד."),
+    ("05-bpage",   "דף קונה",             "0:34", "קישור אחד לקונה, והוא מסמן מה מתאים."),
+    ("06-props",   "חיפוש נכסים",         "0:29", "חיפוש במשפט אחד, כמו שהלקוח מדבר."),
+    ("07-newborn", "נכס נולד",            "0:34", "מודעה פרטית חדשה, ישר לטלפון שלכם."),
+    ("08-meets",   "יומן ופולו-אפ",       "0:28", "פגישות ופולו-אפ, גם ביומן Google."),
+    ("09-aibuyer", "חיפוש קונה AI",       "0:30", "מי במשרד מחפש בדיוק את הנכס שלכם."),
+    ("10-hot",     "סטורי נכסים חמים",    "0:33", "נכס אחד שלכם מול כל המשרד, כל בוקר."),
+]
+V2_TUT_WIDE = [
+    ("showreel", "סרטון תדמית של אפי",       "0:40", "כל הכלים בסרטון אחד, כולל האפליקציה באייפון."),
+    ("recruit",  "גיוס סוכנים לרימקס פמילי", "0:40", "לשליחה לסוכנים שעוד לא איתנו."),
+]
+V2_TUT_NAMES = frozenset(k for k, *_ in V2_TUT_LIST + V2_TUT_WIDE)
+
+V2_TUTORIALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>מדריכים</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 6px;display:flex;align-items:center;justify-content:space-between}
+  .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  .t{font-size:17px;font-weight:800}
+  main{padding:4px 16px calc(env(safe-area-inset-bottom,0px) + 30px);display:flex;flex-direction:column;gap:16px}
+  .sub{font-size:13px;color:#5B6472;line-height:1.6;text-align:center;padding:0 10px}
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;background:#fff;border:1px solid #E9E4D8;color:#1E3A5F;border-radius:999px;padding:0 14px;
+      min-height:40px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap}
+  h2{font-size:15px;font-weight:800;display:flex;align-items:baseline;gap:8px;margin-top:4px}
+  h2 small{font-size:12px;font-weight:600;color:#6B7280}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .wide{display:grid;grid-template-columns:1fr;gap:12px}
+  .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:8px;display:flex;
+      flex-direction:column;gap:7px;border:0;text-align:right;font-family:inherit;color:inherit;cursor:pointer;min-width:0}
+  .card.hl{box-shadow:0 0 0 3px #C29435,0 6px 20px rgba(30,58,95,.06)}
+  .th{position:relative;border-radius:14px;overflow:hidden;background:#0E1D33;aspect-ratio:9/16}
+  .wide .th{aspect-ratio:16/9}
+  .th img{width:100%;height:100%;object-fit:cover;display:block}
+  .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  .play span{width:52px;height:52px;border-radius:50%;background:rgba(14,29,51,.72);display:flex;align-items:center;justify-content:center}
+  .dur{position:absolute;bottom:7px;left:7px;background:rgba(14,29,51,.78);color:#fff;font-size:11px;font-weight:700;
+      padding:2px 8px;border-radius:999px;font-variant-numeric:tabular-nums}
+  .nm{font-size:13.5px;font-weight:800;line-height:1.35;padding:0 4px;display:flex;gap:5px}
+  .nm .n{color:#7A5E1C}
+  .ds{font-size:12px;color:#5B6472;line-height:1.45;padding:0 4px 4px}
+  .foot{font-size:11.5px;color:#6B7280;line-height:1.6;text-align:center;padding:6px 10px 0}
+  /* נגן מלא */
+  #pl{position:fixed;inset:0;background:#0E1D33;z-index:90;display:none;flex-direction:column}
+  #pl.on{display:flex}
+  .plh{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;color:#fff}
+  .plh .x,.plh .sh{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.1);border:0;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;flex:none}
+  .plh .tt{flex:1;font-size:15px;font-weight:800;text-align:center;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .plb{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 12px calc(env(safe-area-inset-bottom,0px) + 14px)}
+  #vid{max-width:100%;max-height:100%;border-radius:14px;background:#000;display:block}
+  #toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:95;white-space:nowrap}
+  @media (min-width:700px){
+    header,main{width:100%;max-width:980px;margin-left:auto;margin-right:auto}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+    .wide{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .chips{flex-wrap:wrap;overflow:visible}
+  }
+</style></head><body>
+  <header>
+    <button class="backBtn" aria-label="חזרה" onclick="location.href='/v2/home'">
+      <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="t">מדריכים</div>
+    <div style="width:44px"></div>
+  </header>
+  <main>
+    <div class="sub">עשרה מדריכים קצרים, חצי דקה כל אחד. לוחצים על מדריך כדי לצפות.</div>
+    <div class="chips" id="chips"></div>
+    <h2>מדריכים <small>10 סרטונים</small></h2>
+    <div class="grid" id="grid"></div>
+    <h2>תדמית וגיוס <small>2 סרטונים</small></h2>
+    <div class="wide" id="wide"></div>
+    <div class="foot">המסכים בסרטונים הם הדמיה של אפי. שמות הלקוחות, הטלפונים והכתובות בדויים.</div>
+  </main>
+  <div id="pl" role="dialog" aria-modal="true" aria-label="נגן">
+    <div class="plh">
+      <button class="x" aria-label="סגירה" onclick="closePl()">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <div class="tt" id="plT"></div>
+      <button class="sh" aria-label="שיתוף הקישור" onclick="sharePl()">
+        <svg width="18" height="18" viewBox="0 0 20 20"><circle cx="15" cy="4.5" r="2.3" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="5" cy="10" r="2.3" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="15" cy="15.5" r="2.3" fill="none" stroke="#fff" stroke-width="1.7"/><path d="M7 9l6-3.3M7 11l6 3.3" stroke="#fff" stroke-width="1.7"/></svg>
+      </button>
+    </div>
+    <div class="plb"><video id="vid" controls playsinline preload="metadata"></video></div>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+var LIST = __TUT_LIST__, WIDE = __TUT_WIDE__;
+var CUR = null;
+function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function src(k, ext){ return '/v2/tut/' + k + '.' + ext + '?token=' + encodeURIComponent(TOK || ''); }
+function toast(m){ var t = document.getElementById('toast'); t.textContent = m; t.style.opacity = 1;
+  clearTimeout(toast._t); toast._t = setTimeout(function(){ t.style.opacity = 0; }, 1800); }
+function find(k){ var all = LIST.concat(WIDE); for (var i = 0; i < all.length; i++) if (all[i][0] === k) return all[i]; return null; }
+function card(it, i){
+  return '<button class="card" id="c-' + it[0] + '" onclick="openPl(\'' + it[0] + '\')">' +
+    '<div class="th"><img loading="lazy" alt="" src="' + src(it[0], 'jpg') + '">' +
+    '<div class="play"><span><svg width="18" height="20" viewBox="0 0 18 20"><path d="M2 1.5v17L16.5 10z" fill="#fff"/></svg></span></div>' +
+    '<div class="dur">' + it[2] + '</div></div>' +
+    '<div class="nm">' + (i != null ? '<span class="n">' + (i + 1) + '</span>' : '') + '<span>' + esc(it[1]) + '</span></div>' +
+    '<div class="ds">' + esc(it[3]) + '</div></button>';
+}
+function render(){
+  document.getElementById('grid').innerHTML = LIST.map(function(it, i){ return card(it, i); }).join('');
+  document.getElementById('wide').innerHTML = WIDE.map(function(it){ return card(it, null); }).join('');
+  document.getElementById('chips').innerHTML = LIST.concat(WIDE).map(function(it){
+    return '<button class="chip" onclick="jump(\'' + it[0] + '\')">' + esc(it[1]) + '</button>'; }).join('');
+}
+function jump(k){
+  var c = document.getElementById('c-' + k); if (!c) return;
+  c.scrollIntoView({behavior: 'smooth', block: 'center'});
+  c.classList.add('hl'); setTimeout(function(){ c.classList.remove('hl'); }, 1600);
+}
+function openPl(k){
+  var it = find(k); if (!it) return;
+  CUR = k;
+  var v = document.getElementById('vid');
+  v.poster = src(k, 'jpg'); v.src = src(k, 'mp4');   // בלי autoplay — הצופה לוחץ נגן
+  document.getElementById('plT').textContent = it[1];
+  document.getElementById('pl').classList.add('on');
+  document.body.style.overflow = 'hidden';
+  try{ history.replaceState(null, '', '#' + k); }catch(e){}
+}
+function closePl(){
+  var v = document.getElementById('vid');
+  try{ v.pause(); }catch(e){}
+  v.removeAttribute('src'); v.load();
+  document.getElementById('pl').classList.remove('on');
+  document.body.style.overflow = '';
+  try{ history.replaceState(null, '', location.pathname); }catch(e){}
+  if (CUR) jump(CUR);
+  CUR = null;
+}
+function sharePl(){
+  if (!CUR) return;
+  var it = find(CUR), url = location.origin + '/v2/tutorials#' + CUR;
+  if (navigator.share){ navigator.share({title: it[1], text: 'מדריך אפי: ' + it[1], url: url}).catch(function(){}); return; }
+  var done = function(){ toast('הקישור הועתק'); };
+  if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(done, function(){ prompt('הקישור:', url); }); }
+  else prompt('הקישור:', url);
+}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && CUR) closePl(); });
+window.addEventListener('hashchange', function(){ var k = location.hash.slice(1); if (find(k) && k !== CUR) openPl(k); });
+render();
+(function(){ var k = location.hash.slice(1); if (find(k)) openPl(k); })();
+</script></body></html>'''
+
+
 V2_UPDATES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>עדכונים למשרד</title>
@@ -14915,6 +15086,31 @@ def register(app, G):
     @app.route("/v2/updates", methods=["GET"])
     def v2_updates():
         return _page(V2_UPDATES_HTML)
+
+    # [TUTORIALS 27/10] מסך 'מדריכים' + הקבצים — רק אחרי כניסה (token ב-query, כי <video> לא שולח כותרות)
+    _TUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tutorials")
+
+    @app.route("/v2/tutorials", methods=["GET"])
+    def v2_tutorials():
+        html = (V2_TUTORIALS_HTML
+                .replace("__TUT_LIST__", _json.dumps(V2_TUT_LIST, ensure_ascii=False))
+                .replace("__TUT_WIDE__", _json.dumps(V2_TUT_WIDE, ensure_ascii=False)))
+        return _page(html)
+
+    @app.route("/v2/tut/<name>.<ext>", methods=["GET"])
+    def v2_tut_file(name, ext):
+        if name not in V2_TUT_NAMES or ext not in ("mp4", "jpg"):
+            return Response("", status=404)
+        if not _web_auth():
+            return Response("", status=401)
+        fp = os.path.join(_TUT_DIR, name + "." + ext)
+        if not os.path.exists(fp):
+            return Response("", status=404)
+        from flask import send_file as _send_file
+        resp = _send_file(fp, mimetype="video/mp4" if ext == "mp4" else "image/jpeg",
+                          conditional=True)   # Range — נדרש לנגן של iOS
+        resp.headers["Cache-Control"] = "private, max-age=2592000"
+        return resp
 
     @app.route("/v2/invoices", methods=["GET"])
     def v2_invoices():
