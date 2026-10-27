@@ -2740,6 +2740,9 @@ function openMember(i){
         seg('agent', 'סוכן') + seg('coordinator', 'מתאמת') + seg('manager', 'מנהל') + '</div></div>') +
     agentsHtml +
     (isDev ? '' :
+      '<div class="swRow"><div><div class="lb">השכרות בנכס נולד</div><div class="sb">רואה גם מודעות פרטיות להשכרה</div></div>' +
+      '<div class="tg' + (p.nbRent ? ' on' : '') + '" id="tgRent" onclick="this.classList.toggle(\'on\')"></div></div>') +
+    (isDev ? '' :
       '<div class="swRow"><div><div class="lb">השהיה</div><div class="sb">מושהה לא רואה נתונים ולא נכנס</div></div>' +
       '<div class="tg' + (p.suspended ? ' on' : '') + '" id="tgSusp" onclick="this.classList.toggle(\'on\')"></div></div>') +
     '<button class="btn btn-blue" onclick="saveMember(' + i + ')">שמירה</button>' +
@@ -2775,8 +2778,10 @@ function saveMember(i){
     var suspNow = el('tgSusp') && el('tgSusp').classList.contains('on');
     if (p.phone && suspNow !== !!p.suspended)
       jobs.push(POST('/api/dev/suspend', {phone: p.phone, suspend: suspNow}));
-    // עדכוני agent_update (קריאה אחת): מספר וירטואלי — רק מה שהשתנה
+    // עדכוני agent_update (קריאה אחת): מספר וירטואלי + השכרות בנכס נולד — רק מה שהשתנה
     var upd = {name: p.name};
+    var rentNow = !!(el('tgRent') && el('tgRent').classList.contains('on'));
+    if (rentNow !== !!p.nbRent) upd.newbornRent = rentNow;
     var vpNow = el('memVp') ? el('memVp').value.trim() : null;
     if (vpNow !== null && vpNow !== (p.vphone || '')) upd.vphone = vpNow;
     if (Object.keys(upd).length > 1)
@@ -5309,6 +5314,9 @@ function nbCard(r, i){
       'border:1px solid #F0B8B8;font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px">' +
       '🔴 כבר בבלעדיות RE/MAX Family' + (r.famexclAgent ? ' · ' + esc(r.famexclAgent) : '') + '</div>'
     : '';
+  // [NB-RENT 27/10] השכרה — תווית בראש הכרטיס
+  if (r.rent) fam = '<div style="display:inline-flex;align-items:center;background:#EAF0FA;color:#1E3A5F;' +
+    'font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-end:6px">להשכרה</div>' + fam;
   // ירד מפרסום ביד2 — תווית 3 ימים ואז נעלם מהמסך (החלטת אייל 09/09)
   if (r.delisted) fam += '<div style="display:inline-flex;align-items:center;background:#EBE8DD;color:#5B6472;' +
     'font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-start:6px">' +
@@ -5322,7 +5330,7 @@ function nbCard(r, i){
     ((r.priceDropped && r.priceOld)
       ? '<span style="text-decoration:line-through;color:#8B8F99;font-size:14px;font-weight:600">' + esc(nbFmtPrice(r.priceOld)) + '</span>' +
         '<div class="pr" style="font-size:1.18em">' + esc(nbFmtPrice(r.price)) + '</div>'
-      : '<div class="pr">' + esc(nbFmtPrice(r.price)) + '</div>') +
+      : '<div class="pr">' + esc(nbFmtPrice(r.price)) + (r.rent && r.price ? ' <span style="font-size:.72em;font-weight:700">לחודש</span>' : '') + '</div>') +
     (r.priceDropped ? '<span style="font-size:11px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>' : '') +
     '</div>' +
     '<div style="font-size:11.5px;color:#6B7280">' + esc(r.date || '') + '</div></div>' +
@@ -5504,6 +5512,10 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   }
   .meetChip{display:flex;align-items:center;gap:6px;background:#EAF0FA;color:#2E6BD6;border-radius:999px;
       padding:5px 12px;font-size:12px;font-weight:700;border:0;cursor:pointer;font-family:inherit;align-self:flex-start}
+  .dealSeg{display:none;background:#F5F3EC;border:1px solid #E9E4D8;border-radius:14px;padding:3px;gap:3px}
+  .dealSeg div{flex:1;text-align:center;font-size:13.5px;font-weight:700;color:#5B6472;border-radius:11px;
+      min-height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .dealSeg div.on{background:#1E3A5F;color:#fff;box-shadow:0 3px 10px rgba(30,58,95,.18)}
   .ageHead{display:flex;align-items:center;justify-content:space-between}
   .ageHead .l{font-size:11.5px;font-weight:700;color:#6B7280}
   .ageHead .r{font-size:11.5px;font-weight:700;color:#7A5E1C}
@@ -5583,6 +5595,10 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
           <h1>נכס נולד</h1>
         </div>
         <div class="live"><i></i><span id="liveN">—</span></div>
+      </div>
+      <div class="dealSeg" id="dealSeg">
+        <div data-d="" onclick="setNbDeal('')">למכירה</div>
+        <div data-d="rent" onclick="setNbDeal('rent')">להשכרה</div>
       </div>
       <button class="meetChip" onclick="location.href='/v2/meets'">
         <svg width="12" height="12" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -5676,7 +5692,30 @@ var NB_ETAG = '';   // [PERF-3] טביעת-אצבע מהשרת — רענון ש
    ~0.5ש' — מצוירים מיד, והרשימה המלאה נטענת ברקע (חיפוש/החלפת חודש עובדים עליה כמו קודם).
    הרענון של כל דקה ממשיך על הרשימה המלאה עם etag. */
 var NB_FULL = false;
+/* [NB-RENT 27/10] השכרות בנכס נולד — רק לסוכנים שהודלקו בניהול (השרת מחזיר rentAllowed).
+   DEAL = '' (מכירה, ברירת מחדל) או 'rent'. העותק השמור (v2c:nb) — של המכירה בלבד. */
+var DEAL = '', RENT_OK = false;
+try{ RENT_OK = localStorage.getItem('v2c:nbrent') === '1'; }catch(e){}
+function _dealQs(sep){ return DEAL ? sep + 'deal=' + DEAL : ''; }
+function _setRentOk(v){
+  RENT_OK = !!v;
+  try{ localStorage.setItem('v2c:nbrent', RENT_OK ? '1' : '0'); }catch(e){}
+  if (!RENT_OK && DEAL){ setNbDeal(''); }
+}
+function setNbDeal(d){
+  if (d === DEAL) return;
+  DEAL = d; ROWS = []; BUCKETS = []; TOTAL = 0; NB_FULL = false; NB_ETAG = ''; AGE = -1; NB_SHOWN = 40;
+  if (!DEAL){
+    try{
+      var c = JSON.parse(localStorage.getItem('v2c:nb') || 'null');
+      if (c && c.r){ ROWS = c.r; BUCKETS = c.b || []; TOTAL = c.t || 0; }
+    }catch(e){}
+  }
+  render(); load();
+}
 function _nbApply(nb, full){
+  if ('rentAllowed' in nb) _setRentOk(nb.rentAllowed);
+  if (nb.deal != null && (nb.deal || '') !== DEAL) return false;   // תשובה ישנה מהטאב השני
   if (nb.etag && full) NB_ETAG = nb.etag;
   if (nb.unchanged) return false;
   if (!nb.results) return false;
@@ -5685,13 +5724,13 @@ function _nbApply(nb, full){
   TOTAL = nb.total || ROWS.length;
   if (full){
     NB_FULL = true;
-    try{ localStorage.setItem('v2c:nb', JSON.stringify(
+    if (!DEAL) try{ localStorage.setItem('v2c:nb', JSON.stringify(
       {r: ROWS.slice(0, 150), b: BUCKETS, t: TOTAL, m: MEETS.slice(0, 40)})); }catch(e){}
   }
   return true;
 }
 function _nbFull(){
-  return GET('/api/newborn' + (NB_ETAG ? '?etag=' + encodeURIComponent(NB_ETAG) : ''))
+  return GET('/api/newborn' + (NB_ETAG ? '?etag=' + encodeURIComponent(NB_ETAG) + _dealQs('&') : _dealQs('?')))
     .catch(function(){ return {}; })
     .then(function(nb){ _nbApply(nb || {}, true); render(); });
 }
@@ -5702,7 +5741,7 @@ function load(){
       MEETS = (m && (m.results || m.meetings)) || [];
     })
   ]).then(function(){ render(); });
-  var qs = '?limit=80', byAge = AGE >= 0;
+  var qs = '?limit=80' + _dealQs('&'), byAge = AGE >= 0;
   if (byAge){ var rg = BUCKET_RANGES[AGE]; qs += '&minDays=' + rg[0] + '&maxDays=' + rg[1]; }
   return Promise.all([
     GET('/api/newborn' + qs).catch(function(){ return {}; }),
@@ -5733,8 +5772,14 @@ function fmtPrice(p){
 }
 function render(){
   el('liveN').textContent = TOTAL.toLocaleString() + ' · חי';
+  var ds = el('dealSeg');
+  if (ds){
+    ds.style.display = RENT_OK ? 'flex' : 'none';
+    for (var di = 0; di < ds.children.length; di++)
+      ds.children[di].classList.toggle('on', (ds.children[di].getAttribute('data-d') || '') === DEAL);
+  }
   var bd = el('nbBadge');
-  if (bd && TOTAL){ bd.textContent = TOTAL.toLocaleString(); bd.style.display = 'block'; }
+  if (bd && TOTAL && !DEAL){ bd.textContent = TOTAL.toLocaleString(); bd.style.display = 'block'; }
   el('meetN').textContent = 'פגישות ופולו-אפ' + (MEETS.length ? ' · ' + MEETS.length : '');
   // צ'יפי ותק
   var ah = '';
@@ -5766,7 +5811,8 @@ function render(){
          ' · מוצגים ' + NB_SHOWN + ' מתוך ' + src.length + '</button>';
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="30" height="27" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg></div>' +
-    '<div class="t">אין נכסים להצגה</div><div class="s">נסה ותק אחר או חיפוש שונה — מודעות חדשות עולות כל היום</div></div>';
+    '<div class="t">' + (DEAL ? 'אין מודעות להשכרה להצגה' : 'אין נכסים להצגה') + '</div>' +
+    '<div class="s">נסה ותק אחר או חיפוש שונה — מודעות חדשות עולות כל היום</div></div>';
   el('list')._src = src;
 }
 var NB_SHOWN = 40;   // כמה כרטיסים מוצגים; "הצג עוד" מגדיל. מתאפס בשינוי ותק/חיפוש.

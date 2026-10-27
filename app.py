@@ -5281,6 +5281,7 @@ def api_dev_people():
                        "phones": sorted(p for p in v["phones"] if p),
                        "aliases": v["aliases"], "role": role,
                        "phone": (_ce.get("phone", "") or (sorted(v["phones"])[0] if v["phones"] else "")),
+                       "nbRent": bool(_ce.get("newbornRent")),
                        "suspended": bool(set(v["phones"]) & _susp)})
     # חברי צוות שנמחקו — חוזרים עם מונה חתימות, לשחזור מהניהול. בלי זה סוכן שנמחק
     # "נעלם" מכל הרשימות (ספרייה + לא-משויכים) למרות שכבר ביצע חתימות (בקשת אייל 13/07).
@@ -5535,6 +5536,9 @@ def api_dev_agent_update():
             ph = _last9(body.get("phone") or "")
             if ph: entry["phone"] = ph
             else: entry.pop("phone", None)
+        if "newbornRent" in body:   # 27/10: השכרות בנכס נולד לסוכן הזה
+            if body.get("newbornRent") is True: entry["newbornRent"] = True
+            else: entry.pop("newbornRent", None)
     ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון סוכן", name)
     return jsonify({"ok": ok})
@@ -8704,7 +8708,7 @@ def _price_scan_run(now=None):
     except Exception as _e:
         log.warning(f"price scan (shtaf) skipped: {_e}")
     try:
-        for r in fetch_newborn():
+        for r in list(fetch_newborn() or []) + list(fetch_newborn_rent() or []):
             k = _nb_price_key(r); pn = _price_digits(r.get("מחיר", ""))
             if k and pn:
                 cur[k] = pn
@@ -8919,10 +8923,13 @@ def fetch_newborn():
     with _sf_lock("newborn_rows"):
         c = _cache_get("newborn_rows", _src_ttl(NEWBORN_SOURCE, 300, 90))
         if c is not None: return c
-        rows = None
+        rows, rent = None, []
         if NEWBORN_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
             try:
-                rows = _sbdb.fetch_newborn_rows()
+                # 27/10: קריאה אחת לשני הפידים — מכירה (לכולם) והשכרה (רק לסוכנים שהודלקו בניהול)
+                allr = _sbdb.fetch_newborn_rows(include_rent=True)
+                rows = [r for r in allr if not _nb_is_rent(r)]
+                rent = [r for r in allr if _nb_is_rent(r)]
             except Exception as _sbe:
                 log.error(f"supabase newborn read failed — falling back to sheets: {_sbe}")
                 rows = None
@@ -8931,7 +8938,36 @@ def fetch_newborn():
             rows = (j.get("rows", []) or []) if (j and j.get("ok")) else []
         if rows:   # תשובה ריקה = כמעט תמיד תקלה זמנית — לא לקבע אותה במטמון ל-5 דקות
             _cache_put("newborn_rows", rows)
+            _cache_put("newborn_rent", rent)
         return rows
+
+def _nb_is_rent(r):
+    return "שכר" in str((r or {}).get("סוג עסקה") or "")
+
+def fetch_newborn_rent():
+    """השכרות נכס נולד (אותה קריאה של fetch_newborn — נשמרות יחד במטמון)."""
+    c = _cache_get("newborn_rent", _src_ttl(NEWBORN_SOURCE, 300, 90))
+    if c is not None:
+        return c
+    fetch_newborn()
+    return _cache_get("newborn_rent", 10 ** 9) or []
+
+def _nb_rent_allowed(name, phone):
+    """השכרות בנכס נולד — בעל המשרד תמיד; אחרים רק כשהודלק להם בניהול (newbornRent, 27/10)."""
+    try:
+        if _is_dev(phone or ""):
+            return True
+    except Exception:
+        pass
+    ck = _canon_key(name or "")
+    if not ck:
+        return False
+    for ag in (_load_config().get("agents") or []):
+        if not ag.get("newbornRent"):
+            continue
+        if any(_canon_key(x) == ck for x in [ag.get("name", "")] + list(ag.get("aliases") or [])):
+            return True
+    return False
 
 def _nb_key(r):
     """מפתח יציב לזיהוי נכס נולד (למעקב פניות)."""
@@ -9027,7 +9063,7 @@ def _nb_cal_text(rec, row):
 def _nb_cal_row(key):
     """שורת נכס נולד לפי המפתח (מהמטמון הקיים) — לפרטי האירוע ביומן; לא נמצא → None."""
     try:
-        for r in fetch_newborn() or []:
+        for r in list(fetch_newborn() or []) + list(fetch_newborn_rent() or []):
             if _nb_key(r) == key:
                 return r
     except Exception:
@@ -9299,6 +9335,7 @@ def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
     return {
         # [SWR-2] "released"/"own" הוסרו — אף מסך לא קורא אותם (נסרק 24/08)
         "key": _k,
+        "rent": _nb_is_rent(r),   # 27/10: השכרה (רק בפיד ההשכרות)
         "contacted": ctx["contacts"].get(_k, []),
         "city": city,
         "address": addr,
@@ -9424,7 +9461,12 @@ def api_newborn():
         # מוחזרת תשובה זעירה (unchanged) במקום מאות KB. חוסך דאטה/סוללה ברענון של כל דקה.
         _etag_in = (request.args.get("etag", "") or ((request.get_json(silent=True) or {}).get("etag", "")) or "").strip()
         # מטמון תוצאה לפי סקופ — פתיחה חוזרת של הטאב מיידית (מתבטל בכל שינוי דרך _NB_RESULT_VER)
-        _nbkey = "nbres:%d:%s:%s:%s:%s:%s:%s" % (_NB_RESULT_VER[0], _last9(s.get("phone", "")), as_name, q, min_days, max_days, _lim)
+        _deal = "rent" if (request.args.get("deal", "") or "").strip() == "rent" else ""
+        _rent_ok = _nb_rent_allowed(eff_name, "" if as_name else s.get("phone", ""))
+        if _deal and not _rent_ok:
+            return jsonify({"ok": True, "count": 0, "results": [], "bucketCounts": [], "total": 0,
+                            "rentAllowed": False, "deal": "rent"})
+        _nbkey = "nbres:%d:%s:%s:%s:%s:%s:%s:%s" % (_NB_RESULT_VER[0], _last9(s.get("phone", "")), as_name, q, min_days, max_days, _lim, _deal)
         _nbc = _cache_get(_nbkey, _src_ttl(NEWBORN_SOURCE, 90, 12))
         if _nbc is not None:
             if _etag_in and _etag_in == _nbc.get("etag"):
@@ -9434,7 +9476,7 @@ def api_newborn():
         contacts = _fetch_newborn_contacts()
         nbstatuses = _nb_statuses()
         fam_list = _famexcl_addr_list()
-        rows = [r for r in fetch_newborn() if _newborn_created_epoch(r)]
+        rows = [r for r in (fetch_newborn_rent() if _deal else fetch_newborn()) if _newborn_created_epoch(r)]
         rows.sort(key=_newborn_created_epoch, reverse=True)
         _scan_price_changes()                 # 24/09: ירידות מחיר גם בנכס נולד
         _pd_map = _price_dropped_map()
@@ -9478,7 +9520,7 @@ def api_newborn():
                 "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", "")))}
         for (r, ad, city, _addr, _owner, lister, _dropped, _dl) in (_cand[:_lim] if _lim else _cand):
             out.append(_nb_row_out(r, ad, city, _addr, _owner, lister, _dropped, _ctx))   # [NB-SEARCH 30/09] בונה משותף
-        _res = {"ok": True, "count": len(_cand),
+        _res = {"ok": True, "count": len(_cand), "rentAllowed": _rent_ok, "deal": _deal,
                 "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts),
                 "partial": bool(_lim and len(_cand) > len(out))}
         # [PERF-3] טביעת-אצבע לתוצאה — מחושבת פעם אחת בבנייה (לא פר-בקשה)

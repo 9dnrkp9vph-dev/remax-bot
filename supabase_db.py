@@ -122,10 +122,11 @@ def krayot_city_ok(city, zone_text=""):
     return any(w in _city for w in _KRAYOT_CITIES)
 
 
-def fetch_newborn_rows():
+def fetch_newborn_rows(include_rent=False):
     """שורות 'נכס נולד' — אותו פורמט בדיוק כמו listnewborn מה-Apps Script:
     list של dicts עם מפתחות עבריים (העמודה raw שנשמרה 1:1 מהגיליון),
-    כולל אותו חיתוך של NB_SHEET_CUTOFF_DAYS ימים על 'נוצר בתאריך'."""
+    כולל אותו חיתוך של NB_SHEET_CUTOFF_DAYS ימים על 'נוצר בתאריך'.
+    include_rent=True (27/10): גם השכרות — האפליקציה מפצלת ומציגה אותן רק לסוכנים שהודלקו בניהול."""
     recs = _get_all("newborn_listings", "source_key,raw")
     cutoff_ms = (_dt.datetime.now().timestamp() - NB_SHEET_CUTOFF_DAYS * 86400) * 1000
     rows = []
@@ -139,9 +140,9 @@ def fetch_newborn_rows():
         ep = _nb_parse_date_ms(raw.get("נוצר בתאריך", ""))
         if ep and ep < cutoff_ms:
             continue          # ישן מדי — זהה להתנהגות listnewborn
-        # השכרות מסריקת יד2 לא מוצגות בנכס נולד (החלטת אייל 31/08) — נשארות ב-DB
-        # לאופציה עתידית פר-סוכן ב"ניהול". שורות הצינור הישן בלי "סוג עסקה" — עוברות.
-        if "שכר" in str(raw.get("סוג עסקה") or ""):
+        # השכרות מסריקת יד2 לא בפיד הכללי (החלטת אייל 31/08) — רק כש-include_rent (מתג פר-סוכן, 27/10).
+        # שורות הצינור הישן בלי "סוג עסקה" — עוברות.
+        if not include_rent and "שכר" in str(raw.get("סוג עסקה") or ""):
             continue
         # 24/09 (אייל): בנכס נולד מודעה שירדה מיד2 *נשארת* עם התווית "ירד מפרסום" (לא נעלמת אחרי 3 ימים);
         # הפיד ממיין אותה לסוף. (במשרד/שת"פ נשאר חלון 3 הימים.)
