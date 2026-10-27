@@ -3618,7 +3618,6 @@ def _save_config(cfg):
             _LAST_GOOD_CONFIG = cfg
             _cache_put("app_config", cfg)
             _cache_clear("alias_key_map")
-            _cache_clear("newborn_delays")
             # שכפול לגיליון — אם נכשל, הסנכרון גיליון→Supabase עלול להחזיר מצב ישן; חייבים לוג.
             # 13/08: מנתק-זרם — Apps Script קורס הציף עשרות כשלים בשעה (ניסיון פר-כתיבה);
             # אחרי כשל משתיקים ניסיונות ל-15 דק'. בריא = lockstep מלא כמו תמיד (בטוח מול
@@ -3646,7 +3645,6 @@ def _save_config(cfg):
             _LAST_GOOD_CONFIG = cfg
             _cache_put("app_config", cfg)
             _cache_clear("alias_key_map")
-            _cache_clear("newborn_delays")
         return ok
     except Exception:
         return False
@@ -3726,24 +3724,6 @@ _ROLE_SCOPE = {"developer": "admin", "manager": "admin", "accountant": "admin",
                "secretary": "admin", "coordinator": "coordinator", "agent": "agent"}
 _ALL_TABS = ["calls", "buyers", "sigs", "props", "excl", "newborn", "report", "activity"]
 
-# מנהלים עם השהיית צפייה בשיחות (לפי שם) — רואים הכל מיד, אבל שיחות רק אחרי X ימים, ו"נכס נולד" לא מיידי.
-# ריק — אווה אזולאי שוחררה להתנהג כסוכנת רגילה (בקשת אייל 13/07). להחזרת מנהל-מושהה: להוסיף שם/טלפון.
-_DELAYED_ADMINS = {}          # שם → ימי השהיה לשיחות
-_DELAYED_ADMIN_PHONES = {}    # טלפון (9 ספרות) → ימי השהיה (אמין יותר מהשם)
-def _delayed_admin_days(name=None, phone=None):
-    if NEWBORN_DELAYS_DISABLED: return 0   # השהיות מבוטלות — אף מנהל אינו מושהה
-    if phone:
-        d = _DELAYED_ADMIN_PHONES.get(_last9(phone))
-        if d:
-            try: return int(d)
-            except Exception: pass
-    ck = _canon_key(name or "")
-    if ck:
-        for nm, days in _DELAYED_ADMINS.items():
-            if _canon_key(nm) == ck:
-                try: return int(days)
-                except Exception: return 0
-    return 0
 def _name_for_phone(last9):
     return (web_phone_name_map().get(last9) or web_contacts_phone_name().get(last9)
             or _config_agent_phones().get(last9) or "")
@@ -3796,12 +3776,6 @@ def _resolve_roles(last9):
     disp = (_load_config().get("roles") or {}).get(last9)
     if disp in _ROLE_SCOPE:
         return _ROLE_SCOPE[disp], disp
-    # מנהל מושהה לפי טלפון/שם (כמו אווה אזולאי) — סקופ מנהל מלא
-    try:
-        if _delayed_admin_days(_name_for_phone(last9), last9) > 0:
-            return "admin", "manager"
-    except Exception:
-        pass
     base = web_role_for(last9) or "agent"
     return base, {"admin": "manager", "coordinator": "coordinator", "agent": "agent"}.get(base, "agent")
 
@@ -5254,8 +5228,6 @@ def api_dev_people():
     cfg = _load_config()
     cfg_roles = cfg.get("roles") or {}
     cfg_by_key = {_name_key(a.get("name", "")): a for a in (cfg.get("agents") or []) if a.get("name")}
-    delays = _fetch_newborn_delays()
-    _nb_def = int(delays.get("_default", 0))
     contacts = web_contacts_phone_name()       # {last9: name}
     vmap = fetch_agent_virtual_phones()         # {norm_name: vphone}
     known = {}   # name_key -> {name, phones:set, vphone, aliases:[]}
@@ -5305,18 +5277,10 @@ def api_dev_people():
         for ph in v["phones"]:
             if ph in cfg_roles: role = cfg_roles[ph]; break
         _ce = cfg_by_key.get(_name_key(v["name"]), {})
-        _cnd = _ce.get("newbornDelay")
-        if _cnd in ("hidden", "מוסתר"):
-            nb_val, nb_hidden = "", True
-        elif _cnd not in (None, ""):
-            nb_val, nb_hidden = _cnd, False
-        else:
-            nb_val, nb_hidden = "", False
         agents.append({"name": v["name"], "vphone": v["vphone"],
                        "phones": sorted(p for p in v["phones"] if p),
                        "aliases": v["aliases"], "role": role,
                        "phone": (_ce.get("phone", "") or (sorted(v["phones"])[0] if v["phones"] else "")),
-                       "nbDelay": nb_val, "nbHidden": nb_hidden,
                        "suspended": bool(set(v["phones"]) & _susp)})
     # חברי צוות שנמחקו — חוזרים עם מונה חתימות, לשחזור מהניהול. בלי זה סוכן שנמחק
     # "נעלם" מכל הרשימות (ספרייה + לא-משויכים) למרות שכבר ביצע חתימות (בקשת אייל 13/07).
@@ -5326,7 +5290,7 @@ def api_dev_people():
         if _k: _sig_cnt[_k] = _sig_cnt.get(_k, 0) + 1
     removed_out = [{"name": _nm, "sigs": _sig_cnt.get(_name_key(_nm), 0)}
                    for _nm in (str(x or "").strip() for x in (cfg.get("removedAgents") or [])) if _nm]
-    return jsonify({"ok": True, "agents": agents, "nbDefault": _nb_def,
+    return jsonify({"ok": True, "agents": agents,
                     "unmatchedSignings": _scan(sig_names),
                     "unmatchedListings": _scan(list_names),
                     "unmatchedBuyers": _scan(buyer_names),
@@ -5571,13 +5535,6 @@ def api_dev_agent_update():
             ph = _last9(body.get("phone") or "")
             if ph: entry["phone"] = ph
             else: entry.pop("phone", None)
-        if "newbornDelay" in body:
-            nd = body.get("newbornDelay")
-            if nd in ("", None): entry.pop("newbornDelay", None)
-            elif str(nd) in ("hidden", "מוסתר", "-1"): entry["newbornDelay"] = "hidden"
-            else:
-                try: entry["newbornDelay"] = int(nd)
-                except Exception: pass
     ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון סוכן", name)
     return jsonify({"ok": ok})
@@ -7185,24 +7142,6 @@ def public_sign_doc(token):
              "<button class=pb onclick='window.print()'>שמור / הדפס PDF</button></body></html>")
     return _head + meta_html + _tail
 
-@app.route("/api/dev/newborn_default", methods=["POST"])
-def api_dev_nb_default():
-    """ברירת מחדל לימי השהיה של נכס נולד (לכל סוכן ללא הגדרה אישית)."""
-    s = _web_auth()
-    if not s or not _is_dev(s.get("phone", "")):
-        return jsonify({"ok": False, "reason": "forbidden"}), 403
-    body = request.get_json(silent=True) or {}
-    v = body.get("days")
-    if v not in ("", None):
-        try: v = int(v)
-        except Exception: return jsonify({"ok": False, "reason": "bad"}), 400
-    def _mut(cfg):   # RMW בטוח (נגד דריסת רקע)
-        if v in ("", None): cfg.pop("newbornDefaultDelay", None)
-        else: cfg["newbornDefaultDelay"] = v
-    ok, _ = _config_mutate(_mut)
-    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "ברירת מחדל נכס נולד", str(v))
-    return jsonify({"ok": ok})
-
 @app.route("/api/dev/sources", methods=["GET"])
 def api_dev_sources():
     """מצב מקורות הנתונים — אילו מודולים קוראים מ-Supabase ואילו מהגיליון. מפתח בלבד."""
@@ -7318,12 +7257,6 @@ def api_history():
         calls = [c for c in calls if _call_uid(c) in _hidden]
     else:
         calls = [c for c in calls if _call_uid(c) not in _hidden]
-    # מנהל מושהה (כמו אווה אזולאי) — רואה שיחות רק אחרי X ימים. המפתח רואה הכל מיד.
-    _dly = _delayed_admin_days(eff.get("name", ""), eff.get("phone", ""))
-    if _dly and not _is_dev(s.get("phone", "")):
-        _cut = time.time() - _dly * 86400
-        calls = [c for c in calls
-                 if 0 < _epoch_from_iso(c.get("received_at", "")) <= _cut]
     calls.sort(key=lambda c: _epoch_from_iso(c.get("received_at", "")), reverse=True)
     sigs.sort(key=lambda g: _excl_epoch(g.get("received_at", "")), reverse=True)
     call_out = []
@@ -8971,14 +8904,8 @@ except Exception:
     _sbdb = None
 
 NEWBORN_SHEET_TAB   = os.environ.get("NEWBORN_SHEET_TAB", "נכס נולד")
-NEWBORN_DELAYS_TAB  = os.environ.get("NEWBORN_DELAYS_TAB", "נכסנולד_הגדרות")
-NEWBORN_DEFAULT_DELAY = int(os.environ.get("NEWBORN_DEFAULT_DELAY", "0") or 0)
-# ביטול השהיות נכס נולד — כולם רואים הכל מיד, 0 ימים, בלי מוסתר ובלי מנהל-מושהה (בקשת אייל 09/07).
-# להחזרת מנגנון ההשהיות: NEWBORN_DELAYS_DISABLED=0 ב-Render env (בלי שינוי קוד).
-NEWBORN_DELAYS_DISABLED = os.environ.get("NEWBORN_DELAYS_DISABLED", "1") not in ("0", "false", "False", "no", "off", "")
+# השהיות נכס נולד הוסרו (אייל 30/09 — "לכולם הנכסים מגיעים במיידי"; מנגנון כבוי מ-09/07, נמחק 27/10).
 NEWBORN_WINDOW_DAYS   = int(os.environ.get("NEWBORN_WINDOW_DAYS", "400") or 400)
-NEWBORN_HIDDEN        = 10 ** 9   # ערך "מוסתר" — הסוכן לא רואה שום נכס
-_NB_HIDDEN_TOKENS = {"מוסתר", "מוסתרת", "הסתר", "לעולם", "אין", "לא", "-", "–", "—", "x", "X", "✗"}
 
 
 def _src_ttl(flag, sheets_ttl, sb_ttl):
@@ -9005,63 +8932,6 @@ def fetch_newborn():
         if rows:   # תשובה ריקה = כמעט תמיד תקלה זמנית — לא לקבע אותה במטמון ל-5 דקות
             _cache_put("newborn_rows", rows)
         return rows
-
-_LAST_GOOD_NB_DELAYS = None
-
-def _fetch_newborn_delays():
-    """הגנה קריטית: אם קריאת גיליון ההשהיות נכשלת, ברירת המחדל 'מוסתר' שבגיליון
-    אובדת וכולם רואים הכול. לכן: כישלון → טוב-אחרון; אין טוב-אחרון → נועלים (מוסתר)."""
-    global _LAST_GOOD_NB_DELAYS
-    if NEWBORN_DELAYS_DISABLED: return {"_default": 0}   # כולם 0 — בלי השהיות/מוסתר, מתעלם מגיליון/קונפיג
-    c = _cache_get("newborn_delays", 600)
-    if c is not None: return c
-    d = {"_default": NEWBORN_DEFAULT_DELAY}
-    j = _buyers_apps_post("listnewborndelays", {})
-    _sheet_ok = bool(j and j.get("ok"))
-    _delay_rows = (j.get("rows", []) or []) if _sheet_ok else []
-    for r in _delay_rows:
-        nm = _norm_name(r.get("סוכן", "") or r.get("שם", "") or "")
-        raw = (r.get("ימים", "") or r.get("ימי השהיה", "") or r.get("השהיה", "") or "").strip()
-        if raw in _NB_HIDDEN_TOKENS:
-            days = NEWBORN_HIDDEN
-        else:
-            try: days = int(float(raw)) if raw != "" else None
-            except Exception: days = None
-        if days is None: continue
-        if nm in ("ברירת מחדל", "ברירתמחדל", "default", "כללי"):
-            d["_default"] = days
-        elif nm:
-            d[nm] = days
-            _ckk = _canon_key(nm)
-            if _ckk: d["c:" + _ckk] = days   # מפתח קנוני — סובל איות שונה (רווחים/גרשים)
-    # שכבת קונפיג (קונסולת המפתח) — דורסת/משלימה את הגיליון
-    _cfg = _load_config()
-    _cd = _cfg.get("newbornDefaultDelay")
-    if _cd not in (None, ""):
-        try: d["_default"] = int(_cd)
-        except Exception: pass
-    for ag in (_cfg.get("agents") or []):
-        nd = ag.get("newbornDelay")
-        if nd is None or nd == "": continue
-        if nd in ("hidden", "מוסתר", -1, "-1"):
-            val = NEWBORN_HIDDEN
-        else:
-            try: val = int(nd)
-            except Exception: continue
-        for _nm in [ag.get("name", "")] + list(ag.get("aliases") or []):
-            k = _norm_name(_nm)
-            if k: d[k] = val
-            _ckk = _canon_key(_nm)
-            if _ckk: d["c:" + _ckk] = val
-    if not _sheet_ok:
-        # קריאת הגיליון נכשלה — לא מקבעים במטמון תמונה חסרה:
-        if isinstance(_LAST_GOOD_NB_DELAYS, dict):
-            return _LAST_GOOD_NB_DELAYS          # טוב-אחרון (בלי cache — ננסה שוב מיד)
-        d["_default"] = NEWBORN_HIDDEN           # אין טוב-אחרון — נכשלים לכיוון הבטוח (מוסתר)
-        return d
-    _LAST_GOOD_NB_DELAYS = d
-    _cache_put("newborn_delays", d)
-    return d
 
 def _nb_key(r):
     """מפתח יציב לזיהוי נכס נולד (למעקב פניות)."""
@@ -9540,7 +9410,6 @@ def api_newborn():
                        or request.args.get("as", "")).strip()
         eff_name = as_name or s.get("name", "")
         eff_norm = _norm_name(eff_name)
-        # חיפוש: מחזיר התאמות מכל הפול (300 האחרונים) — גם נכסים שעוד לא נחשפו לסוכן
         q = (request.args.get("q", "") or ((request.get_json(silent=True) or {}).get("q", "")) or "").strip().lower()
         # סינון לפי ותק בפרסום (דלי נבחר) — נשלח מהפרונט
         def _intp(nm):
@@ -9561,18 +9430,6 @@ def api_newborn():
             if _etag_in and _etag_in == _nbc.get("etag"):
                 return jsonify({"ok": True, "unchanged": True, "etag": _etag_in})
             return jsonify(_nbc)
-        # מנהל מושהה (כמו אווה אזולאי) אינו רואה "נכס נולד" מיד — נכנס למסלול ההשהיה הרגיל
-        _dphone = "" if as_name else s.get("phone", "")
-        admin_all = (s["role"] == "admin" and not as_name and not _delayed_admin_days(eff_name, _dphone))
-        delays = _fetch_newborn_delays()
-        _eff_ck = "c:" + _canon_key(eff_name)   # התאמה קנונית — איות שונה של אותו סוכן עדיין נתפס
-        _has_personal = (eff_norm in delays) or (_eff_ck in delays)
-        delay = 0 if admin_all else int(delays.get(eff_norm, delays.get(_eff_ck, delays.get("_default", 0))))
-        _dadays = _delayed_admin_days(eff_name, _dphone)
-        if _dadays and not admin_all and not _has_personal:   # בלי הגדרה אישית → השהיית ברירת מחדל
-            delay = _dadays
-        if not admin_all and delay >= NEWBORN_HIDDEN:   # מוסתר — לא רואה כלום, אין באנר
-            return jsonify({"ok": True, "count": 0, "released": 0, "delay": delay, "results": []})
         now = time.time()
         contacts = _fetch_newborn_contacts()
         nbstatuses = _nb_statuses()
@@ -9593,21 +9450,15 @@ def api_newborn():
                 v = str(v or "").strip()
                 return "" if v in ("-", "—", "") else v
             lister = _nb(r.get("משתמש", "") or r.get("סוכן 1", ""))
-            own = bool(eff_norm) and bool(lister) and _norm_name(lister) == eff_norm
-            rel_epoch = created + delay * 86400
-            released = admin_all or own or now >= rel_epoch
             city = _nb(r.get("עיר", "") or r.get("עיר / ישוב", ""))
             _addr = _nb(r.get("רחוב1", "") or r.get("רחוב", ""))
             _owner = _nb(r.get("שם בעל הנכס", ""))
             if q:
-                # מצב חיפוש — מכל הפול, ללא השהיה/הסתרה; חיפוש לפי רחוב, שכונה (שדה ייעודי או מהתיאור), עיר ובעל הנכס
+                # חיפוש לפי רחוב, שכונה (שדה ייעודי או מהתיאור), עיר ובעל הנכס
                 _hood = _nb(r.get("שכונה", "") or r.get("שכונה ", "") or r.get("שכונה/אזור", ""))
                 _dsc = str(r.get("תיאור נכס", "") or "")
                 if q not in (_addr + " " + _owner + " " + city + " " + _hood + " " + _dsc).lower():
                     continue
-            else:
-                if not released:
-                    continue   # מציגים רק נכסים שכבר נחשפו לסוכן
             ad = int(age_f)
             for _bi, (_lo, _hi) in enumerate(_NB_BUCKETS):   # ספירת דליים על *כל* הנכסים הנראים (לא רק 300)
                 if _lo <= ad < _hi:
@@ -9627,7 +9478,7 @@ def api_newborn():
                 "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", "")))}
         for (r, ad, city, _addr, _owner, lister, _dropped, _dl) in (_cand[:_lim] if _lim else _cand):
             out.append(_nb_row_out(r, ad, city, _addr, _owner, lister, _dropped, _ctx))   # [NB-SEARCH 30/09] בונה משותף
-        _res = {"ok": True, "count": len(_cand), "released": len(_cand), "delay": delay,
+        _res = {"ok": True, "count": len(_cand),
                 "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts),
                 "partial": bool(_lim and len(_cand) > len(out))}
         # [PERF-3] טביעת-אצבע לתוצאה — מחושבת פעם אחת בבנייה (לא פר-בקשה)
@@ -11169,21 +11020,7 @@ def _all_agent_push_ids():
     return [i for i in ids if i]
 
 def _nb_push_targets():
-    """פוש נכס נולד — רק למי שהמודעות פתוחות אצלו מיד (השהיה 0).
-    מוסתר או מושהה (כולל מנהל מושהה) לא מקבל פוש על נכס שעוד לא נחשף לו."""
-    delays = _fetch_newborn_delays()
-    try:
-        default = int(delays.get("_default", 0))
-    except Exception:
-        default = 0
-    def _d_for(nm):
-        if not nm:
-            return default
-        v = delays.get(_norm_name(nm), delays.get("c:" + _canon_key(nm), default))
-        try:
-            return int(v)
-        except Exception:
-            return default
+    """פוש נכס נולד — לכל חברי הצוות המוכרים (טלפון → שם) ולמנהלים. ההשהיות הוסרו (27/10)."""
     names_by_phone = {}
     for src_map in (web_contacts_phone_name(), web_phone_name_map()):
         for ph, nm in src_map.items():
@@ -11195,17 +11032,11 @@ def _nb_push_targets():
             l = _last9(ag.get(fld, ""))
             if l and ag.get("name"):
                 names_by_phone.setdefault(l, ag["name"])
-    ids = set(l for l, nm in names_by_phone.items() if _d_for(nm) == 0)
+    ids = set(names_by_phone)
     try:
         ids |= set(_manager_push_ids())
     except Exception:
         pass
-    for l in list(ids):
-        nm = names_by_phone.get(l, "")
-        if nm and _d_for(nm) != 0:
-            ids.discard(l)
-        elif _delayed_admin_days(nm, l):
-            ids.discard(l)
     return [i for i in ids if i]
 
 _seen_newborns = set()

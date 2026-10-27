@@ -2181,7 +2181,7 @@ function toast(msg){
   clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
 }
 
-var OV = null, PEOPLE = [], COORDS = [], TEAMS = [], NB_DEFAULT = 0;
+var OV = null, PEOPLE = [], COORDS = [], TEAMS = [];
 var ROLE_LABEL = {agent:'סוכן', coordinator:'מתאמת', manager:'מנהל', developer:'בעל המשרד',
                   accountant:'הנה"ח', secretary:'מזכירות'};
 var AV_COLORS = ['#1E3A5F', '#C29435', '#2E6BD6', '#1FAF5E', '#5B6472'];
@@ -2194,7 +2194,6 @@ function boot(){
                  GET('/api/dev/teams')])
       .then(function(rs){
         OV = rs[0]; PEOPLE = (rs[1] && rs[1].agents) || []; COORDS = (rs[2] && rs[2].coordinators) || [];
-        NB_DEFAULT = (rs[1] && rs[1].nbDefault) || 0;
         UNMATCHED = unmMerge(rs[1] || {});
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
@@ -2707,28 +2706,10 @@ function resend(phone){
   });
 }
 
-var SEL_NB = 'default';
-function nbSeg(val, label){
-  return '<div class="seg' + (SEL_NB === val ? ' on' : '') + '" data-v="' + val +
-         '" onclick="pickNb(this)">' + label + '</div>';
-}
-function pickNb(node){
-  SEL_NB = node.getAttribute('data-v');
-  var segsWrap = node.parentNode.children;
-  for (var i = 0; i < segsWrap.length; i++)
-    segsWrap[i].classList.toggle('on', segsWrap[i] === node);
-  el('nbDays').style.display = (SEL_NB === 'custom') ? 'block' : 'none';
-  if (SEL_NB === 'custom') el('nbDays').focus();
-}
-function memberNb(p){   // מצב ההשהיה הנוכחי של החבר: default / custom / hidden
-  if (p.nbHidden) return 'hidden';
-  return (p.nbDelay === '' || p.nbDelay == null) ? 'default' : 'custom';
-}
 function openMember(i){
   var p = el('teamList')._list[i];
   SEL_ROLE = (p.role === 'developer') ? 'developer' :
              (p.role in {manager:1, coordinator:1, agent:1}) ? p.role : 'agent';
-  SEL_NB = memberNb(p);
   var isDev = p.role === 'developer';
   var mine = coordAgentsOf(p.name);
   var opts = PEOPLE.filter(function(x){
@@ -2758,12 +2739,6 @@ function openMember(i){
       : '<div class="fld"><span>תפקיד</span><div class="segs">' +
         seg('agent', 'סוכן') + seg('coordinator', 'מתאמת') + seg('manager', 'מנהל') + '</div></div>') +
     agentsHtml +
-    (isDev ? '' :
-      '<div class="fld"><span>נכס נולד — ממתי רואה מודעות</span><div class="segs">' +
-      nbSeg('default', 'ברירת מחדל · ' + NB_DEFAULT + ' ימים') + nbSeg('custom', 'מותאם') + nbSeg('hidden', 'מוסתר') +
-      '</div><input id="nbDays" type="number" min="0" inputmode="numeric" placeholder="ימים מרגע הפרסום" value="' +
-      (SEL_NB === 'custom' ? esc(p.nbDelay) : '') + '" style="display:' + (SEL_NB === 'custom' ? 'block' : 'none') + '">' +
-      '<div style="font-size:11px;color:#6B7280;margin-top:4px">0 = רואה מיד · מוסתר = לא רואה נכס נולד בכלל</div></div>') +
     (isDev ? '' :
       '<div class="swRow"><div><div class="lb">השהיה</div><div class="sb">מושהה לא רואה נתונים ולא נכנס</div></div>' +
       '<div class="tg' + (p.suspended ? ' on' : '') + '" id="tgSusp" onclick="this.classList.toggle(\'on\')"></div></div>') +
@@ -2800,13 +2775,8 @@ function saveMember(i){
     var suspNow = el('tgSusp') && el('tgSusp').classList.contains('on');
     if (p.phone && suspNow !== !!p.suspended)
       jobs.push(POST('/api/dev/suspend', {phone: p.phone, suspend: suspNow}));
-    // עדכוני agent_update (קריאה אחת): מספר וירטואלי + ימי נכס נולד — רק מה שהשתנה
+    // עדכוני agent_update (קריאה אחת): מספר וירטואלי — רק מה שהשתנה
     var upd = {name: p.name};
-    var nbVal = (SEL_NB === 'hidden') ? 'hidden' :
-                (SEL_NB === 'custom') ? String(parseInt(el('nbDays').value, 10) || 0) : '';
-    var nbOrig = p.nbHidden ? 'hidden' :
-                 (p.nbDelay === '' || p.nbDelay == null) ? '' : String(p.nbDelay);
-    if (nbVal !== nbOrig) upd.newbornDelay = nbVal;
     var vpNow = el('memVp') ? el('memVp').value.trim() : null;
     if (vpNow !== null && vpNow !== (p.vphone || '')) upd.vphone = vpNow;
     if (Object.keys(upd).length > 1)
@@ -10427,8 +10397,6 @@ var MAIN = [
     '<button class="btn" onclick="runParity()">הרץ parity</button><div class="out" id="oPar"></div></div>',
   '<div class="card"><h2>השתקת התראות</h2><div class="sb">מכבה וואטסאפ+פוש מהמערכת (env גובר).</div>'+
     '<div class="row"><div class="tg" id="qTg" onclick="toggleQuiet()"><i></i></div><span id="qLbl" style="font-size:13px;font-weight:700">—</span></div></div>',
-  '<div class="card"><h2>ברירת מחדל · ימי נכס נולד</h2><div class="sb">ימים לכל סוכן ללא הגדרה אישית.</div>'+
-    '<div class="row"><input id="nbDef" type="number" style="width:90px" placeholder="ימים"><button class="btn gold" onclick="saveNbDef()">שמור</button></div><div class="out" id="oNb"></div></div>',
   '<div class="card"><h2>הרשאות טאבים לפי תפקיד</h2><div class="sb">אילו טאבים כל תפקיד רואה.</div>'+
     '<div class="row"><select id="rpRole" onchange="rpShow()"></select></div><div id="rpTabs" style="margin-top:8px"></div>'+
     '<button class="btn" style="margin-top:10px" onclick="saveRp()">שמור תפקיד</button><div class="out" id="oRp"></div></div>',
@@ -10456,8 +10424,6 @@ var QON=false;
 function loadQuiet(){GET('/api/dev/quiet').then(function(j){QON=!!j.on;el('qTg').classList.toggle('on',QON);el('qLbl').textContent=(QON?'מושתק':'פעיל')+(j.env?' · env גובר':'')+(j.shabbat?' · שבת/חג — אוטומטי':'');});}
 function toggleQuiet(){POST('/api/dev/quiet',{on:!QON}).then(function(j){QON=!!j.on;el('qTg').classList.toggle('on',QON);el('qLbl').textContent=(QON?'מושתק':'פעיל')+(j.env?' · env גובר':'')+(j.shabbat?' · שבת/חג — אוטומטי':'');});}
 
-function loadNbDef(){GET('/api/dev/people').then(function(j){if(j&&j.ok)el('nbDef').value=(j.nbDefault!=null?j.nbDefault:'');});}
-function saveNbDef(){POST('/api/dev/newborn_default',{days:el('nbDef').value.trim()}).then(function(j){show('oNb',j.ok?'נשמר ✓':'שגיאה');});}
 
 var RP={};var RP_ALL=[];
 function loadRp(){GET('/api/dev/roleperms').then(function(j){if(!j.ok)return;RP=j.perms||{};RP_ALL=j.allTabs||[];
@@ -10478,7 +10444,7 @@ function saveContract(){var t=el('cType').value;POST('/api/dev/contract',{type:t
     if(!j.ok){location.replace('/v2');return;}
     if(!j.dev){document.body.innerHTML='<div style="padding:60px 24px;text-align:center;color:#6B7280;font-weight:700">כלי מפתח — למפתח בלבד</div>';return;}
     el('main').innerHTML=MAIN;
-    loadSources();loadQuiet();loadNbDef();loadRp();loadContract();
+    loadSources();loadQuiet();loadRp();loadContract();
   }).catch(function(){location.replace('/v2');});
 })();
 </script></body></html>'''
@@ -18193,17 +18159,10 @@ def register(app, G):
                            "price": r.get("price", ""), "office": str(r.get("office", "") or "").strip() or "משרד שותף"}
                           for r in (G["fetch_external_exclusives"]() or [])]
             snap["propsShtaf"] = ef_retrieve(q, shtaf_rows, ("addr", "desc"))
-            # נכס נולד — מכבד את השהיית הסוכן (אין דליפת נכסים שטרם נחשפו לו)
-            delays = G["_fetch_newborn_delays"]() or {}
-            nrm = G["_norm_name"](name or "")
-            delay = 0 if office else int(delays.get(nrm, delays.get("c:" + _canon(name or ""), delays.get("_default", 0))))
+            # נכס נולד — כולם רואים הכל מיד (ההשהיות הוסרו 27/10)
             nb_rows = []
             for r in (G["fetch_newborn"]() or []):
-                created = G["_newborn_created_epoch"](r)
-                if not created:
-                    continue
-                own = bool(nrm) and G["_norm_name"](str(r.get("משתמש", "") or "")) == nrm
-                if not office and not own and now < created + delay * 86400:
+                if not G["_newborn_created_epoch"](r):
                     continue
                 nb_rows.append({"addr": r.get("רחוב1", "") or r.get("רחוב", ""), "city": r.get("עיר", ""),
                                 "price": r.get("מחיר", ""), "desc": str(r.get("תיאור נכס", "") or "")[:70]})
