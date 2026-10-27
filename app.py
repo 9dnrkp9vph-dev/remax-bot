@@ -1739,6 +1739,36 @@ def _enforce_ptype(parsed, text):
         pass
     return parsed
 
+# [SEARCH-AUDIT 22/10] בדיקת 46 חיפושים אמיתיים: כללים שלא סומכים על ה-AI (רק בחיפוש נכסים, לא בשת"פ)
+_GARDEN_WORDS_RE = r"דיר\S*\s*גן|גינ[הת]|חצר|קומת\s*קרקע|קומה\s*0|קרקע|קוטג"
+_HAIM_RE = r"(?:^|[\s,])(?:[בוה]|או\s+)?(?:קרי?י?ת\s+)?חיים(?=$|[\s,.])"
+
+def _search_post_rules(parsed, text):
+    """(1) 'דו משפחתי' / 'בית פרטי' — הסוג שנכתב (ה-AI ממפה את שניהם לקוטג'); (2) דירת גן שהלקוח לא ביקש
+    ('דן קרית ביאליק' הובן כ'דירת גן') → דירה; (3) 'חיים' כשלא נכתב 'חיפה' = קרית חיים בלבד, לא כל חיפה
+    ('ביאליק או מוצקין או חיים' החזיר נכס במרכז הכרמל)."""
+    if not isinstance(parsed, dict):
+        return parsed
+    t = str(text or "")
+    try:
+        pt = (parsed.get("property_type") or "").strip()
+        if pt == "דירת גן" and not re.search(_GARDEN_WORDS_RE, t):
+            parsed["property_type"] = "דירה"
+            parsed["must_have"] = [f for f in (parsed.get("must_have") or []) if str(f).strip() != "גינה"]
+        elif pt != "דירת גן" and re.search(r"דו[\s-]*משפח", t):
+            parsed["property_type"] = "דו משפחתי"
+        elif pt != "דירת גן" and re.search(r"בית\s+פרטי", t):
+            parsed["property_type"] = "קוטג'"
+        if "חיפה" not in t and re.search(_HAIM_RE, t):
+            cs = parsed.get("cities")
+            if isinstance(cs, list) and "חיפה" in cs:
+                parsed["cities"] = ["קרית חיים" if c == "חיפה" else c for c in cs]
+            elif (parsed.get("city") or "").strip() == "חיפה" and not parsed.get("neighborhood") and not parsed.get("neighborhoods"):
+                parsed["neighborhood"] = "קרית חיים"
+    except Exception:
+        pass
+    return parsed
+
 def parse_search_query(text: str) -> dict:
     prompt = f"""אתה עוזר לסוכן נדל"ן ברימקס שמחפש נכסים במאגר המשרד עבור לקוח.
 הסוכן שלח לך הודעה עם דרישות הלקוח. חלץ פרמטרים ל-JSON בלבד (ללא markdown, ללא backticks).
@@ -1815,7 +1845,10 @@ def parse_search_query(text: str) -> dict:
     if match:
         text_out = match.group()
     try:
-        return _apply_text_rules(_enforce_ptype(_enforce_nb_city(json.loads(text_out)), text), text)   # [SEARCH-NEG 20/10]
+        out = _search_post_rules(_apply_text_rules(_enforce_ptype(_enforce_nb_city(json.loads(text_out)), text), text), text)   # [SEARCH-NEG 20/10]
+        if isinstance(out, dict):
+            out["_qtext"] = text   # [SEARCH-AUDIT 22/10] לזיהוי שם רחוב שה-AI פספס (_street_hint)
+        return out
     except Exception as e:
         log.error(f"Search JSON parse error: {e}")
         return {}
@@ -2286,6 +2319,10 @@ def normalize_city(city: str) -> str:
 # מחיפוש "קרית חיים" כי המפענח הוציא אותה כעיר ופילטר העיר פסל) — חיפוש בשם
 # השכונה תופס גם עיר="חיפה", בניקוד נמוך מעט מהתאמת עיר מפורשת.
 HAIFA_KRAYOT_NEIGHBORHOODS = {"קרית חיים", "קרית חיים מזרחית", "קרית חיים מערבית", "קרית שמואל"}
+def _is_krayot_haifa(nb):
+    """[SEARCH-AUDIT 22/10] שכונה של חיפה שהיא 'קריות' (קרית חיים / קרית שמואל / מזרחית / מערבית)."""
+    s = str(nb or "").replace("קריית", "קרית").strip()
+    return "קרית חיים" in s or "קרית שמואל" in s or s in ("מזרחית", "מערבית")
 def parse_price(s: str) -> int:
     if not s:
         return 0
@@ -2373,6 +2410,9 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             # (05/08: "הנוטר" נעלם מחיפוש "מזרחית" כי אין לו שכונה רשומה), רק בלי הבונוס
             score += 6
         else:
+            # [SEARCH-AUDIT 22/10] חיפוש שכונת-קריות של חיפה — שכונה אחרת בחיפה (מרכז הכרמל) היא לא 'שכנה'
+            if r_city == "חיפה" and any(_is_krayot_haifa(qn) for qn in q_neighs) and not _is_krayot_haifa(r_neigh):
+                return 0
             # שכונה אחרת מפורשת (05/08): מוצגת רק כשהמחיר צמוד לתקציב — ±10%
             # מהתקרה — קרבת-תקציב מצדיקה להציע חציית שכונה; אחרת מחוץ לחיפוש
             _bm2 = query.get("budget_max")
@@ -2383,8 +2423,13 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
     q_street = (query.get("street") or "").strip()
     r_street = (row.get("כתובת", "") or "").strip()
     if q_street and r_street:
-        if q_street in r_street or r_street in q_street:
-            score += 25
+        # [SEARCH-AUDIT 22/10] בלי מספר בית / 'רחוב' / ה' הידיעה ('בגין 12' ↔ 'מנחם בגין'); רחוב שנמצא — ראשון
+        if _street_match(q_street, r_street):
+            score += 60
+            _qn = re.search(r"\d+", q_street)
+            _rh = str(row.get("מספר בית", "") or "").strip() or "".join(re.findall(r"\d+", r_street)[:1])
+            if _qn and _rh == _qn.group():
+                score += 10
     q_bmax = query.get("budget_max")
     q_bmin = query.get("budget_min")
     r_price = parse_price(row.get("מחיר", ""))
@@ -2478,8 +2523,11 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         elif r_ptype and (q_ptype in r_ptype or r_ptype in q_ptype): score += 7
     elif q_ptype:
         # סוג ספציפי (פנטהאוז/קוטג'/דופלקס/וילה) — סינון קשיח: רק הסוג המבוקש
+        _HOUSE = ("קוטג", "בית פרטי", "דו משפח", "וילה")
         if r_ptype and (q_ptype == r_ptype or q_ptype in r_ptype or r_ptype in q_ptype):
             score += 15
+        elif any(h in q_ptype for h in _HOUSE) and any(h in r_ptype for h in _HOUSE):
+            score += 8   # [SEARCH-AUDIT 22/10] בית פרטי / קוטג' / דו משפחתי / וילה — קבוצה אחת, הסוג שנכתב ראשון
         else:
             return 0
     must_have = query.get("must_have") or []
@@ -2615,11 +2663,62 @@ def _apply_text_rules(query, text):
         query["floor_max"] = r["floor_max"]
     return query
 
+def _street_norm(s):
+    """[SEARCH-AUDIT 22/10] שם רחוב להשוואה: בלי מספרים, 'רחוב'/'רח''/'שדרות', פיסוק וה' הידיעה בתחילת מילה."""
+    s = re.sub(r"[\d\"'׳״,.\-()]", " ", str(s or ""))
+    s = re.sub(r"(^|\s)(רחוב|רח|שדרות|שד)(?=\s|$)", " ", s)
+    return " ".join(w[1:] if w.startswith("ה") and len(w) > 2 else w for w in s.split())
+
+def _street_match(q_street, r_street):
+    """הרחוב שבחיפוש מופיע כמילים שלמות ברחוב הנכס (או להפך) — 'בגין 12' ↔ 'מנחם בגין'."""
+    a, b = _street_norm(q_street), _street_norm(r_street)
+    if len(a) < 2 or len(b) < 2:
+        return False
+    return bool(re.search(r"(^|\s)" + re.escape(a) + r"($|\s)", b) or re.search(r"(^|\s)" + re.escape(b) + r"($|\s)", a))
+
+_STREET_HINT_STOP = {"מחפש", "מחפשת", "דירה", "דירת", "דירות", "גן", "גינה", "חדרים", "חדר", "חד", "מעלית", "מרפסת",
+                     "חניה", "חנייה", "ממד", "עד", "מיליון", "מליון", "אלף", "בית", "פרטי", "פנטהאוז", "פנטהוז", "גג",
+                     "קרקע", "ים", "להשקעה", "השקעה", "משפחתי", "דו", "קומה", "נוף", "חדש", "חדשה", "משופצת", "עם",
+                     "או", "בלי", "ללא", "תקציב", "מרכז", "פארק", "ליד", "שקט", "שקטה", "גדולה", "למכירה", "להשכרה",
+                     "קוטג", "וילה", "דופלקס", "ביאליק", "מוצקין", "אתא", "חיפה", "חיים", "קריות", "בקריות"}
+
+def _street_hint(text, rows, parsed):
+    """[SEARCH-AUDIT 22/10] חיפוש קצר עם שם רחוב שה-AI לא זיהה ('דן קרית ביאליק') — הרחוב מתוך הנכסים שלנו
+    (באותה עיר אם צוינה). רק כשנשארות עד 3 מילים משמעותיות — משפט ארוך לא נחשב חיפוש רחוב. '' = אין."""
+    t = re.sub(r"קרי?י?ת\s+\S+", " ", str(text or ""))   # 'קרית ביאליק', 'קריית חיים' — מקום, לא רחוב
+    for nb in list(_NB_TO_CITY) + ["נאות אפק", "אפקה", "משכנות האומנים", "סביוני ים", "מזרחית", "מערבית"]:
+        t = t.replace(nb, " ")
+    tn = _street_norm(t)
+    stop = {_street_norm(w) for w in _STREET_HINT_STOP}
+    words = [w for w in tn.split() if w not in stop and w.lstrip("בול") not in stop]
+    if not words or len(words) > 3:
+        return ""
+    cs = [normalize_city(c) for c in ((parsed or {}).get("cities") or []) if c] or \
+         ([normalize_city(parsed.get("city"))] if (parsed or {}).get("city") else [])
+    best = ""
+    for r in rows or []:
+        if cs:
+            rc = normalize_city(r.get("עיר / ישוב", "") or "")
+            if rc not in cs and not (rc == "חיפה" and any(c in HAIFA_KRAYOT_NEIGHBORHOODS for c in cs)):
+                continue
+        s = _street_norm(r.get("כתובת", "") or "")
+        if len(s) < 2 or s in stop or len(s) <= len(best):
+            continue
+        if re.search(r"(^|\s)[בול]?" + re.escape(s) + r"($|\s)", tn):
+            best = s
+    return best
+
 def search_listings_in_sheet(query: dict, rows=None, cap=None) -> list:
     # [NB-SEARCH 30/09] rows/cap אופציונליים — אותו סולם flex משמש גם לנכס נולד (rows=שורות ממופות)
-    rows = fetch_sheet_rows() if rows is None else rows
+    if rows is None:
+        # [SEARCH-AUDIT 22/10] 'להשכרה …' החזיר דירות למכירה — fetch_sheet_rows הוא מכירה בלבד
+        rows = fetch_sheet_rows_deal("השכרה") if "שכר" in str(query.get("deal_type") or "") else fetch_sheet_rows()
     if not rows:
         return []
+    if not (query.get("street") or "").strip() and query.get("_qtext"):
+        _h = _street_hint(query["_qtext"], rows, query)
+        if _h:
+            query = dict(query, street=_h)
     _has_nb = bool((query.get("neighborhoods")) or (query.get("neighborhood") or "").strip())
     cap = cap or (40 if _has_nb else 25)   # תקרת תוצאות
     for flex in [0, 1, 2]:
