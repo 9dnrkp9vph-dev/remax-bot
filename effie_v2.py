@@ -8018,7 +8018,20 @@ V2_TUT_WIDE = [
     ("showreel", "סרטון תדמית של אפי",       "0:40", "כל הכלים בסרטון אחד, כולל האפליקציה באייפון."),
     ("recruit",  "גיוס סוכנים לרימקס פמילי", "0:40", "לשליחה לסוכנים שעוד לא איתנו."),
 ]
-V2_TUT_NAMES = frozenset(k for k, *_ in V2_TUT_LIST + V2_TUT_WIDE)
+# [STORIES 28/10] סטוריז קצרים (16 שניות, אנכי) — אותם 10 נושאים, לשיתוף בסטורי/וואטסאפ
+V2_TUT_STORIES = [
+    ("s01", "תמלול וסיכום שיחות", "0:16", "סיכום חכם וביקורת קצרה על השיחה."),
+    ("s02", "הוספת קונה",          "0:16", "קונה חדש בכמה שניות."),
+    ("s03", "חתימה דיגיטלית",      "0:16", "וואטסאפ ו-SMS ללקוח, חתימה תוך דקה."),
+    ("s04", "התאמת נכסים לקונה",   "0:16", "נכסים מדורגים לפי התאמה."),
+    ("s05", "דף קונה",             "0:16", "הקונה מסמן, הסוכן מקבל התראה."),
+    ("s06", "חיפוש נכסים",         "0:16", "משפט אחד, תוצאות מדורגות."),
+    ("s07", "נכס נולד",            "0:16", "מודעה פרטית חדשה ופנייה לבעלים."),
+    ("s08", "יומן ופולו-אפ",       "0:16", "פגישות ופולו-אפ ביומן Google."),
+    ("s09", "חיפוש קונה AI",       "0:16", "מי מחפש בדיוק את הנכס."),
+    ("s10", "סטורי נכסים חמים",    "0:16", "הנכס החם שלכם מול כל המשרד."),
+]
+V2_TUT_NAMES = frozenset(k for k, *_ in V2_TUT_LIST + V2_TUT_WIDE + V2_TUT_STORIES)
 
 V2_TUTORIALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -8082,8 +8095,10 @@ V2_TUTORIALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta cha
     <div style="width:44px"></div>
   </header>
   <main>
-    <div class="sub">עשרה מדריכים קצרים, חצי דקה כל אחד. לוחצים על מדריך כדי לצפות.</div>
+    <div class="sub">סטוריז של 16 שניות ומדריכים של חצי דקה. לוחצים על סרטון כדי לצפות.</div>
     <div class="chips" id="chips"></div>
+    <h2>סטוריז <small>10 סרטונים · 16 שניות</small></h2>
+    <div class="grid" id="stories"></div>
     <h2>מדריכים <small>10 סרטונים</small></h2>
     <div class="grid" id="grid"></div>
     <h2>תדמית וגיוס <small>2 סרטונים</small></h2>
@@ -8107,13 +8122,13 @@ V2_TUTORIALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta cha
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
 if (!TOK) location.replace('/v2');
-var LIST = __TUT_LIST__, WIDE = __TUT_WIDE__;
+var LIST = __TUT_LIST__, WIDE = __TUT_WIDE__, STORIES = __TUT_STORIES__;
 var CUR = null;
 function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function src(k, ext){ return '/v2/tut/' + k + '.' + ext + '?token=' + encodeURIComponent(TOK || ''); }
 function toast(m){ var t = document.getElementById('toast'); t.textContent = m; t.style.opacity = 1;
   clearTimeout(toast._t); toast._t = setTimeout(function(){ t.style.opacity = 0; }, 1800); }
-function find(k){ var all = LIST.concat(WIDE); for (var i = 0; i < all.length; i++) if (all[i][0] === k) return all[i]; return null; }
+function find(k){ var all = LIST.concat(WIDE, STORIES); for (var i = 0; i < all.length; i++) if (all[i][0] === k) return all[i]; return null; }
 function card(it, i){
   return '<button class="card" id="c-' + it[0] + '" onclick="openPl(\'' + it[0] + '\')">' +
     '<div class="th"><img loading="lazy" alt="" src="' + src(it[0], 'jpg') + '">' +
@@ -8123,6 +8138,7 @@ function card(it, i){
     '<div class="ds">' + esc(it[3]) + '</div></button>';
 }
 function render(){
+  document.getElementById('stories').innerHTML = STORIES.map(function(it, i){ return card(it, i); }).join('');
   document.getElementById('grid').innerHTML = LIST.map(function(it, i){ return card(it, i); }).join('');
   document.getElementById('wide').innerHTML = WIDE.map(function(it){ return card(it, null); }).join('');
   document.getElementById('chips').innerHTML = LIST.concat(WIDE).map(function(it){
@@ -15106,7 +15122,8 @@ def register(app, G):
     def v2_tutorials():
         html = (V2_TUTORIALS_HTML
                 .replace("__TUT_LIST__", _json.dumps(V2_TUT_LIST, ensure_ascii=False))
-                .replace("__TUT_WIDE__", _json.dumps(V2_TUT_WIDE, ensure_ascii=False)))
+                .replace("__TUT_WIDE__", _json.dumps(V2_TUT_WIDE, ensure_ascii=False))
+                .replace("__TUT_STORIES__", _json.dumps(V2_TUT_STORIES, ensure_ascii=False)))
         return _page(html)
 
     @app.route("/v2/tut/<name>.<ext>", methods=["GET"])
