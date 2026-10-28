@@ -13325,19 +13325,20 @@ def team_sync_missing(cfg_agents, team_rows, suspended, removed_keys, name_key, 
         p = last9(r.get("phone") or "")
         if p:
             have_p.add(p)
-    out, done = [], set()
+    out, done, done_p = [], set(), set()
     for a in cfg_agents or []:
         if not isinstance(a, dict):
             continue
         nm = str(a.get("name") or "").strip()
         ph = last9(a.get("phone") or "")
         k = name_key(nm)
-        if not nm or not ph or not k or "בדיקה" in nm or k in _TEAM_SYNC_SKIP \
+        if not nm or not ph or not k or "בדיקה" in nm or k in _TEAM_SYNC_SKIP or ph in done_p \
                 or not _re.search(r"[א-ת]", nm) or _re.search(r"[0-9·@]", nm):   # שם אמיתי בלבד (לא 'מנהל · 1234')
             continue
         if ph in suspended or k in removed_keys or k in have_n or ph in have_p or k in done:
             continue
         done.add(k)
+        done_p.add(ph)
         out.append({"name": nm, "phone": "0" + ph, "active": True})
     return out
 
@@ -19675,29 +19676,32 @@ def register(app, G):
         if not (sb is not None and sb.enabled()) or os.environ.get("CONTACTS_SOURCE", "").strip().lower() != "supabase":
             return []
         try:
+            team_rows = sb.team_fetch(active_only=False)
+            if not team_rows:          # טבלה ריקה = הכניסה עוד נשענת על הגיליון — לא ממלאים חלקית
+                return []
             cfg = G["_load_config"]() or {}
             people = list(cfg.get("agents") or [])
-            try:      # גם מי שנכנס לאפי ב-30 הימים האחרונים (נכנס דרך מספר וירטואלי / שיחות ולא דרך הניהול)
+            try:      # גם מי שנכנס לאפי ב-14 הימים האחרונים (דרך מספר וירטואלי / שיחות ולא דרך הניהול)
                 import datetime as _dts
-                since = (_dts.datetime.now(_dts.timezone.utc) - _dts.timedelta(days=30)).isoformat()
-                seen_ph = {}
+                since = (_dts.datetime.now(_dts.timezone.utc) - _dts.timedelta(days=14)).isoformat()
+                phones = []
                 for p in sb.fetch_pings_today(since) or []:
                     ph = G["_last9"](p.get("phone", ""))
-                    if ph and ph not in seen_ph:
-                        seen_ph[ph] = G["_display_name_for"](str(p.get("name", "") or "").strip(), ph)
-                people += [{"name": nm, "phone": ph} for ph, nm in seen_ph.items() if nm]
+                    if ph and ph not in phones:
+                        phones.append(ph)
+                # השם לפי המיפוי הנוכחי של הטלפון (לא השם שנשמר בפעימה — אחרי שינוי שם הוא ישן)
+                people += [{"name": G["_display_name_for"]("", ph), "phone": ph} for ph in phones]
             except Exception as e:
                 if log: log.warning(f"team sync pings: {e}")
-            add = team_sync_missing(people, sb.team_fetch(active_only=False),
-                                    G["_suspended_set"](), G["_removed_agent_keys"](), G["_name_key"], G["_last9"])
+            add = team_sync_missing(people, team_rows, G["_suspended_set"](), G["_removed_agent_keys"](),
+                                    G["_canon_key"], G["_last9"])
             if not add:
                 return []
             sb.team_upsert(add, by)
-            for box in ("_contacts_rows_cache", "_agents_cache"):     # הקוראים יקראו את הטבלה מחדש
-                try:
-                    G[box]["ts"] = 0
-                except Exception:
-                    pass
+            try:
+                G["_contacts_cache_clear"]()       # כל ארבעת הקוראים של אנשי הקשר נטענים מחדש
+            except Exception:
+                pass
             G["_log_activity"](by, "", "", "צוות — הוספה מהניהול", ", ".join(a["name"] for a in add))
             if log: log.info(f"team sync: added {[a['name'] for a in add]}")
             return [a["name"] for a in add]

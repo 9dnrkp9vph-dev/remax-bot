@@ -477,12 +477,22 @@ def g_missed(G, now):
 
 def g_sigs(G, since_day):
     """[GOALS2 29/10] שורות חתימה מ-since_day: {agent, address, type, signed, ts} (signed = קישור חתום או עמלה)."""
+    times = {}
+    try:      # שעת החתימה האמיתית (sign_docs) — כמו מסך החתימות; received_at = שעת שליחה / עדכון אחרון בפיירברי
+        sb = G.get("_sbdb")
+        if sb is not None and sb.enabled():
+            times = sb.signdoc_times() or {}
+    except Exception:
+        times = {}
     out = []
     for g in G["get_signings"](since_day.strftime("%d/%m/%Y"), "31/12/2099") or []:
         lk = str(g.get("commission_pct", "") or "").strip()
+        ts = g.get("received_at", "")
+        if "/s/" in lk:
+            ts = times.get(lk.rsplit("/s/", 1)[-1].strip("/ ")) or ts
         out.append({"agent": g.get("agent", ""), "address": g.get("address", ""),
                     "type": G["_deal_label"](g.get("deal_type", "")), "signed": bool(lk),
-                    "ts": g.get("received_at", "")})       # parse_ts — שעון ישראל
+                    "ts": ts})       # parse_ts — שעון ישראל
     return out
 
 
@@ -538,7 +548,7 @@ def dashboard_goals(G, now):
            "missed": g_safe(G, lambda: g_missed(G, now)),
            "seen": g_safe(G, lambda: g_seen(G, day)),
            "active": g_safe(G, lambda: g_active(G, day)),
-           "sigs": g_safe(G, lambda: g_sigs(G, first)),
+           "sigs": g_safe(G, lambda: g_sigs(G, min(first, week_start(day - _dt.timedelta(days=8))))),   # גם שבוע-קודם של 'אתמול' ביום ראשון
            "roster": g_safe(G, lambda: g_roster(G))}
     return build_periods(src, day, lambda n: g_canon(G, n))
 

@@ -34,6 +34,11 @@ bad = [{"name": "מנהל · 1234", "phone": "0541111111"}, {"name": "eyal-shmul
        {"name": "x@y.com", "phone": "0543333333"}]
 ck(f(bad, [], set(), set(), key, l9) == [], "only real names")
 ck("fetch_pings_today" in src.split("def _team_sync_run")[1][:1500] if (src := _load._SRC) else False, "also people who logged in")
+dup = [{"name": "א ב", "phone": "0551111111"}, {"name": "ג ד", "phone": "0551111111"}]
+ck(len(f(dup, [{"name": "x", "phone": "0500000000"}], set(), set(), key, l9)) == 1, "one row per phone")
+run = src.split("def _team_sync_run")[1][:2600]
+ck("if not team_rows:" in run and 'G["_canon_key"]' in run and '_contacts_cache_clear' in run, "empty-table guard, aliases, full cache clear")
+ck('G["_display_name_for"]("", ph)' in run, "name from the current phone mapping, not the ping")
 # החיווט: ההזמנה מפעילה סנכרון, ויש בדיקה תקופתית שרצה ברקע
 src = _load._SRC
 ck('_team_sync_bg(s.get("name", "") or "ניהול")' in src, "invite triggers sync")

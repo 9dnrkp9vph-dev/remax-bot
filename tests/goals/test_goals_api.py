@@ -329,3 +329,19 @@ def test_inactive_hidden_without_counts():
     assert o["total"]["counts"]["buyers"] == 1 and o["total"]["targets"]["buyers"] == 3 and o["total"]["agents"] == 1, o
     o = goals.build_office(dict(src, active=None), day, _key)       # מקור לא זמין → כולם עם יעד
     assert o["total"]["agents"] == 3 and len(o["rows"]) == 3, o
+
+
+def test_sigs_use_signed_time():
+    """גיוס נכסים לפי שעת החתימה (sign_docs), לא שעת השליחה."""
+    class SB:
+        def enabled(self): return True
+        def signdoc_times(self): return {"tok1": "2026-10-25T09:00:00+02:00"}
+    G = AutoG(_sbdb=SB(), _deal_label=lambda c: "בלעדיות",
+              get_signings=lambda frm, to: [{"agent": "א", "address": "הרצל 5", "deal_type": "OWNER_EXCLUSIVE",
+                                             "commission_pct": "https://x/s/tok1", "received_at": "22/10/2026 10:00"},
+                                            {"agent": "א", "address": "בגין 1", "deal_type": "OWNER_EXCLUSIVE",
+                                             "commission_pct": "2", "received_at": "26/10/2026 10:00"}])
+    rows = goals.g_sigs(G, dt.date(2026, 10, 18))
+    assert rows[0]["ts"] == "2026-10-25T09:00:00+02:00" and rows[1]["ts"] == "26/10/2026 10:00", rows
+    n = goals.count_listings("א", goals.week_bounds(dt.date(2026, 10, 28)), rows, _key)
+    assert n == 2, n
