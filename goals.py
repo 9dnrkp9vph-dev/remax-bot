@@ -358,6 +358,151 @@ def build_periods(src, today, canon):
     return out
 
 
+# ── [GOALS-WEEKLY 29/10] סיכום יעדים שבועי לכל סוכן בוואטסאפ הרשמי (אייל) ─────────────────────────
+GOAL_LABELS = {"meetings": "פגישות מנכס נולד", "buyers": "קונים חדשים",
+               "past_clients": "הודעות ללקוחות עבר", "reviews": "המלצות"}
+WEEKLY_HOUR = 10                 # אייל 29/10: ביום ראשון ב-10:00
+WEEKLY_SEEN_DAYS = 10            # רק מי שנכנס לאפי ב-10 הימים שלפני ההודעה
+WEEKLY_RETRY_SEC = 900           # כשל → ניסיון חוזר כל 15 דק'
+WEEKLY_MAX_TRIES = 8
+REC_UP, REC_DOWN = 1.3, 0.5      # הושג 130%+ → להעלות; מתחת ל-50% → להוריד
+
+
+def weekly_period(today):
+    """השבוע שהסתיים (ראשון–שבת) לפני השבוע של today. ביום שני אחרי חג ביום ראשון — עדיין אותו שבוע."""
+    s = week_start(today) - _dt.timedelta(days=7)
+    return s, s + _dt.timedelta(days=6)
+
+
+def weekly_scale():
+    """ימי העבודה בשבוע מלא (א'–ה' 1, שישי חצי) = 5.5."""
+    s = week_start(_dt.date(2026, 1, 4))
+    return sum(workday_weight(s + _dt.timedelta(days=i)) for i in range(7))
+
+
+def weekly_due(now_il, blocked, state, hour=WEEKLY_HOUR):
+    """מפתח השבוע (ISO של יום ראשון) אם צריך לשלוח עכשיו, אחרת None. ראשון–חמישי מ-hour; blocked = חג/שבת/השתקה.
+    יום ראשון שהוא חג → נשלח ביום העבודה הבא (אייל 29/10), עד חמישי."""
+    if blocked or now_il.weekday() not in (6, 0, 1, 2, 3) or now_il.hour < hour:
+        return None
+    key = weekly_period(now_il.date())[0].isoformat()
+    if ((state or {}).get(key) or {}).get("done"):
+        return None
+    return key
+
+
+def weekly_recommend(count, wtarget, daily):
+    """(up/down/keep, יעד יומי מוצע). הושג 130%+ → +1 לפחות (או 25%); מתחת ל-50% → -1 לפחות (או 25%), לא מתחת ל-1."""
+    import math
+    daily = int(daily or 0)
+    if count is None or not wtarget or daily <= 0:
+        return "keep", daily
+    r = float(count) / float(wtarget)
+    if r >= REC_UP:
+        return "up", min(_MAX_TARGET, max(daily + 1, int(round(daily * 1.25))))
+    if r < REC_DOWN:
+        new = max(1, min(daily - 1, int(math.floor(daily * 0.75))))
+        return ("down", new) if new < daily else ("keep", daily)
+    return "keep", daily
+
+
+def build_weekly(src, sunday, canon):
+    """שורה לכל סוכן ברשימה שנכנס לאפי (src['seen']) — ספירה לשבוע ראשון–שבת מול היעד השבועי
+    (יעד יומי × 5.5), כמה יעדים הושגו והמלצה לכל יעד. אותה ספירה כמו טבלת 'השבוע' בלוח הבקרה (count_days)."""
+    import functools
+    canon = functools.lru_cache(maxsize=None)(canon)
+    cfg = _cfg_of(src)
+    days = [sunday + _dt.timedelta(days=i) for i in range(7)]
+    scale = weekly_scale()
+    seen = _seen_set(src, canon)
+    names, _bad_roster = _roster_names(src, canon)
+    rows = []
+    for name in names:
+        if canon(name) not in seen:
+            continue
+        c = count_days(name, days, src, canon)
+        daily = targets_for(cfg, name, canon)
+        wt = {k: _num(v * scale) for k, v in daily.items()}
+        met, n = _met(c, wt)
+        rows.append({"name": name, "counts": c, "targets": wt, "daily": daily, "met": met, "goals_n": n,
+                     "rec": {k: weekly_recommend(c.get(k), wt.get(k), daily.get(k)) for k in GOAL_KEYS},
+                     "from": days[0].isoformat(), "to": days[-1].isoformat()})
+    return rows
+
+
+def _dm(iso):
+    d = _dt.date.fromisoformat(iso)
+    return f"{d.day}/{d.month}"
+
+
+def _span(row):
+    return _dm(row["from"]) + "–" + _dm(row["to"])
+
+
+def weekly_message(row, office, link):
+    """ההודעה לסוכן. שם המשרד מהקונפיג (v2_office.name) בלבד; בלי אימוג'ים."""
+    first = (str(row.get("name") or "").split() or [""])[0]
+    office = str(office or "").strip()
+    lines = [f"שלום {first}, סיכום היעדים שלך" + (f" ב{office}" if office else "") + f" לשבוע {_span(row)}:", ""]
+    for k in GOAL_KEYS:
+        c, t = row["counts"].get(k), row["targets"].get(k)
+        if c is None:
+            lines.append(f"{GOAL_LABELS[k]}: אין נתון")
+        else:
+            lines.append(f"{GOAL_LABELS[k]}: {c} מתוך {t}" + (" — הושג" if c >= (t or 0) else ""))
+    lines += ["", f"הגעת ל-{row['met']} מתוך {row['goals_n']} יעדים.", "", "המלצה ליעד היומי:"]
+    for k in GOAL_KEYS:
+        kind, n = row["rec"][k]
+        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} ביום", "down": f"להוריד ל-{n} ביום"}.get(
+            kind, f"להשאיר {n} ביום"))
+    lines += ["(את היעדים מעדכן מנהל המשרד)", "", f"למסך היעדים: {link}"]
+    return "\n".join(lines)
+
+
+def weekly_manager_summary(rows, office):
+    """סיכום לבעל המשרד: רק ההמלצות לשינוי (להעלות/להוריד), לכל סוכן — כדי שיעדכן בעצמו במסך היעדים."""
+    span = _span(rows[0]) if rows else ""
+    out = ["סיכום יעדים שבועי" + (f" — {office}" if office else "") + (f" — {span}" if span else ""),
+           f"נשלח ל-{len(rows)} סוכנים.", ""]
+    any_rec = False
+    for r in rows:
+        ch = [(k, r["rec"][k]) for k in GOAL_KEYS if r["rec"][k][0] != "keep"]
+        if not ch:
+            continue
+        any_rec = True
+        out.append(f"{r['name']} ({r['met']}/{r['goals_n']}):")
+        for k, (kind, n) in ch:
+            out.append(f"{GOAL_LABELS[k]}: " + ("להעלות" if kind == "up" else "להוריד") + f" ל-{n}"
+                       f" (היום {r['daily'][k]}; עשה {r['counts'][k]} מתוך {r['targets'][k]})")
+        out.append("")
+    if not any_rec:
+        out.append("אין המלצות לשינוי השבוע.")
+    return "\n".join(out).rstrip()
+
+
+def weekly_mark(rec, name, result, now):
+    """רישום ניסיון לסוכן: sent / fail / no_phone."""
+    a = rec.setdefault("agents", {})
+    cur = a.get(name) or {}
+    a[name] = {"r": result, "ts": now, "tries": int(cur.get("tries") or 0) + 1}
+    return rec
+
+
+def weekly_pending(names, rec, now, canon):
+    """מי עוד צריך לקבל: לא נשלח, לא 'אין טלפון', ובכשל — עברו 15 דק' ופחות מ-8 ניסיונות."""
+    by = {canon(k): v for k, v in ((rec or {}).get("agents") or {}).items()}
+    out = []
+    for n in names:
+        e = by.get(canon(n))
+        if e:
+            if e.get("r") in ("sent", "no_phone"):
+                continue
+            if int(e.get("tries") or 0) >= WEEKLY_MAX_TRIES or now - float(e.get("ts") or 0) < WEEKLY_RETRY_SEC:
+                continue
+        out.append(n)
+    return out
+
+
 def meeting_stamp(prev, new_status, now):
     """חותמת 'מתי נקבעה הפגישה' — קבועה לתמיד: קיימת נשמרת; אחרת now אם הסטטוס meeting; אחרת None."""
     ex = (prev or {}).get("meeting_at")
@@ -442,6 +587,239 @@ def dashboard_goals(G, now):
            "seen": g_safe(G, lambda: g_seen(G, day)),
            "roster": g_safe(G, lambda: g_roster(G))}
     return build_periods(src, day, lambda n: g_canon(G, n))
+
+
+# ── [GOALS-WEEKLY 29/10] הריצה: מקורות, שליחה, תצוגה מקדימה (G = globals() של app.py) ─────────────
+def weekly_src(G, sunday, now, src_override=None):
+    """אותם מקורות כמו לוח הבקרה, לשבוע ראשון–שבת; seen = מי שנכנס לאפי ב-10 הימים שלפני now."""
+    t0 = day_bounds(sunday)[0]
+
+    def activity():
+        sb = G.get("_sbdb")
+        if sb is not None and sb.enabled():
+            return sb.fetch_activity_actions(t0, (ACT_REMIND,)) or []
+        return G["_activity_fetch"](t0, today=False)
+
+    def seen():
+        start = _dt.datetime.fromtimestamp(now, _IL) - _dt.timedelta(days=WEEKLY_SEEN_DAYS)
+        return [r.get("name") for r in (G["_usage_rows"](start) or []) if r.get("name")]
+
+    cfg = g_safe(G, G["_load_config"])
+    src = {"nb": cfg if _bad(cfg) else ((cfg or {}).get("nbStatus") or {}),
+           "cfg": cfg if isinstance(cfg, dict) else {}, "missed": []}
+    over = src_override or {}
+    for k, fn in (("buyers", lambda: G["_fetch_manual_buyers"]()), ("bpages", lambda: G["_sbdb"].bpage_all()),
+                  ("activity", activity), ("reviews", lambda: g_reviews(G)), ("seen", seen),
+                  ("roster", lambda: g_roster(G))):
+        src[k] = over[k] if k in over else g_safe(G, fn)
+    return src
+
+
+def _weekly_phone(G, name, ag_ph, vph):
+    """הנייד האישי של הסוכן מאנשי הקשר (התאמת שם עם _canon_key, כמו 'קונה שמפרסם נכס'); מספר מרכזיה — לא."""
+    ck = g_canon(G, name)
+    ph = ag_ph.get(name) or next((v for k, v in ag_ph.items() if v and g_canon(G, k) == ck), "")
+    if not ph or G["_last9"](ph) in vph:
+        return ""
+    return G["_wa_phone"](ph) or ""
+
+
+def _weekly_disk(path, key=None, val=None):
+    import json as _json
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = _json.load(f)
+    except Exception:
+        d = {}
+    if key is not None:
+        d[key] = val
+        for k in sorted(d)[:-8]:
+            d.pop(k, None)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                _json.dump(d, f, ensure_ascii=False)
+        except Exception:
+            pass
+    return d
+
+
+def _weekly_link():
+    import os as _o
+    return (_o.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/") + "/v2/goals"
+
+
+def _weekly_mgr_phones(G):
+    import os as _o
+    raw = (_o.environ.get("GOALS_WEEKLY_MGR") or "").strip()
+    lst = [x.strip() for x in raw.split(",") if x.strip()] if raw else list(G.get("_DEV_PHONES_RAW") or [])
+    return [G["_wa_phone"](x) for x in lst if G["_wa_phone"](x)]
+
+
+def weekly_preview(G, now, src_override=None):
+    """מה יישלח לשבוע שהסתיים — בלי לשלוח ובלי לרשום."""
+    day = _dt.datetime.fromtimestamp(now, _IL).date()
+    sunday = weekly_period(day)[0]
+    cfg = G["_load_config"]() or {}
+    office = str(((cfg.get("v2_office") or {}).get("name")) or "").strip()
+    rows = build_weekly(weekly_src(G, sunday, now, src_override), sunday, lambda n: g_canon(G, n))
+    ag_ph = G["fetch_agents_phones"]() or {}
+    vph = G["_agent_vphones9"]() or set()
+    msgs = [{"name": r["name"], "phone": _weekly_phone(G, r["name"], ag_ph, vph), "met": r["met"],
+             "text": weekly_message(r, office, _weekly_link())} for r in rows]
+    return {"week": sunday.isoformat(), "messages": msgs, "manager": weekly_manager_summary(rows, office),
+            "state": ((cfg.get("v2_goals_weekly") or {}).get(sunday.isoformat()) or {})}
+
+
+def weekly_run(G, now, disk_path, src_override=None):
+    """סבב אחד (כל כמה דקות): אם הגיע הזמן — שולח לכל סוכן שטרם קיבל, ואז סיכום לבעל המשרד. מחזיר כמה נשלחו."""
+    import os as _o
+    if (_o.environ.get("GOALS_WEEKLY_WA", "1") or "1").strip() == "0" or not G["_d360_on"]():
+        return 0
+    now_il = _dt.datetime.fromtimestamp(now, _IL)
+    try:
+        blocked = bool(G["_quiet_mode"]()) or bool(G["_switch_off"]("wa_official_off"))
+    except Exception:
+        blocked = True
+    cfg = G["_load_config"]() or {}
+    state = dict(cfg.get("v2_goals_weekly") or {})
+    disk = _weekly_disk(disk_path)
+    for k, v in disk.items():                       # הקונפיג נדרס בעבר בסנכרון — העותק בדיסק שומר על 'פעם אחת'
+        if (v or {}).get("done") or k not in state:
+            state[k] = v
+    key = weekly_due(now_il, blocked, state)
+    if not key:
+        return 0
+    sunday = _dt.date.fromisoformat(key)
+    rec = _json_copy(state.get(key) or {})
+    canon = lambda n: g_canon(G, n)
+    office = str(((cfg.get("v2_office") or {}).get("name")) or "").strip()
+    rows = build_weekly(weekly_src(G, sunday, now, src_override), sunday, canon)
+    ag_ph = G["fetch_agents_phones"]() or {}
+    vph = G["_agent_vphones9"]() or set()
+    by = {canon(r["name"]): r for r in rows}
+    n_sent = 0
+    for name in weekly_pending([r["name"] for r in rows], rec, now, canon):
+        r = by[canon(name)]
+        wa = _weekly_phone(G, name, ag_ph, vph)
+        if not wa:
+            res = "no_phone"
+        else:
+            try:
+                res = "sent" if G["send_text"](wa, weekly_message(r, office, _weekly_link())) else "fail"
+            except Exception:
+                res = "fail"
+        weekly_mark(rec, name, res, now)
+        n_sent += res == "sent"
+        G["_log_activity"]("אפי", "system", "", "סיכום יעדים שבועי — " +
+                           {"sent": "נשלח", "fail": "נכשל", "no_phone": "אין טלפון"}[res], name[:60])
+    left = weekly_pending([r["name"] for r in rows], rec, now + WEEKLY_RETRY_SEC, canon)
+    m = rec.get("mgr") or {}
+    if m.get("r") != "sent" and int(m.get("tries") or 0) < WEEKLY_MAX_TRIES and \
+            (not m or now - float(m.get("ts") or 0) >= WEEKLY_RETRY_SEC):
+        ok = False
+        for wa in _weekly_mgr_phones(G):
+            try:
+                ok = bool(G["send_text"](wa, weekly_manager_summary(rows, office))) or ok
+            except Exception:
+                pass
+        rec["mgr"] = {"r": "sent" if ok else "fail", "ts": now, "tries": int(m.get("tries") or 0) + 1}
+        G["_log_activity"]("אפי", "system", "", "סיכום יעדים שבועי — למנהל " + ("נשלח" if ok else "נכשל"),
+                           f"{len(rows)} סוכנים")
+    mg = rec.get("mgr") or {}
+    rec["done"] = not left and (mg.get("r") == "sent" or int(mg.get("tries") or 0) >= WEEKLY_MAX_TRIES)
+    rec["n"] = len(rows)
+
+    def _mut(c, _k=key, _v=rec):
+        d = c.get("v2_goals_weekly") if isinstance(c.get("v2_goals_weekly"), dict) else {}
+        d[_k] = _v
+        for kk in sorted(d)[:-8]:
+            d.pop(kk, None)
+        c["v2_goals_weekly"] = d
+        return True
+    try:
+        G["_config_mutate"](_mut)
+    except Exception:
+        pass
+    _weekly_disk(disk_path, key, rec)
+    return n_sent
+
+
+def _json_copy(v):
+    import json as _json
+    return _json.loads(_json.dumps(v, ensure_ascii=False))
+
+
+WEEKLY_PREVIEW_HTML = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>סיכום יעדים שבועי</title>
+<style>body{margin:0;background:#F5F6F8;font-family:-apple-system,Arial,sans-serif;color:#1E3A5F}
+.w{max-width:720px;margin:0 auto;padding:16px}h1{font-size:19px;margin:6px 0 4px}.s{color:#6E7683;font-size:13px;margin-bottom:14px}
+.c{background:#fff;border:1px solid #E3E6EB;border-radius:14px;padding:14px;margin-bottom:12px}
+.n{font-weight:700;font-size:15px;margin-bottom:6px}.p{font-size:12px;color:#6E7683;margin-bottom:8px}.bad{color:#B42318}
+pre{white-space:pre-wrap;font-family:inherit;font-size:13.5px;line-height:1.6;margin:0}a{color:#2E6BD6}</style></head>
+<body><div class="w"><a href="/v2/admin">חזרה לניהול</a><h1>סיכום יעדים שבועי — תצוגה מקדימה</h1>
+<div class="s" id="sub">טוען…</div><div id="out"></div></div>
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+var tok='';try{tok=localStorage.getItem('fbTok')||'';}catch(e){}
+fetch('/v2/api/goals/weekly/preview',{headers:{'X-Auth-Token':tok}}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){document.getElementById('sub').textContent='אין הרשאה (מנהלים בלבד).';return;}
+  var st=j.state||{}, ag=st.agents||{};
+  document.getElementById('sub').textContent='השבוע שמתחיל ב-'+j.week+' · '+j.messages.length+' סוכנים · '+(st.done?'נשלח':'טרם נשלח')+' · לא נשלח מכאן — תצוגה בלבד';
+  var h='<div class="c"><div class="n">הסיכום אליך</div><pre>'+esc(j.manager)+'</pre></div>';
+  j.messages.forEach(function(m){var s=ag[m.name]||{};
+    h+='<div class="c"><div class="n">'+esc(m.name)+'</div><div class="p'+(m.phone?'':' bad')+'">'+(m.phone?esc(m.phone):'אין נייד אישי — לא יישלח')+(s.r?' · '+esc(s.r):'')+'</div><pre>'+esc(m.text)+'</pre></div>';});
+  document.getElementById('out').innerHTML=h;
+}).catch(function(){document.getElementById('sub').textContent='שגיאה בטעינה';});
+</script></body></html>"""
+
+
+def register_weekly(app, G):
+    """[GOALS-WEEKLY] הלולאה (מתחילה בבקשה הראשונה בתהליך ההגשה — הלקח מ-15/09) + תצוגה מקדימה למנהלים."""
+    import os as _o
+    from flask import jsonify, Response
+    disk = _o.path.join(_o.environ.get("MAP_CACHE_DIR", "") or _o.path.dirname(_o.path.abspath(__file__)),
+                        "goals_weekly.json")
+    thr = {"t": None, "pid": 0}
+    lock = _threading.Lock()
+
+    def loop():
+        _tm.sleep(90)
+        while True:
+            try:
+                weekly_run(G, _clock(), disk)
+            except Exception as e:
+                lg = G.get("log")
+                if lg:
+                    lg.error(f"goals weekly: {e}", exc_info=True)
+            _tm.sleep(300)
+
+    @app.before_request
+    def _goals_weekly_kick():
+        import os as _os2
+        t = thr["t"]
+        if t is not None and t.is_alive() and thr["pid"] == _os2.getpid():
+            return
+        with lock:
+            t = thr["t"]
+            if t is not None and t.is_alive() and thr["pid"] == _os2.getpid():
+                return
+            thr["t"] = _threading.Thread(target=loop, daemon=True, name="goals-weekly")
+            thr["t"].start()
+            thr["pid"] = _os2.getpid()
+
+    def _mgr():
+        s = G["_web_auth"]()
+        return s if s and s.get("drole") in ("manager", "developer") else None
+
+    @app.route("/v2/api/goals/weekly/preview", methods=["GET"])
+    def goals_weekly_preview():
+        if not _mgr():
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+        return jsonify(dict(weekly_preview(G, _clock()), ok=True))
+
+    @app.route("/v2/goals/weekly", methods=["GET"])
+    def goals_weekly_page():
+        return Response(WEEKLY_PREVIEW_HTML, mimetype="text/html")
 
 
 def register(app, G):
@@ -663,3 +1041,5 @@ def register(app, G):
         det = (agent or "ברירת מחדל") + " · " + ", ".join(f"{k}={v}" for k, v in vals.items())
         G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "יעדים — עדכון", det)
         return jsonify({"ok": True, "agent": agent, "targets": new})
+
+    register_weekly(app, G)
