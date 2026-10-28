@@ -39,3 +39,11 @@ own = ns["crm_access_for"]("eyalshmul@gmail.com", "", {}, ["eyalshmul@gmail.com"
 other = ns["crm_access_for"]("x@y.com", "", {"v2_crm_access": {"x@y.com": {"modules": ["ai", "deals"], "scope": "all"}}}, ["eyalshmul@gmail.com"], False)
 ck("ai" in own["modules"] and "ai" not in (other or {}).get("modules", []), (own, other))
 print("ai_alerts OK", _load.n)
+# [28/10 אייל: 'תאחד שמות'] רווח כפול בשם ('אלי  שמול') הציג כל סוכן פעמיים ברשימת הסוכנים של טאב AI
+U = _load.load("crm_unify_agents")["crm_unify_agents"]
+rr = [{"agent": "אלי  שמול"}, {"agent": "אלי שמול"}, {"agent": "אלי שמול"}, {"agent": "אוהד‏ פלד"}, {"agent": ""}]
+U(rr, lambda n: " ".join(n.split()), also=())
+ck(sorted({r["agent"] for r in rr if r["agent"]}) == ["אוהד פלד", "אלי שמול"], [r["agent"] for r in rr])
+_src = open(os.path.join(os.path.dirname(__file__), "..", "..", "effie_v2.py"), encoding="utf-8").read()
+_ai = _src[_src.index('if module == "ai":'):_src.index('if module == "invoices":')]
+ck("crm_unify_agents(recs" in _ai, "ai module unifies agent names")

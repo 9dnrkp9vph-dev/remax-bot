@@ -17485,8 +17485,10 @@ def register(app, G):
                 except Exception as e:
                     if log: log.warning(f"crm ai invoices: {e}")
                 bs, idx, buyers, _raws = _bs_rows()
-                return crm_ai_records(deals, invs, idx, buyers, bs, _tai.time(),
+                recs = crm_ai_records(deals, invs, idx, buyers, bs, _tai.time(),
                                       lambda b: G["_excl_epoch"](b.get("date", "")), G["_newborn_created_epoch"])
+                # [28/10 אייל: 'תאחד שמות'] כל סוכן פעם אחת ברשימת הסוכנים
+                return crm_unify_agents(recs, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
             return swr("crmai", 120, _build_ai) if swr else _build_ai()
         if module == "invoices":
