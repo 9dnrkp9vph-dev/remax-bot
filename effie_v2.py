@@ -945,9 +945,392 @@ html:not(.pwa) body:has(nav) main{ overflow:visible; overscroll-behavior:auto; }
   body:has(nav) main:has(.briefBar){display:grid;grid-template-columns:1fr 1fr;gap:13px;
       align-items:start;max-width:1000px}
   main:has(.briefBar) > .greet, main:has(.briefBar) > .stats,
-  main:has(.briefBar) > .briefBar, main:has(.briefBar) > .care{grid-column:1 / -1}
+  main:has(.briefBar) > .briefBar, main:has(.briefBar) > .care,
+  main:has(.briefBar) > .gMini, main:has(.briefBar) > .hotMine{grid-column:1 / -1}
 }
 </style>"""
+
+# ── [GOALS 28/10] היעדים שלי להיום — רכיב משותף: כרטיס היעדים (סטורי + /v2/goals), צ'יפים בבית,
+#    הנכס החם שלי. מוזרק ב-<!--GOALS_KIT--> (הבית ומסך היעדים). פלטה: כחול=פס/פעולה, נייבי=הושלם,
+#    ירוק=רק כפתור הלקוחות, זהב=רק הטבעת ומצב ריק. בלי אדום ובלי אימוג'ים. ──────────────────────────
+V2_GOALS_KIT = r"""<style>
+  .gk{display:flex;flex-direction:column;gap:12px;font-family:'Heebo',sans-serif;color:#14192B;text-align:right}
+  .gk-hero{background:linear-gradient(160deg,#0E1D33,#2C4C77);color:#fff;border-radius:22px;padding:18px 18px 16px}
+  .gk-hero .d{font-size:12.5px;opacity:.8}
+  .gk-hero .gr{font-size:12.5px;font-weight:700;color:#E4C56B;letter-spacing:.06em;margin-top:6px}
+  .gk-hero h2{font-size:21px;font-weight:800;margin-top:2px;line-height:1.3}
+  .gk-hero .sb{font-size:13.5px;opacity:.85;margin-top:2px}
+  .gk-score{display:flex;align-items:center;gap:14px;margin-top:14px}
+  .gk-score svg{width:74px;height:74px;flex:0 0 74px}
+  .gk-score b{font-size:18px;font-weight:800;display:block}
+  .gk-score span{font-size:13px;opacity:.85;line-height:1.45}
+  .gk-link{display:inline-flex;align-items:center;min-height:44px;color:#E4C56B;font-weight:700;font-size:13.5px;
+      background:none;border:0;font-family:inherit;cursor:pointer;padding:0;margin-top:4px}
+  .gk-note{font-size:12px;opacity:.75;margin-top:6px}
+  .gk-g{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 14px 12px}
+  .gk-g .h{display:flex;align-items:center;gap:10px}
+  .gk-ic{width:38px;height:38px;border-radius:12px;background:#EEF3FC;display:flex;align-items:center;justify-content:center;flex:0 0 38px}
+  .gk-ic.green{background:#E8F4EE}
+  .gk-ic.navy{background:#E9EDF3}
+  .gk-g .t{flex:1;min-width:0;font-weight:700;font-size:15px;color:#14192B}
+  .gk-g .t small{display:block;font-weight:400;color:#5B6472;font-size:12.5px;margin-top:1px}
+  .gk-num{font-size:20px;font-weight:800;color:#1E3A5F;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .gk-num i{font-style:normal;font-size:14px;color:#5B6472;font-weight:600}
+  .gBar{height:8px;border-radius:99px;background:#EDEAE2;margin:11px 0 10px;overflow:hidden}
+  .gBar div{height:100%;border-radius:99px;background:#2E6BD6}
+  .gk-g.done .gBar div{background:#1E3A5F}
+  .gk-done{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:#1E3A5F;
+      background:#E9EDF3;border-radius:99px;padding:3px 10px}
+  .gk-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+  .gk-foot .nt{font-size:12.5px;color:#5B6472}
+  .gBtn{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;border-radius:14px;
+      font:700 14.5px 'Heebo',sans-serif;border:0;width:100%;cursor:pointer}
+  .gBtn.blue{background:#2E6BD6;color:#fff}
+  .gBtn.green{background:#157A43;color:#fff}
+  .gBtn.sec{background:#fff;color:#1E3A5F;border:1.5px solid #D5D9E0}
+  .gk-sec{font-size:13px;font-weight:700;color:#5B6472;margin:4px 4px 0}
+  .gk-plain{background:#fff;border-radius:20px;padding:4px 14px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+  .gk-plain div{display:flex;align-items:center;gap:10px;min-height:46px;font-size:14.5px;color:#14192B}
+  .gk-plain span{margin-inline-start:auto;font-size:12.5px;color:#5B6472}
+  .gChips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .gChip{font-size:12.5px;font-weight:600;border-radius:99px;padding:5px 10px;background:#F4F1EA;color:#14192B;white-space:nowrap}
+  .gChip.ok{background:#E9EDF3;color:#1E3A5F}
+  .gk-ag{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px}
+  .gk-ag.off{opacity:.62}
+  .gk-ag .an{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800;font-size:15px;color:#1E3A5F}
+  .gk-ag .an small{font-weight:600;font-size:12px;color:#6B7280}
+  .gk-ag .ln{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:8px}
+  .gk-ag .ln .l{flex:0 0 108px;color:#5B6472}
+  .gk-ag .ln .gBar{flex:1;margin:0;height:6px}
+  .gk-ag .ln .v{flex:0 0 44px;text-align:left;font-weight:700;color:#1E3A5F;font-variant-numeric:tabular-nums}
+  .gk-ag .ln.done .gBar div{background:#1E3A5F}
+  .gk-ag .st{font-size:12px;color:#5B6472;margin-top:8px}
+  .gk-ag .ed{margin-top:10px;min-height:44px}
+  .gk-mine{display:flex;gap:12px;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);overflow:hidden}
+  .gk-mine .im{flex:0 0 110px;min-height:110px;background:linear-gradient(135deg,#C9B994,#8C9BB0) center/cover no-repeat}
+  .gk-mine .tx{padding:12px 4px 10px 12px;font-size:13px;line-height:1.5;color:#5B6472;min-width:0}
+  .gk-mine .tx b{display:block;color:#14192B;font-size:14px}
+  .gk-mine .tx a{display:inline-flex;align-items:center;min-height:44px;color:#2E6BD6;font-weight:700;text-decoration:none}
+  .gk-empty{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:16px;text-align:center;
+      display:flex;flex-direction:column;align-items:center;gap:6px}
+  .gk-eic{width:46px;height:46px;border-radius:50%;background:#F6EDD6;display:flex;align-items:center;justify-content:center}
+  .gk-empty b{color:#1E3A5F;font-size:15px}
+  .gk-empty span{font-size:13px;color:#5B6472;margin-bottom:6px}
+  @media (prefers-reduced-motion:no-preference){ .gBar div{transition:width .5s ease-out} }
+</style>
+<script>
+var GOALS_NAVY = '#1E3A5F';
+var GOALS_KEYS = ['meetings', 'buyers', 'past_clients', 'reviews'];
+var GOALS_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+function gEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function gNum(v){ return (typeof v === 'number' && isFinite(v)) ? v : null; }
+/* 'היום' בשעון ישראל — YYYY-MM-DD (כמו day בתשובת השרת) */
+function goalsToday(){
+  try{ return new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date()); }
+  catch(e){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+}
+function goalsDateLine(){
+  try{
+    var p = {}; new Intl.DateTimeFormat('en-US', {timeZone: 'Asia/Jerusalem', weekday: 'short', day: '2-digit', month: '2-digit'})
+      .formatToParts(new Date()).forEach(function(x){ p[x.type] = x.value; });
+    var wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p.weekday);
+    return 'יום ' + GOALS_DAYS[wd < 0 ? new Date().getDay() : wd] + ' · ' + p.day + '/' + p.month;
+  }catch(e){ return ''; }
+}
+/* מטמון לקוח: לאותו טוקן ולאותו יום בלבד */
+function goalsCachePut(tok, j){
+  try{ if (j && j.ok) localStorage.setItem('v2c:goals', JSON.stringify({tok: tok, day: j.day || goalsToday(), j: j})); }catch(e){}
+}
+function goalsCacheGet(tok, day){
+  try{
+    var c = JSON.parse(localStorage.getItem('v2c:goals') || 'null');
+    if (c && c.tok === tok && c.day === (day || goalsToday()) && c.j && c.j.ok) return c.j;
+  }catch(e){}
+  return null;
+}
+/* הנתונים שמוצגים: סוכן — שלו; מתאמת/מנהל — הסכום */
+function goalsData(j){
+  var d = j && (j.view === 'agent' ? j.me : j.total);
+  return {counts: (d && d.counts) || {}, targets: (d && d.targets) || {}, partial: !!(d && d.partial)};
+}
+function goalIsDone(c, t){
+  c = gNum(c); t = gNum(t); if (t == null) t = 0;
+  return c != null && c >= t;
+}
+function goalsDone(d){
+  var c = (d && d.counts) || {}, t = (d && d.targets) || {}, n = 0;
+  GOALS_KEYS.forEach(function(k){ if (goalIsDone(c[k], t[k])) n++; });
+  return n;
+}
+function goalsGo(u){
+  try{ if (typeof STORY !== 'undefined' && STORY && STORY.open && typeof closeStory === 'function') closeStory(); }catch(e){}
+  location.href = u;
+}
+var GOALS_IC = {
+  home: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" fill="none" stroke="#2E6BD6" stroke-width="1.9" stroke-linejoin="round"/></svg>',
+  user: '<svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="none" stroke="#2E6BD6" stroke-width="1.9"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6" fill="none" stroke="#2E6BD6" stroke-width="1.9" stroke-linecap="round"/></svg>',
+  chat: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z" fill="none" stroke="#157A43" stroke-width="1.9" stroke-linejoin="round"/></svg>',
+  quote: '<svg width="20" height="20" viewBox="0 0 22 22"><path d="M5 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6H5zM13 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6h-5z" fill="none" stroke="#2E6BD6" stroke-width="1.7" stroke-linejoin="round"/></svg>',
+  cal: '<svg width="20" height="20" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="#1E3A5F" stroke-width="1.9"/><path d="M3 10h18M8 3v4M16 3v4" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round"/></svg>',
+  phone: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linejoin="round"/></svg>',
+  check: '<svg width="14" height="14" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10" fill="none" stroke="#1E3A5F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  fire: '<svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 3c1 3 4 4.5 4 8.5a4 4 0 0 1-8 0c0-2 1-3 1.5-4 .5 1.5 1.5 2 2 2 0-2.5-.5-4.5.5-6.5z" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linejoin="round"/></svg>'
+};
+var GOALS_DEFS = [
+  {k: 'meetings', t: 'פגישות מנכס נולד', s: 'נקבעו היום מכרטיס של מודעה', btn: 'לנכס נולד', u: '/v2/newborn', ic: 'home', chip: 'נכס נולד', left: 'פגישות'},
+  {k: 'buyers', t: 'קונים חדשים', s: '', btn: 'לקונים', u: '/v2/buyers', ic: 'user', chip: 'קונים', left: 'קונים'},
+  {k: 'past_clients', t: 'הודעות ללקוחות עבר', s: '"תזכורת ללקוח" מהיסטוריית העסקאות', btn: 'להיסטוריית העסקאות', u: '/v2/history', ic: 'chat', green: true, chip: 'לקוחות עבר', left: 'לקוחות עבר'},
+  {k: 'reviews', t: 'המלצות', s: 'המלצות שנוספו היום', btn: 'להמלצות', u: '/v2/reviews', ic: 'quote', chip: 'המלצות', left: 'המלצות'}
+];
+function gShow(v){ v = gNum(v); return v == null ? '—' : String(v); }
+function gPct(c, t){
+  c = gNum(c); t = gNum(t);
+  if (c == null) return 0;
+  if (!t) return 100;
+  return Math.max(0, Math.min(100, Math.round(c / t * 100)));
+}
+function gRing(done){
+  var C = 194.8, p = done / 4;
+  return '<svg viewBox="0 0 74 74" aria-hidden="true"><circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="8"/>' +
+    '<circle cx="37" cy="37" r="31" fill="none" stroke="#E4C56B" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + C +
+    '" stroke-dashoffset="' + (C * (1 - p)).toFixed(1) + '" transform="rotate(-90 37 37)"/>' +
+    '<text x="37" y="43" text-anchor="middle" fill="#fff" font-family="Heebo" font-weight="800" font-size="18">' + Math.round(p * 100) + '%</text></svg>';
+}
+function goalsCardHtml(j, opts){
+  opts = opts || {};
+  var view = (j && j.view) || 'agent', d = goalsData(j), c = d.counts, t = d.targets;
+  var group = view !== 'agent', done = goalsDone(d);
+  var title = opts.title || (view === 'team' ? 'היעדים של הצוות להיום' : view === 'office' ? 'היעדים של המשרד להיום' : 'היעדים שלך להיום');
+  var left = [];
+  GOALS_DEFS.forEach(function(g){
+    var cv = gNum(c[g.k]), tv = gNum(t[g.k]) || 0;
+    if (cv != null && cv < tv) left.push((tv - cv) + ' ' + g.left);
+  });
+  var sub = done === 4 ? 'כל היעדים הושלמו. כל הכבוד' : left.length ? 'נשארו: ' + left.join(' · ') : '';
+  var h = '<div class="gk"><div class="gk-hero">' +
+    '<div class="d">' + gEsc(goalsDateLine()) + '</div>' +
+    (opts.greet ? '<div class="gr">' + gEsc(opts.greet) + '</div>' : '') +
+    '<h2>' + gEsc(title) + '</h2><div class="sb">' + (group ? 'סכום היעדים של כל הסוכנים. הכל נספר לבד.' : 'הכל נספר לבד.') + '</div>' +
+    '<div class="gk-score">' + gRing(done) + '<div><b>' + done + ' מתוך 4 יעדים הושלמו</b><span>' + gEsc(sub) + '</span></div></div>' +
+    (d.partial ? '<div class="gk-note">חלק מהנתונים לא נטענו — מוצג מה שידוע</div>' : '') +
+    (group && opts.story ? '<button class="gk-link" onclick="goalsGo(\'/v2/goals\')">פירוט לפי סוכן</button>' : '') +
+    '</div>';
+  GOALS_DEFS.forEach(function(g){
+    var cv = c[g.k], tv = gNum(t[g.k]) || 0, ok = goalIsDone(cv, tv);
+    var s = g.s;
+    if (g.k === 'buyers') s = (gNum(c.bpage) == null) ? 'דף קונה: —' : 'דף קונה נשלח ל-' + c.bpage + ' מהם';
+    h += '<div class="gk-g' + (ok ? ' done' : '') + '"><div class="h"><div class="gk-ic' + (g.green ? ' green' : '') + '">' + GOALS_IC[g.ic] + '</div>' +
+      '<div class="t">' + g.t + '<small>' + gEsc(s) + '</small></div><div class="gk-num">' + gShow(cv) + '<i>/' + gShow(t[g.k]) + '</i></div></div>' +
+      '<div class="gBar"><div style="width:' + gPct(cv, tv) + '%"></div></div>' +
+      (ok ? '<div class="gk-foot"><span class="gk-done">' + GOALS_IC.check + 'הושלם</span></div>' : '') +
+      '<button class="gBtn ' + (g.green ? 'green' : 'blue') + '" onclick="goalsGo(\'' + g.u + '\')">' + g.btn + '</button></div>';
+  });
+  // פולו-אפ — מצב בלבד, לא נספר בטבעת
+  var f = c.followups, fd = f && gNum(f.done), fu = f && gNum(f.due);
+  var fOk = fu != null && fu > 0 && fd >= fu;
+  h += '<div class="gk-g' + (fOk ? ' done' : '') + '"><div class="h"><div class="gk-ic navy">' + GOALS_IC.cal + '</div>' +
+    '<div class="t">פולו-אפ להיום<small>מסומנים "בוצע" ביומן</small></div>' +
+    '<div class="gk-num">' + (f ? gShow(fd) + '<i>/' + gShow(fu) + '</i>' : '—') + '</div></div>' +
+    (fu ? '<div class="gBar"><div style="width:' + gPct(fd, fu) + '%"></div></div>' : '<div style="height:10px"></div>') +
+    (fOk ? '<div class="gk-foot"><span class="gk-done">' + GOALS_IC.check + 'הושלם</span><span class="nt">כל הכבוד</span></div>' :
+      (f && !fu) ? '<div class="gk-foot"><span class="nt">אין פולו-אפ מתוזמן להיום</span></div>' : '') +
+    '<button class="gBtn sec" onclick="goalsGo(\'/v2/meets\')">ליומן</button></div>';
+  // שיחות שלא חזרו אליהן — אפס = מצוין
+  var m = gNum(c.missed);
+  h += '<div class="gk-g' + (m === 0 ? ' done' : '') + '"><div class="h"><div class="gk-ic navy">' + GOALS_IC.phone + '</div>' +
+    '<div class="t">' + (group ? 'שיחות שלא חזרו אליהן' : 'שיחות שלא חזרת אליהן') + '<small>ב-72 השעות האחרונות</small></div>' +
+    '<div class="gk-num">' + gShow(m) + '</div></div>' +
+    (m === 0 ? '<div class="gk-foot" style="margin-top:10px"><span class="gk-done">' + GOALS_IC.check + 'אין שיחות פתוחות</span></div>' :
+      '<div style="height:10px"></div><button class="gBtn blue" onclick="goalsGo(\'/v2/calls\')">לשיחות</button>') +
+    '</div>';
+  h += '<div class="gk-sec">בקרוב</div><div class="gk-plain"><div>2 נכסים בפייסבוק ובאינסטגרם<span>· יופעל בקרוב</span></div></div>';
+  return h + '</div>';
+}
+/* פירוט לפי סוכן (מתאמת/מנהל) — מנהל רואה עריכת יעד לכל סוכן ויעד ברירת מחדל */
+function goalsAgentsHtml(j, canEdit){
+  var ags = (j && j.agents) || [];
+  var h = '<div class="gk">';
+  if (canEdit) h += '<button class="gBtn sec" onclick="goalsEdit(-1)">יעד ברירת מחדל</button>';
+  if (!ags.length) h += '<div class="gk-empty"><div class="gk-eic">' + GOALS_IC.user.replace(/#2E6BD6/g, '#7A5E1C') + '</div><b>אין סוכנים להצגה</b><span>כשיהיו סוכנים פעילים, היעדים שלהם יופיעו כאן.</span></div>';
+  ags.forEach(function(a, i){
+    var c = a.counts || {}, t = a.targets || {};
+    h += '<div class="gk-ag' + (a.seen_today ? '' : ' off') + '"><div class="an"><span>' + gEsc(a.name) + '</span>' +
+      (a.seen_today ? '<small>' + goalsDone(a) + '/4</small>' : '<small>לא נכנס היום</small>') + '</div>';
+    GOALS_DEFS.forEach(function(g){
+      var cv = c[g.k], tv = gNum(t[g.k]) || 0, ok = goalIsDone(cv, tv);
+      h += '<div class="ln' + (ok ? ' done' : '') + '"><span class="l">' + g.t + '</span><div class="gBar"><div style="width:' + gPct(cv, tv) + '%"></div></div>' +
+        '<span class="v">' + gShow(cv) + '/' + gShow(t[g.k]) + '</span></div>';
+    });
+    var f = c.followups;
+    h += '<div class="st">פולו-אפ ' + (f ? gShow(f.done) + '/' + gShow(f.due) : '—') + ' · דף קונה ' + gShow(c.bpage) + ' · שיחות פתוחות ' + gShow(c.missed) + '</div>';
+    if (canEdit) h += '<button class="gBtn sec ed" onclick="goalsEdit(' + i + ')">עריכת יעד</button>';
+    h += '</div>';
+  });
+  return h + '</div>';
+}
+function goalsMiniTitle(j){
+  var v = (j && j.view) || 'agent';
+  var n = j ? goalsDone(goalsData(j)) : 0;
+  return (v === 'team' ? 'יעדי הצוות להיום' : v === 'office' ? 'יעדי המשרד להיום' : 'היעדים שלי להיום') + ' · ' + n + '/4';
+}
+function goalsChipsHtml(j){
+  var d = goalsData(j), c = d.counts, t = d.targets, h = '';
+  GOALS_DEFS.forEach(function(g){
+    var tv = gNum(t[g.k]) || 0;
+    h += '<span class="gChip' + (goalIsDone(c[g.k], tv) ? ' ok' : '') + '">' + g.chip + ' ' + gShow(c[g.k]) + '/' + gShow(t[g.k]) + '</span>';
+  });
+  var f = c.followups, fu = f && gNum(f.due), fd = f && gNum(f.done);
+  h += '<span class="gChip' + (fu && fd >= fu ? ' ok' : '') + '">פולו-אפ ' + (f ? gShow(fd) + '/' + gShow(fu) : '—') + '</span>';
+  h += '<span class="gChip' + (gNum(c.missed) === 0 ? ' ok' : '') + '">שיחות ' + gShow(c.missed) + '</span>';
+  return '<div class="gChips">' + h + '</div>';
+}
+/* הנכס החם שלי (בית). p=null → מצב ריק מעוצב */
+function hotMineHtml(p){
+  if (!p) return '<div class="gk-empty"><div class="gk-eic">' + GOALS_IC.fire + '</div><b>עוד לא סימנת נכס חם</b>' +
+    '<span>הנכס שהכי כדאי לדחוף עכשיו. הוא יופיע בסטורי ובמסך המשרד.</span>' +
+    '<button class="gBtn sec" onclick="location.href=\'/v2/props?mine=1\'">לסימון בנכסים שלי</button></div>';
+  var pr = parseFloat(String(p.price || '').replace(/[^0-9.]/g, ''));
+  var prTx = (pr && isFinite(pr)) ? Math.round(pr).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' ₪' : '';
+  var info = [p.details, prTx].filter(Boolean).map(gEsc).join(' · ');
+  var img = p.img ? ' style="background-image:url(\'' + gEsc(String(p.img).replace(/'/g, '%27')) + '\')"' : '';
+  return '<div class="gk-mine"><div class="im"' + img + '></div><div class="tx"><b>' + gEsc(p.title || 'הנכס החם שלי') + '</b>' + info +
+    '<br><a href="/v2/props?mine=1">החלף נכס חם</a></div></div>';
+}
+</script>"""
+
+# ── [GOALS 28/10] מסך /v2/goals — סוכן: הכרטיס שלו; מתאמת/מנהל: סכום + פירוט לפי סוכן;
+#    מנהל: עריכת יעד לכל סוכן + יעד ברירת מחדל (החלטת בקר 3 — לא ב-/v2/admin שהוא לבעל המשרד בלבד) ──
+V2_GOALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>היעדים שלי להיום</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 8px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer;flex:none}
+  header .pt{font-size:17px;font-weight:800;text-align:center;flex:1}
+  main{padding:4px 16px calc(env(safe-area-inset-bottom,0px) + 30px);display:flex;flex-direction:column;gap:14px;
+      max-width:600px;width:100%;margin:0 auto}
+  h3{font-size:15px;font-weight:800;margin:6px 4px 0}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:60}
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:61;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:16px 18px calc(env(safe-area-inset-bottom,0px) + 18px);
+      display:none;flex-direction:column;gap:12px;max-height:86vh;overflow:auto;max-width:600px;margin:0 auto}
+  #sheet .st{font-size:17px;font-weight:800;text-align:center}
+  #sheet .ss{font-size:12.5px;color:#5B6472;text-align:center;line-height:1.5}
+  #sheet label{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border-radius:16px;
+      padding:8px 14px;min-height:56px;font-size:14.5px;font-weight:700;color:#14192B}
+  #sheet input{width:84px;min-height:44px;border:1.5px solid #D5D9E0;border-radius:12px;text-align:center;
+      font:700 16px 'Heebo',sans-serif;font-size:16px;color:#1E3A5F;background:#fff}
+  #sheet input:focus{outline:none;border-color:#2E6BD6}
+  #toast{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:95;white-space:nowrap}
+</style></head><body>
+  <header>
+    <button class="backBtn" onclick="location.href='/v2/home'" aria-label="חזרה">
+      <svg width="10" height="16" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="pt" id="pt">היעדים שלי להיום</div>
+    <div style="width:44px"></div>
+  </header>
+  <main>
+    <div id="card"><div style="text-align:center;color:#5B6472;font-size:14px;padding:30px 0">טוען את היעדים…</div></div>
+    <div id="agents"></div>
+  </main>
+  <div id="ovl" onclick="sheetClose()"></div>
+  <div id="sheet">
+    <div class="st" id="shT">עריכת יעד</div>
+    <div class="ss" id="shS"></div>
+    <label>פגישות מנכס נולד<input id="t_meetings" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
+    <label>קונים חדשים<input id="t_buyers" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
+    <label>הודעות ללקוחות עבר<input id="t_past_clients" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
+    <label>המלצות<input id="t_reviews" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
+    <button class="gBtn blue" id="shSave" onclick="sheetSave()">שמירה</button>
+    <button class="gBtn sec" onclick="sheetClose()">ביטול</button>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+<!--GOALS_KIT-->
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function el(id){ return document.getElementById(id); }
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers:{'Content-Type':'application/json', 'X-Auth-Token': TOK}, body: JSON.stringify(d)})
+    .then(function(r){ return r.json().catch(function(){ return {ok:false}; }); });
+}
+function toast(m){ var t = el('toast'); t.textContent = m; t.style.opacity = '1'; clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 2000); }
+var GJ = null, NAME = '', EDIT = null;
+function greet(){
+  var h = new Date().getHours(), w = (h < 5) ? 'לילה טוב' : (h < 12) ? 'בוקר טוב' : (h < 18) ? 'צהריים טובים' : 'ערב טוב';
+  var f = String(NAME || '').trim().split(/\s+/)[0];
+  return f ? w + ', ' + f : '';
+}
+function render(j){
+  var v = (j && j.view) || 'agent';
+  el('pt').textContent = v === 'team' ? 'יעדי הצוות להיום' : v === 'office' ? 'יעדי המשרד להיום' : 'היעדים שלי להיום';
+  el('card').innerHTML = goalsCardHtml(j, {greet: greet()});
+  el('agents').innerHTML = (j && v !== 'agent') ? '<h3>לפי סוכן</h3>' + goalsAgentsHtml(j, !!j.can_edit) : '';
+}
+function load(tries){
+  GET('/v2/api/goals/today').then(function(j){
+    if (!j || !j.ok) throw new Error('goals');
+    GJ = j; goalsCachePut(TOK, j); render(j);
+  }).catch(function(){
+    if ((tries || 0) < 2){ setTimeout(function(){ load((tries || 0) + 1); }, 4000); return; }
+    if (!GJ){ render(null); toast('לא הצלחנו לטעון את היעדים'); }
+  });
+}
+function goalsEdit(i){
+  if (!GJ || !GJ.can_edit) return;
+  var a = (i >= 0) ? (GJ.agents || [])[i] : null;
+  EDIT = {agent: a ? a.name : ''};
+  el('shT').textContent = a ? 'עריכת יעד · ' + a.name : 'יעד ברירת מחדל';
+  el('shS').textContent = a ? 'היעד היומי של הסוכן. שדה ריק = בלי שינוי.' :
+    'חל על כל סוכן שלא הוגדר לו יעד משלו. שדה ריק = בלי שינוי.';
+  GOALS_KEYS.forEach(function(k){
+    var inp = el('t_' + k), v = a && a.targets ? a.targets[k] : null;
+    inp.value = (typeof v === 'number') ? v : '';
+    inp.placeholder = a ? '' : 'בלי שינוי';
+  });
+  el('ovl').style.display = 'block'; el('sheet').style.display = 'flex';
+}
+function sheetClose(){ el('ovl').style.display = 'none'; el('sheet').style.display = 'none'; EDIT = null; }
+function sheetSave(){
+  if (!EDIT) return;
+  var t = {}, bad = false;
+  GOALS_KEYS.forEach(function(k){
+    var s = String(el('t_' + k).value || '').trim(); if (s === '') return;
+    var n = parseInt(s, 10);
+    if (isNaN(n) || n < 0 || n > 50) bad = true; else t[k] = n;
+  });
+  if (bad){ toast('מספר בין 0 ל-50'); return; }
+  if (!Object.keys(t).length){ sheetClose(); return; }
+  el('shSave').disabled = true;
+  POST('/v2/api/goals/targets', {agent: EDIT.agent, targets: t}).then(function(r){
+    el('shSave').disabled = false;
+    if (r && r.ok){ sheetClose(); toast('היעד נשמר'); load(0); }
+    else toast(r && r.error === 'forbidden' ? 'אין הרשאה' : 'לא נשמר — נסה שוב');
+  }).catch(function(){ el('shSave').disabled = false; toast('לא נשמר — נסה שוב'); });
+}
+(function(){
+  var c = goalsCacheGet(TOK);
+  if (c){ GJ = c; render(c); }
+  GET('/api/auth/whoami').then(function(j){
+    if (!j || !j.ok){ location.replace('/v2'); return; }
+    NAME = j.name || ''; if (GJ) render(GJ);
+  }).catch(function(){});
+  load(0);
+})();
+</script></body></html>'''
 
 # ── מסך הבית (עיצוב 14a) + בריף הבוקר (עיצוב 13a — סטורי 4 כרטיסים) ─────────
 V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
@@ -1108,6 +1491,14 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         margin-left:auto;margin-right:auto}
   }
   main{padding-bottom:124px}
+  /* [GOALS 28/10] כרטיס היעדים הקטן + הנכס החם שלי */
+  .gMini{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:12px 14px 14px;cursor:pointer}
+  .gMini .h{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:15px;color:#1E3A5F;min-height:32px}
+  .gMini .h a{font-size:13px;color:#2E6BD6;font-weight:700;text-decoration:none;min-height:44px;display:flex;align-items:center;padding:0 4px}
+  .hotMine .h{display:flex;justify-content:space-between;align-items:center;font-weight:800;color:#1E3A5F;font-size:14.5px;margin-bottom:8px}
+  .hotMine .h span{font-size:12px;color:#7A5E1C;font-weight:700}
+  #story .body.gScroll{overflow:auto;justify-content:flex-start;-webkit-overflow-scrolling:touch}
+  #story .body.gScroll .gk-hero{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}
 </style></head><body>
 
   <div id="impBar" style="display:none;position:sticky;top:0;z-index:75;background:#C29435;color:#231700;
@@ -1149,6 +1540,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><path d="M3 11h16M11 3c2.5 2.6 2.5 13.4 0 16M11 3c-2.5 2.6-2.5 13.4 0 16" fill="none" stroke="#1E3A5F" stroke-width="1.5"/></svg>
       האתר</a>
+    <a href="/v2/goals" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="4" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="1.2" fill="#1E3A5F"/></svg>
+      היעדים שלי להיום</a>
     <a id="menuReviews" href="/v2/reviews" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M5 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6H5zM13 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6h-5z" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -1217,6 +1612,11 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       <div class="stat"><div class="n" style="color:#7A5E1C" id="stBuyers">—</div><div class="l">קונים חדשים</div></div>
     </div>
 
+    <div class="gMini" id="goalsMini" onclick="location.href='/v2/goals'">
+      <div class="h"><span id="goalsMiniT">היעדים שלי להיום</span><a href="/v2/goals" onclick="event.stopPropagation()">פתח</a></div>
+      <div id="goalsMiniC"></div>
+    </div>
+
     <div class="briefBar" onclick="openStory(true)">
       <div class="ic"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
       <div style="flex:1;display:flex;flex-direction:column;gap:1px">
@@ -1224,6 +1624,11 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="s" id="briefSum">הנכסים החמים של המשרד + הסיכום שלך</div>
       </div>
       <button class="cta" id="briefCta">צפה</button>
+    </div>
+
+    <div class="hotMine" id="hotMine" style="display:none">
+      <div class="h">הנכס החם שלי <span>מופיע בסטורי ובמסך המשרד</span></div>
+      <div id="hotMineB"></div>
     </div>
 
     <div class="qa">
@@ -1281,7 +1686,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="shead">
       <div style="display:flex;align-items:center;gap:10px">
         <div class="lg"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
-        <div><div class="t">נכסים חמים</div><div class="s" id="storyDate"></div></div>
+        <div><div class="t" id="storyTitle">נכסים חמים</div><div class="s" id="storyDate"></div></div>
       </div>
       <button class="x" onclick="closeStory()" aria-label="סגירה">
         <svg width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="rgba(255,255,255,.6)" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -1300,7 +1705,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:14px 18px calc(env(safe-area-inset-bottom,0px) + 18px);
       display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto;max-width:600px;margin:0 auto"></div>
   <div id="toast"></div>
-
+<!--GOALS_KIT-->
 <script>
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
@@ -1745,11 +2150,57 @@ GET('/v2/api/brief').then(function(j){
   B = j; B._loaded = true;
   try{ localStorage.setItem('v2c:brief', JSON.stringify(j)); }catch(e){}
   briefTitleSync();
-  if (STORY.open && STORY.i === 0) renderCard(0);
+  if (STORY.open && STORY.i === 1) renderCard(1);
+  hotMineRender();
 }).catch(function(){});
+
+/* ── [GOALS 28/10] היעדים שלי להיום: כרטיס ראשון בסטורי + כרטיס קטן בבית ── */
+var GJ;   // undefined = עוד לא נטען; null = נכשל (מוצג '—')
+GJ = goalsCacheGet(TOK) || undefined;   // מיד מהעותק השמור (אותו טוקן, אותו יום)
+function goalsMiniRender(){
+  var j = (GJ === undefined) ? null : GJ;
+  el('goalsMiniT').textContent = j ? goalsMiniTitle(j) : 'היעדים שלי להיום';
+  el('goalsMiniC').innerHTML = goalsChipsHtml(j);
+}
+function goalsLoad(tries){
+  GET('/v2/api/goals/today').then(function(j){
+    if (!j || !j.ok) throw new Error('goals');
+    GJ = j; goalsCachePut(TOK, j);
+    goalsMiniRender();
+    if (STORY.open && STORY.i === 0) renderCard(0);
+  }).catch(function(){
+    if ((tries || 0) < 2){ setTimeout(function(){ goalsLoad((tries || 0) + 1); }, 4000); return; }
+    if (GJ === undefined){ GJ = null; goalsMiniRender(); if (STORY.open && STORY.i === 0) renderCard(0); }
+  });
+}
+goalsMiniRender();
+goalsLoad(0);
+/* הנכס החם שלי — לסוכן: הנכס או מצב ריק; למנהל/מתאמת: רק אם סימנו */
+var HM;   // undefined = עוד לא נטען; null = אין; {key,title}
+function hotMineRender(){
+  var box = el('hotMine'); if (!box || HM === undefined) return;
+  var mgr = (M.role === 'admin' || M.role === 'coordinator');
+  if (!HM && mgr){ box.style.display = 'none'; return; }
+  var p = null;
+  if (HM){
+    var hp = (B.hotProps || []).filter(function(x){ return String(x.key) === String(HM.key); })[0];
+    p = hp ? {title: hp.title, details: hp.details, price: hp.price, img: hp.img} : {title: HM.title};
+  }
+  el('hotMineB').innerHTML = hotMineHtml(p);
+  box.style.display = '';
+}
+function hotMineLoad(){
+  GET('/v2/api/hot').then(function(j){
+    if (!j || !j.ok) return;
+    var orph = {}; (j.orphans || []).forEach(function(k){ orph[String(k)] = 1; });
+    var k = (j.keys || []).filter(function(x){ return !orph[String(x)]; })[0];
+    HM = k ? {key: k, title: (j.titles || {})[k] || ''} : null;
+    hotMineRender();
+  }).catch(function(){});
+}
 function seenKey(){ return 'v2BriefSeen'; }
 function openStory(fromBar){
-  STORY.open = true; STORY.i = 0;
+  STORY.open = true; STORY.i = 0;   // [GOALS 28/10] כרטיס 0 = היעדים
   STORY.mode = fromBar ? 'tap' : 'auto'; STORY.max = 1;   /* [21/10] כמה לחצו לראות — לדשבורד ב-CRM */
   el('story').style.display = 'flex';
   renderCard(0);
@@ -1769,7 +2220,8 @@ function closeStory(){
   try{ localStorage.setItem(seenKey(), todayStr()); }catch(e){}
   el('briefCta').textContent = 'צפה שוב';
 }
-function total(){ return 1 + ((B.hotProps && B.hotProps.length) || 0); }   // סיכום + נכסים חמים
+function total(){ return 2 + ((B.hotProps && B.hotProps.length) || 0); }   // יעדים + סיכום + נכסים חמים
+function durFor(i){ return i === 0 ? 20000 : STORY.DUR; }   // יעדים — יותר זמן לקרוא
 function nextCard(){ (STORY.i < total() - 1) ? go(STORY.i + 1) : closeStory(); }
 function prevCard(){ if (STORY.i > 0) go(STORY.i - 1); }
 function go(i){ STORY.i = i; renderCard(i); }
@@ -1785,7 +2237,7 @@ function setBars(i){
     bars[k].style.width = (k < i) ? '100%' : '0';
   }
   void bars[i].offsetWidth;
-  bars[i].style.transition = 'width ' + STORY.DUR + 'ms linear';
+  bars[i].style.transition = 'width ' + durFor(i) + 'ms linear';
   bars[i].style.width = '100%';
 }
 function card(kicker, n, w, sub, mainTx, mainFn, secTx){
@@ -1816,7 +2268,17 @@ function renderCard(i){
     '<div style="width:34px;height:34px;border-radius:10px;background:rgba(228,197,107,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+icon+'</div>'+
     '<div style="flex:1;display:flex;flex-direction:column;gap:1px"><div style="font-size:11px;color:rgba(255,255,255,.5)">'+label+'</div>'+
     '<div style="font-size:13.5px;font-weight:700;color:#fff">'+val+'</div></div></div>'; };
+  el('storyTitle').textContent = (i === 0) ? (GJ && GJ.view && GJ.view !== 'agent' ? 'יעדי היום' : 'היעדים שלי להיום') : 'נכסים חמים';
+  b.classList.toggle('gScroll', i === 0);
+  b.scrollTop = 0;
   if (i === 0){
+    b.innerHTML = (GJ === undefined)
+      ? '<div style="text-align:center;color:rgba(255,255,255,.7);font-size:14px">טוען את היעדים…</div>'
+      : goalsCardHtml(GJ, {story: true, greet: greetWord() + ', ' + firstName(M.name)});
+    b.innerHTML += '<div class="btns" style="margin:14px auto 0;align-items:center">' +
+      '<button class="bMain" style="width:100%" onclick="nextCard()">המשך לסטורי</button>' +
+      '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
+  } else if (i === 1){
     var hpArr = B.hotProps || [];
     var byA = {}; hpArr.forEach(function(x){ if(x.agent) byA[x.agent]=(byA[x.agent]||0)+1; });
     var tA='', tN=0; for (var a in byA) if (byA[a]>tN){ tN=byA[a]; tA=a; }
@@ -1849,10 +2311,10 @@ function renderCard(i){
         '</div>'+
       '</div>'+
       '<div class="btns" style="margin-top:auto;align-items:center">'+
-        '<button class="bMain" style="width:100%" onclick="'+(total()>1?'nextCard()':'closeStory()')+'">'+(total()>1?'המשך לנכסים החמים ←':'בוא נתחיל את היום')+'</button>'+
+        '<button class="bMain" style="width:100%" onclick="'+(total()>2?'nextCard()':'closeStory()')+'">'+(total()>2?'המשך לנכסים החמים ←':'בוא נתחיל את היום')+'</button>'+
         '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
   } else {
-    var hp = (B.hotProps || [])[i - 1] || {};
+    var hp = (B.hotProps || [])[i - 2] || {};
     var isLast = (i >= total() - 1);
     var prF = parseFloat(String(hp.price || '').replace(/[^0-9.]/g, ''));
     var prTxt = (prF && isFinite(prF)) ? '₪' + Math.round(prF).toLocaleString() : esc(hp.price || '');
@@ -1882,7 +2344,7 @@ function renderCard(i){
         '<button class="bSec" style="margin:0" onclick="'+(isLast?'closeStory()':'nextCard()')+'">'+(isLast?'בוא נתחיל את היום':'הנכס הבא ←')+'</button>'+
       '</div>';
   }
-    STORY.timer = setTimeout(nextCard, STORY.DUR);
+    STORY.timer = setTimeout(nextCard, durFor(i));
 }
 /* ניווט בהקשה: שמאל=הבא (RTL), ימין=הקודם; החלקה למטה=סגירה */
 function pauseStory(){
@@ -1895,11 +2357,11 @@ function pauseStory(){
 function resumeStory(){
   STORY.paused = false;
   var b = el('story').querySelectorAll('.bars i b')[STORY.i];
-  var remain = STORY.DUR;
+  var remain = durFor(STORY.i);
   if (b){
     var w = parseFloat(getComputedStyle(b).width) || 0;
     var total = b.parentNode.getBoundingClientRect().width || 1;
-    remain = Math.max(400, (1 - w / total) * STORY.DUR);
+    remain = Math.max(400, (1 - w / total) * durFor(STORY.i));
     b.style.transition = 'width ' + remain + 'ms linear';
     b.style.width = '100%';
   }
@@ -1909,6 +2371,7 @@ function resumeStory(){
 }
 el('story').addEventListener('click', function(e){
   if (e.target.closest('button')) return;
+  if (e.target.closest('.gk')) return;   // [GOALS] כרטיס היעדים נגלל — הקשה בתוכו לא מדפדפת
   var x = e.clientX, w = window.innerWidth;
   if (x > w * 0.33 && x < w * 0.66){   // אמצע המסך — השהיה/המשך
     STORY.paused ? resumeStory() : pauseStory();
@@ -1918,7 +2381,10 @@ el('story').addEventListener('click', function(e){
   (x < w * 0.33) ? nextCard() : prevCard();
 });
 var _ty = null;
-el('story').addEventListener('touchstart', function(e){ _ty = e.touches[0].clientY; }, {passive:true});
+el('story').addEventListener('touchstart', function(e){
+  var sb = el('storyBody');
+  _ty = (sb.classList.contains('gScroll') && sb.scrollTop > 0) ? null : e.touches[0].clientY;   // גלילה ביעדים ≠ סגירה
+}, {passive:true});
 el('story').addEventListener('touchmove', function(e){
   if (_ty !== null && e.touches[0].clientY - _ty > 80){ _ty = null; closeStory(); }
 }, {passive:true});
@@ -1946,6 +2412,7 @@ el('story').addEventListener('touchmove', function(e){
     if (j.role === 'admin' && !j.dev && !_inImp) el('menuLoginAs').style.display = 'flex';   // [LOGINAS-MGR] בעל המשרד — מהניהול
     if (['accountant','manager','developer'].indexOf(j.drole) >= 0) el('menuInvoices').style.display = 'flex';
     if (j.drole === 'manager' || j.dev) el('menuSite').style.display = 'flex';   // [SITE 13/10] ניהול האתר — מנהל/מפתח בלבד
+    hotMineLoad();   // [GOALS 28/10] אחרי שהתפקיד ידוע
     var impTok = null;
     try{ impTok = localStorage.getItem('fbTokAdmin'); }catch(e){}
     if (impTok && !j.dev){   // מצב "כניסה כסוכן (בדיקה)" — פס חזרה למנהל
@@ -15229,7 +15696,7 @@ def register(app, G):
 
     @app.route("/v2/home", methods=["GET"])
     def v2_home():
-        return _page(V2_HOME_HTML)
+        return _page(V2_HOME_HTML.replace("<!--GOALS_KIT-->", V2_GOALS_KIT, 1))
 
     @app.route("/v2/onboard", methods=["GET"])
     def v2_onboard():
@@ -15310,6 +15777,10 @@ def register(app, G):
     @app.route("/v2/meets", methods=["GET"])
     def v2_meets():
         return _page(V2_MEETS_HTML)
+
+    @app.route("/v2/goals", methods=["GET"])   # [GOALS 28/10] היעדים שלי להיום
+    def v2_goals():
+        return _page(V2_GOALS_HTML.replace("<!--GOALS_KIT-->", V2_GOALS_KIT, 1))
 
     @app.route("/v2/effie", methods=["GET"])
     def v2_effie():
