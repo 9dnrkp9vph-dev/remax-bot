@@ -13767,7 +13767,7 @@ CRM_MODULES = {
         "default_cols": ["date", "type", "name", "phone", "agent", "what", "past", "status", "link", "deals_link", "inv_link", "buyer_link"],
         "editable": [],
         "views": [("all", "כל ההתראות"), ("recent", "14 הימים האחרונים"), ("past_seller", "לקוח עבר מפרסם נכס"),
-                  ("past_buyer", "לקוח עבר נוסף כקונה"), ("buyer_seller", "קונים שמפרסמים נכס")],
+                  ("past_buyer", "לקוח עבר נוסף כקונה"), ("buyer_seller", "קונים שמפרסמים נכס"), ("returning", "לקוח חוזר")],
     },
     "meetings": {
         "title": "פגישות",
@@ -14126,7 +14126,8 @@ CRM_VIEWS = {
            "recent": lambda r, t: bool(r.get("date")) and _crm_on_or_after(r["date"], t - _crm_td(14)),
            "past_seller": lambda r, t: r.get("type") == "לקוח עבר מפרסם נכס",
            "past_buyer": lambda r, t: r.get("type") == "לקוח עבר נוסף כקונה",
-           "buyer_seller": lambda r, t: r.get("type") == "קונה שמפרסם נכס"},
+           "buyer_seller": lambda r, t: r.get("type") == "קונה שמפרסם נכס",
+           "returning": lambda r, t: r.get("type") == "לקוח חוזר"},
     "meetings": {"today": lambda r, t: _crm_day(r.get("date"), t),
                  "upcoming": lambda r, t: r.get("state") != "בוצע" and bool(r.get("date")) and _crm_on_or_after(r["date"], t),
                  "meetings": lambda r, t: r.get("kind") == "פגישה",
@@ -14536,7 +14537,8 @@ def crm_sig_records(sigs, h):
                     "address": " · ".join(parts), "n_props": len(parts) or "", "city": str(g.get("city") or "").strip(),
                     "budget": _crm_int(g.get("budget")), "fee": fee, "excl_to": _crm_dmy(g.get("excl_to")),
                     "status": "נחתם" if signed else "ממתין", "source": src, "link": link,
-                    "notes": str(g.get("notes") or g.get("הערות") or "").strip()})
+                    "notes": str(g.get("notes") or g.get("הערות") or "").strip(),
+                    "deal_type": str(g.get("deal_type") or "")})   # [29/10] לקוח חוזר: בעל נכס בשכירות ≠ שוכר
     return out
 
 
@@ -14559,7 +14561,7 @@ _CRM_BS_STATUS = {"pending": "ממתין לשליחה לסוכן", "sent": "נש
                   "closed": "הקונה סגר", "old": "התאמה ישנה (לא נשלח)"}
 
 
-def crm_ai_records(deals, invoices, owner_idx, buyers, bs_rows, now, buyer_ep, listing_ep):
+def crm_ai_records(deals, invoices, owner_idx, buyers, bs_rows, now, buyer_ep, listing_ep, sigs=None):
     """[21/10 אייל: 'התראות רק לי… אם לקוח קיים (לפי טלפון מעסקאות ומקבלי מסמכים) מפרסם דירה או נוסף כקונה,
     עם קישורים לכל מידע; ו"הקונים שמפרסמים נכס" מהניהול'] deals/invoices = רשומות מודולי ה-CRM; owner_idx = bs_owner_index
     של נכס נולד; bs_rows = bs_report. לקוח עבר לפי נייד (9 ספרות)."""
@@ -14633,6 +14635,41 @@ def crm_ai_records(deals, invoices, owner_idx, buyers, bs_rows, now, buyer_ep, l
                          "agent": str(r.get("agent") or ""), "what": "מפרסם: " + str(r.get("addr") or "") + (" · ₪" + r["price"] if r.get("price") else ""),
                          "past": _past_txt(d) if d else "", "status": ("המודעה ירדה · " if r.get("gone") else "") + st,
                          "link": str(r.get("link") or ""), "buyer_link": ("/v2/crm/buyers?q=0" + p9) if p9 else ""},
+                        **_links(p9, d)))
+    # [29/10 אייל] לקוח חוזר: קיבל מאיתנו חשבונית / עסקה (קונה, מוכר, שוכר או משכיר) ושוב איתנו — חתם על הסכם בעל נכס
+    # (מוכר / בלעדיות / משכיר). העבר חייב להיות לפחות 60 יום לפני ההחתמה (אחרת זו העסקה הנוכחית). אחת לכל לקוח ויום.
+    rc = {}
+    for g in sigs or []:
+        dt = str(g.get("deal_type") or "").upper()
+        if "OWNER" not in dt:
+            continue
+        p9 = bs_p9(g.get("phone"))
+        d = past.get(p9) if p9 else None
+        ep = float(g.get("date") or 0)
+        if not d or not ep:
+            continue
+        nm = str(g.get("client") or "")
+        if "בדיקה" in nm or "שם הלקוח" in nm or len(d["deals"]) + len(d["docs"]) > 20:
+            continue   # רשומות בדיקה / טלפון של המשרד (נמצא בבדיקה על הנתונים החיים: 80 מסמכים על אותו נייד)
+        olds = [float(x.get("date") or 0) for x in d["deals"] + d["docs"] if x.get("date")]
+        if not olds or min(olds) > ep - 60 * 86400:
+            continue
+        day = _dai.datetime.fromtimestamp(ep).strftime("%Y%m%d")
+        e = rc.setdefault(p9 + "|" + day, {"g": g, "ep": ep, "types": [], "signed": [], "addr": ""})
+        lab = "משכיר" if "RENT" in dt else ("בלעדיות" if "EXCLUSIVE" in dt else "מוכר")
+        if lab not in e["types"]:
+            e["types"].append(lab)
+        e["signed"].append(str(g.get("status") or "") == "נחתם")
+        e["addr"] = e["addr"] or str(g.get("address") or "").strip()
+        e["ep"] = min(e["ep"], ep)
+    for k, e in rc.items():
+        p9, g, d = k.split("|")[0], e["g"], past[k.split("|")[0]]
+        st = "נחתם" if all(e["signed"]) else ("ממתין לחתימה" if not any(e["signed"]) else "נחתם חלקית")
+        out.append(dict({"key": "rc:" + k, "date": e["ep"], "type": "לקוח חוזר",
+                         "name": str(g.get("client") or "").strip() or d["name"], "phone": "0" + p9,
+                         "agent": str(g.get("agent") or "").strip(),
+                         "what": "חתם שוב — " + " + ".join(sorted(e["types"], key=("מוכר", "בלעדיות", "משכיר").index)) + (": " + e["addr"] if e["addr"] else ""),
+                         "past": _past_txt(d), "status": st, "link": "/v2/crm/signatures?q=0" + p9, "buyer_link": ""},
                         **_links(p9, d)))
     return out
 
@@ -18059,9 +18096,14 @@ def register(app, G):
                     invs = _crm_records("invoices")
                 except Exception as e:
                     if log: log.warning(f"crm ai invoices: {e}")
+                sigs = []
+                try:
+                    sigs = _crm_records("signatures")   # [29/10] לקוח חוזר
+                except Exception as e:
+                    if log: log.warning(f"crm ai signatures: {e}")
                 bs, idx, buyers, _raws = _bs_rows()
                 recs = crm_ai_records(deals, invs, idx, buyers, bs, _tai.time(),
-                                      lambda b: G["_excl_epoch"](b.get("date", "")), G["_newborn_created_epoch"])
+                                      lambda b: G["_excl_epoch"](b.get("date", "")), G["_newborn_created_epoch"], sigs=sigs)
                 # [28/10 אייל: 'תאחד שמות'] כל סוכן פעם אחת ברשימת הסוכנים
                 return crm_unify_agents(recs, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")

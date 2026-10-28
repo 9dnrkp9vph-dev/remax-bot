@@ -64,6 +64,17 @@ ck("<script" not in html.lower() and "&lt;b&gt;" in A.digest_render([dict(recs[0
 subj, html, text = A.digest_render([], [], office="רימקס פמילי", base="https://x", day="29/10/2026")
 ck("אין שינויים" in subj and "אין התראות חדשות" in html, subj)
 
+# 6ב. [29/10] לקוחות חוזרים — הודעת וואטסאפ לאייל בלבד (לא לסוכנים); בלי לקוחות חוזרים אין הודעה
+rcr = {"key": "rc:541|20261028", "date": T0 - 3600, "type": "לקוח חוזר", "name": "משה כהן", "phone": "0541111111",
+       "agent": "דקלה ביבי", "what": "חתם שוב — מוכר + בלעדיות: שבזי 4", "past": "עסקה: קונה · הנוטר 18", "status": "נחתם חלקית"}
+ck(A.digest_wa_text(new, changed, "https://x", "29/10/2026") == "", "בלי לקוחות חוזרים — בלי הודעה")
+w = A.digest_wa_text([rcr, recs[0]], [], "https://remax-bot.onrender.com", "29/10/2026")
+for s_ in ("לקוחות חוזרים", "29/10/2026", "משה כהן", "0541111111", "חתם שוב — מוכר + בלעדיות: שבזי 4", "דקלה ביבי", "הנוטר 18",
+           "https://remax-bot.onrender.com/v2/crm/ai"):
+    ck(s_ in w, "wa: " + s_)
+ck("דנה" not in w, "רק לקוחות חוזרים")
+ck("משה כהן" in A.digest_wa_text([], [dict(rcr, prev_status="ממתין לחתימה", status="נחתם")], "https://x", "1"), "גם כשנחתם")
+
 # 7. ההדבקה ב-app.py: הלולאה של הדוח היומי מריצה את הסריקה, והשבת/חג נבדקים
 SRC = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
 loop = SRC.split("def _report_daily_loop_body")[1][:4000]
@@ -71,6 +82,7 @@ ck("_ai_digest_tick(now)" in loop, "tick בלולאה")
 tick = SRC.split("def _ai_digest_tick")[1][:3000]
 ck("_shabbat_quiet_now()" in tick and "AI_DIGEST" in tick and "v2_ai_digest" in tick and "_crm_ai_rows" in tick, "tick")
 ck("CRM_OWNER_EMAILS" in tick or "_crm_owner_emails" in tick, "נשלח לבעל המשרד בלבד")
+ck("digest_wa_text" in tick and "send_text(" in tick and "OWNER_PUSH_ID" in tick and "AI_DIGEST_WA" in tick, "וואטסאפ לאייל")
 EV = open(os.path.join(ROOT, "effie_v2.py"), encoding="utf-8").read()
 ck('G["_crm_ai_rows"]' in EV, "effie_v2 חושף את רשומות ה-AI")
 ck('"ai_digest"' in EV, "באוטומציות")

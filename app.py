@@ -12879,12 +12879,21 @@ def _ai_digest_tick(now):
     subj, html, text = _aid.digest_render(new, changed, office, base, now.strftime("%d/%m/%Y"))
     ok, msg = _report_send_email(subj, html, text, to=",".join(_crm_owner_emails()))
     log.info(f"ai digest {key}: {msg} (new={len(new)} changed={len(changed)})")
-    def _mark(c, _k=key, _ok=ok, _msg=msg, _snap=snap):
+    # [29/10 אייל] לקוחות חוזרים — גם וואטסאפ, רק לאייל ('לא לסוכנים'). פעם אחת ביום גם אם המייל נוסה שוב.
+    wa = None
+    wtxt = _aid.digest_wa_text(new, changed, base, now.strftime("%d/%m/%Y"))
+    if wtxt and not ((store.get("days") or {}).get(key) or {}).get("wa"):
+        to = re.sub(r"\D", "", os.environ.get("AI_DIGEST_WA") or "") or ("972" + OWNER_PUSH_ID)
+        if to.startswith("0"):
+            to = "972" + to[1:]
+        wa = bool(send_text(to, wtxt))
+        log.info(f"ai digest {key}: returning clients WhatsApp → {'sent' if wa else 'failed'}")
+    def _mark(c, _k=key, _ok=ok, _msg=msg, _snap=snap, _wa=wa):
         st = c.get("v2_ai_digest") or {}
         days = st.get("days") or {}
         prev_d = days.get(_k) or {}
         days[_k] = {"ts": time.time(), "ok": _ok, "tries": int(prev_d.get("tries") or 0) + 1, "msg": str(_msg)[:120],
-                    "new": len(new), "changed": len(changed)}
+                    "new": len(new), "changed": len(changed), "wa": bool(_wa or prev_d.get("wa"))}
         for kk in sorted(days)[:-14]: days.pop(kk, None)
         st["days"] = days
         if _ok:   # הצילום מתקדם רק אחרי שליחה מוצלחת — כשל לא מאבד שינויים

@@ -115,3 +115,20 @@ def digest_render(new, changed, office, base, day):
         lines.append("אין התראות חדשות ואין שינויים מאז המייל הקודם.")
     lines.append("טאב AI: " + tab)
     return subj, html, "\n".join(lines)
+
+
+def digest_wa_text(new, changed, base, day):
+    """[29/10 אייל] לקוחות חוזרים — הודעת וואטסאפ לבעל המשרד בלבד ('רק לוואטסאפ שלי כרגע, לא לסוכנים').
+    רק התראות 'לקוח חוזר' (חדשות או שהמצב שלהן השתנה); אין כאלה → '' (לא שולחים)."""
+    rows = [r for r in list(new or []) + list(changed or []) if r.get("type") == "לקוח חוזר"]
+    if not rows:
+        return ""
+    lines = ["לקוחות חוזרים · %s" % day, ""]
+    for r in rows:
+        lines.append("• %s %s" % (r.get("name") or "", r.get("phone") or ""))
+        lines.append("  %s" % (r.get("what") or ""))
+        lines.append("  סוכן: %s · %s" % (r.get("agent") or "—", r.get("status") or ""))
+        if r.get("past"):
+            lines.append("  לקוח עבר: %s" % r["past"])
+    lines += ["", "ב-CRM: " + base.rstrip("/") + "/v2/crm/ai"]
+    return "\n".join(lines)
