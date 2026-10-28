@@ -426,8 +426,8 @@ def build_periods(src, today, canon):
 
 
 # ── [GOALS-WEEKLY 29/10] סיכום יעדים שבועי לכל סוכן בוואטסאפ הרשמי (אייל) ─────────────────────────
-GOAL_LABELS = {"meetings": "פגישות מנכס נולד", "buyers": "קונים חדשים",
-               "past_clients": "הודעות ללקוחות עבר", "reviews": "המלצות"}
+GOAL_LABELS = {"listings": "גיוס נכסים", "meetings": "פגישות מנכס נולד", "nb_wa": "פניות לנכס נולד",
+               "buyers": "קונים חדשים", "past_clients": "הודעות ללקוחות עבר", "reviews": "המלצות"}
 WEEKLY_HOUR = 10                 # אייל 29/10: ביום ראשון ב-10:00
 WEEKLY_SEEN_DAYS = 10            # רק מי שנכנס לאפי ב-10 הימים שלפני ההודעה
 WEEKLY_RETRY_SEC = 900           # כשל → ניסיון חוזר כל 15 דק'
@@ -489,7 +489,7 @@ def build_weekly(src, sunday, canon):
             continue
         c = count_days(name, days, src, canon)
         daily = targets_for(cfg, name, canon)
-        wt = {k: _num(v * scale) for k, v in daily.items()}
+        wt = {k: (v if k in WEEKLY_GOALS else _num(v * scale)) for k, v in daily.items()}   # גיוס — יעד שבועי
         met, n = _met(c, wt)
         rows.append({"name": name, "counts": c, "targets": wt, "daily": daily, "met": met, "goals_n": n,
                      "rec": {k: weekly_recommend(c.get(k), wt.get(k), daily.get(k)) for k in GOAL_KEYS},
@@ -517,11 +517,14 @@ def weekly_message(row, office, link):
             lines.append(f"{GOAL_LABELS[k]}: אין נתון")
         else:
             lines.append(f"{GOAL_LABELS[k]}: {c} מתוך {t}" + (" — הושג" if c >= (t or 0) else ""))
-    lines += ["", f"הגעת ל-{row['met']} מתוך {row['goals_n']} יעדים.", "", "המלצה ליעד היומי:"]
+        if k == "buyers" and row["counts"].get("buyers_sign"):
+            lines[-1] += f" (מתוכם {row['counts']['buyers_sign']} מהחתמה)"
+    lines += ["", f"הגעת ל-{row['met']} מתוך {row['goals_n']} יעדים.", "", "המלצה ליעד:"]
     for k in GOAL_KEYS:
         kind, n = row["rec"][k]
-        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} ביום", "down": f"להוריד ל-{n} ביום"}.get(
-            kind, f"להשאיר {n} ביום"))
+        per = "בשבוע" if k in WEEKLY_GOALS else "ביום"
+        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} {per}", "down": f"להוריד ל-{n} {per}"}.get(
+            kind, f"להשאיר {n} {per}"))
     lines += ["(את היעדים מעדכן מנהל המשרד)", "", f"למסך היעדים: {link}"]
     return "\n".join(lines)
 
@@ -706,7 +709,7 @@ def weekly_src(G, sunday, now, src_override=None):
     def activity():
         sb = G.get("_sbdb")
         if sb is not None and sb.enabled():
-            return sb.fetch_activity_actions(t0, (ACT_REMIND,)) or []
+            return sb.fetch_activity_actions(t0, (ACT_REMIND, ACT_NB_WA)) or []
         return G["_activity_fetch"](t0, today=False)
 
     def seen():
@@ -719,6 +722,7 @@ def weekly_src(G, sunday, now, src_override=None):
     over = src_override or {}
     for k, fn in (("buyers", lambda: G["_fetch_manual_buyers"]()), ("bpages", lambda: G["_sbdb"].bpage_all()),
                   ("activity", activity), ("reviews", lambda: g_reviews(G)), ("seen", seen),
+                  ("sigs", lambda: g_sigs(G, sunday)),
                   ("roster", lambda: g_roster(G))):
         src[k] = over[k] if k in over else g_safe(G, fn)
     return src
