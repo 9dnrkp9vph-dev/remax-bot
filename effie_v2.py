@@ -4455,10 +4455,11 @@ function dedupeShtaf(office, shtaf){
   });
 }
 function _budgetOk(b){
-  // תקציב 2 מיליון לא מקבל נכס של 1.35/2.6 מיליון — עד 20% הפרש; נכס בלי מחיר לא נפסל
+  // [BUDGET-WIN 28/10] אייל: עד 20% מעל התקציב ועד 30% מתחתיו (דני, 3.5M — דו-משפחתי ב-2.49M בהגפן נפסל ב-±20%);
+  // נכס בלי מחיר לא נפסל
   var bd = _budgetNum(b.budget);
   if (bd < 10000) return function(){ return true; };
-  return function(p){ var pr = _priceNum(p.price); return !pr || Math.abs(pr - bd) <= bd * 0.2; };
+  return function(p){ var pr = _priceNum(p.price); return !pr || (pr <= bd * 1.2 && pr >= bd * 0.7); };
 }
 function _splitSW(list){
   // חזקות (60%+) קודם; כל השאר תחת "התאמות נוספות" — שום דבר לא נחתך ל-5
@@ -14449,8 +14450,13 @@ def bpage_wa_text(first, url, n, is_first):
     return hi + body + "\n" + url
 
 
+def budget_window_ok(price, budget):
+    """[BUDGET-WIN 28/10] נכס לקונה: עד 20% מעל התקציב ועד 30% מתחתיו (כמו _budgetOk בחלון ההתאמות)."""
+    return budget * 0.7 <= price <= budget * 1.2
+
+
 def bpage_new_matches(query, src_rows, sent, since_ep, budget, score_fn, cap=30):
-    """התאמות חזקות (60+, תקציב ±20% כמו בחלון ההתאמות) שעוד לא בדף ונראו לראשונה אחרי since_ep."""
+    """התאמות חזקות (60+, תקציב עד 20% מעל / 30% מתחת — כמו בחלון ההתאמות) שעוד לא בדף ונראו לראשונה אחרי since_ep."""
     out = []
     for src, rows in (src_rows or {}).items():
         for k, r in (rows or {}).items():
@@ -14459,7 +14465,7 @@ def bpage_new_matches(query, src_rows, sent, since_ep, budget, score_fn, cap=30)
             if str(r.get("ירד מפרסום", "") or "").strip():
                 continue
             pr = int(_bp_digits(r.get("מחיר")) or 0)
-            if budget >= 10000 and pr and abs(pr - budget) > budget * 0.2:
+            if budget >= 10000 and pr and not budget_window_ok(pr, budget):
                 continue
             try:
                 sc = int(score_fn(r, query) or 0)
@@ -14472,7 +14478,7 @@ def bpage_new_matches(query, src_rows, sent, since_ep, budget, score_fn, cap=30)
 
 
 def bpage_lead_pick(office_rows, parsed, budget, score_fn, cap=5):
-    """'סוכן AI אישי' (14/10): עד cap נכסי משרד הכי קרובים — אותו סף 60 ותקציב ±20% כמו 'התאמות חדשות'."""
+    """'סוכן AI אישי' (14/10): עד cap נכסי משרד הכי קרובים — אותו סף 60 וטווח תקציב כמו 'התאמות חדשות'."""
     got = bpage_new_matches(parsed, {"office": office_rows or {}}, set(), -1, int(budget or 0), score_fn, cap=cap)
     return [g["key"] for g in got]
 
