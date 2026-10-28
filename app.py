@@ -9308,6 +9308,11 @@ def _famexcl_floor_txt(v):
     m = re.search(r"קומה\s*(-?\d+)", str(v or ""))
     return int(m.group(1)) if m else None
 
+def _famexcl_top_txt(v):
+    """קומות בבניין מתוך תיאור ("קומה 5/10", "קומה 3 מתוך 8") → int; None כשאין."""
+    m = re.search(r"קומה\s*-?\d+\s*(?:/|מתוך)\s*(\d+)", str(v or ""))
+    return int(m.group(1)) if m else None
+
 def _nb_clean(v):
     """ערך שורת נכס נולד — '-'/'—'/ריק → ''."""
     v = str(v or "").strip()
@@ -9341,8 +9346,11 @@ def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
         _m_fl = re.search(r"קומה\s*(-?\d+)", str(r.get("תיאור נכס", "") or ""))
         _fl = int(_m_fl.group(1)) if _m_fl else None
     _dsc = str(r.get("תיאור נכס", "") or "")
+    _top = _famexcl_floor(r.get("קומות בבניין", ""))
+    if _top is None:
+        _top = _famexcl_top_txt(_dsc)
     _famv = _is_famexcl(addr, city, ctx["fam_list"], _famexcl_price(r.get("מחיר", "")), _fl,
-                        _famexcl_rooms(_dsc), _famexcl_sqm(_dsc))   # שם הסוכן שבבלעדיות / '' / None
+                        _famexcl_rooms(_dsc), _famexcl_sqm(_dsc), _top)   # שם הסוכן שבבלעדיות / '' / None
     return {
         # [SWR-2] "released"/"own" הוסרו — אף מסך לא קורא אותם (נסרק 24/08)
         "key": _k,
@@ -9399,13 +9407,15 @@ def _famexcl_addr_list():
                    "sqm": _famexcl_sqm(r.get('מ"ר', "") or r.get("מ״ר", "")), "floor": _famexcl_floor(r.get("קומה", ""))}
             if ent["floor"] is None:   # שורות יד2 של המשרד: הקומה לרוב רק בתיאור
                 ent["floor"] = _famexcl_floor_txt(r.get("_desc_ae", "") or r.get("תיאור", ""))
+            # 28/10: קומות בבניין ("קומה 5/10") — פוסל דירה אחרת באותה כתובת (ברוריה/אירנה, בגין 12)
+            ent["top"] = _famexcl_top_txt(r.get("_desc_ae", "") or r.get("תיאור", ""))
             idx.setdefault(hn, []).append(ent)
     except Exception:
         pass
     _cache_put("famexcl_index", idx)
     return idx
 
-def _is_famexcl(addr, city, fam_idx, price=None, floor=None, rooms=None, sqm=None):
+def _is_famexcl(addr, city, fam_idx, price=None, floor=None, rooms=None, sqm=None, top=None):
     """שם הסוכן שבבלעדיות אם הנכס-הנולד הוא *בוודאות* נכס משרד שלנו, אחרת None.
     כלל (אייל 11/09): כתובת מדויקת — כל מילות הרחוב והעיר של נכס המשרד מופיעות בנכס-הנולד
     ומספר הבית הראשון זהה — **ולפחות אימות אחד** בין: מחיר ±5%, חדרים זהים, מ"ר ±10%, קומה זהה.
@@ -9442,6 +9452,10 @@ def _is_famexcl(addr, city, fam_idx, price=None, floor=None, rooms=None, sqm=Non
             if floor != e["floor"]:
                 continue
             conf += 1
+        # 28/10: קומות בבניין שונות (יותר מקומה אחת — בעלים סופרים לפעמים בלי/עם קרקע) = דירה אחרת.
+        # רק פוסל, לא מאמת (כל הדירות בבניין חולקות אותו מספר).
+        if top is not None and e.get("top") is not None and abs(top - e["top"]) > 1:
+            continue
         if conf >= 1:
             return e["agent"] or ""
     return None
