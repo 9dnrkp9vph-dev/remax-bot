@@ -10767,6 +10767,18 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
         padding:26px 24px;display:flex;flex-direction:column;gap:4px}
   .stat .n{font-size:56px;font-weight:800;font-variant-numeric:tabular-nums}
   .stat .l{font-size:18px;color:rgba(255,255,255,.62)}
+  /* כרטיס יעדי המשרד להיום — ראשון בכל סיבוב */
+  .gl{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+  .gl .g{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:26px 24px;display:flex;flex-direction:column;gap:10px}
+  .gl .g .gt{font-size:21px;font-weight:700;color:rgba(255,255,255,.85)}
+  .gl .g .gn{font-size:60px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .gl .g .gn small{font-size:26px;font-weight:600;color:rgba(255,255,255,.55)}
+  .gl .g .pb{height:10px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden}
+  .gl .g .pb b{display:block;height:100%;border-radius:999px;background:#2E6BD6}
+  .gl .g.dn .pb b{background:#fff}
+  .gl .g .gs{font-size:17px;font-weight:700;color:rgba(255,255,255,.6);min-height:22px}
+  .glHead{display:flex;align-items:center;gap:26px}
+  .glHead svg{width:110px;height:110px;flex-shrink:0}
   .rank{background:linear-gradient(135deg,rgba(228,197,107,.15),rgba(228,197,107,.05));
         border:1px solid rgba(228,197,107,.35);border-radius:22px;padding:22px 26px;display:flex;gap:44px;align-items:center}
   .rank .t{font-size:17px;font-weight:700;color:#E4C56B;letter-spacing:.05em}
@@ -10822,7 +10834,10 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
     main{padding:14px 16px 30px;align-items:flex-start}
     .card{gap:16px}
     .h1{font-size:26px;text-align:center}
-    .grid{grid-template-columns:repeat(2,1fr);gap:12px}
+    .grid,.gl{grid-template-columns:repeat(2,1fr);gap:12px}
+    .gl .g{padding:16px 14px}
+    .gl .g .gn{font-size:38px}
+    .glHead svg{width:70px;height:70px}
     .stat{padding:16px 14px}
     .stat .n{font-size:38px}
     .stat .l{font-size:14px}
@@ -10914,16 +10929,16 @@ function hebDate(d){
 }
 tick(); setInterval(tick, 15000);
 
-var B = null, IDX = 0, TIMER = null;
+var B = null, G = null, IDX = 0, TIMER = null;
 /* [TV-TEMPO] סיבוב מלא = 5 דקות קבוע (בקשת אייל 15/07): הזמן מתחלק בין הכרטיסים —
    כל נכס חם שנוסף מאיץ את כולם, וכשיש מעט הם רצים לאט יותר. הסיכום ארוך פי 1.4.
    גבולות שפיות: 5ש' רצפה (קריאוּת) · 60ש' תקרה (שלא ייראה קפוא). */
 var LOOP_MS = 300000, SUM_W = 1.4;
 function durFor(pl, it){
   var sums = 0, hots = 0;
-  for (var k = 0; k < pl.length; k++){ if (pl[k].t === 'sum') sums++; else hots++; }
+  for (var k = 0; k < pl.length; k++){ if (pl[k].t === 'sum' || pl[k].t === 'goals') sums++; else hots++; }
   var unit = LOOP_MS / ((sums * SUM_W + hots) || 1);
-  var d = (it.t === 'sum' ? SUM_W : 1) * unit;
+  var d = ((it.t === 'sum' || it.t === 'goals') ? SUM_W : 1) * unit;
   return Math.max(5000, Math.min(60000, Math.round(d)));
 }
 var GROUP = 6;   // כרטיס נתוני-המשרד חוזר כל 6 נכסים — מקבל זמן מסך קבוע גם כשהרשימה גדלה
@@ -10933,8 +10948,8 @@ function q(v){ return (v == null || v === '' || isNaN(Number(v))) ? '…' : v; }
    (עוד סוכנים = עוד נכסים חמים; הסיכום תמיד מוצג, פסי ההתקדמות פר-בלוק). */
 function playlist(){
   var hp = (B && B.hotProps) || [];
-  if (!hp.length) return [{t: 'sum'}];
-  var out = [];
+  var out = G ? [{t: 'goals'}] : [];   // יעדי המשרד — ראשון בכל סיבוב (נכשל/אין נתון → כמו קודם)
+  if (!hp.length){ out.push({t: 'sum'}); return out; }
   for (var g = 0; g < hp.length; g += GROUP){
     out.push({t: 'sum'});
     for (var k = g; k < Math.min(g + GROUP, hp.length); k++)
@@ -10944,9 +10959,9 @@ function playlist(){
 }
 function blockInfo(pl, i){   // גבולות הבלוק הנוכחי (מהסיכום האחרון עד הסיכום הבא)
   var start = i;
-  while (start > 0 && pl[start].t !== 'sum') start--;
+  while (start > 0 && pl[start].t !== 'sum' && pl[start].t !== 'goals') start--;
   var end = start + 1;
-  while (end < pl.length && pl[end].t !== 'sum') end++;
+  while (end < pl.length && pl[end].t !== 'sum' && pl[end].t !== 'goals') end++;
   return {pos: i - start, len: end - start};
 }
 function setBars(pl, i){
@@ -10960,6 +10975,31 @@ function setBars(pl, i){
 }
 function statCard(n, label, col){
   return '<div class="stat"><div class="n" style="color:' + col + '">' + n + '</div><div class="l">' + label + '</div></div>';
+}
+var TV_GOALS = [
+  {k: 'meetings', t: 'פגישות מנכס נולד'}, {k: 'buyers', t: 'קונים חדשים'},
+  {k: 'past_clients', t: 'הודעות ללקוחות עבר'}, {k: 'reviews', t: 'המלצות'}
+];
+function gNumTv(v){ return (v == null || v === '' || isNaN(Number(v))) ? null : Number(v); }
+function goalsTvHtml(g){
+  var c = (g && g.counts) || {}, t = (g && g.targets) || {}, sc = 0, st = 0, tiles = '';
+  TV_GOALS.forEach(function(d){
+    var cv = gNumTv(c[d.k]), tv = gNumTv(t[d.k]) || 0;
+    var pct = cv == null ? 0 : (tv ? Math.max(0, Math.min(100, Math.round(cv / tv * 100))) : 100);
+    var done = cv != null && tv > 0 && cv >= tv;
+    if (cv != null && tv > 0){ sc += Math.min(cv, tv); st += tv; }
+    tiles += '<div class="g' + (done ? ' dn' : '') + '"><div class="gt">' + esc(d.t) + '</div>' +
+      '<div class="gn">' + (cv == null ? '—' : cv) + (tv ? ' <small>/ ' + tv + '</small>' : '') + '</div>' +
+      '<div class="pb"><b style="width:' + pct + '%"></b></div>' +
+      '<div class="gs">' + (done ? 'הושלם' : '') + '</div></div>';
+  });
+  var p = st ? sc / st : 0, C = 2 * Math.PI * 46;
+  var ring = '<svg viewBox="0 0 110 110" aria-hidden="true"><circle cx="55" cy="55" r="46" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="10"/>' +
+    '<circle cx="55" cy="55" r="46" fill="none" stroke="#E4C56B" stroke-width="10" stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) +
+    '" stroke-dashoffset="' + (C * (1 - p)).toFixed(1) + '" transform="rotate(-90 55 55)"/>' +
+    '<text x="55" y="64" text-anchor="middle" fill="#fff" font-family="Heebo" font-weight="800" font-size="26">' + Math.round(p * 100) + '%</text></svg>';
+  return '<div class="glHead">' + ring + '<div><div class="greet">היעדים של המשרד להיום</div>' +
+    '<div class="h1">כל הצוות ביחד</div></div></div><div class="gl">' + tiles + '</div>';
 }
 function render(i){
   var c = el('card');
@@ -10975,7 +11015,9 @@ function render(i){
   if (i >= pl.length){ i = 0; IDX = 0; }
   setBars(pl, i);
   var it = pl[i];
-  if (it.t === 'sum'){
+  if (it.t === 'goals'){
+    c.innerHTML = goalsTvHtml(G);
+  } else if (it.t === 'sum'){
     c.innerHTML =
       '<div><div class="greet">רימקס פמילי · המשרד מתחילת השנה</div></div>' +
       '<div class="grid">' +
@@ -11035,7 +11077,14 @@ function goto(delta){
     goto(e.clientX > window.innerWidth / 2 ? -1 : 1);
   });
 })();
+function loadGoals(){
+  GET('/v2/api/goals/office').then(function(j){
+    G = (j && j.ok && j.total) ? j.total : null;
+    if (IDX >= playlist().length) IDX = 0;
+  }).catch(function(){ G = null; });
+}
 function load(){
+  loadGoals();
   GET('/v2/api/brief').then(function(j){
     if (!j || !j.ok){
       if (j && j.auth === false) location.replace('/v2');
