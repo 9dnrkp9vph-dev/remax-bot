@@ -36,7 +36,7 @@ def test_day_bounds_il():
 def test_targets_override():
     cfg = {"v2_goals": {"default": {"meetings": 1, "reviews": "x"}, "agents": {A: {"buyers": 5, "past_clients": 99}}}}
     t = g.targets_for(cfg, "בינימין אביטן", canon)
-    assert t == {"meetings": 1, "buyers": 5, "past_clients": 50, "reviews": 2}, t
+    assert t == dict(g.DEFAULTS, meetings=1, buyers=5, past_clients=50, reviews=2), t
     assert g.targets_for({}, "x", canon) == g.DEFAULTS
     ok()
 
@@ -129,6 +129,49 @@ def test_rollup():
     assert r["counts"]["reviews"] == 2 and r["partial"] is True
     assert r["counts"]["meetings"] == 3 and r["counts"]["followups"] == {"due": 3, "done": 2}
     assert r["targets"]["meetings"] == 4
+    ok()
+
+def test_nb_wa_dedup():
+    """[GOALS2] פניות לנכס נולד: אותה מודעה פעמיים באותו יום = אחת; מחוץ ליום / סוכן אחר — לא."""
+    act = [{"ts": ep("2026-10-28T10:00:00+02:00"), "name": "בינימין אביטן", "action": g.ACT_NB_WA, "detail": "הרצל 5"},
+           {"ts": ep("2026-10-28T10:05:00+02:00"), "name": A, "action": g.ACT_NB_WA, "detail": "הרצל 5"},
+           {"ts": ep("2026-10-28T11:00:00+02:00"), "name": A, "action": g.ACT_NB_WA, "detail": "בגין 3"},
+           {"ts": ep("2026-10-27T11:00:00+02:00"), "name": A, "action": g.ACT_NB_WA, "detail": "ויצמן 1"},
+           {"ts": ep("2026-10-28T11:00:00+02:00"), "name": "אחר", "action": g.ACT_NB_WA, "detail": "x"}]
+    c = g.count_agent(A, B, src(activity=act), canon)
+    assert c["nb_wa"] == 2, c
+    assert g.count_agent(A, B, src(activity=RuntimeError("x")), canon)["nb_wa"] is None
+    ok()
+
+def test_buyers_sign_included():
+    t = "28/10/2026 12:00"
+    b = [{"agent": A, "date": t, "summary": "מהחתמת מתעניין · הרצל 5"}, {"agent": A, "date": t, "summary": "שיחה"}]
+    c = g.count_agent(A, B, src(buyers=b), canon)
+    assert c["buyers"] == 2 and c["buyers_sign"] == 1, c
+    ok()
+
+def test_listings_week_to_date():
+    """גיוס נכסים: בלעדיות חתומה מתחילת השבוע (ראשון 25/10) עד היום; נכס ייחודי לפי עוגן-כתובת."""
+    sigs = [{"agent": A, "address": "הרצל 5, קרית ביאליק", "type": "בלעדיות", "signed": True, "ts": "25/10/2026 09:00"},
+            {"agent": A, "address": "הרצל 5 קריית ביאליק", "type": "בלעדיות", "signed": True, "ts": "27/10/2026 09:00"},
+            {"agent": A, "address": "בגין 3", "type": "בלעדיות", "signed": True, "ts": "28/10/2026 09:00"},
+            {"agent": A, "address": "ויצמן 1", "type": "בלעדיות", "signed": True, "ts": "24/10/2026 22:00"},   # שבוע קודם
+            {"agent": A, "address": "סוקולוב 2", "type": "בלעדיות", "signed": False, "ts": "28/10/2026 09:00"},
+            {"agent": A, "address": "הנשיא 4", "type": "מוכר", "signed": True, "ts": "28/10/2026 09:00"}]
+    c = g.count_agent(A, B, src(sigs=sigs), canon)
+    assert c["listings"] == 2, c
+    d = g.count_days(A, [datetime.date(2026, 10, 25), datetime.date(2026, 10, 26)], src(sigs=sigs), canon)
+    assert d["listings"] == 1, d                                 # עד סוף התקופה (26/10), לא סכום ימים
+    assert g.count_agent(A, B, src(sigs=[]), canon)["listings"] == 0
+    assert g.count_agent(A, B, src(sigs=RuntimeError("x")), canon)["listings"] is None
+    ok()
+
+def test_weekly_target_not_scaled():
+    day = datetime.date(2026, 10, 30)    # שישי — משקל חצי
+    s = src(roster=[A], cfg={}, seen=[], sigs=[])
+    p = g.build_periods(s, day, canon)
+    assert p["today"]["rows"][0]["targets"]["listings"] == 2 and p["today"]["rows"][0]["targets"]["meetings"] == 1
+    assert p["week"]["rows"][0]["targets"]["listings"] == 2
     ok()
 
 for name, fn in list(globals().items()):

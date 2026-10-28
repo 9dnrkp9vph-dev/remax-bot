@@ -16,12 +16,15 @@ try:
 except Exception:  # pragma: no cover
     _IL = _dt.timezone(_dt.timedelta(hours=2))
 
-DEFAULTS = {"meetings": 2, "buyers": 3, "past_clients": 5, "reviews": 2}
+DEFAULTS = {"listings": 2, "meetings": 2, "nb_wa": 10, "buyers": 3, "past_clients": 5, "reviews": 2}
+WEEKLY_GOALS = ("listings",)            # [GOALS2 29/10, אייל] גיוס נכסים — יעד שבועי (2 בשבוע), לא יומי
+ACT_NB_WA = "📲 וואטסאפ — נכס נולד"      # [GOALS2 29/10] פניות לנכס נולד (אייל: כמות הוואטסאפים שנשלחו)
+ACTIVE_DAYS = 10                        # יעד המשרד = הסוכנים שנכנסו לאפי ב-10 הימים האחרונים (אייל 29/10)
 ACT_REMIND = "תזכורת ללקוח עבר"
 ACT_REVIEW_MANUAL = "בקשת ביקורת — ידני"
 ACT_BPAGE = "דף קונה — שליחה"
 _MAX_TARGET = 50
-_SUM_KEYS = ("meetings", "buyers", "bpage", "past_clients", "reviews", "missed")
+_SUM_KEYS = ("listings", "meetings", "nb_wa", "buyers", "buyers_sign", "bpage", "past_clients", "reviews", "missed")
 SRC_TTL = 60
 
 
@@ -131,12 +134,39 @@ def _date_is_today(s, today):
     return False
 
 
+def _anchor(a):
+    """עוגן-כתובת (כמו ef_addr_anchor): עד וכולל המספר הראשון — אותו נכס בכתיב שונה = אחד."""
+    k = re.sub(r"[^א-ת0-9a-z]", "", str(a or "").lower().replace("קריית", "קרית"))
+    m = re.match(r"^(\D*?\d+)", k)
+    return m.group(1) if m else k
+
+
+def count_listings(agent, bounds, sigs, canon):
+    """[GOALS2 29/10] גיוס נכסים = הסכמי בלעדיות שנחתמו בתקופה, נכס ייחודי (עוגן-כתובת) — הכלל של 'שאל את אפי'
+    (ef_gius). sigs = [{agent, address, type, signed, ts}]. None = המקור לא זמין."""
+    if _bad(sigs):
+        return None
+    seen = set()
+    for g in sigs or []:
+        if g.get("type") != "בלעדיות" or not g.get("signed") or "בדיקה בדיקה" in str(g.get("address") or ""):
+            continue
+        if _same(g.get("agent"), agent, canon) and _in(parse_ts(g.get("ts")), bounds):
+            seen.add(_anchor(g.get("address")))
+    return len(seen)
+
+
+def week_bounds(day):
+    """מתחילת השבוע (ראשון) עד סוף `day` — ליעד השבועי."""
+    s = day - _dt.timedelta(days=(day.weekday() + 1) % 7)
+    return day_bounds(s)[0], day_bounds(day)[1]
+
+
 def count_agent(agent, bounds, src, canon):
     nb = src.get("nb"); buyers = src.get("buyers"); bpages = src.get("bpages")
     activity = src.get("activity"); reviews = src.get("reviews"); missed = src.get("missed")
     today = _dt.datetime.fromtimestamp(bounds[0], _IL).date()
-    out = {"meetings": None, "buyers": None, "bpage": None, "past_clients": None,
-           "reviews": None, "followups": None, "missed": None}
+    out = {"listings": None, "meetings": None, "nb_wa": None, "buyers": None, "buyers_sign": None, "bpage": None,
+           "past_clients": None, "reviews": None, "followups": None, "missed": None}
 
     if not _bad(nb):
         mt = 0; fdue = 0; fdone = 0
@@ -156,13 +186,16 @@ def count_agent(agent, bounds, src, canon):
 
     if not _bad(buyers):
         rows = set()
-        n = 0
+        n = sign = 0
         for b in buyers or []:
             if _same(b.get("agent"), agent, canon) and _in(parse_ts(b.get("date")), bounds):
                 n += 1
+                if str(b.get("summary") or "").strip().startswith("מהחתמת"):
+                    sign += 1                   # נכנס אוטומטית מהחתמת מתעניין — כלול בסך הקונים
                 if b.get("row") is not None:
                     rows.add(b.get("row"))
         out["buyers"] = n
+        out["buyers_sign"] = sign
         if not _bad(bpages):
             sent = set()
             for p in bpages or []:
@@ -171,11 +204,20 @@ def count_agent(agent, bounds, src, canon):
             out["bpage"] = len(sent)
 
     if not _bad(activity):
-        phones = set()
+        phones, nbw = set(), set()
         for a in activity or []:
-            if a.get("action") == ACT_REMIND and _same(a.get("name"), agent, canon):
+            act = str(a.get("action") or "")
+            if not _same(a.get("name"), agent, canon):
+                continue
+            if act == ACT_REMIND:
                 phones.add(str(a.get("detail") or "").strip())
+            elif act.startswith(ACT_NB_WA):
+                ts = parse_ts(a.get("ts"))
+                if _in(ts, bounds):             # אותה מודעה פעמיים באותו יום = פנייה אחת
+                    d = _dt.datetime.fromtimestamp(ts, _IL).date().isoformat()
+                    nbw.add((d, str(a.get("detail") or "").strip()))
         out["past_clients"] = len(phones)
+        out["nb_wa"] = len(nbw)
 
     if not _bad(reviews):
         n = 0
@@ -187,6 +229,7 @@ def count_agent(agent, bounds, src, canon):
 
     if not _bad(missed):
         out["missed"] = sum(1 for m in (missed or []) if _same(m.get("agent"), agent, canon))
+    out["listings"] = count_listings(agent, week_bounds(today), src.get("sigs"), canon)   # תמיד מתחילת השבוע
     return out
 
 
@@ -206,7 +249,7 @@ def rollup(per_agent, targets):
         partial = True
     counts["followups"] = {"due": sum(f["due"] for f in fk), "done": sum(f["done"] for f in fk)} if fk else None
     tsum = {k: sum((t or {}).get(k, 0) for t in targets.values()) for k in DEFAULTS}
-    return {"counts": counts, "targets": tsum, "partial": partial}
+    return {"counts": counts, "targets": tsum, "partial": partial, "agents": len(targets)}
 
 
 def _roster_names(src, canon):
@@ -232,17 +275,38 @@ def _cfg_of(src):
     return cfg if isinstance(cfg, dict) else {}
 
 
+def _active_set(src, canon):
+    """[GOALS2 29/10] מי שנכנס לאפי ב-ACTIVE_DAYS הימים האחרונים. None = לא ידוע (אין מקור / נכשל) → כולם."""
+    a = src.get("active")
+    if a is None or _bad(a):
+        return None
+    return {canon(n) for n in a if n}
+
+
+def _did_any(c):
+    return any(isinstance(v, (int, float)) and v > 0 for k, v in (c or {}).items() if k != "missed")
+
+
 def _assemble(src, canon, count, targets):
     """הליבה המשותפת ל-build_office וללוח הבקרה: שורה לכל סוכן ברשימה + סכום המשרד.
-    count(name) → ספירות, targets(name) → יעדים. רשימה שנכשלה → בלי שורות, partial=True."""
+    count(name) → ספירות, targets(name) → יעדים. רשימה שנכשלה → בלי שורות, partial=True.
+    [GOALS2 29/10, אייל] יעד המשרד = סכום היעדים של מי שנכנס לאפי ב-10 הימים האחרונים (src['active']).
+    מי שלא נכנס ולא עשה כלום — לא מוצג; מי שלא נכנס אבל נספר לו משהו (למשל קונה מהחתמה) — מוצג ונספר
+    בסכום, בלי יעד."""
     names, roster_bad = _roster_names(src, canon)
     seen = _seen_set(src, canon)
+    active = _active_set(src, canon)
     rows, per, tg = [], {}, {}
     for name in names:
         k = canon(name)
         c, t = count(name), targets(name)
-        rows.append({"name": name, "counts": c, "targets": t, "seen_today": k in seen})
-        per[k], tg[k] = c, t
+        is_active = active is None or k in active
+        if not is_active and not _did_any(c):
+            continue
+        rows.append({"name": name, "counts": c, "targets": t, "seen_today": k in seen, "active": is_active})
+        per[k] = c
+        if is_active:
+            tg[k] = t
     total = rollup(per, tg)
     if roster_bad:
         total["partial"] = True
@@ -285,7 +349,7 @@ def _num(v):
 
 def _sum_counts(parts):
     out = {}
-    for k in ("meetings", "buyers", "bpage", "past_clients", "reviews"):
+    for k in ("meetings", "nb_wa", "buyers", "buyers_sign", "bpage", "past_clients", "reviews"):
         vals = [p.get(k) for p in parts]
         out[k] = None if (not vals or any(v is None for v in vals)) else sum(vals)
     fu = [p.get("followups") for p in parts]
@@ -304,13 +368,15 @@ def count_days(agent, days, src, canon):
         a = act if _bad(act) else [x for x in (act or []) if _in(parse_ts(x.get("ts")), b)]
         parts.append(count_agent(agent, b, dict(src, activity=a, missed=[]), canon))
     out = _sum_counts(parts)
+    # יעד שבועי (גיוס נכסים): מתחילת השבוע של היום האחרון בתקופה — לא סכום של ימים
+    out["listings"] = parts[-1].get("listings") if parts else None
     missed = src.get("missed")
     out["missed"] = None if _bad(missed) else sum(1 for m in (missed or []) if _same(m.get("agent"), agent, canon))
     return out
 
 
 def _met(counts, targets):
-    """כמה מארבעת היעדים הושלמו במלואם, ומתוך כמה."""
+    """כמה מהיעדים הושלמו במלואם, ומתוך כמה."""
     met = 0
     for k in GOAL_KEYS:
         t = (targets or {}).get(k) or 0
@@ -342,7 +408,8 @@ def build_periods(src, today, canon):
         prev_days = [d - _dt.timedelta(days=7) for d in days]
         rows, per, tg, total = _assemble(
             src, canon, lambda n, days=days: count_days(n, days, src, canon),
-            lambda n, scale=scale: {g: _num(v * scale) for g, v in targets_for(cfg, n, canon).items()})
+            lambda n, scale=scale: {g: (v if g in WEEKLY_GOALS else _num(v * scale))
+                                    for g, v in targets_for(cfg, n, canon).items()})
         prev_per = {}
         for r in rows:
             pc = count_days(r["name"], prev_days, src, canon)
@@ -553,6 +620,27 @@ def g_missed(G, now):
     return _ev.crm_todo(calls, [], [], [], {}, now, h, limit=None)["missed"]
 
 
+def g_sigs(G, since_day):
+    """[GOALS2 29/10] שורות חתימה מ-since_day: {agent, address, type, signed, ts} (signed = קישור חתום או עמלה)."""
+    times = {}
+    try:      # שעת החתימה האמיתית (sign_docs) — כמו מסך החתימות; received_at = שעת שליחה / עדכון אחרון בפיירברי
+        sb = G.get("_sbdb")
+        if sb is not None and sb.enabled():
+            times = sb.signdoc_times() or {}
+    except Exception:
+        times = {}
+    out = []
+    for g in G["get_signings"](since_day.strftime("%d/%m/%Y"), "31/12/2099") or []:
+        lk = str(g.get("commission_pct", "") or "").strip()
+        ts = g.get("received_at", "")
+        if "/s/" in lk:
+            ts = times.get(lk.rsplit("/s/", 1)[-1].strip("/ ")) or ts
+        out.append({"agent": g.get("agent", ""), "address": g.get("address", ""),
+                    "type": G["_deal_label"](g.get("deal_type", "")), "signed": bool(lk),
+                    "ts": ts})       # parse_ts — שעון ישראל
+    return out
+
+
 def g_reviews(G):
     import site_api as _sa
     return _sa.reviews_active(_sa.review_rows(G.get("_sbdb")))
@@ -561,6 +649,25 @@ def g_reviews(G):
 def g_seen(G, day):
     start = _dt.datetime(day.year, day.month, day.day, tzinfo=_IL)
     return [r.get("name") for r in (G["_usage_rows"](start) or []) if r.get("name")]
+
+
+_ACTIVE_BOX = {"k": None, "t": 0.0, "v": None}
+ACTIVE_TTL = 600
+
+
+def g_active(G, day, days=ACTIVE_DAYS):
+    """[GOALS2 29/10] מי שנכנס לאפי ב-`days` הימים האחרונים (כולל היום) — לפי פעימות הנוכחות.
+    מטמון 10 דק' (10 ימים של פעימות). אין אף אחד (Supabase כבוי / ריק) → None = לא ידוע, וכולם נספרים."""
+    key = (day.isoformat(), days)
+    bx = _ACTIVE_BOX
+    if bx["k"] == key and (_clock() - bx["t"]) < ACTIVE_TTL:
+        return bx["v"]
+    d0 = day - _dt.timedelta(days=days - 1)
+    start = _dt.datetime(d0.year, d0.month, d0.day, tzinfo=_IL)
+    names = [g_display(G, r.get("name")) for r in (G["_usage_rows"](start) or []) if r.get("name")]
+    v = names or None
+    bx.update(k=key, t=_clock(), v=v)
+    return v
 
 
 def dashboard_goals(G, now):
@@ -573,7 +680,7 @@ def dashboard_goals(G, now):
     def activity():
         sb = G.get("_sbdb")
         if sb is not None and sb.enabled():
-            return sb.fetch_activity_actions(t0, (ACT_REMIND,)) or []
+            return sb.fetch_activity_actions(t0, (ACT_REMIND, ACT_NB_WA)) or []
         return G["_activity_fetch"](t0, today=False)
 
     cfg = g_safe(G, G["_load_config"])
@@ -585,6 +692,8 @@ def dashboard_goals(G, now):
            "reviews": g_safe(G, lambda: g_reviews(G)),
            "missed": g_safe(G, lambda: g_missed(G, now)),
            "seen": g_safe(G, lambda: g_seen(G, day)),
+           "active": g_safe(G, lambda: g_active(G, day)),
+           "sigs": g_safe(G, lambda: g_sigs(G, min(first, week_start(day - _dt.timedelta(days=8))))),   # גם שבוע-קודם של 'אתמול' ביום ראשון
            "roster": g_safe(G, lambda: g_roster(G))}
     return build_periods(src, day, lambda n: g_canon(G, n))
 
@@ -889,7 +998,7 @@ def register(app, G):
     def _activity(t0):
         sb = G.get("_sbdb")
         if sb is not None and hasattr(sb, "fetch_activity_actions") and sb.enabled():
-            return sb.fetch_activity_actions(t0, (ACT_REMIND,)) or []     # סינון בשרת — רק מה שנספר
+            return sb.fetch_activity_actions(t0, (ACT_REMIND, ACT_NB_WA)) or []     # סינון בשרת — רק מה שנספר
         return G["_activity_fetch"](t0, today=True)
 
     def _fetch_src():
@@ -905,6 +1014,8 @@ def register(app, G):
                 "reviews": _safe(_reviews),
                 "missed": _safe(lambda: _missed(now)),
                 "seen": _safe(lambda: _seen(day)),
+                "active": _safe(lambda: g_active(G, day)),
+                "sigs": _safe(lambda: g_sigs(G, week_start(day))),
                 "roster": _safe(_roster)}
 
     _src_box = {"t": 0.0, "v": None}
@@ -941,6 +1052,8 @@ def register(app, G):
             day = _dt.date.fromisoformat(src["day"])
             if roster_fn is not None:
                 src["roster"] = _safe(roster_fn)
+            if scope_key.startswith("agent:"):
+                src["active"] = None            # הסוכן שצופה בעצמו — תמיד מוצג
             return build_office(src, day, canon)
         key = "goals:" + _today_iso() + ":" + scope_key     # יום חדש = מפתח חדש = בנייה טרייה
         _keys_used.add(key)
