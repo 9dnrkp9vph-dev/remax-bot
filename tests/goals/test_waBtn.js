@@ -1,0 +1,24 @@
+// tests/goals/test_waBtn.js — כפתורי וואטסאפ ללקוח עבר שולחים משואה ליעדים (על הקוד האמיתי)
+const fs = require('fs'), path = require('path');
+const src = fs.readFileSync(path.join(__dirname, '..', '..', 'deals_history.py'), 'utf8');
+const a = src.indexOf('<script>', src.indexOf('V2_HISTORY_HTML = ')) + 8, b = src.indexOf('</script>', a);
+const js = src.slice(a, b);
+let n = 0; const ck = (c, m) => { if (!c) throw new Error(m); n++; };
+const calls = [];
+global.document = {getElementById: () => null, querySelectorAll: () => []};
+global.localStorage = {getItem: () => null, setItem: () => {}};
+global.fetch = (u, o) => { calls.push([u, o]); return Promise.resolve({}); }; global.location = {href: ''};
+eval(js.replace(/\(function\(\)\{\s*try\{ TOK[\s\S]*$/, '') + ';global.T={waBtn,goalBeacon};');
+eval('REVIEW = "https://g.page/r/x"; TOK = "T1";');
+const x = {date: '01/06/2026', address: 'הרצל 1', side: 'מוכר', client: 'גל', phone: '0501234567'};
+const h = T.waBtn(x, 'דנה');
+ck(h.includes("goalBeacon('501234567','remind')"), h);
+ck(h.includes("goalBeacon('501234567','review')"), h);
+ck(h.includes('href="https://wa.me/972501234567?text='), 'href unchanged');
+ck((h.match(/onclick=/g) || []).length === 2, 'two onclicks');
+T.goalBeacon('501234567', 'review');
+ck(calls.length === 1 && calls[0][0] === '/v2/api/goals/remind' && calls[0][1].keepalive === true, 'fetch');
+ck(JSON.parse(calls[0][1].body).kind === 'review' && calls[0][1].headers['X-Auth-Token'] === 'T1', 'body/headers');
+global.fetch = () => { throw new Error('boom'); };
+T.goalBeacon('501234567', 'remind'); ck(true, 'never throws');
+console.log('ok', n);
