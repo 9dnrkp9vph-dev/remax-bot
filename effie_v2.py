@@ -14185,6 +14185,7 @@ CRM_AUTOMATIONS = [
     ("sms", "SMS", "קוד כניסה / קישור חתימה", "SMS ללקוח או לסוכן", "יוצא", None, ("SMS —",)),
     ("daily_report", "דוח יומי במייל", "כל יום ב-07:00", "מייל לנמענים", "יוצא", ("DAILY_REPORT", "not0"), ("דוח יומי",)),
     ("weekly_report", "סיכום שבועי", "יום ראשון ב-07:00", "מייל לנמענים", "יוצא", ("WEEKLY_REPORT", "not0"), ("סיכום שבועי",)),
+    ("ai_digest", "התראות AI במייל", "כל יום ב-11:00 (לא בשבת וחג)", "מייל לבעל המשרד עם השינויים בטאב AI", "יוצא", ("AI_DIGEST", "not0"), ("התראות AI",)),
     ("bpage_digest", "התאמות חדשות — פוש יומי", "כל יום ב-10:00", "פוש לסוכנים על התאמות חדשות לדפי קונה", "יוצא", ("BPAGE_DIGEST", "not0"), ()),
     ("wa_click", "וואטסאפ מהטלפון", "סוכן פותח וואטסאפ מאפי", "נספר ביומן לפי מסך", "יוצא", None, ("וואטסאפ מהטלפון —",)),
     ("review_req", "בקשת ביקורת בגוגל", "שבוע אחרי שעסקה נכנסה עם נייד (עד 30 ביום, שעות עבודה)", "וואטסאפ רשמי ללקוח בשם הסוכן + סימון בעסקאות ב-CRM", "יוצא", ("REVIEW_REQUESTS", "not0"), ("בקשת ביקורת",)),
@@ -17928,6 +17929,9 @@ def register(app, G):
         except Exception as e:
             if log: log.error(f"crm records read failed ({module}): {e}")
             raise _CrmReadError(str(e)[:300])
+
+    # [AI-DIGEST 29/10] app.py (_ai_digest_tick, 11:00) קורא את רשומות טאב ה-AI בלי לשכפל את הבנייה
+    G["_crm_ai_rows"] = lambda: _crm_records("ai")
 
     def _crm_read_err(e):
         return jsonify({"ok": False, "reason": "table_error", "detail": str(e)})

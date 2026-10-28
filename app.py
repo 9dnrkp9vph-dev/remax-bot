@@ -12543,7 +12543,7 @@ def _report_send_email(subject, html, text, to=None, attachments=None):
     """[CRM-2 19/10] כל שליחת דוח במייל נרשמת ביומן (דוח יומי / סיכום שבועי)."""
     res = _report_send_email_raw(subject, html, text, to, attachments=attachments)
     try:
-        kind = "סיכום שבועי" if "שבועי" in str(subject) else "דוח יומי"
+        kind = "סיכום שבועי" if "שבועי" in str(subject) else ("התראות AI" if "התראות AI" in str(subject) else "דוח יומי")
         _log_activity("מייל", "system", "", kind + " — " + ("נשלח" if res and res[0] else "נכשל"), str(subject)[:60])
     except Exception:
         pass
@@ -12855,6 +12855,46 @@ def _weekly_tick(now):
     _config_mutate(_mark)
     return True
 
+def _ai_digest_tick(now):
+    """[AI-DIGEST 29/10 אייל] 'סריקת AI כל יום ב-11 ומייל של כל השינויים מיום לפני — רק טאב ה-AI, בלי שבתות וחגים'.
+    שינוי = התראה שלא הייתה בצילום של המייל הקודם, או שהמצב שלה השתנה (ai_digest.digest_diff). לבעל המשרד בלבד
+    (CRM_OWNER_EMAILS). פעם ביום (v2_ai_digest[תאריך]); כשל → ניסיון חוזר כל 15 דק', עד 8. כיבוי: AI_DIGEST=0."""
+    if (os.environ.get("AI_DIGEST", "1") or "1") == "0":
+        return False
+    import ai_digest as _aid
+    cfg = _load_config() or {}
+    key = now.date().isoformat()
+    store = cfg.get("v2_ai_digest") or {}
+    hour = int(os.environ.get("AI_DIGEST_HOUR", "11") or 11)
+    if not _aid.digest_due(now, (store.get("days") or {}).get(key), quiet=_shabbat_quiet_now(), hour=hour):
+        return False
+    getter = globals().get("_crm_ai_rows")
+    if not getter:
+        return False
+    prev = store.get("snap")   # None = ריצה ראשונה → מה שקרה ב-24 השעות האחרונות
+    since = float(store.get("last_ok") or 0) or (time.time() - 86400)
+    new, changed, snap = _aid.digest_diff(getter() or [], prev, since_ts=since)
+    office = ((cfg.get("v2_office") or {}).get("name") or "").strip()
+    base = (os.environ.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    subj, html, text = _aid.digest_render(new, changed, office, base, now.strftime("%d/%m/%Y"))
+    ok, msg = _report_send_email(subj, html, text, to=",".join(_crm_owner_emails()))
+    log.info(f"ai digest {key}: {msg} (new={len(new)} changed={len(changed)})")
+    def _mark(c, _k=key, _ok=ok, _msg=msg, _snap=snap):
+        st = c.get("v2_ai_digest") or {}
+        days = st.get("days") or {}
+        prev_d = days.get(_k) or {}
+        days[_k] = {"ts": time.time(), "ok": _ok, "tries": int(prev_d.get("tries") or 0) + 1, "msg": str(_msg)[:120],
+                    "new": len(new), "changed": len(changed)}
+        for kk in sorted(days)[:-14]: days.pop(kk, None)
+        st["days"] = days
+        if _ok:   # הצילום מתקדם רק אחרי שליחה מוצלחת — כשל לא מאבד שינויים
+            st["snap"] = _snap
+            st["last_ok"] = time.time()
+        c["v2_ai_digest"] = st
+        return True
+    _config_mutate(_mark)
+    return True
+
 def _report_daily_loop():
     """שליחה אוטומטית פעם ביום ב-REPORT_HOUR (שעון ישראל) — idempotent דרך הקונפיג (v2_daily_report[יום])."""
     import datetime as _dt
@@ -12897,6 +12937,10 @@ def _report_daily_loop_body(_dt):
                 _weekly_tick(now)   # [WEEKLY 09/10] יום ראשון — הסיכום השבועי (אחרי היומי)
             except Exception as _we:
                 log.warning(f"weekly report tick: {_we}")
+            try:
+                _ai_digest_tick(now)   # [AI-DIGEST 29/10] 11:00 — מייל השינויים בטאב AI
+            except Exception as _ae:
+                log.warning(f"ai digest tick: {_ae}")
         except Exception as e:
             log.warning(f"daily report loop: {e}")
             _REPORT_LAST.update({"state": "done", "ok": False, "msg": f"לולאה: {type(e).__name__}: {str(e)[:100]}"})
