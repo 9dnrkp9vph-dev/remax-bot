@@ -208,31 +208,53 @@ def rollup(per_agent, targets):
     return {"counts": counts, "targets": tsum, "partial": partial}
 
 
+def _roster_names(src, canon):
+    """(שמות ייחודיים לפי canon, האם הרשימה נכשלה)."""
+    roster = src.get("roster")
+    if _bad(roster):
+        return [], True
+    names, done = [], set()
+    for name in roster or []:
+        if name and canon(name) not in done:
+            done.add(canon(name))
+            names.append(name)
+    return names, False
+
+
+def _seen_set(src, canon):
+    seen_src = src.get("seen")
+    return set() if _bad(seen_src) else {canon(n) for n in (seen_src or []) if n}
+
+
+def _cfg_of(src):
+    cfg = src.get("cfg")
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _assemble(src, canon, count, targets):
+    """הליבה המשותפת ל-build_office וללוח הבקרה: שורה לכל סוכן ברשימה + סכום המשרד.
+    count(name) → ספירות, targets(name) → יעדים. רשימה שנכשלה → בלי שורות, partial=True."""
+    names, roster_bad = _roster_names(src, canon)
+    seen = _seen_set(src, canon)
+    rows, per, tg = [], {}, {}
+    for name in names:
+        k = canon(name)
+        c, t = count(name), targets(name)
+        rows.append({"name": name, "counts": c, "targets": t, "seen_today": k in seen})
+        per[k], tg[k] = c, t
+    total = rollup(per, tg)
+    if roster_bad:
+        total["partial"] = True
+    return rows, per, tg, total
+
+
 def build_office(src, day, canon):
     """שורה לכל סוכן ברשימה (src['roster']) + סכום. src['cfg'] = הקונפיג (ליעדים), src['seen'] = מי נכנס היום.
     רשימה שנכשלה בשליפה → בלי שורות, partial=True."""
     bounds = day_bounds(day)
-    roster = src.get("roster")
-    cfg = src.get("cfg")
-    cfg = cfg if isinstance(cfg, dict) else {}
-    seen_src = src.get("seen")
-    seen = set() if _bad(seen_src) else {canon(n) for n in (seen_src or []) if n}
-    rows, per, tg = [], {}, {}
-    if not _bad(roster):
-        done = set()
-        for name in roster or []:
-            k = canon(name)
-            if not name or k in done:
-                continue
-            done.add(k)
-            c = count_agent(name, bounds, src, canon)
-            t = targets_for(cfg, name, canon)
-            rows.append({"name": name, "counts": c, "targets": t, "seen_today": k in seen})
-            per[k] = c
-            tg[k] = t
-    total = rollup(per, tg)
-    if _bad(roster):
-        total["partial"] = True
+    cfg = _cfg_of(src)
+    rows, _, _, total = _assemble(src, canon, lambda n: count_agent(n, bounds, src, canon),
+                                  lambda n: targets_for(cfg, n, canon))
     return {"rows": rows, "total": total}
 
 
@@ -287,17 +309,14 @@ def count_days(agent, days, src, canon):
 
 
 def _met(counts, targets):
-    """כמה מהיעדים (שיש להם יעד) הושלמו במלואם, ומתוך כמה."""
-    met = n = 0
+    """כמה מארבעת היעדים הושלמו במלואם, ומתוך כמה."""
+    met = 0
     for k in GOAL_KEYS:
         t = (targets or {}).get(k) or 0
-        if t <= 0:
-            continue
-        n += 1
         c = counts.get(k)
-        if c is not None and c >= t:
+        if c is not None and c >= t:        # כמו goalIsDone באפליקציה: יעד 0 (שבת) = הושלם
             met += 1
-    return met, n
+    return met, len(GOAL_KEYS)
 
 
 def _trend(cur, prev):
@@ -307,45 +326,32 @@ def _trend(cur, prev):
 def build_periods(src, today, canon):
     """[GOALS 28/10] טבלת 'יעדי היום' בלוח הבקרה: לכל תקופה (היום / אתמול / השבוע) שורה לכל סוכן ושורת משרד,
     עם 'עמידה' (כמה יעדים הושלמו) ומגמה מול אותה תקופה לפני שבוע. בשבוע: סכום מיום ראשון, והיעד = היעד היומי
-    כפול ימי העבודה עד היום (שישי חצי). seen_today = נכנס היום (רלוונטי לתצוגת 'היום')."""
+    כפול ימי העבודה עד היום (שישי חצי); גם היום/אתמול לפי משקל היום (שישי חצי, שבת 0 — רק בלוח הבקרה,
+    בכרטיס באפליקציה היעד היומי המלא). seen_today = נכנס היום (רלוונטי לתצוגת 'היום')."""
     import functools
     canon = functools.lru_cache(maxsize=None)(canon)     # אלפי השוואות שמות לכל בנייה
-    roster = src.get("roster")
-    cfg = src.get("cfg")
-    cfg = cfg if isinstance(cfg, dict) else {}
-    seen_src = src.get("seen")
-    seen = set() if _bad(seen_src) else {canon(n) for n in (seen_src or []) if n}
-    names = []
-    if not _bad(roster):
-        done = set()
-        for name in roster or []:
-            if name and canon(name) not in done:
-                done.add(canon(name))
-                names.append(name)
+    cfg = _cfg_of(src)
     yday = today - _dt.timedelta(days=1)
     ws = week_start(today)
-    periods = {"today": ([today], 1.0), "yesterday": ([yday], 1.0),
-               "week": ([ws + _dt.timedelta(days=i) for i in range((today - ws).days + 1)], workdays_elapsed(today))}
+    week = [ws + _dt.timedelta(days=i) for i in range((today - ws).days + 1)]
+    periods = {"today": ([today], workday_weight(today)), "yesterday": ([yday], workday_weight(yday)),
+               "week": (week, workdays_elapsed(today))}
     out = {}
     for pk, (days, scale) in periods.items():
         prev_days = [d - _dt.timedelta(days=7) for d in days]
-        rows, per, prev_per, tg = [], {}, {}, {}
-        for name in names:
-            k = canon(name)
-            c = count_days(name, days, src, canon)
-            pc = count_days(name, prev_days, src, canon)
-            t = {g: _num(v * scale) for g, v in targets_for(cfg, name, canon).items()}
-            met, gn = _met(c, t)
-            rows.append({"name": name, "counts": c, "targets": t, "met": met, "goals_n": gn,
-                         "trend": _trend(c, pc), "seen_today": k in seen})
-            per[k], prev_per[k], tg[k] = c, pc, t
+        rows, per, tg, total = _assemble(
+            src, canon, lambda n, days=days: count_days(n, days, src, canon),
+            lambda n, scale=scale: {g: _num(v * scale) for g, v in targets_for(cfg, n, canon).items()})
+        prev_per = {}
+        for r in rows:
+            pc = count_days(r["name"], prev_days, src, canon)
+            prev_per[canon(r["name"])] = pc
+            r["met"], r["goals_n"] = _met(r["counts"], r["targets"])
+            r["trend"] = _trend(r["counts"], pc)
         rows.sort(key=lambda r: (-r["met"], r["name"]))
-        total = rollup(per, tg)
         total["targets"] = {g: _num(v) for g, v in total["targets"].items()}
         total["met"], total["goals_n"] = _met(total["counts"], total["targets"])
         total["trend"] = _trend(total["counts"], rollup(prev_per, tg)["counts"])
-        if _bad(roster):
-            total["partial"] = True
         out[pk] = {"day": days[0].isoformat(), "to": days[-1].isoformat(), "rows": rows, "total": total,
                    "workdays": _num(scale) if pk == "week" else None}
     return out

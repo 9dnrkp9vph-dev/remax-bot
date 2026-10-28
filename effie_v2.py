@@ -12943,13 +12943,13 @@ function waKinds(){var wo=(D.wa_official||{})[P];if(!wo||!wo.kinds)return '';
 var GP='today',GPL={today:'היום',yesterday:'אתמול',week:'השבוע'},GKEYS=['meetings','buyers','past_clients','reviews'];
 var GDAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 function gNum(v){return v==null?'—':(+v).toLocaleString('he-IL');}
-function gCell(c,t){if(c==null)return '—';if(!t)return gNum(c);var p=Math.min(100,Math.round(c*100/t));
+function gCell(c,t){if(c==null)return '—';if(!t)return '<span class="gc full">'+gNum(c)+'/—</span>';var p=Math.min(100,Math.round(c*100/t));
  return '<span class="gc'+(c>=t?' full':(c?'':' zero'))+'">'+gNum(c)+'/'+gNum(t)+' <i><b style="width:'+p+'%"></b></i></span>';}
 function gVs(G,eq){var w=GP==='week'?'שבוע שעבר':GDAYS[new Date(G.day+'T12:00:00').getDay()]+' שעבר';return (eq?'כמו ב':'מול ')+w;}
 function gTrend(tr,G){if(!tr)return '';var s=0,k=0;GKEYS.forEach(function(g){if(tr[g]!=null){s+=tr[g];k++;}});if(!k)return '';
  return '<span class="gtr'+(s>0?' up':'')+'">'+(s?(s>0?'↑'+s:'↓'+(-s))+' '+gVs(G,false):gVs(G,true))+'</span>';}
 function gRow(x,G,tot){var c=x.counts||{},t=x.targets||{},fu=c.followups,un=!tot&&GP==='today'&&!x.seen_today;
- return '<tr'+(tot?' class="tot"':(un?' class="z"':''))+'><td>'+(tot?'כל המשרד':esc(x.name))+(un?' <span class="mut">· לא נכנס היום</span>':'')+gTrend(x.trend,G)+'</td>'+
+ return '<tr'+(tot?' class="tot"':(un?' class="z"':''))+'><td>'+(tot?'כל המשרד':esc(x.name))+(un?' <span class="mut">· לא נכנס/ה היום</span>':'')+gTrend(x.trend,G)+'</td>'+
   '<td>'+gCell(c.meetings,t.meetings)+'</td><td>'+gCell(c.buyers,t.buyers)+'</td><td>'+gNum(c.bpage)+'</td>'+
   '<td>'+gCell(c.past_clients,t.past_clients)+'</td><td>'+gCell(c.reviews,t.reviews)+'</td>'+
   '<td>'+(fu&&fu.due?gNum(fu.done)+'/'+gNum(fu.due):'—')+'</td><td>'+gNum(c.missed)+'</td>'+

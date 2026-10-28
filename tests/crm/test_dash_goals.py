@@ -116,14 +116,44 @@ gt, gw, gy, kp = out.stdout.split("@@")
 for col in ("סוכן", "פגישות נכס נולד", "קונים", "דף קונה", "לקוחות עבר", "המלצות", "פולו-אפ", "שיחות פתוחות", "עמידה"):
     ck("<th>" + col in gt, ("column", col))
 ck(gt.index("כל המשרד") < gt.index("דנה כהן") < gt.index("מיכל בר"), "office row first, then by met")
-ck(gt.count("לא נכנס היום") == 2 and 'class="z"><td>מיכל בר' in gt, "unseen (רון, מיכל) flagged on today, greyed")
-ck("לא נכנס היום" not in gw and "לא נכנס היום" not in gy, "only on today")
+ck(gt.count("· לא נכנס/ה היום") == 2 and 'class="z"><td>מיכל בר' in gt, "unseen (רון, מיכל) flagged on today, greyed")
+ck("לא נכנס" not in gw and "לא נכנס" not in gy, "only on today")
 ck("2/2" in gt and "3/3" in gt and "2/4" in gt, gt)
 ck("3/8" in gw and "16.5" not in gw and "ימי עבודה" in gw, "week shows target × workdays")
 ck("↑4 מול רביעי שעבר" in gt and "כמו ברביעי שעבר" in gt and "מול שבוע שעבר" in gw, "trend label")
 ck("#C24040" not in gt and "red" not in gt, "no red")
 ck("ראה 1 = רק היעדים" in kp, kp)
 print("dash_goals OK", _load.n)
+
+# ── [fix 1] היום בלוח הבקרה = build_office (אותה ליבה) ─────────────────────────────
+s_today = dict(src, activity=[a for a in act if goals._in(goals.parse_ts(a["ts"]), goals.day_bounds(WED))])  # כמו במסלול היום
+bo = goals.build_office(s_today, WED, canon)
+bp = goals.build_periods(s_today, WED, canon)["today"]
+for k in ("counts", "targets", "partial"):
+    ck(bp["total"][k] == bo["total"][k], ("today totals == build_office", k, bp["total"][k], bo["total"][k]))
+ck(sorted((r["name"], json.dumps(r["counts"], sort_keys=True), r["seen_today"]) for r in bp["rows"]) ==
+   sorted((r["name"], json.dumps(r["counts"], sort_keys=True), r["seen_today"]) for r in bo["rows"]), "same rows")
+ck(set(bo["rows"][0]) == {"name", "counts", "targets", "seen_today"}, ("build_office row shape unchanged", bo["rows"][0].keys()))
+bad_r = goals.build_office(dict(src, roster=RuntimeError("x")), WED, canon)
+ck(bad_r["rows"] == [] and bad_r["total"]["partial"] is True, bad_r)
+
+# ── [fix 2] היום/אתמול לפי משקל יום העבודה (שבת 0 = הושלם; שישי חצי) ────────────────
+sat = goals.build_periods(dict(src, roster=["דנה כהן"]), SAT, canon)
+st = sat["today"]["rows"][0]
+ck(st["targets"] == {"meetings": 0, "buyers": 0, "past_clients": 0, "reviews": 0}, st["targets"])
+ck(st["met"] == 4 and st["goals_n"] == 4, ("Saturday target 0 counts as met", st))
+ck(sat["yesterday"]["rows"][0]["targets"]["meetings"] == 1 and sat["yesterday"]["rows"][0]["targets"]["buyers"] == 1.5, "Friday yesterday = half")
+sun = goals.build_periods(dict(src, roster=["דנה כהן"]), dt.date(2026, 11, 1), canon)
+ck(sun["yesterday"]["day"] == SAT.isoformat() and sun["yesterday"]["rows"][0]["targets"]["meetings"] == 0, ("Sunday's yesterday = Saturday, 0", sun["yesterday"]))
+ck(sun["today"]["rows"][0]["targets"]["meetings"] == 2, "Sunday today = full daily target")
+D2 = {"goals": json.loads(json.dumps(sat, ensure_ascii=False))}
+js2 = js.split(";D=")[0] + ";D=" + json.dumps(D2, ensure_ascii=False) + ";console.log(goalsCard());"
+o2 = subprocess.run(["node", "-e", js2], capture_output=True, text=True)
+ck(o2.returncode == 0, o2.stderr[-500:])
+ck("0/—" in o2.stdout and "0/0" not in o2.stdout and "<b>4/4</b>" in o2.stdout, ("target 0 shown as —", o2.stdout[:600]))
+# האפליקציה: הכרטיס של הסוכן נשאר עם היעד היומי המלא (build_office לא משקלל)
+ck(goals.build_office(dict(src, roster=["דנה כהן"]), SAT, canon)["rows"][0]["targets"]["meetings"] == 2, "app keeps plain daily target")
+print("dash_goals fix1/2 OK", _load.n)
 
 # ── dashboard_goals: שליפת המקורות (יומן מסונן בשרת מתחילת השבוע הקודם) ─────────────
 class AutoG(dict):
