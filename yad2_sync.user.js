@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      14.4
+// @version      14.5
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -52,7 +52,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='14.4'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='14.5'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -3223,7 +3223,7 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;}}};window.__ysPriv={canScan:privCanScan,owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={setCookie:dsCookieSet,hostClean:dsHostDupClean,enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,featPlan:npFeatPlan,fetchFeat:npFetchFeat,applyFeat:npApplyFeat,itemDesc:npItemDesc,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;},get NP_FEAT_PER_SCAN(){return NP_FEAT_PER_SCAN;}}};window.__ysPriv={canScan:privCanScan,owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={setCookie:dsCookieSet,hostClean:dsHostDupClean,enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
@@ -3261,6 +3261,74 @@ function npMapItem(it,phones){
   };
   r._orderId=it.orderId; r._token=tok; r._hasPhone=!!it.hasPhone;
   return r;
+}
+// v14.5 (28/10, אייל: 'כן תבנה'): מאפייני נכס נולד (מעלית/ממ"ד/מרפסת…) והטקסט של בעל הנכס.
+// רשימת Yad2+ החדשה לא מכילה אותם (בדיקת קונסול 28/10) — רק דף המודעה הציבורי. רק מודעות חדשות:
+// בסריקה הראשונה של כל מקור (area:5/area:6) כל המודעות הקיימות נרשמות 'ישנות' בלי בקשה, ומאז
+// עד NP_FEAT_PER_SCAN חדשות בכל סריקה. נשמר ב-GM ומוחל על כל סריקה (אחרת סריקה הבאה דורסת).
+var NP_FEAT_KEY='ysNpFeat', NP_FEAT_INIT_KEY='ysNpFeatInit', NP_FEAT_PER_SCAN=10, NP_FEAT_MAX=8000, NP_FEAT_TRIES=3, NP_FEAT_DESC_MAX=1500;
+function npFeatLoad(){ try{ return JSON.parse(gmGet(NP_FEAT_KEY,'{}'))||{}; }catch(e){ return {}; } }
+function npFeatInitLoad(){ try{ return JSON.parse(gmGet(NP_FEAT_INIT_KEY,'{}'))||{}; }catch(e){ return {}; } }
+function npFeatSave(m,init){
+  try{ var ks=Object.keys(m); if(ks.length>NP_FEAT_MAX){ ks.sort(function(x,y){return ((m[x]&&m[x].t)||0)-((m[y]&&m[y].t)||0);}); ks.slice(0,ks.length-NP_FEAT_MAX).forEach(function(k){delete m[k];}); }
+       gmSet(NP_FEAT_KEY,JSON.stringify(m)); if(init)gmSet(NP_FEAT_INIT_KEY,JSON.stringify(init)); }catch(e){}
+}
+// מה לפתוח בסריקה הזו. {s:1}=ישנה (לא נפתחת) · {x,d}=נקרא · {f:n}=נכשל n פעמים
+function npFeatPlan(items,m,init,src,now){
+  items=(items||[]).filter(function(it){ return it&&it.token; });
+  if(!init[src]){
+    items.forEach(function(it){ if(!m[it.token]) m[it.token]={s:1,t:now}; });
+    init[src]=1; return [];
+  }
+  return items.filter(function(it){ var e=m[it.token]; return !e||(!e.x&&!e.s&&(e.f||0)<NP_FEAT_TRIES); }).slice(0,NP_FEAT_PER_SCAN);
+}
+// הטקסט של בעל הנכס — רק מתוך המודעה עצמה (לפי token), לא ממודעות 'דומות' באותו דף
+function npItemDesc(html,tok){
+  var nd=exclParseNextData(html); if(!nd)return '';
+  var own=null;
+  (function walk(o,d){
+    if(own||!o||typeof o!=='object'||d>12)return;
+    if(Array.isArray(o)){o.forEach(function(x){walk(x,d+1);});return;}
+    if(String(o.token||'')===String(tok)&&(o.metaData||o.inProperty)){ own=o; return; }
+    for(var k in o)walk(o[k],d+1);
+  })(nd,0);
+  if(!own)return '';
+  var keys=/^(description|info_text|freeText|adDescription|about|remarks)$/i, best='';
+  (function walk(o,d){
+    if(!o||typeof o!=='object'||d>6)return;
+    for(var k in o){ var v=o[k];
+      if(typeof v==='string'){ var t=v.trim(); if(keys.test(k)&&t.length>best.length&&/[֐-׿]/.test(t)&&!looksJunk(t))best=t; }
+      else walk(v,d+1); }
+  })(own,0);
+  return best.replace(/\s+/g,' ').trim().slice(0,NP_FEAT_DESC_MAX);
+}
+function npFetchFeat(fetchFn,need,m,onProg){
+  var i=0, got=0;
+  return new Promise(function(resolve){
+    (function next(){
+      if(i>=need.length){ resolve(got); return; }
+      var tok=String(need[i++].token);
+      fetchFn('https://www.yad2.co.il/realestate/item/'+tok).then(function(html){
+        if(looksBlocked(html)){ log('🛡️ נכס נולד: דף מודעה חסום — עוצרים את המאפיינים לסריקה הזו'); resolve(got); return; }
+        var fx=itemFeatures(html,tok);
+        if(fx||exclParseNextData(html)){ m[tok]={x:fx||[],d:npItemDesc(html,tok),t:Date.now()}; got++; }
+        else m[tok]={f:((m[tok]&&m[tok].f)||0)+1,t:Date.now()};
+        if(onProg)onProg(i,need.length,got);
+        setTimeout(next,humanGap(1400,2600));
+      }).catch(function(){
+        m[tok]={f:((m[tok]&&m[tok].f)||0)+1,t:Date.now()};
+        if(onProg)onProg(i,need.length,got);
+        setTimeout(next,humanGap(1800,2600));
+      });
+    })();
+  });
+}
+function npApplyFeat(rows,m){
+  (rows||[]).forEach(function(r){
+    var e=m[String(r._token||'')]; if(!e)return;
+    if(e.x&&e.x.length) r.tags=e.x.join(';');
+    if(e.d&&!r.description) r.description=e.d;
+  });
 }
 function npPhonesLoad(){ try{ return JSON.parse(gmGet('ysNpPhones','{}'))||{}; }catch(e){ return {}; } }
 function npPhonesSave(m){
@@ -3327,9 +3395,15 @@ function npRunScan(statusFn,done){
       var phones=npPhonesLoad();
       return npFetchPhones(fetchFn,res.items,phones,function(i,n,g){ if(i%5===0||i===n) statusFn('טלפונים '+i+'/'+n+' ('+g+' נמצאו)…'); }).then(function(){
         npPhonesSave(phones);
-        var rows=res.items.map(function(it){ return npMapItem(it,phones); });
-        if(!res.full) pgDiag='סריקה חלקית ('+rows.length+')';
-        saveRows(rows,[],res.full,function(m){ fin(m); });
+        var feat=npFeatLoad(), finit=npFeatInitLoad();
+        var fneed=npFeatPlan(res.items,feat,finit,src,Date.now());
+        return npFetchFeat(fetchFn,fneed,feat,function(i,n,g){ if(i%5===0||i===n) statusFn('מאפיינים '+i+'/'+n+' ('+g+' נקראו)…'); }).then(function(){
+          npFeatSave(feat,finit);
+          var rows=res.items.map(function(it){ return npMapItem(it,phones); });
+          npApplyFeat(rows,feat);
+          if(!res.full) pgDiag='סריקה חלקית ('+rows.length+')';
+          saveRows(rows,[],res.full,function(m){ fin(m); });
+        });
       });
     });
   }).catch(function(e){ statusFn('⚠️ '+(e&&e.message||e)); fin('שגיאה: '+(e&&e.message||e)); });

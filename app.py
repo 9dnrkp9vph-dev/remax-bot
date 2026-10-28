@@ -9317,7 +9317,8 @@ def _nb_as_office_row(r):
             "שכונה": _nb_clean(r.get("שכונה", "")),
             "כתובת": _nb_clean(r.get("רחוב1", "") or r.get("רחוב", "")), "מספר בית": "",
             "חדרים": rooms, 'מ"ר': sqm, "קומה": floor, "מחיר": _nb_clean(r.get("מחיר", "")),
-            "סוג נכס": ptype, "תיאור": desc}
+            "סוג נכס": ptype, "תיאור": desc,
+            "תגיות": _nb_clean(r.get("תגיות", ""))}   # 28/10: מאפיינים מדף המודעה (סורק v14.5)
 
 def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
     """[NB-SEARCH 30/09] כרטיס נכס נולד לקליינט — משותף ל-/api/newborn ול-/api/search/newborn.
@@ -9340,6 +9341,8 @@ def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
         "city": city,
         "address": addr,
         "desc": _nb_clean(r.get("תיאור נכס", "")),
+        # 28/10: מעלית / ממ"ד / מרפסת — מהתגיות (סורק v14.5) או מהתיאור, כמו בכרטיסי המשרד
+        "feats": _row_feats({"תגיות": _nb_clean(r.get("תגיות", "")), "תיאור": _dsc}),
         "price": _newborn_price(r.get("מחיר", "")),
         "notes": _nb_clean(r.get("הערות חדש", ""))[:160],
         "owner": owner,

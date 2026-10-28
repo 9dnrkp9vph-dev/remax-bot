@@ -5323,7 +5323,11 @@ function nbCard(r, i){
     'ירד מפרסום · ' + esc(r.delisted) + '</div>';
   return '<div class="nb">' +
     '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
-    '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' + fam + '</div>' + chip + '</div>' +
+    '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' +
+    // 28/10: מעלית / ממ"ד / מרפסת (סורק v14.5) — אותו מראה כמו בכרטיסי המשרד
+    ((r.feats && r.feats.length) ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">' + r.feats.map(function(x){
+      return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px">' + esc(x) + '</span>'; }).join('') + '</div>' : '') +
+    fam + '</div>' + chip + '</div>' +
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
     // 24/09 (אייל): ירידת מחיר גם בנכס נולד — מחיר ישן מחוק + תג ירוק (אותו מראה כמו במשרד)
     '<div style="display:flex;align-items:center;gap:8px">' +
@@ -10622,7 +10626,9 @@ def y2_norm_private(row):
     parts = [p for p in (g("property_type"),
                          (y2_num_str(g("rooms")) + " חד'") if g("rooms") else "",
                          (y2_num_str(g("sqm")) + " מ\"ר") if g("sqm") else "",
-                         ("קומה " + y2_num_str(g("floor"))) if g("floor") else "") if p]
+                         (("קומה " + y2_num_str(g("floor"))) +
+                          ((" מתוך " + y2_num_str(g("total_floors"))) if g("total_floors") else ""))
+                         if g("floor") else "") if p]
     desc = " · ".join(parts) + ((". " + g("description")) if g("description") else "")
     raw = {"שם בעל הנכס": g("contact"), "טלפון בעל הנכס-": g("phone"),
            "רחוב": g("street") or g("address"), "נוצר בתאריך": g("listing_date"),
@@ -10630,6 +10636,9 @@ def y2_norm_private(row):
            "קישור": g("link"), "הערות חדש": "", "משתמש": "", "עיר": g("city") or g("_city"),
            "שכונה": g("neighborhood"), "מזהה": oid, "סוג עסקה": g("deal_type"),
            "קומה": y2_num_str(g("floor")), "מקור": "yad2",
+           # 28/10 (סורק v14.5): מאפיינים מדף המודעה (מעלית/ממ"ד/מרפסת…) + קומות בבניין מהרשימה
+           "תגיות": " · ".join(t.strip() for t in g("tags").split(";") if t.strip()),
+           "קומות בבניין": y2_num_str(g("total_floors")),
            # 26/09 (אייל: "רק מה שפורסם לראשונה עכשיו למעלה"): 'נראה לראשונה' = תאריך הפתיחה בגיליון הסורק
            # (imported_at); לא משתנה לעולם אחרי הקליטה הראשונה (ראה y2_nb_first_seen). 'נוצר בתאריך' = modified של יד2.
            "נראה לראשונה": y2_first_seen_str(g("imported_at"))}

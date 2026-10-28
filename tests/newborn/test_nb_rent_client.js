@@ -97,6 +97,10 @@ const tick = () => new Promise(r => setTimeout(r, 5));
   ck(hr.indexOf('>להשכרה<') >= 0 && hr.indexOf('לחודש') >= 0, 'rent card: tag + per month');
   const hs = nbCard({key: 's1', price: '1,900,000', address: 'הרצל 5', city: 'קרית ביאליק', ageDays: 0}, 0);
   ck(hs.indexOf('להשכרה') < 0 && hs.indexOf('לחודש') < 0, 'sale card unchanged');
+  // 28/10: תגיות מאפיינים בכרטיס
+  const hf = nbCard({key: 'f1', price: '1,900,000', address: 'הרצל 5', city: 'קרית ביאליק', ageDays: 0, feats: ['מעלית', 'ממ"ד']}, 0);
+  ck(hf.indexOf('>מעלית<') >= 0 && hf.indexOf('>ממ&quot;ד<') + hf.indexOf('>ממ"ד<') > -2, 'feature chips on card');
+  ck(hs.indexOf('#EEF1F5') < 0, 'no chips without feats');
   console.log('ok', n);
 })().catch(e => { console.error(e); process.exit(1); });
 
