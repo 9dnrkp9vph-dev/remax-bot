@@ -13112,6 +13112,12 @@ try:
 except Exception as _op_err:
     log.error(f"office_presence init failed (app unaffected): {_op_err}")
 
+# ── יעדים יומיים (אייל 28/10) — מודול נפרד ──
+try:
+    _goals.register(app, globals())
+except Exception as _goals_err:
+    log.error(f"goals init failed (app unaffected): {_goals_err}")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # WARMUP — חימום ה-caches הכבדים בעליית התהליך (deploy/restart מרוקן הכל)
 # 05/08: המשתמש הראשון אחרי deploy ספג בנייה קרה — /api/report נמדד 78ש' (מול

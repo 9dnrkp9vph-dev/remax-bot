@@ -206,3 +206,21 @@ def meeting_stamp(prev, new_status, now):
     if ex:
         return ex
     return now if new_status == "meeting" else None
+
+
+def register(app, G):
+    """ראוטי היעדים. G = globals() של app.py (או מקבילה בבדיקות)."""
+    from flask import jsonify, request
+
+    @app.route("/v2/api/goals/remind", methods=["POST"])
+    def goals_remind():
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "error": "unauthorized"}), 403
+        b = request.get_json(silent=True) or {}
+        act = {"remind": ACT_REMIND, "review": ACT_REVIEW_MANUAL}.get(b.get("kind"))
+        digits = re.sub(r"\D", "", str(b.get("phone") or ""))
+        if not act or len(digits) < 9:
+            return jsonify({"ok": False, "error": "bad_request"}), 400
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), act, G["_last9"](digits))
+        return jsonify({"ok": True})

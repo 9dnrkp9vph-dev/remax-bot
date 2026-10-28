@@ -891,13 +891,18 @@ function recentDeal(x){
   if (!m) return false;
   return (Date.now() - new Date(+m[3], +m[2] - 1, +m[1]).getTime()) < 365 * 86400000;
 }
+// יעדים (28/10): כל לחיצה נרשמת ביומן לצורך מונה 'לקוחות עבר' — שולח ושוכח, לא חוסם את פתיחת הוואטסאפ
+function goalBeacon(p, k){
+  try { fetch('/v2/api/goals/remind', {method: 'POST', keepalive: true, headers: {'Content-Type': 'application/json', 'X-Auth-Token': TOK}, body: JSON.stringify({phone: p, kind: k})}).catch(function(){}); } catch (e) {}
+}
 function waBtn(x, agent){
   var ph = waPhone(x.phone || x.client_phone);
   if (!ph) return '';
-  var rv = (REVIEW && recentDeal(x)) ? '<a class="wa rv" target="_blank" rel="noopener" href="https://wa.me/' + ph + '?text=' + encodeURIComponent(reviewText(x, agent || '')) + '">' +
+  var p9 = ph.slice(-9);
+  var rv = (REVIEW && recentDeal(x)) ? '<a class="wa rv" target="_blank" rel="noopener" onclick="goalBeacon(\'' + p9 + '\',\'review\')" href="https://wa.me/' + ph + '?text=' + encodeURIComponent(reviewText(x, agent || '')) + '">' +
     '<svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
     'בקשת ביקורת בגוגל</a>' : '';
-  return '<a class="wa" target="_blank" rel="noopener" href="https://wa.me/' + ph + '?text=' + encodeURIComponent(remindText(x, agent || '')) + '">' +
+  return '<a class="wa" target="_blank" rel="noopener" onclick="goalBeacon(\'' + p9 + '\',\'remind\')" href="https://wa.me/' + ph + '?text=' + encodeURIComponent(remindText(x, agent || '')) + '">' +
     '<svg width="18" height="18" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>' +
     'תזכורת ללקוח בוואטסאפ</a>' + rv;
 }
