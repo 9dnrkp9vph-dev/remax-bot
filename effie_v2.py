@@ -349,6 +349,31 @@ input, textarea, select{ font-size:16px !important; }
    להסרה: למחוק את הבלוק הזה בלבד. */
 :focus-visible{ outline:2px solid #2E6BD6 !important; outline-offset:2px; border-radius:4px; }
 
+/* ── [PTR 28/10] רענון גלוי: פס 'מתעדכן', תווית 'עודכן', ומשיכה לרענון ── */
+#v2busy{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;height:3px;z-index:460;pointer-events:none;
+    opacity:0;transition:opacity .2s;background:linear-gradient(90deg,transparent,#C29435,#E4C56B,#C29435,transparent);
+    background-size:45% 100%;background-repeat:no-repeat;animation:v2busy 1.1s linear infinite}
+#v2busy.on{opacity:1}
+@keyframes v2busy{from{background-position:-60% 0}to{background-position:160% 0}}
+#v2fresh{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;z-index:461;pointer-events:none;
+    transform:translate(-50%,-8px);opacity:0;transition:opacity .25s,transform .25s;display:flex;align-items:center;gap:6px;
+    background:#1E3A5F;color:#fff;font:700 12.5px 'Heebo',sans-serif;padding:6px 14px;border-radius:999px;
+    box-shadow:0 6px 20px rgba(30,58,95,.18);white-space:nowrap}
+#v2fresh.on{opacity:1;transform:translate(-50%,0)}
+#v2ptr{position:fixed;top:calc(env(safe-area-inset-top,0px) - 46px);left:50%;margin-left:-21px;width:42px;height:42px;
+    border-radius:50%;background:#fff;box-shadow:0 6px 20px rgba(30,58,95,.16);z-index:455;pointer-events:none;
+    display:flex;align-items:center;justify-content:center;opacity:0}
+#v2ptr.back{transition:transform .2s,opacity .2s}
+#v2ptr svg{transition:transform .15s}
+#v2ptr.ready svg{transform:rotate(180deg)}
+#v2ptr.spin svg{animation:v2spin .8s linear infinite}
+@keyframes v2spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){
+  #v2busy{animation:none;background:#C29435;opacity:0}
+  #v2busy.on{opacity:.85}
+  #v2ptr.spin svg{animation-duration:2.4s}
+}
+
 /* ── האזור האישי הגלובלי (v2Me) — נפתח מעיגול הפרופיל בכל מסך ── */
 .v2meOvl{position:fixed;inset:0;background:rgba(14,22,36,.45);z-index:400}
 .v2mePanel{position:fixed;left:0;right:0;bottom:0;z-index:401;background:#F7F5EE;border-radius:24px 24px 0 0;
@@ -377,6 +402,152 @@ input, textarea, select{ font-size:16px !important; }
     if (t){ t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite'); }
   });
 })();
+/* [BUSY] start */
+/* [PTR 28/10] אייל: "אי אפשר לדעת אם הוא חושב מאחורי הקלעים או שזה הדף המעודכן".
+   כל בקשת נתונים (/api/) עוברת כאן: אחרי 400ms בלי תשובה נדלק פס זהב דק בראש המסך,
+   וכשהכל חזר הוא נכבה. בסבב הראשון של הדף (ואחרי משיכה לרענון) — 'עודכן' לשנייה וחצי.
+   פעימות, יומני לחיצה ו-keepalive לא נספרים. בקשה שלא חוזרת משתחררת אחרי 30ש'. */
+window.v2Busy = (function(){
+  var n = 0, shown = false, showT = null, finT = null, first = true, bar = null, chip = null, chipT = null;
+  function els(){
+    if (bar) return true;
+    if (!document.body) return false;
+    bar = document.createElement('div'); bar.id = 'v2busy'; bar.setAttribute('aria-hidden', 'true');
+    chip = document.createElement('div'); chip.id = 'v2fresh';
+    chip.setAttribute('role', 'status'); chip.setAttribute('aria-live', 'polite');
+    document.body.appendChild(bar); document.body.appendChild(chip);
+    return true;
+  }
+  function tracked(u, o){
+    var s = String(u || '');
+    if (s.indexOf('/api/') < 0) return false;
+    if (o && o.keepalive) return false;
+    return !/\/api\/auth\/whoami|\/v2\/api\/(ping|wa\/click|crm\/ping|story\/view)(\?|$)/.test(s);
+  }
+  function announce(){
+    if (!els()) return;
+    chip.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#E4C56B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>עודכן';
+    chip.classList.add('on');
+    if (chipT) clearTimeout(chipT);
+    chipT = setTimeout(function(){ chip.classList.remove('on'); }, 1600);
+  }
+  function begin(){
+    n++;
+    if (finT){ clearTimeout(finT); finT = null; }
+    if (!shown && !showT) showT = setTimeout(function(){
+      showT = null;
+      if (n > 0 && els()){ shown = true; bar.classList.add('on'); }
+    }, 400);
+  }
+  function finish(){
+    finT = null;
+    if (n) return;
+    if (showT){ clearTimeout(showT); showT = null; }
+    if (shown){ shown = false; if (bar) bar.classList.remove('on'); }
+    var ann = first;
+    try{ if (sessionStorage.getItem('v2ptr')){ sessionStorage.removeItem('v2ptr'); ann = true; } }catch(e){}
+    first = false;
+    if (ann) announce();
+  }
+  function end(){
+    n = Math.max(0, n - 1);
+    if (!n && !finT) finT = setTimeout(finish, 150);   // בקשה שרשרתית שמתחילה מיד אחרי — אותו סבב
+  }
+  function wrap(u, o, p){
+    if (!tracked(u, o)) return p;
+    begin();
+    var done = false, safety = null;
+    function fin(){ if (done) return; done = true; if (safety) clearTimeout(safety); end(); }
+    safety = setTimeout(fin, 30000);
+    p.then(fin, fin);
+    return p;
+  }
+  return {tracked: tracked, wrap: wrap, announce: announce};
+})();
+/* [BUSY] end */
+/* [PTR] start */
+/* משיכה לרענון — מגע בלבד, רק במסכים עם ניווט, רק מראש המסך, לא כשגיליון/חלון פתוח.
+   הדף יכול להגדיר window.v2Refresh() (מחזיר Promise) — אחרת טעינה מחדש של הדף. */
+(function(){
+  if (!('ontouchstart' in window)) return;
+  var y0 = null, pull = 0, armed = false, busy = false, ind = null;
+  var ARROW = '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v11M5.5 10.5L10 15l4.5-4.5" fill="none" stroke="#C29435" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var SPIN = '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="#EFE7D2" stroke-width="2.4"/><path d="M10 3a7 7 0 0 1 7 7" fill="none" stroke="#C29435" stroke-width="2.4" stroke-linecap="round"/></svg>';
+  function el(){
+    if (ind) return ind;
+    if (!document.body) return null;
+    ind = document.createElement('div'); ind.id = 'v2ptr'; ind.setAttribute('aria-hidden', 'true');
+    ind.innerHTML = ARROW; document.body.appendChild(ind);
+    return ind;
+  }
+  function top(){
+    var m = document.querySelector('main');
+    if (document.documentElement.classList.contains('pwa') && m) return m.scrollTop || 0;
+    return window.scrollY || document.documentElement.scrollTop || 0;
+  }
+  function blocked(t){
+    if (busy || !document.querySelector('nav')) return true;
+    if (document.body.style.overflow === 'hidden' || document.documentElement.style.overflow === 'hidden') return true;
+    var o = document.getElementById('ovl');
+    if (o && o.style.display && o.style.display !== 'none') return true;
+    if (t && t.closest && t.closest('#sheet,#meSheet,#story,#ovl,.v2mePanel,.v2meOvl,[data-noptr],input,textarea,select')) return true;
+    for (var e = t; e && e !== document.body && e.nodeType === 1; e = e.parentElement){
+      if (e.scrollTop > 0) return true;   // רשימה פנימית שגוללת — לא מושכים ממנה
+    }
+    return false;
+  }
+  function place(px, back){
+    var i = el(); if (!i) return;
+    i.classList.toggle('back', !!back);
+    i.style.transform = 'translateY(' + px + 'px)';
+    i.style.opacity = px > 4 ? '1' : '0';
+  }
+  function reset(){
+    armed = false; pull = 0;
+    var i = el(); if (!i) return;
+    i.classList.remove('ready'); i.classList.remove('spin'); i.innerHTML = ARROW;
+    place(0, true);
+  }
+  function refresh(){
+    busy = true;
+    var i = el();
+    if (i){ i.classList.remove('ready'); i.classList.add('spin'); i.innerHTML = SPIN; }
+    place(64, true);
+    if (typeof window.v2Refresh === 'function'){
+      var p = null;
+      try{ p = window.v2Refresh(); }catch(e){}
+      Promise.resolve(p).then(function(){}, function(){}).then(function(){
+        busy = false; reset(); if (window.v2Busy) window.v2Busy.announce();
+      });
+      return;
+    }
+    try{ sessionStorage.setItem('v2ptr', '1'); }catch(e){}
+    setTimeout(function(){ location.reload(); }, 30);   // לתת לעיגול להסתובב לפני הטעינה
+  }
+  document.addEventListener('touchstart', function(e){
+    y0 = null;
+    if (!e.touches || e.touches.length !== 1 || top() > 0 || blocked(e.target)) return;
+    y0 = e.touches[0].clientY; pull = 0; armed = false;
+  }, {passive: true});
+  document.addEventListener('touchmove', function(e){
+    if (y0 === null) return;
+    if (top() > 0){ y0 = null; reset(); return; }
+    var dy = e.touches[0].clientY - y0;
+    if (dy <= 0){ if (pull) reset(); return; }
+    pull = Math.min(dy * 0.5, 90);
+    armed = pull >= 60;
+    var i = el(); if (i) i.classList.toggle('ready', armed);
+    place(pull, false);
+  }, {passive: true});
+  function release(){
+    if (y0 === null) return;
+    y0 = null;
+    if (armed) refresh(); else reset();
+  }
+  document.addEventListener('touchend', release, {passive: true});
+  document.addEventListener('touchcancel', function(){ if (y0 !== null){ y0 = null; reset(); } }, {passive: true});
+})();
+/* [PTR] end */
 (function(){
   /* whoami מיידי מהמטמון (10 דק') — הדף לא מחכה לרשת; רענון רץ ברקע ומעדכן.
      טוקן שפג: הרענון ברקע מוחק את המטמון ומחזיר למסך הכניסה. */
@@ -403,7 +574,9 @@ input, textarea, select{ font-size:16px !important; }
         return live;
       }
     }catch(e){}
-    return _f(u, o);
+    var _p = _f(u, o);
+    try{ if (window.v2Busy) window.v2Busy.wrap(u, o, _p); }catch(e){}   // [PTR] פס 'מתעדכן'
+    return _p;
   };
   /* [SWR 24/08] etag למסכי הרשימות: swrU מוסיף ?etag= מהעותק השמור; שרת עונה
      {unchanged} זעיר → swrJ מחזיר את העותק המלא השמור; swrPut שומר עותק מלא+etag.
