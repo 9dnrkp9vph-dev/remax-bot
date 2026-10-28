@@ -198,3 +198,11 @@ def rollup(per_agent, targets):
     counts["followups"] = {"due": sum(f["due"] for f in fk), "done": sum(f["done"] for f in fk)} if fk else None
     tsum = {k: sum((t or {}).get(k, 0) for t in targets.values()) for k in DEFAULTS}
     return {"counts": counts, "targets": tsum, "partial": partial}
+
+
+def meeting_stamp(prev, new_status, now):
+    """חותמת 'מתי נקבעה הפגישה' — קבועה לתמיד: קיימת נשמרת; אחרת now אם הסטטוס meeting; אחרת None."""
+    ex = (prev or {}).get("meeting_at")
+    if ex:
+        return ex
+    return now if new_status == "meeting" else None

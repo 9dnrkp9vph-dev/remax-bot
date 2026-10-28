@@ -7952,6 +7952,7 @@ def _activity_merge(c):
     return merged
 
 import office_presence as _office_presence_mod
+import goals as _goals
 
 USAGE_RETENTION_DAYS = 60   # הפעימות נגזמות אחרי 60 יום (prune_pings)
 
@@ -9785,6 +9786,8 @@ def api_newborn_status():
         _prev = m.get(skey) or {}
         rec["by"] = _prev.get("by") or s.get("name", "")
         rec["by_phone"] = _prev.get("by_phone") or _last9(s.get("phone", ""))
+        _ms = _goals.meeting_stamp(_prev, status, time.time())   # יעדים: מתי נקבעה הפגישה (קבוע)
+        if _ms is not None: rec["meeting_at"] = _ms
         m[skey] = rec
         cfg["nbStatus"] = m
     ok, _ = _config_mutate(_mut)
@@ -9970,6 +9973,8 @@ def api_newborn_status_edit():
     if new_status in ("meeting", "followup") and new_status != rec.get("status"):
         rec["status"] = new_status
         cal_changed = True
+        _ms = _goals.meeting_stamp(rec, new_status, time.time())   # יעדים: followup→meeting מקבל חותמת
+        if _ms is not None: rec["meeting_at"] = _ms
     if note_in is not None and str(note_in)[:1000] != (rec.get("note") or ""):
         rec["note"] = str(note_in)[:1000]
         cal_changed = True   # ההערה מופיעה בתיאור אירוע היומן — רענון שישקף אותה
