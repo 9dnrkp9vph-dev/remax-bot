@@ -566,6 +566,10 @@ def register_site(app, G, store=None):
             matches = G["search_listings_in_sheet"](parsed) if parsed else []
             hidden, _ = prop_flags(st().all())
             res = search_result(parsed, matches, hidden)
+            try:   # [SEARCH-2 28/10] (2ב) 'אין לנו כרגע נכס ברחוב X' — האתר מציג מעל התוצאות
+                res["note"] = str(G["search_area_note"](parsed, matches) or "")[:160] if parsed else ""
+            except Exception:
+                res["note"] = ""
             try:   # [CRM 20/10] לוח הבקרה: 10 החיפושים האחרונים באתר — הטקסט וכמה נכסים חזרו
                 G["_log_activity"]("אתר", "site", "", "חיפוש AI באתר", "%s · %d נכסים" % (q[:90], len(res.get("keys") or [])))
             except Exception:

@@ -28,7 +28,7 @@ def test_search_route_key(make_app, monkeypatch):
     monkeypatch.setenv("SITE_KEY", "secret")
     assert c.post("/site/api/search", json={"key": "nope", "q": "x"}).status_code == 403
     r = c.post("/site/api/search", json={"key": "secret", "q": "3 חדרים"})
-    assert r.status_code == 200 and r.get_json() == {"ok": True, "keys": ["a"], "summary": "דירה"}
+    assert r.status_code == 200 and r.get_json() == {"ok": True, "keys": ["a"], "summary": "דירה", "note": ""}
     body = r.get_data(as_text=True)
     assert "0521234567" not in body and "אהוד" not in body
 

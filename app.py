@@ -1765,6 +1765,10 @@ def _search_post_rules(parsed, text):
                 parsed["cities"] = ["קרית חיים" if c == "חיפה" else c for c in cs]
             elif (parsed.get("city") or "").strip() == "חיפה" and not parsed.get("neighborhood") and not parsed.get("neighborhoods"):
                 parsed["neighborhood"] = "קרית חיים"
+        # [SEARCH-2 28/10] (2ד) 'רק במשכנות' — אזור קשיח: שכונה אחרת לא נכנסת גם כשהמחיר צמוד לתקציב
+        if re.search(r"(?:^|\s)רק\s+(?:ב|ל|באזור|בשכונ)", t) and (parsed.get("neighborhood") or parsed.get("neighborhoods")
+                                                              or parsed.get("city") or parsed.get("cities")):
+            parsed["_strict_area"] = True
     except Exception:
         pass
     return parsed
@@ -2413,6 +2417,8 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             # [SEARCH-AUDIT 22/10] חיפוש שכונת-קריות של חיפה — שכונה אחרת בחיפה (מרכז הכרמל) היא לא 'שכנה'
             if r_city == "חיפה" and any(_is_krayot_haifa(qn) for qn in q_neighs) and not _is_krayot_haifa(r_neigh):
                 return 0
+            if query.get("_strict_area"):   # [SEARCH-2 28/10] 'רק ב…' — בלי חציית שכונה
+                return 0
             # שכונה אחרת מפורשת (05/08): מוצגת רק כשהמחיר צמוד לתקציב — ±10%
             # מהתקרה — קרבת-תקציב מצדיקה להציע חציית שכונה; אחרת מחוץ לחיפוש
             _bm2 = query.get("budget_max")
@@ -2457,7 +2463,11 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         else:
             # רק תקרה ("עד X") — הקרוב לתקציב מדורג ראשון (בקשת אייל 05/08): רציף עד +40,
             # ונכס מתחת ל-55% מהתקציב = ליגת-מחיר אחרת, סופג קנס (מוצג, אבל בתחתית)
-            score += max(0, 40 - int(diff_pct * 80))
+            # [SEARCH-2 28/10] (2א) 'עד 1.7M' — קודם מה שבתוך התקציב; מעליו (עד התקרה של שלב ה-flex) אחריהם
+            if r_price > q_bmax:
+                score += max(0, 10 - int(diff_pct * 100))
+            else:
+                score += max(0, 40 - int(diff_pct * 80))
             if r_price < q_bmax * 0.55:
                 score -= 18
     q_rmin = query.get("rooms_min")
@@ -2708,6 +2718,60 @@ def _street_hint(text, rows, parsed):
             best = s
     return best
 
+def _agent_in_query(text, rows):
+    """[SEARCH-2 28/10] (2ג) 'נכסים של אלעד לוי' — שם סוכן מתוך הסוכנים שבנכסים עצמם: שם מלא (2+ מילים),
+    או שם פרטי ייחודי אחרי 'של'/'הסוכן'/'הסוכנת'. מחזיר את השם כפי שבנכסים, או ''."""
+    t = " " + re.sub(r"[^\w\s]", " ", str(text or "")) + " "
+    names = {}
+    for r in rows or []:
+        for col in ("סוכן 1", "סוכן 2"):
+            nm = str(r.get(col, "") or "").strip()
+            if nm and nm not in ("מנהל", "סוכן", "משרד", "(לא משויך)") and not re.match(r"^סוכן\s*\d", nm):
+                names.setdefault(nm, 0)
+                names[nm] += 1
+    best = ""
+    for nm in names:
+        ws = nm.split()
+        if len(ws) >= 2 and all(re.search(r"\s[ו]?" + re.escape(w) + r"\s", t) for w in ws):
+            if len(nm) > len(best):
+                best = nm
+    if best:
+        return best
+    m = re.search(r"(?:של|הסוכן|הסוכנת)\s+(\S+)", t)
+    if m:
+        hits = [nm for nm in names if nm.split()[0] == m.group(1)]
+        if len(hits) == 1:
+            return hits[0]
+    return ""
+
+def _strip_words(text, name):
+    t = str(text or "")
+    for w in str(name or "").split():
+        t = re.sub(r"(^|\s)[ושה]?" + re.escape(w) + r"(?=$|\s)", " ", t)
+    return re.sub(r"\s+", " ", re.sub(r"(^|\s)(של|הסוכנת|הסוכן|נכסים|נכסי)(?=$|\s)", " ", t)).strip()
+
+def search_area_note(query, matches):
+    """[SEARCH-2 28/10] (2ב) רחוב/שכונה שאין לנו בהם נכס — משפט כנה מעל התוצאות במקום רשימה שנראית תואמת.
+    '' = יש התאמה (או לא חיפשו רחוב/שכונה)."""
+    q = query or {}
+    rows = [m[1] if isinstance(m, (tuple, list)) else m for m in (matches or [])]
+    city = (q.get("city") or "").strip() or ", ".join([c for c in (q.get("cities") or []) if c][:2])
+    tail = (" · הנה נכסים ב" + city) if (rows and city) else (" · הנה נכסים קרובים לחיפוש" if rows else "")
+    st = (q.get("street") or "").strip()
+    if st:
+        if not any(_street_match(st, r.get("כתובת", "") or "") for r in rows):
+            nm = re.sub(r"\s*\d+\s*$", "", st).strip() or st
+            return "אין לנו כרגע נכס ברחוב " + nm + tail
+        return ""
+    nbs = [n for n in ([q.get("neighborhood")] + list(q.get("neighborhoods") or [])) if n and str(n).strip()]
+    if nbs:
+        def _hit(r):
+            rn = str(r.get("שכונה", "") or "")
+            return any(str(n).strip() in rn or (rn and rn in str(n)) for n in nbs)
+        if rows and not any(_hit(r) for r in rows):
+            return "אין לנו כרגע נכס ב" + " / ".join(str(n).strip() for n in nbs[:2]) + tail
+    return ""
+
 def search_listings_in_sheet(query: dict, rows=None, cap=None) -> list:
     # [NB-SEARCH 30/09] rows/cap אופציונליים — אותו סולם flex משמש גם לנכס נולד (rows=שורות ממופות)
     if rows is None:
@@ -2715,6 +2779,18 @@ def search_listings_in_sheet(query: dict, rows=None, cap=None) -> list:
         rows = fetch_sheet_rows_deal("השכרה") if "שכר" in str(query.get("deal_type") or "") else fetch_sheet_rows()
     if not rows:
         return []
+    _ag = _agent_in_query(query.get("_qtext") or "", rows) if query.get("_qtext") else ""
+    if _ag:   # [SEARCH-2 28/10] (2ג) רק הנכסים של הסוכן; השם לא נקרא כרחוב
+        _ak = _canon_key(_ag)
+        rows = [r for r in rows if _ak in (_canon_key(r.get("סוכן 1", "")), _canon_key(r.get("סוכן 2", "")))]
+        _st = (query.get("street") or "").strip()
+        query = dict(query, _qtext=_strip_words(query["_qtext"], _ag),
+                     street="" if (_st and any(w in _st for w in _ag.split())) else _st)
+        if not (query.get("city") or query.get("cities") or query.get("neighborhood") or query.get("neighborhoods")
+                or query.get("rooms_min") or query.get("rooms_max") or query.get("budget_max") or query.get("street")
+                or (query.get("property_type") or "דירה") != "דירה" or query.get("must_have")):
+            rows = sorted(rows, key=_prop_epoch, reverse=True)
+            return [(100, r, 0) for r in rows[:cap or 40]]
     if not (query.get("street") or "").strip() and query.get("_qtext"):
         _h = _street_hint(query["_qtext"], rows, query)
         if _h:
@@ -8481,6 +8557,7 @@ def api_search_properties():
         matches = (search_listings_in_sheet(parsed, _rows_all) if _deal_lbl else search_listings_in_sheet(parsed)) if parsed else []
         out = [_row_out(row, score) for score, row, flex in matches]
         return jsonify({"ok": True, "summary": (parsed or {}).get("summary_he", ""), "ptype": (parsed or {}).get("property_type", ""),
+                        "note": search_area_note(parsed, matches) if parsed else "",   # [SEARCH-2 28/10] (2ב)
                         "updated": _props_updated(_rows_all), "results": out})
     except Exception as e:
         log.error(f"properties search error: {e}", exc_info=True)

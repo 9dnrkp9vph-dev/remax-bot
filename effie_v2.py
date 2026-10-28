@@ -6388,7 +6388,7 @@ var _loadSeq = 0;
 /* [SWR 14/09] "המסך נטען לאט" (אייל): שלוש הקריאות (משרד/שת"פ/שלי, ~1MB) חיכו זו לזו
    (Promise.all) וציירו רק בסוף. עכשיו: (1) ציור מיידי מהעותק המלא השמור (v2s:props:*),
    (2) כל טאב מתרענן ומצטייר ברגע שהתשובה שלו מגיעה, (3) etag — בלי שינוי התשובה ~100B. */
-function _applyOffice(j){ OFFICE = (j && j.results) || []; SUM.office = (j && j.summary) || ''; UPD.office = (j && j.updated) || ''; }
+function _applyOffice(j){ OFFICE = (j && j.results) || []; SUM.office = ((j && j.note) ? j.note + ' · ' : '') + ((j && j.summary) || ''); UPD.office = (j && j.updated) || ''; }   // [SEARCH-2 28/10] note = 'אין לנו כרגע נכס ברחוב X'
 function _applyShtaf(j){ SHTAF = (j && j.results) || []; SUM.shtaf = (j && j.summary) || ''; UPD.shtaf = (j && j.updated) || ''; }
 function _applyMine(j){ MINE = (j && j.results) || []; MINE_MULTI = !!(j && j.multi); }
 function load(q){

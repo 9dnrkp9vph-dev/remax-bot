@@ -14,7 +14,7 @@ for n in TREE.body:
         TOP[n.targets[0].id] = n
 
 
-SKIP = {"fetch_sheet_rows", "fetch_sheet_rows_deal"}   # מוחלפים בגרסאות דמה בבדיקה
+SKIP = {"fetch_sheet_rows", "fetch_sheet_rows_deal", "_prop_epoch", "_canon_key"}   # מוחלפים בגרסאות דמה בבדיקה
 
 def load(*names):
     need, order, stack = set(), [], list(names)
@@ -45,6 +45,7 @@ def check(name, cond, detail=""):
 
 
 g = load("score_match", "search_listings_in_sheet", "_search_post_rules", "_street_hint")
+g.update({"_prop_epoch": lambda r: 0, "_canon_key": lambda n: re.sub(r"\s+", " ", str(n or "")).strip()})
 score, search, post = g["score_match"], g["search_listings_in_sheet"], g["_search_post_rules"]
 
 def row(city="קרית ביאליק", nb="", street="", house="", rooms="4", price="1,500,000", ptype="דירה", deal="מכירה", lid=""):
