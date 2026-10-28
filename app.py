@@ -5065,6 +5065,12 @@ def api_auth_whoami():
            "tabs": _tabs_for_role(s.get("drole", "")),
            # click2call (10/09): true → הקליינט מחייג דרך המרכזיה; false → tel: ישיר בלי חלון ריק
            "c2c": bool(MAKE_API_TOKEN) and _c2c_enabled_for(s)}
+    # 28/10 (אייל): 'חייג' בנכס נולד בחיוג רגיל מהטלפון לסוכן הזה — מתג בכרטיס החבר בניהול
+    try:
+        _ag = _c2c_agent_entry(s)
+        out["nbPlainDial"] = bool(_ag and _ag.get("newbornPlainDial"))
+    except Exception:
+        out["nbPlainDial"] = False
     return jsonify(out)
 
 def gcal_create_event(email, summary, description="", start_iso=None, end_iso=None,
@@ -5282,6 +5288,7 @@ def api_dev_people():
                        "aliases": v["aliases"], "role": role,
                        "phone": (_ce.get("phone", "") or (sorted(v["phones"])[0] if v["phones"] else "")),
                        "nbRent": bool(_ce.get("newbornRent")),
+                       "nbPlain": bool(_ce.get("newbornPlainDial")),
                        "suspended": bool(set(v["phones"]) & _susp)})
     # חברי צוות שנמחקו — חוזרים עם מונה חתימות, לשחזור מהניהול. בלי זה סוכן שנמחק
     # "נעלם" מכל הרשימות (ספרייה + לא-משויכים) למרות שכבר ביצע חתימות (בקשת אייל 13/07).
@@ -5539,6 +5546,9 @@ def api_dev_agent_update():
         if "newbornRent" in body:   # 27/10: השכרות בנכס נולד לסוכן הזה
             if body.get("newbornRent") is True: entry["newbornRent"] = True
             else: entry.pop("newbornRent", None)
+        if "newbornPlainDial" in body:   # 28/10: 'חייג' בנכס נולד = חיוג רגיל (בלי המרכזיה)
+            if body.get("newbornPlainDial") is True: entry["newbornPlainDial"] = True
+            else: entry.pop("newbornPlainDial", None)
     ok, _ = _config_mutate(_mut)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עדכון סוכן", name)
     return jsonify({"ok": ok})

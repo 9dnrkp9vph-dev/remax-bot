@@ -2743,6 +2743,9 @@ function openMember(i){
       '<div class="swRow"><div><div class="lb">השכרות בנכס נולד</div><div class="sb">רואה גם מודעות פרטיות להשכרה</div></div>' +
       '<div class="tg' + (p.nbRent ? ' on' : '') + '" id="tgRent" onclick="this.classList.toggle(\'on\')"></div></div>') +
     (isDev ? '' :
+      '<div class="swRow"><div><div class="lb">חיוג רגיל בנכס נולד</div><div class="sb">\'חייג\' פותח את החייגן של הטלפון, בלי המרכזיה</div></div>' +
+      '<div class="tg' + (p.nbPlain ? ' on' : '') + '" id="tgPlain" onclick="this.classList.toggle(\'on\')"></div></div>') +
+    (isDev ? '' :
       '<div class="swRow"><div><div class="lb">השהיה</div><div class="sb">מושהה לא רואה נתונים ולא נכנס</div></div>' +
       '<div class="tg' + (p.suspended ? ' on' : '') + '" id="tgSusp" onclick="this.classList.toggle(\'on\')"></div></div>') +
     '<button class="btn btn-blue" onclick="saveMember(' + i + ')">שמירה</button>' +
@@ -2782,6 +2785,8 @@ function saveMember(i){
     var upd = {name: p.name};
     var rentNow = !!(el('tgRent') && el('tgRent').classList.contains('on'));
     if (rentNow !== !!p.nbRent) upd.newbornRent = rentNow;
+    var plainNow = !!(el('tgPlain') && el('tgPlain').classList.contains('on'));
+    if (plainNow !== !!p.nbPlain) upd.newbornPlainDial = plainNow;
     var vpNow = el('memVp') ? el('memVp').value.trim() : null;
     if (vpNow !== null && vpNow !== (p.vphone || '')) upd.vphone = vpNow;
     if (Object.keys(upd).length > 1)
@@ -5348,8 +5353,12 @@ function nbCard(r, i){
 }
 function nbDial(i){   // חיוג לבעל הנכס (10/09): רישום 'מי פנה' + click2call בפיילוט, אחרת tel:
   markContact(i);
-  var r = nbKitRows()[i];
-  c2cDial(String(r.phone || '').replace(/\D/g, ''));
+  var r = nbKitRows()[i], tel = String(r.phone || '').replace(/\D/g, '');
+  /* 28/10 (אייל): מתג 'חיוג רגיל בנכס נולד' בכרטיס הסוכן בניהול → חייגן הטלפון, בלי המרכזיה */
+  var who = null;
+  try{ who = (JSON.parse(localStorage.getItem('v2who') || 'null') || {}).j || null; }catch(_e){}
+  if (who && who.nbPlainDial){ if (tel) location.href = 'tel:' + tel; return false; }
+  c2cDial(tel);
   return false;
 }
 function markContact(i){

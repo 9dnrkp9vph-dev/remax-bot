@@ -101,6 +101,18 @@ const tick = () => new Promise(r => setTimeout(r, 5));
   const hf = nbCard({key: 'f1', price: '1,900,000', address: 'הרצל 5', city: 'קרית ביאליק', ageDays: 0, feats: ['מעלית', 'ממ"ד']}, 0);
   ck(hf.indexOf('>מעלית<') >= 0 && hf.indexOf('>ממ&quot;ד<') + hf.indexOf('>ממ"ד<') > -2, 'feature chips on card');
   ck(hs.indexOf('#EEF1F5') < 0, 'no chips without feats');
+  // 28/10: 'חייג' — חיוג רגיל כשהסוכן מסומן, אחרת דרך המרכזיה
+  const dial = (plain) => {
+    const st = {}, loc = {href: ''}, c2c = [];
+    const denv = {nbKitRows: () => [{key: 'k', address: 'הרצל 5', phone: '052-111-2222'}], POST: () => Promise.resolve({}),
+      localStorage: {getItem: () => JSON.stringify({j: {ok: true, c2c: true, nbPlainDial: plain}})}, location: loc,
+      c2cDial: t => { c2c.push(t); }};
+    const f = new Function(...Object.keys(denv), [fn(kit, 'markContact'), fn(kit, 'nbDial'), 'return nbDial;'].join('\n'))(...Object.values(denv));
+    f(0); return {loc, c2c};
+  };
+  const dp = dial(true), dc = dial(false);
+  ck(dp.loc.href === 'tel:0521112222' && dp.c2c.length === 0, 'plain dial → tel:');
+  ck(dc.c2c[0] === '0521112222' && dc.loc.href === '', 'default → click2call');
   console.log('ok', n);
 })().catch(e => { console.error(e); process.exit(1); });
 
@@ -128,5 +140,14 @@ const tick = () => new Promise(r => setTimeout(r, 5));
   tg.cls.add('on'); A2.saveMember(0);
   const up = posts.find(p => p[0] === '/api/dev/agent_update');
   ck(up && up[1].newbornRent === true && up[1].name === 'יוסי לוי', 'saves newbornRent=true');
+  // 28/10: מתג 'חיוג רגיל בנכס נולד'
+  ck(sheet.indexOf('חיוג רגיל בנכס נולד') >= 0 && sheet.indexOf('id="tgPlain"') >= 0, 'plain-dial toggle in member sheet');
+  posts.length = 0; tg.cls.delete('on');
+  const tgP = {cls: new Set(['on'])}; tgP.classList = {contains: c => tgP.cls.has(c)};
+  const _el = env2.el; env2.el = id => id === 'tgPlain' ? tgP : _el(id);
+  const A3 = new Function(...Object.keys(env2), code2)(...Object.values(env2));
+  A3.saveMember(0);
+  const up2 = posts.find(p => p[0] === '/api/dev/agent_update');
+  ck(up2 && up2[1].newbornPlainDial === true && !('newbornRent' in up2[1]), 'saves newbornPlainDial=true only');
   console.log('admin ok', n);
 })();
