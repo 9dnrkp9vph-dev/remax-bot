@@ -12724,6 +12724,24 @@ def crm_agent_table(calls, sigs, buyers, act, usage_by, bounds, h):
     return {p: sorted(d.values(), key=lambda r: (-score(r), r["name"])) for p, d in per.items()}
 
 
+def crm_roster(G):
+    """הצוות שיכול להיכנס — אנשי הקשר בלי הנה"ח, מושהים, נמחקים וחשבונות בדיקה (שמות כמו באנשי הקשר).
+    משותף לטבלת הסוכנים בלוח הבקרה וליעדים (goals.py) — מקור אחד ל'מי נספר'."""
+    people, susp, rem = [], G["_suspended_set"](), G["_removed_agent_keys"]()
+    for r in G["_contacts_rows"]() or []:
+        nm = str((r[0] if r else "") or "").strip()
+        l9 = G["_last9"](r[1] if len(r) > 1 else "")
+        if not nm or "בדיקה" in nm or (l9 and l9 in susp) or G["_name_key"](nm) in rem:
+            continue
+        try:
+            if l9 and G["_resolve_roles"](l9)[1] == "accountant":
+                continue
+        except Exception:
+            pass
+        people.append(nm)
+    return people
+
+
 def crm_todo(calls, sig_recs, act, newborn, contacts, now, h, limit=30):
     """[CRM 20/10 'מחכה לטיפול'] (1) שיחות שלא נענו ב-72 השעות האחרונות ואף אחד לא חזר/דיבר עם המספר אחריהן;
     (2) חתימות שממתינות יותר מ-48 שעות (עד 30 יום); (3) לקוחות שסימנו 'מתאים' בדף קונה ב-72 שעות;
@@ -18207,18 +18225,7 @@ def register(app, G):
 
             def agent_listings():
                 """כל הצוות (בלי הנה"ח, מושהים, נמחקים וחשבונות בדיקה) + מודעות המשרד בפרסום לכל אחד."""
-                people, susp, rem = [], G["_suspended_set"](), G["_removed_agent_keys"]()
-                for r in G["_contacts_rows"]() or []:
-                    nm = str((r[0] if r else "") or "").strip()
-                    l9 = G["_last9"](r[1] if len(r) > 1 else "")
-                    if not nm or "בדיקה" in nm or (l9 and l9 in susp) or G["_name_key"](nm) in rem:
-                        continue
-                    try:
-                        if l9 and G["_resolve_roles"](l9)[1] == "accountant":
-                            continue
-                    except Exception:
-                        pass
-                    people.append(nm)
+                people = crm_roster(G)
                 canon = lambda n: G["_canon_agent_name"](n) or n
                 hidden = set()
                 try:

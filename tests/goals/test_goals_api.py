@@ -29,7 +29,7 @@ def now_dmy():
     return dt.datetime.now(IL).strftime("%d/%m/%Y %H:%M")
 
 
-def make(sess, buyers_fail=False, cfg=None, tv_key=""):
+def make(sess, buyers_fail=False, cfg=None, tv_key="", swr=None, buyers_list=None, coord_fail=False):
     os.environ["TV_KEY"] = tv_key
     now_iso = dt.datetime.now(IL).strftime("%Y-%m-%dT%H:%M")
     cfg = cfg if cfg is not None else {
@@ -49,6 +49,8 @@ def make(sess, buyers_fail=False, cfg=None, tv_key=""):
     def buyers():
         if buyers_fail:
             raise RuntimeError("boom")
+        if buyers_list is not None:
+            return list(buyers_list)
         return [{"agent": "דנה כהן", "date": now_dmy(), "row": 5}, {"agent": "רון לוי", "date": now_dmy(), "row": 6}]
 
     class SB:
@@ -59,7 +61,7 @@ def make(sess, buyers_fail=False, cfg=None, tv_key=""):
     G = AutoG(
         log=None,
         _web_auth=lambda: sess,
-        _swr=lambda k, ttl, b, **kw: b(),
+        _swr=swr or (lambda k, ttl, b, **kw: b()),
         _cache_clear=lambda k: state["cleared"].append(k),
         _load_config=lambda: state["cfg"],
         _config_mutate=mutate,
@@ -71,7 +73,7 @@ def make(sess, buyers_fail=False, cfg=None, tv_key=""):
         _is_answered_status=lambda st: str(st).upper() == "ANSWER",
         _canon_key=_key, _canon_agent_name=lambda n: n, _name_key=_key,
         _last9=lambda p: "".join(c for c in str(p or "") if c.isdigit())[-9:],
-        _coordinators_all=lambda: {"509999999": {"name": "אוצר", "agents": {"502222222"}, "names": {"מיכל בר"}}},
+        _coordinators_all=(lambda: (_ for _ in ()).throw(RuntimeError("cfg down"))) if coord_fail else lambda: {"509999999": {"name": "אוצר", "agents": {"502222222"}, "names": {"מיכל בר"}}},
         web_phone_name_map=lambda: {"502222222": "רון לוי"},
         web_contacts_phone_name=lambda: {},
         _contacts_rows=lambda: CONTACTS,
@@ -192,6 +194,75 @@ def test_build_office_pure():
     assert o["total"]["targets"]["meetings"] == 4 and o["total"]["counts"]["meetings"] == 0
     o = goals.build_office(dict(src, roster=RuntimeError("x")), day, _key)
     assert o["rows"] == [] and o["total"]["partial"] is True, o
+
+
+class Clock:
+    def __init__(self, t): self.t = t
+    def __call__(self): return self.t
+
+
+def real_swr(clock):
+    """כמו app._swr: טרי → מוחזר; פג עד max_stale → מוחזר הישן ובנייה 'ברקע' (כאן מיד); אחרת בנייה."""
+    cache = {}
+
+    def swr(key, ttl, build, max_stale=1800):
+        e = cache.get(key)
+        now = clock()
+        if e and now - e[0] < ttl:
+            return e[1]
+        if e and now - e[0] < max_stale:
+            cache[key] = (clock(), build())
+            return e[1]
+        v = build()
+        cache[key] = (clock(), v)
+        return v
+    return swr
+
+
+def test_fresh_after_ttl():
+    clk = Clock(time.time())
+    goals._clock = clk
+    try:
+        bl = [{"agent": "דנה כהן", "date": now_dmy(), "row": 5}]
+        c, _ = make(AGENT, swr=real_swr(clk), buyers_list=bl)
+        assert c.get("/v2/api/goals/today").get_json()["me"]["counts"]["buyers"] == 1
+        bl.append({"agent": "דנה כהן", "date": now_dmy(), "row": 7})
+        clk.t += 61
+        c.get("/v2/api/goals/today")                        # לכל היותר תשובה ישנה אחת (בונה ברקע)
+        j = c.get("/v2/api/goals/today").get_json()
+        assert j["me"]["counts"]["buyers"] == 2, j          # הבנייה ברקע קיבלה מקורות טריים
+        clk.t += 200                                        # מעבר ל-max_stale — בנייה בתוך הבקשה
+        bl.append({"agent": "דנה כהן", "date": now_dmy(), "row": 8})
+        assert c.get("/v2/api/goals/today").get_json()["me"]["counts"]["buyers"] == 3
+    finally:
+        goals._clock = goals._tm.time
+
+
+def test_no_yesterday_after_midnight():
+    d = dt.datetime.now(IL).date()
+    clk = Clock(dt.datetime(d.year, d.month, d.day, 23, 59, 40, tzinfo=IL).timestamp())
+    goals._clock = clk
+    try:
+        c, _ = make(MGR, swr=real_swr(clk))
+        assert c.get("/v2/api/goals/today").get_json()["day"] == d.isoformat()
+        clk.t += 30                                          # 00:00:10 — עדיין בתוך ה-TTL
+        j = c.get("/v2/api/goals/today").get_json()
+        nxt = (d + dt.timedelta(days=1)).isoformat()
+        assert j["day"] == nxt, j["day"]
+        assert j["total"]["counts"]["meetings"] == 0, j      # הפגישות של אתמול לא נספרות היום
+        k = c.get("/v2/api/goals/office").get_json()
+        assert k["total"]["counts"]["meetings"] == 0, k
+    finally:
+        goals._clock = goals._tm.time
+
+
+def test_coord_team_failure():
+    c, _ = make(COORD, coord_fail=True)
+    r = c.get("/v2/api/goals/today")
+    assert r.status_code == 200, r.status_code
+    j = r.get_json()
+    assert j["view"] == "team" and j["agents"] == [] and j["total"]["partial"] is True, j
+    assert c.get("/v2/api/goals/today?agent=" + "רון לוי").status_code == 403
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@
 from __future__ import annotations
 import datetime as _dt
 import re
+import threading as _threading
+import time as _tm
 
 try:
     from zoneinfo import ZoneInfo
@@ -20,6 +22,12 @@ ACT_REVIEW_MANUAL = "בקשת ביקורת — ידני"
 ACT_BPAGE = "דף קונה — שליחה"
 _MAX_TARGET = 50
 _SUM_KEYS = ("meetings", "buyers", "bpage", "past_clients", "reviews", "missed")
+SRC_TTL = 60
+
+
+def _clock():
+    """שעון — נקודת החלפה לבדיקות."""
+    return _tm.time()
 
 
 def day_bounds(day):
@@ -257,7 +265,6 @@ def register(app, G):
     # ── היעדים להיום ────────────────────────────────────────────────────────────
     import hmac as _hmac
     import os as _os
-    import time as _time
     _keys_used = set()
 
     def canon(n):
@@ -283,29 +290,22 @@ def register(app, G):
             return e
 
     def _roster():
-        """הצוות שיכול להיכנס — כמו טבלת הסוכנים בלוח הבקרה (בלי הנה"ח, מושהים, נמחקים וחשבונות בדיקה)."""
-        people, susp, rem = [], G["_suspended_set"]() or set(), G["_removed_agent_keys"]() or set()
-        for r in G["_contacts_rows"]() or []:
-            nm = str((r[0] if r else "") or "").strip()
-            l9 = G["_last9"](r[1] if len(r) > 1 else "")
-            if not nm or "בדיקה" in nm or (l9 and l9 in susp) or G["_name_key"](nm) in rem:
-                continue
-            try:
-                if l9 and (G["_resolve_roles"](l9) or ("", ""))[1] == "accountant":
-                    continue
-            except Exception:
-                pass
-            people.append(_display(nm))
-        return people
+        """הצוות שיכול להיכנס — אותה רשימה כמו טבלת הסוכנים בלוח הבקרה (effie_v2.crm_roster)."""
+        import effie_v2 as _ev
+        return [_display(n) for n in _ev.crm_roster(G)]
 
     def _team(coord_phone):
         cc = (G["_coordinators_all"]() or {}).get(G["_last9"](coord_phone)) or {}
         names = [str(n) for n in (cc.get("names") or set()) if n]
-        for ph in cc.get("agents") or set():
-            nm = (G["web_phone_name_map"]() or {}).get(G["_last9"](ph)) \
-                or (G["web_contacts_phone_name"]() or {}).get(G["_last9"](ph))
-            if nm:
-                names.append(nm)
+        phones = cc.get("agents") or set()
+        if phones:
+            m1 = G["web_phone_name_map"]() or {}
+            m2 = G["web_contacts_phone_name"]() or {}
+            for ph in phones:
+                l9 = G["_last9"](ph)
+                nm = m1.get(l9) or m2.get(l9)
+                if nm:
+                    names.append(nm)
         out, seen = [], set()
         for n in names:
             d = _display(n)
@@ -331,7 +331,7 @@ def register(app, G):
         return [r.get("name") for r in (G["_usage_rows"](start) or []) if r.get("name")]
 
     def _fetch_src():
-        now = _time.time()
+        now = _clock()
         day = _dt.datetime.fromtimestamp(now, _IL).date()
         t0 = day_bounds(day)[0]
         cfg = _safe(G["_load_config"])
@@ -345,8 +345,26 @@ def register(app, G):
                 "seen": _safe(lambda: _seen(day)),
                 "roster": _safe(_roster)}
 
+    _src_box = {"t": 0.0, "v": None}
+    _src_lock = _threading.Lock()
+
+    def _today_iso():
+        return _dt.datetime.fromtimestamp(_clock(), _IL).date().isoformat()
+
     def _src():
-        return G["_swr"]("goals:src", 60, _fetch_src)
+        """המקורות — עותק אחד לכל הצופים, טרי עד SRC_TTL ורק של היום (בלי 'ישן אבל מיידי' — אחרת
+        הבנייה ברקע של כל צופה הייתה נשענת על מקורות ישנים, ואחרי חצות על אתמול)."""
+        def fresh():
+            v = _src_box["v"]
+            return v is not None and (_clock() - _src_box["t"]) < SRC_TTL and v.get("day") == _today_iso()
+        if fresh():
+            return _src_box["v"]
+        with _src_lock:
+            if fresh():
+                return _src_box["v"]
+            v = _fetch_src()
+            _src_box["t"], _src_box["v"] = _clock(), v
+            return v
 
     def _cfg():
         try:
@@ -362,9 +380,9 @@ def register(app, G):
             if roster_fn is not None:
                 src["roster"] = _safe(roster_fn)
             return build_office(src, day, canon)
-        key = "goals:" + scope_key
+        key = "goals:" + _today_iso() + ":" + scope_key     # יום חדש = מפתח חדש = בנייה טרייה
         _keys_used.add(key)
-        return G["_swr"](key, 60, build)
+        return G["_swr"](key, SRC_TTL, build, max_stale=2 * SRC_TTL)
 
     def _is_mgr(s):
         return s.get("drole") in ("manager", "developer")
@@ -379,10 +397,10 @@ def register(app, G):
             return jsonify({"ok": False, "error": "unauthorized"}), 403
         mgr, coord = _is_mgr(s), (not _is_mgr(s)) and _is_coord(s)
         want = str(request.args.get("agent") or "").strip()
-        team = _team(s.get("phone", "")) if coord else None
+        team = _safe(lambda: _team(s.get("phone", ""))) if coord else None
         if want and not mgr and not coord:
             want = ""                                  # סוכן — תמיד הנתונים שלו
-        if want and coord and canon(want) not in {canon(n) for n in team}:
+        if want and coord and (_bad(team) or canon(want) not in {canon(n) for n in team}):
             return jsonify({"ok": False, "error": "forbidden"}), 403
         res = {"ok": True, "can_edit": mgr}
         if want or not (mgr or coord):
@@ -392,12 +410,16 @@ def register(app, G):
             res.update(view="agent", me=({"counts": row["counts"], "targets": row["targets"]} if row else None),
                        total=None, agent=name)
         elif coord:
-            o = _build("team:" + G["_last9"](s.get("phone", "")), lambda: list(team))
+            def team_roster():
+                if _bad(team):
+                    raise team if isinstance(team, BaseException) else RuntimeError("team unavailable")
+                return list(team)
+            o = _build("team:" + G["_last9"](s.get("phone", "")), team_roster)
             res.update(view="team", me=None, total=o["total"], agents=o["rows"])
         else:
             o = _build("office", None)
             res.update(view="office", me=None, total=o["total"], agents=o["rows"])
-        res["day"] = _src().get("day") or _dt.datetime.now(_IL).date().isoformat()
+        res["day"] = _today_iso()
         return jsonify(res)
 
     @app.route("/v2/api/goals/office", methods=["GET"])
