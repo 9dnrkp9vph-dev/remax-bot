@@ -200,6 +200,34 @@ def rollup(per_agent, targets):
     return {"counts": counts, "targets": tsum, "partial": partial}
 
 
+def build_office(src, day, canon):
+    """שורה לכל סוכן ברשימה (src['roster']) + סכום. src['cfg'] = הקונפיג (ליעדים), src['seen'] = מי נכנס היום.
+    רשימה שנכשלה בשליפה → בלי שורות, partial=True."""
+    bounds = day_bounds(day)
+    roster = src.get("roster")
+    cfg = src.get("cfg")
+    cfg = cfg if isinstance(cfg, dict) else {}
+    seen_src = src.get("seen")
+    seen = set() if _bad(seen_src) else {canon(n) for n in (seen_src or []) if n}
+    rows, per, tg = [], {}, {}
+    if not _bad(roster):
+        done = set()
+        for name in roster or []:
+            k = canon(name)
+            if not name or k in done:
+                continue
+            done.add(k)
+            c = count_agent(name, bounds, src, canon)
+            t = targets_for(cfg, name, canon)
+            rows.append({"name": name, "counts": c, "targets": t, "seen_today": k in seen})
+            per[k] = c
+            tg[k] = t
+    total = rollup(per, tg)
+    if _bad(roster):
+        total["partial"] = True
+    return {"rows": rows, "total": total}
+
+
 def meeting_stamp(prev, new_status, now):
     """חותמת 'מתי נקבעה הפגישה' — קבועה לתמיד: קיימת נשמרת; אחרת now אם הסטטוס meeting; אחרת None."""
     ex = (prev or {}).get("meeting_at")
@@ -224,3 +252,208 @@ def register(app, G):
             return jsonify({"ok": False, "error": "bad_request"}), 400
         G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), act, G["_last9"](digits))
         return jsonify({"ok": True})
+
+
+    # ── היעדים להיום ────────────────────────────────────────────────────────────
+    import hmac as _hmac
+    import os as _os
+    import time as _time
+    _keys_used = set()
+
+    def canon(n):
+        return G["_canon_key"](str(n or "").strip())
+
+    def _display(n):
+        n = str(n or "").strip()
+        try:
+            return G["_canon_agent_name"](n) or n
+        except Exception:
+            return n
+
+    def _safe(fn):
+        try:
+            return fn()
+        except Exception as e:
+            lg = G.get("log")
+            if lg:
+                try:
+                    lg.warning(f"goals source failed: {e}")
+                except Exception:
+                    pass
+            return e
+
+    def _roster():
+        """הצוות שיכול להיכנס — כמו טבלת הסוכנים בלוח הבקרה (בלי הנה"ח, מושהים, נמחקים וחשבונות בדיקה)."""
+        people, susp, rem = [], G["_suspended_set"]() or set(), G["_removed_agent_keys"]() or set()
+        for r in G["_contacts_rows"]() or []:
+            nm = str((r[0] if r else "") or "").strip()
+            l9 = G["_last9"](r[1] if len(r) > 1 else "")
+            if not nm or "בדיקה" in nm or (l9 and l9 in susp) or G["_name_key"](nm) in rem:
+                continue
+            try:
+                if l9 and (G["_resolve_roles"](l9) or ("", ""))[1] == "accountant":
+                    continue
+            except Exception:
+                pass
+            people.append(_display(nm))
+        return people
+
+    def _team(coord_phone):
+        cc = (G["_coordinators_all"]() or {}).get(G["_last9"](coord_phone)) or {}
+        names = [str(n) for n in (cc.get("names") or set()) if n]
+        for ph in cc.get("agents") or set():
+            nm = (G["web_phone_name_map"]() or {}).get(G["_last9"](ph)) \
+                or (G["web_contacts_phone_name"]() or {}).get(G["_last9"](ph))
+            if nm:
+                names.append(nm)
+        out, seen = [], set()
+        for n in names:
+            d = _display(n)
+            if canon(d) not in seen:
+                seen.add(canon(d))
+                out.append(d)
+        return out
+
+    def _missed(now):
+        import effie_v2 as _ev
+        frm = (_dt.datetime.fromtimestamp(now, _IL) - _dt.timedelta(days=3)).strftime("%d/%m/%Y")
+        calls = G["web_fetch_raw"]("שיחות", frm, "31/12/2099") or []
+        h = {"ts": _ev.crm_ts, "answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
+             "nb_key": lambda r: ""}
+        return _ev.crm_todo(calls, [], [], [], {}, now, h, limit=None)["missed"]
+
+    def _reviews():
+        import site_api as _sa
+        return _sa.reviews_active(_sa.review_rows(G.get("_sbdb")))
+
+    def _seen(day):
+        start = _dt.datetime(day.year, day.month, day.day, tzinfo=_IL)
+        return [r.get("name") for r in (G["_usage_rows"](start) or []) if r.get("name")]
+
+    def _fetch_src():
+        now = _time.time()
+        day = _dt.datetime.fromtimestamp(now, _IL).date()
+        t0 = day_bounds(day)[0]
+        cfg = _safe(G["_load_config"])
+        return {"day": day.isoformat(),
+                "nb": cfg if _bad(cfg) else ((cfg or {}).get("nbStatus") or {}),
+                "buyers": _safe(G["_fetch_manual_buyers"]),
+                "bpages": _safe(lambda: G["_sbdb"].bpage_all()),
+                "activity": _safe(lambda: G["_activity_fetch"](t0, today=True)),
+                "reviews": _safe(_reviews),
+                "missed": _safe(lambda: _missed(now)),
+                "seen": _safe(lambda: _seen(day)),
+                "roster": _safe(_roster)}
+
+    def _src():
+        return G["_swr"]("goals:src", 60, _fetch_src)
+
+    def _cfg():
+        try:
+            return G["_load_config"]() or {}
+        except Exception:
+            return {}
+
+    def _build(scope_key, roster_fn):
+        def build():
+            src = dict(_src())
+            src["cfg"] = _cfg()
+            day = _dt.date.fromisoformat(src["day"])
+            if roster_fn is not None:
+                src["roster"] = _safe(roster_fn)
+            return build_office(src, day, canon)
+        key = "goals:" + scope_key
+        _keys_used.add(key)
+        return G["_swr"](key, 60, build)
+
+    def _is_mgr(s):
+        return s.get("drole") in ("manager", "developer")
+
+    def _is_coord(s):
+        return s.get("role") == "coordinator" or s.get("drole") == "coordinator"
+
+    @app.route("/v2/api/goals/today", methods=["GET"])
+    def goals_today():
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "error": "unauthorized"}), 403
+        mgr, coord = _is_mgr(s), (not _is_mgr(s)) and _is_coord(s)
+        want = str(request.args.get("agent") or "").strip()
+        team = _team(s.get("phone", "")) if coord else None
+        if want and not mgr and not coord:
+            want = ""                                  # סוכן — תמיד הנתונים שלו
+        if want and coord and canon(want) not in {canon(n) for n in team}:
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+        res = {"ok": True, "can_edit": mgr}
+        if want or not (mgr or coord):
+            name = _display(want or s.get("name", ""))
+            o = _build("agent:" + canon(name), lambda: [name])
+            row = (o.get("rows") or [{}])[0] if o.get("rows") else None
+            res.update(view="agent", me=({"counts": row["counts"], "targets": row["targets"]} if row else None),
+                       total=None, agent=name)
+        elif coord:
+            o = _build("team:" + G["_last9"](s.get("phone", "")), lambda: list(team))
+            res.update(view="team", me=None, total=o["total"], agents=o["rows"])
+        else:
+            o = _build("office", None)
+            res.update(view="office", me=None, total=o["total"], agents=o["rows"])
+        res["day"] = _src().get("day") or _dt.datetime.now(_IL).date().isoformat()
+        return jsonify(res)
+
+    @app.route("/v2/api/goals/office", methods=["GET"])
+    def goals_office():
+        tv = (_os.environ.get("TV_KEY") or "").strip()
+        k = (request.args.get("k") or "").strip()
+        ok = bool(tv) and bool(k) and _hmac.compare_digest(k, tv)
+        if not ok and not G["_web_auth"]():
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+        o = _build("office", None)
+        return jsonify({"ok": True, "total": o["total"]})   # סכומים בלבד — בלי שמות
+
+    @app.route("/v2/api/goals/targets", methods=["POST"])
+    def goals_targets():
+        s = G["_web_auth"]()
+        if not s or not _is_mgr(s):
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        tv = b.get("targets")
+        if not isinstance(tv, dict):
+            return jsonify({"ok": False, "error": "bad_request"}), 400
+        vals = {}
+        for k in DEFAULTS:
+            if k in tv:
+                n = _clip(tv[k])
+                if n is not None:
+                    vals[k] = n
+        agent = _display(b.get("agent") or "")
+
+        def fn(cfg):
+            gl = cfg.get("v2_goals")
+            if not isinstance(gl, dict):
+                gl = {}
+            if agent:
+                ags = gl.get("agents") if isinstance(gl.get("agents"), dict) else {}
+                hit = next((x for x in ags if canon(x) == canon(agent)), agent)
+                cur = ags.pop(hit, None)
+                cur = cur if isinstance(cur, dict) else {}
+                cur.update(vals)
+                ags[agent] = cur
+                gl["agents"] = ags
+            else:
+                cur = gl.get("default") if isinstance(gl.get("default"), dict) else {}
+                cur.update(vals)
+                gl["default"] = cur
+            cfg["v2_goals"] = gl
+            return targets_for(cfg, agent, canon)
+
+        ok, new = G["_config_mutate"](fn)
+        if not ok:
+            return jsonify({"ok": False, "error": "save_failed"}), 500
+        for key in list(_keys_used):
+            try:
+                G["_cache_clear"](key)
+            except Exception:
+                pass
+        det = (agent or "ברירת מחדל") + " · " + ", ".join(f"{k}={v}" for k, v in vals.items())
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "יעדים — עדכון", det)
+        return jsonify({"ok": True, "agent": agent, "targets": new})

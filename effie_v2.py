@@ -12724,7 +12724,7 @@ def crm_agent_table(calls, sigs, buyers, act, usage_by, bounds, h):
     return {p: sorted(d.values(), key=lambda r: (-score(r), r["name"])) for p, d in per.items()}
 
 
-def crm_todo(calls, sig_recs, act, newborn, contacts, now, h):
+def crm_todo(calls, sig_recs, act, newborn, contacts, now, h, limit=30):
     """[CRM 20/10 'מחכה לטיפול'] (1) שיחות שלא נענו ב-72 השעות האחרונות ואף אחד לא חזר/דיבר עם המספר אחריהן;
     (2) חתימות שממתינות יותר מ-48 שעות (עד 30 יום); (3) לקוחות שסימנו 'מתאים' בדף קונה ב-72 שעות;
     (4) מודעות נכס נולד מ-24 השעות האחרונות שאף סוכן לא פנה אליהן. h: ts, answered, nb_key."""
@@ -12760,8 +12760,9 @@ def crm_todo(calls, sig_recs, act, newborn, contacts, now, h):
         addr = ", ".join(x for x in (str(r.get("רחוב") or "").strip(), str(r.get("עיר") or "").strip()) if x)
         nbl.append({"address": addr, "price": str(r.get("מחיר") or ""), "link": str(r.get("קישור") or ""), "ts": ts})
     nbl.sort(key=lambda r: -r["ts"])
-    return {"missed": missed[:30], "missed_n": len(missed), "pending_sigs": pend[:30], "pending_n": len(pend),
-            "likes": likes[:30], "nb_untouched": {"n": len(nbl), "list": nbl[:10]}}
+    cap = (lambda lst: lst) if limit is None else (lambda lst: lst[:limit])   # limit=None = הכל (יעדים 28/10)
+    return {"missed": cap(missed), "missed_n": len(missed), "pending_sigs": cap(pend), "pending_n": len(pend),
+            "likes": cap(likes), "nb_untouched": {"n": len(nbl), "list": nbl[:10]}}
 
 
 _CRM_BRANCH_HE = {"bialik": "ביאליק", "motzkin": "מוצקין", "kiryat_yam": "קרית ים"}

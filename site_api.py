@@ -111,6 +111,16 @@ def reviews_active(rows):
     return out
 
 
+def review_rows(sb=None, store=None):
+    """שורות website_settings כמו ש-_rv_rows קורא — בלי זריעת ההמלצות הישנות. טבלה לא זמינה → חריגה
+    (כדי שיעד ההמלצות יוצג '—' ולא 0)."""
+    st = store or SettingsStore(sb)
+    rows = st.all()
+    if not getattr(st, "available", True):
+        raise RuntimeError("website_settings unavailable")
+    return rows
+
+
 SITE_EDITORS = ("secretary", "manager", "developer")
 
 
