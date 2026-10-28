@@ -83,8 +83,22 @@ def make(sess, buyers_fail=False, cfg=None, tv_key="", swr=None, buyers_list=Non
         _suspended_set=lambda: {"505555555"},
         _removed_agent_keys=lambda: set(),
         _resolve_roles=lambda l9: ("admin", "accountant") if l9 == "506666666" else ("agent", "agent"),
-        _usage_rows=lambda t_from, *a, **kw: [{"name": "דנה כהן", "min": 5}],
+        # היום נכנסה רק דנה; ב-10 הימים האחרונים — דנה ורון (מיכל לא נכנסה, אבל יש לה פגישה)
+        _usage_rows=lambda t_from, *a, **kw: ([{"name": "דנה כהן", "min": 5}]
+                                             if t_from.date() >= dt.datetime.now(IL).date()
+                                             else [{"name": "דנה כהן", "min": 5}, {"name": "רון לוי", "min": 9}]),
+        get_signings=lambda frm, to: [
+            {"agent": "דנה כהן", "address": "הרצל 5, קרית ביאליק", "deal_type": "OWNER_EXCLUSIVE",
+             "commission_pct": "https://x/s/1", "received_at": now_dmy()},
+            {"agent": "דנה כהן", "address": "הרצל 5 קריית ביאליק", "deal_type": "OWNER_EXCLUSIVE",
+             "commission_pct": "2", "received_at": now_dmy()},                      # אותו נכס — נספר פעם אחת
+            {"agent": "דנה כהן", "address": "בגין 3", "deal_type": "OWNER_EXCLUSIVE",
+             "commission_pct": "", "received_at": now_dmy()},                       # לא נחתם
+            {"agent": "רון לוי", "address": "ויצמן 7", "deal_type": "OWNER_SALE",
+             "commission_pct": "2", "received_at": now_dmy()}],                     # מוכר, לא בלעדיות
+        _deal_label=lambda c: {"OWNER_EXCLUSIVE": "בלעדיות", "OWNER_SALE": "מוכר"}.get(c, "קונים"),
     )
+    goals._ACTIVE_BOX.update(k=None, t=0.0, v=None)
     site_api.review_rows = lambda sb=None: [{"kind": "review", "key": "r1", "data": {
         "agents": ["מיכל בר"], "text": "מעולה", "at": dt.datetime.now(IL).isoformat()}}]
     app = Flask(__name__)
@@ -125,8 +139,11 @@ def test_team_rollup():
     assert names == ["מיכל בר", "רון לוי"], names
     t = j["total"]
     assert t["counts"]["meetings"] == 3 and t["counts"]["buyers"] == 1 and t["counts"]["reviews"] == 1, t
-    assert t["counts"]["missed"] == 1 and t["targets"]["meetings"] == 4 and t["partial"] is False, t
+    # יעד הצוות = רק מי שנכנס ב-10 ימים (רון); מיכל מוצגת כי יש לה פגישה, בלי יעד
+    assert t["counts"]["missed"] == 1 and t["targets"]["meetings"] == 2 and t["agents"] == 1 and t["partial"] is False, t
     assert all(a["seen_today"] is False for a in j["agents"]), j
+    act = {a["name"]: a["active"] for a in j["agents"]}
+    assert act == {"רון לוי": True, "מיכל בר": False}, act
 
 
 def test_office_view():
@@ -137,7 +154,8 @@ def test_office_view():
     assert names == sorted(["דנה כהן", "רון לוי", "מיכל בר"]), names   # בלי בדיקה/מושהה/הנה"ח
     seen = {a["name"]: a["seen_today"] for a in j["agents"]}
     assert seen["דנה כהן"] is True and seen["רון לוי"] is False, seen
-    assert j["total"]["counts"]["meetings"] == 4 and j["total"]["targets"]["buyers"] == 9, j
+    assert j["total"]["counts"]["meetings"] == 4 and j["total"]["targets"]["buyers"] == 6, j   # דנה + רון בלבד
+    assert j["total"]["agents"] == 2 and j["total"]["targets"]["listings"] == 4, j
 
 
 def test_office_kiosk():
@@ -165,7 +183,7 @@ def test_targets_manager_only():
     j = c.post("/v2/api/goals/targets", json={"agent": "", "targets": {"meetings": 4, "zzz": 9}}).get_json()
     assert j["ok"] and j["targets"]["meetings"] == 4 and j["targets"]["buyers"] == 3, j
     j = c.post("/v2/api/goals/targets", json={"agent": "רון לוי", "targets": {"buyers": 7, "reviews": "999"}}).get_json()
-    assert j["targets"] == {"meetings": 4, "buyers": 7, "past_clients": 5, "reviews": 50}, j
+    assert j["targets"] == dict(goals.DEFAULTS, meetings=4, buyers=7, reviews=50), j
     assert st["mutates"] == 2
     gl = st["cfg"]["v2_goals"]
     assert gl["default"] == {"meetings": 4} and gl["agents"]["רון לוי"] == {"buyers": 7, "reviews": 50}, gl
@@ -253,7 +271,7 @@ def test_scoped_max_stale_30min():
 def test_activity_filtered_fetch():
     c, st = make(AGENT)
     j = c.get("/v2/api/goals/today").get_json()
-    assert st["act_calls"] and st["act_calls"][0] == (goals.ACT_REMIND,), st["act_calls"]
+    assert st["act_calls"] and st["act_calls"][0] == (goals.ACT_REMIND, goals.ACT_NB_WA), st["act_calls"]
     assert j["me"]["counts"]["past_clients"] == 1, j
 
 
@@ -288,3 +306,26 @@ if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):
             v(); print("ok", k)
+
+
+def test_listings_and_nb_wa():
+    """גיוס נכסים: בלעדיות שנחתמה, נכס ייחודי; פניות לנכס נולד: וואטסאפ ייחודי לכל מודעה ביום."""
+    c, st = make(AGENT)
+    j = c.get("/v2/api/goals/today").get_json()
+    assert j["me"]["counts"]["listings"] == 1, j
+    assert j["me"]["targets"]["listings"] == 2, j
+    assert goals.ACT_NB_WA in st["act_calls"][0], st["act_calls"]
+
+
+def test_inactive_hidden_without_counts():
+    day = dt.datetime.now(IL).date()
+    src = {"roster": ["א", "ב", "ג"], "cfg": {}, "seen": [], "active": ["א"], "nb": {},
+           "buyers": [{"agent": "ב", "date": now_dmy(), "summary": "מהחתמת מתעניין · הרצל 1"}],
+           "bpages": [], "activity": [], "reviews": [], "missed": [], "sigs": []}
+    o = goals.build_office(src, day, _key)
+    rows = {r["name"]: r for r in o["rows"]}
+    assert set(rows) == {"א", "ב"}, rows                          # ג לא נכנס ולא עשה כלום → לא מוצג
+    assert rows["ב"]["active"] is False and rows["ב"]["counts"]["buyers_sign"] == 1
+    assert o["total"]["counts"]["buyers"] == 1 and o["total"]["targets"]["buyers"] == 3 and o["total"]["agents"] == 1, o
+    o = goals.build_office(dict(src, active=None), day, _key)       # מקור לא זמין → כולם עם יעד
+    assert o["total"]["agents"] == 3 and len(o["rows"]) == 3, o

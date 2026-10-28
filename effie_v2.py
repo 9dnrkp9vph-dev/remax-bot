@@ -979,6 +979,12 @@ V2_GOALS_KIT = r"""<style>
   .gBar{height:8px;border-radius:99px;background:#EDEAE2;margin:11px 0 10px;overflow:hidden}
   .gBar div{height:100%;border-radius:99px;background:#2E6BD6}
   .gk-g.done .gBar div{background:#1E3A5F}
+  /* [GOALS2 29/10] גיוס נכסים — היעד המודגש (זהב = החתמה), ראשון ברשימה, שבועי */
+  .gk-g.hl{border:2px solid #E4C56B;background:#FFFBEF}
+  .gk-g.hl .gBar div{background:#C29435}
+  .gk-ic.gold{background:#F6EDD6}
+  .gk-wk{display:inline-block;font-size:11.5px;font-weight:700;color:#7A5E1C;background:#F6EDD6;border-radius:99px;padding:1px 8px;margin-inline-start:6px;vertical-align:2px}
+  .gBtn.gold{background:#C29435;color:#231700}
   .gk-done{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:#1E3A5F;
       background:#E9EDF3;border-radius:99px;padding:3px 10px}
   .gk-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
@@ -1020,7 +1026,7 @@ V2_GOALS_KIT = r"""<style>
 </style>
 <script>
 var GOALS_NAVY = '#1E3A5F';
-var GOALS_KEYS = ['meetings', 'buyers', 'past_clients', 'reviews'];
+var GOALS_KEYS = ['listings', 'meetings', 'nb_wa', 'buyers', 'past_clients', 'reviews'];
 var GOALS_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 function gEsc(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -1055,7 +1061,8 @@ function goalsCacheGet(tok, day){
 /* הנתונים שמוצגים: סוכן — שלו; מתאמת/מנהל — הסכום */
 function goalsData(j){
   var d = j && (j.view === 'agent' ? j.me : j.total);
-  return {counts: (d && d.counts) || {}, targets: (d && d.targets) || {}, partial: !!(d && d.partial)};
+  return {counts: (d && d.counts) || {}, targets: (d && d.targets) || {}, partial: !!(d && d.partial),
+          agents: (d && typeof d.agents === 'number') ? d.agents : null};
 }
 function goalIsDone(c, t){
   c = gNum(c); t = gNum(t); if (t == null) t = 0;
@@ -1078,15 +1085,25 @@ var GOALS_IC = {
   cal: '<svg width="20" height="20" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3" fill="none" stroke="#1E3A5F" stroke-width="1.9"/><path d="M3 10h18M8 3v4M16 3v4" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round"/></svg>',
   phone: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linejoin="round"/></svg>',
   check: '<svg width="14" height="14" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10" fill="none" stroke="#1E3A5F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  homeGold: '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" fill="none" stroke="#7A5E1C" stroke-width="1.9" stroke-linejoin="round"/></svg>',
   fire: '<svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 3c1 3 4 4.5 4 8.5a4 4 0 0 1-8 0c0-2 1-3 1.5-4 .5 1.5 1.5 2 2 2 0-2.5-.5-4.5.5-6.5z" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linejoin="round"/></svg>'
 };
 var GOALS_DEFS = [
+  {k: 'listings', t: 'גיוס נכסים', s: 'הסכמי בלעדיות שנחתמו השבוע', btn: 'להחתמת בעל נכס', u: '/v2/sign?type=owner', ic: 'home', gold: true, week: true, chip: 'גיוס', left: 'נכסים לגיוס', one: 'נכס אחד לגיוס'},
   {k: 'meetings', t: 'פגישות מנכס נולד', s: 'נקבעו היום מכרטיס של מודעה', btn: 'לנכס נולד', u: '/v2/newborn', ic: 'home', chip: 'נכס נולד', left: 'פגישות', one: 'פגישה אחת'},
+  {k: 'nb_wa', t: 'פניות לנכס נולד', s: 'וואטסאפ לבעלי נכסים מכרטיס המודעה', btn: 'לנכס נולד', u: '/v2/newborn', ic: 'chat', green: true, chip: 'פניות', left: 'פניות', one: 'פנייה אחת'},
   {k: 'buyers', t: 'קונים חדשים', s: '', btn: 'לקונים', u: '/v2/buyers', ic: 'user', chip: 'קונים', left: 'קונים', one: 'קונה אחד'},
   {k: 'past_clients', t: 'הודעות ללקוחות עבר', s: '"תזכורת ללקוח" מהיסטוריית העסקאות', btn: 'להיסטוריית העסקאות', u: '/v2/history', ic: 'chat', green: true, chip: 'לקוחות עבר', left: 'לקוחות עבר', one: 'לקוח עבר אחד'},
   {k: 'reviews', t: 'המלצות', s: 'המלצות שנוספו היום', btn: 'להמלצות', u: '/v2/reviews', ic: 'quote', chip: 'המלצות', left: 'המלצות', one: 'המלצה אחת'}
 ];
 function gShow(v){ v = gNum(v); return v == null ? '—' : String(v); }
+/* קונים: כולל מי שנכנס אוטומטית מהחתמת מתעניין + כמה קיבלו דף קונה */
+function goalsBuyersSub(c){
+  var p = [], sg = gNum(c.buyers_sign), bp = gNum(c.bpage);
+  if (sg) p.push((sg === 1 ? 'אחד' : sg) + ' מהחתמה');
+  p.push(bp == null ? 'דף קונה: —' : 'דף קונה נשלח ל-' + bp);
+  return p.join(' · ');
+}
 function gPct(c, t){
   c = gNum(c); t = gNum(t);
   if (c == null) return 0;
@@ -1094,7 +1111,7 @@ function gPct(c, t){
   return Math.max(0, Math.min(100, Math.round(c / t * 100)));
 }
 function gRing(done){
-  var C = 194.8, p = done / 4;
+  var C = 194.8, p = done / GOALS_KEYS.length;
   return '<svg viewBox="0 0 74 74" aria-hidden="true"><circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="8"/>' +
     '<circle cx="37" cy="37" r="31" fill="none" stroke="#E4C56B" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + C +
     '" stroke-dashoffset="' + (C * (1 - p)).toFixed(1) + '" transform="rotate(-90 37 37)"/>' +
@@ -1110,24 +1127,24 @@ function goalsCardHtml(j, opts){
     var cv = gNum(c[g.k]), tv = gNum(t[g.k]) || 0;
     if (cv != null && cv < tv) left.push((tv - cv) === 1 ? g.one : (tv - cv) + ' ' + g.left);
   });
-  var sub = done === 4 ? 'כל היעדים הושלמו. כל הכבוד' : left.length ? 'נשארו: ' + left.join(' · ') : '';
+  var sub = done === GOALS_KEYS.length ? 'כל היעדים הושלמו. כל הכבוד' : left.length ? 'נשארו: ' + left.join(' · ') : '';
   var h = '<div class="gk"><div class="gk-hero">' +
     '<div class="d">' + gEsc(goalsDateLine()) + '</div>' +
     (opts.greet ? '<div class="gr">' + gEsc(opts.greet) + '</div>' : '') +
-    '<h2>' + gEsc(title) + '</h2><div class="sb">' + (group ? 'סכום היעדים של כל הסוכנים. הכל נספר לבד.' : 'הכל נספר לבד.') + '</div>' +
-    '<div class="gk-score">' + gRing(done) + '<div><b>' + done + ' מתוך 4 יעדים הושלמו</b><span>' + gEsc(sub) + '</span></div></div>' +
+    '<h2>' + gEsc(title) + '</h2><div class="sb">' + (group ? (d.agents != null ? 'היעד = הסוכנים שנכנסו לאפי ב-10 הימים האחרונים (' + (d.agents === 1 ? 'סוכן אחד' : d.agents + ' סוכנים') + '). הכל נספר לבד.' : 'סכום היעדים של כל הסוכנים. הכל נספר לבד.') : 'הכל נספר לבד.') + '</div>' +
+    '<div class="gk-score">' + gRing(done) + '<div><b>' + done + ' מתוך ' + GOALS_KEYS.length + ' יעדים הושלמו</b><span>' + gEsc(sub) + '</span></div></div>' +
     (d.partial ? '<div class="gk-note">חלק מהנתונים לא נטענו — מוצג מה שידוע</div>' : '') +
     (group && opts.story ? '<button class="gk-link" onclick="goalsGo(\'/v2/goals\')">פירוט לפי סוכן</button>' : '') +
     '</div>';
   GOALS_DEFS.forEach(function(g){
     var cv = c[g.k], tv = gNum(t[g.k]) || 0, ok = goalIsDone(cv, tv);
     var s = g.s;
-    if (g.k === 'buyers') s = (gNum(c.bpage) == null) ? 'דף קונה: —' : 'דף קונה נשלח ל-' + c.bpage + ' מהם';
-    h += '<div class="gk-g' + (ok ? ' done' : '') + '"><div class="h"><div class="gk-ic' + (g.green ? ' green' : '') + '">' + GOALS_IC[g.ic] + '</div>' +
-      '<div class="t">' + g.t + '<small>' + gEsc(s) + '</small></div><div class="gk-num">' + gShow(cv) + '<i>/' + gShow(t[g.k]) + '</i></div></div>' +
+    if (g.k === 'buyers') s = goalsBuyersSub(c);
+    h += '<div class="gk-g' + (ok ? ' done' : '') + (g.gold ? ' hl' : '') + '"><div class="h"><div class="gk-ic' + (g.green ? ' green' : g.gold ? ' gold' : '') + '">' + GOALS_IC[g.gold ? 'homeGold' : g.ic] + '</div>' +
+      '<div class="t">' + g.t + (g.week ? '<span class="gk-wk">השבוע</span>' : '') + '<small>' + gEsc(s) + '</small></div><div class="gk-num">' + gShow(cv) + '<i>/' + gShow(t[g.k]) + '</i></div></div>' +
       '<div class="gBar"><div style="width:' + gPct(cv, tv) + '%"></div></div>' +
       (ok ? '<div class="gk-foot"><span class="gk-done">' + GOALS_IC.check + 'הושלם</span></div>' : '') +
-      '<button class="gBtn ' + (g.green ? 'green' : 'blue') + '" onclick="goalsGo(\'' + g.u + '\')">' + g.btn + '</button></div>';
+      '<button class="gBtn ' + (g.green ? 'green' : g.gold ? 'gold' : 'blue') + '" onclick="goalsGo(\'' + g.u + '\')">' + g.btn + '</button></div>';
   });
   // פולו-אפ — מצב בלבד, לא נספר בטבעת
   var f = c.followups, fd = f && gNum(f.done), fu = f && gNum(f.due);
@@ -1158,15 +1175,17 @@ function goalsAgentsHtml(j, canEdit){
   if (!ags.length) h += '<div class="gk-empty"><div class="gk-eic">' + GOALS_IC.user.replace(/#2E6BD6/g, '#7A5E1C') + '</div><b>אין סוכנים להצגה</b><span>כשיהיו סוכנים פעילים, היעדים שלהם יופיעו כאן.</span></div>';
   ags.forEach(function(a, i){
     var c = a.counts || {}, t = a.targets || {};
+    var inact = a.active === false;
     h += '<div class="gk-ag' + (a.seen_today ? '' : ' off') + '"><div class="an"><span>' + gEsc(a.name) + '</span>' +
-      (a.seen_today ? '<small>' + goalsDone(a) + '/4</small>' : '<small>לא נכנס/ה היום</small>') + '</div>';
+      (inact ? '<small>לא נכנס/ה ב-10 ימים · לא נספר ביעד המשרד</small>' :
+        a.seen_today ? '<small>' + goalsDone(a) + '/' + GOALS_KEYS.length + '</small>' : '<small>לא נכנס/ה היום</small>') + '</div>';
     GOALS_DEFS.forEach(function(g){
       var cv = c[g.k], tv = gNum(t[g.k]) || 0, ok = goalIsDone(cv, tv);
       h += '<div class="ln' + (ok ? ' done' : '') + '"><span class="l">' + g.t + '</span><div class="gBar"><div style="width:' + gPct(cv, tv) + '%"></div></div>' +
         '<span class="v">' + gShow(cv) + '/' + gShow(t[g.k]) + '</span></div>';
     });
     var f = c.followups;
-    h += '<div class="st">פולו-אפ ' + (f ? gShow(f.done) + '/' + gShow(f.due) : '—') + ' · דף קונה ' + gShow(c.bpage) + ' · שיחות פתוחות ' + gShow(c.missed) + '</div>';
+    h += '<div class="st">פולו-אפ ' + (f ? gShow(f.done) + '/' + gShow(f.due) : '—') + ' · ' + gEsc(goalsBuyersSub(c)) + ' · שיחות פתוחות ' + gShow(c.missed) + '</div>';
     if (canEdit) h += '<button class="gBtn sec ed" onclick="goalsEdit(' + i + ')">עריכת יעד</button>';
     h += '</div>';
   });
@@ -1175,7 +1194,7 @@ function goalsAgentsHtml(j, canEdit){
 function goalsMiniTitle(j){
   var v = (j && j.view) || 'agent';
   var n = j ? goalsDone(goalsData(j)) : 0;
-  return (v === 'team' ? 'יעדי הצוות להיום' : v === 'office' ? 'יעדי המשרד להיום' : 'היעדים שלי להיום') + ' · ' + n + '/4';
+  return (v === 'team' ? 'יעדי הצוות להיום' : v === 'office' ? 'יעדי המשרד להיום' : 'היעדים שלי להיום') + ' · ' + n + '/' + GOALS_KEYS.length;
 }
 function goalsChipsHtml(j){
   var d = goalsData(j), c = d.counts, t = d.targets, h = '';
@@ -1248,7 +1267,9 @@ V2_GOALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   <div id="sheet">
     <div class="st" id="shT">עריכת יעד</div>
     <div class="ss" id="shS"></div>
+    <label>גיוס נכסים (בשבוע)<input id="t_listings" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
     <label>פגישות מנכס נולד<input id="t_meetings" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
+    <label>פניות לנכס נולד<input id="t_nb_wa" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
     <label>קונים חדשים<input id="t_buyers" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
     <label>הודעות ללקוחות עבר<input id="t_past_clients" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
     <label>המלצות<input id="t_reviews" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
@@ -1294,8 +1315,8 @@ function goalsEdit(i){
   var a = (i >= 0) ? (GJ.agents || [])[i] : null;
   EDIT = {agent: a ? a.name : ''};
   el('shT').textContent = a ? 'עריכת יעד · ' + a.name : 'יעד ברירת מחדל';
-  el('shS').textContent = a ? 'היעד היומי של הסוכן. שדה ריק = בלי שינוי.' :
-    'חל על כל סוכן שלא הוגדר לו יעד משלו. שדה ריק = בלי שינוי.';
+  el('shS').textContent = a ? 'היעד היומי של הסוכן (גיוס נכסים — לשבוע). שדה ריק = בלי שינוי.' :
+    'חל על כל סוכן שלא הוגדר לו יעד משלו. גיוס נכסים — לשבוע, השאר ליום. שדה ריק = בלי שינוי.';
   GOALS_KEYS.forEach(function(k){
     var inp = el('t_' + k), v = a && a.targets ? a.targets[k] : null;
     inp.value = (typeof v === 'number') ? v : '';
@@ -10768,10 +10789,10 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .stat .n{font-size:56px;font-weight:800;font-variant-numeric:tabular-nums}
   .stat .l{font-size:18px;color:rgba(255,255,255,.62)}
   /* כרטיס יעדי המשרד להיום — ראשון בכל סיבוב */
-  .gl{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+  .gl{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
   .gl .g{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:26px 24px;display:flex;flex-direction:column;gap:10px}
   .gl .g .gt{font-size:21px;font-weight:700;color:rgba(255,255,255,.85)}
-  .gl .g .gn{font-size:60px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .gl .g .gn{font-size:56px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
   .gl .g .gn small{font-size:26px;font-weight:600;color:rgba(255,255,255,.55)}
   .gl .g .pb{height:10px;border-radius:999px;background:rgba(255,255,255,.16);overflow:hidden}
   .gl .g .pb b{display:block;height:100%;border-radius:999px;background:#2E6BD6}
@@ -10977,7 +10998,7 @@ function statCard(n, label, col){
   return '<div class="stat"><div class="n" style="color:' + col + '">' + n + '</div><div class="l">' + label + '</div></div>';
 }
 var TV_GOALS = [
-  {k: 'meetings', t: 'פגישות מנכס נולד'}, {k: 'buyers', t: 'קונים חדשים'},
+  {k: 'listings', t: 'גיוס נכסים · השבוע'}, {k: 'meetings', t: 'פגישות מנכס נולד'}, {k: 'nb_wa', t: 'פניות לנכס נולד'}, {k: 'buyers', t: 'קונים חדשים'},
   {k: 'past_clients', t: 'הודעות ללקוחות עבר'}, {k: 'reviews', t: 'המלצות'}
 ];
 function gNumTv(v){ return (v == null || v === '' || isNaN(Number(v))) ? null : Number(v); }
@@ -12940,7 +12961,7 @@ function waKinds(){var wo=(D.wa_official||{})[P];if(!wo||!wo.kinds)return '';
  var ks=Object.keys(wo.kinds).sort(function(a,b){return wo.kinds[b]-wo.kinds[a];});
  if(!ks.length)return '';
  return '<div class="mut" style="margin-top:8px">לפי סוג · '+PL[P]+'</div><table>'+ks.map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+n(wo.kinds[k])+'</td></tr>';}).join('')+'</table>';}
-var GP='today',GPL={today:'היום',yesterday:'אתמול',week:'השבוע'},GKEYS=['meetings','buyers','past_clients','reviews'];
+var GP='today',GPL={today:'היום',yesterday:'אתמול',week:'השבוע'},GKEYS=['listings','meetings','nb_wa','buyers','past_clients','reviews'];
 var GDAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 function gNum(v){return v==null?'—':(+v).toLocaleString('he-IL');}
 function gCell(c,t){if(c==null)return '—';if(!t)return '<span class="gc full">'+gNum(c)+'/—</span>';var p=Math.min(100,Math.round(c*100/t));
@@ -12948,9 +12969,9 @@ function gCell(c,t){if(c==null)return '—';if(!t)return '<span class="gc full">
 function gVs(G,eq){var w=GP==='week'?'שבוע שעבר':GDAYS[new Date(G.day+'T12:00:00').getDay()]+' שעבר';return (eq?'כמו ב':'מול ')+w;}
 function gTrend(tr,G){if(!tr)return '';var s=0,k=0;GKEYS.forEach(function(g){if(tr[g]!=null){s+=tr[g];k++;}});if(!k)return '';
  return '<span class="gtr'+(s>0?' up':'')+'">'+(s?(s>0?'↑'+s:'↓'+(-s))+' '+gVs(G,false):gVs(G,true))+'</span>';}
-function gRow(x,G,tot){var c=x.counts||{},t=x.targets||{},fu=c.followups,un=!tot&&GP==='today'&&!x.seen_today;
- return '<tr'+(tot?' class="tot"':(un?' class="z"':''))+'><td>'+(tot?'כל המשרד':esc(x.name))+(un?' <span class="mut">· לא נכנס/ה היום</span>':'')+gTrend(x.trend,G)+'</td>'+
-  '<td>'+gCell(c.meetings,t.meetings)+'</td><td>'+gCell(c.buyers,t.buyers)+'</td><td>'+gNum(c.bpage)+'</td>'+
+function gRow(x,G,tot){var c=x.counts||{},t=x.targets||{},fu=c.followups,ina=!tot&&x.active===false,un=!tot&&!ina&&GP==='today'&&!x.seen_today;
+ return '<tr'+(tot?' class="tot"':((un||ina)?' class="z"':''))+'><td>'+(tot?'כל המשרד':esc(x.name))+(ina?' <span class="mut">· לא נכנס/ה ב-10 ימים, בלי יעד</span>':(un?' <span class="mut">· לא נכנס/ה היום</span>':''))+gTrend(x.trend,G)+'</td>'+
+  '<td>'+gCell(c.listings,t.listings)+'</td><td>'+gCell(c.meetings,t.meetings)+'</td><td>'+gCell(c.nb_wa,t.nb_wa)+'</td><td>'+gCell(c.buyers,t.buyers)+(c.buyers_sign?' <span class="mut">('+gNum(c.buyers_sign)+' מהחתמה)</span>':'')+'</td><td>'+gNum(c.bpage)+'</td>'+
   '<td>'+gCell(c.past_clients,t.past_clients)+'</td><td>'+gCell(c.reviews,t.reviews)+'</td>'+
   '<td>'+(fu&&fu.due?gNum(fu.done)+'/'+gNum(fu.due):'—')+'</td><td>'+gNum(c.missed)+'</td>'+
   '<td><b>'+(x.goals_n?gNum(x.met)+'/'+gNum(x.goals_n):'—')+'</b></td></tr>';}
@@ -12960,9 +12981,9 @@ function goalsCard(){var A=D.goals;if(!A)return '';var G=A[GP]||{rows:[],total:{
    :(GP==='today'?(seen===1?'סוכן אחד נכנס היום':gNum(seen)+' סוכנים נכנסו היום'):G.day.split('-').reverse().join('/'));
  return '<div class="card"><div class="gh"><h2>יעדי היום · '+GPL[GP]+' <span class="mut" style="font-size:13px;font-weight:400">'+esc(meta)+'</span></h2>'+
   '<div class="seg gseg" id="gseg">'+['today','yesterday','week'].map(function(k){return '<button data-g="'+k+'" class="'+(k===GP?'on':'')+'">'+GPL[k]+'</button>';}).join('')+'</div></div>'+
-  '<div class="tw"><table class="ag"><tr><th>סוכן</th><th>פגישות נכס נולד</th><th>קונים חדשים</th><th>דף קונה</th><th>לקוחות עבר</th><th>המלצות</th><th>פולו-אפ</th><th>שיחות פתוחות</th><th>עמידה</th></tr>'+
-  gRow(G.total||{},G,true)+(rows.map(function(x){return gRow(x,G,false);}).join('')||'<tr><td class="mut" colspan="9">אין סוכנים להצגה</td></tr>')+'</table></div>'+
-  '<div class="mut">עמידה = כמה מארבעת היעדים הושלמו במלואם. המגמה = סכום ארבעת היעדים מול אותה תקופה לפני שבוע. "—" = הנתון לא זמין כרגע. שיחות פתוחות = מצב נוכחי.</div></div>';}
+  '<div class="tw"><table class="ag"><tr><th>סוכן</th><th>גיוס נכסים · השבוע</th><th>פגישות נכס נולד</th><th>פניות נכס נולד</th><th>קונים חדשים</th><th>דף קונה</th><th>לקוחות עבר</th><th>המלצות</th><th>פולו-אפ</th><th>שיחות פתוחות</th><th>עמידה</th></tr>'+
+  gRow(G.total||{},G,true)+(rows.map(function(x){return gRow(x,G,false);}).join('')||'<tr><td class="mut" colspan="11">אין סוכנים להצגה</td></tr>')+'</table></div>'+
+  '<div class="mut">עמידה = כמה משישת היעדים הושלמו במלואם. גיוס נכסים = הסכמי בלעדיות שנחתמו מתחילת השבוע, מול יעד שבועי. יעד המשרד = הסוכנים שנכנסו לאפי ב-10 הימים האחרונים'+(G.total&&G.total.agents!=null?' ('+gNum(G.total.agents)+')':'')+'; מי שלא נכנס מוצג רק אם נספר לו משהו, בלי יעד. הקונים כוללים את מי שנכנס אוטומטית מהחתמה. המגמה = סכום היעדים מול אותה תקופה לפני שבוע. "—" = הנתון לא זמין כרגע. שיחות פתוחות = מצב נוכחי.</div></div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -13287,6 +13308,38 @@ def crm_roster(G):
             pass
         people.append(nm)
     return people
+
+
+_TEAM_SYNC_SKIP = {"מנהל", "סוכן", "מזכירה", "מתאמת", "הנהלתחשבונות", "חשבוןבדיקה"}
+
+
+def team_sync_missing(cfg_agents, team_rows, suspended, removed_keys, name_key, last9):
+    """[GOALS2 29/10, אייל: 'נרשם בניהול של אפי ומשם נכנס לכל מקום'] מי שרשום בניהול (cfg['agents']) או
+    שנכנס לאפי לאחרונה (פעימות הנוכחות) ועוד אין לו שורה בטבלת הצוות — לפי שם או טלפון, כולל שורות מושבתות (מי שהושבת בצוות לא חוזר לבד).
+    לא נוספים: מושהים, נמחקים, חשבונות בדיקה ושמות גנריים. מחזיר [{name, phone, active}]."""
+    have_n, have_p = set(), set()
+    for r in team_rows or []:
+        k = name_key(r.get("name") or "")
+        if k:
+            have_n.add(k)
+        p = last9(r.get("phone") or "")
+        if p:
+            have_p.add(p)
+    out, done = [], set()
+    for a in cfg_agents or []:
+        if not isinstance(a, dict):
+            continue
+        nm = str(a.get("name") or "").strip()
+        ph = last9(a.get("phone") or "")
+        k = name_key(nm)
+        if not nm or not ph or not k or "בדיקה" in nm or k in _TEAM_SYNC_SKIP \
+                or not _re.search(r"[א-ת]", nm) or _re.search(r"[0-9·@]", nm):   # שם אמיתי בלבד (לא 'מנהל · 1234')
+            continue
+        if ph in suspended or k in removed_keys or k in have_n or ph in have_p or k in done:
+            continue
+        done.add(k)
+        out.append({"name": nm, "phone": "0" + ph, "active": True})
+    return out
 
 
 def crm_todo(calls, sig_recs, act, newborn, contacts, now, h, limit=30):
@@ -19611,6 +19664,60 @@ def register(app, G):
         return jsonify({"ok": True, "dry": dry, "toImport": [x["name"] for x in plan["import"]],
                         "done": done, "failed": failed, "has": plan["has"], "missing": plan["missing"]})
 
+    # ── [GOALS2 29/10] מי שנרשם בניהול נכנס גם לטבלת הצוות — ומשם לספירת היעדים, ללוח הבקרה, ל-CRM ולאתר ──
+    _ts_box = {"t": 0.0}
+    _ts_lock = _bpthr.Lock()
+    _TEAM_SYNC_EVERY = 6 * 3600
+
+    def _team_sync_run(by="אוטומטי"):
+        """מוסיף לטבלת הצוות את מי שרשום בניהול ואין לו שורה. רק כשאנשי הקשר מגיעים מהטבלה (CONTACTS_SOURCE=supabase)."""
+        sb = G.get("_sbdb")
+        if not (sb is not None and sb.enabled()) or os.environ.get("CONTACTS_SOURCE", "").strip().lower() != "supabase":
+            return []
+        try:
+            cfg = G["_load_config"]() or {}
+            people = list(cfg.get("agents") or [])
+            try:      # גם מי שנכנס לאפי ב-30 הימים האחרונים (נכנס דרך מספר וירטואלי / שיחות ולא דרך הניהול)
+                import datetime as _dts
+                since = (_dts.datetime.now(_dts.timezone.utc) - _dts.timedelta(days=30)).isoformat()
+                seen_ph = {}
+                for p in sb.fetch_pings_today(since) or []:
+                    ph = G["_last9"](p.get("phone", ""))
+                    if ph and ph not in seen_ph:
+                        seen_ph[ph] = G["_display_name_for"](str(p.get("name", "") or "").strip(), ph)
+                people += [{"name": nm, "phone": ph} for ph, nm in seen_ph.items() if nm]
+            except Exception as e:
+                if log: log.warning(f"team sync pings: {e}")
+            add = team_sync_missing(people, sb.team_fetch(active_only=False),
+                                    G["_suspended_set"](), G["_removed_agent_keys"](), G["_name_key"], G["_last9"])
+            if not add:
+                return []
+            sb.team_upsert(add, by)
+            for box in ("_contacts_rows_cache", "_agents_cache"):     # הקוראים יקראו את הטבלה מחדש
+                try:
+                    G[box]["ts"] = 0
+                except Exception:
+                    pass
+            G["_log_activity"](by, "", "", "צוות — הוספה מהניהול", ", ".join(a["name"] for a in add))
+            if log: log.info(f"team sync: added {[a['name'] for a in add]}")
+            return [a["name"] for a in add]
+        except Exception as e:
+            if log: log.warning(f"team sync: {e}")
+            return []
+
+    def _team_sync_bg(by="אוטומטי"):
+        _bpthr.Thread(target=lambda: _team_sync_run(by), name="team-sync", daemon=True).start()
+
+    @app.before_request
+    def _team_sync_tick():
+        if time.time() - _ts_box["t"] < _TEAM_SYNC_EVERY:
+            return
+        with _ts_lock:
+            if time.time() - _ts_box["t"] < _TEAM_SYNC_EVERY:
+                return
+            _ts_box["t"] = time.time()
+        _team_sync_bg()
+
     @app.route("/v2/api/admin/invite", methods=["POST"])
     def v2_api_admin_invite():
         """הזמנת חבר צוות בוואטסאפ — הדרך היחידה להצטרף (אין הרשמה פתוחה).
@@ -19671,6 +19778,7 @@ def register(app, G):
         if not resend:
             _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                           "הזמנת חבר צוות", f"{name} ({role})")
+        _team_sync_bg(s.get("name", "") or "ניהול")      # [GOALS2 29/10] גם לטבלת הצוות
         host = (request.host or "").split(":")[0] or "remax-bot.onrender.com"
         office = _office_name(_load_config())
         msg = (f"היי {name}, הוזמנת להצטרף למערכת של {office}.\n"

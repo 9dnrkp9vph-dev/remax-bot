@@ -41,10 +41,10 @@ const agentJ = {ok: true, view: 'agent', day: '2026-10-28', can_edit: false,
                 followups: {due: 4, done: 2}, missed: 3},
        targets: {meetings: 2, buyers: 3, past_clients: 5, reviews: 2}}};
 const h = K.goalsCardHtml(agentJ, {});
-ck((h.match(/class="gBar"/g) || []).length === 5, '4 goal bars + followups bar: ' + (h.match(/class="gBar"/g) || []).length);
+ck((h.match(/class="gBar"/g) || []).length === 7, '6 goal bars + followups bar: ' + (h.match(/class="gBar"/g) || []).length);
 ck(h.includes('פגישות מנכס נולד') && h.includes('1<i>/2</i>'), 'meetings 1/2');
 ck(h.includes('קונים חדשים') && h.includes('3<i>/3</i>'), 'buyers 3/3');
-ck(h.includes('דף קונה נשלח ל-1 מהם'), 'bpage line');
+ck(h.includes('דף קונה נשלח ל-1'), 'bpage line');
 ck(h.includes('0<i>/5</i>'), 'past clients 0/5');
 ck(h.includes('—<i>/2</i>'), 'null reviews → —');
 ck(h.includes('פולו-אפ להיום') && h.includes('2<i>/4</i>'), 'followups 2/4');
@@ -60,7 +60,7 @@ ck(KIT.includes('.gBtn.green{background:#157A43'), 'green #157A43');
 ['/v2/newborn', '/v2/buyers', '/v2/history', '/v2/reviews', '/v2/meets'].forEach(u => ck(h.includes("goalsGo('" + u + "')"), 'button ' + u));
 ck(h.includes('2 נכסים בפייסבוק ובאינסטגרם') && h.includes('יופעל בקרוב'), 'soon row');
 // טבעת: 1 מתוך 4 (רק קונים הושלם; המלצות null לא נספר)
-ck(K.goalsDone(agentJ.me) === 1 && h.includes('1 מתוך 4 יעדים הושלמו') && h.includes('25%'), 'ring 1/4');
+ck(K.goalsDone(agentJ.me) === 1 && h.includes('1 מתוך 6 יעדים הושלמו') && h.includes('17%'), 'ring 1/6');
 ck(K.goalsDone({counts: {meetings: 0, buyers: 0, past_clients: 0, reviews: 0}, targets: {meetings: 0, buyers: 0, past_clients: 0, reviews: 0}}) === 4, 'target 0 counts complete');
 // אין אימוג'ים
 const emo = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u;
@@ -84,7 +84,7 @@ ck(ht.includes('3<i>/4</i>') && ht.includes('אין שיחות פתוחות'), '
 ck(ht.includes('חלק מהנתונים'), 'partial note');
 const ha = K.goalsAgentsHtml(teamJ, false);
 ck(ha.includes('דנה כהן') && ha.includes('רועי לוי') && ha.includes('לא נכנס/ה היום') && !ha.includes('לא נכנס היום'), 'agents list + not seen (gender-neutral)');
-ck((ha.match(/class="gBar"/g) || []).length === 8, 'bar per goal per agent');
+ck((ha.match(/class="gBar"/g) || []).length === 12, 'bar per goal per agent');
 ck(!ha.includes('עריכת יעד') && !ha.includes('יעד ברירת מחדל'), 'no edit for non-manager');
 const hm = K.goalsAgentsHtml(Object.assign({}, teamJ, {view: 'office', can_edit: true}), true);
 ck(hm.includes('עריכת יעד') && hm.includes('יעד ברירת מחדל'), 'manager edit buttons');
@@ -95,7 +95,7 @@ const c = K.goalsChipsHtml(agentJ);
 ck(c.includes('נכס נולד 1/2') && c.includes('קונים 3/3') && c.includes('לקוחות עבר 0/5') && c.includes('המלצות —/2'), 'chips');
 ck(/class="gChip ok">קונים 3\/3/.test(c), 'completed chip ok');
 ck(c.includes('פולו-אפ 2/4') && c.includes('שיחות 3'), 'status chips');
-ck(K.goalsMiniTitle(agentJ) === 'היעדים שלי להיום · 1/4', 'mini title: ' + K.goalsMiniTitle(agentJ));
+ck(K.goalsMiniTitle(agentJ) === 'היעדים שלי להיום · 1/6', 'mini title: ' + K.goalsMiniTitle(agentJ));
 ck(K.goalsMiniTitle(teamJ).indexOf('הצוות') >= 0, 'team mini title');
 
 // הנכס החם שלי
@@ -141,4 +141,18 @@ ck(!/if \(STORY\.open\) renderCard\(STORY\.i\)/.test(HOME), 'no unconditional re
 ck(/greet: firstName\(M\.name\) \? greetWord\(\) \+ ', ' \+ firstName\(M\.name\) : greetWord\(\)/.test(HOME), 'story greet no trailing comma');
 const hg = K.goalsCardHtml(agentJ, {greet: ''});
 ck(!hg.includes('class="gr"'), 'empty greet omitted');
+// [GOALS2 29/10] גיוס נכסים ראשון ומודגש (שבועי), פניות לנכס נולד, קונים מהחתמה, יעד המשרד לפי פעילים
+const g2 = K.goalsCardHtml({ok: true, view: 'office', total: {agents: 12,
+  counts: {listings: 1, meetings: 0, nb_wa: 7, buyers: 5, buyers_sign: 2, bpage: 1, past_clients: 0, reviews: 0, followups: {due: 0, done: 0}, missed: 0},
+  targets: {listings: 24, meetings: 24, nb_wa: 120, buyers: 36, past_clients: 60, reviews: 24}}}, {});
+ck(g2.indexOf('גיוס נכסים') > 0 && g2.indexOf('גיוס נכסים') < g2.indexOf('פגישות מנכס נולד'), 'listings first');
+ck(/class="gk-g hl"/.test(g2) && g2.includes('gk-wk">השבוע<'), 'listings highlighted + weekly tag');
+ck(g2.includes("goalsGo('/v2/sign?type=owner')") && /class="gBtn gold"/.test(g2), 'listings gold button to owner signing');
+ck(g2.includes('פניות לנכס נולד') && g2.includes('7<i>/120</i>'), 'nb_wa 7/120');
+ck(g2.includes('2 מהחתמה') && g2.includes('דף קונה נשלח ל-1'), 'buyers from signings + bpage');
+ck(g2.includes('ב-10 הימים האחרונים (12 סוכנים)'), 'office target by active agents');
+ck(K.GOALS_KEYS.length === 6 && K.GOALS_KEYS[0] === 'listings', 'six goals, listings first');
+const ha2 = K.goalsAgentsHtml({agents: [{name: 'ב', active: false, seen_today: false, counts: {buyers: 1}, targets: {}}]}, false);
+ck(ha2.includes('לא נכנס/ה ב-10 ימים'), 'inactive agent label');
+ck(/id="t_listings"/.test(PAGE) && /id="t_nb_wa"/.test(PAGE), 'edit sheet has new goals');
 console.log('ok', n);
