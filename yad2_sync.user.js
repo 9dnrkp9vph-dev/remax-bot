@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      14.5
+// @version      14.6
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -52,7 +52,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='14.5'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='14.6'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -1085,7 +1085,7 @@ function buildPanel(){
   box.appendChild(mk('ys-reveal','#2563eb','📞 חשוף מספרים',revealAll));
   box.appendChild(mk('ys-save','#16a34a','💾 שמור לגיליון',manualSave));
   box.appendChild(mk('ys-net','#7c3aed','🔎 JSON לניתוח',copyNetReport,';font-size:13px;padding:9px'));
-  box.appendChild(mk('ys-dswitch','#0e7490','🔁 החלפת פרופיל ישירה',function(){ status('מחליף פרופיל דרך ה-API…'); privClaim(); directSwitch(function(ok,why){ status(ok?'✓ הוחלף — הדף נטען מחדש':('⚠️ לא הוחלף: '+why)); }); },';font-size:13px;padding:9px'));
+  box.appendChild(mk('ys-dswitch','#0e7490','🔁 החלפת פרופיל ישירה',function(){ status('מחליף פרופיל דרך ה-API…'); privClaim(); (IS_NEWPLUS?npSwitch:directSwitch)(function(ok,why){ status(ok?'✓ הוחלף — הדף נטען מחדש':('⚠️ לא הוחלף: '+why)); }); },';font-size:13px;padding:9px'));
   box.appendChild(mk('ys-dsre','#334155','↺ אפשר החלפה ישירה',function(){ dsReEnable(); status('✓ ההחלפה הישירה פעילה שוב'); },';font-size:12px;padding:7px'));
   // v13.31: הוסר כפתור 'הקלטת החלפה' — הפנה לפונקציה שלא קיימת (switchRecordStart) → buildPanel קרס והפאנל נעלם (אייל 24/09)
   box.appendChild(mk('ys-prof','#475569','👤 בחר פרופיל שני',function(){
@@ -3219,11 +3219,11 @@ function tryAutoLogin(){
 }
 function healthTick(){
   if(scanWatchdog())return; // סריקה תקועה → ריענון; אין טעם להמשיך את הבדיקות
-  var lo=looksLoggedOut(), now=Date.now();
+  var lo=looksLoggedOut()||!!npAuthLost, now=Date.now();
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
-  if(lo)tryAutoLogin();
+  if(lo&&!npAuthLost)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,featPlan:npFeatPlan,fetchFeat:npFetchFeat,applyFeat:npApplyFeat,itemDesc:npItemDesc,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;},get NP_FEAT_PER_SCAN(){return NP_FEAT_PER_SCAN;}}};window.__ysPriv={canScan:privCanScan,owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={setCookie:dsCookieSet,hostClean:dsHostDupClean,enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={authErr:npIsAuthErr,authRecover:npAuthRecover,authLost:function(){return npAuthLost;},mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,featPlan:npFeatPlan,fetchFeat:npFetchFeat,applyFeat:npApplyFeat,itemDesc:npItemDesc,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;},get NP_FEAT_PER_SCAN(){return NP_FEAT_PER_SCAN;}}};window.__ysPriv={canScan:privCanScan,owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={setCookie:dsCookieSet,hostClean:dsHostDupClean,enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
@@ -3308,7 +3308,8 @@ function npFetchFeat(fetchFn,need,m,onProg){
     (function next(){
       if(i>=need.length){ resolve(got); return; }
       var tok=String(need[i++].token);
-      fetchFn('https://www.yad2.co.il/realestate/item/'+tok).then(function(html){
+      // v14.6: דף ציבורי — בלי עוגיות הכניסה (חשד: הדף הציבורי מוחק את הכניסה ל-Yad2+)
+      fetchFn('https://www.yad2.co.il/realestate/item/'+tok,{credentials:'omit'}).then(function(html){
         if(looksBlocked(html)){ log('🛡️ נכס נולד: דף מודעה חסום — עוצרים את המאפיינים לסריקה הזו'); resolve(got); return; }
         var fx=itemFeatures(html,tok);
         if(fx||exclParseNextData(html)){ m[tok]={x:fx||[],d:npItemDesc(html,tok),t:Date.now()}; got++; }
@@ -3386,6 +3387,7 @@ function npRunScan(statusFn,done){
   scanStart=Date.now(); lastScanMsg='רץ מ-'+new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
   var fin=once(function(msg){ scanStart=0; if(msg)lastScanMsg=msg; if(done)done(); });
   npOffices(fetchFn).then(function(of){
+    npAuthLost=0;
     var src=NP_AREA[of.cur]||'';
     if(!src){ statusFn('⚠️ סניף לא מוכר ('+(of.cur||'?')+') — לא שומרים'); fin('סניף לא מוכר '+(of.cur||'')); return; }
     NP_SRC=src; gmSet('ysNpOther',of.other||'');
@@ -3406,7 +3408,33 @@ function npRunScan(statusFn,done){
         });
       });
     });
-  }).catch(function(e){ statusFn('⚠️ '+(e&&e.message||e)); fin('שגיאה: '+(e&&e.message||e)); });
+  }).catch(function(e){
+    var em=String(e&&e.message||e);
+    statusFn('⚠️ '+em);
+    if(npIsAuthErr(em) && npAuthRecover(statusFn)==='reload'){ scanStart=0; return; }   // v14.6: הדף נטען מחדש
+    fin(npAuthLost?'⚠️ נותק מיד2 — צריך להיכנס מחדש':('שגיאה: '+em));
+  });
+}
+// v14.6 (28/10: הכניסה ל-Yad2+ נפלה פעמיים ביום — 'authentication failed, missing token'):
+// ריענון אחד מחזיר בדרך כלל את הכניסה. אם נפל שוב תוך 30 דק׳ — לא מרעננים בלולאה: מסמנים
+// 'מנותק', וסימן-החיים מדווח logged_out → מייל לאייל (checkAlive ב-Code.gs).
+var npAuthLost=0, NP_AUTH_RELOAD_GAP=30*60000;
+function npIsAuthErr(msg){ return /authentication failed|missing\s+token|unauthori[sz]ed|"statusCode":401|\b401\b/i.test(String(msg||'')); }
+function npAuthRecover(statusFn){
+  var now=Date.now(), last=Number(gmGet('ysNpAuthReloadAt','0')||0);
+  if(!last || now-last>NP_AUTH_RELOAD_GAP){
+    gmSet('ysNpAuthReloadAt',String(now));
+    lastScanMsg='🔑 יד2 ניתקו את הכניסה — מרעננים';
+    if(statusFn)statusFn('🔑 יד2 ניתקו את הכניסה — מרעננים את הדף פעם אחת');
+    try{ switchLog('🔑 missing token → ריענון'); }catch(e){}
+    setTimeout(function(){ try{ location.reload(); }catch(e){} },1500);
+    return 'reload';
+  }
+  npAuthLost=now; lastScanMsg='⚠️ נותק מיד2 — צריך להיכנס מחדש';
+  if(statusFn)statusFn(lastScanMsg);
+  try{ switchLog('🔑 missing token שוב אחרי ריענון → התראה'); }catch(e){}
+  try{ postHB('logged_out'); }catch(e){}
+  return 'alert';
 }
 // החלפה לסניף השני (POST ואז ריענון). מחזיר false אם אין סניף שני / נכשל.
 function npSwitch(done){
