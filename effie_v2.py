@@ -12877,6 +12877,11 @@ table.ag th{text-align:right;color:#5B6472;font-weight:500;padding:8px;border-bo
 .todo.s2{grid-template-columns:1fr 1fr}.td .scr{max-height:420px;overflow-y:auto;padding-inline-end:4px}
 table.ag tr.tot td{background:#FBF6E8;font-weight:700}table.ag tr.z td{color:#6B7280}
 @media(max-width:1100px){.todo{grid-template-columns:1fr 1fr}}@media(max-width:640px){.todo{grid-template-columns:1fr}}
+.gh{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px}.gh h2{margin:0}
+.gseg button{min-height:44px}
+.gc{display:inline-flex;align-items:center;gap:6px;font-weight:700}.gc i{display:inline-block;width:46px;height:6px;border-radius:99px;background:#EDEAE2;overflow:hidden;position:relative}
+.gc i b{position:absolute;top:0;bottom:0;right:0;background:#2E6BD6;border-radius:99px}.gc.full{color:#1E3A5F}.gc.full i b{background:#1E3A5F}.gc.zero{color:#6B7280}
+.gtr{font-size:12px;color:#6B7280;font-weight:400;margin-inline-start:6px}.gtr.up{color:#1E3A5F}
 </style></head><body><div class="wrap">
 <header><h1>לוח בקרה</h1><span class="upd" id="upd"></span><span class="sp"></span>
 <a class="btn" href="/v2/crm/calls">CRM</a><a class="btn" href="/v2/crm/parallel">דוח מקבילות</a><button class="btn pri" id="rf">רענן</button></header>
@@ -12896,7 +12901,7 @@ function kpis(){var p=D.periods,ca=pv(p.calls),an=pv(p.calls_answered),ex=pv((p.
   ['נכסי המשרד בפרסום',n(p.office_active),'בלעדי '+n(p.office_active_excl)+' · רגיל '+n((p.office_active||0)-(p.office_active_excl||0))]];
  var wo=(D.wa_official||{})[P];
  var so=(D.story||{})[P];
- if(so)k.push(['סטורי נכסים חמים',n(so.taps)+' לחצו לראות',n(so.tap_people)+' אנשים · נפתח לבד '+n(so.autos)+' · עברו לנכסים '+n(so.past_summary)+' · עד הסוף '+n(so.full)+' · נספר מ-21/10']);
+ if(so)k.push(['סטורי נכסים חמים',n(so.taps)+' לחצו לראות',n(so.tap_people)+' אנשים · נפתח לבד '+n(so.autos)+' · המשיכו אחרי היעדים '+n(so.past_summary)+' · עד הסוף '+n(so.full)+' · ראה 1 = רק היעדים · נספר מ-21/10']);
  if(wo)k.push(['וואטסאפ רשמי (360)',n(wo.sent)+' נשלחו',(wo.failed?'נכשלו '+n(wo.failed):'אין כשלים')+(wo.blocked?' · נחסמו במתג '+n(wo.blocked):'')+' · נספר מ-19/10']);
  return k.map(function(x){return '<div class="card kpi"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+'</div><div class="x">'+esc(x[2])+'</div></div>';}).join('');}
 function tm(ts){if(!ts)return '';var d=new Date(ts*1000);return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
@@ -12935,6 +12940,29 @@ function waKinds(){var wo=(D.wa_official||{})[P];if(!wo||!wo.kinds)return '';
  var ks=Object.keys(wo.kinds).sort(function(a,b){return wo.kinds[b]-wo.kinds[a];});
  if(!ks.length)return '';
  return '<div class="mut" style="margin-top:8px">לפי סוג · '+PL[P]+'</div><table>'+ks.map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+n(wo.kinds[k])+'</td></tr>';}).join('')+'</table>';}
+var GP='today',GPL={today:'היום',yesterday:'אתמול',week:'השבוע'},GKEYS=['meetings','buyers','past_clients','reviews'];
+var GDAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+function gNum(v){return v==null?'—':(+v).toLocaleString('he-IL');}
+function gCell(c,t){if(c==null)return '—';if(!t)return gNum(c);var p=Math.min(100,Math.round(c*100/t));
+ return '<span class="gc'+(c>=t?' full':(c?'':' zero'))+'">'+gNum(c)+'/'+gNum(t)+' <i><b style="width:'+p+'%"></b></i></span>';}
+function gVs(G,eq){var w=GP==='week'?'שבוע שעבר':GDAYS[new Date(G.day+'T12:00:00').getDay()]+' שעבר';return (eq?'כמו ב':'מול ')+w;}
+function gTrend(tr,G){if(!tr)return '';var s=0,k=0;GKEYS.forEach(function(g){if(tr[g]!=null){s+=tr[g];k++;}});if(!k)return '';
+ return '<span class="gtr'+(s>0?' up':'')+'">'+(s?(s>0?'↑'+s:'↓'+(-s))+' '+gVs(G,false):gVs(G,true))+'</span>';}
+function gRow(x,G,tot){var c=x.counts||{},t=x.targets||{},fu=c.followups,un=!tot&&GP==='today'&&!x.seen_today;
+ return '<tr'+(tot?' class="tot"':(un?' class="z"':''))+'><td>'+(tot?'כל המשרד':esc(x.name))+(un?' <span class="mut">· לא נכנס היום</span>':'')+gTrend(x.trend,G)+'</td>'+
+  '<td>'+gCell(c.meetings,t.meetings)+'</td><td>'+gCell(c.buyers,t.buyers)+'</td><td>'+gNum(c.bpage)+'</td>'+
+  '<td>'+gCell(c.past_clients,t.past_clients)+'</td><td>'+gCell(c.reviews,t.reviews)+'</td>'+
+  '<td>'+(fu&&fu.due?gNum(fu.done)+'/'+gNum(fu.due):'—')+'</td><td>'+gNum(c.missed)+'</td>'+
+  '<td><b>'+(x.goals_n?gNum(x.met)+'/'+gNum(x.goals_n):'—')+'</b></td></tr>';}
+function goalsCard(){var A=D.goals;if(!A)return '';var G=A[GP]||{rows:[],total:{}},rows=G.rows||[];
+ var seen=(A.today&&A.today.rows||[]).filter(function(r){return r.seen_today;}).length;
+ var meta=GP==='week'?('א׳–'+GDAYS[new Date(G.to+'T12:00:00').getDay()]+' · '+gNum(G.workdays)+' ימי עבודה · היעד = היעד היומי × ימי העבודה (שישי חצי)')
+   :(GP==='today'?(seen===1?'סוכן אחד נכנס היום':gNum(seen)+' סוכנים נכנסו היום'):G.day.split('-').reverse().join('/'));
+ return '<div class="card"><div class="gh"><h2>יעדי היום · '+GPL[GP]+' <span class="mut" style="font-size:13px;font-weight:400">'+esc(meta)+'</span></h2>'+
+  '<div class="seg gseg" id="gseg">'+['today','yesterday','week'].map(function(k){return '<button data-g="'+k+'" class="'+(k===GP?'on':'')+'">'+GPL[k]+'</button>';}).join('')+'</div></div>'+
+  '<div class="tw"><table class="ag"><tr><th>סוכן</th><th>פגישות נכס נולד</th><th>קונים חדשים</th><th>דף קונה</th><th>לקוחות עבר</th><th>המלצות</th><th>פולו-אפ</th><th>שיחות פתוחות</th><th>עמידה</th></tr>'+
+  gRow(G.total||{},G,true)+(rows.map(function(x){return gRow(x,G,false);}).join('')||'<tr><td class="mut" colspan="9">אין סוכנים להצגה</td></tr>')+'</table></div>'+
+  '<div class="mut">עמידה = כמה מארבעת היעדים הושלמו במלואם. המגמה = סכום ארבעת היעדים מול אותה תקופה לפני שבוע. "—" = הנתון לא זמין כרגע. שיחות פתוחות = מצב נוכחי.</div></div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -12956,6 +12984,7 @@ function render(){
   '<div class="d mut" id="swQuiet"></div></div></div>'+
   '<div class="seg" id="seg">'+['day','week','month','year'].map(function(k){return '<button data-p="'+k+'" class="'+(k===P?'on':'')+'">'+PL[k]+'</button>';}).join('')+'</div>'+
   '<div class="kpis">'+kpis()+'</div>'+
+  goalsCard()+
   '<div class="row r2"><div class="card"><h2>30 הימים האחרונים</h2><div class="chart"><canvas id="c1"></canvas></div><div id="t1"></div></div>'+
   '<div class="card"><h2>חיפושי AI באתר היום</h2><div class="big">'+n(a.today)+' <span class="mut">מתוך תקרה של '+n(a.cap)+'</span></div>'+
   '<div class="bar'+(pct>=90?' hot':'')+'"><i style="width:'+pct+'%"></i></div><div class="mut">מהמטמון (בלי טוקנים): '+n(a.cache)+' · נחסמו בתקרה: '+n(a.blocked)+'</div>'+
@@ -12971,6 +13000,7 @@ function render(){
   '<div class="mut">נספרת פתיחת הצ׳אט מאפי, לא מסירה. נספר מ-19/10.</div></div></div>'+
   meetsCard()+todoCard()+agentsCard()+listingsCard()+searchesCard();   // 20/10: שלושת הכרטיסים בתחתית (אייל)
  document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
+ var gs=document.getElementById('gseg');if(gs)gs.onclick=function(ev){var b=ev.target.closest('button');if(!b)return;GP=b.dataset.g;render();};
  charts();ctl();
 }
 function dd(iso){var p=iso.split('-');return p[2]+'/'+p[1];}
@@ -14940,7 +14970,8 @@ def crm_dashboard_data(src, now, quiet, today_iso):
             "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa,
             "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo, "wa_official": crm_wa_official(aact, bounds), "story": crm_story_stats(aact, bounds),
             "listings": get("agent_listings", default=None), "searches": get("searches", default=None),
-            "meetings_today": get("meetings_today", default=None)}
+            "meetings_today": get("meetings_today", default=None),
+            "goals": get("goals", default=None)}   # [GOALS 28/10] יעדי היום — היום / אתמול / השבוע
 
 
 def crm_health(last_ts, now, max_gap_h, work_only, quiet):
@@ -18814,6 +18845,7 @@ def register(app, G):
                    "agent_listings": agent_listings,
                    "searches": recent_searches,
                    "meetings_today": lambda: crm_meetings_today(_crm_records("meetings"), now),
+                   "goals": lambda: __import__("goals").dashboard_goals(G, now),   # [GOALS 28/10]
                    "helpers": lambda: {"answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
                                        "canon": lambda n: G["_canon_agent_name"](n) or n,
                                        "nb_key": G["_nb_key"]}}

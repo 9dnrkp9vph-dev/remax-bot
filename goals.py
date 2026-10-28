@@ -236,12 +236,205 @@ def build_office(src, day, canon):
     return {"rows": rows, "total": total}
 
 
+# ── לוח הבקרה ב-CRM: היום / אתמול / השבוע, מול אותה תקופה לפני שבוע ─────────────────────
+GOAL_KEYS = tuple(DEFAULTS)
+
+
+def week_start(day):
+    """יום ראשון של השבוע (שבוע ישראלי)."""
+    return day - _dt.timedelta(days=(day.weekday() + 1) % 7)
+
+
+def workday_weight(day):
+    """א'–ה' = 1, שישי = חצי, שבת = 0."""
+    return {4: 0.5, 5: 0.0}.get(day.weekday(), 1.0)
+
+
+def workdays_elapsed(day):
+    """ימי העבודה מיום ראשון עד היום (כולל)."""
+    s = week_start(day)
+    return sum(workday_weight(s + _dt.timedelta(days=i)) for i in range((day - s).days + 1))
+
+
+def _num(v):
+    return int(v) if float(v).is_integer() else round(float(v), 1)
+
+
+def _sum_counts(parts):
+    out = {}
+    for k in ("meetings", "buyers", "bpage", "past_clients", "reviews"):
+        vals = [p.get(k) for p in parts]
+        out[k] = None if (not vals or any(v is None for v in vals)) else sum(vals)
+    fu = [p.get("followups") for p in parts]
+    out["followups"] = None if (not fu or any(f is None for f in fu)) else \
+        {"due": sum(f["due"] for f in fu), "done": sum(f["done"] for f in fu)}
+    return out
+
+
+def count_days(agent, days, src, canon):
+    """ספירה לכמה ימים — כל יום לחוד (פולו-אפ ולקוחות עבר הם לפי יום) ומסכמים. יומן הפעולות מסונן לכל יום;
+    'שיחות פתוחות' הוא מצב נוכחי — נספר פעם אחת, לא לכל יום."""
+    act = src.get("activity")
+    parts = []
+    for d in days:
+        b = day_bounds(d)
+        a = act if _bad(act) else [x for x in (act or []) if _in(parse_ts(x.get("ts")), b)]
+        parts.append(count_agent(agent, b, dict(src, activity=a, missed=[]), canon))
+    out = _sum_counts(parts)
+    missed = src.get("missed")
+    out["missed"] = None if _bad(missed) else sum(1 for m in (missed or []) if _same(m.get("agent"), agent, canon))
+    return out
+
+
+def _met(counts, targets):
+    """כמה מהיעדים (שיש להם יעד) הושלמו במלואם, ומתוך כמה."""
+    met = n = 0
+    for k in GOAL_KEYS:
+        t = (targets or {}).get(k) or 0
+        if t <= 0:
+            continue
+        n += 1
+        c = counts.get(k)
+        if c is not None and c >= t:
+            met += 1
+    return met, n
+
+
+def _trend(cur, prev):
+    return {k: (None if cur.get(k) is None or prev.get(k) is None else cur[k] - prev[k]) for k in GOAL_KEYS}
+
+
+def build_periods(src, today, canon):
+    """[GOALS 28/10] טבלת 'יעדי היום' בלוח הבקרה: לכל תקופה (היום / אתמול / השבוע) שורה לכל סוכן ושורת משרד,
+    עם 'עמידה' (כמה יעדים הושלמו) ומגמה מול אותה תקופה לפני שבוע. בשבוע: סכום מיום ראשון, והיעד = היעד היומי
+    כפול ימי העבודה עד היום (שישי חצי). seen_today = נכנס היום (רלוונטי לתצוגת 'היום')."""
+    import functools
+    canon = functools.lru_cache(maxsize=None)(canon)     # אלפי השוואות שמות לכל בנייה
+    roster = src.get("roster")
+    cfg = src.get("cfg")
+    cfg = cfg if isinstance(cfg, dict) else {}
+    seen_src = src.get("seen")
+    seen = set() if _bad(seen_src) else {canon(n) for n in (seen_src or []) if n}
+    names = []
+    if not _bad(roster):
+        done = set()
+        for name in roster or []:
+            if name and canon(name) not in done:
+                done.add(canon(name))
+                names.append(name)
+    yday = today - _dt.timedelta(days=1)
+    ws = week_start(today)
+    periods = {"today": ([today], 1.0), "yesterday": ([yday], 1.0),
+               "week": ([ws + _dt.timedelta(days=i) for i in range((today - ws).days + 1)], workdays_elapsed(today))}
+    out = {}
+    for pk, (days, scale) in periods.items():
+        prev_days = [d - _dt.timedelta(days=7) for d in days]
+        rows, per, prev_per, tg = [], {}, {}, {}
+        for name in names:
+            k = canon(name)
+            c = count_days(name, days, src, canon)
+            pc = count_days(name, prev_days, src, canon)
+            t = {g: _num(v * scale) for g, v in targets_for(cfg, name, canon).items()}
+            met, gn = _met(c, t)
+            rows.append({"name": name, "counts": c, "targets": t, "met": met, "goals_n": gn,
+                         "trend": _trend(c, pc), "seen_today": k in seen})
+            per[k], prev_per[k], tg[k] = c, pc, t
+        rows.sort(key=lambda r: (-r["met"], r["name"]))
+        total = rollup(per, tg)
+        total["targets"] = {g: _num(v) for g, v in total["targets"].items()}
+        total["met"], total["goals_n"] = _met(total["counts"], total["targets"])
+        total["trend"] = _trend(total["counts"], rollup(prev_per, tg)["counts"])
+        if _bad(roster):
+            total["partial"] = True
+        out[pk] = {"day": days[0].isoformat(), "to": days[-1].isoformat(), "rows": rows, "total": total,
+                   "workdays": _num(scale) if pk == "week" else None}
+    return out
+
+
 def meeting_stamp(prev, new_status, now):
     """חותמת 'מתי נקבעה הפגישה' — קבועה לתמיד: קיימת נשמרת; אחרת now אם הסטטוס meeting; אחרת None."""
     ex = (prev or {}).get("meeting_at")
     if ex:
         return ex
     return now if new_status == "meeting" else None
+
+
+# ── שליפת המקורות (משותף לראוטי היעדים וללוח הבקרה) ─────────────────────────────────
+def g_canon(G, n):
+    return G["_canon_key"](str(n or "").strip())
+
+
+def g_display(G, n):
+    n = str(n or "").strip()
+    try:
+        return G["_canon_agent_name"](n) or n
+    except Exception:
+        return n
+
+
+def g_safe(G, fn):
+    """מקור שנכשל → החריגה עצמה (היעד שלו יוצג '—'), בלי להפיל את השאר."""
+    try:
+        return fn()
+    except Exception as e:
+        lg = G.get("log")
+        if lg:
+            try:
+                lg.warning(f"goals source failed: {e}")
+            except Exception:
+                pass
+        return e
+
+
+def g_roster(G):
+    """הצוות שיכול להיכנס — אותה רשימה כמו טבלת הסוכנים בלוח הבקרה (effie_v2.crm_roster)."""
+    import effie_v2 as _ev
+    return [g_display(G, n) for n in _ev.crm_roster(G)]
+
+
+def g_missed(G, now):
+    import effie_v2 as _ev
+    frm = (_dt.datetime.fromtimestamp(now, _IL) - _dt.timedelta(days=3)).strftime("%d/%m/%Y")
+    calls = G["web_fetch_raw"]("שיחות", frm, "31/12/2099") or []
+    h = {"ts": _ev.crm_ts, "answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
+         "nb_key": lambda r: ""}
+    return _ev.crm_todo(calls, [], [], [], {}, now, h, limit=None)["missed"]
+
+
+def g_reviews(G):
+    import site_api as _sa
+    return _sa.reviews_active(_sa.review_rows(G.get("_sbdb")))
+
+
+def g_seen(G, day):
+    start = _dt.datetime(day.year, day.month, day.day, tzinfo=_IL)
+    return [r.get("name") for r in (G["_usage_rows"](start) or []) if r.get("name")]
+
+
+def dashboard_goals(G, now):
+    """[GOALS 28/10] כרטיס 'יעדי היום' בלוח הבקרה — היום / אתמול / השבוע, מול אותה תקופה לפני שבוע.
+    יומן הפעולות נשלף פעם אחת מתחילת השבוע הקודם (או משמונה ימים אחורה, המוקדם) — רק 'תזכורת ללקוח עבר', סינון בשרת."""
+    day = _dt.datetime.fromtimestamp(now, _IL).date()
+    first = min(week_start(day) - _dt.timedelta(days=7), day - _dt.timedelta(days=8))
+    t0 = day_bounds(first)[0]
+
+    def activity():
+        sb = G.get("_sbdb")
+        if sb is not None and sb.enabled():
+            return sb.fetch_activity_actions(t0, (ACT_REMIND,)) or []
+        return G["_activity_fetch"](t0, today=False)
+
+    cfg = g_safe(G, G["_load_config"])
+    src = {"nb": cfg if _bad(cfg) else ((cfg or {}).get("nbStatus") or {}),
+           "cfg": cfg if isinstance(cfg, dict) else {},
+           "buyers": g_safe(G, G["_fetch_manual_buyers"]),
+           "bpages": g_safe(G, lambda: G["_sbdb"].bpage_all()),
+           "activity": g_safe(G, activity),
+           "reviews": g_safe(G, lambda: g_reviews(G)),
+           "missed": g_safe(G, lambda: g_missed(G, now)),
+           "seen": g_safe(G, lambda: g_seen(G, day)),
+           "roster": g_safe(G, lambda: g_roster(G))}
+    return build_periods(src, day, lambda n: g_canon(G, n))
 
 
 def register(app, G):
@@ -268,31 +461,16 @@ def register(app, G):
     _keys_used = set()
 
     def canon(n):
-        return G["_canon_key"](str(n or "").strip())
+        return g_canon(G, n)
 
     def _display(n):
-        n = str(n or "").strip()
-        try:
-            return G["_canon_agent_name"](n) or n
-        except Exception:
-            return n
+        return g_display(G, n)
 
     def _safe(fn):
-        try:
-            return fn()
-        except Exception as e:
-            lg = G.get("log")
-            if lg:
-                try:
-                    lg.warning(f"goals source failed: {e}")
-                except Exception:
-                    pass
-            return e
+        return g_safe(G, fn)
 
     def _roster():
-        """הצוות שיכול להיכנס — אותה רשימה כמו טבלת הסוכנים בלוח הבקרה (effie_v2.crm_roster)."""
-        import effie_v2 as _ev
-        return [_display(n) for n in _ev.crm_roster(G)]
+        return g_roster(G)
 
     def _team(coord_phone):
         cc = (G["_coordinators_all"]() or {}).get(G["_last9"](coord_phone)) or {}
@@ -315,20 +493,13 @@ def register(app, G):
         return out
 
     def _missed(now):
-        import effie_v2 as _ev
-        frm = (_dt.datetime.fromtimestamp(now, _IL) - _dt.timedelta(days=3)).strftime("%d/%m/%Y")
-        calls = G["web_fetch_raw"]("שיחות", frm, "31/12/2099") or []
-        h = {"ts": _ev.crm_ts, "answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
-             "nb_key": lambda r: ""}
-        return _ev.crm_todo(calls, [], [], [], {}, now, h, limit=None)["missed"]
+        return g_missed(G, now)
 
     def _reviews():
-        import site_api as _sa
-        return _sa.reviews_active(_sa.review_rows(G.get("_sbdb")))
+        return g_reviews(G)
 
     def _seen(day):
-        start = _dt.datetime(day.year, day.month, day.day, tzinfo=_IL)
-        return [r.get("name") for r in (G["_usage_rows"](start) or []) if r.get("name")]
+        return g_seen(G, day)
 
     def _fetch_src():
         now = _clock()
