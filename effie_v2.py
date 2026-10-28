@@ -12639,6 +12639,14 @@ def review_phone(ph):
     return d if len(d) == 9 and d.startswith("5") else ""
 
 
+def review_min_year():
+    """[28/10 אייל: 'שישלח אוטומטית לכל השנים'] משנה זו ואילך; 0 = כל השנים (ברירת מחדל). env REVIEW_MIN_YEAR."""
+    try:
+        return int(os.environ.get("REVIEW_MIN_YEAR", "0") or 0)
+    except ValueError:
+        return 0
+
+
 def review_queue(rows, sent, now, max_n, wait_days=7, min_year=2026):
     """[REVIEW 21/10 אייל: 'וואטסאפ מה-360 לכל לקוח אחרי שבוע שהוא נכנס עם המספר טלפון'] עסקאות שמגיעה להן
     בקשת ביקורת: מ-2026, נכנסו לאפי (created_at) לפני wait_days+, עם נייד, לא הפנייה, לא נעלמו מהקובץ,
@@ -16183,21 +16191,31 @@ def register(app, G):
         except Exception:
             return ""
 
+    _rv_last = {}   # [28/10] אבחון: מתי רץ הסבב האחרון ולמה עצר — /v2/api/review/diag
+
+    def _rv_stop(reason, **kw):
+        try:
+            _rv_last.clear()
+            _rv_last.update(dict(kw, at=__import__("datetime").datetime.now(__import__("zoneinfo").ZoneInfo("Asia/Jerusalem")).strftime("%d/%m %H:%M"), reason=reason))
+        except Exception:
+            pass
+        return 0
+
     def _review_run(now=None):
         """סבב אחד: שולח עד התקרה היומית. מחזיר כמה ניסיונות נעשו."""
         from zoneinfo import ZoneInfo as _ZRR
         import datetime as _drr
         now = now or time.time()
         if os.environ.get("REVIEW_REQUESTS", "1") == "0" or not G["_d360_on"]():
-            return 0
+            return _rv_stop("off: REVIEW_REQUESTS=0 / not 360dialog")
         if G["_quiet_hours"]() or G["_quiet_mode"]() or G["_switch_off"]("wa_official_off"):
-            return 0
+            return _rv_stop("quiet_hours / quiet_mode / wa_official_off")
         if not review_window(_drr.datetime.fromtimestamp(now, _ZRR("Asia/Jerusalem"))):
-            return 0
+            return _rv_stop("outside_window (Sun-Thu 10-19, Fri 10-13)")
         link = _review_link()
         fn = G.get("_deal_history_linked")
         if not (link and fn):
-            return 0
+            return _rv_stop("no_review_link (v2_office.review)" if not link else "no_deal_history")
         if not _rv_lock.acquire(blocking=False):
             return 0
         try:
@@ -16208,9 +16226,12 @@ def register(app, G):
                 cap = 30
             left = min(5, cap - review_sent_today(sent, now))   # עד 5 בכל סבב — מתפזר על פני היום
             if left <= 0:
-                return 0
+                return _rv_stop("daily_cap_reached", cap=cap, sent_today=review_sent_today(sent, now))
             office = ((G["_load_config"]() or {}).get("v2_office") or {}).get("name") or ""
-            todo = review_queue(fn() or [], sent, now, left)
+            todo = review_queue(fn() or [], sent, now, left, min_year=review_min_year())
+            if not todo:
+                _rv_stop("queue_empty (אין עסקה שנכנסה לפני 7+ ימים עם נייד שטרם קיבלה)", sent_total=len(sent),
+                         sent_today=review_sent_today(sent, now))
             done = {}
             for r in todo:
                 p9 = review_phone(r.get("client_phone"))
@@ -16224,14 +16245,38 @@ def register(app, G):
                     cfg.setdefault("v2_review_sent", {}).update(done)
                 G["_config_mutate"](_mark)
                 if log: log.info(f"review requests: sent={sum(1 for v in done.values() if v['r'] == 'sent')} failed={sum(1 for v in done.values() if v['r'] != 'sent')}")
+                _rv_stop("ran", sent=sum(1 for v in done.values() if v['r'] == 'sent'),
+                         failed=sum(1 for v in done.values() if v['r'] != 'sent'), sent_total=len(sent) + len(done))
             return len(done)
         except Exception as e:
             if log: log.error(f"review requests: {e}", exc_info=True)
-            return 0
+            return _rv_stop("error: " + str(e)[:160])
         finally:
             _rv_lock.release()
 
     G["_review_run"] = _review_run   # לבדיקות ולהפעלה ידנית
+
+    @app.route("/v2/api/review/diag", methods=["GET"])
+    def v2_api_review_diag():
+        """[28/10] אבחון בקשות ביקורת (מפתח בלבד, טוקן האפליקציה): סבב אחרון, תור, נשלחו היום, אחרונות."""
+        s = G["_web_auth"]()
+        if not s or not G["_is_dev"](s.get("phone", "")):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        now = time.time()
+        cfg = G["_load_config"]() or {}
+        sent = cfg.get("v2_review_sent") or {}
+        try:
+            fn = G.get("_deal_history_linked")
+            q = len(review_queue((fn() if fn else []) or [], sent, now, 10 ** 6, min_year=review_min_year()))
+        except Exception as e:
+            q = "error: " + str(e)[:120]
+        last = sorted(sent.items(), key=lambda kv: -float((kv[1] or {}).get("ts") or 0))[:15]
+        return jsonify({"ok": True, "thread": _rv_thr["started"], "last_run": dict(_rv_last),
+                        "link": bool(_review_link()), "env_on": os.environ.get("REVIEW_REQUESTS", "1") != "0",
+                        "wa_official_off": bool(G["_switch_off"]("wa_official_off")),
+                        "sent_total": len(sent), "sent_today": review_sent_today(sent, now), "queue": q,
+                        "recent": [dict(v or {}, key=k, when=__import__("datetime").datetime.fromtimestamp(float((v or {}).get("ts") or 0), __import__("zoneinfo").ZoneInfo("Asia/Jerusalem")).strftime("%d/%m %H:%M"))
+                                   for k, v in last]})
 
     def _review_loop():
         while True:
@@ -17235,7 +17280,7 @@ def register(app, G):
                 recs = crm_deal_fill_phone(recs, srcs[0], srcs[1], inv, lambda n: G["_canon_key"](G["_canon_agent_name"](n) or n))
                 try:   # [REVIEW 21/10] סימון בקשת הביקורת (נשלח / נכשל / ממתין)
                     _rs = (G["_load_config"]() or {}).get("v2_review_sent") or {}
-                    _due = {"d:" + str(r.get("id")) for r in review_queue(fn() or [], _rs, _tdl.time(), 10 ** 6)}
+                    _due = {"d:" + str(r.get("id")) for r in review_queue(fn() or [], _rs, _tdl.time(), 10 ** 6, min_year=review_min_year())}
                     crm_deal_review(recs, _rs, _due, _tdl.time())
                 except Exception as e:
                     if log: log.warning(f"crm deals review marks: {e}")
