@@ -1081,10 +1081,10 @@ var GOALS_IC = {
   fire: '<svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 3c1 3 4 4.5 4 8.5a4 4 0 0 1-8 0c0-2 1-3 1.5-4 .5 1.5 1.5 2 2 2 0-2.5-.5-4.5.5-6.5z" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linejoin="round"/></svg>'
 };
 var GOALS_DEFS = [
-  {k: 'meetings', t: 'פגישות מנכס נולד', s: 'נקבעו היום מכרטיס של מודעה', btn: 'לנכס נולד', u: '/v2/newborn', ic: 'home', chip: 'נכס נולד', left: 'פגישות'},
-  {k: 'buyers', t: 'קונים חדשים', s: '', btn: 'לקונים', u: '/v2/buyers', ic: 'user', chip: 'קונים', left: 'קונים'},
-  {k: 'past_clients', t: 'הודעות ללקוחות עבר', s: '"תזכורת ללקוח" מהיסטוריית העסקאות', btn: 'להיסטוריית העסקאות', u: '/v2/history', ic: 'chat', green: true, chip: 'לקוחות עבר', left: 'לקוחות עבר'},
-  {k: 'reviews', t: 'המלצות', s: 'המלצות שנוספו היום', btn: 'להמלצות', u: '/v2/reviews', ic: 'quote', chip: 'המלצות', left: 'המלצות'}
+  {k: 'meetings', t: 'פגישות מנכס נולד', s: 'נקבעו היום מכרטיס של מודעה', btn: 'לנכס נולד', u: '/v2/newborn', ic: 'home', chip: 'נכס נולד', left: 'פגישות', one: 'פגישה אחת'},
+  {k: 'buyers', t: 'קונים חדשים', s: '', btn: 'לקונים', u: '/v2/buyers', ic: 'user', chip: 'קונים', left: 'קונים', one: 'קונה אחד'},
+  {k: 'past_clients', t: 'הודעות ללקוחות עבר', s: '"תזכורת ללקוח" מהיסטוריית העסקאות', btn: 'להיסטוריית העסקאות', u: '/v2/history', ic: 'chat', green: true, chip: 'לקוחות עבר', left: 'לקוחות עבר', one: 'לקוח עבר אחד'},
+  {k: 'reviews', t: 'המלצות', s: 'המלצות שנוספו היום', btn: 'להמלצות', u: '/v2/reviews', ic: 'quote', chip: 'המלצות', left: 'המלצות', one: 'המלצה אחת'}
 ];
 function gShow(v){ v = gNum(v); return v == null ? '—' : String(v); }
 function gPct(c, t){
@@ -1108,7 +1108,7 @@ function goalsCardHtml(j, opts){
   var left = [];
   GOALS_DEFS.forEach(function(g){
     var cv = gNum(c[g.k]), tv = gNum(t[g.k]) || 0;
-    if (cv != null && cv < tv) left.push((tv - cv) + ' ' + g.left);
+    if (cv != null && cv < tv) left.push((tv - cv) === 1 ? g.one : (tv - cv) + ' ' + g.left);
   });
   var sub = done === 4 ? 'כל היעדים הושלמו. כל הכבוד' : left.length ? 'נשארו: ' + left.join(' · ') : '';
   var h = '<div class="gk"><div class="gk-hero">' +
@@ -1159,7 +1159,7 @@ function goalsAgentsHtml(j, canEdit){
   ags.forEach(function(a, i){
     var c = a.counts || {}, t = a.targets || {};
     h += '<div class="gk-ag' + (a.seen_today ? '' : ' off') + '"><div class="an"><span>' + gEsc(a.name) + '</span>' +
-      (a.seen_today ? '<small>' + goalsDone(a) + '/4</small>' : '<small>לא נכנס היום</small>') + '</div>';
+      (a.seen_today ? '<small>' + goalsDone(a) + '/4</small>' : '<small>לא נכנס/ה היום</small>') + '</div>';
     GOALS_DEFS.forEach(function(g){
       var cv = c[g.k], tv = gNum(t[g.k]) || 0, ok = goalIsDone(cv, tv);
       h += '<div class="ln' + (ok ? ' done' : '') + '"><span class="l">' + g.t + '</span><div class="gBar"><div style="width:' + gPct(cv, tv) + '%"></div></div>' +
@@ -2165,9 +2165,10 @@ function goalsMiniRender(){
 function goalsLoad(tries){
   GET('/v2/api/goals/today').then(function(j){
     if (!j || !j.ok) throw new Error('goals');
+    var wasLoading = (GJ === undefined);   // מציירים מחדש רק את מצב 'טוען' — לא קופצים באמצע קריאה
     GJ = j; goalsCachePut(TOK, j);
     goalsMiniRender();
-    if (STORY.open && STORY.i === 0) renderCard(0);
+    if (wasLoading && STORY.open && STORY.i === 0) renderCard(0);
   }).catch(function(){
     if ((tries || 0) < 2){ setTimeout(function(){ goalsLoad((tries || 0) + 1); }, 4000); return; }
     if (GJ === undefined){ GJ = null; goalsMiniRender(); if (STORY.open && STORY.i === 0) renderCard(0); }
@@ -2274,7 +2275,7 @@ function renderCard(i){
   if (i === 0){
     b.innerHTML = (GJ === undefined)
       ? '<div style="text-align:center;color:rgba(255,255,255,.7);font-size:14px">טוען את היעדים…</div>'
-      : goalsCardHtml(GJ, {story: true, greet: greetWord() + ', ' + firstName(M.name)});
+      : goalsCardHtml(GJ, {story: true, greet: firstName(M.name) ? greetWord() + ', ' + firstName(M.name) : greetWord()});
     b.innerHTML += '<div class="btns" style="margin:14px auto 0;align-items:center">' +
       '<button class="bMain" style="width:100%" onclick="nextCard()">המשך לסטורי</button>' +
       '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';

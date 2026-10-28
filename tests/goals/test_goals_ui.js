@@ -83,7 +83,7 @@ ck(ht.includes('פירוט לפי סוכן') && ht.includes("goalsGo('/v2/goals'
 ck(ht.includes('3<i>/4</i>') && ht.includes('אין שיחות פתוחות'), 'team totals');
 ck(ht.includes('חלק מהנתונים'), 'partial note');
 const ha = K.goalsAgentsHtml(teamJ, false);
-ck(ha.includes('דנה כהן') && ha.includes('רועי לוי') && ha.includes('לא נכנס היום'), 'agents list + not seen');
+ck(ha.includes('דנה כהן') && ha.includes('רועי לוי') && ha.includes('לא נכנס/ה היום') && !ha.includes('לא נכנס היום'), 'agents list + not seen (gender-neutral)');
 ck((ha.match(/class="gBar"/g) || []).length === 8, 'bar per goal per agent');
 ck(!ha.includes('עריכת יעד') && !ha.includes('יעד ברירת מחדל'), 'no edit for non-manager');
 const hm = K.goalsAgentsHtml(Object.assign({}, teamJ, {view: 'office', can_edit: true}), true);
@@ -123,4 +123,19 @@ let closed = 0; ctx.STORY = {open: true}; ctx.closeStory = () => { closed++; ctx
 K.goalsGo('/v2/buyers'); ck(closed === 1 && ctx.location.href === '/v2/buyers', 'goalsGo closes + navigates');
 // מסך היעדים: שדות 16px מספריים
 ck(/inputmode="numeric"/.test(PAGE) && /font-size:16px/.test(PAGE), 'numeric 16px inputs');
+// fix 1: יחיד כשנשאר 1, רבים מעל 1
+const one = {ok: true, view: 'agent', me: {counts: {meetings: 1, buyers: 2, past_clients: 4, reviews: 1, followups: null, missed: null},
+  targets: {meetings: 2, buyers: 3, past_clients: 5, reviews: 2}}};
+const ho = K.goalsCardHtml(one, {});
+ck(ho.includes('נשארו: פגישה אחת · קונה אחד · לקוח עבר אחד · המלצה אחת'), 'singular remaining');
+ck(!/\b1 (פגישות|קונים|לקוחות|המלצות)/.test(ho), 'no "1 + plural"');
+const two = {ok: true, view: 'agent', me: {counts: {meetings: 0, buyers: 0, past_clients: 0, reviews: 0}, targets: {meetings: 2, buyers: 3, past_clients: 5, reviews: 2}}};
+ck(K.goalsCardHtml(two, {}).includes('נשארו: 2 פגישות · 3 קונים · 5 לקוחות עבר · 2 המלצות'), 'plural remaining');
+// fix 2: רינדור מחדש רק אחרי מצב 'טוען'
+ck(/var wasLoading = \(GJ === undefined\);[\s\S]{0,300}if \(wasLoading && STORY\.open && STORY\.i === 0\) renderCard\(0\);/.test(HOME), 'goalsLoad re-renders only from loading');
+ck((HOME.match(/STORY\.i === 0\) renderCard\(0\)/g) || []).length === 2, 'no unconditional re-render');
+// fix 3: בלי פסיק כשאין שם
+ck(/greet: firstName\(M\.name\) \? greetWord\(\) \+ ', ' \+ firstName\(M\.name\) : greetWord\(\)/.test(HOME), 'story greet no trailing comma');
+const hg = K.goalsCardHtml(agentJ, {greet: ''});
+ck(!hg.includes('class="gr"'), 'empty greet omitted');
 console.log('ok', n);
