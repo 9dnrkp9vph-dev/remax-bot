@@ -134,6 +134,9 @@ ck(K.goalsCardHtml(two, {}).includes('נשארו: 2 פגישות · 3 קונים
 // fix 2: רינדור מחדש רק אחרי מצב 'טוען'
 ck(/var wasLoading = \(GJ === undefined\);[\s\S]{0,300}if \(wasLoading && STORY\.open && STORY\.i === 0\) renderCard\(0\);/.test(HOME), 'goalsLoad re-renders only from loading');
 ck((HOME.match(/STORY\.i === 0\) renderCard\(0\)/g) || []).length === 2, 'no unconditional re-render');
+// fix final: צעדי loadData לא מציירים מחדש את כרטיס היעדים (כרטיס 0)
+ck(/if \(STORY\.open && STORY\.i !== 0\) renderCard\(STORY\.i\);/.test(HOME), 'loadData step skips card 0');
+ck(!/if \(STORY\.open\) renderCard\(STORY\.i\)/.test(HOME), 'no unconditional renderCard(STORY.i)');
 // fix 3: בלי פסיק כשאין שם
 ck(/greet: firstName\(M\.name\) \? greetWord\(\) \+ ', ' \+ firstName\(M\.name\) : greetWord\(\)/.test(HOME), 'story greet no trailing comma');
 const hg = K.goalsCardHtml(agentJ, {greet: ''});

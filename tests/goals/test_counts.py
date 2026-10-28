@@ -68,6 +68,13 @@ def test_bpage_today():
     assert r["bpage"] == 1, r
     ok()
 
+def test_bpage_none_row_skipped():
+    bs = [{"row": None, "date": "28/10/2026", "agent": A}]
+    pages = [{"row": None, "last_sent_at": "2026-10-28T08:00:00+00:00"}]
+    r = g.count_agent(A, B, src(buyers=bs, bpages=pages), canon)
+    assert r["bpage"] == 0, r
+    ok()
+
 def test_past_clients_distinct():
     act = [{"name": A, "action": g.ACT_REMIND, "detail": "501111111"},
            {"name": A, "action": g.ACT_REMIND, "detail": "501111111"},

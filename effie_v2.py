@@ -2013,7 +2013,7 @@ function loadData(){
       M.ready = true;
       renderDash();
       homeSnapSave();
-      if (STORY.open) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי
+      if (STORY.open && STORY.i !== 0) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי (לא כרטיס היעדים — הוא נטען לבד)
     }).catch(function(){ ldFailed = true; });
   }
   return Promise.all([

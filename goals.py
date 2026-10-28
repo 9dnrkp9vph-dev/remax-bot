@@ -160,12 +160,13 @@ def count_agent(agent, bounds, src, canon):
         for b in buyers or []:
             if _same(b.get("agent"), agent, canon) and _in(parse_ts(b.get("date")), bounds):
                 n += 1
-                rows.add(b.get("row"))
+                if b.get("row") is not None:
+                    rows.add(b.get("row"))
         out["buyers"] = n
         if not _bad(bpages):
             sent = set()
             for p in bpages or []:
-                if p.get("row") in rows and _in(parse_ts(p.get("last_sent_at")), bounds):
+                if p.get("row") is not None and p.get("row") in rows and _in(parse_ts(p.get("last_sent_at")), bounds):
                     sent.add(p.get("row"))
             out["bpage"] = len(sent)
 
@@ -507,6 +508,12 @@ def register(app, G):
     def _seen(day):
         return g_seen(G, day)
 
+    def _activity(t0):
+        sb = G.get("_sbdb")
+        if sb is not None and hasattr(sb, "fetch_activity_actions") and sb.enabled():
+            return sb.fetch_activity_actions(t0, (ACT_REMIND,)) or []     # סינון בשרת — רק מה שנספר
+        return G["_activity_fetch"](t0, today=True)
+
     def _fetch_src():
         now = _clock()
         day = _dt.datetime.fromtimestamp(now, _IL).date()
@@ -516,7 +523,7 @@ def register(app, G):
                 "nb": cfg if _bad(cfg) else ((cfg or {}).get("nbStatus") or {}),
                 "buyers": _safe(G["_fetch_manual_buyers"]),
                 "bpages": _safe(lambda: G["_sbdb"].bpage_all()),
-                "activity": _safe(lambda: G["_activity_fetch"](t0, today=True)),
+                "activity": _safe(lambda: _activity(t0)),
                 "reviews": _safe(_reviews),
                 "missed": _safe(lambda: _missed(now)),
                 "seen": _safe(lambda: _seen(day)),
@@ -559,7 +566,7 @@ def register(app, G):
             return build_office(src, day, canon)
         key = "goals:" + _today_iso() + ":" + scope_key     # יום חדש = מפתח חדש = בנייה טרייה
         _keys_used.add(key)
-        return G["_swr"](key, SRC_TTL, build, max_stale=2 * SRC_TTL)
+        return G["_swr"](key, SRC_TTL, build, max_stale=1800)       # ישן עד 30 דק' מוחזר מיד, בנייה ברקע (המפתח כולל את היום)
 
     def _is_mgr(s):
         return s.get("drole") in ("manager", "developer")

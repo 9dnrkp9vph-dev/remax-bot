@@ -39,7 +39,7 @@ def make(sess, buyers_fail=False, cfg=None, tv_key="", swr=None, buyers_list=Non
             "רון::b": {"agent": "רון לוי", "status": "meeting", "meeting_at": time.time(), "pkey": "x2"},
             "רון::c": {"agent": "רון לוי", "status": "meeting", "meeting_at": time.time(), "pkey": "x3"},
             "מיכל::d": {"agent": "מיכל בר", "status": "meeting", "meeting_at": time.time(), "pkey": "x4"}}}
-    state = {"cfg": cfg, "mutates": 0, "logs": [], "cleared": []}
+    state = {"cfg": cfg, "act_calls": [], "mutates": 0, "logs": [], "cleared": []}
 
     def mutate(fn):
         state["mutates"] += 1
@@ -56,6 +56,9 @@ def make(sess, buyers_fail=False, cfg=None, tv_key="", swr=None, buyers_list=Non
     class SB:
         def enabled(self): return True
         def bpage_all(self): return [{"row": 5, "last_sent_at": now_iso}]
+        def fetch_activity_actions(self, t0, prefixes):
+            state["act_calls"].append(tuple(prefixes))
+            return [{"action": goals.ACT_REMIND, "name": "דנה כהן", "detail": "501234567", "ts": time.time()}]
 
     calls_t = (dt.datetime.now(IL) - dt.timedelta(hours=1)).strftime("%d/%m/%Y %H:%M")
     G = AutoG(
@@ -231,11 +234,27 @@ def test_fresh_after_ttl():
         c.get("/v2/api/goals/today")                        # לכל היותר תשובה ישנה אחת (בונה ברקע)
         j = c.get("/v2/api/goals/today").get_json()
         assert j["me"]["counts"]["buyers"] == 2, j          # הבנייה ברקע קיבלה מקורות טריים
-        clk.t += 200                                        # מעבר ל-max_stale — בנייה בתוך הבקשה
+        clk.t += 2000                                       # מעבר ל-max_stale (30 דק') — בנייה בתוך הבקשה
         bl.append({"agent": "דנה כהן", "date": now_dmy(), "row": 8})
         assert c.get("/v2/api/goals/today").get_json()["me"]["counts"]["buyers"] == 3
     finally:
         goals._clock = goals._tm.time
+
+
+def test_scoped_max_stale_30min():
+    """המטמון של היעדים מחזיר ישן עד 30 דק' (בנייה ברקע) — לא בונה בתוך הבקשה."""
+    seen = []
+    base = lambda k, ttl, b, **kw: (seen.append(kw.get("max_stale")), b())[1]
+    c, _ = make(AGENT, swr=base)
+    c.get("/v2/api/goals/today")
+    assert seen and all(m is not None and m >= 1800 for m in seen), seen
+
+
+def test_activity_filtered_fetch():
+    c, st = make(AGENT)
+    j = c.get("/v2/api/goals/today").get_json()
+    assert st["act_calls"] and st["act_calls"][0] == (goals.ACT_REMIND,), st["act_calls"]
+    assert j["me"]["counts"]["past_clients"] == 1, j
 
 
 def test_no_yesterday_after_midnight():
