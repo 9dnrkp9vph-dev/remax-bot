@@ -52,7 +52,7 @@ st = cfg["v2_goals_weekly"]["2026-10-25"]
 ck(st["agents"]["דנה כהן"]["r"] == "sent" and st["agents"]["רון לוי"]["r"] == "no_phone", st)
 ck(st.get("done") and st.get("mgr", {}).get("r") == "sent", st)
 ck(any("סיכום יעדים שבועי" in str(a) for a in logs), logs)
-ck("המשרד שלנו" in sent[0][1] and "/v2/goals" in sent[0][1], sent[0][1])
+ck("שלום דנה" in sent[0][1] and "/v2/goals" in sent[0][1], sent[0][1])
 
 # פעם אחת בשבוע — גם אם הקונפיג נמחק (העותק בדיסק)
 sent.clear()
@@ -84,8 +84,14 @@ os.environ["GOALS_WEEKLY_WA"] = "0"
 g.weekly_run(G, SUN, os.path.join(tmp, "d.json"), src_override=src_override)
 ck(sent == [], "env off")
 os.environ.pop("GOALS_WEEKLY_WA")
+# [GOALS4] יום שני רגיל — לא שולחים 'השלמה' (אייל: רק בימי ראשון)
+G, cfg, sent, logs = make_G()
+g.weekly_run(G, at(2026, 11, 2, 10, 30), os.path.join(tmp, "e0.json"), src_override=src_override)
+ck(sent == [], "Monday after a normal Sunday — nothing")
 # יום ראשון חג → שני
 G, cfg, sent, logs = make_G()
+G["_shabbat_windows"] = lambda ev: []
+G["_in_shabbat_window"] = lambda d, w: d.date() == dt.date(2026, 11, 1)
 g.weekly_run(G, at(2026, 11, 2, 10, 30), os.path.join(tmp, "e.json"), src_override=src_override)
 ck(any(t == "972501111111" for t, _ in sent), "Monday after holiday")
 

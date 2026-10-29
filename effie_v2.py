@@ -1022,6 +1022,35 @@ V2_GOALS_KIT = r"""<style>
   .gk-eic{width:46px;height:46px;border-radius:50%;background:#F6EDD6;display:flex;align-items:center;justify-content:center}
   .gk-empty b{color:#1E3A5F;font-size:15px}
   .gk-empty span{font-size:13px;color:#5B6472;margin-bottom:6px}
+  /* [GOALS4 29/10] מתחילת השבוע ומתחילת החודש — שני פסים לכל יעד, סימון קצב, סטטוס */
+  .gk-pr{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .gk-pt{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:10px 12px;display:flex;align-items:center;gap:10px;min-width:0}
+  .gk-pt svg{width:52px;height:52px;flex:0 0 52px}
+  .gk-pt .l{font-size:12.5px;font-weight:700;color:#E4C56B;letter-spacing:.04em}
+  .gk-pt .v{font-size:20px;font-weight:800;line-height:1.15}
+  .gk-pt .v i{font-style:normal;font-size:13px;font-weight:600;opacity:.8}
+  .gk-pt .s{font-size:11.5px;opacity:.8;line-height:1.35}
+  .gk-push{margin-top:12px;background:#E4C56B;color:#231700;border-radius:14px;padding:10px 12px;font-size:13.5px;font-weight:700;line-height:1.45}
+  .gk-push.done{background:rgba(255,255,255,.14);color:#fff}
+  .gk-st{flex:0 0 auto;font-size:12px;font-weight:700;border-radius:99px;padding:3px 10px;white-space:nowrap}
+  .gk-st.ok{background:#1E3A5F;color:#fff}
+  .gk-st.pace{background:#E9EDF3;color:#1E3A5F}
+  .gk-st.behind{background:#F6EDD6;color:#7A5E1C}
+  .gk-rw{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .gk-rw .rl{flex:0 0 46px;font-size:12.5px;font-weight:700;color:#5B6472}
+  .gk-rw .gBar{flex:1;margin:0;height:10px;position:relative;overflow:visible}
+  .gk-rw .gBar div{height:100%}
+  .gk-rw .gBar .tk{position:absolute;top:-3px;bottom:-3px;width:2px;background:#14192B;border-radius:2px;opacity:.55}
+  .gk-rw .rv{flex:0 0 auto;min-width:64px;text-align:left;font-size:15px;font-weight:800;color:#1E3A5F;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .gk-rw .rv i{font-style:normal;font-size:12.5px;font-weight:600;color:#5B6472}
+  .gk-rw.ok .gBar div{background:#1E3A5F}
+  .gk-g.hl .gk-rw .gBar div{background:#C29435}
+  .gk-g.hl .gk-rw.ok .gBar div{background:#1E3A5F}
+  .gk-td{font-size:12.5px;color:#5B6472;margin:8px 0 10px}
+  .gk-td b{color:#1E3A5F}
+  .gk-leg{font-size:12px;color:#5B6472;margin:2px 4px 0;display:flex;align-items:center;gap:6px}
+  .gk-leg i{display:inline-block;width:2px;height:12px;background:#14192B;opacity:.55;border-radius:2px}
+  .gk-ag .ln .vm{flex:0 0 auto;font-size:12px;color:#5B6472;font-variant-numeric:tabular-nums;white-space:nowrap}
   @media (prefers-reduced-motion:no-preference){ .gBar div{transition:width .5s ease-out} }
 </style>
 <script>
@@ -1061,9 +1090,11 @@ function goalsCacheGet(tok, day){
 /* הנתונים שמוצגים: סוכן — שלו; מתאמת/מנהל — הסכום */
 function goalsData(j){
   var d = j && (j.view === 'agent' ? j.me : j.total);
+  function per(x){ return (x && x.counts) ? {counts: x.counts || {}, targets: x.targets || {}} : null; }
   return {counts: (d && d.counts) || {}, targets: (d && d.targets) || {}, partial: !!(d && d.partial),
           agents: (d && typeof d.agents === 'number') ? d.agents : null,
-          office_month: (d && d.office_month) || null, share_agents: (d && typeof d.share_agents === 'number') ? d.share_agents : null};
+          office_month: (d && d.office_month) || null, share_agents: (d && typeof d.share_agents === 'number') ? d.share_agents : null,
+          week: per(d && d.week), month: per(d && d.month), pace: (d && d.pace) || null};
 }
 function goalIsDone(c, t){
   c = gNum(c); t = gNum(t); if (t == null) t = 0;
@@ -1090,12 +1121,12 @@ var GOALS_IC = {
   fire: '<svg width="22" height="22" viewBox="0 0 24 24"><path d="M12 3c1 3 4 4.5 4 8.5a4 4 0 0 1-8 0c0-2 1-3 1.5-4 .5 1.5 1.5 2 2 2 0-2.5-.5-4.5.5-6.5z" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linejoin="round"/></svg>'
 };
 var GOALS_DEFS = [
-  {k: 'listings', t: 'גיוס נכסים', s: 'הסכמי בלעדיות שנחתמו השבוע', btn: 'להחתמת בעל נכס', u: '/v2/sign?type=owner', ic: 'home', gold: true, week: true, chip: 'גיוס', left: 'נכסים לגיוס', one: 'נכס אחד לגיוס'},
-  {k: 'meetings', t: 'פגישות מנכס נולד', s: 'נקבעו היום מכרטיס של מודעה', btn: 'לנכס נולד', u: '/v2/newborn', ic: 'home', chip: 'נכס נולד', left: 'פגישות', one: 'פגישה אחת'},
+  {k: 'listings', t: 'גיוס נכסים', s: 'הסכמי בלעדיות שנחתמו', btn: 'להחתמת בעל נכס', u: '/v2/sign?type=owner', ic: 'home', gold: true, week: true, chip: 'גיוס', left: 'נכסים לגיוס', one: 'נכס אחד לגיוס'},
+  {k: 'meetings', t: 'פגישות מנכס נולד', s: 'נקבעו מכרטיס של מודעה', btn: 'לנכס נולד', u: '/v2/newborn', ic: 'home', chip: 'נכס נולד', left: 'פגישות', one: 'פגישה אחת'},
   {k: 'nb_wa', t: 'פניות לנכס נולד', s: 'וואטסאפ לבעלי נכסים מכרטיס המודעה', btn: 'לנכס נולד', u: '/v2/newborn', ic: 'chat', green: true, chip: 'פניות', left: 'פניות', one: 'פנייה אחת'},
   {k: 'buyers', t: 'קונים חדשים', s: '', btn: 'לקונים', u: '/v2/buyers', ic: 'user', chip: 'קונים', left: 'קונים', one: 'קונה אחד'},
   {k: 'past_clients', t: 'הודעות ללקוחות עבר', s: '"תזכורת ללקוח" מהיסטוריית העסקאות', btn: 'להיסטוריית העסקאות', u: '/v2/history', ic: 'chat', green: true, chip: 'לקוחות עבר', left: 'לקוחות עבר', one: 'לקוח עבר אחד'},
-  {k: 'reviews', t: 'המלצות', s: 'המלצות שנוספו היום', btn: 'להמלצות', u: '/v2/reviews', ic: 'quote', chip: 'המלצות', left: 'המלצות', one: 'המלצה אחת'}
+  {k: 'reviews', t: 'המלצות', s: 'המלצות שנוספו עליך', btn: 'להמלצות', u: '/v2/reviews', ic: 'quote', chip: 'המלצות', left: 'המלצות', one: 'המלצה אחת'}
 ];
 function gShow(v){ v = gNum(v); return v == null ? '—' : String(v); }
 /* קונים: כולל מי שנכנס אוטומטית מהחתמת מתעניין + כמה קיבלו דף קונה */
@@ -1118,36 +1149,98 @@ function gRing(done){
     '" stroke-dashoffset="' + (C * (1 - p)).toFixed(1) + '" transform="rotate(-90 37 37)"/>' +
     '<text x="37" y="43" text-anchor="middle" fill="#fff" font-family="Heebo" font-weight="800" font-size="18">' + Math.round(p * 100) + '%</text></svg>';
 }
+/* [GOALS4 29/10] אייל: "שהיעדים יהיו מתחילת שבוע ומתחילת חודש" + "צריך לדרבן" — לכל יעד שני פסים
+   (השבוע / החודש) עם סימון קצב (כמה מהתקופה עבר), וסטטוס: הושג / בקצב / חסרים N לקצב. */
+function gExp(t, f){ t = gNum(t) || 0; return (typeof f === 'number' && f > 0) ? Math.min(t, Math.round(t * f)) : 0; }
+function gStatus(c, t, f){
+  c = gNum(c); t = gNum(t) || 0;
+  if (c == null) return {k: '', tx: ''};
+  if (c >= t) return {k: 'ok', tx: 'הושג'};
+  var e = gExp(t, f);
+  return c >= e ? {k: 'pace', tx: 'בקצב'} : {k: 'behind', tx: 'חסרים ' + (e - c) + ' לקצב'};
+}
+function gDoneP(p){
+  if (!p) return 0;
+  var n = 0; GOALS_KEYS.forEach(function(k){ if (goalIsDone(p.counts[k], p.targets[k])) n++; }); return n;
+}
+function gMiniRing(done){
+  var C = 138.2, q = done / GOALS_KEYS.length;
+  return '<svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="22" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="6"/>' +
+    '<circle cx="26" cy="26" r="22" fill="none" stroke="#E4C56B" stroke-width="6" stroke-linecap="round" stroke-dasharray="' + C +
+    '" stroke-dashoffset="' + (C * (1 - q)).toFixed(1) + '" transform="rotate(-90 26 26)"/></svg>';
+}
+function gRow(lbl, c, t, f){
+  var cv = gNum(c), tv = gNum(t) || 0, ok = goalIsDone(cv, tv);
+  var tick = (typeof f === 'number' && f > 0 && f < 1 && !ok) ? '<span class="tk" style="inset-inline-start:' + Math.round(f * 100) + '%"></span>' : '';
+  return '<div class="gk-rw' + (ok ? ' ok' : '') + '"><span class="rl">' + lbl + '</span>' +
+    '<div class="gBar"><div style="width:' + gPct(cv, tv) + '%"></div>' + tick + '</div>' +
+    '<span class="rv">' + gShow(cv) + '<i> / ' + gShow(t) + '</i></span></div>';
+}
+function gDaysLeft(pace){
+  if (!pace) return {w: '', m: ''};
+  var wl = Math.round((1 - (pace.week || 0)) * 5.5 * 2) / 2, w;
+  w = wl <= 0 ? 'השבוע נגמר היום' : wl === 0.5 ? 'נשאר חצי יום' : wl === 1 ? 'נשאר יום עבודה אחד' : 'נשארו ' + wl + ' ימי עבודה';
+  var m = '';
+  try{
+    var to = new Date(pace.month_to + 'T12:00:00'), td = new Date(goalsToday() + 'T12:00:00');
+    var dl = Math.round((to - td) / 86400000);
+    m = dl <= 0 ? 'החודש נגמר היום' : dl === 1 ? 'עוד יום לסוף החודש' : 'עוד ' + dl + ' ימים לסוף החודש';
+  }catch(e){}
+  return {w: w, m: m};
+}
+function gPush(d, group){
+  var w = d.week; if (!w) return '';
+  var best = null;
+  GOALS_DEFS.forEach(function(g){
+    var c = gNum(w.counts[g.k]), t = gNum(w.targets[g.k]) || 0;
+    if (c == null || c >= t) return;
+    var r = t - c;
+    if (!best || r < best.r) best = {g: g, r: r};
+  });
+  if (!best) return '<div class="gk-push done">כל יעדי השבוע הושגו. כל הכבוד!</div>';
+  var miss = best.r === 1 ? best.g.one : best.r + ' ' + best.g.left;
+  return '<div class="gk-push">הכי קרוב ליעד השבוע: ' + gEsc(best.g.t) + ' — ' + (group ? 'עוד ' : 'רק עוד ') + gEsc(miss) + '</div>';
+}
 function goalsCardHtml(j, opts){
   opts = opts || {};
   var view = (j && j.view) || 'agent', d = goalsData(j), c = d.counts, t = d.targets;
-  var group = view !== 'agent', done = goalsDone(d);
-  var title = opts.title || (view === 'team' ? 'היעדים של הצוות להיום' : view === 'office' ? 'היעדים של המשרד להיום' : 'היעדים שלך להיום');
-  var left = [];
-  GOALS_DEFS.forEach(function(g){
-    var cv = gNum(c[g.k]), tv = gNum(t[g.k]) || 0;
-    if (cv != null && cv < tv) left.push((tv - cv) === 1 ? g.one : (tv - cv) + ' ' + g.left);
-  });
-  var sub = done === GOALS_KEYS.length ? 'כל היעדים הושלמו. כל הכבוד' : left.length ? 'נשארו: ' + left.join(' · ') : '';
+  var group = view !== 'agent', P = d.pace || {}, W = d.week, M = d.month;
+  var title = opts.title || (view === 'team' ? 'היעדים של הצוות' : view === 'office' ? 'היעדים של המשרד' : 'היעדים שלך');
+  var sub = group ? (d.office_month ? 'יעד המשרד מתחלק בין ' + (d.share_agents === 1 ? 'סוכן אחד פעיל' : (d.share_agents || 0) + ' סוכנים פעילים') + '. הכל נספר לבד.' :
+      d.agents != null ? 'סכום היעדים של ' + (d.agents === 1 ? 'סוכן אחד פעיל' : d.agents + ' סוכנים פעילים') + ' בצוות. הכל נספר לבד.' : 'הכל נספר לבד.') :
+    'החלק שלך ביעד המשרד. הכל נספר לבד.';
+  var left = gDaysLeft(d.pace), wd = gDoneP(W), md = gDoneP(M), N = GOALS_KEYS.length;
   var h = '<div class="gk"><div class="gk-hero">' +
     '<div class="d">' + gEsc(goalsDateLine()) + '</div>' +
     (opts.greet ? '<div class="gr">' + gEsc(opts.greet) + '</div>' : '') +
-    '<h2>' + gEsc(title) + '</h2><div class="sb">' + (group ? (d.office_month ? 'יעד המשרד לחודש, ליום. מתחלק בין ' + (d.share_agents === 1 ? 'סוכן אחד פעיל' : (d.share_agents || 0) + ' סוכנים פעילים') + ' (לפחות 10 דקות באפי ב-10 הימים האחרונים). הכל נספר לבד.' : d.agents != null ? 'סכום היעדים של ' + (d.agents === 1 ? 'סוכן אחד פעיל' : d.agents + ' סוכנים פעילים') + ' בצוות. הכל נספר לבד.' : 'סכום היעדים של כל הסוכנים. הכל נספר לבד.') : 'החלק שלך ביעד המשרד, מעוגל למעלה. הכל נספר לבד.') + '</div>' +
-    '<div class="gk-score">' + gRing(done) + '<div><b>' + done + ' מתוך ' + GOALS_KEYS.length + ' יעדים הושלמו</b><span>' + gEsc(sub) + '</span></div></div>' +
-    (d.partial ? '<div class="gk-note">חלק מהנתונים לא נטענו — מוצג מה שידוע</div>' : '') +
+    '<h2>' + gEsc(title) + '</h2><div class="sb">' + sub + '</div>';
+  if (W){
+    h += '<div class="gk-pr">' +
+      '<div class="gk-pt">' + gMiniRing(wd) + '<div><div class="l">השבוע</div><div class="v">' + wd + '<i> / ' + N + ' יעדים</i></div><div class="s">' + gEsc(left.w) + '</div></div></div>' +
+      '<div class="gk-pt">' + gMiniRing(md) + '<div><div class="l">החודש</div><div class="v">' + md + '<i> / ' + N + ' יעדים</i></div><div class="s">' + gEsc(left.m) + '</div></div></div>' +
+      '</div>' + gPush(d, group);
+  } else {
+    var done = goalsDone(d);
+    h += '<div class="gk-score">' + gRing(done) + '<div><b>' + done + ' מתוך ' + N + ' יעדים הושלמו היום</b></div></div>';
+  }
+  h += (d.partial ? '<div class="gk-note">חלק מהנתונים לא נטענו — מוצג מה שידוע</div>' : '') +
     (group && opts.story ? '<button class="gk-link" onclick="goalsGo(\'/v2/goals\')">פירוט לפי סוכן</button>' : '') +
     '</div>';
+  if (W) h += '<div class="gk-leg"><i></i>הקו על הפס = הקצב: כמה צריך להיות עד היום כדי לעמוד ביעד</div>';
   GOALS_DEFS.forEach(function(g){
-    var cv = c[g.k], tv = gNum(t[g.k]) || 0, ok = goalIsDone(cv, tv);
-    var s = g.s;
-    if (g.k === 'buyers') s = goalsBuyersSub(c);
-    h += '<div class="gk-g' + (ok ? ' done' : '') + (g.gold ? ' hl' : '') + '"><div class="h"><div class="gk-ic' + (g.green ? ' green' : g.gold ? ' gold' : '') + '">' + GOALS_IC[g.gold ? 'homeGold' : g.ic] + '</div>' +
-      '<div class="t">' + g.t + (g.week ? '<span class="gk-wk">השבוע</span>' : '') + '<small>' + gEsc(s) + '</small></div><div class="gk-num">' + gShow(cv) + '<i>/' + gShow(t[g.k]) + '</i></div></div>' +
-      '<div class="gBar"><div style="width:' + gPct(cv, tv) + '%"></div></div>' +
-      (ok ? '<div class="gk-foot"><span class="gk-done">' + GOALS_IC.check + 'הושלם</span></div>' : '') +
-      '<button class="gBtn ' + (g.green ? 'green' : g.gold ? 'gold' : 'blue') + '" onclick="goalsGo(\'' + g.u + '\')">' + g.btn + '</button></div>';
+    var s = g.k === 'buyers' ? goalsBuyersSub(W ? W.counts : c) : g.s;
+    var st = W ? gStatus(W.counts[g.k], W.targets[g.k], P.week) : (goalIsDone(c[g.k], gNum(t[g.k]) || 0) ? {k: 'ok', tx: 'הושג'} : {k: '', tx: ''});
+    h += '<div class="gk-g' + (st.k === 'ok' ? ' done' : '') + (g.gold ? ' hl' : '') + '"><div class="h"><div class="gk-ic' + (g.green ? ' green' : g.gold ? ' gold' : '') + '">' + GOALS_IC[g.gold ? 'homeGold' : g.ic] + '</div>' +
+      '<div class="t">' + g.t + '<small>' + gEsc(s) + '</small></div>' + (st.tx ? '<span class="gk-st ' + st.k + '">' + gEsc(st.tx) + '</span>' : '') + '</div>';
+    if (W){
+      h += gRow('השבוע', W.counts[g.k], W.targets[g.k], P.week) + (M ? gRow('החודש', M.counts[g.k], M.targets[g.k], P.month) : '');
+      h += g.week ? '<div style="height:10px"></div>' : '<div class="gk-td">היום: <b>' + gShow(c[g.k]) + '</b></div>';
+    } else {
+      h += gRow('היום', c[g.k], t[g.k], null) + '<div style="height:10px"></div>';
+    }
+    h += '<button class="gBtn ' + (g.green ? 'green' : g.gold ? 'gold' : 'blue') + '" onclick="goalsGo(\'' + g.u + '\')">' + g.btn + '</button></div>';
   });
-  // פולו-אפ — מצב בלבד, לא נספר בטבעת
+  // פולו-אפ — מצב של היום, לא נספר ביעדים
   var f = c.followups, fd = f && gNum(f.done), fu = f && gNum(f.due);
   var fOk = fu != null && fu > 0 && fd >= fu;
   h += '<div class="gk-g' + (fOk ? ' done' : '') + '"><div class="h"><div class="gk-ic navy">' + GOALS_IC.cal + '</div>' +
@@ -1157,7 +1250,6 @@ function goalsCardHtml(j, opts){
     (fOk ? '<div class="gk-foot"><span class="gk-done">' + GOALS_IC.check + 'הושלם</span><span class="nt">כל הכבוד</span></div>' :
       (f && !fu) ? '<div class="gk-foot"><span class="nt">אין פולו-אפ מתוזמן להיום</span></div>' : '') +
     '<button class="gBtn sec" onclick="goalsGo(\'/v2/meets\')">ליומן</button></div>';
-  // שיחות שלא חזרו אליהן — אפס = מצוין
   var m = gNum(c.missed);
   h += '<div class="gk-g' + (m === 0 ? ' done' : '') + '"><div class="h"><div class="gk-ic navy">' + GOALS_IC.phone + '</div>' +
     '<div class="t">' + (group ? 'שיחות שלא חזרו אליהן' : 'שיחות שלא חזרת אליהן') + '<small>ב-72 השעות האחרונות</small></div>' +
@@ -1168,25 +1260,28 @@ function goalsCardHtml(j, opts){
   h += '<div class="gk-sec">בקרוב</div><div class="gk-plain"><div>2 נכסים בפייסבוק ובאינסטגרם<span>· יופעל בקרוב</span></div></div>';
   return h + '</div>';
 }
-/* פירוט לפי סוכן (מתאמת/מנהל) — מנהל רואה עריכת יעד אישי לכל סוכן ויעד המשרד לחודש [GOALS3] */
+/* פירוט לפי סוכן (מתאמת/מנהל) — השבוע (פס + קצב) והחודש במספר; מנהל: עריכת יעד אישי ויעד המשרד [GOALS3/4] */
 function goalsAgentsHtml(j, canEdit){
-  var ags = (j && j.agents) || [];
+  var ags = (j && j.agents) || [], P = (j && j.total && j.total.pace) || {};
   var h = '<div class="gk">';
   if (canEdit) h += '<button class="gBtn sec" onclick="goalsEdit(-1)">יעד המשרד לחודש</button>';
   if (!ags.length) h += '<div class="gk-empty"><div class="gk-eic">' + GOALS_IC.user.replace(/#2E6BD6/g, '#7A5E1C') + '</div><b>אין סוכנים להצגה</b><span>כשיהיו סוכנים פעילים, היעדים שלהם יופיעו כאן.</span></div>';
   ags.forEach(function(a, i){
-    var c = a.counts || {}, t = a.targets || {};
+    var c = a.counts || {}, W = a.week || {counts: c, targets: a.targets || {}}, M = a.month || null;
     var inact = a.active === false;
-    h += '<div class="gk-ag' + (a.seen_today ? '' : ' off') + '"><div class="an"><span>' + gEsc(a.name) + '</span>' +
+    var wd = gDoneP({counts: W.counts || {}, targets: W.targets || {}}), md = M ? gDoneP({counts: M.counts || {}, targets: M.targets || {}}) : null;
+    h += '<div class="gk-ag' + (inact ? ' off' : '') + '"><div class="an"><span>' + gEsc(a.name) + '</span>' +
       (inact ? '<small>לא נכנס/ה ב-10 ימים · לא נספר ביעד המשרד</small>' :
-        a.seen_today ? '<small>' + goalsDone(a) + '/' + GOALS_KEYS.length + '</small>' : '<small>לא נכנס/ה היום</small>') + '</div>';
+        '<small>השבוע ' + wd + '/' + GOALS_KEYS.length + (md != null ? ' · החודש ' + md + '/' + GOALS_KEYS.length : '') + '</small>') + '</div>';
     GOALS_DEFS.forEach(function(g){
-      var cv = c[g.k], tv = gNum(t[g.k]) || 0, ok = goalIsDone(cv, tv);
-      h += '<div class="ln' + (ok ? ' done' : '') + '"><span class="l">' + g.t + '</span><div class="gBar"><div style="width:' + gPct(cv, tv) + '%"></div></div>' +
-        '<span class="v">' + gShow(cv) + '/' + gShow(t[g.k]) + '</span></div>';
+      var cv = (W.counts || {})[g.k], tv = gNum((W.targets || {})[g.k]) || 0, ok = goalIsDone(cv, tv);
+      var tick = (P.week > 0 && P.week < 1 && !ok) ? '<span class="tk" style="position:absolute;top:-2px;bottom:-2px;width:2px;background:#14192B;opacity:.5;inset-inline-start:' + Math.round(P.week * 100) + '%"></span>' : '';
+      h += '<div class="ln' + (ok ? ' done' : '') + '"><span class="l">' + g.t + '</span><div class="gBar" style="position:relative;overflow:visible"><div style="width:' + gPct(cv, tv) + '%"></div>' + tick + '</div>' +
+        '<span class="v">' + gShow(cv) + '/' + gShow((W.targets || {})[g.k]) + '</span>' +
+        (M ? '<span class="vm">חודש ' + gShow((M.counts || {})[g.k]) + '/' + gShow((M.targets || {})[g.k]) + '</span>' : '') + '</div>';
     });
     var f = c.followups;
-    h += '<div class="st">פולו-אפ ' + (f ? gShow(f.done) + '/' + gShow(f.due) : '—') + ' · ' + gEsc(goalsBuyersSub(c)) + ' · שיחות פתוחות ' + gShow(c.missed) + '</div>';
+    h += '<div class="st">היום: ' + (a.seen_today ? 'נכנס/ה' : 'לא נכנס/ה') + ' · פולו-אפ ' + (f ? gShow(f.done) + '/' + gShow(f.due) : '—') + ' · שיחות פתוחות ' + gShow(c.missed) + '</div>';
     if (canEdit) h += (a.own && a.own.length ? '<div class="st">יעד אישי לחודש</div>' : '') +
       '<button class="gBtn sec ed" onclick="goalsEdit(' + i + ')">עריכת יעד</button>';
     h += '</div>';
@@ -1194,18 +1289,19 @@ function goalsAgentsHtml(j, canEdit){
   return h + '</div>';
 }
 function goalsMiniTitle(j){
-  var v = (j && j.view) || 'agent';
-  var n = j ? goalsDone(goalsData(j)) : 0;
-  return (v === 'team' ? 'יעדי הצוות להיום' : v === 'office' ? 'יעדי המשרד להיום' : 'היעדים שלי להיום') + ' · ' + n + '/' + GOALS_KEYS.length;
+  var v = (j && j.view) || 'agent', d = j ? goalsData(j) : null;
+  if (d && d.week)
+    return (v === 'team' ? 'יעדי הצוות השבוע' : v === 'office' ? 'יעדי המשרד השבוע' : 'היעדים שלי השבוע') + ' · ' + gDoneP(d.week) + '/' + GOALS_KEYS.length;
+  return (v === 'team' ? 'יעדי הצוות להיום' : v === 'office' ? 'יעדי המשרד להיום' : 'היעדים שלי להיום') + ' · ' + (d ? goalsDone(d) : 0) + '/' + GOALS_KEYS.length;
 }
 function goalsChipsHtml(j){
-  var d = goalsData(j), c = d.counts, t = d.targets, h = '';
+  var d = goalsData(j), p = d.week || {counts: d.counts, targets: d.targets}, h = '';
   GOALS_DEFS.forEach(function(g){
-    var tv = gNum(t[g.k]) || 0;
-    h += '<span class="gChip' + (goalIsDone(c[g.k], tv) ? ' ok' : '') + '">' + g.chip + ' ' + gShow(c[g.k]) + '/' + gShow(t[g.k]) + '</span>';
+    var tv = gNum(p.targets[g.k]) || 0;
+    h += '<span class="gChip' + (goalIsDone(p.counts[g.k], tv) ? ' ok' : '') + '">' + g.chip + ' ' + gShow(p.counts[g.k]) + '/' + gShow(p.targets[g.k]) + '</span>';
   });
-  var f = c.followups, fu = f && gNum(f.due), fd = f && gNum(f.done);
-  h += '<span class="gChip' + (fu && fd >= fu ? ' ok' : '') + '">פולו-אפ ' + (f ? gShow(fd) + '/' + gShow(fu) : '—') + '</span>';
+  var c = d.counts, f = c.followups, fu = f && gNum(f.due), fd = f && gNum(f.done);
+  h += '<span class="gChip' + (fu && fd >= fu ? ' ok' : '') + '">פולו-אפ היום ' + (f ? gShow(fd) + '/' + gShow(fu) : '—') + '</span>';
   h += '<span class="gChip' + (gNum(c.missed) === 0 ? ' ok' : '') + '">שיחות ' + gShow(c.missed) + '</span>';
   return '<div class="gChips">' + h + '</div>';
 }
@@ -1227,7 +1323,7 @@ function hotMineHtml(p){
 #    מנהל: עריכת יעד לכל סוכן + יעד ברירת מחדל (החלטת בקר 3 — לא ב-/v2/admin שהוא לבעל המשרד בלבד) ──
 V2_GOALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>היעדים שלי להיום</title>
+<title>היעדים שלי</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1258,7 +1354,7 @@ V2_GOALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <button class="backBtn" onclick="location.href='/v2/home'" aria-label="חזרה">
       <svg width="10" height="16" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-    <div class="pt" id="pt">היעדים שלי להיום</div>
+    <div class="pt" id="pt">היעדים שלי</div>
     <div style="width:44px"></div>
   </header>
   <main>
@@ -1300,7 +1396,7 @@ function greet(){
 }
 function render(j){
   var v = (j && j.view) || 'agent';
-  el('pt').textContent = v === 'team' ? 'יעדי הצוות להיום' : v === 'office' ? 'יעדי המשרד להיום' : 'היעדים שלי להיום';
+  el('pt').textContent = v === 'team' ? 'יעדי הצוות' : v === 'office' ? 'יעדי המשרד' : 'היעדים שלי';
   el('card').innerHTML = goalsCardHtml(j, {greet: greet()});
   el('agents').innerHTML = (j && v !== 'agent') ? '<h3>לפי סוכן</h3>' + goalsAgentsHtml(j, !!j.can_edit) : '';
 }
@@ -11028,12 +11124,13 @@ function statCard(n, label, col){
   return '<div class="stat"><div class="n" style="color:' + col + '">' + n + '</div><div class="l">' + label + '</div></div>';
 }
 var TV_GOALS = [
-  {k: 'listings', t: 'גיוס נכסים · השבוע'}, {k: 'meetings', t: 'פגישות מנכס נולד'}, {k: 'nb_wa', t: 'פניות לנכס נולד'}, {k: 'buyers', t: 'קונים חדשים'},
+  {k: 'listings', t: 'גיוס נכסים'}, {k: 'meetings', t: 'פגישות מנכס נולד'}, {k: 'nb_wa', t: 'פניות לנכס נולד'}, {k: 'buyers', t: 'קונים חדשים'},
   {k: 'past_clients', t: 'הודעות ללקוחות עבר'}, {k: 'reviews', t: 'המלצות'}
 ];
 function gNumTv(v){ return (v == null || v === '' || isNaN(Number(v))) ? null : Number(v); }
 function goalsTvHtml(g){
-  var c = (g && g.counts) || {}, t = (g && g.targets) || {}, sc = 0, st = 0, tiles = '';
+  var wk = !!(g && g.week && g.week.counts), src = wk ? g.week : g;     // [GOALS4] מתחילת השבוע
+  var c = (src && src.counts) || {}, t = (src && src.targets) || {}, sc = 0, st = 0, tiles = '';
   TV_GOALS.forEach(function(d){
     var cv = gNumTv(c[d.k]), tv = gNumTv(t[d.k]) || 0;
     var pct = cv == null ? 0 : (tv ? Math.max(0, Math.min(100, Math.round(cv / tv * 100))) : 100);
@@ -11049,7 +11146,7 @@ function goalsTvHtml(g){
     '<circle cx="55" cy="55" r="46" fill="none" stroke="#E4C56B" stroke-width="10" stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) +
     '" stroke-dashoffset="' + (C * (1 - p)).toFixed(1) + '" transform="rotate(-90 55 55)"/>' +
     '<text x="55" y="64" text-anchor="middle" fill="#fff" font-family="Heebo" font-weight="800" font-size="26">' + Math.round(p * 100) + '%</text></svg>';
-  return '<div class="glHead">' + ring + '<div><div class="greet">היעדים של המשרד להיום</div>' +
+  return '<div class="glHead">' + ring + '<div><div class="greet">' + (wk ? 'היעדים של המשרד השבוע' : 'היעדים של המשרד להיום') + '</div>' +
     '<div class="h1">כל הצוות ביחד</div></div></div><div class="gl">' + tiles + '</div>';
 }
 function render(i){

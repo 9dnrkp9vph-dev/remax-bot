@@ -138,7 +138,7 @@ for k in ("counts", "targets", "partial"):
     ck(bp["total"][k] == bo["total"][k], ("today totals == build_office", k, bp["total"][k], bo["total"][k]))
 ck(sorted((r["name"], json.dumps(r["counts"], sort_keys=True), r["seen_today"]) for r in bp["rows"]) ==
    sorted((r["name"], json.dumps(r["counts"], sort_keys=True), r["seen_today"]) for r in bo["rows"]), "same rows")
-ck(set(bo["rows"][0]) == {"name", "counts", "targets", "seen_today", "active", "monthly", "own"}, ("build_office row shape unchanged", bo["rows"][0].keys()))
+ck(set(bo["rows"][0]) == {"name", "counts", "targets", "seen_today", "active", "monthly", "own", "week", "month", "pace"}, ("build_office row shape", bo["rows"][0].keys()))
 bad_r = goals.build_office(dict(src, roster=RuntimeError("x")), WED, canon)
 ck(bad_r["rows"] == [] and bad_r["total"]["partial"] is True, bad_r)
 

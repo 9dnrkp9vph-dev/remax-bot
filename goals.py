@@ -476,18 +476,73 @@ def _assemble(src, canon, count, targets, total_targets=None):
     return rows, per, tg, total
 
 
+def _act_in(src, bounds):
+    act = src.get("activity")
+    return act if _bad(act) else [x for x in (act or []) if _in(parse_ts(x.get("ts")), bounds)]
+
+
+def count_span(agent, first, last, src, canon):
+    """[GOALS4 29/10, אייל: 'היעדים מתחילת שבוע ומתחילת חודש'] ספירה מ-first עד last (כולל) — יומן הפעולות
+    מסונן לתקופה, גיוס נכסים לפי התקופה. בלי פולו-אפ ושיחות פתוחות (הם מצב של היום)."""
+    b = (day_bounds(first)[0], day_bounds(last)[1])
+    c = count_agent(agent, b, dict(src, activity=_act_in(src, b), missed=[]), canon)
+    c["listings"] = count_listings(agent, b, src.get("sigs"), canon)
+    c.pop("followups", None)
+    c.pop("missed", None)
+    return c
+
+
+def span_start(day):
+    """מאיזה יום צריך את המקורות: תחילת השבוע או תחילת החודש — המוקדם מביניהם."""
+    return min(week_start(day), day.replace(day=1))
+
+
+def _period_total(rows, key, tgt):
+    per = {str(i): r[key]["counts"] for i, r in enumerate(rows)}
+    tot = rollup(per, {})
+    tot["targets"] = tgt
+    tot.pop("agents", None)
+    return tot
+
+
 def build_office(src, day, canon, office=True):
     """שורה לכל סוכן ברשימה (src['roster']) + סכום. src['cfg'] = הקונפיג (ליעדים), src['seen'] = מי נכנס היום.
     רשימה שנכשלה בשליפה → בלי שורות, partial=True. [GOALS3] היעד היומי של כל סוכן = החלק שלו ביעד המשרד
-    לחודש, ליום עבודה, מעוגל למעלה; יעד המשרד = היעד החודשי ליום (office=False — צוות: סכום הסוכנים)."""
+    לחודש, ליום עבודה, מעוגל למעלה; יעד המשרד = היעד החודשי ליום (office=False — צוות: סכום הסוכנים).
+    [GOALS4] לכל שורה ולסכום גם week / month: מתחילת השבוע / החודש עד היום, מול היעד לשבוע / לחודש כולו,
+    ו-pace = כמה מהתקופה עבר (ימי עבודה) — 'בקצב' = הגיע לפחות לחלק הזה מהיעד."""
     bounds = day_bounds(day)
     plan = src_plan(src, canon, day)
+    tsrc = dict(src, activity=_act_in(src, bounds))     # [GOALS4] יומן הפעולות נשלף מתחילת השבוע/החודש
     tot = (lambda names: office_scaled(plan, 1)) if office else (lambda names: sum_scaled(plan, names, canon, 1))
-    rows, _, _, total = _assemble(src, canon, lambda n: count_agent(n, bounds, src, canon),
+    rows, _, _, total = _assemble(src, canon, lambda n: count_agent(n, bounds, tsrc, canon),
                                   lambda n: scaled(rates_for(plan, n, canon), 1), tot)
+    ws, (mf, ml) = week_start(day), month_of(day)
+    wk_scale, wk_frac = weekly_scale(), workdays_elapsed(day) / weekly_scale()
+    mo_el = sum(workday_weight(mf + _dt.timedelta(days=i)) for i in range((day - mf).days + 1))
+    mo_frac = mo_el / (float(plan["workdays"]) or 1.0)
+    act_names = []
     for r in rows:                        # למסך העריכה: היעד החודשי של הסוכן והאם יש לו יעד אישי
-        r["monthly"] = {k: _ceil(v) for k, v in monthly_for(plan, r["name"], canon).items()}
+        mon = {k: _ceil(v) for k, v in monthly_for(plan, r["name"], canon).items()}
+        r["monthly"] = mon
         r["own"] = sorted((plan["overrides"].get(canon(r["name"])) or {}).keys())
+        r["week"] = {"counts": count_span(r["name"], ws, day, src, canon),
+                     "targets": scaled(rates_for(plan, r["name"], canon), wk_scale)}
+        r["month"] = {"counts": count_span(r["name"], mf, day, src, canon), "targets": dict(mon)}
+        if r.get("active"):
+            act_names.append(r["name"])
+    if office:
+        wk_t, mo_t = office_scaled(plan, wk_scale), dict(plan["office"])
+    else:
+        wk_t = sum_scaled(plan, act_names, canon, wk_scale)
+        mo_t = sum_scaled(plan, act_names, canon, plan["workdays"], plan["dim"] / 7.0)
+    total["week"] = _period_total(rows, "week", wk_t)
+    total["month"] = _period_total(rows, "month", mo_t)
+    pace = {"week": round(min(1.0, wk_frac), 3), "month": round(min(1.0, mo_frac), 3),
+            "week_from": ws.isoformat(), "month_from": mf.isoformat(), "month_to": ml.isoformat()}
+    total["pace"] = pace
+    for r in rows:
+        r["pace"] = pace
     total["office_month"] = dict(plan["office"])
     total["share_agents"] = plan["n"]
     return {"rows": rows, "total": total}
@@ -617,10 +672,28 @@ def weekly_scale():
     return sum(workday_weight(s + _dt.timedelta(days=i)) for i in range(7))
 
 
-def weekly_due(now_il, blocked, state, hour=WEEKLY_HOUR):
-    """מפתח השבוע (ISO של יום ראשון) אם צריך לשלוח עכשיו, אחרת None. ראשון–חמישי מ-hour; blocked = חג/שבת/השתקה.
-    יום ראשון שהוא חג → נשלח ביום העבודה הבא (אייל 29/10), עד חמישי."""
+def send_day(start, at, was_blocked):
+    """[GOALS4 29/10] היום שבו שולחים: start (יום ראשון), ואם הוא חג — יום העבודה הבא שאינו חג (עד חמישי).
+    was_blocked(datetime) = חלון שבת/חג. בלי was_blocked → start. (אייל: 'קבענו לשלוח רק בימי ראשון' —
+    פריסה באמצע השבוע לא שולחת 'השלמה'.)"""
+    if was_blocked is None:
+        return start
+    for i in range(5):
+        d = start + _dt.timedelta(days=i)
+        try:
+            if not was_blocked(_dt.datetime(d.year, d.month, d.day, at[0], at[1])):
+                return d
+        except Exception:
+            return d
+    return None
+
+
+def weekly_due(now_il, blocked, state, hour=WEEKLY_HOUR, was_blocked=None):
+    """מפתח השבוע (ISO של יום ראשון) אם צריך לשלוח עכשיו, אחרת None. רק ביום ראשון מ-hour; blocked = חג/שבת/השתקה
+    עכשיו. יום ראשון שהוא חג → יום העבודה הבא שאינו חג (אייל 29/10), עד חמישי."""
     if blocked or now_il.weekday() not in (6, 0, 1, 2, 3) or now_il.hour < hour:
+        return None
+    if now_il.date() != send_day(week_start(now_il.date()), (hour, 0), was_blocked):
         return None
     key = weekly_period(now_il.date())[0].isoformat()
     if ((state or {}).get(key) or {}).get("done"):
@@ -680,47 +753,122 @@ def _span(row):
     return _dm(row["from"]) + "–" + _dm(row["to"])
 
 
-def weekly_message(row, office, link):
-    """ההודעה לסוכן. שם המשרד מהקונפיג (v2_office.name) בלבד; בלי אימוג'ים."""
-    first = (str(row.get("name") or "").split() or [""])[0]
-    office = str(office or "").strip()
-    lines = [f"שלום {first}, סיכום היעדים שלך" + (f" ב{office}" if office else "") + f" לשבוע {_span(row)}:", ""]
-    for k in GOAL_KEYS:
-        c, t = row["counts"].get(k), row["targets"].get(k)
-        if c is None:
-            lines.append(f"{GOAL_LABELS[k]}: אין נתון")
-        else:
-            lines.append(f"{GOAL_LABELS[k]}: {c} מתוך {t}" + (" — הושג" if c >= (t or 0) else ""))
-        if k == "buyers" and row["counts"].get("buyers_sign"):
-            lines[-1] += f" (מתוכם {row['counts']['buyers_sign']} מהחתמה)"
-    lines += ["", f"הגעת ל-{row['met']} מתוך {row['goals_n']} יעדים.", "", "המלצה ליעד:"]
-    for k in GOAL_KEYS:
-        kind, n = row["rec"][k]
-        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} בחודש", "down": f"להוריד ל-{n} בחודש"}.get(
-            kind, f"להשאיר {n} בחודש"))
-    lines += ["(את היעדים מעדכן מנהל המשרד)", "", f"למסך היעדים: {link}"]
+_HE_IN = ("בינואר", "בפברואר", "במרץ", "באפריל", "במאי", "ביוני", "ביולי", "באוגוסט", "בספטמבר", "באוקטובר",
+          "בנובמבר", "בדצמבר")
+
+
+def span_he(a_iso, b_iso):
+    """'18–24 באוקטובר' — בלי '/' (בעברית '18/10–24/10' מתהפך בוואטסאפ)."""
+    a, b = _dt.date.fromisoformat(a_iso), _dt.date.fromisoformat(b_iso)
+    if a.month == b.month:
+        return f"{a.day}–{b.day} {_HE_IN[a.month - 1]}"
+    return f"{a.day} {_HE_IN[a.month - 1]} – {b.day} {_HE_IN[b.month - 1]}"
+
+
+def _goal_val(row, k, prev=False):
+    """'3 מתוך 14 (2 מהחתמה) — הושג'. בלי נתון → 'אין נתון'."""
+    c, t = row["counts"].get(k), row["targets"].get(k)
+    if c is None:
+        return "אין נתון"
+    out = f"{_num(c)} מתוך {_num(t or 0)}"
+    if k == "buyers" and row["counts"].get("buyers_sign"):
+        out += f" ({row['counts']['buyers_sign']} מהחתמה)"
+    if prev:
+        p = (row.get("prev") or {}).get(k)
+        if p is not None:
+            out += f" (בחודש הקודם {p})"
+    if c >= (t or 0):
+        out += " — הושג"
+    return out
+
+
+def _mood(met, n, unit):
+    """שורת עידוד לפי כמה יעדים הושגו. unit = 'שבוע' / 'חודש'."""
+    if met >= n:
+        return f"כל {n} היעדים הושגו — {unit} מצוין, כל הכבוד!"
+    if met >= n - 2:
+        return f"הגעת ל-{met} מתוך {n} יעדים — כמעט הכל. עוד קצת וזה שלך."
+    if met > 0:
+        return f"הגעת ל-{met} מתוך {n} יעדים. {unit} חדש מתחיל עכשיו — בהצלחה!"
+    return f"{unit} חדש מתחיל עכשיו — זה הזמן לצאת לדרך. בהצלחה!"
+
+
+def summary_params(row, period, mood, link):
+    """[GOALS4 29/10] 10 הפרמטרים לתבנית הוואטסאפ (WA_GOALS_TPL) — שורה לכל יעד, בסדר GOAL_KEYS.
+    בלי ירידות שורה ובלי פרמטר ריק (כללי Meta)."""
+    first = (str(row.get("name") or "").split() or ["שלום"])[0]
+    vals = [_goal_val(row, k, prev=("prev" in row)) for k in GOAL_KEYS]
+    out = [first, period] + vals + [mood, link]
+    return [(" ".join(str(x).split()) or "-")[:300] for x in out]
+
+
+def summary_text(p):
+    """אותה הודעה כטקסט חופשי (בחלון 24 השעות / בלי תבנית) — שורה לכל יעד."""
+    lines = [f"שלום {p[0]}, סיכום היעדים שלך ל{p[1]}:", ""]
+    lines += [f"{GOAL_LABELS[k]}: {p[2 + i]}" for i, k in enumerate(GOAL_KEYS)]
+    lines += ["", p[8], f"למסך היעדים שלך באפי: {p[9]}", "בהצלחה!"]
     return "\n".join(lines)
 
 
-def weekly_manager_summary(rows, office):
-    """סיכום לבעל המשרד: רק ההמלצות לשינוי (להעלות/להוריד), לכל סוכן — כדי שיעדכן בעצמו במסך היעדים."""
-    span = _span(rows[0]) if rows else ""
-    out = ["סיכום יעדים שבועי" + (f" — {office}" if office else "") + (f" — {span}" if span else ""),
-           f"נשלח ל-{len(rows)} סוכנים.", ""]
-    any_rec = False
-    for r in rows:
-        ch = [(k, r["rec"][k]) for k in GOAL_KEYS if r["rec"][k][0] != "keep"]
-        if not ch:
-            continue
-        any_rec = True
-        out.append(f"{r['name']} ({r['met']}/{r['goals_n']}):")
-        for k, (kind, n) in ch:
-            out.append(f"{GOAL_LABELS[k]}: " + ("להעלות" if kind == "up" else "להוריד") + f" ל-{n}"
-                       f" בחודש (היום {r['monthly'][k]}; עשה {r['counts'][k]} מתוך {r['targets'][k]})")
-        out.append("")
-    if not any_rec:
-        out.append("אין המלצות לשינוי השבוע.")
-    return "\n".join(out).rstrip()
+def summary_short(p):
+    """בלי תבנית ומחוץ לחלון — שורה אחת קצרה וברורה (family_update משטחת ירידות שורה)."""
+    return f"שלום {p[0]}, סיכום היעדים שלך ל{p[1]}: {p[8]} הסיכום המלא במסך היעדים באפי: {p[9]}"
+
+
+def weekly_params(row, link):
+    return summary_params(row, "שבוע " + span_he(row["from"], row["to"]),
+                          _mood(row["met"], row["goals_n"], "שבוע"), link)
+
+
+def monthly_params(row, label, link):
+    m = _mood(row["met"], row["goals_n"], "חודש")
+    if row.get("prev_met") is not None:
+        m += f" (בחודש הקודם: {row['prev_met']} מתוך {row['goals_n']})"
+    return summary_params(row, "חודש " + label, m, link)
+
+
+def weekly_message(row, office, link):
+    """ההודעה לסוכן (טקסט). [GOALS4] בלי המלצות — הן רק לבעל המשרד (אייל 29/10: 'צריך לדרבן')."""
+    return summary_text(weekly_params(row, link))
+
+
+def goals_send(G, to, params):
+    """שליחה לסוכן: בחלון 24 השעות — טקסט חופשי; מחוץ לו — התבנית WA_GOALS_TPL (שורה לכל יעד); בלי תבנית —
+    שורה אחת קצרה דרך family_update. החזרה: נשלח או לא."""
+    import os as _o
+    tpl = (_o.environ.get("WA_GOALS_TPL") or "").strip()
+    try:
+        open_win = bool(G["_wa_window_open"](to)) if "_wa_window_open" in G else False
+    except Exception:
+        open_win = False
+    if open_win:
+        return bool(G["send_text"](to, summary_text(params)))
+    if tpl and "_d360_post_message" in G:
+        payload = {"messaging_product": "whatsapp", "recipient_type": "individual",
+                   "to": re.sub(r"\D", "", str(to)), "type": "template",
+                   "template": {"name": tpl, "language": {"code": (_o.environ.get("WA_GOALS_TPL_LANG") or "he").strip()},
+                                "components": [{"type": "body", "parameters": [
+                                    {"type": "text", "text": x} for x in params]}]}}
+        try:
+            ok, _r = G["_d360_post_message"](payload)
+        except Exception:
+            ok = False
+        if ok:
+            return True
+    return bool(G["send_text"](to, summary_short(params)))
+
+
+def _n_recs(rows):
+    return sum(1 for r in rows for k in GOAL_KEYS if r["rec"][k][0] != "keep")
+
+
+def weekly_manager_summary(rows, office, link=""):
+    """לבעל המשרד — שורה אחת: כמה קיבלו, כמה המלצות לשינוי, וקישור לעמוד עם הפירוט (ההמלצות רק אליו)."""
+    span = span_he(rows[0]["from"], rows[0]["to"]) if rows else ""
+    n = _n_recs(rows)
+    return (f"סיכום יעדים שבועי לשבוע {span}" + (f" ב{office}" if office else "") + f" נשלח ל-{len(rows)} סוכנים. "
+            + (f"יש {n} המלצות לשינוי יעד." if n else "אין המלצות לשינוי יעד השבוע.")
+            + (f" הפירוט: {link}" if link else ""))
 
 
 def weekly_mark(rec, name, result, now):
@@ -779,7 +927,7 @@ def month_weeks(first, last):
     return round(((last - first).days + 1) / 7.0, 1)
 
 
-def monthly_due(now_il, blocked, state):
+def monthly_due(now_il, blocked, state, was_blocked=None):
     """מפתח החודש ('YYYY-MM' של החודש שהסתיים) אם צריך לשלוח עכשיו. ביום ראשון הראשון אחרי סוף החודש מ-10:20
     (אחרי השבועי); חג → יום העבודה הבא באותו שבוע (עד חמישי). פעם אחת."""
     d = now_il.date()
@@ -787,6 +935,8 @@ def monthly_due(now_il, blocked, state):
     if blocked or now_il.weekday() not in (6, 0, 1, 2, 3) or not (0 <= (d - fs).days <= 4):
         return None
     if (now_il.hour, now_il.minute) < MONTHLY_AT:
+        return None
+    if d != send_day(fs, MONTHLY_AT, was_blocked):      # [GOALS4] רק ביום ראשון (חג → יום העבודה הבא)
         return None
     key = month_period(d)[0].strftime("%Y-%m")
     if ((state or {}).get(key) or {}).get("done"):
@@ -840,44 +990,17 @@ def build_monthly(src, first, last, canon):
 
 
 def monthly_message(row, office, link, label):
-    first = (str(row.get("name") or "").split() or [""])[0]
-    office = str(office or "").strip()
-    lines = [f"שלום {first}, סיכום היעדים שלך" + (f" ב{office}" if office else "") + f" לחודש {label}:", ""]
-    for k in GOAL_KEYS:
-        c, t, p = row["counts"].get(k), row["targets"].get(k), (row.get("prev") or {}).get(k)
-        if c is None:
-            lines.append(f"{GOAL_LABELS[k]}: אין נתון")
-            continue
-        ln = f"{GOAL_LABELS[k]}: {c} מתוך {t}" + (" — הושג" if c >= (t or 0) else "")
-        if k == "buyers" and row["counts"].get("buyers_sign"):
-            ln += f" (מתוכם {row['counts']['buyers_sign']} מהחתמה)"
-        if p is not None:
-            ln += f" (בחודש הקודם: {p})"
-        lines.append(ln)
-    lines += ["", f"הגעת ל-{row['met']} מתוך {row['goals_n']} יעדים (בחודש הקודם: {row.get('prev_met', 0)}).", "",
-              "המלצה ליעד:"]
-    for k in GOAL_KEYS:
-        kind, n = row["rec"][k]
-        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} בחודש", "down": f"להוריד ל-{n} בחודש"}.get(
-            kind, f"להשאיר {n} בחודש"))
-    lines += ["(את היעדים מעדכן מנהל המשרד)", "", f"למסך היעדים: {link}"]
-    return "\n".join(lines)
+    """[GOALS4] ההודעה החודשית לסוכן (טקסט) — בלי המלצות (רק לבעל המשרד)."""
+    return summary_text(monthly_params(row, label, link))
 
 
 def monthly_owner_summary(M, office, link):
-    """לבעל המשרד — קצר: סכום המשרד מול היעד, 5 המובילים, כמה לא נכנסו, כמה המלצות; הפירוט בעמוד."""
+    """לבעל המשרד — שורה אחת; הפירוט (סכום, מובילים, מי לא נכנס, המלצות) בעמוד שבקישור."""
     t = M["total"]
-    out = [f"סיכום יעדים חודשי — {M['label']}" + (f" — {office}" if office else ""),
-           f"{len(M['rows'])} סוכנים פעילים · המשרד הגיע ל-{t['met']} מתוך {t['goals_n']} יעדים.", ""]
-    for k in GOAL_KEYS:
-        c = t["counts"].get(k)
-        out.append(f"{GOAL_LABELS[k]}: " + ("אין נתון" if c is None else f"{c} מתוך {t['targets'].get(k)}"))
-    if M["top"]:
-        out += ["", "המובילים: " + ", ".join(f"{r['name']} ({r['met']}/{r['goals_n']})" for r in M["top"])]
-    nrec = sum(1 for r in M["rows"] for k in GOAL_KEYS if r["rec"][k][0] != "keep")
-    out += ["", f"לא נכנסו לאפי בחודש: {len(M['inactive'])}", f"המלצות לשינוי יעד: {nrec}", "",
-            f"הפירוט המלא: {link}"]
-    return "\n".join(out)
+    n = _n_recs(M["rows"])
+    return (f"סיכום יעדים חודשי ל{M['label']}" + (f" ב{office}" if office else "") + ": "
+            f"המשרד הגיע ל-{t['met']} מתוך {t['goals_n']} יעדים, {len(M['rows'])} סוכנים פעילים, "
+            f"{len(M['inactive'])} לא נכנסו לאפי בחודש, {n} המלצות לשינוי יעד. הפירוט המלא: {link}")
 
 
 def meeting_stamp(prev, new_status, now):
@@ -1102,6 +1225,26 @@ def weekly_health_tile(G, now):
     return weekly_health(state, now, quiet, enabled=on)
 
 
+_BLK = {"w": None}
+
+
+def g_blocked_at(G):
+    """[GOALS4] was_blocked(datetime) — חלון שבת/חג (זמני חיפה, כמו ההשתקה האוטומטית). SHABBAT_AUTO=0 → אף פעם."""
+    import os as _o
+    import json as _json
+    if (_o.environ.get("SHABBAT_AUTO") or "1").strip() == "0" or "_in_shabbat_window" not in G:
+        return None
+    try:
+        if _BLK["w"] is None:
+            pth = _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "tools", "shabbat_times_haifa.json")
+            with open(pth, encoding="utf-8") as f:
+                _BLK["w"] = G["_shabbat_windows"](_json.load(f).get("events"))
+    except Exception:
+        return None
+    w = _BLK["w"]
+    return lambda dt: bool(G["_in_shabbat_window"](dt, w))
+
+
 # ── [GOALS-WEEKLY 29/10] הריצה: מקורות, שליחה, תצוגה מקדימה (G = globals() של app.py) ─────────────
 def weekly_src(G, sunday, now, src_override=None):
     """אותם מקורות כמו לוח הבקרה, לשבוע ראשון–שבת; seen = מי שנכנס לאפי ב-10 הימים שלפני now."""
@@ -1178,8 +1321,10 @@ def weekly_preview(G, now, src_override=None):
     ag_ph = G["fetch_agents_phones"]() or {}
     vph = G["_agent_vphones9"]() or set()
     msgs = [{"name": r["name"], "phone": _weekly_phone(G, r["name"], ag_ph, vph), "met": r["met"],
-             "text": weekly_message(r, office, _weekly_link())} for r in rows]
-    return {"week": sunday.isoformat(), "messages": msgs, "manager": weekly_manager_summary(rows, office),
+             "rec": {k: list(v) for k, v in r["rec"].items()}, "monthly": r["monthly"], "counts": r["counts"],
+             "targets": r["targets"], "text": weekly_message(r, office, _weekly_link())} for r in rows]
+    return {"week": sunday.isoformat(), "messages": msgs, "labels": GOAL_LABELS, "keys": list(GOAL_KEYS),
+            "manager": weekly_manager_summary(rows, office, _weekly_link() + "/weekly"),
             "state": ((cfg.get("v2_goals_weekly") or {}).get(sunday.isoformat()) or {})}
 
 
@@ -1199,7 +1344,7 @@ def weekly_run(G, now, disk_path, src_override=None):
     for k, v in disk.items():                       # הקונפיג נדרס בעבר בסנכרון — העותק בדיסק שומר על 'פעם אחת'
         if (v or {}).get("done") or k not in state:
             state[k] = v
-    key = weekly_due(now_il, blocked, state)
+    key = weekly_due(now_il, blocked, state, was_blocked=g_blocked_at(G))
     if not key:
         return 0
     sunday = _dt.date.fromisoformat(key)
@@ -1218,7 +1363,7 @@ def weekly_run(G, now, disk_path, src_override=None):
             res = "no_phone"
         else:
             try:
-                res = "sent" if G["send_text"](wa, weekly_message(r, office, _weekly_link())) else "fail"
+                res = "sent" if goals_send(G, wa, weekly_params(r, _weekly_link())) else "fail"
             except Exception:
                 res = "fail"
         weekly_mark(rec, name, res, now)
@@ -1232,7 +1377,7 @@ def weekly_run(G, now, disk_path, src_override=None):
         ok = False
         for wa in _weekly_mgr_phones(G):
             try:
-                ok = bool(G["send_text"](wa, weekly_manager_summary(rows, office))) or ok
+                ok = bool(G["send_text"](wa, weekly_manager_summary(rows, office, _weekly_link() + "/weekly"))) or ok
             except Exception:
                 pass
         rec["mgr"] = {"r": "sent" if ok else "fail", "ts": now, "tries": int(m.get("tries") or 0) + 1}
@@ -1339,7 +1484,7 @@ def monthly_run(G, now, disk_path, src_override=None):
     for k, v in _weekly_disk(disk_path).items():
         if (v or {}).get("done") or k not in state:
             state[k] = v
-    key = monthly_due(now_il, blocked, state)
+    key = monthly_due(now_il, blocked, state, was_blocked=g_blocked_at(G))
     if not key:
         return 0
     first, last = month_period(now_il.date())
@@ -1357,7 +1502,7 @@ def monthly_run(G, now, disk_path, src_override=None):
             res = "no_phone"
         else:
             try:
-                res = "sent" if G["send_text"](wa, monthly_message(by[canon(name)], office, _weekly_link(), M["label"])) else "fail"
+                res = "sent" if goals_send(G, wa, monthly_params(by[canon(name)], M["label"], _weekly_link())) else "fail"
             except Exception:
                 res = "fail"
         weekly_mark(rec, name, res, now)
@@ -1416,7 +1561,10 @@ fetch('/v2/api/goals/weekly/preview',{headers:{'X-Auth-Token':tok}}).then(functi
   if(!j.ok){document.getElementById('sub').textContent='אין הרשאה (מנהלים בלבד).';return;}
   var st=j.state||{}, ag=st.agents||{};
   document.getElementById('sub').textContent='השבוע שמתחיל ב-'+j.week+' · '+j.messages.length+' סוכנים · '+(st.done?'נשלח':'טרם נשלח')+' · לא נשלח מכאן — תצוגה בלבד';
-  var h='<div class="c"><div class="n">הסיכום אליך</div><pre>'+esc(j.manager)+'</pre></div>';
+  var L=j.labels||{},K=j.keys||[],rr='';
+  j.messages.forEach(function(m){K.forEach(function(k){var x=(m.rec||{})[k];if(x&&x[0]!=='keep')rr+='<tr><td>'+esc(m.name)+'</td><td>'+esc(L[k])+'</td><td>'+(x[0]==='up'?'להעלות':'להוריד')+' ל-'+x[1]+' בחודש</td><td style="color:#6E7683">היום '+esc((m.monthly||{})[k])+' בחודש · עשה '+esc((m.counts||{})[k])+' מתוך '+esc((m.targets||{})[k])+'</td></tr>';});});
+  var h='<div class="c"><div class="n">המלצות לשינוי יעד (רק אליך)</div>'+(rr?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+rr+'</table></div><div style="margin-top:8px;font-size:13px">לשינוי: <a href="/v2/goals">מסך היעדים</a></div>':'<div style="color:#6E7683;font-size:13px">אין המלצות לשינוי השבוע</div>')+'</div>';
+  h+='<div class="c"><div class="n">ההודעה אליך</div><pre>'+esc(j.manager)+'</pre></div>';
   j.messages.forEach(function(m){var s=ag[m.name]||{};
     h+='<div class="c"><div class="n">'+esc(m.name)+'</div><div class="p'+(m.phone?'':' bad')+'">'+(m.phone?esc(m.phone):'אין נייד אישי — לא יישלח')+(s.r?' · '+esc(s.r):'')+'</div><pre>'+esc(m.text)+'</pre></div>';});
   document.getElementById('out').innerHTML=h;
@@ -1592,7 +1740,7 @@ def register(app, G):
     def _fetch_src():
         now = _clock()
         day = _dt.datetime.fromtimestamp(now, _IL).date()
-        t0 = day_bounds(day)[0]
+        t0 = day_bounds(span_start(day))[0]       # [GOALS4] מתחילת השבוע / החודש — לספירת השבוע והחודש
         cfg = _safe(G["_load_config"])
         return {"day": day.isoformat(),
                 "nb": cfg if _bad(cfg) else ((cfg or {}).get("nbStatus") or {}),
@@ -1604,7 +1752,7 @@ def register(app, G):
                 "seen": _safe(lambda: _seen(day)),
                 "active": _safe(lambda: g_active(G, day)),
                 "staff": _safe(lambda: g_staff(G)),
-                "sigs": _safe(lambda: g_sigs(G, week_start(day))),
+                "sigs": _safe(lambda: g_sigs(G, span_start(day))),
                 "roster": _safe(_roster)}
 
     _src_box = {"t": 0.0, "v": None}
@@ -1672,7 +1820,8 @@ def register(app, G):
             name = _display(want or s.get("name", ""))
             o = _build("agent:" + canon(name), lambda: [name])
             row = (o.get("rows") or [{}])[0] if o.get("rows") else None
-            res.update(view="agent", me=({"counts": row["counts"], "targets": row["targets"]} if row else None),
+            res.update(view="agent", me=({"counts": row["counts"], "targets": row["targets"], "week": row.get("week"),
+                                          "month": row.get("month"), "pace": row.get("pace")} if row else None),
                        total=None, agent=name)
         elif coord:
             def team_roster():

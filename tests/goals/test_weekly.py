@@ -27,8 +27,13 @@ ck(g.weekly_scale() == 5.5, g.weekly_scale())
 ck(g.weekly_due(at(NEXT_SUN, 10), False, {}) == SUN.isoformat(), "Sunday 10:00")
 ck(g.weekly_due(at(NEXT_SUN, 9), False, {}) is None, "before 10:00")
 ck(g.weekly_due(at(NEXT_SUN, 10), True, {}) is None, "holiday / quiet")
-ck(g.weekly_due(at(dt.date(2026, 11, 2), 11), False, {}) == SUN.isoformat(), "next workday after holiday Sunday")
-ck(g.weekly_due(at(dt.date(2026, 11, 5), 11), False, {}) == SUN.isoformat(), "Thursday still")
+# [GOALS4] רק ביום ראשון — פריסה באמצע השבוע לא שולחת 'השלמה' (אייל 29/10)
+ck(g.weekly_due(at(dt.date(2026, 11, 2), 11), False, {}) is None, "Monday — not a holiday Sunday → no catch-up")
+ck(g.weekly_due(at(dt.date(2026, 11, 5), 11), False, {}) is None, "Thursday — no catch-up")
+hol = lambda d: d.date() == NEXT_SUN                                  # יום ראשון חג
+ck(g.weekly_due(at(dt.date(2026, 11, 2), 11), False, {}, was_blocked=hol) == SUN.isoformat(), "holiday Sunday → Monday")
+ck(g.weekly_due(at(dt.date(2026, 11, 3), 11), False, {}, was_blocked=hol) is None, "…but only the first open day")
+ck(g.weekly_due(at(NEXT_SUN, 11), False, {}, was_blocked=lambda d: False) == SUN.isoformat(), "normal Sunday")
 ck(g.weekly_due(at(dt.date(2026, 11, 6), 11), False, {}) is None, "not Friday")
 ck(g.weekly_due(at(dt.date(2026, 11, 7), 11), False, {}) is None, "not Saturday")
 ck(g.weekly_due(at(NEXT_SUN, 11), False, {SUN.isoformat(): {"done": True}}) is None, "already done")
@@ -70,14 +75,14 @@ ck(rows2[0]["counts"]["buyers"] is None and rows2[0]["rec"]["buyers"] == ("keep"
 # ── ההודעה ───────────────────────────────────────────────────────────────────
 msg = g.weekly_message(d, "רימקס פמילי", "https://x/v2/goals")
 ck(msg.startswith("שלום דנה,"), msg)
-ck("רימקס פמילי" in msg and "25/10–31/10" in msg, msg)
+ck("לשבוע 25–31 באוקטובר" in msg, msg)
 ck("פגישות מנכס נולד: 2 מתוך 11" in msg, msg)
 ck("קונים חדשים: 0 מתוך 17" in msg, msg)
-ck("הגעת ל-0 מתוך 6 יעדים" in msg, msg)
-ck("להוריד ל-35 בחודש" in msg, msg)
-ck(msg.rstrip().endswith("https://x/v2/goals"), msg)
+ck("שבוע חדש מתחיל עכשיו" in msg, msg)
+ck("להוריד" not in msg and "להעלות" not in msg and "המלצה" not in msg, "no recommendations to agents")
+ck("למסך היעדים שלך באפי: https://x/v2/goals" in msg, msg)
 ck(not any(0x1F300 <= ord(ch) <= 0x1FAFF or 0x2600 <= ord(ch) <= 0x27BF for ch in msg), "no emojis")
-ck("RE/MAX" not in msg and "רימקס פמילי" in msg, "office name only from config")
+ck("RE/MAX" not in msg, "no hardcoded brand")
 msg_unknown = g.weekly_message(rows2[0], "", "https://x/v2/goals")
 # [GOALS2] גיוס נכסים — יעד שבועי לא מוכפל, ראשון בהודעה; קונים מהחתמה; פניות לנכס נולד
 sigs = [{"agent": "דנה כהן", "address": "הרצל 5", "type": "בלעדיות", "signed": True, "ts": "27/10/2026 10:00"}]
@@ -86,16 +91,36 @@ r3 = g.build_weekly(dict(src, sigs=sigs, buyers=buy), SUN, canon)[0]
 ck(r3["targets"]["listings"] == 10 and r3["counts"]["listings"] == 1, (r3["targets"], r3["counts"]))   # 40 בחודש → 9.03 בשבוע
 m3 = g.weekly_message(r3, "רימקס פמילי", "https://x/v2/goals")
 ck(m3.index("גיוס נכסים: 1 מתוך 10") < m3.index("פגישות מנכס נולד"), m3)
-ck("(מתוכם 1 מהחתמה)" in m3 and "פניות לנכס נולד:" in m3 and "בחודש" in m3, m3)
+ck("(1 מהחתמה)" in m3 and "פניות לנכס נולד:" in m3, m3)
 ck("קונים חדשים: אין נתון" in msg_unknown, msg_unknown)
 ck("ב" + "," not in msg_unknown.split("\n")[0], msg_unknown.split("\n")[0])
 
 # ── סיכום למנהל ──────────────────────────────────────────────────────────────
-sm = g.weekly_manager_summary(rows, "רימקס פמילי")
-ck("דנה כהן" in sm and "פגישות מנכס נולד: להוריד ל-35 בחודש (היום 47;" in sm, sm)
-ck("25/10–31/10" in sm, sm)
+sm = g.weekly_manager_summary(rows, "רימקס פמילי", "https://x/v2/goals/weekly")
+ck("\n" not in sm and "25–31 באוקטובר" in sm and "המלצות לשינוי יעד" in sm and sm.endswith("https://x/v2/goals/weekly"), sm)
 calm = g.weekly_manager_summary([dict(r, rec={k: ("keep", v) for k, v in r["monthly"].items()}) for r in rows], "")
 ck("אין המלצות לשינוי" in calm, calm)
+
+# ── [GOALS4] פרמטרים לתבנית: 10, בלי ירידות שורה, שורה לכל יעד ──────────────
+pp = g.weekly_params(d, "https://x/v2/goals")
+ck(len(pp) == 10 and pp[0] == "דנה" and pp[1] == "שבוע 25–31 באוקטובר" and pp[9] == "https://x/v2/goals", pp)
+ck(pp[3] == "2 מתוך 11", pp[3])
+ck(all("\n" not in x and x.strip() for x in pp), pp)
+ck(g.span_he("2026-11-29", "2026-12-05") == "29 בנובמבר – 5 בדצמבר", g.span_he("2026-11-29", "2026-12-05"))
+ck(g.summary_text(pp).count("\n") >= 9 and "גיוס נכסים: " in g.summary_text(pp), g.summary_text(pp))
+ck("\n" not in g.summary_short(pp) and "https://x/v2/goals" in g.summary_short(pp), g.summary_short(pp))
+# goals_send: חלון פתוח → טקסט חופשי; סגור + תבנית → תבנית; סגור בלי תבנית → שורה קצרה
+out = []
+GG = {"send_text": lambda to, t: out.append(("t", t)) or True, "_wa_window_open": lambda to: True,
+      "_d360_post_message": lambda p: (out.append(("tpl", p)) or True, None)}
+os.environ["WA_GOALS_TPL"] = "goals_summary"
+ck(g.goals_send(GG, "972501111111", pp) and out[-1][0] == "t" and "\n" in out[-1][1], out[-1])
+GG["_wa_window_open"] = lambda to: False
+ck(g.goals_send(GG, "972501111111", pp) and out[-1][0] == "tpl", out[-1])
+P = out[-1][1]["template"]
+ck(P["name"] == "goals_summary" and len(P["components"][0]["parameters"]) == 10, P)
+os.environ.pop("WA_GOALS_TPL")
+ck(g.goals_send(GG, "972501111111", pp) and out[-1][0] == "t" and "\n" not in out[-1][1], out[-1])
 
 # ── רישום שליחה ──────────────────────────────────────────────────────────────
 rec = {}
