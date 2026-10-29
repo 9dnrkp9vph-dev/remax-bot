@@ -573,6 +573,143 @@ def weekly_pending(names, rec, now, canon):
     return out
 
 
+# ── [GOALS-MONTHLY 29/10] סיכום חודשי לכל סוכן + לבעל המשרד (אייל: "כל יום ראשון אחרי חודש") ──────────
+# החלטות אייל 29/10: ביום ראשון המשותף — שתי הודעות נפרדות (החודשי אחרי השבועי, מ-10:20);
+# לבעל המשרד — הודעה קצרה + קישור לעמוד מסודר (/v2/goals/monthly).
+MONTHLY_AT = (10, 20)
+_HE_MONTHS = ("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
+
+
+def month_period(today):
+    """החודש הקלנדרי שלפני החודש של today → (ראשון, אחרון)."""
+    last = today.replace(day=1) - _dt.timedelta(days=1)
+    return last.replace(day=1), last
+
+
+def first_sunday(day):
+    """יום ראשון הראשון מ-1 בחודש של day (כולל)."""
+    f = day.replace(day=1)
+    return f + _dt.timedelta(days=(6 - f.weekday()) % 7)
+
+
+def month_label(day):
+    return f"{_HE_MONTHS[day.month - 1]} {day.year}"
+
+
+def month_scale(first, last):
+    """ימי העבודה בחודש (א'–ה' 1, שישי חצי)."""
+    return _num(sum(workday_weight(first + _dt.timedelta(days=i)) for i in range((last - first).days + 1)))
+
+
+def month_weeks(first, last):
+    """מספר השבועות בחודש (ימים / 7, ספרה אחת) — ליעד השבועי (גיוס נכסים)."""
+    return round(((last - first).days + 1) / 7.0, 1)
+
+
+def monthly_due(now_il, blocked, state):
+    """מפתח החודש ('YYYY-MM' של החודש שהסתיים) אם צריך לשלוח עכשיו. ביום ראשון הראשון אחרי סוף החודש מ-10:20
+    (אחרי השבועי); חג → יום העבודה הבא באותו שבוע (עד חמישי). פעם אחת."""
+    d = now_il.date()
+    fs = first_sunday(d)
+    if blocked or now_il.weekday() not in (6, 0, 1, 2, 3) or not (0 <= (d - fs).days <= 4):
+        return None
+    if (now_il.hour, now_il.minute) < MONTHLY_AT:
+        return None
+    key = month_period(d)[0].strftime("%Y-%m")
+    if ((state or {}).get(key) or {}).get("done"):
+        return None
+    return key
+
+
+def _month_counts(name, first, last, src, canon):
+    days = [first + _dt.timedelta(days=i) for i in range((last - first).days + 1)]
+    c = count_days(name, days, src, canon)
+    c["listings"] = count_listings(name, (day_bounds(first)[0], day_bounds(last)[1]), src.get("sigs"), canon)
+    return c
+
+
+def build_monthly(src, first, last, canon):
+    """לכל סוכן שנכנס לאפי ב-10 הימים האחרונים (src['seen']): ספירת החודש מול יעד החודש (יומי × ימי עבודה;
+    גיוס = שבועי × שבועות), כמה הושגו, החודש הקודם, המלצה. + סכום המשרד, 5 מובילים, מי לא נכנס בכלל בחודש
+    (src['seen_month'])."""
+    import functools
+    canon = functools.lru_cache(maxsize=None)(canon)
+    cfg = _cfg_of(src)
+    pfirst, plast = month_period(first)
+    scale, weeks = month_scale(first, last), month_weeks(first, last)
+    pscale, pweeks = month_scale(pfirst, plast), month_weeks(pfirst, plast)
+    seen = _seen_set(src, canon)
+    sm = src.get("seen_month")
+    seen_m = None if _bad(sm) else {canon(n) for n in (sm or []) if n}
+    names, _rb = _roster_names(src, canon)
+    rows, per, tg = [], {}, {}
+    for name in names:
+        if canon(name) not in seen:
+            continue
+        daily = targets_for(cfg, name, canon)
+        c = _month_counts(name, first, last, src, canon)
+        pc = _month_counts(name, pfirst, plast, src, canon)
+        mt = {k: _num(round(v * (weeks if k in WEEKLY_GOALS else scale), 1)) for k, v in daily.items()}
+        pt = {k: _num(round(v * (pweeks if k in WEEKLY_GOALS else pscale), 1)) for k, v in daily.items()}
+        met, n = _met(c, mt)
+        pmet, _ = _met(pc, pt)
+        ratio = [min(2.0, (c.get(k) or 0) / mt[k]) for k in GOAL_KEYS if mt.get(k) and c.get(k) is not None]
+        rows.append({"name": name, "counts": c, "prev": pc, "targets": mt, "daily": daily, "met": met,
+                     "prev_met": pmet, "goals_n": n, "score": sum(ratio) / len(ratio) if ratio else 0,
+                     "rec": {k: weekly_recommend(c.get(k), mt.get(k), daily.get(k)) for k in GOAL_KEYS},
+                     "from": first.isoformat(), "to": last.isoformat()})
+        per[canon(name)], tg[canon(name)] = c, mt
+    total = rollup(per, tg)
+    total["targets"] = {k: _num(round(v, 1)) for k, v in total["targets"].items()}
+    total["met"], total["goals_n"] = _met(total["counts"], total["targets"])
+    top = sorted(rows, key=lambda r: (-r["met"], -r["score"], r["name"]))[:5]
+    inactive = [] if seen_m is None else [n for n in names if canon(n) not in seen_m]
+    return {"rows": rows, "total": total, "top": top, "inactive": inactive, "label": month_label(first),
+            "month": first.strftime("%Y-%m")}
+
+
+def monthly_message(row, office, link, label):
+    first = (str(row.get("name") or "").split() or [""])[0]
+    office = str(office or "").strip()
+    lines = [f"שלום {first}, סיכום היעדים שלך" + (f" ב{office}" if office else "") + f" לחודש {label}:", ""]
+    for k in GOAL_KEYS:
+        c, t, p = row["counts"].get(k), row["targets"].get(k), (row.get("prev") or {}).get(k)
+        if c is None:
+            lines.append(f"{GOAL_LABELS[k]}: אין נתון")
+            continue
+        ln = f"{GOAL_LABELS[k]}: {c} מתוך {t}" + (" — הושג" if c >= (t or 0) else "")
+        if k == "buyers" and row["counts"].get("buyers_sign"):
+            ln += f" (מתוכם {row['counts']['buyers_sign']} מהחתמה)"
+        if p is not None:
+            ln += f" (בחודש הקודם: {p})"
+        lines.append(ln)
+    lines += ["", f"הגעת ל-{row['met']} מתוך {row['goals_n']} יעדים (בחודש הקודם: {row.get('prev_met', 0)}).", "",
+              "המלצה ליעד:"]
+    for k in GOAL_KEYS:
+        kind, n = row["rec"][k]
+        per = "בשבוע" if k in WEEKLY_GOALS else "ביום"
+        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} {per}", "down": f"להוריד ל-{n} {per}"}.get(
+            kind, f"להשאיר {n} {per}"))
+    lines += ["(את היעדים מעדכן מנהל המשרד)", "", f"למסך היעדים: {link}"]
+    return "\n".join(lines)
+
+
+def monthly_owner_summary(M, office, link):
+    """לבעל המשרד — קצר: סכום המשרד מול היעד, 5 המובילים, כמה לא נכנסו, כמה המלצות; הפירוט בעמוד."""
+    t = M["total"]
+    out = [f"סיכום יעדים חודשי — {M['label']}" + (f" — {office}" if office else ""),
+           f"{len(M['rows'])} סוכנים פעילים · המשרד הגיע ל-{t['met']} מתוך {t['goals_n']} יעדים.", ""]
+    for k in GOAL_KEYS:
+        c = t["counts"].get(k)
+        out.append(f"{GOAL_LABELS[k]}: " + ("אין נתון" if c is None else f"{c} מתוך {t['targets'].get(k)}"))
+    if M["top"]:
+        out += ["", "המובילים: " + ", ".join(f"{r['name']} ({r['met']}/{r['goals_n']})" for r in M["top"])]
+    nrec = sum(1 for r in M["rows"] for k in GOAL_KEYS if r["rec"][k][0] != "keep")
+    out += ["", f"לא נכנסו לאפי בחודש: {len(M['inactive'])}", f"המלצות לשינוי יעד: {nrec}", "",
+            f"הפירוט המלא: {link}"]
+    return "\n".join(out)
+
+
 def meeting_stamp(prev, new_status, now):
     """חותמת 'מתי נקבעה הפגישה' — קבועה לתמיד: קיימת נשמרת; אחרת now אם הסטטוס meeting; אחרת None."""
     ex = (prev or {}).get("meeting_at")
@@ -765,9 +902,8 @@ def weekly_src(G, sunday, now, src_override=None):
             return sb.fetch_activity_actions(t0, (ACT_REMIND, ACT_NB_WA)) or []
         return G["_activity_fetch"](t0, today=False)
 
-    def seen():
-        start = _dt.datetime.fromtimestamp(now, _IL) - _dt.timedelta(days=WEEKLY_SEEN_DAYS)
-        return [r.get("name") for r in (G["_usage_rows"](start) or []) if r.get("name")]
+    def seen():   # [29/10] אותו 'מי נכנס ב-10 ימים' כמו יעד המשרד (g_active, מטמון 10 דק')
+        return g_active(G, _dt.datetime.fromtimestamp(now, _IL).date()) or []
 
     cfg = g_safe(G, G["_load_config"])
     src = {"nb": cfg if _bad(cfg) else ((cfg or {}).get("nbStatus") or {}),
@@ -915,6 +1051,143 @@ def _json_copy(v):
     return _json.loads(_json.dumps(v, ensure_ascii=False))
 
 
+def monthly_src(G, first, last, now, src_override=None):
+    """מקורות מתחילת החודש הקודם (להשוואה) + מי נכנס בחודש (seen_month) ומי ב-10 הימים האחרונים (seen)."""
+    pfirst = month_period(first)[0]
+    t0 = day_bounds(pfirst)[0]
+
+    def activity():
+        sb = G.get("_sbdb")
+        if sb is not None and sb.enabled():
+            return sb.fetch_activity_actions(t0, (ACT_REMIND, ACT_NB_WA)) or []
+        return G["_activity_fetch"](t0, today=False)
+
+    def seen():
+        return g_active(G, _dt.datetime.fromtimestamp(now, _IL).date()) or []
+
+    def seen_month():
+        a = _dt.datetime(first.year, first.month, first.day, tzinfo=_IL)
+        b = _dt.datetime.combine(last + _dt.timedelta(days=1), _dt.time(), tzinfo=_IL)
+        return [g_display(G, r.get("name")) for r in (G["_usage_rows"](a, b) or []) if r.get("name")]
+
+    cfg = g_safe(G, G["_load_config"])
+    src = {"nb": cfg if _bad(cfg) else ((cfg or {}).get("nbStatus") or {}),
+           "cfg": cfg if isinstance(cfg, dict) else {}, "missed": []}
+    over = src_override or {}
+    for k, fn in (("buyers", lambda: G["_fetch_manual_buyers"]()), ("bpages", lambda: G["_sbdb"].bpage_all()),
+                  ("activity", activity), ("reviews", lambda: g_reviews(G)), ("seen", seen),
+                  ("seen_month", seen_month), ("sigs", lambda: g_sigs(G, pfirst)), ("roster", lambda: g_roster(G))):
+        src[k] = over[k] if k in over else g_safe(G, fn)
+    return src
+
+
+def _monthly_link():
+    return _weekly_link() + "/monthly"
+
+
+def _monthly_owner_phones(G):
+    import os as _o
+    raw = (_o.environ.get("GOALS_MONTHLY_MGR") or "").strip()
+    if raw:
+        return [G["_wa_phone"](x) for x in raw.split(",") if x.strip() and G["_wa_phone"](x.strip())]
+    return _weekly_mgr_phones(G)
+
+
+def monthly_preview(G, now, src_override=None):
+    """מה יישלח לחודש שהסתיים — בלי לשלוח ובלי לרשום. גם העמוד שבקישור לבעל המשרד."""
+    first, last = month_period(_dt.datetime.fromtimestamp(now, _IL).date())
+    cfg = G["_load_config"]() or {}
+    office = str(((cfg.get("v2_office") or {}).get("name")) or "").strip()
+    M = build_monthly(monthly_src(G, first, last, now, src_override), first, last, lambda n: g_canon(G, n))
+    ag_ph = G["fetch_agents_phones"]() or {}
+    vph = G["_agent_vphones9"]() or set()
+    msgs = [{"name": r["name"], "phone": _weekly_phone(G, r["name"], ag_ph, vph), "met": r["met"],
+             "prev_met": r["prev_met"], "rec": {k: list(v) for k, v in r["rec"].items()}, "daily": r["daily"],
+             "counts": r["counts"], "targets": r["targets"],
+             "text": monthly_message(r, office, _weekly_link(), M["label"])} for r in M["rows"]]
+    return {"month": M["month"], "label": M["label"], "messages": msgs, "total": M["total"],
+            "top": [{"name": r["name"], "met": r["met"], "goals_n": r["goals_n"]} for r in M["top"]],
+            "inactive": M["inactive"], "labels": GOAL_LABELS, "keys": list(GOAL_KEYS),
+            "owner": monthly_owner_summary(M, office, _monthly_link()),
+            "state": ((cfg.get("v2_goals_monthly") or {}).get(M["month"]) or {})}
+
+
+def monthly_run(G, now, disk_path, src_override=None):
+    """סבב אחד: אם הגיע הזמן — לכל סוכן שטרם קיבל, ואז לבעל המשרד. אותם כללים כמו השבועי."""
+    import os as _o
+    if (_o.environ.get("GOALS_MONTHLY_WA", "1") or "1").strip() == "0" or not G["_d360_on"]():
+        return 0
+    now_il = _dt.datetime.fromtimestamp(now, _IL)
+    try:
+        blocked = bool(G["_quiet_mode"]()) or bool(G["_switch_off"]("wa_official_off"))
+    except Exception:
+        blocked = True
+    cfg = G["_load_config"]() or {}
+    state = dict(cfg.get("v2_goals_monthly") or {})
+    for k, v in _weekly_disk(disk_path).items():
+        if (v or {}).get("done") or k not in state:
+            state[k] = v
+    key = monthly_due(now_il, blocked, state)
+    if not key:
+        return 0
+    first, last = month_period(now_il.date())
+    rec = _json_copy(state.get(key) or {})
+    canon = lambda n: g_canon(G, n)
+    office = str(((cfg.get("v2_office") or {}).get("name")) or "").strip()
+    M = build_monthly(monthly_src(G, first, last, now, src_override), first, last, canon)
+    ag_ph = G["fetch_agents_phones"]() or {}
+    vph = G["_agent_vphones9"]() or set()
+    by = {canon(r["name"]): r for r in M["rows"]}
+    n_sent = 0
+    for name in weekly_pending([r["name"] for r in M["rows"]], rec, now, canon):
+        wa = _weekly_phone(G, name, ag_ph, vph)
+        if not wa:
+            res = "no_phone"
+        else:
+            try:
+                res = "sent" if G["send_text"](wa, monthly_message(by[canon(name)], office, _weekly_link(), M["label"])) else "fail"
+            except Exception:
+                res = "fail"
+        weekly_mark(rec, name, res, now)
+        n_sent += res == "sent"
+        G["_log_activity"]("אפי", "system", "", "סיכום יעדים חודשי — " +
+                           {"sent": "נשלח", "fail": "נכשל", "no_phone": "אין טלפון"}[res], name[:60])
+    left = weekly_pending([r["name"] for r in M["rows"]], rec, now + WEEKLY_RETRY_SEC, canon)
+    m = rec.get("mgr") or {}
+    if m.get("r") != "sent" and int(m.get("tries") or 0) < WEEKLY_MAX_TRIES and \
+            (not m or now - float(m.get("ts") or 0) >= WEEKLY_RETRY_SEC):
+        ok = False
+        for wa in _monthly_owner_phones(G):
+            try:
+                ok = bool(G["send_text"](wa, monthly_owner_summary(M, office, _monthly_link()))) or ok
+            except Exception:
+                pass
+        rec["mgr"] = {"r": "sent" if ok else "fail", "ts": now, "tries": int(m.get("tries") or 0) + 1}
+        G["_log_activity"]("אפי", "system", "", "סיכום יעדים חודשי — לבעל המשרד " + ("נשלח" if ok else "נכשל"),
+                           f"{M['label']} · {len(M['rows'])} סוכנים")
+    mg = rec.get("mgr") or {}
+    rec["done"] = not left and (mg.get("r") == "sent" or int(mg.get("tries") or 0) >= WEEKLY_MAX_TRIES)
+    rec["n"] = len(M["rows"])
+
+    def _mut(c, _k=key, _v=rec):
+        d = c.get("v2_goals_monthly") if isinstance(c.get("v2_goals_monthly"), dict) else {}
+        d[_k] = _v
+        for kk in sorted(d)[:-6]:
+            d.pop(kk, None)
+        c["v2_goals_monthly"] = d
+        return True
+    try:
+        G["_config_mutate"](_mut)
+    except Exception:
+        pass
+    _weekly_disk(disk_path, key, rec)
+    return n_sent
+
+
+def monthly_disk_path():
+    return weekly_disk_path().replace("goals_weekly.json", "goals_monthly.json")
+
+
 WEEKLY_PREVIEW_HTML = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>סיכום יעדים שבועי</title>
 <style>body{margin:0;background:#F5F6F8;font-family:-apple-system,Arial,sans-serif;color:#1E3A5F}
@@ -939,6 +1212,37 @@ fetch('/v2/api/goals/weekly/preview',{headers:{'X-Auth-Token':tok}}).then(functi
 </script></body></html>"""
 
 
+MONTHLY_PAGE_HTML = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>סיכום יעדים חודשי</title>
+<style>body{margin:0;background:#F5F6F8;font-family:-apple-system,Arial,sans-serif;color:#1E3A5F}
+.w{max-width:820px;margin:0 auto;padding:16px}h1{font-size:19px;margin:6px 0 4px}h2{font-size:15px;margin:0 0 8px}
+.s{color:#6E7683;font-size:13px;margin-bottom:14px}.c{background:#fff;border:1px solid #E3E6EB;border-radius:14px;padding:14px;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 4px;border-bottom:1px solid #EEF0F3;text-align:right}
+th{color:#6E7683;font-weight:600}.ok{color:#2F8F5B;font-weight:700}.up{color:#2F8F5B}.down{color:#B42318}.mut{color:#6E7683}
+.tw{overflow-x:auto}details{margin-top:6px}summary{cursor:pointer;color:#2E6BD6;font-size:13px}
+pre{white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;margin:8px 0 0}a{color:#2E6BD6}</style></head>
+<body><div class="w"><a href="/v2/admin">חזרה לניהול</a><h1>סיכום יעדים חודשי</h1><div class="s" id="sub">טוען…</div><div id="out"></div></div>
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function v(x){return x==null?'—':x;}
+var tok='';try{tok=localStorage.getItem('fbTok')||'';}catch(e){}
+fetch('/v2/api/goals/monthly/preview',{headers:{'X-Auth-Token':tok}}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){document.getElementById('sub').textContent='אין הרשאה (מנהלים בלבד).';return;}
+  var L=j.labels,K=j.keys,T=j.total||{},st=j.state||{};
+  document.getElementById('sub').textContent=j.label+' · '+j.messages.length+' סוכנים פעילים · '+(st.done?'נשלח':'טרם נשלח')+' · העמוד לא שולח כלום';
+  var h='<div class="c"><h2>המשרד — '+v(T.met)+' מתוך '+v(T.goals_n)+' יעדים</h2><table><tr><th>יעד</th><th>בפועל</th><th>יעד המשרד</th></tr>';
+  K.forEach(function(k){var c=(T.counts||{})[k],t=(T.targets||{})[k];h+='<tr><td>'+esc(L[k])+'</td><td class="'+(c!=null&&c>=t?'ok':'')+'">'+v(c)+'</td><td>'+v(t)+'</td></tr>';});
+  h+='</table></div><div class="c"><h2>5 המובילים</h2>'+(j.top.map(function(r,i){return (i+1)+'. '+esc(r.name)+' <span class="mut">('+r.met+'/'+r.goals_n+')</span>';}).join('<br>')||'<span class="mut">אין</span>')+'</div>';
+  h+='<div class="c"><h2>לא נכנסו לאפי בחודש ('+j.inactive.length+')</h2>'+(j.inactive.map(esc).join(' · ')||'<span class="mut">כולם נכנסו</span>')+'</div>';
+  var rr='';j.messages.forEach(function(m){K.forEach(function(k){var x=m.rec[k];if(x&&x[0]!=='keep')rr+='<tr><td>'+esc(m.name)+'</td><td>'+esc(L[k])+'</td><td class="'+x[0]+'">'+(x[0]==='up'?'להעלות':'להוריד')+' ל-'+x[1]+'</td><td class="mut">היום '+m.daily[k]+' · עשה '+v(m.counts[k])+' מתוך '+v(m.targets[k])+'</td></tr>';});});
+  h+='<div class="c"><h2>המלצות לשינוי יעד</h2>'+(rr?'<div class="tw"><table><tr><th>סוכן</th><th>יעד</th><th>המלצה</th><th></th></tr>'+rr+'</table></div><div class="mut" style="margin-top:8px">לשינוי: <a href="/v2/goals">מסך היעדים</a></div>':'<span class="mut">אין המלצות לשינוי החודש</span>')+'</div>';
+  h+='<div class="c"><h2>ההודעות לסוכנים</h2>';j.messages.forEach(function(m){h+='<details><summary>'+esc(m.name)+' · '+m.met+'/'+(m.rec?K.length:'')+(m.phone?'':' · אין נייד — לא יישלח')+'</summary><pre>'+esc(m.text)+'</pre></details>';});
+  h+='</div><div class="c"><h2>ההודעה אליך</h2><pre>'+esc(j.owner)+'</pre></div>';
+  document.getElementById('out').innerHTML=h;
+}).catch(function(){document.getElementById('sub').textContent='שגיאה בטעינה';});
+</script></body></html>"""
+
+
 def register_weekly(app, G):
     """[GOALS-WEEKLY] הלולאה (מתחילה בבקשה הראשונה בתהליך ההגשה — הלקח מ-15/09) + תצוגה מקדימה למנהלים."""
     import os as _o
@@ -956,6 +1260,12 @@ def register_weekly(app, G):
                 lg = G.get("log")
                 if lg:
                     lg.error(f"goals weekly: {e}", exc_info=True)
+            try:                                   # [GOALS-MONTHLY] אחרי השבועי, באותה לולאה
+                monthly_run(G, _clock(), monthly_disk_path())
+            except Exception as e:
+                lg = G.get("log")
+                if lg:
+                    lg.error(f"goals monthly: {e}", exc_info=True)
             _tm.sleep(300)
 
     @app.before_request
@@ -985,6 +1295,16 @@ def register_weekly(app, G):
     @app.route("/v2/goals/weekly", methods=["GET"])
     def goals_weekly_page():
         return Response(WEEKLY_PREVIEW_HTML, mimetype="text/html")
+
+    @app.route("/v2/api/goals/monthly/preview", methods=["GET"])
+    def goals_monthly_preview():
+        if not _mgr():
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+        return jsonify(dict(monthly_preview(G, _clock()), ok=True))
+
+    @app.route("/v2/goals/monthly", methods=["GET"])
+    def goals_monthly_page():
+        return Response(MONTHLY_PAGE_HTML, mimetype="text/html")
 
 
 def register(app, G):
