@@ -50,16 +50,17 @@ buyers = [{"agent": "דנה כהן", "date": "06/10/2026 10:00", "summary": "מ�
           {"agent": "דנה כהן", "date": "07/10/2026 10:00"}]
 src = {"nb": nb, "sigs": sigs, "buyers": buyers, "bpages": [], "activity": [], "reviews": [], "missed": [],
        "roster": ["דנה כהן", "רון לוי", "יוסי ישן"], "seen": ["דנה כהן", "רון לוי"],
-       "seen_month": ["דנה כהן"], "cfg": {}}
+       "seen_month": ["דנה כהן"],
+       "cfg": {"v2_goals": {"office": {"meetings": 94, "listings": 18, "nb_wa": 470}}}}   # [GOALS3] מתחלק בין 2 פעילים
 M = g.build_monthly(src, dt.date(2026, 10, 1), dt.date(2026, 10, 31), canon)
 rows = M["rows"]
 ck([r["name"] for r in rows] == ["דנה כהן", "רון לוי"], [r["name"] for r in rows])
 d = rows[0]
 ck(d["counts"]["meetings"] == 2 and d["prev"]["meetings"] == 1, (d["counts"], d["prev"]))
 ck(d["counts"]["listings"] == 2 and d["prev"]["listings"] == 1, "listings over the whole month")
-ck(d["targets"]["meetings"] == 47 and d["targets"]["listings"] == 8.8 and d["targets"]["nb_wa"] == 235, d["targets"])
+ck(d["targets"]["meetings"] == 47 and d["targets"]["listings"] == 9 and d["targets"]["nb_wa"] == 235, d["targets"])
 ck(d["counts"]["buyers"] == 2 and d["counts"]["buyers_sign"] == 1, d["counts"])
-ck(d["rec"]["meetings"] == ("down", 1), d["rec"])
+ck(d["rec"]["meetings"] == ("down", 35), d["rec"])
 ck(M["inactive"] == ["רון לוי", "יוסי ישן"], M["inactive"])         # לא נכנסו בכלל בחודש
 ck(M["total"]["counts"]["meetings"] == 2 and M["total"]["targets"]["meetings"] == 94, M["total"])
 ck(M["top"][0]["name"] == "דנה כהן", M["top"])
@@ -67,7 +68,7 @@ ck(M["label"] == "אוקטובר 2026", M["label"])
 
 msg = g.monthly_message(d, "המשרד שלנו", "https://x/v2/goals", "אוקטובר 2026")
 ck(msg.startswith("שלום דנה,") and "לחודש אוקטובר 2026" in msg and "המשרד שלנו" in msg, msg)
-ck(msg.split("\n")[2].startswith("גיוס נכסים: 2 מתוך 8.8"), msg)
+ck(msg.split("\n")[2].startswith("גיוס נכסים: 2 מתוך 9"), msg)
 ck("פגישות מנכס נולד: 2 מתוך 47 (בחודש הקודם: 1)" in msg, msg)
 ck("(מתוכם 1 מהחתמה)" in msg, msg)
 ck("בחודש הקודם:" in msg.split("הגעת ל-")[1].split("\n")[0], msg)

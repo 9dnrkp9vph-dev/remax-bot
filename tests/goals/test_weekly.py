@@ -50,30 +50,31 @@ nb = {"a1": {"agent": "דנה כהן", "status": "meeting", "meeting_at": at(SUN
       "a4": {"agent": "דנה  כהן", "status": "meeting", "meeting_at": at(dt.date(2026, 10, 24)).timestamp(), "pkey": "p4"}}
 src = {"nb": nb, "buyers": [], "bpages": [], "activity": [], "reviews": [], "missed": [],
        "roster": ["דנה כהן", "רון לוי", "יוסי חדש"], "seen": ["דנה כהן", "רון לוי"],
-       "cfg": {"v2_goals": {"agents": {"רון לוי": {"meetings": 1}}}}}
+       # [GOALS3] יעד משרד לחודש; לרון יעד אישי 47 פגישות → דנה מקבלת את היתרה (94 − 47). אוקטובר: 23.5 ימי עבודה
+       "cfg": {"v2_goals": {"office": {"meetings": 94, "buyers": 141}, "agents_month": {"רון לוי": {"meetings": 47}}}}}
 rows = g.build_weekly(src, SUN, canon)
 ck([r["name"] for r in rows] == ["דנה כהן", "רון לוי"], "only seen agents: " + str([r["name"] for r in rows]))
 d = rows[0]
 ck(d["counts"]["meetings"] == 2, d["counts"])
-ck(d["targets"]["meetings"] == 11 and d["targets"]["buyers"] == 16.5, d["targets"])
-ck(d["daily"]["meetings"] == 2, d["daily"])
+ck(d["targets"]["meetings"] == 11 and d["targets"]["buyers"] == 17, d["targets"])     # 2×5.5; 3×5.5=16.5 → 17
+ck(d["daily"]["meetings"] == 2 and d["monthly"]["meetings"] == 47 and d["monthly"]["buyers"] == 71, d)
 ck(d["met"] == 0 and d["goals_n"] == 6, (d["met"], d["goals_n"]))
-ck(d["rec"]["meetings"] == ("down", 1), d["rec"])
-ck(rows[1]["targets"]["meetings"] == 5.5, rows[1]["targets"])
+ck(d["rec"]["meetings"] == ("down", 35), d["rec"])                                        # 47 × 0.75
+ck(rows[1]["targets"]["meetings"] == 11 and rows[1]["monthly"]["meetings"] == 47, rows[1])
 ck(d["from"] == SUN.isoformat() and d["to"] == "2026-10-31", (d["from"], d["to"]))
 
 # מקור שנכשל → None, בלי ליפול
 rows2 = g.build_weekly(dict(src, buyers=RuntimeError("x")), SUN, canon)
-ck(rows2[0]["counts"]["buyers"] is None and rows2[0]["rec"]["buyers"] == ("keep", 3), rows2[0])
+ck(rows2[0]["counts"]["buyers"] is None and rows2[0]["rec"]["buyers"] == ("keep", 71), rows2[0])
 
 # ── ההודעה ───────────────────────────────────────────────────────────────────
 msg = g.weekly_message(d, "רימקס פמילי", "https://x/v2/goals")
 ck(msg.startswith("שלום דנה,"), msg)
 ck("רימקס פמילי" in msg and "25/10–31/10" in msg, msg)
 ck("פגישות מנכס נולד: 2 מתוך 11" in msg, msg)
-ck("קונים חדשים: 0 מתוך 16.5" in msg, msg)
+ck("קונים חדשים: 0 מתוך 17" in msg, msg)
 ck("הגעת ל-0 מתוך 6 יעדים" in msg, msg)
-ck("להוריד ל-1 ביום" in msg, msg)
+ck("להוריד ל-35 בחודש" in msg, msg)
 ck(msg.rstrip().endswith("https://x/v2/goals"), msg)
 ck(not any(0x1F300 <= ord(ch) <= 0x1FAFF or 0x2600 <= ord(ch) <= 0x27BF for ch in msg), "no emojis")
 ck("RE/MAX" not in msg and "רימקס פמילי" in msg, "office name only from config")
@@ -82,18 +83,18 @@ msg_unknown = g.weekly_message(rows2[0], "", "https://x/v2/goals")
 sigs = [{"agent": "דנה כהן", "address": "הרצל 5", "type": "בלעדיות", "signed": True, "ts": "27/10/2026 10:00"}]
 buy = [{"agent": "דנה כהן", "date": "26/10/2026 10:00", "summary": "מהחתמת מתעניין · הרצל 5"}]
 r3 = g.build_weekly(dict(src, sigs=sigs, buyers=buy), SUN, canon)[0]
-ck(r3["targets"]["listings"] == 2 and r3["counts"]["listings"] == 1, (r3["targets"], r3["counts"]))
+ck(r3["targets"]["listings"] == 10 and r3["counts"]["listings"] == 1, (r3["targets"], r3["counts"]))   # 40 בחודש → 9.03 בשבוע
 m3 = g.weekly_message(r3, "רימקס פמילי", "https://x/v2/goals")
-ck(m3.index("גיוס נכסים: 1 מתוך 2") < m3.index("פגישות מנכס נולד"), m3)
-ck("(מתוכם 1 מהחתמה)" in m3 and "פניות לנכס נולד:" in m3 and "בשבוע" in m3, m3)
+ck(m3.index("גיוס נכסים: 1 מתוך 10") < m3.index("פגישות מנכס נולד"), m3)
+ck("(מתוכם 1 מהחתמה)" in m3 and "פניות לנכס נולד:" in m3 and "בחודש" in m3, m3)
 ck("קונים חדשים: אין נתון" in msg_unknown, msg_unknown)
 ck("ב" + "," not in msg_unknown.split("\n")[0], msg_unknown.split("\n")[0])
 
 # ── סיכום למנהל ──────────────────────────────────────────────────────────────
 sm = g.weekly_manager_summary(rows, "רימקס פמילי")
-ck("דנה כהן" in sm and "פגישות מנכס נולד: להוריד ל-1" in sm, sm)
+ck("דנה כהן" in sm and "פגישות מנכס נולד: להוריד ל-35 בחודש (היום 47;" in sm, sm)
 ck("25/10–31/10" in sm, sm)
-calm = g.weekly_manager_summary([dict(r, rec={k: ("keep", v) for k, v in r["daily"].items()}) for r in rows], "")
+calm = g.weekly_manager_summary([dict(r, rec={k: ("keep", v) for k, v in r["monthly"].items()}) for r in rows], "")
 ck("אין המלצות לשינוי" in calm, calm)
 
 # ── רישום שליחה ──────────────────────────────────────────────────────────────

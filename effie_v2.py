@@ -1062,7 +1062,8 @@ function goalsCacheGet(tok, day){
 function goalsData(j){
   var d = j && (j.view === 'agent' ? j.me : j.total);
   return {counts: (d && d.counts) || {}, targets: (d && d.targets) || {}, partial: !!(d && d.partial),
-          agents: (d && typeof d.agents === 'number') ? d.agents : null};
+          agents: (d && typeof d.agents === 'number') ? d.agents : null,
+          office_month: (d && d.office_month) || null, share_agents: (d && typeof d.share_agents === 'number') ? d.share_agents : null};
 }
 function goalIsDone(c, t){
   c = gNum(c); t = gNum(t); if (t == null) t = 0;
@@ -1131,7 +1132,7 @@ function goalsCardHtml(j, opts){
   var h = '<div class="gk"><div class="gk-hero">' +
     '<div class="d">' + gEsc(goalsDateLine()) + '</div>' +
     (opts.greet ? '<div class="gr">' + gEsc(opts.greet) + '</div>' : '') +
-    '<h2>' + gEsc(title) + '</h2><div class="sb">' + (group ? (d.agents != null ? 'היעד = הסוכנים שנכנסו לאפי ב-10 הימים האחרונים (' + (d.agents === 1 ? 'סוכן אחד' : d.agents + ' סוכנים') + '). הכל נספר לבד.' : 'סכום היעדים של כל הסוכנים. הכל נספר לבד.') : 'הכל נספר לבד.') + '</div>' +
+    '<h2>' + gEsc(title) + '</h2><div class="sb">' + (group ? (d.office_month ? 'יעד המשרד לחודש, ליום. מתחלק בין ' + (d.share_agents === 1 ? 'סוכן אחד פעיל' : (d.share_agents || 0) + ' סוכנים פעילים') + ' (לפחות 10 דקות באפי ב-10 הימים האחרונים). הכל נספר לבד.' : d.agents != null ? 'סכום היעדים של ' + (d.agents === 1 ? 'סוכן אחד פעיל' : d.agents + ' סוכנים פעילים') + ' בצוות. הכל נספר לבד.' : 'סכום היעדים של כל הסוכנים. הכל נספר לבד.') : 'החלק שלך ביעד המשרד, מעוגל למעלה. הכל נספר לבד.') + '</div>' +
     '<div class="gk-score">' + gRing(done) + '<div><b>' + done + ' מתוך ' + GOALS_KEYS.length + ' יעדים הושלמו</b><span>' + gEsc(sub) + '</span></div></div>' +
     (d.partial ? '<div class="gk-note">חלק מהנתונים לא נטענו — מוצג מה שידוע</div>' : '') +
     (group && opts.story ? '<button class="gk-link" onclick="goalsGo(\'/v2/goals\')">פירוט לפי סוכן</button>' : '') +
@@ -1167,11 +1168,11 @@ function goalsCardHtml(j, opts){
   h += '<div class="gk-sec">בקרוב</div><div class="gk-plain"><div>2 נכסים בפייסבוק ובאינסטגרם<span>· יופעל בקרוב</span></div></div>';
   return h + '</div>';
 }
-/* פירוט לפי סוכן (מתאמת/מנהל) — מנהל רואה עריכת יעד לכל סוכן ויעד ברירת מחדל */
+/* פירוט לפי סוכן (מתאמת/מנהל) — מנהל רואה עריכת יעד אישי לכל סוכן ויעד המשרד לחודש [GOALS3] */
 function goalsAgentsHtml(j, canEdit){
   var ags = (j && j.agents) || [];
   var h = '<div class="gk">';
-  if (canEdit) h += '<button class="gBtn sec" onclick="goalsEdit(-1)">יעד ברירת מחדל</button>';
+  if (canEdit) h += '<button class="gBtn sec" onclick="goalsEdit(-1)">יעד המשרד לחודש</button>';
   if (!ags.length) h += '<div class="gk-empty"><div class="gk-eic">' + GOALS_IC.user.replace(/#2E6BD6/g, '#7A5E1C') + '</div><b>אין סוכנים להצגה</b><span>כשיהיו סוכנים פעילים, היעדים שלהם יופיעו כאן.</span></div>';
   ags.forEach(function(a, i){
     var c = a.counts || {}, t = a.targets || {};
@@ -1186,7 +1187,8 @@ function goalsAgentsHtml(j, canEdit){
     });
     var f = c.followups;
     h += '<div class="st">פולו-אפ ' + (f ? gShow(f.done) + '/' + gShow(f.due) : '—') + ' · ' + gEsc(goalsBuyersSub(c)) + ' · שיחות פתוחות ' + gShow(c.missed) + '</div>';
-    if (canEdit) h += '<button class="gBtn sec ed" onclick="goalsEdit(' + i + ')">עריכת יעד</button>';
+    if (canEdit) h += (a.own && a.own.length ? '<div class="st">יעד אישי לחודש</div>' : '') +
+      '<button class="gBtn sec ed" onclick="goalsEdit(' + i + ')">עריכת יעד</button>';
     h += '</div>';
   });
   return h + '</div>';
@@ -1267,13 +1269,14 @@ V2_GOALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   <div id="sheet">
     <div class="st" id="shT">עריכת יעד</div>
     <div class="ss" id="shS"></div>
-    <label>גיוס נכסים (בשבוע)<input id="t_listings" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
-    <label>פגישות מנכס נולד<input id="t_meetings" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
-    <label>פניות לנכס נולד<input id="t_nb_wa" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
-    <label>קונים חדשים<input id="t_buyers" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
-    <label>הודעות ללקוחות עבר<input id="t_past_clients" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
-    <label>המלצות<input id="t_reviews" type="number" inputmode="numeric" min="0" max="50" style="font-size:16px"></label>
+    <label>גיוס נכסים<input id="t_listings" type="number" inputmode="numeric" min="0" style="font-size:16px"></label>
+    <label>פגישות מנכס נולד<input id="t_meetings" type="number" inputmode="numeric" min="0" style="font-size:16px"></label>
+    <label>פניות לנכס נולד<input id="t_nb_wa" type="number" inputmode="numeric" min="0" style="font-size:16px"></label>
+    <label>קונים חדשים<input id="t_buyers" type="number" inputmode="numeric" min="0" style="font-size:16px"></label>
+    <label>הודעות ללקוחות עבר<input id="t_past_clients" type="number" inputmode="numeric" min="0" style="font-size:16px"></label>
+    <label>המלצות<input id="t_reviews" type="number" inputmode="numeric" min="0" style="font-size:16px"></label>
     <button class="gBtn blue" id="shSave" onclick="sheetSave()">שמירה</button>
+    <button class="gBtn sec" id="shClear" onclick="sheetClear()" style="display:none">בטל יעד אישי</button>
     <button class="gBtn sec" onclick="sheetClose()">ביטול</button>
   </div>
   <div id="toast" role="status" aria-live="polite"></div>
@@ -1314,26 +1317,41 @@ function goalsEdit(i){
   if (!GJ || !GJ.can_edit) return;
   var a = (i >= 0) ? (GJ.agents || [])[i] : null;
   EDIT = {agent: a ? a.name : ''};
-  el('shT').textContent = a ? 'עריכת יעד · ' + a.name : 'יעד ברירת מחדל';
-  el('shS').textContent = a ? 'היעד היומי של הסוכן (גיוס נכסים — לשבוע). שדה ריק = בלי שינוי.' :
-    'חל על כל סוכן שלא הוגדר לו יעד משלו. גיוס נכסים — לשבוע, השאר ליום. שדה ריק = בלי שינוי.';
+  var om = (GJ.total && GJ.total.office_month) || {}, own = (a && a.own) || [];
+  el('shT').textContent = a ? 'יעד אישי לחודש · ' + a.name : 'יעד המשרד לחודש';
+  el('shS').textContent = a ? 'כמה בחודש לסוכן הזה. השאר של יעד המשרד מתחלק בין שאר הסוכנים הפעילים. שדה ריק = החלק הרגיל שלו.' :
+    'סך הכל למשרד בחודש. מתחלק בין הסוכנים הפעילים (לפחות 10 דקות באפי ב-10 הימים האחרונים), והיעד של כל סוכן מעוגל למעלה.';
   GOALS_KEYS.forEach(function(k){
-    var inp = el('t_' + k), v = a && a.targets ? a.targets[k] : null;
-    inp.value = (typeof v === 'number') ? v : '';
-    inp.placeholder = a ? '' : 'בלי שינוי';
+    var inp = el('t_' + k);
+    if (a){
+      var m = a.monthly ? a.monthly[k] : null;
+      inp.value = (own.indexOf(k) >= 0 && typeof m === 'number') ? m : '';
+      inp.placeholder = (typeof m === 'number') ? 'החלק הרגיל: ' + m : '';
+    } else {
+      inp.value = (typeof om[k] === 'number') ? om[k] : '';
+      inp.placeholder = '';
+    }
   });
+  el('shClear').style.display = own.length ? 'block' : 'none';
   el('ovl').style.display = 'block'; el('sheet').style.display = 'flex';
 }
 function sheetClose(){ el('ovl').style.display = 'none'; el('sheet').style.display = 'none'; EDIT = null; }
+function sheetClear(){
+  if (!EDIT || !EDIT.agent) return;
+  POST('/v2/api/goals/targets', {agent: EDIT.agent, clear: true}).then(function(r){
+    if (r && r.ok){ sheetClose(); toast('היעד האישי בוטל'); load(0); }
+    else toast('לא נשמר — נסה שוב');
+  }).catch(function(){ toast('לא נשמר — נסה שוב'); });
+}
 function sheetSave(){
   if (!EDIT) return;
   var t = {}, bad = false;
   GOALS_KEYS.forEach(function(k){
     var s = String(el('t_' + k).value || '').trim(); if (s === '') return;
     var n = parseInt(s, 10);
-    if (isNaN(n) || n < 0 || n > 50) bad = true; else t[k] = n;
+    if (isNaN(n) || n < 0 || n > 100000) bad = true; else t[k] = n;
   });
-  if (bad){ toast('מספר בין 0 ל-50'); return; }
+  if (bad){ toast('מספר בין 0 ל-100,000'); return; }
   if (!Object.keys(t).length){ sheetClose(); return; }
   el('shSave').disabled = true;
   POST('/v2/api/goals/targets', {agent: EDIT.agent, targets: t}).then(function(r){
@@ -12995,7 +13013,7 @@ function goalsCard(){var A=D.goals;if(!A)return '';var G=A[GP]||{rows:[],total:{
   '<div class="seg gseg" id="gseg">'+['today','yesterday','week'].map(function(k){return '<button data-g="'+k+'" class="'+(k===GP?'on':'')+'">'+GPL[k]+'</button>';}).join('')+'</div></div>'+
   '<div class="tw"><table class="ag"><tr><th>סוכן</th><th>גיוס נכסים · השבוע</th><th>פגישות נכס נולד</th><th>פניות נכס נולד</th><th>קונים חדשים</th><th>דף קונה</th><th>לקוחות עבר</th><th>המלצות</th><th>פולו-אפ</th><th>שיחות פתוחות</th><th>עמידה</th></tr>'+
   gRow(G.total||{},G,true)+(rows.map(function(x){return gRow(x,G,false);}).join('')||'<tr><td class="mut" colspan="11">אין סוכנים להצגה</td></tr>')+'</table></div>'+
-  '<div class="mut">עמידה = כמה משישת היעדים הושלמו במלואם. גיוס נכסים = הסכמי בלעדיות שנחתמו מתחילת השבוע, מול יעד שבועי. יעד המשרד = הסוכנים שנכנסו לאפי ב-10 הימים האחרונים'+(G.total&&G.total.agents!=null?' ('+gNum(G.total.agents)+')':'')+'; מי שלא נכנס מוצג רק אם נספר לו משהו, בלי יעד. הקונים כוללים את מי שנכנס אוטומטית מהחתמה. המגמה = סכום היעדים מול אותה תקופה לפני שבוע. "—" = הנתון לא זמין כרגע. שיחות פתוחות = מצב נוכחי.</div></div>';}
+  '<div class="mut">עמידה = כמה משישת היעדים הושלמו במלואם. גיוס נכסים = הסכמי בלעדיות שנחתמו מתחילת השבוע, מול יעד שבועי. יעד המשרד = היעד החודשי שנקבע, לתקופה, ומתחלק בין הסוכנים הפעילים — לפחות 10 דקות באפי ב-10 הימים האחרונים, בלי מנהלים ומתאמות'+(G.total&&G.total.agents!=null?' ('+gNum(G.total.agents)+')':'')+'; היעד של כל סוכן מעוגל למעלה. מי שלא פעיל מוצג רק אם נספר לו משהו, בלי יעד. הקונים כוללים את מי שנכנס אוטומטית מהחתמה. המגמה = סכום היעדים מול אותה תקופה לפני שבוע. "—" = הנתון לא זמין כרגע. שיחות פתוחות = מצב נוכחי.</div></div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;

@@ -168,10 +168,11 @@ def test_listings_week_to_date():
 
 def test_weekly_target_not_scaled():
     day = datetime.date(2026, 10, 30)    # שישי — משקל חצי
-    s = src(roster=[A], cfg={}, seen=[], sigs=[])
+    # [GOALS3] יעד המשרד לחודש: אוקטובר 2026 = 23.5 ימי עבודה, 31 יום. סוכן יחיד מקבל את כל היעד.
+    s = src(roster=[A], cfg={"v2_goals": {"office": {"meetings": 47, "listings": 31}}}, seen=[], sigs=[])
     p = g.build_periods(s, day, canon)
-    assert p["today"]["rows"][0]["targets"]["listings"] == 2 and p["today"]["rows"][0]["targets"]["meetings"] == 1
-    assert p["week"]["rows"][0]["targets"]["listings"] == 2
+    assert p["today"]["rows"][0]["targets"]["listings"] == 7 and p["today"]["rows"][0]["targets"]["meetings"] == 1
+    assert p["week"]["rows"][0]["targets"]["listings"] == 7 and p["week"]["rows"][0]["targets"]["meetings"] == 11
     ok()
 
 for name, fn in list(globals().items()):

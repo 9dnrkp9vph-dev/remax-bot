@@ -84,9 +84,11 @@ def make(sess, buyers_fail=False, cfg=None, tv_key="", swr=None, buyers_list=Non
         _removed_agent_keys=lambda: set(),
         _resolve_roles=lambda l9: ("admin", "accountant") if l9 == "506666666" else ("agent", "agent"),
         # היום נכנסה רק דנה; ב-10 הימים האחרונים — דנה ורון (מיכל לא נכנסה, אבל יש לה פגישה)
+        # [GOALS3] פעיל = לפחות 10 דק' ב-10 ימים; 'אייל שמול' מנהל — לא נספר; 'עדי קצר' 4 דק' — לא נספר
         _usage_rows=lambda t_from, *a, **kw: ([{"name": "דנה כהן", "min": 5}]
                                              if t_from.date() >= dt.datetime.now(IL).date()
-                                             else [{"name": "דנה כהן", "min": 5}, {"name": "רון לוי", "min": 9}]),
+                                             else [{"name": "דנה כהן", "min": 15}, {"name": "רון לוי", "min": 30},
+                                                   {"name": "אייל שמול", "min": 300}, {"name": "עדי קצר", "min": 4}]),
         get_signings=lambda frm, to: [
             {"agent": "דנה כהן", "address": "הרצל 5, קרית ביאליק", "deal_type": "OWNER_EXCLUSIVE",
              "commission_pct": "https://x/s/1", "received_at": now_dmy()},
@@ -106,13 +108,30 @@ def make(sess, buyers_fail=False, cfg=None, tv_key="", swr=None, buyers_list=Non
     return app.test_client(), state
 
 
+def _today():
+    return dt.datetime.now(IL).date()
+
+
+def _plan(cfg, agents):
+    return goals.office_plan(cfg, agents, _key, _today())
+
+
+def _daily(cfg, agents, name):
+    p = _plan(cfg, agents)
+    return goals.scaled(goals.rates_for(p, name, _key), 1)
+
+
+ACTIVE = ["דנה כהן", "רון לוי"]
+
+
 def test_agent_own_only():
     c, _ = make(AGENT)
     j = c.get("/v2/api/goals/today").get_json()
     assert j["ok"] and j["view"] == "agent" and j["can_edit"] is False, j
     assert j["me"]["counts"]["meetings"] == 1 and j["me"]["counts"]["buyers"] == 1, j
     assert j["me"]["counts"]["bpage"] == 1 and j["me"]["counts"]["past_clients"] == 1, j
-    assert j["me"]["targets"] == goals.DEFAULTS and j["total"] is None and "agents" not in j, j
+    assert j["me"]["targets"] == _daily({}, ACTIVE, "דנה כהן") and j["total"] is None and "agents" not in j, j
+    assert j["me"]["targets"]["meetings"] >= 1 and j["me"]["targets"]["buyers"] >= 1, j   # מעוגל למעלה
     assert j["day"] == dt.datetime.now(IL).date().isoformat()
 
 
@@ -140,7 +159,8 @@ def test_team_rollup():
     t = j["total"]
     assert t["counts"]["meetings"] == 3 and t["counts"]["buyers"] == 1 and t["counts"]["reviews"] == 1, t
     # יעד הצוות = רק מי שנכנס ב-10 ימים (רון); מיכל מוצגת כי יש לה פגישה, בלי יעד
-    assert t["counts"]["missed"] == 1 and t["targets"]["meetings"] == 2 and t["agents"] == 1 and t["partial"] is False, t
+    want = goals.sum_scaled(_plan({}, ACTIVE), ["רון לוי"], _key, 1)
+    assert t["counts"]["missed"] == 1 and t["targets"] == want and t["agents"] == 1 and t["partial"] is False, t
     assert all(a["seen_today"] is False for a in j["agents"]), j
     act = {a["name"]: a["active"] for a in j["agents"]}
     assert act == {"רון לוי": True, "מיכל בר": False}, act
@@ -154,8 +174,11 @@ def test_office_view():
     assert names == sorted(["דנה כהן", "רון לוי", "מיכל בר"]), names   # בלי בדיקה/מושהה/הנה"ח
     seen = {a["name"]: a["seen_today"] for a in j["agents"]}
     assert seen["דנה כהן"] is True and seen["רון לוי"] is False, seen
-    assert j["total"]["counts"]["meetings"] == 4 and j["total"]["targets"]["buyers"] == 6, j   # דנה + רון בלבד
-    assert j["total"]["agents"] == 2 and j["total"]["targets"]["listings"] == 4, j
+    want = goals.office_scaled(_plan({}, ACTIVE), 1)            # יעד המשרד לחודש, ליום
+    assert j["total"]["counts"]["meetings"] == 4 and j["total"]["targets"] == want, j
+    assert j["total"]["agents"] == 2 and j["total"]["share_agents"] == 2, j           # דנה + רון בלבד
+    assert j["total"]["office_month"] == goals.OFFICE_MONTH, j
+    assert all(a["name"] != "אייל שמול" for a in j["agents"]), j
 
 
 def test_office_kiosk():
@@ -180,17 +203,26 @@ def test_targets_manager_only():
         assert c.post("/v2/api/goals/targets", json={"agent": "", "targets": {"meetings": 4}}).status_code == 403
         assert st["mutates"] == 0
     c, st = make(MGR)
-    j = c.post("/v2/api/goals/targets", json={"agent": "", "targets": {"meetings": 4, "zzz": 9}}).get_json()
-    assert j["ok"] and j["targets"]["meetings"] == 4 and j["targets"]["buyers"] == 3, j
+    j = c.post("/v2/api/goals/targets", json={"agent": "", "targets": {"meetings": 400, "zzz": 9}}).get_json()
+    assert j["ok"] and j["targets"] == dict(goals.OFFICE_MONTH, meetings=400), j        # יעד המשרד לחודש
     j = c.post("/v2/api/goals/targets", json={"agent": "רון לוי", "targets": {"buyers": 7, "reviews": "999"}}).get_json()
-    assert j["targets"] == dict(goals.DEFAULTS, meetings=4, buyers=7, reviews=50), j
+    assert j["targets"] == {"buyers": 7, "reviews": 999}, j                              # יעד אישי לחודש
     assert st["mutates"] == 2
     gl = st["cfg"]["v2_goals"]
-    assert gl["default"] == {"meetings": 4} and gl["agents"]["רון לוי"] == {"buyers": 7, "reviews": 50}, gl
+    assert gl["office"] == {"meetings": 400} and gl["agents_month"]["רון לוי"] == {"buyers": 7, "reviews": 999}, gl
     acts = [l for l in st["logs"] if l[3] == "יעדים — עדכון"]
     assert len(acts) == 2 and "רון לוי" in acts[1][4] and "7" in acts[1][4], acts
     j = c.get("/v2/api/goals/today?agent=" + "רון לוי").get_json()
-    assert j["me"]["targets"]["buyers"] == 7, j
+    assert j["me"]["targets"]["buyers"] == 1, j                     # 7 בחודש → פחות מ-1 ביום → מעוגל ל-1
+    # דנה מקבלת את היתרה: 120 − 7 = 113 בחודש
+    j = c.get("/v2/api/goals/today").get_json()
+    row = {a["name"]: a for a in j["agents"]}
+    assert row["רון לוי"]["monthly"]["buyers"] == 7 and row["דנה כהן"]["monthly"]["buyers"] == 113, row
+    assert row["רון לוי"]["own"] == ["buyers", "reviews"] and row["דנה כהן"]["own"] == [], row
+    assert row["דנה כהן"]["monthly"]["meetings"] == 200, row         # 400 / 2
+    j = c.post("/v2/api/goals/targets", json={"agent": "רון לוי", "clear": True}).get_json()
+    assert j["ok"] and "רון לוי" not in st["cfg"]["v2_goals"]["agents_month"], st["cfg"]
+    assert c.post("/v2/api/goals/targets", json={"agent": "", "clear": True}).status_code == 400
     assert c.post("/v2/api/goals/targets", json={"agent": "", "targets": "x"}).status_code == 400
 
 
@@ -212,7 +244,7 @@ def test_build_office_pure():
            "activity": [], "reviews": [], "missed": []}
     o = goals.build_office(src, day, _key)
     assert [r["name"] for r in o["rows"]] == ["א", "ב"] and o["rows"][0]["seen_today"] is True
-    assert o["total"]["targets"]["meetings"] == 4 and o["total"]["counts"]["meetings"] == 0
+    assert o["total"]["targets"] == goals.office_scaled(_plan({}, ["א", "ב"]), 1) and o["total"]["counts"]["meetings"] == 0
     o = goals.build_office(dict(src, roster=RuntimeError("x")), day, _key)
     assert o["rows"] == [] and o["total"]["partial"] is True, o
 
@@ -302,10 +334,6 @@ def test_coord_team_failure():
     assert c.get("/v2/api/goals/today?agent=" + "רון לוי").status_code == 403
 
 
-if __name__ == "__main__":
-    for k, v in list(globals().items()):
-        if k.startswith("test_"):
-            v(); print("ok", k)
 
 
 def test_listings_and_nb_wa():
@@ -313,7 +341,7 @@ def test_listings_and_nb_wa():
     c, st = make(AGENT)
     j = c.get("/v2/api/goals/today").get_json()
     assert j["me"]["counts"]["listings"] == 1, j
-    assert j["me"]["targets"]["listings"] == 2, j
+    assert j["me"]["targets"]["listings"] == _daily({}, ACTIVE, "דנה כהן")["listings"], j
     assert goals.ACT_NB_WA in st["act_calls"][0], st["act_calls"]
 
 
@@ -326,7 +354,8 @@ def test_inactive_hidden_without_counts():
     rows = {r["name"]: r for r in o["rows"]}
     assert set(rows) == {"א", "ב"}, rows                          # ג לא נכנס ולא עשה כלום → לא מוצג
     assert rows["ב"]["active"] is False and rows["ב"]["counts"]["buyers_sign"] == 1
-    assert o["total"]["counts"]["buyers"] == 1 and o["total"]["targets"]["buyers"] == 3 and o["total"]["agents"] == 1, o
+    assert o["total"]["counts"]["buyers"] == 1 and o["total"]["agents"] == 1, o
+    assert o["total"]["targets"]["buyers"] == goals.office_scaled(_plan({}, ["א"]), 1)["buyers"], o
     o = goals.build_office(dict(src, active=None), day, _key)       # מקור לא זמין → כולם עם יעד
     assert o["total"]["agents"] == 3 and len(o["rows"]) == 3, o
 
@@ -345,3 +374,56 @@ def test_sigs_use_signed_time():
     assert rows[0]["ts"] == "2026-10-25T09:00:00+02:00" and rows[1]["ts"] == "26/10/2026 10:00", rows
     n = goals.count_listings("א", goals.week_bounds(dt.date(2026, 10, 28)), rows, _key)
     assert n == 2, n
+
+
+def test_active_min_and_staff():
+    """[GOALS3] פעיל = לפחות 10 דק' ב-10 ימים; מנהל לא נספר גם כשהשתמש הרבה."""
+    c, _ = make(MGR)
+    j = c.get("/v2/api/goals/today").get_json()
+    assert j["total"]["share_agents"] == 2, j        # דנה (15) + רון (30); עדי (4 דק') ואייל (מנהל) — לא
+
+
+def test_plan_division():
+    day = dt.date(2026, 11, 10)                      # נובמבר 2026: 24 ימי עבודה, 30 יום
+    p = goals.office_plan({}, ["א", "ב", "ג", "ד"], _key, day)
+    r = goals.rates_for(p, "א", _key)
+    assert goals.scaled(r, 1) == {"listings": 5, "meetings": 2, "nb_wa": 11, "buyers": 2, "past_clients": 4,
+                                  "reviews": 4}, goals.scaled(r, 1)
+    assert {k: goals._ceil(v) for k, v in goals.monthly_for(p, "א", _key).items()} == \
+        {"listings": 20, "meetings": 40, "nb_wa": 250, "buyers": 30, "past_clients": 75, "reviews": 75}
+    assert goals.office_scaled(p, 24, 30 / 7.0) == goals.OFFICE_MONTH
+    cfg = {"v2_goals": {"office": {"meetings": 100}, "agents_month": {"א": {"meetings": 40}}}}
+    p = goals.office_plan(cfg, ["א", "ב", "ג"], _key, day)
+    m = {n: goals.monthly_for(p, n, _key)["meetings"] for n in ("א", "ב", "ג")}
+    assert round(m["א"]) == 40 and round(m["ב"]) == 30 and round(m["ג"]) == 30, m
+    cfg = {"v2_goals": {"office": {"meetings": 10}, "agents_month": {"א": {"meetings": 40}}}}
+    p = goals.office_plan(cfg, ["א", "ב"], _key, day)
+    assert goals.monthly_for(p, "ב", _key)["meetings"] == 0                  # יתרה שלילית → 0
+    assert goals.scaled(goals.rates_for(p, "לא פעיל", _key), 1)["meetings"] == 0
+
+
+def test_g_active_rules():
+    """פעיל = 10 דק'+ ב-10 ימים, בלי מנהלים/מתאמות (תפקיד בניהול, מפת תפקידים, רשימת המתאמות)."""
+    G = AutoG(_usage_rows=lambda t, *a, **k: [{"name": "דנה", "min": 20}, {"name": "מתן", "min": 50},
+                                                {"name": "קצר", "min": 3}, {"name": "הודיה", "min": 40},
+                                                {"name": "נוי", "min": 40}],
+              _canon_key=_key, _canon_agent_name=lambda n: n,
+              _contacts_rows=lambda: [["מתן", "0507000001"], ["דנה", "0507000002"]],
+              _last9=lambda p: "".join(c for c in str(p or "") if c.isdigit())[-9:],
+              _resolve_roles=lambda l9: ("admin", "manager") if l9 == "507000001" else ("agent", "agent"),
+              _load_config=lambda: {"roles": {"0507000003": "coordinator"}},
+              _display_name_for=lambda n, ph: {"507000003": "נוי"}.get(ph, n),
+              _coordinators_all=lambda: {"509": {"name": "הודיה"}})
+    goals._ACTIVE_BOX.update(k=None, t=0.0, v=None)
+    assert sorted(goals.g_staff(G)) == sorted(["מתן", "נוי", "הודיה"]), goals.g_staff(G)
+    assert goals.g_active(G, _today()) == ["דנה"], goals.g_active(G, _today())
+    goals._ACTIVE_BOX.update(k=None, t=0.0, v=None)
+    G["_usage_rows"] = lambda t, *a, **k: []
+    assert goals.g_active(G, _today()) is None
+    goals._ACTIVE_BOX.update(k=None, t=0.0, v=None)
+
+
+if __name__ == "__main__":
+    for k, v in list(globals().items()):
+        if k.startswith("test_"):
+            v(); print("ok", k)

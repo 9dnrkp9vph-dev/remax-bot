@@ -44,7 +44,12 @@ act = [{"action": goals.ACT_REMIND, "name": "רון לוי", "detail": "50000000
        {"action": goals.ACT_REMIND, "name": "רון לוי", "detail": "500000009", "ts": at(LAST_TUE)}]
 src = {"nb": nb, "buyers": buyers, "bpages": [{"row": 1, "last_sent_at": dmy(WED)}], "activity": act,
        "reviews": [], "missed": [{"agent": "רון לוי"}], "seen": ["דנה כהן"],
-       "roster": ["רון לוי", "דנה כהן", "מיכל בר"], "cfg": {}}
+       "roster": ["רון לוי", "דנה כהן", "מיכל בר"],
+       # [GOALS3] יעד חודשי (אוקטובר = 23.5 ימי עבודה): יעד אישי זהה לכל סוכן → 2 ביום (לקוחות עבר 4, גיוס 7 בשבוע)
+       "cfg": {"v2_goals": {"office": {"meetings": 141, "buyers": 141},
+                            "agents_month": {n: {"meetings": 47, "buyers": 47, "nb_wa": 47, "past_clients": 94,
+                                                 "reviews": 47, "listings": 31}
+                                             for n in ("רון לוי", "דנה כהן", "מיכל בר")}}}}
 o = goals.build_periods(src, WED, canon)
 ck(set(o) == {"today", "yesterday", "week"}, o.keys())
 T = o["today"]
@@ -71,7 +76,7 @@ ck(yr["counts"]["past_clients"] == 1 and yr["trend"]["past_clients"] == 0, yr)  
 W = o["week"]
 ck(W["day"] == SUN.isoformat() and W["to"] == WED.isoformat(), W)
 wd = next(r for r in W["rows"] if r["name"] == "דנה כהן")
-ck(wd["targets"]["meetings"] == 8 and wd["targets"]["buyers"] == 12, ("4 workdays × daily", wd["targets"]))
+ck(wd["targets"]["meetings"] == 8 and wd["targets"]["buyers"] == 8, ("4 workdays × daily", wd["targets"]))
 ck(wd["counts"]["meetings"] == 3 and wd["counts"]["buyers"] == 3, wd["counts"])
 ck(wd["trend"]["meetings"] == 2, ("Sun–Wed vs last Sun–Wed", wd["trend"]))
 wr = next(r for r in W["rows"] if r["name"] == "רון לוי")
@@ -81,7 +86,7 @@ ck(wr["counts"]["followups"] == {"due": 2, "done": 1}, wr["counts"]["followups"]
 ck(W["total"]["targets"]["meetings"] == 24, W["total"]["targets"])
 
 fw = goals.build_periods(dict(src, roster=["דנה כהן"]), FRI, canon)["week"]
-ck(fw["rows"][0]["targets"]["meetings"] == 11 and fw["rows"][0]["targets"]["buyers"] == 16.5, ("Friday adds half", fw["rows"][0]["targets"]))
+ck(fw["rows"][0]["targets"]["meetings"] == 11 and fw["rows"][0]["targets"]["buyers"] == 11, ("Friday adds half", fw["rows"][0]["targets"]))
 
 # מקור שנופל → None (—), לא 0, והשאר נספר
 bad = goals.build_periods(dict(src, activity=RuntimeError("down")), WED, canon)["week"]
@@ -118,7 +123,7 @@ for col in ("סוכן", "גיוס נכסים", "פניות נכס נולד", "פ
 ck(gt.index("כל המשרד") < gt.index("דנה כהן") < gt.index("מיכל בר"), "office row first, then by met")
 ck(gt.count("· לא נכנס/ה היום") == 2 and 'class="z"><td>מיכל בר' in gt, "unseen (רון, מיכל) flagged on today, greyed")
 ck("· לא נכנס/ה היום" not in gw and "· לא נכנס/ה היום" not in gy, "only on today")
-ck("2/2" in gt and "3/3" in gt and "<b>2/6</b>" in gt, gt)
+ck("2/2" in gt and "3/2" in gt and "<b>2/6</b>" in gt, gt)
 ck("3/8" in gw and "16.5" not in gw and "ימי עבודה" in gw, "week shows target × workdays")
 ck("↑4 מול רביעי שעבר" in gt and "כמו ברביעי שעבר" in gt and "מול שבוע שעבר" in gw, "trend label")
 ck("#C24040" not in gt and "red" not in gt, "no red")
@@ -133,16 +138,16 @@ for k in ("counts", "targets", "partial"):
     ck(bp["total"][k] == bo["total"][k], ("today totals == build_office", k, bp["total"][k], bo["total"][k]))
 ck(sorted((r["name"], json.dumps(r["counts"], sort_keys=True), r["seen_today"]) for r in bp["rows"]) ==
    sorted((r["name"], json.dumps(r["counts"], sort_keys=True), r["seen_today"]) for r in bo["rows"]), "same rows")
-ck(set(bo["rows"][0]) == {"name", "counts", "targets", "seen_today", "active"}, ("build_office row shape unchanged", bo["rows"][0].keys()))
+ck(set(bo["rows"][0]) == {"name", "counts", "targets", "seen_today", "active", "monthly", "own"}, ("build_office row shape unchanged", bo["rows"][0].keys()))
 bad_r = goals.build_office(dict(src, roster=RuntimeError("x")), WED, canon)
 ck(bad_r["rows"] == [] and bad_r["total"]["partial"] is True, bad_r)
 
 # ── [fix 2] היום/אתמול לפי משקל יום העבודה (שבת 0 = הושלם; שישי חצי) ────────────────
 sat = goals.build_periods(dict(src, roster=["דנה כהן"]), SAT, canon)
 st = sat["today"]["rows"][0]
-ck(st["targets"] == {"listings": 2, "meetings": 0, "nb_wa": 0, "buyers": 0, "past_clients": 0, "reviews": 0}, st["targets"])   # גיוס — שבועי, לא משוקלל
+ck(st["targets"] == {"listings": 7, "meetings": 0, "nb_wa": 0, "buyers": 0, "past_clients": 0, "reviews": 0}, st["targets"])   # גיוס — שבועי, לא משוקלל
 ck(st["met"] == 5 and st["goals_n"] == 6, ("Saturday target 0 counts as met", st))
-ck(sat["yesterday"]["rows"][0]["targets"]["meetings"] == 1 and sat["yesterday"]["rows"][0]["targets"]["buyers"] == 1.5, "Friday yesterday = half")
+ck(sat["yesterday"]["rows"][0]["targets"]["meetings"] == 1 and sat["yesterday"]["rows"][0]["targets"]["buyers"] == 1, "Friday yesterday = half, rounded up")
 sun = goals.build_periods(dict(src, roster=["דנה כהן"]), dt.date(2026, 11, 1), canon)
 ck(sun["yesterday"]["day"] == SAT.isoformat() and sun["yesterday"]["rows"][0]["targets"]["meetings"] == 0, ("Sunday's yesterday = Saturday, 0", sun["yesterday"]))
 ck(sun["today"]["rows"][0]["targets"]["meetings"] == 2, "Sunday today = full daily target")

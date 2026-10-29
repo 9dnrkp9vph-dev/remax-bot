@@ -20,6 +20,11 @@ DEFAULTS = {"listings": 2, "meetings": 2, "nb_wa": 10, "buyers": 3, "past_client
 WEEKLY_GOALS = ("listings",)            # [GOALS2 29/10, אייל] גיוס נכסים — יעד שבועי (2 בשבוע), לא יומי
 ACT_NB_WA = "📲 וואטסאפ — נכס נולד"      # [GOALS2 29/10] פניות לנכס נולד (אייל: כמות הוואטסאפים שנשלחו)
 ACTIVE_DAYS = 10                        # יעד המשרד = הסוכנים שנכנסו לאפי ב-10 הימים האחרונים (אייל 29/10)
+# [GOALS3 29/10, אייל] יעד המשרד לחודש — מתחלק בין הסוכנים הפעילים; היעד של כל סוכן מעוגל למעלה
+OFFICE_MONTH = {"listings": 80, "meetings": 160, "nb_wa": 1000, "buyers": 120, "past_clients": 300, "reviews": 300}
+ACTIVE_MIN_MINUTES = 10                 # [GOALS3] פעיל = לפחות 10 דק' באפי ב-ACTIVE_DAYS הימים האחרונים
+STAFF_ROLES = ("manager", "developer", "coordinator", "secretary", "accountant")   # לא סוכנים — בלי יעד ולא בחלוקה
+_MAX_MONTH = 100000
 ACT_REMIND = "תזכורת ללקוח עבר"
 ACT_REVIEW_MANUAL = "בקשת ביקורת — ידני"
 ACT_BPAGE = "דף קונה — שליחה"
@@ -109,6 +114,160 @@ def targets_for(cfg, agent, canon):
 
 def _bad(v):
     return v is None or isinstance(v, BaseException)
+
+
+# ── [GOALS3 29/10, אייל] יעד משרדי חודשי שמתחלק בין הסוכנים הפעילים ─────────────────────────────
+def _clip_month(v):
+    if isinstance(v, bool):
+        return None
+    try:
+        n = int(float(str(v).strip())) if not isinstance(v, (int, float)) else int(v)
+    except Exception:
+        return None
+    return max(0, min(_MAX_MONTH, n))
+
+
+def office_month(cfg):
+    """יעד המשרד לחודש: OFFICE_MONTH ← cfg['v2_goals']['office']."""
+    out = dict(OFFICE_MONTH)
+    gl = (cfg or {}).get("v2_goals") or {}
+    off = gl.get("office") if isinstance(gl, dict) else None
+    if isinstance(off, dict):
+        for k in OFFICE_MONTH:
+            if k in off:
+                n = _clip_month(off[k])
+                if n is not None:
+                    out[k] = n
+    return out
+
+
+def month_of(day):
+    """(ראשון, אחרון) של החודש הקלנדרי של day."""
+    first = day.replace(day=1)
+    nxt = (first + _dt.timedelta(days=32)).replace(day=1)
+    return first, nxt - _dt.timedelta(days=1)
+
+
+def agent_overrides(cfg, canon):
+    """יעד אישי לחודש שמנהל קבע לסוכן: cfg['v2_goals']['agents_month'] → {canon(שם): {יעד: מספר}}."""
+    gl = (cfg or {}).get("v2_goals") or {}
+    ags = gl.get("agents_month") if isinstance(gl, dict) else None
+    out = {}
+    if isinstance(ags, dict):
+        for name, d in ags.items():
+            if not isinstance(d, dict):
+                continue
+            vals = {}
+            for k in OFFICE_MONTH:
+                if k in d:
+                    n = _clip_month(d[k])
+                    if n is not None:
+                        vals[k] = n
+            if vals:
+                out.setdefault(canon(name), {}).update(vals)
+    return out
+
+
+def _unit(k, workdays, dim):
+    """כמה יחידות קצב יש בחודש: יעד יומי → ימי העבודה; גיוס נכסים (שבועי) → ימים/7."""
+    return dim / 7.0 if k in WEEKLY_GOALS else float(workdays)
+
+
+def office_plan(cfg, agents, canon, day):
+    """חלוקת יעד המשרד לחודש של day בין `agents`. סוכן עם יעד אישי (agents_month) — היעד שלו; היתרה מתחלקת
+    שווה בין השאר (לא פחות מ-0). rates = קצב לכל סוכן: ליום עבודה (גיוס נכסים — לשבוע), לפני עיגול."""
+    first, last = month_of(day)
+    wd = float(month_scale(first, last)) or 1.0
+    dim = (last - first).days + 1
+    om, ov = office_month(cfg), agent_overrides(cfg, canon)
+    names, done = [], set()
+    for n in agents or []:
+        c = canon(n)
+        if n and c not in done:
+            done.add(c)
+            names.append(c)
+    rates = {c: {} for c in names}
+    default = {}
+    for k in OFFICE_MONTH:
+        u = _unit(k, wd, dim)
+        fixed = [c for c in names if k in ov.get(c, {})]
+        rest = [c for c in names if k not in ov.get(c, {})]
+        left = max(0.0, om[k] - sum(ov[c][k] for c in fixed))
+        r = (left / len(rest) / u) if rest else (om[k] / max(1, len(names)) / u)
+        default[k] = r
+        for c in fixed:
+            rates[c][k] = ov[c][k] / u
+        for c in rest:
+            rates[c][k] = r
+    return {"office": om, "n": len(names), "workdays": wd, "dim": dim, "rates": rates, "default": default,
+            "overrides": ov, "month": first.strftime("%Y-%m")}
+
+
+def rates_for(plan, agent, canon):
+    """הקצב של סוכן; מי שלא בחלוקה (לא פעיל) — הקצב של סוכן רגיל, או היעד האישי שלו."""
+    c = canon(agent)
+    r = plan["rates"].get(c)
+    if r is not None:
+        return dict(r)
+    out = dict(plan["default"])
+    for k, v in (plan["overrides"].get(c) or {}).items():
+        out[k] = v / _unit(k, plan["workdays"], plan["dim"])
+    return out
+
+
+def monthly_for(plan, agent, canon):
+    """היעד החודשי של הסוכן (לפני עיגול)."""
+    r = rates_for(plan, agent, canon)
+    return {k: r[k] * _unit(k, plan["workdays"], plan["dim"]) for k in OFFICE_MONTH}
+
+
+def _ceil(x):
+    import math
+    return int(math.ceil(float(x) - 1e-9)) if x and float(x) > 0 else 0
+
+
+def scaled(rates, workdays, weeks=1.0):
+    """יעד לתקופה, מעוגל למעלה (אייל: 'יומי מעוגל למעלה'): קצב × ימי העבודה (גיוס נכסים — × שבועות)."""
+    return {k: _ceil(rates.get(k, 0) * (weeks if k in WEEKLY_GOALS else workdays)) for k in OFFICE_MONTH}
+
+
+def office_scaled(plan, workdays, weeks=1.0):
+    """יעד המשרד לתקופה — היעד החודשי שאייל קבע, יחסית לימי העבודה (גיוס — לשבועות), מעוגל למעלה."""
+    om = plan["office"]
+    return {k: _ceil(om[k] * (weeks * 7.0 / plan["dim"] if k in WEEKLY_GOALS else workdays / plan["workdays"]))
+            for k in OFFICE_MONTH}
+
+
+def sum_scaled(plan, names, canon, workdays, weeks=1.0):
+    """יעד של קבוצה (צוות מתאמת): סכום הקצבים, ואז עיגול אחד למעלה."""
+    out = {}
+    for k in OFFICE_MONTH:
+        f = weeks if k in WEEKLY_GOALS else workdays
+        out[k] = _ceil(sum(rates_for(plan, n, canon).get(k, 0) for n in names) * f)
+    return out
+
+
+def _staff_set(src, canon):
+    st = src.get("staff")
+    return set() if _bad(st) else {canon(n) for n in (st or []) if n}
+
+
+def plan_agents(src, canon):
+    """מי מתחלק ביעד המשרד: ברשימת הצוות, פעיל (לפחות 10 דק' ב-10 ימים) ולא מנהל / מתאמת / מזכירה."""
+    names, _rb = _roster_names(src, canon)
+    a = src.get("active") if "active" in src else src.get("seen")
+    active = None if (a is None or _bad(a)) else {canon(n) for n in a if n}
+    staff = _staff_set(src, canon)
+    return [n for n in names if (active is None or canon(n) in active) and canon(n) not in staff]
+
+
+def src_plan(src, canon, day):
+    """החלוקה — פעם אחת לכל src (נשמרת ב-src['plan'], כך שתצוגת סוכן/צוות משתמשת בחלוקה של כל המשרד)."""
+    p = src.get("plan")
+    if not isinstance(p, dict):
+        p = office_plan(_cfg_of(src), plan_agents(src, canon), canon, day)
+        src["plan"] = p
+    return p
 
 
 def _same(a, b, canon):
@@ -287,7 +446,7 @@ def _did_any(c):
     return any(isinstance(v, (int, float)) and v > 0 for k, v in (c or {}).items() if k != "missed")
 
 
-def _assemble(src, canon, count, targets):
+def _assemble(src, canon, count, targets, total_targets=None):
     """הליבה המשותפת ל-build_office וללוח הבקרה: שורה לכל סוכן ברשימה + סכום המשרד.
     count(name) → ספירות, targets(name) → יעדים. רשימה שנכשלה → בלי שורות, partial=True.
     [GOALS2 29/10, אייל] יעד המשרד = סכום היעדים של מי שנכנס לאפי ב-10 הימים האחרונים (src['active']).
@@ -296,30 +455,41 @@ def _assemble(src, canon, count, targets):
     names, roster_bad = _roster_names(src, canon)
     seen = _seen_set(src, canon)
     active = _active_set(src, canon)
-    rows, per, tg = [], {}, {}
+    staff = _staff_set(src, canon)          # [GOALS3] מנהלים / מתאמות — בלי יעד (מוצגים רק אם נספר להם משהו)
+    rows, per, tg, act_names = [], {}, {}, []
     for name in names:
         k = canon(name)
         c, t = count(name), targets(name)
-        is_active = active is None or k in active
+        is_active = (active is None or k in active) and k not in staff
         if not is_active and not _did_any(c):
             continue
         rows.append({"name": name, "counts": c, "targets": t, "seen_today": k in seen, "active": is_active})
         per[k] = c
         if is_active:
             tg[k] = t
+            act_names.append(name)
     total = rollup(per, tg)
+    if total_targets is not None:
+        total["targets"] = total_targets(act_names)
     if roster_bad:
         total["partial"] = True
     return rows, per, tg, total
 
 
-def build_office(src, day, canon):
+def build_office(src, day, canon, office=True):
     """שורה לכל סוכן ברשימה (src['roster']) + סכום. src['cfg'] = הקונפיג (ליעדים), src['seen'] = מי נכנס היום.
-    רשימה שנכשלה בשליפה → בלי שורות, partial=True."""
+    רשימה שנכשלה בשליפה → בלי שורות, partial=True. [GOALS3] היעד היומי של כל סוכן = החלק שלו ביעד המשרד
+    לחודש, ליום עבודה, מעוגל למעלה; יעד המשרד = היעד החודשי ליום (office=False — צוות: סכום הסוכנים)."""
     bounds = day_bounds(day)
-    cfg = _cfg_of(src)
+    plan = src_plan(src, canon, day)
+    tot = (lambda names: office_scaled(plan, 1)) if office else (lambda names: sum_scaled(plan, names, canon, 1))
     rows, _, _, total = _assemble(src, canon, lambda n: count_agent(n, bounds, src, canon),
-                                  lambda n: targets_for(cfg, n, canon))
+                                  lambda n: scaled(rates_for(plan, n, canon), 1), tot)
+    for r in rows:                        # למסך העריכה: היעד החודשי של הסוכן והאם יש לו יעד אישי
+        r["monthly"] = {k: _ceil(v) for k, v in monthly_for(plan, r["name"], canon).items()}
+        r["own"] = sorted((plan["overrides"].get(canon(r["name"])) or {}).keys())
+    total["office_month"] = dict(plan["office"])
+    total["share_agents"] = plan["n"]
     return {"rows": rows, "total": total}
 
 
@@ -397,7 +567,7 @@ def build_periods(src, today, canon):
     בכרטיס באפליקציה היעד היומי המלא). seen_today = נכנס היום (רלוונטי לתצוגת 'היום')."""
     import functools
     canon = functools.lru_cache(maxsize=None)(canon)     # אלפי השוואות שמות לכל בנייה
-    cfg = _cfg_of(src)
+    plan = src_plan(src, canon, today)
     yday = today - _dt.timedelta(days=1)
     ws = week_start(today)
     week = [ws + _dt.timedelta(days=i) for i in range((today - ws).days + 1)]
@@ -408,8 +578,8 @@ def build_periods(src, today, canon):
         prev_days = [d - _dt.timedelta(days=7) for d in days]
         rows, per, tg, total = _assemble(
             src, canon, lambda n, days=days: count_days(n, days, src, canon),
-            lambda n, scale=scale: {g: (v if g in WEEKLY_GOALS else _num(v * scale))
-                                    for g, v in targets_for(cfg, n, canon).items()})
+            lambda n, scale=scale: scaled(rates_for(plan, n, canon), scale),
+            lambda names, scale=scale: office_scaled(plan, scale))
         prev_per = {}
         for r in rows:
             pc = count_days(r["name"], prev_days, src, canon)
@@ -458,19 +628,20 @@ def weekly_due(now_il, blocked, state, hour=WEEKLY_HOUR):
     return key
 
 
-def weekly_recommend(count, wtarget, daily):
-    """(up/down/keep, יעד יומי מוצע). הושג 130%+ → +1 לפחות (או 25%); מתחת ל-50% → -1 לפחות (או 25%), לא מתחת ל-1."""
+def weekly_recommend(count, wtarget, cur):
+    """(up/down/keep, יעד חודשי מוצע לסוכן). cur = היעד החודשי שלו היום (מעוגל). [GOALS3] ביחידות חודשיות —
+    היעד האישי שמנהל קובע הוא לחודש. הושג 130%+ → +1 לפחות (או 25%); מתחת ל-50% → -1 לפחות (או 25%), לא מתחת ל-1."""
     import math
-    daily = int(daily or 0)
-    if count is None or not wtarget or daily <= 0:
-        return "keep", daily
+    cur = int(cur or 0)
+    if count is None or not wtarget or cur <= 0:
+        return "keep", cur
     r = float(count) / float(wtarget)
     if r >= REC_UP:
-        return "up", min(_MAX_TARGET, max(daily + 1, int(round(daily * 1.25))))
+        return "up", min(_MAX_MONTH, max(cur + 1, int(round(cur * 1.25))))
     if r < REC_DOWN:
-        new = max(1, min(daily - 1, int(math.floor(daily * 0.75))))
-        return ("down", new) if new < daily else ("keep", daily)
-    return "keep", daily
+        new = max(1, min(cur - 1, int(math.floor(cur * 0.75))))
+        return ("down", new) if new < cur else ("keep", cur)
+    return "keep", cur
 
 
 def build_weekly(src, sunday, canon):
@@ -478,7 +649,7 @@ def build_weekly(src, sunday, canon):
     (יעד יומי × 5.5), כמה יעדים הושגו והמלצה לכל יעד. אותה ספירה כמו טבלת 'השבוע' בלוח הבקרה (count_days)."""
     import functools
     canon = functools.lru_cache(maxsize=None)(canon)
-    cfg = _cfg_of(src)
+    plan = src_plan(src, canon, sunday)
     days = [sunday + _dt.timedelta(days=i) for i in range(7)]
     scale = weekly_scale()
     seen = _seen_set(src, canon)
@@ -488,11 +659,14 @@ def build_weekly(src, sunday, canon):
         if canon(name) not in seen:
             continue
         c = count_days(name, days, src, canon)
-        daily = targets_for(cfg, name, canon)
-        wt = {k: (v if k in WEEKLY_GOALS else _num(v * scale)) for k, v in daily.items()}   # גיוס — יעד שבועי
+        rt = rates_for(plan, name, canon)
+        daily = scaled(rt, 1)
+        wt = scaled(rt, scale)                                   # גיוס — יעד שבועי
+        mon = {k: _ceil(v) for k, v in monthly_for(plan, name, canon).items()}
         met, n = _met(c, wt)
-        rows.append({"name": name, "counts": c, "targets": wt, "daily": daily, "met": met, "goals_n": n,
-                     "rec": {k: weekly_recommend(c.get(k), wt.get(k), daily.get(k)) for k in GOAL_KEYS},
+        rows.append({"name": name, "counts": c, "targets": wt, "daily": daily, "monthly": mon, "met": met,
+                     "goals_n": n,
+                     "rec": {k: weekly_recommend(c.get(k), wt.get(k), mon.get(k)) for k in GOAL_KEYS},
                      "from": days[0].isoformat(), "to": days[-1].isoformat()})
     return rows
 
@@ -522,9 +696,8 @@ def weekly_message(row, office, link):
     lines += ["", f"הגעת ל-{row['met']} מתוך {row['goals_n']} יעדים.", "", "המלצה ליעד:"]
     for k in GOAL_KEYS:
         kind, n = row["rec"][k]
-        per = "בשבוע" if k in WEEKLY_GOALS else "ביום"
-        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} {per}", "down": f"להוריד ל-{n} {per}"}.get(
-            kind, f"להשאיר {n} {per}"))
+        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} בחודש", "down": f"להוריד ל-{n} בחודש"}.get(
+            kind, f"להשאיר {n} בחודש"))
     lines += ["(את היעדים מעדכן מנהל המשרד)", "", f"למסך היעדים: {link}"]
     return "\n".join(lines)
 
@@ -543,7 +716,7 @@ def weekly_manager_summary(rows, office):
         out.append(f"{r['name']} ({r['met']}/{r['goals_n']}):")
         for k, (kind, n) in ch:
             out.append(f"{GOAL_LABELS[k]}: " + ("להעלות" if kind == "up" else "להוריד") + f" ל-{n}"
-                       f" (היום {r['daily'][k]}; עשה {r['counts'][k]} מתוך {r['targets'][k]})")
+                       f" בחודש (היום {r['monthly'][k]}; עשה {r['counts'][k]} מתוך {r['targets'][k]})")
         out.append("")
     if not any_rec:
         out.append("אין המלצות לשינוי השבוע.")
@@ -634,10 +807,8 @@ def build_monthly(src, first, last, canon):
     (src['seen_month'])."""
     import functools
     canon = functools.lru_cache(maxsize=None)(canon)
-    cfg = _cfg_of(src)
+    plan = src_plan(src, canon, first)
     pfirst, plast = month_period(first)
-    scale, weeks = month_scale(first, last), month_weeks(first, last)
-    pscale, pweeks = month_scale(pfirst, plast), month_weeks(pfirst, plast)
     seen = _seen_set(src, canon)
     sm = src.get("seen_month")
     seen_m = None if _bad(sm) else {canon(n) for n in (sm or []) if n}
@@ -646,21 +817,21 @@ def build_monthly(src, first, last, canon):
     for name in names:
         if canon(name) not in seen:
             continue
-        daily = targets_for(cfg, name, canon)
+        daily = scaled(rates_for(plan, name, canon), 1)
         c = _month_counts(name, first, last, src, canon)
         pc = _month_counts(name, pfirst, plast, src, canon)
-        mt = {k: _num(round(v * (weeks if k in WEEKLY_GOALS else scale), 1)) for k, v in daily.items()}
-        pt = {k: _num(round(v * (pweeks if k in WEEKLY_GOALS else pscale), 1)) for k, v in daily.items()}
+        mt = {k: _ceil(v) for k, v in monthly_for(plan, name, canon).items()}   # [GOALS3] החלק ביעד המשרד
+        pt = mt
         met, n = _met(c, mt)
         pmet, _ = _met(pc, pt)
         ratio = [min(2.0, (c.get(k) or 0) / mt[k]) for k in GOAL_KEYS if mt.get(k) and c.get(k) is not None]
         rows.append({"name": name, "counts": c, "prev": pc, "targets": mt, "daily": daily, "met": met,
                      "prev_met": pmet, "goals_n": n, "score": sum(ratio) / len(ratio) if ratio else 0,
-                     "rec": {k: weekly_recommend(c.get(k), mt.get(k), daily.get(k)) for k in GOAL_KEYS},
+                     "monthly": mt, "rec": {k: weekly_recommend(c.get(k), mt.get(k), mt.get(k)) for k in GOAL_KEYS},
                      "from": first.isoformat(), "to": last.isoformat()})
         per[canon(name)], tg[canon(name)] = c, mt
     total = rollup(per, tg)
-    total["targets"] = {k: _num(round(v, 1)) for k, v in total["targets"].items()}
+    total["targets"] = dict(plan["office"])          # [GOALS3] יעד המשרד לחודש, כפי שאייל קבע
     total["met"], total["goals_n"] = _met(total["counts"], total["targets"])
     top = sorted(rows, key=lambda r: (-r["met"], -r["score"], r["name"]))[:5]
     inactive = [] if seen_m is None else [n for n in names if canon(n) not in seen_m]
@@ -687,9 +858,8 @@ def monthly_message(row, office, link, label):
               "המלצה ליעד:"]
     for k in GOAL_KEYS:
         kind, n = row["rec"][k]
-        per = "בשבוע" if k in WEEKLY_GOALS else "ביום"
-        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} {per}", "down": f"להוריד ל-{n} {per}"}.get(
-            kind, f"להשאיר {n} {per}"))
+        lines.append(f"{GOAL_LABELS[k]}: " + {"up": f"להעלות ל-{n} בחודש", "down": f"להוריד ל-{n} בחודש"}.get(
+            kind, f"להשאיר {n} בחודש"))
     lines += ["(את היעדים מעדכן מנהל המשרד)", "", f"למסך היעדים: {link}"]
     return "\n".join(lines)
 
@@ -804,10 +974,50 @@ def g_active(G, day, days=ACTIVE_DAYS):
         return bx["v"]
     d0 = day - _dt.timedelta(days=days - 1)
     start = _dt.datetime(d0.year, d0.month, d0.day, tzinfo=_IL)
-    names = [g_display(G, r.get("name")) for r in (G["_usage_rows"](start) or []) if r.get("name")]
-    v = names or None
+    rows = [r for r in (G["_usage_rows"](start) or []) if r.get("name")]
+    try:
+        staff = {g_canon(G, n) for n in g_staff(G)}
+    except Exception:
+        staff = set()
+    # [GOALS3 29/10, אייל] פעיל = לפחות 10 דק' באפי ב-10 הימים, ורק סוכנים (בלי מנהלים / מתאמות)
+    names = [g_display(G, r.get("name")) for r in rows if (r.get("min") or 0) >= ACTIVE_MIN_MINUTES]
+    names = [n for n in names if g_canon(G, n) not in staff]
+    v = names if rows else None           # אין פעימות בכלל (Supabase כבוי) → לא ידוע, כולם נספרים
     bx.update(k=key, t=_clock(), v=v)
     return v
+
+
+def g_staff(G):
+    """[GOALS3 29/10] מי שאינו סוכן — מנהל / מפתח / מתאמת / מזכירה / הנה"ח — לפי התפקיד בניהול (כל הטלפונים
+    של האדם: אנשי הקשר + מפת התפקידים) ורשימת המתאמות. הם לא מקבלים יעד ולא נספרים בחלוקה."""
+    out, seen = [], set()
+
+    def add(n):
+        n = g_display(G, n)
+        if n and g_canon(G, n) not in seen:
+            seen.add(g_canon(G, n))
+            out.append(n)
+    for r in G["_contacts_rows"]() or []:
+        nm = str((r[0] if r else "") or "").strip()
+        l9 = G["_last9"](r[1] if len(r) > 1 else "")
+        try:
+            if nm and l9 and G["_resolve_roles"](l9)[1] in STAFF_ROLES:
+                add(nm)
+        except Exception:
+            pass
+    cfg = G["_load_config"]() or {}
+    for ph, role in ((cfg.get("roles") or {}) if isinstance(cfg.get("roles"), dict) else {}).items():
+        if role in STAFF_ROLES:
+            try:
+                add(G["_display_name_for"]("", G["_last9"](ph)))
+            except Exception:
+                pass
+    try:
+        for v in (G["_coordinators_all"]() or {}).values():
+            add((v or {}).get("name"))
+    except Exception:
+        pass
+    return [n for n in out if n not in ("מנהל", "מתאמת", "סוכן")]
 
 
 def dashboard_goals(G, now):
@@ -833,6 +1043,7 @@ def dashboard_goals(G, now):
            "missed": g_safe(G, lambda: g_missed(G, now)),
            "seen": g_safe(G, lambda: g_seen(G, day)),
            "active": g_safe(G, lambda: g_active(G, day)),
+           "staff": g_safe(G, lambda: g_staff(G)),
            "sigs": g_safe(G, lambda: g_sigs(G, min(first, week_start(day - _dt.timedelta(days=8))))),   # גם שבוע-קודם של 'אתמול' ביום ראשון
            "roster": g_safe(G, lambda: g_roster(G))}
     return build_periods(src, day, lambda n: g_canon(G, n))
@@ -911,7 +1122,7 @@ def weekly_src(G, sunday, now, src_override=None):
     over = src_override or {}
     for k, fn in (("buyers", lambda: G["_fetch_manual_buyers"]()), ("bpages", lambda: G["_sbdb"].bpage_all()),
                   ("activity", activity), ("reviews", lambda: g_reviews(G)), ("seen", seen),
-                  ("sigs", lambda: g_sigs(G, sunday)),
+                  ("sigs", lambda: g_sigs(G, sunday)), ("staff", lambda: g_staff(G)),
                   ("roster", lambda: g_roster(G))):
         src[k] = over[k] if k in over else g_safe(G, fn)
     return src
@@ -1076,7 +1287,8 @@ def monthly_src(G, first, last, now, src_override=None):
     over = src_override or {}
     for k, fn in (("buyers", lambda: G["_fetch_manual_buyers"]()), ("bpages", lambda: G["_sbdb"].bpage_all()),
                   ("activity", activity), ("reviews", lambda: g_reviews(G)), ("seen", seen),
-                  ("seen_month", seen_month), ("sigs", lambda: g_sigs(G, pfirst)), ("roster", lambda: g_roster(G))):
+                  ("seen_month", seen_month), ("sigs", lambda: g_sigs(G, pfirst)), ("staff", lambda: g_staff(G)),
+                  ("roster", lambda: g_roster(G))):
         src[k] = over[k] if k in over else g_safe(G, fn)
     return src
 
@@ -1391,6 +1603,7 @@ def register(app, G):
                 "missed": _safe(lambda: _missed(now)),
                 "seen": _safe(lambda: _seen(day)),
                 "active": _safe(lambda: g_active(G, day)),
+                "staff": _safe(lambda: g_staff(G)),
                 "sigs": _safe(lambda: g_sigs(G, week_start(day))),
                 "roster": _safe(_roster)}
 
@@ -1426,11 +1639,12 @@ def register(app, G):
             src = dict(_src())
             src["cfg"] = _cfg()
             day = _dt.date.fromisoformat(src["day"])
+            src_plan(src, canon, day)           # [GOALS3] החלוקה לפי כל המשרד — לפני צמצום לצוות / לסוכן
             if roster_fn is not None:
                 src["roster"] = _safe(roster_fn)
             if scope_key.startswith("agent:"):
                 src["active"] = None            # הסוכן שצופה בעצמו — תמיד מוצג
-            return build_office(src, day, canon)
+            return build_office(src, day, canon, office=(scope_key == "office"))
         key = "goals:" + _today_iso() + ":" + scope_key     # יום חדש = מפתח חדש = בנייה טרייה
         _keys_used.add(key)
         return G["_swr"](key, SRC_TTL, build, max_stale=1800)       # ישן עד 30 דק' מוחזר מיד, בנייה ברקע (המפתח כולל את היום)
@@ -1485,39 +1699,45 @@ def register(app, G):
 
     @app.route("/v2/api/goals/targets", methods=["POST"])
     def goals_targets():
+        """[GOALS3 29/10] מנהל: בלי agent — יעד המשרד לחודש (v2_goals.office); עם agent — יעד אישי לחודש
+        (v2_goals.agents_month), והיתרה מתחלקת בין שאר הסוכנים. clear=true — מבטל את היעד האישי."""
         s = G["_web_auth"]()
         if not s or not _is_mgr(s):
             return jsonify({"ok": False, "error": "forbidden"}), 403
         b = request.get_json(silent=True) or {}
-        tv = b.get("targets")
+        tv = b.get("targets") or {}
+        clear = bool(b.get("clear"))
         if not isinstance(tv, dict):
             return jsonify({"ok": False, "error": "bad_request"}), 400
         vals = {}
-        for k in DEFAULTS:
+        for k in OFFICE_MONTH:
             if k in tv:
-                n = _clip(tv[k])
+                n = _clip_month(tv[k])
                 if n is not None:
                     vals[k] = n
         agent = _display(b.get("agent") or "")
+        if clear and not agent:
+            return jsonify({"ok": False, "error": "bad_request"}), 400
 
         def fn(cfg):
             gl = cfg.get("v2_goals")
             if not isinstance(gl, dict):
                 gl = {}
             if agent:
-                ags = gl.get("agents") if isinstance(gl.get("agents"), dict) else {}
+                ags = gl.get("agents_month") if isinstance(gl.get("agents_month"), dict) else {}
                 hit = next((x for x in ags if canon(x) == canon(agent)), agent)
                 cur = ags.pop(hit, None)
                 cur = cur if isinstance(cur, dict) else {}
-                cur.update(vals)
-                ags[agent] = cur
-                gl["agents"] = ags
+                if not clear:
+                    cur.update(vals)
+                    ags[agent] = cur
+                gl["agents_month"] = ags
             else:
-                cur = gl.get("default") if isinstance(gl.get("default"), dict) else {}
+                cur = gl.get("office") if isinstance(gl.get("office"), dict) else {}
                 cur.update(vals)
-                gl["default"] = cur
+                gl["office"] = cur
             cfg["v2_goals"] = gl
-            return targets_for(cfg, agent, canon)
+            return agent_overrides(cfg, canon).get(canon(agent), {}) if agent else office_month(cfg)
 
         ok, new = G["_config_mutate"](fn)
         if not ok:
@@ -1527,7 +1747,8 @@ def register(app, G):
                 G["_cache_clear"](key)
             except Exception:
                 pass
-        det = (agent or "ברירת מחדל") + " · " + ", ".join(f"{k}={v}" for k, v in vals.items())
+        det = (agent or "יעד המשרד לחודש") + " · " + ("ביטול יעד אישי" if clear else
+                                                     ", ".join(f"{k}={v}" for k, v in vals.items()))
         G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "יעדים — עדכון", det)
         return jsonify({"ok": True, "agent": agent, "targets": new})
 

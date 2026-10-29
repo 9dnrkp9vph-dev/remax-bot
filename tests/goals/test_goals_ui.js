@@ -85,9 +85,15 @@ ck(ht.includes('חלק מהנתונים'), 'partial note');
 const ha = K.goalsAgentsHtml(teamJ, false);
 ck(ha.includes('דנה כהן') && ha.includes('רועי לוי') && ha.includes('לא נכנס/ה היום') && !ha.includes('לא נכנס היום'), 'agents list + not seen (gender-neutral)');
 ck((ha.match(/class="gBar"/g) || []).length === 12, 'bar per goal per agent');
-ck(!ha.includes('עריכת יעד') && !ha.includes('יעד ברירת מחדל'), 'no edit for non-manager');
+ck(!ha.includes('עריכת יעד') && !ha.includes('יעד המשרד לחודש'), 'no edit for non-manager');
 const hm = K.goalsAgentsHtml(Object.assign({}, teamJ, {view: 'office', can_edit: true}), true);
-ck(hm.includes('עריכת יעד') && hm.includes('יעד ברירת מחדל'), 'manager edit buttons');
+ck(hm.includes('עריכת יעד') && hm.includes('יעד המשרד לחודש') && !hm.includes('יעד ברירת מחדל'), 'manager edit buttons');
+// [GOALS3] יעד אישי מסומן בכרטיס הסוכן; כרטיס המשרד מסביר את החלוקה
+const hown = K.goalsAgentsHtml({view: 'office', can_edit: true, agents: [Object.assign({}, teamJ.agents[0], {own: ['meetings']})]}, true);
+ck(hown.includes('יעד אישי לחודש'), 'own target marked');
+const hoff = K.goalsCardHtml({view: 'office', total: Object.assign({}, teamJ.total, {office_month: {meetings: 160}, share_agents: 25})}, {});
+ck(hoff.includes('מתחלק בין 25 סוכנים פעילים') && hoff.includes('10 דקות'), 'office card explains split');
+ck(K.goalsCardHtml(agentJ, {}).includes('מעוגל למעלה'), 'agent card: share rounded up');
 ck(K.goalsCardHtml(agentJ, {story: true}).indexOf('פירוט לפי סוכן') < 0, 'agent story: no breakdown link');
 
 // צ'יפים בבית
@@ -150,7 +156,7 @@ ck(/class="gk-g hl"/.test(g2) && g2.includes('gk-wk">השבוע<'), 'listings hi
 ck(g2.includes("goalsGo('/v2/sign?type=owner')") && /class="gBtn gold"/.test(g2), 'listings gold button to owner signing');
 ck(g2.includes('פניות לנכס נולד') && g2.includes('7<i>/120</i>'), 'nb_wa 7/120');
 ck(g2.includes('2 מהחתמה') && g2.includes('דף קונה נשלח ל-1'), 'buyers from signings + bpage');
-ck(g2.includes('ב-10 הימים האחרונים (12 סוכנים)'), 'office target by active agents');
+ck(g2.includes('12 סוכנים פעילים'), 'target by active agents');
 ck(K.GOALS_KEYS.length === 6 && K.GOALS_KEYS[0] === 'listings', 'six goals, listings first');
 const ha2 = K.goalsAgentsHtml({agents: [{name: 'ב', active: false, seen_today: false, counts: {buyers: 1}, targets: {}}]}, false);
 ck(ha2.includes('לא נכנס/ה ב-10 ימים'), 'inactive agent label');
