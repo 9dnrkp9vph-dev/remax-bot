@@ -109,4 +109,23 @@ for i in range(10):
     g.weekly_mark(rec, "רון לוי", "fail", 300.0 + i)
 ck(g.weekly_pending(["רון לוי"], rec, 10 ** 6, canon) == [], "gives up after 8 tries")
 ck(g.weekly_pending(["דנה  כהן"], rec, 10 ** 6, canon) == [], "canon names")
+
+# ── [29/10] ריבוע בריאות בלוח הבקרה ─────────────────────────────────────────
+def ts(y, mo, d, h, mi=0):
+    return dt.datetime(y, mo, d, h, mi, tzinfo=IL).timestamp()
+W = "2026-10-25"
+ok_rec = {W: {"done": True, "agents": {"א": {"r": "sent", "ts": ts(2026, 11, 1, 10, 2)}}, "mgr": {"r": "sent", "ts": ts(2026, 11, 1, 10, 3)}}}
+h = g.weekly_health(ok_rec, ts(2026, 11, 1, 12), False)
+ck(h["status"] == "ok" and h["last"] == ts(2026, 11, 1, 10, 3) and h["label"] == "סיכום יעדים שבועי", h)
+part = {W: {"done": True, "agents": {"א": {"r": "sent", "ts": 1}, "ב": {"r": "fail", "ts": 2, "tries": 8}}, "mgr": {"r": "sent", "ts": 3}}}
+ck(g.weekly_health(part, ts(2026, 11, 1, 12), False)["status"] == "warn", "some failed")
+ck(g.weekly_health({}, ts(2026, 11, 1, 10, 30), False)["status"] == "ok", "Sunday before grace — not late yet")
+ck(g.weekly_health({}, ts(2026, 11, 1, 12), False)["status"] == "warn", "Sunday after 11:00, not sent")
+ck(g.weekly_health({}, ts(2026, 11, 2, 13), False)["status"] == "bad", "Monday afternoon, not sent")
+ck(g.weekly_health({}, ts(2026, 11, 1, 12), True)["status"] == "quiet", "holiday")
+prev = {"2026-10-18": {"done": True, "mgr": {"r": "sent", "ts": ts(2026, 10, 25, 10, 3)}}}
+hw = g.weekly_health(prev, ts(2026, 10, 28, 12), False)
+ck(hw["status"] == "ok" and hw["last"] == ts(2026, 10, 25, 10, 3), hw)          # רביעי: השבוע הקודם נשלח
+ck(g.weekly_health({}, ts(2026, 10, 28, 12), False)["status"] == "bad", "midweek, last week never sent")
+ck(g.weekly_health(ok_rec, ts(2026, 11, 1, 12), False, enabled=False)["status"] == "none", "env off")
 print("weekly ok", N[0])
