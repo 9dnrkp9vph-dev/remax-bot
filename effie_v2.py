@@ -2775,6 +2775,12 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#6E7683" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
 
+    <div class="card setRow" style="cursor:pointer" onclick="location.href='/v2/goals/monthly'">
+      <div class="setIc" style="background:#EAF6EE"><svg width="18" height="18" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#2F8F5B" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.8v2.4M10.5 1.8v2.4" stroke="#2F8F5B" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      <div class="mid"><div class="nm">סיכום יעדים חודשי</div><div class="sb">המשרד, המובילים, מי לא נכנס, המלצות · נשלח בראשון הראשון אחרי סוף החודש</div></div>
+      <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#6E7683" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+
     <div class="card setRow" style="cursor:pointer" onclick="location.href='/v2/crm/dashboard'">
       <div class="setIc" style="background:#F6EFDC"><svg width="18" height="18" viewBox="0 0 16 16"><path d="M2 14V9M6 14V5M10 14V8M14 14V2" fill="none" stroke="#C29435" stroke-width="1.7" stroke-linecap="round"/></svg></div>
       <div class="mid"><div class="nm">לוח בקרה</div><div class="sb">בריאות המערכות · שיחות · חתימות · קונים · סריקות · חיפושי AI</div></div>
