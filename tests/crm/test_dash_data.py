@@ -59,4 +59,9 @@ ck(H["app_usage"]["last"] != now - 60, "client (buyer page) activity is not Effi
 q = build(src, now, True, "2026-10-19")
 ck(all(h["status"] == "quiet" for h in q["health"] if h["key"] in ("calls", "newborn_krayot", "newborn_haifa", "app_usage")), "shabbat quiet for work-hours streams")
 ck(build({"report": boom}, now, False, "2026-10-19")["periods"]["calls"] == {}, "everything down → still builds")
+# [29/10] ריבוע 'סיכום יעדים שבועי' — מגיע מוכן מ-goals (src['goals_weekly']); מקור שנופל → בלי ריבוע, בלי קריסה
+tile = {"key": "goals_weekly", "label": "סיכום יעדים שבועי", "status": "ok", "last": now - 3600}
+dw = build({"goals_weekly": lambda: tile}, now, False, "2026-10-19")
+ck({h["key"]: h for h in dw["health"]}.get("goals_weekly") == tile, dw["health"])
+ck(all(h["key"] != "goals_weekly" for h in build({"goals_weekly": boom}, now, False, "2026-10-19")["health"]), "source down → no tile")
 print("dash_data OK", _load.n)
