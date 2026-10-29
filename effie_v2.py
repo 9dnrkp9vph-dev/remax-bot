@@ -14982,6 +14982,9 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     health = [{"key": k, "label": lbl, "last": last.get(k),
                "status": crm_health(last.get(k), now, gap, work, quiet and work)}
               for k, lbl, gap, work in CRM_STREAMS]
+    wk = get("goals_weekly", default=None)   # [29/10 אייל] סיכום יעדים שבועי — הסטטוס מחושב ב-goals.weekly_health
+    if isinstance(wk, dict) and wk.get("status"):
+        health.append(wk)
 
     pk = ("calls", "calls_answered", "signings", "signings_by_label", "buyers", "newborn", "shtaf",
           "deals_opened", "deals_closed")
@@ -18954,6 +18957,7 @@ def register(app, G):
                    "searches": recent_searches,
                    "meetings_today": lambda: crm_meetings_today(_crm_records("meetings"), now),
                    "goals": lambda: __import__("goals").dashboard_goals(G, now),   # [GOALS 28/10]
+                   "goals_weekly": lambda: __import__("goals").weekly_health_tile(G, now),   # [29/10] ריבוע הסיכום השבועי
                    "helpers": lambda: {"answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
                                        "canon": lambda n: G["_canon_agent_name"](n) or n,
                                        "nb_key": G["_nb_key"]}}
