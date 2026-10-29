@@ -701,6 +701,59 @@ def dashboard_goals(G, now):
     return build_periods(src, day, lambda n: g_canon(G, n))
 
 
+def _rec_last(rec):
+    tss = [float((v or {}).get("ts") or 0) for v in ((rec or {}).get("agents") or {}).values()]
+    tss.append(float(((rec or {}).get("mgr") or {}).get("ts") or 0))
+    m = max(tss) if tss else 0
+    return m or None
+
+
+def weekly_health(state, now, quiet, enabled=True):
+    """[29/10 אייל: 'בדשבורד בריבועים למעלה — תקין או לא'] ריבוע בלוח הבקרה: ok = הסיכום של השבוע שהסתיים נשלח
+    (או שעוד לא הגיע הזמן — ראשון לפני 11:00); warn = נשלח אבל חלק נכשלו, או מאחר (ראשון אחרי 11:00 / שני עד 12:00);
+    bad = לא נשלח עד שני בצהריים; quiet = שבת/חג; none = כבוי."""
+    base = {"key": "goals_weekly", "label": "סיכום יעדים שבועי"}
+    if not enabled:
+        return dict(base, status="none", last=None)
+    now_il = _dt.datetime.fromtimestamp(now, _IL)
+    key = weekly_period(now_il.date())[0]
+    rec = (state or {}).get(key.isoformat()) or {}
+    prev = (state or {}).get((key - _dt.timedelta(days=7)).isoformat()) or {}
+    if rec.get("done"):
+        bad = any((v or {}).get("r") == "fail" for v in (rec.get("agents") or {}).values()) or \
+            (rec.get("mgr") or {}).get("r") == "fail"
+        return dict(base, status="warn" if bad else "ok", last=_rec_last(rec))
+    wd, hr = now_il.weekday(), now_il.hour
+    if wd == 6 and hr < WEEKLY_HOUR + 1:                     # ראשון לפני 11:00 — עוד לא מאחר
+        return dict(base, status="ok", last=_rec_last(rec) or _rec_last(prev))
+    if quiet:
+        return dict(base, status="quiet", last=_rec_last(rec) or _rec_last(prev))
+    late = "warn" if (wd == 6 or (wd == 0 and hr < 12)) else "bad"
+    return dict(base, status=late, last=_rec_last(rec) or _rec_last(prev))
+
+
+def weekly_disk_path():
+    import os as _o
+    return _o.path.join(_o.environ.get("MAP_CACHE_DIR", "") or _o.path.dirname(_o.path.abspath(__file__)),
+                        "goals_weekly.json")
+
+
+def weekly_health_tile(G, now):
+    """הריבוע מהמצב החי: הקונפיג + העותק בדיסק (כמו weekly_run)."""
+    import os as _o
+    cfg = G["_load_config"]() or {}
+    state = dict(cfg.get("v2_goals_weekly") or {})
+    for k, v in _weekly_disk(weekly_disk_path()).items():
+        if (v or {}).get("done") or k not in state:
+            state[k] = v
+    try:
+        quiet = bool(G["_quiet_mode"]())
+    except Exception:
+        quiet = False
+    on = (_o.environ.get("GOALS_WEEKLY_WA", "1") or "1").strip() != "0"
+    return weekly_health(state, now, quiet, enabled=on)
+
+
 # ── [GOALS-WEEKLY 29/10] הריצה: מקורות, שליחה, תצוגה מקדימה (G = globals() של app.py) ─────────────
 def weekly_src(G, sunday, now, src_override=None):
     """אותם מקורות כמו לוח הבקרה, לשבוע ראשון–שבת; seen = מי שנכנס לאפי ב-10 הימים שלפני now."""
@@ -890,8 +943,7 @@ def register_weekly(app, G):
     """[GOALS-WEEKLY] הלולאה (מתחילה בבקשה הראשונה בתהליך ההגשה — הלקח מ-15/09) + תצוגה מקדימה למנהלים."""
     import os as _o
     from flask import jsonify, Response
-    disk = _o.path.join(_o.environ.get("MAP_CACHE_DIR", "") or _o.path.dirname(_o.path.abspath(__file__)),
-                        "goals_weekly.json")
+    disk = weekly_disk_path()
     thr = {"t": None, "pid": 0}
     lock = _threading.Lock()
 
