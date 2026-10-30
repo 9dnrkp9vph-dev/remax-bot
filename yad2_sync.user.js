@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      14.8
+// @version      14.9
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -52,7 +52,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='14.8'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='14.9'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -3232,7 +3232,7 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo&&!npAuthLost)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={switch:npSwitch,authErr:npIsAuthErr,authRecover:npAuthRecover,authLost:function(){return npAuthLost;},mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,featPlan:npFeatPlan,fetchFeat:npFetchFeat,applyFeat:npApplyFeat,itemDesc:npItemDesc,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;},get NP_FEAT_PER_SCAN(){return NP_FEAT_PER_SCAN;}}};window.__ysPriv={canScan:privCanScan,owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={setCookie:dsCookieSet,hostClean:dsHostDupClean,enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRedact=ysRedact;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={switch:npSwitch,authErr:npIsAuthErr,authRecover:npAuthRecover,authLost:function(){return npAuthLost;},refresh:npRefreshToken,resetRefresh:function(){npRefreshAt=0;},mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,featPlan:npFeatPlan,fetchFeat:npFetchFeat,applyFeat:npApplyFeat,itemDesc:npItemDesc,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;},get NP_FEAT_PER_SCAN(){return NP_FEAT_PER_SCAN;}}};window.__ysPriv={canScan:privCanScan,owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={setCookie:dsCookieSet,hostClean:dsHostDupClean,enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRedact=ysRedact;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
@@ -3389,7 +3389,7 @@ function npFetchPhones(fetchFn,items,phones,onProg){
   });
 }
 // סריקה פרטית מלאה באתר החדש. statusFn/done כמו runFullScan.
-function npRunScan(statusFn,done){
+function npRunScan(statusFn,done,_refreshed){
   var W=(typeof unsafeWindow!=='undefined')?unsafeWindow:window;
   var fetchFn=function(u,o){return fetchT(W,u,o);};
   if(scanStart && (Date.now()-scanStart) < SCAN_MAX_MIN*60000){ statusFn('⏳ סריקה כבר רצה — ממתין לסיומה'); if(done)done(); return; }
@@ -3420,6 +3420,15 @@ function npRunScan(statusFn,done){
   }).catch(function(e){
     var em=String(e&&e.message||e);
     statusFn('⚠️ '+em);
+    if(npIsAuthErr(em) && !_refreshed){   // v14.9: קודם מחדשים את הכרטיס (15 דק') כמו שהאתר עושה, ומנסים שוב פעם אחת
+      scanStart=0; statusFn('🔑 מחדש את הכרטיס מול יד2…');
+      npRefreshToken(W).then(function(ok){
+        if(ok){ npRunScan(statusFn,done,true); return; }
+        if(npAuthRecover(statusFn)==='reload') return;
+        fin(npAuthLost?'⚠️ נותק מיד2 — צריך להיכנס מחדש':('שגיאה: '+em));
+      });
+      return;
+    }
     if(npIsAuthErr(em) && npAuthRecover(statusFn)==='reload'){ scanStart=0; return; }   // v14.6: הדף נטען מחדש
     fin(npAuthLost?'⚠️ נותק מיד2 — צריך להיכנס מחדש':('שגיאה: '+em));
   });
@@ -3428,6 +3437,24 @@ function npRunScan(statusFn,done){
 // ריענון אחד מחזיר בדרך כלל את הכניסה. אם נפל שוב תוך 30 דק׳ — לא מרעננים בלולאה: מסמנים
 // 'מנותק', וסימן-החיים מדווח logged_out → מייל לאייל (checkAlive ב-Code.gs).
 var npAuthLost=0, NP_AUTH_RELOAD_GAP=30*60000;
+// v14.9 (29/10, מתוך דוח 'JSON לניתוח'): ב-Yad2+ כרטיס הגישה תקף 15 דקות, והאתר מחדש אותו
+// בעצמו רק כשהטאב פעיל (POST auth/token/refresh עם עוגיות הכניסה). הסורק עושה אותה קריאה בדיוק
+// כשמקבל 'missing token' ולפני החלפת סניף. לכל היותר פעם בדקה; הטוקן עצמו לא נקרא ולא נשמר.
+var NP_REFRESH_GAP=60000, npRefreshAt=0;
+function npRefreshToken(W){
+  W=W||((typeof unsafeWindow!=='undefined')?unsafeWindow:window);
+  var now=Date.now();
+  if(now-npRefreshAt<NP_REFRESH_GAP) return Promise.resolve(false);
+  npRefreshAt=now;
+  return Promise.resolve().then(function(){
+    return W.fetch('https://gw.yad2.co.il/auth/token/refresh',{method:'POST',credentials:'include',headers:{'Accept':'application/json, text/plain, */*','Content-Type':'application/json'},body:'{}'});
+  }).then(function(r){ return r.text().then(function(t){ return {st:r.status,t:t}; }); }).then(function(x){
+    var ok=false; try{ var j=JSON.parse(x.t); ok=x.st<400 && !!(j&&j.data&&j.data.access_token); }catch(e){}
+    try{ switchLog('🔑 חידוש כרטיס '+(ok?'✓':'✗ ('+x.st+')')); }catch(e){}
+    if(ok) npAuthLost=0;
+    return ok;
+  }).catch(function(){ try{ switchLog('🔑 חידוש כרטיס ✗ (רשת)'); }catch(e){} return false; });
+}
 function npIsAuthErr(msg){ return /authentication failed|missing\s+token|unauthori[sz]ed|"statusCode":401|\b401\b/i.test(String(msg||'')); }
 function npAuthRecover(statusFn){
   var now=Date.now(), last=Number(gmGet('ysNpAuthReloadAt','0')||0);
@@ -3452,7 +3479,7 @@ function npAuthRecover(statusFn){
 function npSwitch(done){
   var W=(typeof unsafeWindow!=='undefined')?unsafeWindow:window;
   var fetchFn=function(u,o){return fetchT(W,u,o);};
-  npOffices(fetchFn).then(function(of){ return of; },function(){ return null; }).then(function(of){
+  npRefreshToken(W).then(function(){ return npOffices(fetchFn); }).then(function(of){ return of; },function(){ return null; }).then(function(of){
     var cur=of?String(of.cur||''):'', other=of?String(of.other||''):'';
     if(other) gmSet('ysNpOther',other);
     else{ var cached=String(gmGet('ysNpOther','')||''); if(cached && cached!==cur) other=cached; }
