@@ -650,6 +650,7 @@ def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, e
         errs.append(("fb: " if c == "fb" else "ig: ") + _scrub(str(e), [token]))
         code = getattr(e, "code", None)
         if code in (190, 102):
+            _social_mutate(G, lambda s2: s2.__setitem__("token_bad", True))
             soc_daily_alert(G, "token", "פרסום ברשתות", "החיבור לפייסבוק נותק — צריך טוקן חדש ב-Render", now)
         elif code in _RATE_CODES:
             _social_mutate(G, lambda s: s.__setitem__("paused_until", _next_midnight(now)))
@@ -683,6 +684,8 @@ def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, e
     saved = G["_sbdb"].social_insert(rec) or {}
     res["row_id"] = saved.get("id", "")
     res["ok"] = "ok" in (res["fb"], res["ig"])
+    if res["ok"] and scfg.get("token_bad"):
+        _social_mutate(G, lambda s2: s2.__setitem__("token_bad", False))
     res["reason"] = " · ".join(reasons + errs)
     G["_log_activity"](name, role, by_phone or "",
                        "פרסום ברשתות — " + ("פורסם" if res["ok"] and not errs else "נכשל"),
@@ -877,3 +880,22 @@ def register(app, G):
             thr["t"] = threading.Thread(target=loop, daemon=True, name="social-auto")
             thr["t"].start()
             thr["pid"] = os.getpid()
+
+
+# ── ריבוע בלוח הבקרה ─────────────────────────────────────────────────────────────
+def social_health_tile(G, now, env=None):
+    """{'key','label','status','last'} — none: לא מוגדר; bad: הטוקן נדחה; warn: כשל היום; ok אחרת."""
+    env = _env(env)
+    base = {"key": "social", "label": "פרסום ברשתות"}
+    if soc_mode(env) == "off" or not str(env.get("META_TOKEN") or "").strip():
+        return dict(base, status="none", last=None)
+    if _cfg_social(G).get("token_bad"):
+        return dict(base, status="bad", last=None)
+    try:
+        hist = [h for h in (G["_sbdb"].social_recent(REPEAT_DAYS) or []) if h.get("mode") == "publish"]
+    except Exception:
+        hist = []
+    last = hist[0].get("created_at") if hist else None
+    today = [h for h in hist if _ts(h.get("created_at")) and _day(_ts(h.get("created_at"))) == _day(now)]
+    bad = any(h.get(c + "_status") in ("failed", "unknown") for h in today for c in ("fb", "ig"))
+    return dict(base, status="warn" if bad else "ok", last=last)
