@@ -346,3 +346,154 @@ def soc_fetch_jpeg(http, src_url, square):
         return soc_jpeg(getattr(r, "content", b""), square)
     except Exception:
         return None
+
+
+# ── לקוח Meta Graph ──────────────────────────────────────────────────────────────
+GRAPH = "https://graph.facebook.com"
+GRAPH_VER = "v23.0"   # לאמת מול התיעוד בהגדרה (ספק: 'הבונה מעדכן את הגרסה')
+
+
+def soc_mode(env):
+    """'off' / 'preview' / 'publish'. רק 'publish' (אחרי strip+lower) מתיר כתיבה; כל ערך אחר = preview."""
+    v = str((env or {}).get("SOCIAL_MODE") or "").strip().lower()
+    return v if v in ("off", "publish") else "preview"
+
+
+def _scrub(msg, tokens):
+    s = str(msg)
+    for t in ([tokens] if isinstance(tokens, str) else (tokens or [])):
+        if t:
+            s = s.replace(t, "***")
+    return s
+
+
+class MetaError(Exception):
+    def __init__(self, msg, code=None, unknown=False):
+        super().__init__(msg)
+        self.code, self.unknown = code, unknown
+
+
+class Graph:
+    """Meta Graph API. כל בקשת כתיבה עוברת _guard (SOCIAL_MODE=publish בלבד).
+    עמוד: טוקן עמוד שנגזר מטוקן ה-System User; אינסטגרם: טוקן ה-System User."""
+
+    def __init__(self, http, token, env, sleep=None, version=None):
+        import time as _t
+        self.http, self.token, self.env = http, token, env or {}
+        self.sleep = sleep or _t.sleep
+        self.ver = version or GRAPH_VER
+        self._ptok = {}
+
+    def _url(self, path):
+        return "%s/%s/%s" % (GRAPH, self.ver, str(path).lstrip("/"))
+
+    def _secrets(self):
+        return [self.token] + list(self._ptok.values())
+
+    def _guard(self):
+        if soc_mode(self.env) != "publish":
+            raise RuntimeError("SOCIAL_MODE is not publish")
+
+    def _call(self, method, path, token, fields, final=False):
+        args = dict(fields or {}, access_token=token)
+        try:
+            if method == "GET":
+                r = self.http.get(self._url(path), params=args, timeout=30)
+            else:
+                r = self.http.post(self._url(path), data=args, timeout=60)
+        except Exception as e:
+            raise MetaError(_scrub("%s %s: %s" % (method, path, e), self._secrets()), unknown=final)
+        try:
+            j = r.json() or {}
+        except Exception:
+            j = {}
+        if getattr(r, "status_code", 200) >= 400 or "error" in j:
+            e = j.get("error") or {}
+            raise MetaError(_scrub(e.get("message") or str(j)[:200], self._secrets()), code=e.get("code"))
+        return j
+
+    # קריאה
+    def me(self):
+        return self._call("GET", "me", self.token, {"fields": "id,name"})
+
+    def page_ig_id(self, page_id):
+        j = self._call("GET", page_id, self.token, {"fields": "instagram_business_account"})
+        return ((j.get("instagram_business_account") or {}).get("id")) or None
+
+    def page_token(self, page_id):
+        if page_id not in self._ptok:
+            j = self._call("GET", page_id, self.token, {"fields": "access_token"})
+            if not j.get("access_token"):
+                raise MetaError("no page access_token", code=190)
+            self._ptok[page_id] = j["access_token"]
+        return self._ptok[page_id]
+
+    def invalidate_page_token(self, page_id=None):
+        if page_id is None:
+            self._ptok.clear()
+        else:
+            self._ptok.pop(page_id, None)
+
+    def ig_quota(self, ig_id):
+        j = self._call("GET", "%s/content_publishing_limit" % ig_id, self.token, {"fields": "config,quota_usage"})
+        d = (j.get("data") or [{}])[0]
+        total = ((d.get("config") or {}).get("quota_total"))
+        used = d.get("quota_usage")
+        return None if total is None or used is None else max(0, int(total) - int(used))
+
+    # עמוד פייסבוק
+    def _page(self, method, page_id, path, fields, final=False):
+        try:
+            return self._call(method, path, self.page_token(page_id), fields, final)
+        except MetaError as e:
+            if e.code != 190 or e.unknown:
+                raise
+            self.invalidate_page_token(page_id)
+            return self._call(method, path, self.page_token(page_id), fields, final)
+
+    def fb_post(self, page_id, message, image_urls):
+        """תמונות כ-published=false ← פוסט אחד עם כולן. → (post_id, permalink_url)."""
+        self._guard()
+        ids = []
+        for u in image_urls:
+            ids.append(self._page("POST", page_id, "%s/photos" % page_id, {"url": u, "published": "false"})["id"])
+        j = self._page("POST", page_id, "%s/feed" % page_id,
+                       {"message": message, "attached_media": _json.dumps([{"media_fbid": i} for i in ids])},
+                       final=True)
+        pid = j.get("id")
+        link = ""
+        try:
+            link = self._page("GET", page_id, pid, {"fields": "permalink_url"}).get("permalink_url") or ""
+        except MetaError:
+            pass
+        return pid, link
+
+    # אינסטגרם
+    def _wait(self, cid, poll_max=40):
+        for _ in range(poll_max):
+            st = str(self._call("GET", cid, self.token, {"fields": "status_code"}).get("status_code") or "")
+            if st == "FINISHED":
+                return
+            if st in ("ERROR", "EXPIRED"):
+                raise MetaError("instagram container %s" % st)
+            self.sleep(3)
+        raise MetaError("instagram container not ready")
+
+    def ig_post(self, ig_id, caption, image_urls):
+        """תמונה אחת / קרוסלה ← polling ← media_publish. → (media_id, permalink)."""
+        self._guard()
+        if len(image_urls) == 1:
+            cid = self._call("POST", "%s/media" % ig_id, self.token, {"image_url": image_urls[0], "caption": caption})["id"]
+        else:
+            kids = [self._call("POST", "%s/media" % ig_id, self.token,
+                               {"image_url": u, "is_carousel_item": "true"})["id"] for u in image_urls]
+            cid = self._call("POST", "%s/media" % ig_id, self.token,
+                             {"media_type": "CAROUSEL", "children": ",".join(kids), "caption": caption})["id"]
+        self._wait(cid)
+        mid = self._call("POST", "%s/media_publish" % ig_id, self.token, {"creation_id": cid}, final=True).get("id")
+        link = ""
+        try:
+            link = self._call("GET", mid, self.token, {"fields": "permalink"}).get("permalink") or ""
+        except MetaError:
+            pass
+        return mid, link
