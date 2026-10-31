@@ -279,3 +279,70 @@ def soc_plan_round(rows, state, history, now, hidden, blocked):
             out["publish"].append(k)
             st["waiting"].pop(k, None)
     return out
+
+
+# ── תמונות: JPEG זמני ש-Meta מושכת מאפי ──────────────────────────────────────────
+def soc_jpeg(raw, square):
+    """bytes של תמונה → JPEG. square=True: ריבוע IMG_MAX_PX, התמונה כולה במרכז ושוליים מטושטשים
+    (אינסטגרם דוחה יחס מחוץ ל-4:5–1.91:1, ובקרוסלה כולן באותו יחס). לא תמונה → None."""
+    import io
+    try:
+        from PIL import Image, ImageFilter, ImageOps
+        im = Image.open(io.BytesIO(raw or b""))
+        im = ImageOps.exif_transpose(im).convert("RGB")
+    except Exception:
+        return None
+    if square:
+        S = IMG_MAX_PX
+        w, h = im.size
+        sc = max(S / w, S / h)
+        bg = im.resize((max(1, int(w * sc)), max(1, int(h * sc))))
+        l, t = (bg.width - S) // 2, (bg.height - S) // 2
+        bg = bg.crop((l, t, l + S, t + S)).filter(ImageFilter.GaussianBlur(28))
+        fg = im.copy()
+        fg.thumbnail((S, S))
+        bg.paste(fg, ((S - fg.width) // 2, (S - fg.height) // 2))
+        im = bg
+    else:
+        im.thumbnail((IMG_MAX_PX, IMG_MAX_PX))
+    out = io.BytesIO()
+    im.save(out, "JPEG", quality=88, optimize=True)
+    return out.getvalue()
+
+
+class ImgStore:
+    """טוקן אקראי → כתובת המקור, ל-IMG_TTL_H שעות. בכתובת שמוגשת ל-Meta אין שום פרט על הנכס."""
+
+    def __init__(self):
+        import threading
+        self._d, self._lock = {}, threading.Lock()
+
+    def put(self, src_url, now):
+        import secrets
+        tok = secrets.token_urlsafe(16)
+        with self._lock:
+            self.purge(now)
+            self._d[tok] = (str(src_url), float(now))
+        return tok
+
+    def get(self, token, now):
+        with self._lock:
+            v = self._d.get(str(token or ""))
+        if not v or now - v[1] > IMG_TTL_H * 3600:
+            return None
+        return v[0]
+
+    def purge(self, now):
+        for k in [k for k, v in self._d.items() if now - v[1] > IMG_TTL_H * 3600]:
+            self._d.pop(k, None)
+
+
+def soc_fetch_jpeg(http, src_url, square):
+    """הורדה מהמקור והמרה ל-JPEG; כל כשל → None (התמונה מדולגת)."""
+    try:
+        r = http.get(src_url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+        if getattr(r, "status_code", 0) >= 400:
+            return None
+        return soc_jpeg(getattr(r, "content", b""), square)
+    except Exception:
+        return None
