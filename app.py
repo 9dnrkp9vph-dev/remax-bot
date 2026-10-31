@@ -7953,6 +7953,7 @@ def _activity_merge(c):
 
 import office_presence as _office_presence_mod
 import goals as _goals
+import social_publish as _social   # [SOCIAL 31/10] פרסום נכסים בעמוד ובאינסטגרם
 
 USAGE_RETENTION_DAYS = 60   # הפעימות נגזמות אחרי 60 יום (prune_pings)
 
@@ -13170,6 +13171,12 @@ try:
     _goals.register(app, globals())
 except Exception as _goals_err:
     log.error(f"goals init failed (app unaffected): {_goals_err}")
+
+# ── פרסום נכסים בעמוד הפייסבוק ובאינסטגרם (אייל 31/10) — מודול נפרד ──
+try:
+    _social.register(app, globals())
+except Exception as _social_err:
+    log.error(f"social init failed (app unaffected): {_social_err}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # WARMUP — חימום ה-caches הכבדים בעליית התהליך (deploy/restart מרוקן הכל)

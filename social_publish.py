@@ -497,3 +497,383 @@ class Graph:
         except MetaError:
             pass
         return mid, link
+
+
+# ── הרצה של פרסום אחד ────────────────────────────────────────────────────────────
+PAGE_ID_DEFAULT = "750680235046279"   # 'REMAX family רימקס פמילי קריות' (asset_id ב-Business Suite); v2_social.page_id גובר
+_RATE_CODES = (4, 17, 32, 613)
+_IMG = ImgStore()
+
+
+def _env(env):
+    import os
+    return os.environ if env is None else env
+
+
+def _cfg_social(G):
+    return dict(((G["_load_config"]() or {}).get("v2_social")) or {})
+
+
+def _social_mutate(G, fn):
+    def apply(cfg):
+        s = dict(cfg.get("v2_social") or {})
+        fn(s)
+        cfg["v2_social"] = s
+        return s
+    return G["_config_mutate"](apply)
+
+
+def _next_midnight(now):
+    d = _dt.datetime.fromtimestamp(now, _IL).date() + _dt.timedelta(days=1)
+    return _dt.datetime(d.year, d.month, d.day, tzinfo=_IL).timestamp()
+
+
+def soc_hidden(G):
+    """מספרי המודעה שהוסתרו מהאתר (website_settings) — אותו כלל של refamily.co.il."""
+    try:
+        import site_api
+        return site_api.prop_flags(site_api.SettingsStore(G.get("_sbdb")).all())[0]
+    except Exception:
+        return set()
+
+
+def soc_office_rows(G):
+    rows = list(G["fetch_sheet_rows"]() or [])
+    try:
+        rows += list(G["fetch_sheet_rows_deal"]("השכרה") or [])
+    except Exception:
+        pass
+    return rows
+
+
+def _clean_desc(G):
+    try:
+        import effie_v2
+        return effie_v2.y2_clean_desc
+    except Exception:
+        return lambda d: str(d or "")
+
+
+def soc_daily_alert(G, kind, title, body, now):
+    """פוש אחד ביום לכל סוג (token / flood). → True אם נשלח."""
+    day = _dt.datetime.fromtimestamp(now, _IL).date().isoformat()
+    if (_cfg_social(G).get("alerts") or {}).get(kind) == day:
+        return False
+    _social_mutate(G, lambda s: s.__setitem__("alerts", dict(s.get("alerts") or {}, **{kind: day})))
+    try:
+        G["send_push"](title, body)
+    except Exception:
+        pass
+    return True
+
+
+def _who(G, trigger, by_phone):
+    if trigger == "auto" or not by_phone:
+        return "אפי", "system"
+    try:
+        return G["_display_name_for"]("", by_phone) or "מפתח", "developer"
+    except Exception:
+        return "מפתח", "developer"
+
+
+def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, env=None):
+    """פרסום (או תצוגה מקדימה) של נכס אחד. → {'ok','mode','fb','ig','reason','row_id'}."""
+    import time as _t
+    env = _env(env)
+    now = _t.time() if now is None else now
+    mode = soc_mode(env)
+    res = {"ok": False, "mode": mode, "fb": "skipped", "ig": "skipped", "reason": "", "row_id": ""}
+    if mode == "off":
+        res["reason"] = "כבוי"
+        return res
+    key = _key(key)
+    row = next((r for r in soc_office_rows(G) if _key(r.get("מספר מודעה")) == key), None)
+    if not row:
+        res["reason"] = "הנכס לא נמצא"
+        return res
+    allowed = [c.strip() for c in str(env.get("SOCIAL_CHANNELS") or "fb,ig").split(",") if c.strip() in ("fb", "ig")]
+    want = [c for c in (channels or allowed) if c in allowed]
+    scfg = _cfg_social(G)
+    if mode == "publish" and float(scfg.get("paused_until") or 0) > now:
+        res["reason"] = "מושהה עד מחר (הגבלת קצב של Meta)"
+        return res
+    try:
+        history = G["_sbdb"].social_recent(REPEAT_DAYS) or []
+    except Exception:
+        history = []
+    hidden = soc_hidden(G)
+    reasons, go = [], []
+    for c in want:
+        ok, why = soc_can_publish(row, c, history, now, hidden)
+        if ok:
+            go.append(c)
+        else:
+            reasons.append(("פייסבוק: " if c == "fb" else "אינסטגרם: ") + why)
+    if not go:
+        res["reason"] = " · ".join(reasons) or "אין ערוץ פעיל"
+        return res
+    post = soc_build_post(row, ((G["_load_config"]() or {}).get("v2_office") or {}).get("name", ""),
+                          _clean_desc(G), G["_row_feats"])
+    rec = {"property_key": key, "addr_key": soc_addr_key(row) + "#" + soc_floor(row), "trigger": trigger,
+           "mode": mode, "by_phone": str(by_phone or ""), "body": post["body"], "images": post["images"],
+           "fb_status": "skipped", "ig_status": "skipped"}
+    name, role = _who(G, trigger, by_phone)
+    if mode == "preview":
+        for c in go:
+            rec[c + "_status"] = res[c] = "preview"
+        saved = G["_sbdb"].social_insert(rec) or {}
+        res.update(ok=True, row_id=saved.get("id", ""), reason=" · ".join(reasons))
+        G["_log_activity"](name, role, by_phone or "", "פרסום ברשתות — תצוגה מקדימה", key)
+        return res
+    token = str(env.get("META_TOKEN") or "").strip()
+    if not token:
+        res["reason"] = "אין META_TOKEN"
+        return res
+    if http is None:
+        import requests as http
+    base = str(env.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    toks = []
+    for src in post["images"]:
+        if soc_fetch_jpeg(http, src, False):
+            toks.append(_IMG.put(src, now))
+    if not toks:
+        res["reason"] = "אין תמונות"
+        return res
+    fb_urls = ["%s/v2/social/img/%s.jpg" % (base, t) for t in toks]
+    ig_urls = ["%s/v2/social/img/%s-sq.jpg" % (base, t) for t in toks]
+    g = Graph(http, token, env)
+    page_id = str(scfg.get("page_id") or PAGE_ID_DEFAULT)
+    errs = []
+
+    def fail(c, e):
+        res[c] = rec[c + "_status"] = "unknown" if getattr(e, "unknown", False) else "failed"
+        errs.append(("fb: " if c == "fb" else "ig: ") + _scrub(str(e), [token]))
+        code = getattr(e, "code", None)
+        if code in (190, 102):
+            soc_daily_alert(G, "token", "פרסום ברשתות", "החיבור לפייסבוק נותק — צריך טוקן חדש ב-Render", now)
+        elif code in _RATE_CODES:
+            _social_mutate(G, lambda s: s.__setitem__("paused_until", _next_midnight(now)))
+
+    if "fb" in go:
+        try:
+            rec["fb_post_id"], rec["fb_permalink"] = g.fb_post(page_id, post["body"], fb_urls)
+            res["fb"] = rec["fb_status"] = "ok"
+        except MetaError as e:
+            fail("fb", e)
+    if "ig" in go:
+        try:
+            ig_id = scfg.get("ig_id") or g.page_ig_id(page_id)
+            if ig_id and not scfg.get("ig_id"):
+                _social_mutate(G, lambda s: s.__setitem__("ig_id", ig_id))
+            q = None
+            try:
+                q = g.ig_quota(ig_id)
+            except MetaError:
+                pass
+            if not ig_id:
+                reasons.append("אינסטגרם: לא מקושר לעמוד")
+            elif q is not None and q <= 0:
+                reasons.append("אינסטגרם: נגמרה המכסה היומית של Meta")
+            else:
+                rec["ig_media_id"], rec["ig_permalink"] = g.ig_post(ig_id, post["ig_caption"], ig_urls)
+                res["ig"] = rec["ig_status"] = "ok"
+        except MetaError as e:
+            fail("ig", e)
+    rec["error"] = " | ".join(errs)[:900]
+    saved = G["_sbdb"].social_insert(rec) or {}
+    res["row_id"] = saved.get("id", "")
+    res["ok"] = "ok" in (res["fb"], res["ig"])
+    res["reason"] = " · ".join(reasons + errs)
+    G["_log_activity"](name, role, by_phone or "",
+                       "פרסום ברשתות — " + ("פורסם" if res["ok"] and not errs else "נכשל"),
+                       "%s fb:%s ig:%s" % (key, res["fb"], res["ig"]))
+    return res
+
+
+# ── הסבב האוטומטי (לולאה) ────────────────────────────────────────────────────────
+def soc_auto_tick(G, now, env=None, sleep=None):
+    """סבב אחד: רק כש-SOCIAL_AUTO=1, מצב publish ויש טוקן. הפעלה ראשונה = זריעת 'ידועים' בלי פרסום."""
+    import time as _t
+    env = _env(env)
+    sleep = sleep or _t.sleep
+    if str(env.get("SOCIAL_AUTO") or "0").strip() != "1" or soc_mode(env) != "publish" \
+            or not str(env.get("META_TOKEN") or "").strip():
+        return {"ran": False}
+    rows = soc_office_rows(G)
+    scfg = _cfg_social(G)
+    if not scfg.get("enabled_at"):
+        seed = soc_seed_known(rows, now)
+        _social_mutate(G, lambda s: s.update(seed))
+        return {"ran": True, "seeded": len(seed["known"])}
+    if float(scfg.get("paused_until") or 0) > now:
+        return {"ran": True, "paused": True}
+    try:
+        blocked = bool(G["_shabbat_quiet_now"]()) or bool(G["_quiet_mode"]())
+    except Exception:
+        blocked = False
+    try:
+        history = G["_sbdb"].social_recent(REPEAT_DAYS) or []
+    except Exception:
+        history = []
+    plan = soc_plan_round(rows, scfg, history, now, soc_hidden(G), blocked)
+    _social_mutate(G, lambda s: s.update(known=plan["state"]["known"], waiting=plan["state"]["waiting"]))
+    if plan["flood"]:
+        soc_daily_alert(G, "flood", "פרסום ברשתות", plan["reason"] + " — לא פורסם", now)
+    done = []
+    for i, k in enumerate(plan["publish"]):
+        if i:
+            sleep(GAP_MIN * 60)
+        done.append(soc_run_one(G, k, "auto", "", env=env))
+    return {"ran": True, "published": plan["publish"], "results": done, "flood": plan["flood"]}
+
+
+# ── Flask ────────────────────────────────────────────────────────────────────────
+_HTTP = None   # requests (נקבע ב-register); בבדיקות מוחלף
+
+
+def _spawn(fn):
+    import threading
+    threading.Thread(target=fn, daemon=True, name="social-run").start()
+
+
+def _last_by_key(history):
+    out = {}
+    for h in history or []:          # social_recent: החדש קודם
+        k = _key(h.get("property_key"))
+        if k and h.get("mode") == "publish" and k not in out:
+            out[k] = {f: h.get(f) for f in ("created_at", "fb_status", "ig_status", "fb_permalink",
+                                            "ig_permalink", "error")}
+    return out
+
+
+def register(app, G):
+    import os
+    import time as _t
+    import threading
+    from flask import jsonify, request, Response
+    global _HTTP
+    if _HTTP is None:
+        import requests
+        _HTTP = requests
+
+    def dev():
+        s = G["_web_auth"]()
+        if not s:
+            return None, (jsonify({"ok": False, "auth": False}), 401)
+        if s.get("drole") != "developer":
+            return None, (jsonify({"ok": False, "error": "forbidden"}), 403)
+        return s, None
+
+    def can_map(row, history, now, hidden):
+        return {c: dict(zip(("ok", "reason"), soc_can_publish(row, c, history, now, hidden))) for c in ("fb", "ig")}
+
+    def hist():
+        try:
+            return G["_sbdb"].social_recent(REPEAT_DAYS) or []
+        except Exception:
+            return []
+
+    @app.route("/v2/api/social/publish", methods=["POST"])
+    def soc_api_publish():
+        s, err = dev()
+        if err:
+            return err
+        j = request.get_json(silent=True) or {}
+        key = _key(j.get("key"))
+        ch = [c for c in (j.get("channels") or []) if c in ("fb", "ig")] or None
+        if not key:
+            return jsonify({"ok": False, "error": "key"}), 400
+        _spawn(lambda: soc_run_one(G, key, "manual", s.get("phone", ""), channels=ch))
+        return jsonify({"ok": True, "queued": True})
+
+    @app.route("/v2/api/social/preview")
+    def soc_api_preview():
+        s, err = dev()
+        if err:
+            return err
+        key = _key(request.args.get("key"))
+        row = next((r for r in soc_office_rows(G) if _key(r.get("מספר מודעה")) == key), None)
+        if not row:
+            return jsonify({"ok": False, "error": "הנכס לא נמצא"})
+        post = soc_build_post(row, ((G["_load_config"]() or {}).get("v2_office") or {}).get("name", ""),
+                              _clean_desc(G), G["_row_feats"])
+        return jsonify(dict(post, ok=True, key=key, can=can_map(row, hist(), _t.time(), soc_hidden(G))))
+
+    @app.route("/v2/api/social/status")
+    def soc_api_status():
+        s, err = dev()
+        if err:
+            return err
+        keys = [_key(k) for k in str(request.args.get("keys") or "").split(",") if _key(k)][:200]
+        h = hist()
+        last = _last_by_key(h)
+        rows = {_key(r.get("מספר מודעה")): r for r in soc_office_rows(G)}
+        now, hidden = _t.time(), soc_hidden(G)
+        items = {}
+        for k in keys:
+            items[k] = {"last": last.get(k), "can": can_map(rows[k], h, now, hidden) if k in rows else None}
+        return jsonify({"ok": True, "mode": soc_mode(os.environ), "items": items})
+
+    @app.route("/v2/api/social/health")
+    def soc_api_health():
+        s, err = dev()
+        if err:
+            return err
+        token = str(os.environ.get("META_TOKEN") or "").strip()
+        scfg = _cfg_social(G)
+        out = {"ok": True, "mode": soc_mode(os.environ), "auto": str(os.environ.get("SOCIAL_AUTO") or "0") == "1",
+               "connected": False, "page_id": scfg.get("page_id") or PAGE_ID_DEFAULT, "ig_id": scfg.get("ig_id"),
+               "paused_until": scfg.get("paused_until"), "recent": hist()[:10]}
+        if token:
+            g = Graph(_HTTP, token, os.environ)
+            try:
+                me = g.me()
+                out.update(connected=True, account=me.get("name"))
+                ig = g.page_ig_id(out["page_id"])
+                if ig:
+                    out["ig_id"] = ig
+                    if ig != scfg.get("ig_id"):
+                        _social_mutate(G, lambda s2: s2.__setitem__("ig_id", ig))
+                    try:
+                        out["ig_quota"] = g.ig_quota(ig)
+                    except MetaError:
+                        pass
+            except MetaError as e:
+                out.update(connected=False, error=_scrub(str(e), [token]), token_bad=e.code in (190, 102))
+        return jsonify(out)
+
+    @app.route("/v2/social/img/<name>")
+    def soc_img(name):
+        m = re.fullmatch(r"([A-Za-z0-9_-]+?)(-sq)?\.jpg", str(name or ""))
+        src = _IMG.get(m.group(1), _t.time()) if m else None
+        data = soc_fetch_jpeg(_HTTP, src, bool(m.group(2))) if src else None
+        if not data:
+            return Response("not found", status=404)
+        return Response(data, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    thr = {"t": None, "pid": 0}
+    lock = threading.Lock()
+
+    def loop():
+        _t.sleep(120)
+        while True:
+            try:
+                soc_auto_tick(G, _t.time())
+            except Exception as e:
+                lg = G.get("log")
+                if lg:
+                    lg.error("social auto: %s" % _scrub(str(e), [os.environ.get("META_TOKEN", "")]))
+            _t.sleep(LOOP_SEC)
+
+    @app.before_request
+    def _social_kick():
+        t = thr["t"]
+        if t is not None and t.is_alive() and thr["pid"] == os.getpid():
+            return
+        with lock:
+            t = thr["t"]
+            if t is not None and t.is_alive() and thr["pid"] == os.getpid():
+                return
+            thr["t"] = threading.Thread(target=loop, daemon=True, name="social-auto")
+            thr["t"].start()
+            thr["pid"] = os.getpid()
