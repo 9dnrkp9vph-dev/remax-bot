@@ -149,3 +149,68 @@ def soc_build_post(row, office_name, clean_desc, feats):
         tags.append("#" + city.replace(" ", "").replace("-", ""))
     tags.append("#רימקספמילי")
     return {"body": body, "ig_caption": body + "\n\n" + " ".join(tags), "images": soc_images(row)}
+
+
+# ── מתי מותר לפרסם ───────────────────────────────────────────────────────────────
+def _ts(v):
+    from goals import parse_ts   # מודול טהור (stdlib בלבד) — אותו פענוח תאריכים של היעדים
+    return parse_ts(v)
+
+
+def _day(ts):
+    return _dt.datetime.fromtimestamp(ts, _IL).date()
+
+
+def _dm(ts):
+    return _dt.datetime.fromtimestamp(ts, _IL).strftime("%d/%m")
+
+
+def _key(k):
+    k = str(k or "").strip()
+    return k[2:] if k.startswith("L:") else k
+
+
+def _same_apartment(akey, afloor, hist_addr):
+    h = str(hist_addr or "")
+    hk, _, hf = h.partition("#")
+    if not hk or hk != akey:
+        return False
+    return not (afloor and hf and afloor != hf)
+
+
+def soc_can_publish(row, channel, history, now, hidden):
+    """(True,'') או (False, סיבה). channel = 'fb' / 'ig'. history = שורות social_posts."""
+    key = _key(row.get("מספר מודעה"))
+    if str(row.get("ירד מפרסום") or "").strip() or str(row.get("delisted_at") or "").strip():
+        return False, "ירד מפרסום"
+    if key in {_key(h) for h in (hidden or ())}:
+        return False, "מוסתר מהאתר"
+    if "מסחר" in str(row.get("סוג עסקה") or ""):
+        return False, "מסחרי"
+    imgs = soc_images(row)
+    if not imgs:
+        return False, "אין תמונות"
+    if len(imgs) < 2:
+        fs = _ts(row.get("_y2_first_seen"))
+        if fs is None or now - fs < ONE_IMG_HOURS * 3600:
+            return False, "מחכה לתמונות"
+    akey, afl = soc_addr_key(row), soc_floor(row)
+    st_col = channel + "_status"
+    last = None
+    for h in history or []:
+        if h.get("mode") != "publish":
+            continue
+        st = str(h.get(st_col) or "")
+        if st not in ("ok", "unknown"):
+            continue
+        t = _ts(h.get("created_at"))
+        if t is None or now - t >= REPEAT_DAYS * 86400:
+            continue
+        if _key(h.get("property_key")) != key and not _same_apartment(akey, afl, h.get("addr_key")):
+            continue
+        if st == "unknown" and _day(t) == _day(now):
+            return False, "כבר נשלח היום"
+        last = t if last is None else max(last, t)
+    if last is not None:
+        return False, "פורסם %s · אפשר שוב מ-%s" % (_dm(last), _dm(last + REPEAT_DAYS * 86400))
+    return True, ""
