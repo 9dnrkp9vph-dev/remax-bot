@@ -13112,6 +13112,13 @@ function goalsCard(){var A=D.goals;if(!A)return '';var G=A[GP]||{rows:[],total:{
   '<div class="tw"><table class="ag"><tr><th>סוכן</th><th>גיוס נכסים · השבוע</th><th>פגישות נכס נולד</th><th>פניות נכס נולד</th><th>קונים חדשים</th><th>דף קונה</th><th>לקוחות עבר</th><th>המלצות</th><th>פולו-אפ</th><th>שיחות פתוחות</th><th>עמידה</th></tr>'+
   gRow(G.total||{},G,true)+(rows.map(function(x){return gRow(x,G,false);}).join('')||'<tr><td class="mut" colspan="11">אין סוכנים להצגה</td></tr>')+'</table></div>'+
   '<div class="mut">עמידה = כמה משישת היעדים הושלמו במלואם. גיוס נכסים = הסכמי בלעדיות שנחתמו מתחילת השבוע, מול יעד שבועי. יעד המשרד = היעד החודשי שנקבע, לתקופה, ומתחלק בין הסוכנים הפעילים — לפחות 10 דקות באפי ב-10 הימים האחרונים, בלי מנהלים ומתאמות'+(G.total&&G.total.agents!=null?' ('+gNum(G.total.agents)+')':'')+'; היעד של כל סוכן מעוגל למעלה. מי שלא פעיל מוצג רק אם נספר לו משהו, בלי יעד. הקונים כוללים את מי שנכנס אוטומטית מהחתמה. המגמה = סכום היעדים מול אותה תקופה לפני שבוע. "—" = הנתון לא זמין כרגע. שיחות פתוחות = מצב נוכחי.</div></div>';}
+function siteCt(){var c=D.site_contacts;if(!c||!c.periods)return '';var P4=['day','week','month','year'],L={day:'היום',week:'השבוע',month:'החודש',year:'השנה'};
+ function row(lb,k){return '<tr><td>'+lb+'</td>'+P4.map(function(p){return '<td>'+n((c.periods[p]||{})[k]||0)+'</td>';}).join('')+'</tr>';}
+ var t='<h2 style="margin-top:14px">פניות מהאתר</h2><table class="vt"><tr><th></th>'+P4.map(function(p){return '<th>'+L[p]+'</th>';}).join('')+'</tr>'+
+  row('וואטסאפ לסוכן','wa')+row('טלפון לסוכן','tel')+row('טפסים','form')+row('סוכן AI אישי','ai')+'</table>';
+ var T=c.month_top||{};function lst(lb,a){return a&&a.length?'<div style="font-size:12.5px;margin-top:6px"><b>'+lb+':</b> '+a.map(function(x){return esc(x[0])+' · '+n(x[1]);}).join(' &nbsp;|&nbsp; ')+'</div>':'';}
+ t+=lst('הכי פנו החודש — סוכנים',T.agents)+lst('נכסים',T.listings)+lst('מאיפה הגיעו',T.src);
+ return t+'<div class="mut" style="font-size:11.5px;margin-top:6px">'+(c.since?'לחיצות נספרות מ-'+new Date(c.since*1000).toLocaleDateString('he-IL'):'לחיצות וואטסאפ/טלפון נספרות מהלחיצה הבאה באתר')+' · כל גולש פעם בחצי שעה לכל סוכן ונכס</div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -13125,7 +13132,7 @@ function render(){
  var uT='הכי פעילים באפי · '+PL[P]+(P==='year'&&UB.year_from?' <span class="mut">(מ-'+UB.year_from.split('-').reverse().join('/')+' — הנתונים נשמרים 60 יום)</span>':'');
  document.getElementById('app').innerHTML=
   '<div class="health">'+h+'</div>'+
-  '<div class="ctl"><div class="card"><h2>באתר עכשיו <span class="mut" id="slN"></span></h2><div class="on-list" id="slList"><span class="mut">טוען…</span></div><div id="slStats"></div>'+
+  '<div class="ctl"><div class="card"><h2>באתר עכשיו <span class="mut" id="slN"></span></h2><div class="on-list" id="slList"><span class="mut">טוען…</span></div><div id="slStats"></div>'+siteCt()+
   '<h2 style="margin-top:14px">מחוברים לאפי עכשיו <span class="mut" id="onN"></span></h2><div class="on-list" id="onList"><span class="mut">טוען…</span></div></div>'+
   '<div class="card"><h2>שליטה</h2>'+
   '<div class="sw"><div><div class="t">וואטסאפ רשמי</div><div class="d">כל ההודעות האוטומטיות מהמספר הרשמי (שיחות, חתימות, לידים, חשבוניות)</div></div><button class="tg" id="swWa" aria-label="וואטסאפ רשמי"></button></div>'+
@@ -13340,6 +13347,38 @@ def story_detail(seen, total):
     except Exception:
         t = n = 0
     return "ראה %d/%d" % (n, t)
+
+
+_CRM_SITE_CONTACT = ("לחיצה מהאתר — ", "פנייה מהאתר — ", "ליד מהאתר")
+
+
+def crm_site_contacts(rows, bounds):
+    """[31/10 אייל: 'למה לקוחות לא משאירים פרטים באתר?'] פניות מהאתר לכל תקופה: לחיצות וואטסאפ / טלפון לסוכן
+    (פירוט ביומן: 'סוכן · נכס · מקור'), טפסים וסוכן AI; ובחודש — הסוכנים, הנכסים והמקורות שהכי פנו אליהם."""
+    out = {p: {"wa": 0, "tel": 0, "form": 0, "ai": 0} for p in bounds}
+    tops = {"agents": {}, "listings": {}, "src": {}}
+    first = None
+    for a in rows or []:
+        an, ts = str(a.get("action") or ""), a.get("ts") or 0
+        if an.startswith("לחיצה מהאתר — "):
+            kind = "wa" if "וואטסאפ" in an else "tel"
+            first = ts if first is None or ts < first else first
+        elif an.startswith("פנייה מהאתר — "):
+            kind = "form"
+        elif an.startswith("ליד מהאתר"):
+            kind = "ai"
+        else:
+            continue
+        for p, t0 in bounds.items():
+            if ts >= t0:
+                out[p][kind] += 1
+        if kind in ("wa", "tel") and ts >= bounds.get("month", 0):
+            parts = [x.strip() for x in str(a.get("detail") or "").split(" · ")] + ["", "", ""]
+            for key, val in (("agents", parts[0]), ("listings", parts[1]), ("src", parts[2])):
+                if val and val != "—":
+                    tops[key][val] = tops[key].get(val, 0) + 1
+    top = {k: [[n, c] for n, c in sorted(v.items(), key=lambda x: (-x[1], x[0]))[:8]] for k, v in tops.items()}
+    return {"periods": out, "month_top": top, "since": first}
 
 
 def crm_story_stats(act, bounds):
@@ -14343,7 +14382,7 @@ CRM_VIEWS = {
 # פעולה ביומן → (כיוון, ערוץ). רק פעולות שמופיעות כאן נכנסות ל'נכנס ויוצא'.
 CRM_FLOW_MAP = [
     ("שיחה חדשה (ישירות)", "נכנס", "שיחות"), ("חתימה מפיירברי", "נכנס", "חתימות"),
-    ("חשבונית חדשה", "נכנס", "חשבוניות"), ("ליד מהאתר", "נכנס", "אתר"), ("פנייה מהאתר", "נכנס", "אתר"),
+    ("חשבונית חדשה", "נכנס", "חשבוניות"), ("ליד מהאתר", "נכנס", "אתר"), ("פנייה מהאתר", "נכנס", "אתר"), ("לחיצה מהאתר", "נכנס", "אתר"),
     ("סריקת יד2", "נכנס", "יד2"), ("סימון בדף קונה", "נכנס", "דף קונה"), ("עדכון חיפוש בדף קונה", "נכנס", "דף קונה"),
     ("וואטסאפ רשמי —", "יוצא", "וואטסאפ רשמי"), ("וואטסאפ מהטלפון —", "יוצא", "וואטסאפ מהטלפון"),
     ("חשבונית נשלחה", "יוצא", "וואטסאפ רשמי"), ("חשבונית — שליחה", "יוצא", "וואטסאפ רשמי"),
@@ -15192,6 +15231,7 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
             "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa,
             "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo, "wa_official": crm_wa_official(aact, bounds), "story": crm_story_stats(aact, bounds),
+            "site_contacts": crm_site_contacts(get("site_contacts", bounds["year"], default=[]) or [], bounds),
             "listings": get("agent_listings", default=None), "searches": get("searches", default=None),
             "meetings_today": get("meetings_today", default=None),
             "goals": get("goals", default=None)}   # [GOALS 28/10] יעדי היום — היום / אתמול / השבוע
@@ -19077,6 +19117,7 @@ def register(app, G):
                    "nb_contacts": lambda: G["_fetch_newborn_contacts"]() or {},
                    "agent_listings": agent_listings,
                    "searches": recent_searches,
+                   "site_contacts": lambda t0: (sb.fetch_activity_actions(t0, _CRM_SITE_CONTACT) or []) if (sb and sb.enabled()) else [],
                    "meetings_today": lambda: crm_meetings_today(_crm_records("meetings"), now),
                    "goals": lambda: __import__("goals").dashboard_goals(G, now),   # [GOALS 28/10]
                    "goals_weekly": lambda: __import__("goals").weekly_health_tile(G, now),   # [29/10] ריבוע הסיכום השבועי

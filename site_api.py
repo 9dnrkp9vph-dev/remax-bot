@@ -18,6 +18,21 @@ FIELD_LABELS = {"name": "שם", "phone": "טלפון", "address": "כתובת ה
 MAX_FEATURED = 6
 
 
+# לחיצות באתר (31/10) — 'לחיצה מהאתר — וואטסאפ לסוכן' / '— טלפון לסוכן'; פירוט: סוכן · נכס · מקור
+CONTACT_KINDS = {"wa": "וואטסאפ לסוכן", "tel": "טלפון לסוכן"}
+CONTACT_SRC = {"google": "גוגל", "google_ads": "גוגל ממומן", "facebook": "פייסבוק", "ai": "צ'אט AI",
+               "direct": "ישיר", "other": "אתר אחר"}
+
+
+def contact_detail(b):
+    def clean(x, n):
+        return str(x or "").replace("·", " ").replace("\n", " ").strip()[:n]
+    agent = clean(b.get("agent"), 30) or "המשרד"
+    where = clean(b.get("listing"), 34) or clean(b.get("page"), 34) or "—"
+    src = CONTACT_SRC.get(str(b.get("src") or ""), "ישיר")
+    return " · ".join((agent, where, src))
+
+
 def key_ok(given, expected) -> bool:
     return bool(expected) and bool(given) and hmac.compare_digest(str(given), str(expected))
 
@@ -549,6 +564,19 @@ def register_site(app, G, store=None):
         except Exception as e:
             if log: log.warning(f"site visits: {e}")
             return jsonify({"ok": False})
+
+    @app.route("/site/api/contact", methods=["POST"])
+    def site_api_contact():
+        """האתר → לחיצת וואטסאפ/טלפון לסוכן (31/10: 'למה לקוחות לא משאירים פרטים באתר?' — רוב הפניות הן
+        לחיצה על הסוכן, לא טופס). שורה ביומן; לוח הבקרה סופר. בלי פרטי הגולש — רק המקור של הביקור."""
+        b = request.get_json(silent=True) or {}
+        if not _site_key_ok(b):
+            return jsonify({"ok": False}), 403
+        kind = str(b.get("kind") or "")
+        if kind not in CONTACT_KINDS:
+            return jsonify({"ok": False, "reason": "kind"}), 400
+        G["_log_activity"]("אתר", "site", "", "לחיצה מהאתר — " + CONTACT_KINDS[kind], contact_detail(b))
+        return jsonify({"ok": True})
 
     def _active_ids():
         return {str(r.get("מספר מודעה", "") or "").strip() for r in (G["fetch_sheet_rows"]() or [])
