@@ -1747,11 +1747,6 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       <div class="stat"><div class="n" style="color:#7A5E1C" id="stBuyers">—</div><div class="l">קונים חדשים</div></div>
     </div>
 
-    <div class="gMini" id="goalsMini" onclick="location.href='/v2/goals'">
-      <div class="h"><span id="goalsMiniT">היעדים שלי להיום</span><a href="/v2/goals" onclick="event.stopPropagation()">פתח</a></div>
-      <div id="goalsMiniC"></div>
-    </div>
-
     <div class="briefBar" onclick="openStory(true)">
       <div class="ic"><img src="/assets/logo" alt="" onerror="this.style.display='none'"></div>
       <div style="flex:1;display:flex;flex-direction:column;gap:1px">
@@ -1759,11 +1754,6 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="s" id="briefSum">הנכסים החמים של המשרד + הסיכום שלך</div>
       </div>
       <button class="cta" id="briefCta">צפה</button>
-    </div>
-
-    <div class="hotMine" id="hotMine" style="display:none">
-      <div class="h">הנכס החם שלי <span>מופיע בסטורי ובמסך המשרד</span></div>
-      <div id="hotMineB"></div>
     </div>
 
     <div class="qa">
@@ -1802,6 +1792,17 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="care">
       <div class="hd"><div class="t">דורש טיפול</div><div class="all" onclick="location.href='/v2/meets'">הכל</div></div>
       <div id="careList"><div class="careEmpty" style="padding:6px 0"><div class="s">מתעדכן…</div></div></div>
+    </div>
+
+    <!-- [HOME 31/10] אייל: היעדים והנכס החם מתחת ליומן (דורש טיפול) -->
+    <div class="gMini" id="goalsMini" onclick="location.href='/v2/goals'">
+      <div class="h"><span id="goalsMiniT">היעדים שלי להיום</span><a href="/v2/goals" onclick="event.stopPropagation()">פתח</a></div>
+      <div id="goalsMiniC"></div>
+    </div>
+
+    <div class="hotMine" id="hotMine" style="display:none">
+      <div class="h">הנכס החם שלי <span>מופיע בסטורי ובמסך המשרד</span></div>
+      <div id="hotMineB"></div>
     </div>
   </main>
 
