@@ -7127,6 +7127,65 @@ function orphanBanner(){
 var HOT_BY = {};   // property_key → שם הסוכן שסימן (לתצוגת מנהל: "נכס חם · שם")
 /* [SITE 13/10] אתר refamily — "הסתר מהאתר" בכרטיסי הנכסים, למזכירה (וגם מנהל/מפתח) בלבד (site_api.py).
    סוכן לא משנה כלום באתר; המומלצים באתר = הנכס החם של הסטורי (אחד לסוכן) — אייל 13/10 */
+/* [SOCIAL 31/10] פרסום ברשתות (עמוד הפייסבוק + אינסטגרם של המשרד) — כרגע למפתח בלבד (social_publish.py) */
+var SOC = {dev: false, mode: 'preview', items: {}, asked: {}, busy: {}};
+var SOC_RETRY_DAYS = 3;
+function socWhen(iso){
+  var d = new Date(iso || ''); if (isNaN(d)) return '';
+  return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function socRow(p){
+  if (!SOC.dev || MODE === 'shtaf' || MODE === 'nb' || DEAL === 'commercial') return '';
+  var k = String((p && p.id) || ''); var it = k && SOC.items[k];
+  if (!it) return '';
+  var css = 'width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;';
+  var lab = {ok: '✓', failed: 'נכשל', unknown: 'לא ידוע', preview: 'בדיקה', skipped: '—'};
+  var h = '', L = it.last;
+  if (L){
+    var link = function(name, st, url){ var t = name + ' ' + (lab[st] || '—');
+      return url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="color:#2E6BD6;font-weight:800">' + esc(t) + '</a>' : esc(t); };
+    h += '<div style="font-size:12px;color:#5B6472;font-weight:700;margin-top:8px">פורסם ' + esc(socWhen(L.created_at)) + ' · ' +
+         link('פייסבוק', L.fb_status, L.fb_permalink) + ' · ' + link('אינסטגרם', L.ig_status, L.ig_permalink) + '</div>';
+  }
+  var can = it.can || {}, fb = can.fb || {}, ig = can.ig || {};
+  var age = L ? (Date.now() - new Date(L.created_at).getTime()) / 86400000 : 99;
+  var test = SOC.mode === 'publish' ? '' : ' (מצב בדיקה)';
+  if (SOC.busy && SOC.busy[k]) return h + '<div style="margin-top:8px"><button disabled style="' + css +
+    'cursor:default;background:#F2EFE7;color:#5B6472;border:1.5px solid #DCD6C8">נשלח… (רגע)</button></div>';
+  if (L && L.fb_status === 'ok' && L.ig_status === 'failed' && ig.ok && age < SOC_RETRY_DAYS){
+    h += '<div style="margin-top:8px"><button onclick="socPublish(\'' + esc(k) + '\',[\'ig\'])" style="' + css +
+         'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">נסה שוב לאינסטגרם' + test + '</button></div>';
+  } else if (fb.ok || ig.ok){
+    h += '<div style="margin-top:8px"><button onclick="socPublish(\'' + esc(k) + '\')" style="' + css +
+         'background:#C29435;color:#231700;border:none">פרסם ברשתות' + test + '</button></div>';
+  } else {
+    h += '<div style="margin-top:8px"><button disabled style="' + css + 'cursor:default;background:#F2EFE7;color:#5B6472;border:1.5px solid #DCD6C8">' +
+         esc(fb.reason || ig.reason || 'לא זמין') + '</button></div>';
+  }
+  return h;
+}
+function socLoad(list){
+  if (!SOC.dev) return;
+  var keys = (list || []).slice(0, 40).map(function(p){ return String((p && p.id) || ''); })
+    .filter(function(k){ return k && !SOC.asked[k]; });
+  if (!keys.length) return;
+  keys.forEach(function(k){ SOC.asked[k] = 1; });
+  GET('/v2/api/social/status?keys=' + encodeURIComponent(keys.join(','))).then(function(j){
+    if (!j || !j.ok) return;
+    SOC.mode = j.mode || SOC.mode;
+    Object.keys(j.items || {}).forEach(function(k){ SOC.items[k] = j.items[k]; });
+    render();
+  }).catch(function(){});
+}
+function socPublish(k, ch){
+  SOC.busy = SOC.busy || {};
+  if (SOC.busy[k]) return;   // [ביקורת סופית] לחיצה כפולה לא שולחת פעמיים
+  SOC.busy[k] = 1; render();
+  POST('/v2/api/social/publish', {key: k, channels: ch || null}).then(function(j){
+    toast(j && j.ok ? (SOC.mode === 'publish' ? 'נשלח לפרסום' : 'נשמרה תצוגה מקדימה (מצב בדיקה)') : 'שגיאה — לא נשלח');
+    setTimeout(function(){ delete SOC.busy[k]; delete SOC.asked[k]; socLoad([{id: k}]); }, 8000);
+  }).catch(function(){ delete SOC.busy[k]; render(); toast('שגיאה — לא נשלח'); });
+}
 var SITE = {hidden: {}, on: false, can: false, fh: {}};
 function loadSite(){
   GET('/v2/api/site/state').then(function(j){
@@ -7285,6 +7344,7 @@ function render(){
     '<div class="t">' + (_dealTxt && MODE !== 'shtaf' ? 'אין ' + (MODE === 'mine' ? 'לך ' : '') + 'נכסים ' + _dealTxt + ' כרגע' : (MODE === 'mine' ? 'אין לך נכסים פעילים' : 'לא נמצאו נכסים')) + '</div>' +
     '<div class="s">' + (_dealTxt && MODE !== 'shtaf' ? 'נכסים ' + _dealTxt + ' של סניפי המשרד נאספים מיד2 בכל סריקה' : (MODE === 'mine' ? 'נכסים שמשויכים אליך בגיליון המשרד יופיעו כאן' : 'נסה ניסוח אחר — החיפוש מבין תקציב, חדרים ואזור')) + '</div></div>';
   el('list')._src = src;
+  socLoad(src);   // [SOCIAL 31/10] מצב הפרסום ברשתות — קריאה אחת לרשימה המוצגת
 }
 function propDate(p){
   // תאריך כניסת הנכס — משרד: "תאריך יצירה"; שת"פ: received_at (ISO). תצוגה: DD/MM/YYYY + זמן יחסי.
@@ -7380,7 +7440,7 @@ function propCard(p, i){
     (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' +
     (propDate(p) ? '<div style="font-size:11.5px;color:#8B8F99;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
-    acts + hotRow + fhRow + siteRow + '</div>';
+    acts + hotRow + fhRow + siteRow + socRow(p) + '</div>';
 }
 function setDeal(node){   // [DEALS 13/10]
   DEAL = node.getAttribute('data-d') || '';
@@ -7587,6 +7647,8 @@ render = function(){
   GET('/api/auth/whoami').then(function(j){
     if (!j.ok){ location.replace('/v2'); return; }
     el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
+    SOC.dev = j.drole === 'developer';   // [SOCIAL 31/10]
+    if (SOC.dev) render();
     MYNAME = j.name || '';   // [NB-SEARCH] כרטיסי נכס נולד: "מי פנה" למנהל/מתאמת, בחירת סוכן בסטטוס
     MGR = (j.role === 'admin' || j.role === 'coordinator');
     if (MGR){
@@ -11318,7 +11380,11 @@ var MAIN = [
   '<div class="card"><h2>נוסחי הסכמים</h2><div class="sb">עריכת נוסח לכל סוג הסכם (משתנים: SALE_FEE / RENT_FEE / EXCLUSIVE_FROM...).</div>'+
     '<div class="row"><select id="cType" onchange="cShow()"></select></div>'+
     '<textarea id="cBody" style="margin-top:8px"></textarea>'+
-    '<button class="btn" style="margin-top:8px" onclick="saveContract()">שמור נוסח</button><div class="out" id="oC"></div></div>'
+    '<button class="btn" style="margin-top:8px" onclick="saveContract()">שמור נוסח</button><div class="out" id="oC"></div></div>',
+  '<div class="card"><h2>פרסום ברשתות</h2><div class="sb">עמוד הפייסבוק והאינסטגרם של המשרד דרך Meta. במצב בדיקה שום דבר לא נשלח.</div>'+
+    '<div class="out show" id="oSoc">טוען…</div>'+
+    '<div class="row" style="margin-top:8px"><input id="socKey" placeholder="מספר מודעה" style="flex:1"><button class="btn" onclick="socPrev()">תצוגה מקדימה</button></div>'+
+    '<div id="socPv" style="margin-top:8px"></div><div id="socRecent" style="margin-top:8px"></div></div>'
 ].join('');
 
 function loadSources(){GET('/api/dev/sources').then(function(j){
@@ -11334,6 +11400,25 @@ function runSms(){show('oSms','שולח…');POST('/api/dev/smstest',{phone:el('
   show('oSms','ספק: '+j.provider+'\nיעד: '+j.dest+'\nשולח: '+(j.sender||'—')+(j.sender_set?'':' (לא מוגדר)')+'\nטוקן: '+(j.token_set?j.token_preview+' ('+j.token_len+')':'לא מוגדר')+'\nIP יוצא: '+((j.outbound_ips||[]).join(', ')||'?')+(j.reason?'\n\n⚠️ '+j.reason:'')+(j.sent!==undefined?'\nנשלח: '+(j.sent?'✓':'✗'):''));});}
 function runParity(){show('oPar','מריץ… (עד דקה)');GET('/api/dev/parity').then(function(j){
   show('oPar',(j.green?'✅ תואם':'⚠️ פערים')+'\n\n'+(j.report||j.error||''));});}
+
+/* [SOCIAL 31/10] פרסום ברשתות — מצב החיבור, תצוגה מקדימה, פרסומים אחרונים */
+function loadSoc(){GET('/v2/api/social/health').then(function(j){
+  if(!j||!j.ok){show('oSoc','שגיאה');return;}
+  var m={preview:'מצב בדיקה (לא נשלח כלום)',publish:'פרסום אמיתי',off:'כבוי'}[j.mode]||j.mode;
+  show('oSoc','מצב: '+m+(j.auto?' · אוטומטי פעיל':' · אוטומטי כבוי')+'\nחיבור ל-Meta: '+(j.connected?'תקין'+(j.account?' ('+j.account+')':''):(j.token_bad?'הטוקן נדחה — צריך טוקן חדש':'לא מחובר'))+
+    '\nעמוד: '+(j.page_id||'—')+' · אינסטגרם: '+(j.ig_id||'—')+(j.ig_quota!=null?' · נשארו היום באינסטגרם: '+j.ig_quota:'')+(j.error?'\n'+j.error:''));
+  var st={ok:'✓',failed:'נכשל',unknown:'לא ידוע',preview:'בדיקה',skipped:'—'};
+  el('socRecent').innerHTML=(j.recent||[]).map(function(r){return '<div class="sb" style="margin:3px 0">'+esc(String(r.created_at||'').slice(0,16).replace('T',' '))+
+    ' · '+esc(r.property_key)+' · '+esc(r.mode)+' · פייסבוק '+esc(st[r.fb_status]||'—')+' · אינסטגרם '+esc(st[r.ig_status]||'—')+'</div>';}).join('')||'<div class="sb">עדיין אין פרסומים</div>';
+});}
+function socPrev(){var k=el('socKey').value.trim();if(!k)return;el('socPv').innerHTML='<div class="sb">טוען…</div>';
+  GET('/v2/api/social/preview?key='+encodeURIComponent(k)).then(function(j){
+    if(!j.ok){el('socPv').innerHTML='<div class="sb">'+esc(j.error||'שגיאה')+'</div>';return;}
+    var why=function(c,n){return n+': '+(c&&c.ok?'אפשר לפרסם':esc((c&&c.reason)||'—'));};
+    el('socPv').innerHTML='<div class="sb">'+why(j.can.fb,'פייסבוק')+' · '+why(j.can.ig,'אינסטגרם')+'</div>'+
+      '<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;background:#F2EFE7;border-radius:12px;padding:10px">'+esc(j.ig_caption)+'</pre>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+(j.images||[]).map(function(u){return '<img src="'+esc(u)+'" style="width:72px;height:72px;object-fit:cover;border-radius:10px" loading="lazy">';}).join('')+'</div>';
+  });}
 
 var QON=false;
 function loadQuiet(){GET('/api/dev/quiet').then(function(j){QON=!!j.on;el('qTg').classList.toggle('on',QON);el('qLbl').textContent=(QON?'מושתק':'פעיל')+(j.env?' · env גובר':'')+(j.shabbat?' · שבת/חג — אוטומטי':'');});}
@@ -11359,7 +11444,7 @@ function saveContract(){var t=el('cType').value;POST('/api/dev/contract',{type:t
     if(!j.ok){location.replace('/v2');return;}
     if(!j.dev){document.body.innerHTML='<div style="padding:60px 24px;text-align:center;color:#6B7280;font-weight:700">כלי מפתח — למפתח בלבד</div>';return;}
     el('main').innerHTML=MAIN;
-    loadSources();loadQuiet();loadRp();loadContract();
+    loadSources();loadQuiet();loadRp();loadContract();loadSoc();
   }).catch(function(){location.replace('/v2');});
 })();
 </script></body></html>'''
@@ -15146,6 +15231,9 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     wk = get("goals_weekly", default=None)   # [29/10 אייל] סיכום יעדים שבועי — הסטטוס מחושב ב-goals.weekly_health
     if isinstance(wk, dict) and wk.get("status"):
         health.append(wk)
+    sc = get("social", default=None)   # [SOCIAL 31/10] ריבוע פרסום ברשתות (social_publish.social_health_tile)
+    if isinstance(sc, dict) and sc.get("status"):
+        health.append(sc)
 
     pk = ("calls", "calls_answered", "signings", "signings_by_label", "buyers", "newborn", "shtaf",
           "deals_opened", "deals_closed")
@@ -19121,6 +19209,7 @@ def register(app, G):
                    "meetings_today": lambda: crm_meetings_today(_crm_records("meetings"), now),
                    "goals": lambda: __import__("goals").dashboard_goals(G, now),   # [GOALS 28/10]
                    "goals_weekly": lambda: __import__("goals").weekly_health_tile(G, now),   # [29/10] ריבוע הסיכום השבועי
+                   "social": lambda: __import__("social_publish").social_health_tile(G, now),   # [SOCIAL 31/10] פרסום ברשתות
                    "helpers": lambda: {"answered": lambda st: bool(G["_is_answered_status"](str(st or ""))),
                                        "canon": lambda n: G["_canon_agent_name"](n) or n,
                                        "nb_key": G["_nb_key"]}}

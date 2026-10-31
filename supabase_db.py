@@ -1583,6 +1583,39 @@ def bpage_remove_item(page_id, key):
     r.raise_for_status()
 
 
+# ── [SOCIAL 31/10] פרסום נכסים בעמוד ובאינסטגרם — טבלת social_posts ─────────────────
+def social_insert(rec):
+    """שורה חדשה (office_id נוסף כאן). כשל → None (הקורא רושם שגיאה ולא נופל)."""
+    try:
+        row = dict(rec or {}, office_id=SB_OFFICE_ID)
+        r = requests.post(SUPABASE_URL + "/rest/v1/social_posts",
+                          headers={**_headers(), "Prefer": "return=representation"},
+                          json=[row], timeout=_TIMEOUT)
+        r.raise_for_status()
+        out = r.json() or []
+        return out[0] if out else None
+    except Exception:
+        return None
+
+
+def social_update(row_id, fields):
+    try:
+        body = dict(fields or {}, updated_at=_dt.datetime.now(_dt.timezone.utc).isoformat())
+        r = requests.patch(SUPABASE_URL + "/rest/v1/social_posts", headers=_headers(),
+                           params={"id": "eq." + str(row_id), "office_id": "eq." + SB_OFFICE_ID},
+                           json=body, timeout=_TIMEOUT)
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def social_recent(days):
+    """כל הפרסומים של המשרד מ-days הימים האחרונים, החדש קודם."""
+    since = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=int(days))).isoformat()
+    return _get_all("social_posts", "*", {"created_at": "gte." + since, "order": "created_at.desc"})
+
+
 # ── [DEALS-HISTORY 12/10] היסטוריית עסקאות ──────────────────────────────────────
 _DH_COLS = ("id,src_key,branch,year,src_sheet,src_row,src_serial,deal_date,city,street,side,agent,"
             "client_name,client_phone,other_broker,deal_amount,commission_gross,commission_net,discount,"
