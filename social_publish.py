@@ -214,3 +214,68 @@ def soc_can_publish(row, channel, history, now, hidden):
     if last is not None:
         return False, "פורסם %s · אפשר שוב מ-%s" % (_dm(last), _dm(last + REPEAT_DAYS * 86400))
     return True, ""
+
+
+# ── הסבב האוטומטי ────────────────────────────────────────────────────────────────
+def soc_seed_known(rows, now):
+    """מצב התחלתי בהפעלה: כל מספרי המודעה הקיימים 'ידועים' — הם לא יתפרסמו אוטומטית."""
+    return {"known": {_key(r.get("מספר מודעה")): now for r in rows or [] if _key(r.get("מספר מודעה"))},
+            "waiting": {}, "enabled_at": now}
+
+
+def _is_night(now):
+    h = _dt.datetime.fromtimestamp(now, _IL).hour
+    return h >= NIGHT[0] or h < NIGHT[1]
+
+
+def soc_plan_round(rows, state, history, now, hidden, blocked):
+    """→ {'publish': [keys], 'state': state חדש, 'flood': bool, 'reason': str}.
+    'חדש' = מספר מודעה שלא נראה (known) — לא _y2_first_seen, שנדרס בהזרמות ושחזורים."""
+    st = {"known": dict((state or {}).get("known") or {}), "waiting": dict((state or {}).get("waiting") or {}),
+          "enabled_at": (state or {}).get("enabled_at", now)}
+    for k in [k for k, v in st["known"].items() if now - float(v or 0) > KNOWN_TTL_DAYS * 86400]:
+        st["known"].pop(k, None)
+    by_key = {}
+    for r in rows or []:
+        k = _key(r.get("מספר מודעה"))
+        if k:
+            by_key[k] = r
+    new = [k for k in by_key if k not in st["known"]]
+    for k in by_key:
+        st["known"][k] = now
+    out = {"publish": [], "state": st, "flood": False, "reason": ""}
+    if len(new) > FLOOD:
+        out.update(flood=True, reason="נראה כמו הזרמה — %d נכסים חדשים בבת אחת" % len(new))
+        return out
+    for k in new:
+        st["waiting"].setdefault(k, now)
+    for k in [k for k, t in st["waiting"].items() if now - float(t) > WAIT_DAYS * 86400 or k not in by_key]:
+        st["waiting"].pop(k, None)
+    if blocked or _is_night(now):
+        out["reason"] = "שבת / השתקה / לילה"
+        return out
+    today, last_auto = 0, None
+    for h in history or []:
+        if h.get("trigger") != "auto" or h.get("mode") != "publish":
+            continue
+        t = _ts(h.get("created_at"))
+        if t is None:
+            continue
+        if _day(t) == _day(now):
+            today += 1
+        last_auto = t if last_auto is None else max(last_auto, t)
+    if last_auto is not None and now - last_auto < GAP_MIN * 60:
+        out["reason"] = "מרווח בין פוסטים"
+        return out
+    slots = min(ROUND_CAP, DAILY_CAP - today)
+    if slots <= 0:
+        out["reason"] = "התקרה היומית"
+        return out
+    for k in sorted(st["waiting"], key=lambda x: -float(st["waiting"][x])):
+        if len(out["publish"]) >= slots:
+            break
+        r = by_key[k]
+        if soc_can_publish(r, "fb", history, now, hidden)[0] or soc_can_publish(r, "ig", history, now, hidden)[0]:
+            out["publish"].append(k)
+            st["waiting"].pop(k, None)
+    return out
