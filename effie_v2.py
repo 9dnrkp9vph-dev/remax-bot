@@ -7128,7 +7128,7 @@ var HOT_BY = {};   // property_key → שם הסוכן שסימן (לתצוגת 
 /* [SITE 13/10] אתר refamily — "הסתר מהאתר" בכרטיסי הנכסים, למזכירה (וגם מנהל/מפתח) בלבד (site_api.py).
    סוכן לא משנה כלום באתר; המומלצים באתר = הנכס החם של הסטורי (אחד לסוכן) — אייל 13/10 */
 /* [SOCIAL 31/10] פרסום ברשתות (עמוד הפייסבוק + אינסטגרם של המשרד) — כרגע למפתח בלבד (social_publish.py) */
-var SOC = {dev: false, mode: 'preview', items: {}, asked: {}};
+var SOC = {dev: false, mode: 'preview', items: {}, asked: {}, busy: {}};
 var SOC_RETRY_DAYS = 3;
 function socWhen(iso){
   var d = new Date(iso || ''); if (isNaN(d)) return '';
@@ -7150,6 +7150,8 @@ function socRow(p){
   var can = it.can || {}, fb = can.fb || {}, ig = can.ig || {};
   var age = L ? (Date.now() - new Date(L.created_at).getTime()) / 86400000 : 99;
   var test = SOC.mode === 'publish' ? '' : ' (מצב בדיקה)';
+  if (SOC.busy && SOC.busy[k]) return h + '<div style="margin-top:8px"><button disabled style="' + css +
+    'cursor:default;background:#F2EFE7;color:#5B6472;border:1.5px solid #DCD6C8">נשלח… (רגע)</button></div>';
   if (L && L.fb_status === 'ok' && L.ig_status === 'failed' && ig.ok && age < SOC_RETRY_DAYS){
     h += '<div style="margin-top:8px"><button onclick="socPublish(\'' + esc(k) + '\',[\'ig\'])" style="' + css +
          'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">נסה שוב לאינסטגרם' + test + '</button></div>';
@@ -7176,10 +7178,13 @@ function socLoad(list){
   }).catch(function(){});
 }
 function socPublish(k, ch){
+  SOC.busy = SOC.busy || {};
+  if (SOC.busy[k]) return;   // [ביקורת סופית] לחיצה כפולה לא שולחת פעמיים
+  SOC.busy[k] = 1; render();
   POST('/v2/api/social/publish', {key: k, channels: ch || null}).then(function(j){
     toast(j && j.ok ? (SOC.mode === 'publish' ? 'נשלח לפרסום' : 'נשמרה תצוגה מקדימה (מצב בדיקה)') : 'שגיאה — לא נשלח');
-    setTimeout(function(){ delete SOC.asked[k]; socLoad([{id: k}]); }, 8000);
-  }).catch(function(){ toast('שגיאה — לא נשלח'); });
+    setTimeout(function(){ delete SOC.busy[k]; delete SOC.asked[k]; socLoad([{id: k}]); }, 8000);
+  }).catch(function(){ delete SOC.busy[k]; render(); toast('שגיאה — לא נשלח'); });
 }
 var SITE = {hidden: {}, on: false, can: false, fh: {}};
 function loadSite(){

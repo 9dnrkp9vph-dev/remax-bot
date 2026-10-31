@@ -201,14 +201,14 @@ def soc_can_publish(row, channel, history, now, hidden):
         if h.get("mode") != "publish":
             continue
         st = str(h.get(st_col) or "")
-        if st not in ("ok", "unknown"):
+        if st not in ("ok", "unknown", "pending"):
             continue
         t = _ts(h.get("created_at"))
         if t is None or now - t >= REPEAT_DAYS * 86400:
             continue
         if _key(h.get("property_key")) != key and not _same_apartment(akey, afl, h.get("addr_key")):
             continue
-        if st == "unknown" and _day(t) == _day(now):
+        if st in ("unknown", "pending") and _day(t) == _day(now):
             return False, "כבר נשלח היום"
         last = t if last is None else max(last, t)
     if last is not None:
@@ -249,7 +249,10 @@ def soc_plan_round(rows, state, history, now, hidden, blocked):
         return out
     for k in new:
         st["waiting"].setdefault(k, now)
-    for k in [k for k, t in st["waiting"].items() if now - float(t) > WAIT_DAYS * 86400 or k not in by_key]:
+    def _expired(k, t):   # נכס עם תמונה אחת מחכה גם ל-72 השעות (ביקורת סופית — אחרת לא היה עולה אף פעם)
+        extra = ONE_IMG_HOURS * 3600 if len(soc_images(by_key[k])) < 2 else 0
+        return now - float(t) > WAIT_DAYS * 86400 + extra
+    for k in [k for k, t in st["waiting"].items() if k not in by_key or _expired(k, t)]:
         st["waiting"].pop(k, None)
     if blocked or _is_night(now):
         out["reason"] = "שבת / השתקה / לילה"
@@ -409,7 +412,10 @@ class Graph:
             j = {}
         if getattr(r, "status_code", 200) >= 400 or "error" in j:
             e = j.get("error") or {}
-            raise MetaError(_scrub(e.get("message") or str(j)[:200], self._secrets()), code=e.get("code"))
+            code = e.get("code")
+            # 5xx / קוד 1-2 בכתיבה הסופית: ייתכן שהפוסט נוצר — 'unknown', לא לנסות שוב (ביקורת סופית)
+            unk = final and (getattr(r, "status_code", 200) >= 500 or code in (1, 2))
+            raise MetaError(_scrub(e.get("message") or str(j)[:200], self._secrets()), code=code, unknown=unk)
         return j
 
     # קריאה
@@ -532,9 +538,13 @@ def soc_hidden(G):
     """מספרי המודעה שהוסתרו מהאתר (website_settings) — אותו כלל של refamily.co.il."""
     try:
         import site_api
-        return site_api.prop_flags(site_api.SettingsStore(G.get("_sbdb")).all())[0]
+        store = site_api.SettingsStore(G.get("_sbdb"))
+        rows = store.all()
+        if not store.available:
+            return None   # לא ידוע — במצב publish לא מפרסמים (ביקורת סופית)
+        return site_api.prop_flags(rows)[0]
     except Exception:
-        return set()
+        return None
 
 
 def soc_office_rows(G):
@@ -576,8 +586,35 @@ def _who(G, trigger, by_phone):
         return "מפתח", "developer"
 
 
+_RUN_LOCK = None
+_INFLIGHT = set()
+
+
+def _inflight_lock():
+    global _RUN_LOCK
+    if _RUN_LOCK is None:
+        import threading
+        _RUN_LOCK = threading.Lock()
+    return _RUN_LOCK
+
+
 def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, env=None):
-    """פרסום (או תצוגה מקדימה) של נכס אחד. → {'ok','mode','fb','ig','reason','row_id'}."""
+    """פרסום (או תצוגה מקדימה) של נכס אחד. → {'ok','mode','fb','ig','reason','row_id'}.
+    נגד כפילות (ביקורת סופית): נכס אחד בכל רגע; רשומת pending לפני כל כתיבה ל-Meta."""
+    k0 = _key(key)
+    with _inflight_lock():
+        if k0 in _INFLIGHT:
+            return {"ok": False, "mode": soc_mode(_env(env)), "fb": "skipped", "ig": "skipped",
+                    "reason": "הנכס כבר בתהליך פרסום", "row_id": ""}
+        _INFLIGHT.add(k0)
+    try:
+        return _soc_run_one(G, k0, trigger, by_phone, channels, http, now, env)
+    finally:
+        with _inflight_lock():
+            _INFLIGHT.discard(k0)
+
+
+def _soc_run_one(G, key, trigger, by_phone, channels, http, now, env):
     import time as _t
     env = _env(env)
     now = _t.time() if now is None else now
@@ -586,7 +623,6 @@ def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, e
     if mode == "off":
         res["reason"] = "כבוי"
         return res
-    key = _key(key)
     row = next((r for r in soc_office_rows(G) if _key(r.get("מספר מודעה")) == key), None)
     if not row:
         res["reason"] = "הנכס לא נמצא"
@@ -600,8 +636,16 @@ def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, e
     try:
         history = G["_sbdb"].social_recent(REPEAT_DAYS) or []
     except Exception:
+        if mode == "publish":
+            res["reason"] = "לא ניתן לקרוא את היסטוריית הפרסומים — לא מפרסמים"
+            return res
         history = []
     hidden = soc_hidden(G)
+    if hidden is None:
+        if mode == "publish":
+            res["reason"] = "לא ניתן לבדוק הסתרה מהאתר — לא מפרסמים"
+            return res
+        hidden = set()
     reasons, go = [], []
     for c in want:
         ok, why = soc_can_publish(row, c, history, now, hidden)
@@ -639,9 +683,15 @@ def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, e
     if not toks:
         res["reason"] = "אין תמונות"
         return res
+    for c in go:
+        rec[c + "_status"] = "pending"
+    saved = G["_sbdb"].social_insert(rec)
+    if not saved or not saved.get("id"):
+        res["reason"] = "לא ניתן לרשום את הפרסום — לא מפרסמים"
+        return res
+    res["row_id"] = rid = saved["id"]
     fb_urls = ["%s/v2/social/img/%s.jpg" % (base, t) for t in toks]
     ig_urls = ["%s/v2/social/img/%s-sq.jpg" % (base, t) for t in toks]
-    g = Graph(http, token, env)
     page_id = str(scfg.get("page_id") or PAGE_ID_DEFAULT)
     errs = []
 
@@ -653,36 +703,50 @@ def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, e
             _social_mutate(G, lambda s2: s2.__setitem__("token_bad", True))
             soc_daily_alert(G, "token", "פרסום ברשתות", "החיבור לפייסבוק נותק — צריך טוקן חדש ב-Render", now)
         elif code in _RATE_CODES:
-            _social_mutate(G, lambda s: s.__setitem__("paused_until", _next_midnight(now)))
+            _social_mutate(G, lambda s2: s2.__setitem__("paused_until", _next_midnight(now)))
 
-    if "fb" in go:
-        try:
-            rec["fb_post_id"], rec["fb_permalink"] = g.fb_post(page_id, post["body"], fb_urls)
-            res["fb"] = rec["fb_status"] = "ok"
-        except MetaError as e:
-            fail("fb", e)
-    if "ig" in go:
-        try:
-            ig_id = scfg.get("ig_id") or g.page_ig_id(page_id)
-            if ig_id and not scfg.get("ig_id"):
-                _social_mutate(G, lambda s: s.__setitem__("ig_id", ig_id))
-            q = None
+    try:
+        g = Graph(http, token, env)
+        if "fb" in go:
             try:
-                q = g.ig_quota(ig_id)
-            except MetaError:
-                pass
-            if not ig_id:
-                reasons.append("אינסטגרם: לא מקושר לעמוד")
-            elif q is not None and q <= 0:
-                reasons.append("אינסטגרם: נגמרה המכסה היומית של Meta")
-            else:
-                rec["ig_media_id"], rec["ig_permalink"] = g.ig_post(ig_id, post["ig_caption"], ig_urls)
-                res["ig"] = rec["ig_status"] = "ok"
-        except MetaError as e:
-            fail("ig", e)
-    rec["error"] = " | ".join(errs)[:900]
-    saved = G["_sbdb"].social_insert(rec) or {}
-    res["row_id"] = saved.get("id", "")
+                rec["fb_post_id"], rec["fb_permalink"] = g.fb_post(page_id, post["body"], fb_urls)
+                res["fb"] = rec["fb_status"] = "ok"
+            except MetaError as e:
+                fail("fb", e)
+        if "ig" in go:
+            try:
+                ig_id = scfg.get("ig_id") or g.page_ig_id(page_id)
+                if ig_id and not scfg.get("ig_id"):
+                    _social_mutate(G, lambda s2: s2.__setitem__("ig_id", ig_id))
+                q = None
+                if ig_id:
+                    try:
+                        q = g.ig_quota(ig_id)
+                    except Exception:
+                        q = None
+                if not ig_id:
+                    res["ig"] = rec["ig_status"] = "skipped"
+                    reasons.append("אינסטגרם: לא מקושר לעמוד")
+                elif q is not None and q <= 0:
+                    res["ig"] = rec["ig_status"] = "skipped"
+                    reasons.append("אינסטגרם: נגמרה המכסה היומית של Meta")
+                else:
+                    rec["ig_media_id"], rec["ig_permalink"] = g.ig_post(ig_id, post["ig_caption"], ig_urls)
+                    res["ig"] = rec["ig_status"] = "ok"
+            except MetaError as e:
+                fail("ig", e)
+    except Exception as e:   # חריגה לא צפויה — ערוץ שעוד היה בתהליך ייתכן שפורסם: 'unknown', לא 'failed'
+        for c in go:
+            if rec[c + "_status"] == "pending":
+                res[c] = rec[c + "_status"] = "unknown"
+        errs.append(_scrub("שגיאה: %s" % e, [token]))
+    finally:
+        for c in go:
+            if rec[c + "_status"] == "pending":
+                res[c] = rec[c + "_status"] = "unknown"
+        rec["error"] = " | ".join(errs)[:900]
+        G["_sbdb"].social_update(rid, {f: rec.get(f) for f in ("fb_status", "ig_status", "fb_post_id", "fb_permalink",
+                                                              "ig_media_id", "ig_permalink", "error")})
     res["ok"] = "ok" in (res["fb"], res["ig"])
     if res["ok"] and scfg.get("token_bad"):
         _social_mutate(G, lambda s2: s2.__setitem__("token_bad", False))
@@ -695,7 +759,8 @@ def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, e
 
 # ── הסבב האוטומטי (לולאה) ────────────────────────────────────────────────────────
 def soc_auto_tick(G, now, env=None, sleep=None):
-    """סבב אחד: רק כש-SOCIAL_AUTO=1, מצב publish ויש טוקן. הפעלה ראשונה = זריעת 'ידועים' בלי פרסום."""
+    """סבב אחד: רק כש-SOCIAL_AUTO=1, מצב publish ויש טוקן. הפעלה ראשונה, או חזרה אחרי הפסקה של יותר מיום,
+    = זריעת 'ידועים' בלי פרסום (אחרת נכסים מתקופת ההפסקה היו עולים כ'חדשים')."""
     import time as _t
     env = _env(env)
     sleep = sleep or _t.sleep
@@ -704,28 +769,44 @@ def soc_auto_tick(G, now, env=None, sleep=None):
         return {"ran": False}
     rows = soc_office_rows(G)
     scfg = _cfg_social(G)
-    if not scfg.get("enabled_at"):
+    gap = now - float(scfg.get("last_tick") or 0)
+    if not scfg.get("enabled_at") or gap > 86400:
         seed = soc_seed_known(rows, now)
+        if scfg.get("enabled_at"):
+            seed["enabled_at"] = scfg["enabled_at"]
+        seed["last_tick"] = now
         _social_mutate(G, lambda s: s.update(seed))
-        return {"ran": True, "seeded": len(seed["known"])}
+        return {"ran": True, "seeded": len(seed["known"]), "reseeded": bool(scfg.get("enabled_at"))}
+
+    def blocked_now(t):
+        try:
+            return bool(G["_shabbat_quiet_now"]()) or bool(G["_quiet_mode"]()) or _is_night(t)
+        except Exception:
+            return _is_night(t)
+
     if float(scfg.get("paused_until") or 0) > now:
+        _social_mutate(G, lambda s: s.__setitem__("last_tick", now))
         return {"ran": True, "paused": True}
-    try:
-        blocked = bool(G["_shabbat_quiet_now"]()) or bool(G["_quiet_mode"]())
-    except Exception:
-        blocked = False
     try:
         history = G["_sbdb"].social_recent(REPEAT_DAYS) or []
     except Exception:
-        history = []
-    plan = soc_plan_round(rows, scfg, history, now, soc_hidden(G), blocked)
-    _social_mutate(G, lambda s: s.update(known=plan["state"]["known"], waiting=plan["state"]["waiting"]))
+        return {"ran": True, "skipped": "history"}
+    hidden = soc_hidden(G)
+    if hidden is None:
+        return {"ran": True, "skipped": "hidden"}
+    plan = soc_plan_round(rows, scfg, history, now, hidden, blocked_now(now))
+    _social_mutate(G, lambda s: s.update(known=plan["state"]["known"], waiting=plan["state"]["waiting"], last_tick=now))
     if plan["flood"]:
         soc_daily_alert(G, "flood", "פרסום ברשתות", plan["reason"] + " — לא פורסם", now)
     done = []
     for i, k in enumerate(plan["publish"]):
         if i:
             sleep(GAP_MIN * 60)
+            t = _t.time() if now is None else now + i * GAP_MIN * 60
+            if blocked_now(t):   # שבת / השתקה / לילה התחילו בזמן ההמתנה — השאר חוזרים להמתנה
+                rest = plan["publish"][i:]
+                _social_mutate(G, lambda s: s.__setitem__("waiting", dict(s.get("waiting") or {}, **{x: now for x in rest})))
+                break
         done.append(soc_run_one(G, k, "auto", "", env=env))
     return {"ran": True, "published": plan["publish"], "results": done, "flood": plan["flood"]}
 

@@ -53,6 +53,16 @@ vm.runInContext('SOC.mode = "preview"', ctx);
 ctx.SOC.items.tok1 = {last: null, can: {fb: {ok: true, reason: ''}, ig: {ok: true, reason: ''}}};
 ck(ctx.socRow(P).includes('מצב בדיקה'), 'preview label');
 ck(!/[\u{1F300}-\u{1FAFF}]/u.test(fn(pjs, 'socRow')), 'no emoji in UI');
+// [ביקורת סופית C1a] הכפתור ננעל אחרי לחיצה — לא שולחים פעמיים
+ctx.POSTS = []; ctx.POST = (u, d) => { ctx.POSTS.push([u, d]); return {then: () => ({catch: () => {}})}; };
+ctx.toast = () => {}; ctx.render = () => {}; ctx.setTimeout = () => {};
+vm.runInContext(fn(pjs, 'socPublish'), ctx);
+ctx.SOC.items.tok1 = {last: null, can: {fb: {ok: true, reason: ''}, ig: {ok: true, reason: ''}}};
+ctx.socPublish('tok1'); ctx.socPublish('tok1');
+ck(ctx.POSTS.length === 1, 'second click ignored');
+h = ctx.socRow(P);
+ck(h.includes('disabled') && h.includes('נשלח'), h);
+
 ck(/acts \+ hotRow \+ fhRow \+ siteRow \+ socRow\(p\)/.test(PROPS), 'row in card');
 ck(/SOC\.dev = j\.drole === 'developer'/.test(PROPS), 'dev flag from whoami');
 ck(PROPS.includes("/v2/api/social/status?keys="), 'status fetch');

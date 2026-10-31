@@ -2,6 +2,7 @@
 import datetime as dt
 import social_publish as SP
 _GUARD = SP.Graph._guard   # לפני שהבדיקה מחליפה את SP.Graph
+REAL_GRAPH = SP.Graph
 
 ROW = {"מספר מודעה": "tok1", "סוג עסקה": "מכירה", "סוג נכס": "דירה", "חדרים": "4", "שכונה": "נאות אפק",
        "עיר / ישוב": "קרית ביאליק", "כתובת": "אהוד מנור", "מספר בית": "13", "מחיר": "1890000",
