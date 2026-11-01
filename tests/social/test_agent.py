@@ -16,7 +16,7 @@ p = SP.soc_build_post(ROW, "רימקס פמילי", clean, noft, agent=AG)
 b, ig = p["body"], p["ig_caption"]
 ck("לפרטים: קובי חמו" in b and "https://wa.me/972541234567" in b, b)
 ck("הודעה לעמוד" not in b, b)
-ck("לפרטים: קובי חמו · 054-123-4567" in ig and "wa.me" not in ig, ig)        # באינסטגרם קישור לא לחיץ — המספר
+ck("לפרטים בוואטסאפ: קובי חמו · 054-123-4567" in ig and "wa.me" not in ig, ig)        # באינסטגרם קישור לא לחיץ — המספר
 ck(ig.rstrip().endswith("#רימקספמילי") and "#נדלן" in ig and "#" not in b, ig)
 ck("רימקס פמילי" in b, "office name stays")
 

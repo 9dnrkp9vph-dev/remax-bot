@@ -128,7 +128,7 @@ def _cut(t, n):
     return t.rstrip(" ,.-·") + "…"
 
 
-def soc_build_post(row, office_name, clean_desc, feats, agent=None):
+def soc_build_post(row, office_name, clean_desc, feats, agent=None, wa_link=None):
     """שורת נכס → {'body', 'ig_caption', 'images'}. בלי מספר בית; טלפונים מהתיאור נמחקים.
     agent = {'name','phone'} — שם הסוכן ווואטסאפ לנייד האישי שלו בסוף (01/11); בלי — 'לפרטים — הודעה לעמוד'."""
     rent = "שכר" in str(row.get("סוג עסקה") or "")
@@ -168,8 +168,13 @@ def soc_build_post(row, office_name, clean_desc, feats, agent=None):
     if not an or not _real_agent(an):
         fb_end = ig_end = "לפרטים — הודעה לעמוד"
     elif len(local) == 10 and local.startswith("05"):
-        fb_end = "לפרטים: %s\nוואטסאפ: https://wa.me/972%s" % (an, local[1:])
-        ig_end = "לפרטים: %s · %s-%s-%s" % (an, local[:3], local[3:6], local[6:])
+        # [02/11] קישור קצר של אפי (מפנה לוואטסאפ עם הודעה מוכנה); בלעדיו — wa.me ישיר
+        fb_end = "לפרטים: %s\nוואטסאפ: %s" % (an, wa_link or ("https://wa.me/972" + local[1:]))
+        # [02/11] באינסטגרם קישור לא לחיץ — המספר, ובקשה לציין מאיפה ועל איזו מודעה (שהסוכן יידע)
+        ig_end = "לפרטים בוואטסאפ: %s · %s-%s-%s" % (an, local[:3], local[3:6], local[6:])
+        k_ad = _key(row.get("מספר מודעה"))
+        if k_ad:
+            ig_end += "\nציינו בהודעה: מודעה %s מאינסטגרם" % k_ad
     else:
         fb_end = ig_end = "לפרטים: %s · הודעה לעמוד" % an
     office = str(office_name or "").strip()
@@ -181,6 +186,30 @@ def soc_build_post(row, office_name, clean_desc, feats, agent=None):
     tags.append("#רימקספמילי")
     ig = head + "\n\n" + (office + "\n" if office else "") + ig_end
     return {"body": body, "ig_caption": ig + "\n\n" + " ".join(tags), "images": soc_images(row)}
+
+
+def soc_wa_text(row, agent_name, office_name, src="fb"):
+    """[02/11, אייל] ההודעה שהפונה שולח לסוכן מהפוסט: מאיפה הגיע ועל איזה נכס — בלי מספר בית."""
+    rent = "שכר" in str(row.get("סוג עסקה") or "")
+    rooms = _num(row.get("חדרים"))
+    kind = _norm(row.get("סוג נכס"))
+    nb, city = _norm(row.get("שכונה")), _norm(row.get("עיר / ישוב"))
+    what = " ".join(x for x in ((kind if kind and kind != "דירה" else "דירה"),
+                                 (rooms + " חדרים" if rooms and rooms != "0" else "")) if x)
+    where = ", ".join(x for x in (nb, city) if x)
+    street = re.sub(r"\s*(?:מס['׳]?\s*)?[\d/]+[א-ת]?\s*$", "", _norm(row.get("כתובת")))
+    pr = _price(row.get("מחיר"))
+    first = (_norm(agent_name).split() or [""])[0]
+    place = "בעמוד הפייסבוק" if src != "ig" else "באינסטגרם"
+    bits = [what + ((" ב" + where) if where else "")]
+    if street:
+        bits.append("רחוב " + street)
+    if pr:
+        bits.append(pr + " ₪" + (" לחודש" if rent else ""))
+    key = _key(row.get("מספר מודעה"))
+    return ("היי %s, ראיתי %s של %s את הנכס %s: %s%s. אשמח לפרטים."
+            % (first, place, _norm(office_name) or "המשרד", "להשכרה" if rent else "למכירה",
+               " · ".join(bits), (" (מודעה %s)" % key) if key else "")).replace("היי , ", "היי, ")
 
 
 def _real_agent(name):
@@ -734,6 +763,11 @@ def _inflight_lock():
     return _RUN_LOCK
 
 
+def _wa_link(env, key):
+    base = str((env or {}).get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+    return "%s/v2/social/wa/%s" % (base, _key(key))
+
+
 def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, env=None):
     """פרסום (או תצוגה מקדימה) של נכס אחד. → {'ok','mode','fb','ig','reason','row_id'}.
     נגד כפילות (ביקורת סופית): נכס אחד בכל רגע; רשומת pending לפני כל כתיבה ל-Meta."""
@@ -793,7 +827,7 @@ def _soc_run_one(G, key, trigger, by_phone, channels, http, now, env):
         res["reason"] = " · ".join(reasons) or "אין ערוץ פעיל"
         return res
     post = soc_build_post(row, ((G["_load_config"]() or {}).get("v2_office") or {}).get("name", ""),
-                          _clean_desc(G), G["_row_feats"], agent=soc_agent_for(G, row))
+                          _clean_desc(G), G["_row_feats"], agent=soc_agent_for(G, row), wa_link=_wa_link(env, key))
     if http is None:
         import requests as http
     real, ph = soc_real_images(http, post["images"])   # [01/11] בלי תמונות 'תמונות בקרוב'
@@ -1030,7 +1064,8 @@ def register(app, G):
         if not row:
             return jsonify({"ok": False, "error": "הנכס לא נמצא"})
         post = soc_build_post(row, ((G["_load_config"]() or {}).get("v2_office") or {}).get("name", ""),
-                              _clean_desc(G), G["_row_feats"], agent=soc_agent_for(G, row))
+                              _clean_desc(G), G["_row_feats"], agent=soc_agent_for(G, row),
+                              wa_link=_wa_link(os.environ, key))
         can = can_map(row, hist(), _t.time(), soc_hidden(G))
         real, ph = soc_real_images(_HTTP, post["images"])   # [01/11] גם בתצוגה המקדימה — בלי 'תמונות בקרוב'
         post["images"] = real
@@ -1080,6 +1115,34 @@ def register(app, G):
             except MetaError as e:
                 out.update(connected=False, error=_scrub(str(e), [token]), token_bad=e.code in (190, 102))
         return jsonify(out)
+
+    @app.route("/v2/social/wa/<key>")
+    def soc_wa(key):
+        """[02/11] ציבורי: מהקישור בפוסט → וואטסאפ לנייד האישי של הסוכן, עם הודעה מוכנה על הנכס ועל המקור."""
+        from flask import redirect
+        from urllib.parse import quote
+        k = _key(key)
+        src = "ig" if request.args.get("s") == "ig" else "fb"
+        row = next((r for r in soc_office_rows(G) if _key(r.get("מספר מודעה")) == k), None) if k else None
+        ag = soc_agent_for(G, row) if row else {}
+        d = re.sub(r"\D", "", str(ag.get("phone") or ""))
+        local = ("0" + d[3:]) if d.startswith("972") else d
+        if not row or not (len(local) == 10 and local.startswith("05")) or not _real_agent(ag.get("name")):
+            html = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+                    "<p dir=rtl style='font-family:sans-serif;font-size:18px;margin:40px 16px'>"
+                    "המודעה או הסוכן כבר לא זמינים. אפשר לשלוח הודעה לעמוד.</p>")
+            return html, 404, {"Content-Type": "text/html; charset=utf-8", "X-Robots-Tag": "noindex"}
+        office = ((G["_load_config"]() or {}).get("v2_office") or {}).get("name", "")
+        text = soc_wa_text(row, ag["name"], office, src)
+        try:
+            G["_log_activity"]("פונה מהרשתות", "public", "", "פרסום ברשתות — פנייה בוואטסאפ",
+                               "%s · %s · %s" % (k, "אינסטגרם" if src == "ig" else "פייסבוק", ag["name"]))
+        except Exception:
+            pass
+        r = redirect("https://wa.me/972%s?text=%s" % (local[1:], quote(text)), 302)
+        r.headers["X-Robots-Tag"] = "noindex"
+        r.headers["Cache-Control"] = "no-store"
+        return r
 
     @app.route("/v2/social/img/<name>")
     def soc_img(name):
