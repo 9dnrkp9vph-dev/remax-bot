@@ -63,7 +63,7 @@ ck(ctx.POSTS.length === 1, 'second click ignored');
 h = ctx.socRow(P);
 ck(h.includes('disabled') && h.includes('נשלח'), h);
 
-ck(/acts \+ hotRow \+ fhRow \+ siteRow \+ socRow\(p\)/.test(PROPS), 'row in card');
+ck(/acts \+ (?:shareRow\(p, i\) \+ )?hotRow \+ fhRow \+ siteRow \+ socRow\(p\)/.test(PROPS), 'row in card');
 ck(/SOC\.dev = j\.drole === 'developer'/.test(PROPS), 'dev flag from whoami');
 ck(PROPS.includes("/v2/api/social/status?keys="), 'status fetch');
 

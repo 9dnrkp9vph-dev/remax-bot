@@ -358,6 +358,29 @@ class ImgStore:
             self._d.pop(k, None)
 
 
+# [01/11] תמונות 'נכס חדש נולד · תמונות בקרוב' של המשרד — טביעת dHash (64 ביט) של 4 העיצובים שנמצאו
+# בסריקת 478 נכסי המשרד (25 נכסים הציגו אחת מהן כתמונה ראשונה). מרחק עד PLACEHOLDER_DIST = אותה תמונה.
+PLACEHOLDER_HASHES = (0x17b33633f1ecc45d, 0x4c0f03152f277517, 0x29b3d22a06e2f3b4, 0x960c44f2c26371a6)
+PLACEHOLDER_DIST = 6
+
+
+def soc_dhash(raw):
+    """טביעת dHash של תמונה (עמידה להקטנה/דחיסה); לא תמונה → None."""
+    import io
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(raw or b"")).convert("L").resize((9, 8), Image.LANCZOS)
+    except Exception:
+        return None
+    p = list(im.getdata())
+    return int("".join("1" if p[r * 9 + c] > p[r * 9 + c + 1] else "0" for r in range(8) for c in range(8)), 2)
+
+
+def soc_is_placeholder(raw):
+    h = soc_dhash(raw)
+    return h is not None and any(bin(h ^ x).count("1") <= PLACEHOLDER_DIST for x in PLACEHOLDER_HASHES)
+
+
 def soc_big_url(src_url):
     """[01/11] תמונת יד2 בגודל המלא: הכתובת הרגילה מחזירה ~384–720px, ו-?c=6 מחזירה את המקור (1100–2000px)."""
     u = str(src_url or "")
@@ -688,6 +711,22 @@ def _soc_run_one(G, key, trigger, by_phone, channels, http, now, env):
         return res
     post = soc_build_post(row, ((G["_load_config"]() or {}).get("v2_office") or {}).get("name", ""),
                           _clean_desc(G), G["_row_feats"])
+    if http is None:
+        import requests as http
+    # [01/11] בלי תמונות 'תמונות בקרוב': הורדה של כל תמונה (גם בתצוגה מקדימה) ושמירה רק של האמיתיות
+    real, ph = [], 0
+    for src in post["images"]:
+        j = soc_fetch_jpeg(http, src, False)
+        if not j:
+            continue
+        if soc_is_placeholder(j):
+            ph += 1
+        else:
+            real.append(src)
+    if ph and not real:
+        res.update(placeholder=True, reason="יש רק תמונת 'תמונות בקרוב' — מחכה לתמונות אמיתיות")
+        return res
+    post["images"] = real
     rec = {"property_key": key, "addr_key": soc_addr_key(row) + "#" + soc_floor(row), "trigger": trigger,
            "mode": mode, "by_phone": str(by_phone or ""), "body": post["body"], "images": post["images"],
            "fb_status": "skipped", "ig_status": "skipped"}
@@ -703,13 +742,8 @@ def _soc_run_one(G, key, trigger, by_phone, channels, http, now, env):
     if not token:
         res["reason"] = "אין META_TOKEN"
         return res
-    if http is None:
-        import requests as http
     base = str(env.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
-    toks = []
-    for src in post["images"]:
-        if soc_fetch_jpeg(http, src, False):
-            toks.append(_IMG.put(src, now))
+    toks = [_IMG.put(src, now) for src in post["images"]]   # כבר הורדו ונבדקו למעלה
     if not toks:
         res["reason"] = "אין תמונות"
         return res
@@ -824,6 +858,7 @@ def soc_auto_tick(G, now, env=None, sleep=None):
     hidden = soc_hidden(G)
     if hidden is None:
         return {"ran": True, "skipped": "hidden"}
+    waiting0 = dict(scfg.get("waiting") or {})
     plan = soc_plan_round(rows, scfg, history, now, hidden, blocked_now(now))
     _social_mutate(G, lambda s: s.update(known=plan["state"]["known"], waiting=plan["state"]["waiting"], last_tick=now))
     if plan["flood"]:
@@ -837,7 +872,11 @@ def soc_auto_tick(G, now, env=None, sleep=None):
                 rest = plan["publish"][i:]
                 _social_mutate(G, lambda s: s.__setitem__("waiting", dict(s.get("waiting") or {}, **{x: now for x in rest})))
                 break
-        done.append(soc_run_one(G, k, "auto", "", env=env))
+        res = soc_run_one(G, k, "auto", "", env=env)
+        done.append(res)
+        if (res or {}).get("placeholder"):   # [01/11] חוזר להמתנה עם הזמן המקורי — עד שיעלו תמונות אמיתיות (או שיפוג)
+            t0 = float(waiting0.get(k, now))
+            _social_mutate(G, lambda s, k=k, t0=t0: s.__setitem__("waiting", dict(s.get("waiting") or {}, **{k: t0})))
     return {"ran": True, "published": plan["publish"], "results": done, "flood": plan["flood"]}
 
 
