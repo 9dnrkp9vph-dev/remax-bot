@@ -561,10 +561,43 @@ def _d360_post_message(payload):
     ok = bool(r.ok and isinstance(j, dict) and j.get("messages"))
     # [CRM-3 19/10] אייל: "כמה הודעות יצאו מתוך הוואטסאפ הרשמי" — כל שליחה (טקסט/תבנית/מסמך) עוברת כאן
     try:
-        _log_activity("וואטסאפ רשמי", "system", "", "וואטסאפ רשמי — " + ("נשלח" if ok else "נכשל"), _wa_payload_detail(payload))
+        _det = _wa_payload_detail(payload)
+        if not ok:   # [01/11 אייל] קוד השגיאה של 360dialog ביומן — לראות מיד למה נדחה
+            _e = _d360_err(r)
+            if _e:
+                _det = str(_det or "")[:280] + " · שגיאה: " + _e   # בסוף — לוח הבקרה קורא 'למי · תבנית' מההתחלה
+        _log_activity("וואטסאפ רשמי", "system", "", "וואטסאפ רשמי — " + ("נשלח" if ok else "נכשל"), _det)
     except Exception:
         pass
     return ok, r
+
+def _d360_err(r):
+    """תשובת שגיאה של 360dialog/Meta → 'HTTP 400 · 131047 · הסבר' (עד 200 תווים). בלי תשובה → ''."""
+    if r is None:
+        return ""
+    try:
+        st = int(getattr(r, "status_code", 0) or 0)
+    except Exception:
+        st = 0
+    code, msg = "", ""
+    try:
+        j = r.json()
+    except Exception:
+        j = None
+    if isinstance(j, dict):
+        er = j.get("error")
+        if not isinstance(er, dict):
+            ers = j.get("errors")
+            er = ers[0] if isinstance(ers, list) and ers and isinstance(ers[0], dict) else None
+        if isinstance(er, dict):
+            code = str(er.get("code") or "")
+            det = (er.get("error_data") or {}).get("details") if isinstance(er.get("error_data"), dict) else ""
+            msg = " — ".join(x for x in (str(er.get("message") or er.get("title") or ""), str(det or "")) if x)
+        elif isinstance(j.get("meta"), dict):
+            msg = str(j["meta"].get("developer_message") or "")
+    elif st:
+        msg = str(getattr(r, "text", "") or "")[:60]
+    return " · ".join(x for x in ("HTTP %d" % st if st else "", code, msg.strip()) if x)[:200]
 
 def _d360_send_text(to: str, text: str, force_template=False):
     global _WA_LAST
