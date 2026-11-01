@@ -318,8 +318,10 @@ def soc_jpeg(raw, square):
         bg = im.resize((max(1, int(w * sc)), max(1, int(h * sc))))
         l, t = (bg.width - S) // 2, (bg.height - S) // 2
         bg = bg.crop((l, t, l + S, t + S)).filter(ImageFilter.GaussianBlur(28))
-        fg = im.copy()
-        fg.thumbnail((S, S))
+        # [01/11] התמונה ממלאת את הריבוע ברוחב (או בגובה, לתמונה לאורך) — גם מוגדלת. thumbnail לא מגדיל,
+        # ותמונות יד2 (~800px) ישבו בחצי גודל באמצע ריבוע של 1440.
+        fs = min(S / w, S / h)
+        fg = im.resize((max(1, round(w * fs)), max(1, round(h * fs))), Image.LANCZOS)
         bg.paste(fg, ((S - fg.width) // 2, (S - fg.height) // 2))
         im = bg
     else:
@@ -356,15 +358,27 @@ class ImgStore:
             self._d.pop(k, None)
 
 
+def soc_big_url(src_url):
+    """[01/11] תמונת יד2 בגודל המלא: הכתובת הרגילה מחזירה ~384–720px, ו-?c=6 מחזירה את המקור (1100–2000px)."""
+    u = str(src_url or "")
+    if "img.yad2.co.il" not in u:
+        return u
+    return u.split("?", 1)[0] + "?c=6"
+
+
 def soc_fetch_jpeg(http, src_url, square):
-    """הורדה מהמקור והמרה ל-JPEG; כל כשל → None (התמונה מדולגת)."""
-    try:
-        r = http.get(src_url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
-        if getattr(r, "status_code", 0) >= 400:
-            return None
-        return soc_jpeg(getattr(r, "content", b""), square)
-    except Exception:
-        return None
+    """הורדה מהמקור והמרה ל-JPEG; קודם בגודל המלא, ואם נכשל — הכתובת המקורית. כל כשל → None (התמונה מדולגת)."""
+    for url in dict.fromkeys((soc_big_url(src_url), src_url)):
+        try:
+            r = http.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+            if getattr(r, "status_code", 0) >= 400:
+                continue
+            j = soc_jpeg(getattr(r, "content", b""), square)
+            if j:
+                return j
+        except Exception:
+            continue
+    return None
 
 
 # ── לקוח Meta Graph ──────────────────────────────────────────────────────────────
