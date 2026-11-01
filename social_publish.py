@@ -40,6 +40,21 @@ def soc_scrub_phones(text):
     return re.sub(r"[ \t]{2,}", " ", t)
 
 
+def soc_scrub_house(text, street):
+    """מוחק מספר בית שבא אחרי שם הרחוב של הנכס (גם אחרי המילה האחרונה בלבד, 'מס'' ו-'14א').
+    הכותרת כבר בלי מספר בית — זה מכסה את התיאור שבעל הנכס כתב. רחובות אחרים ומספרים אחרים לא נוגעים."""
+    t = str(text or "")
+    words = re.sub(r"[\d/]+[א-ת]?\s*$", "", _norm(street)).split()
+    if not words:
+        return t
+    num = r"\s*(?:מס['׳]?\s*)?\d+[א-ת]?(?:/\d+)?(?!\d|[.,]\d)"
+    for name in {" ".join(words), words[-1]}:
+        if len(name) < 2:
+            continue
+        t = re.sub("(" + re.escape(name).replace(r"\ ", r"\s+") + ")" + num, r"\1", t)
+    return re.sub(r"[ \t]{2,}", " ", t)
+
+
 def _num(v):
     """'4' / '4.0' / '4.5' / 4 → '4' / '4.5'; לא-מספר → מחרוזת נקייה."""
     s = str(v if v is not None else "").strip()
@@ -123,7 +138,7 @@ def soc_build_post(row, office_name, clean_desc, feats):
     what = " ".join(x for x in ((kind if kind and kind != "דירה" else ""),
                                  (rooms + " חדרים" if rooms and rooms != "0" else "")) if x) or (kind or "נכס")
     lines = [("🏡 " + ("להשכרה" if rent else "למכירה") + " · " + what + ((" ב" + where) if where else ""))]
-    street = _norm(row.get("כתובת"))
+    street = re.sub(r"\s*(?:מס['׳]?\s*)?[\d/]+[א-ת]?\s*$", "", _norm(row.get("כתובת")))
     if street:
         lines.append("📍 " + street)
     pr = _price(row.get("מחיר"))
@@ -138,6 +153,7 @@ def soc_build_post(row, office_name, clean_desc, feats):
     if ft:
         lines.append("✔ " + " · ".join(ft))
     desc = soc_scrub_phones(clean_desc(row.get("_desc_ae") or row.get("תיאור") or ""))
+    desc = soc_scrub_house(desc, row.get("כתובת"))
     desc = _cut(re.sub(r"\s+\n", "\n", desc), DESC_MAX)
     parts = ["\n".join(lines)]
     if desc:
