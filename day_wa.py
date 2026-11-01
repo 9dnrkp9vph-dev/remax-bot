@@ -127,3 +127,19 @@ def day_wa_due(now, rec, quiet, hour, now_ts=None):
     if now.hour < hour or now.weekday() == WEEKEND_DAY or quiet or rec.get("ok"):
         return False
     return int(rec.get("tries") or 0) < 8 and (now_ts - float(rec.get("ts") or 0)) >= 900
+
+
+def day_wa_target(now, d=None, early_hour=4):
+    """[02/11 אייל, 'זה שלח לי דוח של ה-2. אני רוצה של אתמול'] לאיזה רגע בונים דוח ידני:
+    d='YYYY-MM-DD' → סוף אותו יום; בלי d ולפני early_hour בלילה → סוף אתמול (שליחה אחרי חצות = הדוח של היום שנגמר);
+    אחרת → עכשיו. תאריך לא תקין → עכשיו."""
+    import datetime as _d
+    end = lambda day: now.replace(year=day.year, month=day.month, day=day.day, hour=23, minute=59, second=59, microsecond=0)
+    if d:
+        try:
+            return end(_d.date.fromisoformat(str(d).strip()))
+        except ValueError:
+            return now
+    if now.hour < early_hour:
+        return end(now.date() - _d.timedelta(days=1))
+    return now

@@ -131,4 +131,13 @@ ck("_report_auth_ok()" in rt and "_day_wa_build_and_send" in rt and "v2_day_wa" 
 ck("_day_wa_build_and_send(" in tick, "ה-21:00 משתמש באותה בנייה")
 EV = open(os.path.join(ROOT, "effie_v2.py"), encoding="utf-8").read()
 ck("daySend()" in EV and "/api/day-wa/send" in EV and "שלח דוח ערב עכשיו" in EV, "כפתור בניהול")
+# 12. [02/11 אייל] שליחה ידנית: d=יום → סוף אותו יום; לפני 04:00 → אתמול; אחרת עכשיו
+N0 = dt.datetime(2026, 11, 2, 0, 10, tzinfo=IL)
+tg = W.day_wa_target(N0)
+ck(tg.date() == DAY and (tg.hour, tg.minute) == (23, 59) and tg.tzinfo is IL, tg)
+ck(W.day_wa_target(N0, "2026-10-30").date() == dt.date(2026, 10, 30), "d")
+ck(W.day_wa_target(N0, "זבל") == N0, "d לא תקין")
+N1 = dt.datetime(2026, 11, 2, 14, 0, tzinfo=IL)
+ck(W.day_wa_target(N1) == N1, "בצהריים = עכשיו")
+ck("day_wa_target(" in SRC.split('@app.route("/api/day-wa/send"')[1][:1500], "ראוט משתמש ביעד")
 print("OK", n, "checks")

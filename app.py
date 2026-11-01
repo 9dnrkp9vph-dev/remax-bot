@@ -13102,17 +13102,20 @@ def _day_wa_tick(now):
 
 @app.route("/api/day-wa/send", methods=["POST", "GET"])
 def api_day_wa_send():
-    """[DAY-WA 01/11 אייל] 'שלח דוח ערב עכשיו' — הדוח של היום עד הרגע הזה, ברקע. לא מסמן את היום: ה-21:00 יוצא כרגיל."""
+    """[DAY-WA 01/11 אייל] 'שלח דוח ערב עכשיו' — הדוח של היום עד הרגע הזה, ברקע. לא מסמן את היום: ה-21:00 יוצא כרגיל.
+    [02/11] ?d=YYYY-MM-DD = יום מסוים; לפני 04:00 בלילה בלי d = אתמול (day_wa_target)."""
     if not _report_auth_ok():
         return jsonify({"ok": False, "error": "forbidden"}), 403
+    import day_wa as _dw
+    target = _dw.day_wa_target(_dt.datetime.now(_rep_tz()), request.args.get("d") or (request.get_json(silent=True) or {}).get("d"))
     def _run():
         try:
-            ok, _t = _day_wa_build_and_send(_dt.datetime.now(_rep_tz()))
+            ok, _t = _day_wa_build_and_send(target)
             log.info(f"day wa manual: {'sent' if ok else 'failed'}")
         except Exception as e:
             log.warning(f"day wa manual: {e}")
     _threading.Thread(target=_run, daemon=True, name="day-wa-manual").start()
-    return jsonify({"ok": True, "queued": True})
+    return jsonify({"ok": True, "queued": True, "day": target.date().isoformat()})
 
 def _report_daily_loop():
     """שליחה אוטומטית פעם ביום ב-REPORT_HOUR (שעון ישראל) — idempotent דרך הקונפיג (v2_daily_report[יום])."""
