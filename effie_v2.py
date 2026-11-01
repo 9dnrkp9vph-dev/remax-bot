@@ -7457,7 +7457,7 @@ function propCard(p, i){
 var SHARE = {};
 function shareRow(p, i){
   if (MODE === 'shtaf' || MODE === 'nb' || !p || !p.pkey) return '';
-  var st = SHARE[p.pkey] || {}, lbl = st.busy ? 'מכין את התמונות…' : st.files ? ('שלח עכשיו · ' + st.files.length + ' תמונות') : 'שלח ללקוח עם תמונות';
+  var st = SHARE[p.pkey] || {}, lbl = st.busy ? 'מכין את התמונות…' : st.files ? ('שלח עכשיו · ' + st.files.length + ' תמונות') : 'מלל ותמונות';
   return '<div style="margin-top:8px"><button onclick="shareProp(' + i + ', this)" ' + (st.busy ? 'disabled ' : '') +
     'style="width:100%;min-height:44px;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;border:none;background:#157A43;color:#fff;' +
     'display:flex;align-items:center;justify-content:center;gap:7px">' +
