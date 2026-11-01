@@ -7636,6 +7636,12 @@ def api_deals():
     imported = any(it.get("src") == "reminders" for it in all_items) and any(it.get("src") == "sales2026" for it in all_items)
     return _etag_wrap({"ok": True, "role": s["role"], "name": eff["name"], "items": items, "agents": agents, "imported": imported})
 
+def _il_today():
+    """[02/11] התאריך של היום בשעון ישראל (השרת ב-UTC — בין חצות ל-02:00 נרשם אתמול)."""
+    from datetime import datetime as _d
+    from zoneinfo import ZoneInfo
+    return _d.now(ZoneInfo("Asia/Jerusalem")).strftime("%d/%m/%Y")
+
 @app.route("/api/deals/save", methods=["POST"])
 def api_deals_save():
     s = _web_auth()
@@ -7669,7 +7675,7 @@ def api_deals_save():
             "sale_price": str(b.get("sale_price", "") or "").strip(),
             # תאריך סגירה לא חובה — אם ריק בעסקה, ברירת מחדל = היום (רגע השמירה)
             "close_date": (str(b.get("close_date", "") or "").strip()
-                           or (time.strftime("%d/%m/%Y") if b.get("deal") else "")),
+                           or (_il_today() if b.get("deal") else "")),
             # שדות אפי (טופס 24a/27a): שלב בתהליך + עמלה (אוטומטית 2%+מע"מ או ידנית)
             "stage": str(b.get("stage", "") or "").strip(),
             "commission": str(b.get("commission", "") or "").strip(),
@@ -7683,7 +7689,7 @@ def api_deals_save():
             rec["by"] = existing.get("by", s["name"])
             items = [rec if it.get("id") == rec["id"] else it for it in items]
         else:
-            rec["created"] = time.strftime("%d/%m/%Y")
+            rec["created"] = _il_today()
             rec["ts"] = time.time()
             rec["by"] = s["name"]
             items.append(rec)

@@ -28,16 +28,21 @@ def day_wa_counts(day, nb_status, sigs, deals, excl_now, canon):
     sigs = [{agent, address, type, signed, ts}] (goals.g_sigs); deals = _deals_load(); excl_now = נכסי משרד בבלעדיות."""
     b = day_bounds(day)
     nm = lambda s: canon(str(s or "").strip()) or "—"
-    out = {"meetings": None, "meetings_by": [], "buyers_sign": None, "buyers_sign_by": [], "gius": None, "gius_by": [],
+    out = {"meetings": None, "meetings_by": [], "meetings_coord": [], "buyers_sign": None, "buyers_sign_by": [], "gius": None, "gius_by": [],
            "deals_new": None, "deals_new_by": [], "open_now": None, "closed": None, "closed_by": [], "closed_month": None,
            "excl_now": None if _bad(excl_now) else int(excl_now)}
 
     if not _bad(nb_status):
-        by = _Counter()
+        # [02/11 אייל+מתן, 'פגישות / מי תיאם' שגוי] לפי הסוכן שהפגישה שלו; מי שתיאם לסוכן אחר — בשורה נפרדת
+        by, coord = _Counter(), _Counter()
         for rec in (nb_status or {}).values():
             if isinstance(rec, dict) and rec.get("status") == "meeting" and _in(parse_ts(rec.get("meeting_at")), b):
-                by[nm(rec.get("by") or rec.get("agent"))] += 1
-        out["meetings"], out["meetings_by"] = sum(by.values()), _top(by)
+                ag = nm(rec.get("agent") or rec.get("by"))
+                by[ag] += 1
+                cb = nm(rec.get("by")) if str(rec.get("by") or "").strip() else ag
+                if cb != ag:
+                    coord[cb] += 1
+        out["meetings"], out["meetings_by"], out["meetings_coord"] = sum(by.values()), _top(by), _top(coord)
 
     if not _bad(sigs):
         sby = _Counter()
@@ -55,9 +60,13 @@ def day_wa_counts(day, nb_status, sigs, deals, excl_now, canon):
         out["gius"], out["gius_by"] = sum(gby.values()), _top(gby)
 
     if not _bad(deals):
-        first = lambda it: nm((it.get("agents") or [it.get("by")])[0])
+        # [02/11 מתן: 'תהליכים לא טוב · בן קדוש 2 · רויטל 3', 'עסקאות שנחתמו — אלי ויהודית 1'] תהליך/עסקה משותפים
+        # נזקפים לכל אחד מהסוכנים שבהם (לא רק לראשון); המספר הכולל = מספר התהליכים / העסקאות
+        def who(it):
+            names = [nm(a) for a in (it.get("agents") or []) if str(a or "").strip()] or [nm(it.get("by"))]
+            return list(dict.fromkeys(names))
         new, closed = _Counter(), _Counter()
-        open_now = closed_month = 0
+        open_now = closed_month = n_new = n_closed = 0
         m0 = day_bounds(day.replace(day=1))[0]          # מתחילת החודש עד סוף היום
         for it in deals or []:
             if not isinstance(it, dict):
@@ -66,15 +75,19 @@ def day_wa_counts(day, nb_status, sigs, deals, excl_now, canon):
                 open_now += 1
             c = parse_ts(it.get("created")) if it.get("created") else parse_ts(it.get("ts"))
             if _in(c, b):
-                new[first(it)] += 1
+                n_new += 1
+                for a in who(it):
+                    new[a] += 1
             if it.get("deal"):
                 cts = parse_ts(it.get("close_date"))
                 if _in(cts, b):
-                    closed[first(it)] += 1
+                    n_closed += 1
+                    for a in who(it):
+                        closed[a] += 1
                 if _in(cts, (m0, b[1])):
                     closed_month += 1
-        out.update(deals_new=sum(new.values()), deals_new_by=_top(new), open_now=open_now,
-                   closed=sum(closed.values()), closed_by=_top(closed), closed_month=closed_month)
+        out.update(deals_new=n_new, deals_new_by=_top(new), open_now=open_now,
+                   closed=n_closed, closed_by=_top(closed), closed_month=closed_month)
     return out
 
 
@@ -94,6 +107,8 @@ def day_wa_text(c, day_str, office=""):
         day_str,
         "",
         "פגישות שתואמו היום: %s%s" % (_v(c["meetings"]), _who(c["meetings_by"])),
+    ] + (["מתוכן תיאמו לסוכנים: " + ", ".join("%s %d" % (a, k) for a, k in c["meetings_coord"])]
+         if c.get("meetings_coord") else []) + [
         "גיוסים היום: %s%s" % (_v(c["gius"]), _who(c["gius_by"])),
         "החתמות קונים היום: %s%s" % (_v(c["buyers_sign"]), _who(c["buyers_sign_by"])),
         "תהליכים חדשים היום: %s%s" % (_v(c["deals_new"]), _who(c["deals_new_by"])),
