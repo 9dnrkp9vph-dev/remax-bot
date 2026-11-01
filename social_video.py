@@ -224,3 +224,143 @@ def vid_gc(files, recs_by_token, now):
             out.append(tok)
             total -= size
     return out
+
+
+# ── שכבות טקסט (Pillow + bidi + Heebo) — גרסה א' "קולנועי" ──────────────────────
+NAVY0 = (14, 29, 51)
+GOLD = (228, 197, 107)
+WHITE = (255, 255, 255)
+SHADE = (8, 16, 30)
+_FONT_PATH = None
+
+
+def _font(size, weight=800):
+    from PIL import ImageFont
+    import os
+    global _FONT_PATH
+    if _FONT_PATH is None:
+        _FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "Heebo-VF.ttf")
+    f = ImageFont.truetype(_FONT_PATH, size)
+    try:
+        f.set_variation_by_axes([weight])
+    except Exception:
+        pass
+    return f
+
+
+def _rtl(s):
+    try:
+        from bidi.algorithm import get_display
+        return get_display(str(s or ""))
+    except Exception:   # pragma: no cover
+        return str(s or "")
+
+
+def _fit(d, s, size, weight, maxw):
+    """מקטין את הגופן עד שהשורה נכנסת לרוחב maxw."""
+    f = _font(size, weight)
+    while size > 24 and d.textlength(_rtl(s), font=f) > maxw:
+        size -= 4
+        f = _font(size, weight)
+    return f
+
+
+def _txt(d, x, y, s, size, weight, fill, anchor="ra"):
+    if not s:
+        return
+    f = _fit(d, s, size, weight, SAFE[2] - SAFE[0])
+    d.text((x, y), _rtl(s), font=f, fill=fill, anchor=anchor)
+
+
+def _logo(L, path, y=SAFE[1], h=150):
+    """לוגו המשרד על מלבן לבן (פינות ישרות), ממורכז (אייל: גדול, מלבני)."""
+    from PIL import Image, ImageDraw
+    try:
+        lg = Image.open(path).convert("RGBA")
+    except Exception:
+        return
+    r = (h - 40) / lg.height
+    lg = lg.resize((max(1, int(lg.width * r)), h - 40), Image.LANCZOS)
+    pw = lg.width + 64
+    box = Image.new("RGBA", (pw, h), (0, 0, 0, 0))
+    ImageDraw.Draw(box).rectangle((0, 0, pw - 1, h - 1), fill=(255, 255, 255, 240))
+    box.alpha_composite(lg, (32, 20))
+    L.alpha_composite(box, ((W - pw) // 2, y))
+
+
+def _shade(top=0.30, bottom=0.55, a_top=150, a_bot=210):
+    from PIL import Image, ImageDraw
+    L = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(L)
+    for y in range(H):
+        a = 0
+        if y < H * top:
+            a = int(a_top * (1 - y / (H * top)))
+        if y > H * (1 - bottom):
+            a = max(a, int(a_bot * ((y - H * (1 - bottom)) / (H * bottom))))
+        if a:
+            d.line([(0, y), (W, y)], fill=SHADE + (a,))
+    return L
+
+
+def _band(L, y0, y1, a=150, soft=120):
+    """רצועה כהה רכה מאחורי טקסט באמצע התמונה."""
+    from PIL import Image, ImageDraw
+    B = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(B)
+    for y in range(max(0, y0 - soft), min(H, y1 + soft)):
+        k = 1.0 if y0 <= y <= y1 else 1 - min(abs(y - y0), abs(y - y1)) / soft
+        d.line([(0, y), (W, y)], fill=SHADE + (int(a * k),))
+    return Image.alpha_composite(L, B)
+
+
+def _chip(d, xr, y, s, size=34, h=64, pad=22):
+    if not s:
+        return
+    f = _font(size, 800)
+    w = d.textlength(_rtl(s), font=f) + pad * 2
+    d.rounded_rectangle((xr - w, y, xr, y + h), radius=h // 2, fill=GOLD + (255,))
+    d.text((xr - pad, y + h // 2), _rtl(s), font=f, fill=NAVY0 + (255,), anchor="rm")
+
+
+def vid_layers(texts, timeline, logo_path, ai, out_dir):
+    """PNG שקוף 1080×1920 לכל קטע בציר הזמן → {שם קטע: נתיב}."""
+    from PIL import Image, ImageDraw
+    import os
+    os.makedirs(out_dir, exist_ok=True)
+    xr, cx = SAFE[2] - 5, W // 2
+    o, s2, s3, e = texts["open"], texts["s2"], texts["s3"], texts["end"]
+    out = {}
+    for name, _dur in timeline:
+        if name in ("ai", "kb"):
+            L = _shade()
+            _logo(L, logo_path)
+            d = ImageDraw.Draw(L)
+            _chip(d, xr, 760, o.get("chip"))
+            _txt(d, xr, 846, o.get("title"), 96, 800, WHITE)
+            _txt(d, xr, 966, o.get("place"), 46, 600, WHITE)
+            _txt(d, xr, 1040, o.get("price"), 104, 800, GOLD)
+            if name == "ai":
+                _txt(d, xr, 1205, "הדמיית תנועה", 26, 500, (255, 255, 255, 215))
+        elif name in ("s2", "s3"):
+            t = s2 if name == "s2" else s3
+            L = _band(_shade(top=0.3, bottom=0.2, a_bot=90), 890, 1080) if t.get("main") else _shade(top=0.3, bottom=0.2, a_bot=90)
+            _logo(L, logo_path)
+            d = ImageDraw.Draw(L)
+            first, second = (WHITE, GOLD) if name == "s2" else (GOLD, WHITE)
+            _txt(d, cx, 900, t.get("main"), 80 if name == "s2" else 84, 800, first, anchor="ma")
+            _txt(d, cx, 1010, t.get("sub"), 56, 700, second, anchor="ma")
+        else:
+            L = Image.alpha_composite(Image.new("RGBA", (W, H), SHADE + (165,)), _shade())
+            _logo(L, logo_path)
+            d = ImageDraw.Draw(L)
+            _txt(d, cx, 790, e.get("recap"), 52, 700, WHITE, anchor="ma")
+            if e.get("agent") or e.get("phone"):
+                _txt(d, cx, 900, "לפרטים", 40, 500, (220, 225, 235), anchor="ma")
+            _txt(d, cx, 955, e.get("agent"), 88, 800, WHITE, anchor="ma")
+            _txt(d, cx, 1068, e.get("phone"), 80, 800, GOLD, anchor="ma")
+            _txt(d, cx, 1180, e.get("cta"), 40, 500, WHITE, anchor="ma")
+        p = os.path.join(out_dir, "%s.png" % name)
+        L.save(p)
+        out[name] = p
+    return out
