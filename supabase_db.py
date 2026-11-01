@@ -1616,6 +1616,100 @@ def social_recent(days):
     return _get_all("social_posts", "*", {"created_at": "gte." + since, "order": "created_at.desc"})
 
 
+# ── [SOCIAL-VIDEO 02/11] סרטוני סטורי+ריל — social_videos + קישורי וואטסאפ social_links ──
+def _sv_post(table, rec):
+    try:
+        row = dict(rec or {}, office_id=SB_OFFICE_ID)
+        r = requests.post(SUPABASE_URL + "/rest/v1/" + table,
+                          headers={**_headers(), "Prefer": "return=representation"},
+                          json=[row], timeout=_TIMEOUT)
+        r.raise_for_status()
+        out = r.json() or []
+        return out[0] if out else None
+    except Exception:
+        return None
+
+
+def video_insert(rec):
+    return _sv_post("social_videos", rec)
+
+
+def video_update(vid, fields):
+    try:
+        body = dict(fields or {}, updated_at=_dt.datetime.now(_dt.timezone.utc).isoformat())
+        r = requests.patch(SUPABASE_URL + "/rest/v1/social_videos", headers=_headers(),
+                           params={"id": "eq." + str(vid), "office_id": "eq." + SB_OFFICE_ID},
+                           json=body, timeout=_TIMEOUT)
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def video_claim(vid, frm, to, fields):
+    """מעבר מצב אטומי (frm→to) — True רק אם השורה עוד הייתה ב-frm (לחיצה ראשונה קובעת)."""
+    try:
+        body = dict(fields or {}, status=to, updated_at=_dt.datetime.now(_dt.timezone.utc).isoformat())
+        r = requests.patch(SUPABASE_URL + "/rest/v1/social_videos",
+                           headers={**_headers(), "Prefer": "return=representation"},
+                           params={"id": "eq." + str(vid), "office_id": "eq." + SB_OFFICE_ID,
+                                   "status": "eq." + str(frm)},
+                           json=body, timeout=_TIMEOUT)
+        r.raise_for_status()
+        return len(r.json() or []) == 1
+    except Exception:
+        return False
+
+
+def video_get(vid):
+    try:
+        r = requests.get(SUPABASE_URL + "/rest/v1/social_videos", headers=_headers(),
+                         params={"select": "*", "id": "eq." + str(vid), "office_id": "eq." + SB_OFFICE_ID},
+                         timeout=_TIMEOUT)
+        r.raise_for_status()
+        out = r.json() or []
+        return out[0] if out else None
+    except Exception:
+        return None
+
+
+def video_recent(days):
+    """כל הסרטונים של המשרד מ-days הימים האחרונים, החדש קודם."""
+    since = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=int(days))).isoformat()
+    return _get_all("social_videos", "*", {"created_at": "gte." + since, "order": "created_at.desc"})
+
+
+def link_insert(rec):
+    return _sv_post("social_links", rec)
+
+
+def link_get(code):
+    try:
+        r = requests.get(SUPABASE_URL + "/rest/v1/social_links", headers=_headers(),
+                         params={"select": "*", "code": "eq." + str(code), "office_id": "eq." + SB_OFFICE_ID},
+                         timeout=_TIMEOUT)
+        r.raise_for_status()
+        out = r.json() or []
+        return out[0] if out else None
+    except Exception:
+        return None
+
+
+def link_click(code):
+    """clicks+1 (קריאה ואז כתיבה — מונה סטטיסטי, תחרות נדירה מקובלת)."""
+    try:
+        cur = link_get(code)
+        if not cur:
+            return
+        requests.patch(SUPABASE_URL + "/rest/v1/social_links", headers=_headers(),
+                       params={"code": "eq." + str(code), "office_id": "eq." + SB_OFFICE_ID},
+                       json={"clicks": int(cur.get("clicks") or 0) + 1,
+                             "last_click_at": _dt.datetime.now(_dt.timezone.utc).isoformat()},
+                       timeout=_TIMEOUT)
+    except Exception:
+        pass
+
+
 # ── [DEALS-HISTORY 12/10] היסטוריית עסקאות ──────────────────────────────────────
 _DH_COLS = ("id,src_key,branch,year,src_sheet,src_row,src_serial,deal_date,city,street,side,agent,"
             "client_name,client_phone,other_broker,deal_amount,commission_gross,commission_net,discount,"
