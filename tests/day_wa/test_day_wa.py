@@ -97,8 +97,16 @@ ck(not W.day_wa_due(d_("2026-11-01 23:00"), {"ok": False, "ts": T - 9999, "tries
 SRC = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
 loop = SRC.split("def _report_daily_loop_body")[1][:4000]
 ck("_day_wa_tick(now)" in loop, "tick בלולאה")
-tick = SRC.split("def _day_wa_tick")[1][:3500]
+tick = SRC.split("def _day_wa_tick")[1][:3500] + SRC.split("def _day_wa_build_and_send")[1][:3500]
 for s in ("_shabbat_quiet_now()", "DAY_WA", "v2_day_wa", "OWNER_PUSH_ID", "send_text(", "nbStatus", "_deals_load",
           "get_signings", "fetch_sheet_rows", "_config_mutate", "_display_name_for", "by_phone"):
     ck(s in tick, "tick: " + s)
+
+# 11. [01/11 אייל] 'שלח דוח ערב עכשיו' — כפתור בניהול; לא מסמן את היום (ה-21:00 עדיין יוצא)
+ck('@app.route("/api/day-wa/send"' in SRC, "ראוט שליחה ידנית")
+rt = SRC.split('@app.route("/api/day-wa/send"')[1][:1500]
+ck("_report_auth_ok()" in rt and "_day_wa_build_and_send" in rt and "v2_day_wa" not in rt, "ראוט: הרשאה, בנייה, בלי סימון היום")
+ck("_day_wa_build_and_send(" in tick, "ה-21:00 משתמש באותה בנייה")
+EV = open(os.path.join(ROOT, "effie_v2.py"), encoding="utf-8").read()
+ck("daySend()" in EV and "/api/day-wa/send" in EV and "שלח דוח ערב עכשיו" in EV, "כפתור בניהול")
 print("OK", n, "checks")

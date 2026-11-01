@@ -2815,6 +2815,11 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <button onclick="wkSend()" style="flex:1;padding:12px 0;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">שלח סיכום שבועי</button>
         <button onclick="location.href='/api/weekly-report?token=' + encodeURIComponent(TOK || '')" style="flex:1;padding:12px 0;border:1.5px solid #1E3A5F;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">הצג סיכום שבועי</button>
       </div>
+      <!-- [DAY-WA 01/11] דוח ערב בוואטסאפ — אוטומטי כל יום ב-21:00; הכפתור שולח את היום עד עכשיו -->
+      <div style="font-size:12px;color:#6B7280;margin-top:10px">דוח ערב בוואטסאפ (פגישות, החתמות קונים, תהליכים, בלעדיות, גיוסים, עסקאות) נשלח אוטומטית כל יום ב-21:00</div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button onclick="daySend()" style="flex:1;min-height:44px;padding:12px 0;border:none;border-radius:12px;background:#157A43;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">שלח דוח ערב עכשיו</button>
+      </div>
     </div>
 
     <!-- הגדרות המשרד -->
@@ -3235,6 +3240,11 @@ function repSend(d){
       }).catch(function(){});
       if (++n >= 36){ clearInterval(_repPoll); toast('עדיין מפיק… תרענן את הדף בעוד דקה'); }
     }, 5000);   // עד 3 דקות
+  }).catch(function(){ toast('שגיאה'); });
+}
+function daySend(){
+  POST('/api/day-wa/send', {}).then(function(j){
+    toast(j && j.ok ? 'דוח הערב מופק ונשלח — יגיע לוואטסאפ שלך תוך דקה' : 'לא התקבל: ' + ((j && (j.msg || j.error)) || 'שגיאה'));
   }).catch(function(){ toast('שגיאה'); });
 }
 function wkSend(){

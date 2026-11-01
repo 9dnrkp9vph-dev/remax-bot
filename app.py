@@ -12905,20 +12905,11 @@ def _ai_digest_tick(now):
     _config_mutate(_mark)
     return True
 
-def _day_wa_tick(now):
-    """[DAY-WA 01/11 אייל] דוח ערב בוואטסאפ לבעל המשרד, כל יום ב-21:00 (DAY_WA_HOUR): פגישות שתואמו ומי תיאם, החתמות
-    קונים, תהליכים חדשים + סה"כ פתוחים, נכסים בבלעדיות, גיוסים ומי גייס, עסקאות שנסגרו — מהבוקר (day_wa.py).
-    לא בשבת ולא בחלון שבת/חג. פעם ביום (v2_day_wa[תאריך]); כשל → ניסיון חוזר כל 15 דק', עד 8. כיבוי: DAY_WA=0.
-    נמען: DAY_WA_TO, אחרת הנייד של בעל המשרד (OWNER_PUSH_ID)."""
-    if (os.environ.get("DAY_WA", "1") or "1") == "0":
-        return False
+def _day_wa_build_and_send(now, cfg=None):
+    """[DAY-WA 01/11] בונה את דוח הערב של היום (מהבוקר עד now) ושולח לוואטסאפ של בעל המשרד → (נשלח?, הטקסט).
+    משותף ל-21:00 ולכפתור 'שלח דוח ערב עכשיו' בניהול."""
     import day_wa as _dw
-    cfg = _load_config() or {}
-    key = now.date().isoformat()
-    store = cfg.get("v2_day_wa") or {}
-    hour = int(os.environ.get("DAY_WA_HOUR", "21") or 21)
-    if not _dw.day_wa_due(now, store.get(key), quiet=_shabbat_quiet_now(), hour=hour):
-        return False
+    cfg = cfg if cfg is not None else (_load_config() or {})
     def _src(fn, what):
         try:
             return fn()
@@ -12939,6 +12930,23 @@ def _day_wa_tick(now):
     if to.startswith("0"):
         to = "972" + to[1:]
     ok = bool(send_text(to, text))
+    return ok, text
+
+def _day_wa_tick(now):
+    """[DAY-WA 01/11 אייל] דוח ערב בוואטסאפ לבעל המשרד, כל יום ב-21:00 (DAY_WA_HOUR): פגישות שתואמו ומי תיאם, החתמות
+    קונים, תהליכים חדשים + סה"כ פתוחים, נכסים בבלעדיות, גיוסים ומי גייס, עסקאות שנסגרו — מהבוקר (day_wa.py).
+    לא בשבת ולא בחלון שבת/חג. פעם ביום (v2_day_wa[תאריך]); כשל → ניסיון חוזר כל 15 דק', עד 8. כיבוי: DAY_WA=0.
+    נמען: DAY_WA_TO, אחרת הנייד של בעל המשרד (OWNER_PUSH_ID)."""
+    if (os.environ.get("DAY_WA", "1") or "1") == "0":
+        return False
+    import day_wa as _dw
+    cfg = _load_config() or {}
+    key = now.date().isoformat()
+    store = cfg.get("v2_day_wa") or {}
+    hour = int(os.environ.get("DAY_WA_HOUR", "21") or 21)
+    if not _dw.day_wa_due(now, store.get(key), quiet=_shabbat_quiet_now(), hour=hour):
+        return False
+    ok, _msg = _day_wa_build_and_send(now, cfg)
     log.info(f"day wa {key}: {'sent' if ok else 'failed'}")
     def _mark(cc, _k=key, _ok=ok):
         st = cc.get("v2_day_wa") or {}
@@ -12949,6 +12957,20 @@ def _day_wa_tick(now):
         return True
     _config_mutate(_mark)
     return True
+
+@app.route("/api/day-wa/send", methods=["POST", "GET"])
+def api_day_wa_send():
+    """[DAY-WA 01/11 אייל] 'שלח דוח ערב עכשיו' — הדוח של היום עד הרגע הזה, ברקע. לא מסמן את היום: ה-21:00 יוצא כרגיל."""
+    if not _report_auth_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    def _run():
+        try:
+            ok, _t = _day_wa_build_and_send(_dt.datetime.now(_rep_tz()))
+            log.info(f"day wa manual: {'sent' if ok else 'failed'}")
+        except Exception as e:
+            log.warning(f"day wa manual: {e}")
+    _threading.Thread(target=_run, daemon=True, name="day-wa-manual").start()
+    return jsonify({"ok": True, "queued": True})
 
 def _report_daily_loop():
     """שליחה אוטומטית פעם ביום ב-REPORT_HOUR (שעון ישראל) — idempotent דרך הקונפיג (v2_daily_report[יום])."""
