@@ -12905,6 +12905,51 @@ def _ai_digest_tick(now):
     _config_mutate(_mark)
     return True
 
+def _day_wa_tick(now):
+    """[DAY-WA 01/11 אייל] דוח ערב בוואטסאפ לבעל המשרד, כל יום ב-21:00 (DAY_WA_HOUR): פגישות שתואמו ומי תיאם, החתמות
+    קונים, תהליכים חדשים + סה"כ פתוחים, נכסים בבלעדיות, גיוסים ומי גייס, עסקאות שנסגרו — מהבוקר (day_wa.py).
+    לא בשבת ולא בחלון שבת/חג. פעם ביום (v2_day_wa[תאריך]); כשל → ניסיון חוזר כל 15 דק', עד 8. כיבוי: DAY_WA=0.
+    נמען: DAY_WA_TO, אחרת הנייד של בעל המשרד (OWNER_PUSH_ID)."""
+    if (os.environ.get("DAY_WA", "1") or "1") == "0":
+        return False
+    import day_wa as _dw
+    cfg = _load_config() or {}
+    key = now.date().isoformat()
+    store = cfg.get("v2_day_wa") or {}
+    hour = int(os.environ.get("DAY_WA_HOUR", "21") or 21)
+    if not _dw.day_wa_due(now, store.get(key), quiet=_shabbat_quiet_now(), hour=hour):
+        return False
+    def _src(fn, what):
+        try:
+            return fn()
+        except Exception as e:
+            log.warning(f"day wa: {what} failed: {e}")
+            return None
+    excl_on = lambda v: str(v or "").strip().lower() in ("1", "1.0", "true", "yes", "כן", "בלעדי")
+    # 'מי תיאם' — מנהלים נשמרים בשם הגנרי 'מנהל'; השם האמיתי לפי הטלפון (by_phone)
+    nb = _src(lambda: {k: (dict(r, by=_display_name_for(r.get("by") or r.get("agent") or "", r.get("by_phone") or ""))
+                           if isinstance(r, dict) else r) for k, r in (cfg.get("nbStatus") or {}).items()}, "nbStatus")
+    sigs = _src(lambda: _goals.g_sigs(globals(), now.date()), "get_signings")
+    deals = _src(_deals_load, "deals")
+    excl = _src(lambda: sum(1 for r in (fetch_sheet_rows() or []) if excl_on(r.get("בלעדיות"))), "office_props")
+    c = _dw.day_wa_counts(now.date(), nb, sigs, deals, excl, canon=_canon_agent_name)
+    office = ((cfg.get("v2_office") or {}).get("name") or "").strip()
+    text = _dw.day_wa_text(c, now.strftime("%d/%m/%Y"), office)
+    to = re.sub(r"\D", "", os.environ.get("DAY_WA_TO") or "") or ("972" + OWNER_PUSH_ID)
+    if to.startswith("0"):
+        to = "972" + to[1:]
+    ok = bool(send_text(to, text))
+    log.info(f"day wa {key}: {'sent' if ok else 'failed'}")
+    def _mark(cc, _k=key, _ok=ok):
+        st = cc.get("v2_day_wa") or {}
+        prev = st.get(_k) or {}
+        st[_k] = {"ts": time.time(), "ok": _ok, "tries": int(prev.get("tries") or 0) + 1}
+        for kk in sorted(st)[:-14]: st.pop(kk, None)
+        cc["v2_day_wa"] = st
+        return True
+    _config_mutate(_mark)
+    return True
+
 def _report_daily_loop():
     """שליחה אוטומטית פעם ביום ב-REPORT_HOUR (שעון ישראל) — idempotent דרך הקונפיג (v2_daily_report[יום])."""
     import datetime as _dt
@@ -12951,6 +12996,10 @@ def _report_daily_loop_body(_dt):
                 _ai_digest_tick(now)   # [AI-DIGEST 29/10] 11:00 — מייל השינויים בטאב AI
             except Exception as _ae:
                 log.warning(f"ai digest tick: {_ae}")
+            try:
+                _day_wa_tick(now)   # [DAY-WA 01/11] 21:00 — דוח ערב בוואטסאפ לבעל המשרד
+            except Exception as _de:
+                log.warning(f"day wa tick: {_de}")
         except Exception as e:
             log.warning(f"daily report loop: {e}")
             _REPORT_LAST.update({"state": "done", "ok": False, "msg": f"לולאה: {type(e).__name__}: {str(e)[:100]}"})
