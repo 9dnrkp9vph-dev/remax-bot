@@ -29,7 +29,7 @@ def day_wa_counts(day, nb_status, sigs, deals, excl_now, canon):
     b = day_bounds(day)
     nm = lambda s: canon(str(s or "").strip()) or "—"
     out = {"meetings": None, "meetings_by": [], "buyers_sign": None, "buyers_signed": None, "gius": None, "gius_by": [],
-           "deals_new": None, "deals_new_by": [], "open_now": None, "closed": None, "closed_by": [],
+           "deals_new": None, "deals_new_by": [], "open_now": None, "closed": None, "closed_by": [], "closed_month": None,
            "excl_now": None if _bad(excl_now) else int(excl_now)}
 
     if not _bad(nb_status):
@@ -57,7 +57,8 @@ def day_wa_counts(day, nb_status, sigs, deals, excl_now, canon):
     if not _bad(deals):
         first = lambda it: nm((it.get("agents") or [it.get("by")])[0])
         new, closed = _Counter(), _Counter()
-        open_now = 0
+        open_now = closed_month = 0
+        m0 = day_bounds(day.replace(day=1))[0]          # מתחילת החודש עד סוף היום
         for it in deals or []:
             if not isinstance(it, dict):
                 continue
@@ -66,10 +67,14 @@ def day_wa_counts(day, nb_status, sigs, deals, excl_now, canon):
             c = parse_ts(it.get("created")) if it.get("created") else parse_ts(it.get("ts"))
             if _in(c, b):
                 new[first(it)] += 1
-            if it.get("deal") and _in(parse_ts(it.get("close_date")), b):
-                closed[first(it)] += 1
+            if it.get("deal"):
+                cts = parse_ts(it.get("close_date"))
+                if _in(cts, b):
+                    closed[first(it)] += 1
+                if _in(cts, (m0, b[1])):
+                    closed_month += 1
         out.update(deals_new=sum(new.values()), deals_new_by=_top(new), open_now=open_now,
-                   closed=sum(closed.values()), closed_by=_top(closed))
+                   closed=sum(closed.values()), closed_by=_top(closed), closed_month=closed_month)
     return out
 
 
@@ -81,18 +86,24 @@ def _who(pairs):
     return (" (" + ", ".join("%s %d" % (a, k) for a, k in pairs) + ")") if pairs else ""
 
 
-def day_wa_text(c, day_str, office):
-    """שורה לכל מדד — נקרא גם כשתבנית family_update מאחדת את השורות לשורה אחת."""
-    head = "דוח ערב · %s" % day_str + (" · %s" % office if office else "")
+def day_wa_text(c, day_str, office=""):
+    """[01/11 אייל, 'אני רוצה אותו ככה'] כותרת, תאריך, מדדי היום, ואז הסיכומים. שורה לכל מדד — נקרא גם כשתבנית
+    family_update מאחדת את השורות לשורה אחת. office נשאר בחתימה לתאימות, לא מוצג."""
     sign = _v(c["buyers_sign"]) + ((" (נחתמו %d)" % c["buyers_signed"]) if c["buyers_sign"] else "")
-    lines = [head, "",
-             "פגישות שתואמו: %s%s" % (_v(c["meetings"]), _who(c["meetings_by"])),
-             "החתמות קונים: %s" % sign,
-             "תהליכים חדשים: %s%s · סה\"כ פתוחים: %s" % (_v(c["deals_new"]), _who(c["deals_new_by"]), _v(c["open_now"])),
-             "נכסים בבלעדיות: %s" % _v(c["excl_now"]),
-             "גיוסים: %s%s" % (_v(c["gius"]), _who(c["gius_by"])),
-             "עסקאות שנסגרו: %s%s" % (_v(c["closed"]), _who(c["closed_by"]))]
-    return "\n".join(lines)
+    return "\n".join([
+        "דוח סיכום יום",
+        day_str,
+        "",
+        "פגישות שתואמו היום: %s%s" % (_v(c["meetings"]), _who(c["meetings_by"])),
+        "גיוסים היום: %s%s" % (_v(c["gius"]), _who(c["gius_by"])),
+        "החתמות קונים היום: %s" % sign,
+        "תהליכים חדשים היום: %s%s" % (_v(c["deals_new"]), _who(c["deals_new_by"])),
+        "עסקאות שנחתמו היום: %s%s" % (_v(c["closed"]), _who(c["closed_by"])),
+        "",
+        "סה\"כ תהליכים פתוחים: %s" % _v(c["open_now"]),
+        "סה\"כ נכסים בבלעדיות: %s" % _v(c["excl_now"]),
+        "סה\"כ עסקאות שנסגרו החודש: %s" % _v(c.get("closed_month")),
+    ])
 
 
 def day_wa_due(now, rec, quiet, hour, now_ts=None):
