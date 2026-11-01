@@ -59,3 +59,168 @@ def vid_timeline(n_slides, ai):
     if n_slides <= 1:
         return [(first, 5), ("s2", 4.5), ("end", 4.5)]
     return [(first, 5), ("s2", 4), ("s3", 2.5), ("end", 2.5)]
+
+
+# ── חיתוך ל-9:16 בלי סימן המים ──────────────────────────────────────────────────
+def _free_spans(w, cw, wm):
+    """קטעי x0 (שלמים, כולל) שבהם חלון ברוחב cw לא חופף אופקית לתיבת wm (שברים)."""
+    if not wm:
+        return [(0, w - cw)]
+    a, b = wm[0] * w, wm[2] * w
+    out = []
+    if a - cw >= 0:
+        out.append((0, int(a - cw)))
+    if b + cw <= w:
+        out.append((int(b + 0.999), w - cw))
+    return [(x, y) for x, y in out if y >= x]
+
+
+def vid_crop_box(w, h, wm, aspect=9 / 16, bias=0.5):
+    """חלון 9:16 לכל הגובה (או לכל הרוחב בתמונה צרה) שלא כולל את סימן המים; None אם אין."""
+    if w / h < aspect:
+        ch = int(w / aspect)
+        y0 = (h - ch) // 2
+        return (0, y0, w, y0 + ch)
+    cw = int(h * aspect)
+    want = bias * (w - cw)
+    spans = _free_spans(w, cw, wm)
+    if not spans:
+        return None
+    x0 = min((min(max(want, a), b) for a, b in spans), key=lambda x: abs(x - want))
+    x0 = int(round(x0))
+    return (x0, 0, x0 + cw, h)
+
+
+def vid_pan_range(w, h, wm, aspect=9 / 16):
+    """טווח תנועת המצלמה (שברים 0–1 של iw-ow) שלא נכנס לסימן המים; None אם אין."""
+    cw = int(h * aspect)
+    room = w - cw
+    if room <= 0:
+        return (0.5, 0.5)
+    if not wm:
+        return (0.25, 0.75)
+    spans = _free_spans(w, cw, wm)
+    if not spans:
+        return None
+    a, b = max(spans, key=lambda s: s[1] - s[0])
+    return (round(a / room, 4), round(b / room, 4))
+
+
+# ── מותר ליצור / תקרות ───────────────────────────────────────────────────────────
+_FINAL_BAD = ("failed", "skipped", "expired")
+
+
+def vid_can_create(row, history_videos, now, hidden, trigger):
+    """(True,'') או (False, סיבה). אותם כללי משרד/פעיל/הסתרה/מסחרי כמו בפוסטים + 2 תמונות + 14 יום לאותה דירה."""
+    ok, why = SP.soc_can_publish(row, "ig", [], now, hidden)
+    if not ok and why != "מחכה לתמונות":
+        return False, why
+    if len(SP.soc_images(row)) < 2:
+        return False, "צריך לפחות 2 תמונות"
+    key = SP._key(row.get("מספר מודעה"))
+    akey, afl = SP.soc_addr_key(row), SP.soc_floor(row)
+    for h in history_videos or []:
+        st = str(h.get("status") or "")
+        mine = SP._key(h.get("property_key")) == key or SP._same_apartment(akey, afl, h.get("addr_key"))
+        if not mine:
+            continue
+        if st in ("rendering",):
+            return False, "כבר בתהליך"
+        if st in _FINAL_BAD or st == "preview":
+            continue
+        t = SP._ts(h.get("created_at"))
+        if t is not None and now - t < REPEAT_DAYS * 86400:
+            return False, "כבר נוצר סרטון ב-%s" % SP._dm(t)
+    return True, ""
+
+
+def _month_start(now):
+    d = SP._dt.datetime.fromtimestamp(now, SP._IL)
+    return SP._dt.datetime(d.year, d.month, 1, tzinfo=SP._IL).timestamp()
+
+
+def vid_caps(history_videos, now, trigger):
+    """תקרה יומית (אוטומטי בלבד) ותקרה חודשית לקליפי AI (הכל)."""
+    today, m0 = SP._day(now), _month_start(now)
+    day_n = mon_n = 0
+    for h in history_videos or []:
+        t = SP._ts(h.get("created_at"))
+        if t is None:
+            continue
+        if h.get("trigger") == "auto" and SP._day(t) == today:
+            day_n += 1
+        if h.get("ai") and t >= m0:
+            mon_n += 1
+    if trigger == "auto" and day_n >= DAILY_CAP:
+        return False, "תקרה יומית (%d)" % DAILY_CAP
+    if mon_n >= MONTH_AI_CAP:
+        return False, "תקרה חודשית (%d קליפים)" % MONTH_AI_CAP
+    return True, ""
+
+
+# ── מכונת מצבים של האישור ────────────────────────────────────────────────────────
+_DONE_WORD = {"approved": "פורסם", "published": "פורסם", "partial": "פורסם", "skipped": "דולג"}
+
+
+def vid_decide(rec, action, who, now):
+    """(מצב חדש | None, הודעה למי שלחץ). רק מ-pending; אחרי 48ש' — פג."""
+    st = str(rec.get("status") or "")
+    if st == "expired":
+        return None, "הסרטון כבר לא בתוקף"
+    if st != "pending":
+        w = _DONE_WORD.get(st)
+        return None, ("כבר %s ע\"י %s" % (w, rec.get("decided_by") or "מישהו")) if w else "הסרטון לא ממתין לאישור"
+    sent = SP._ts(rec.get("sent_at"))
+    if sent is not None and now - sent > APPROVE_H * 3600:
+        return "expired", "הסרטון כבר לא בתוקף"
+    if action == "pub":
+        return "approved", "יעלה עכשיו"
+    return "skipped", "דולג — לא יעלה"
+
+
+def vid_publish_when(now, blocked):
+    """עכשיו, או 08:00 הבא כשחסום (לילה). שבת/חג — הקורא מעביר blocked והלולאה תנסה שוב."""
+    if not blocked:
+        return now
+    d = SP._dt.datetime.fromtimestamp(now, SP._IL)
+    t8 = d.replace(hour=8, minute=0, second=0, microsecond=0)
+    if d >= t8:
+        t8 = t8 + SP._dt.timedelta(days=1)
+    return SP._dt.datetime(t8.year, t8.month, t8.day, 8, 0, tzinfo=SP._IL).timestamp()
+
+
+# ── ניקוי קבצים ──────────────────────────────────────────────────────────────────
+_FINAL = ("skipped", "expired", "failed", "published", "preview")
+
+
+def vid_gc(files, recs_by_token, now):
+    """files=[(token, size, mtime)] → טוקנים למחיקה (הישן קודם)."""
+    D = 86400
+    out, keep = [], []
+    for tok, size, mt in sorted(files, key=lambda f: f[2]):
+        r = recs_by_token.get(tok)
+        if r is None:   # קובץ בלי רשומה (רינדור שנכשל באמצע) — אחרי יום
+            if now - mt > D:
+                out.append(tok)
+            else:
+                keep.append((tok, size, mt))
+            continue
+        st = str(r.get("status") or "")
+        upd = SP._ts(r.get("updated_at")) or mt
+        if now - mt > KEEP_MAX_DAYS * D:
+            out.append(tok)
+        elif st in _FINAL and now - upd > KEEP_FINAL_DAYS * D:
+            out.append(tok)
+        elif st == "partial" and now - upd > RETRY_DAYS * D:
+            out.append(tok)
+        else:
+            keep.append((tok, size, mt))
+    total = sum(s for _, s, _ in keep)
+    for tok, size, mt in keep:
+        if total <= DIR_MAX_BYTES:
+            break
+        r = recs_by_token.get(tok) or {}
+        if str(r.get("status") or "") in _FINAL:
+            out.append(tok)
+            total -= size
+    return out
