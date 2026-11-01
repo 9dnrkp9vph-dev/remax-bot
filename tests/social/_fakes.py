@@ -7,7 +7,7 @@ REAL_GRAPH = SP.Graph
 ROW = {"מספר מודעה": "tok1", "סוג עסקה": "מכירה", "סוג נכס": "דירה", "חדרים": "4", "שכונה": "נאות אפק",
        "עיר / ישוב": "קרית ביאליק", "כתובת": "אהוד מנור", "מספר בית": "13", "מחיר": "1890000",
        'מ"ר': "110", "קומה": "3", "_desc_ae": "דירה יפה", "_y2_first_seen": "01/11/2026 10:00",
-       "תמונות": ["https://img/a.jpg", "https://img/b.jpg"]}
+       "תמונות": ["https://img/a.jpg", "https://img/b.jpg"], "סוכן 1": "דנה לוי"}
 
 
 class SB:
@@ -64,7 +64,10 @@ def make_G(rows=None, cfg=None):
          "_load_config": lambda: st["cfg"], "_config_mutate": mutate,
          "_row_feats": lambda r: [], "_shabbat_quiet_now": lambda: False, "_quiet_mode": lambda: False,
          "_log_activity": lambda *a: st["acts"].append(a), "send_push": lambda t, b, *a, **k: st["push"].append((t, b)),
-         "_display_name_for": lambda n, p: "אייל שמול", "_sbdb": sb, "log": None}
+         "_display_name_for": lambda n, p: "אייל שמול", "_sbdb": sb, "log": None,
+         # [01/11] הסבב האוטומטי מפרסם רק לסוכן שהיה באפי 10+ דק' ב-30 יום — בבדיקות: דנה לוי פעילה
+         "_usage_rows": lambda start: [{"name": "דנה לוי", "min": 60}],
+         "_canon_key": lambda s: " ".join(str(s).split()), "_canon_agent_name": lambda s: s}
     return G, st, sb
 
 

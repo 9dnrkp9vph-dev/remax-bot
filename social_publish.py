@@ -128,8 +128,9 @@ def _cut(t, n):
     return t.rstrip(" ,.-·") + "…"
 
 
-def soc_build_post(row, office_name, clean_desc, feats):
-    """שורת נכס → {'body', 'ig_caption', 'images'}. בלי מספר בית, טלפון, שם סוכן או קישור."""
+def soc_build_post(row, office_name, clean_desc, feats, agent=None):
+    """שורת נכס → {'body', 'ig_caption', 'images'}. בלי מספר בית; טלפונים מהתיאור נמחקים.
+    agent = {'name','phone'} — שם הסוכן ווואטסאפ לנייד האישי שלו בסוף (01/11); בלי — 'לפרטים — הודעה לעמוד'."""
     rent = "שכר" in str(row.get("סוג עסקה") or "")
     rooms = _num(row.get("חדרים"))
     kind = _norm(row.get("סוג נכס"))
@@ -158,13 +159,50 @@ def soc_build_post(row, office_name, clean_desc, feats):
     parts = ["\n".join(lines)]
     if desc:
         parts.append(desc)
-    parts.append(str(office_name or "").strip() + "\nלפרטים — הודעה לעמוד")
-    body = "\n\n".join(p for p in parts if p.strip())
+    # [01/11] שם הסוכן ווואטסאפ לנייד האישי שלו (אייל: 'בפוסט עצמו'). בפייסבוק קישור wa.me;
+    # באינסטגרם קישור בטקסט לא לחיץ — המספר. בלי שם אמיתי — כמו קודם, פניות לעמוד.
+    ag = agent or {}
+    an = _norm(ag.get("name"))
+    digits = re.sub(r"\D", "", str(ag.get("phone") or ""))
+    local = ("0" + digits[3:]) if digits.startswith("972") else digits
+    if not an or not _real_agent(an):
+        fb_end = ig_end = "לפרטים — הודעה לעמוד"
+    elif len(local) == 10 and local.startswith("05"):
+        fb_end = "לפרטים: %s\nוואטסאפ: https://wa.me/972%s" % (an, local[1:])
+        ig_end = "לפרטים: %s · %s-%s-%s" % (an, local[:3], local[3:6], local[6:])
+    else:
+        fb_end = ig_end = "לפרטים: %s · הודעה לעמוד" % an
+    office = str(office_name or "").strip()
+    head = "\n\n".join(p for p in parts if p.strip())
+    body = head + "\n\n" + (office + "\n" if office else "") + fb_end
     tags = ["#נדלן", "#דירותלהשכרה" if rent else "#דירותלמכירה"]
     if city:
         tags.append("#" + city.replace(" ", "").replace("-", ""))
     tags.append("#רימקספמילי")
-    return {"body": body, "ig_caption": body + "\n\n" + " ".join(tags), "images": soc_images(row)}
+    ig = head + "\n\n" + (office + "\n" if office else "") + ig_end
+    return {"body": body, "ig_caption": ig + "\n\n" + " ".join(tags), "images": soc_images(row)}
+
+
+def _real_agent(name):
+    """שם סוכן אמיתי — לא ממלא-מקום של הסורק ('סוכן 8719', 'משרד', '(לא משויך)')."""
+    n = _norm(name)
+    return bool(n) and not re.fullmatch(r"סוכן\s*\d*", n) and n not in ("משרד", "(לא משויך)", "לא משויך")
+
+
+def soc_agent_for(G, row):
+    """{'name', 'phone'}: הסוכן של הנכס והנייד האישי שלו מאנשי הקשר (לא טלפון המודעה). כשל → בלי טלפון."""
+    name = _norm(row.get("סוכן 1") or row.get("סוכן"))
+    phone = ""
+    if name:
+        try:
+            book = G["fetch_agents_phones"]() or {}
+            phone = book.get(name, "")
+            if not phone:
+                ck = G["_canon_key"](name)
+                phone = next((v for k, v in book.items() if v and G["_canon_key"](k) == ck), "")
+        except Exception:
+            phone = ""
+    return {"name": name, "phone": str(phone or "")}
 
 
 # ── מתי מותר לפרסם ───────────────────────────────────────────────────────────────
@@ -244,7 +282,33 @@ def _is_night(now):
     return h >= NIGHT[0] or h < NIGHT[1]
 
 
-def soc_plan_round(rows, state, history, now, hidden, blocked):
+# [01/11, אייל] פרסום אוטומטי רק לנכסים של מי שהיה באפי לפחות ACTIVE_MIN דק' ב-ACTIVE_DAYS הימים האחרונים
+# (פעימות הנוכחות, כולל CRM — אותו מקור של היעדים); לשאר — רק ידני דרך אייל.
+ACTIVE_DAYS = 30
+ACTIVE_MIN = 10
+ACTIVE_TTL = 600
+_ACTIVE_BOX = {}
+
+
+def soc_active_agents(G, now):
+    """קבוצת שמות קנוניים של מי שעבר את הסף, או None כשאין נתוני שימוש (Supabase כבוי/תקלה) — אז לא מפרסמים אוטומטית."""
+    bx = _ACTIVE_BOX
+    if bx.get("v") is not None and now - bx.get("t", 0) < ACTIVE_TTL:
+        return bx["v"]
+    from goals import g_canon, g_display
+    d0 = _dt.datetime.fromtimestamp(now, _IL) - _dt.timedelta(days=ACTIVE_DAYS)
+    try:
+        rows = [r for r in (G["_usage_rows"](d0) or []) if r.get("name")]
+    except Exception:
+        return None
+    if not rows:
+        return None
+    v = {g_canon(G, g_display(G, r["name"])) for r in rows if float(r.get("min") or 0) >= ACTIVE_MIN}
+    bx.update(v=v, t=now)
+    return v
+
+
+def soc_plan_round(rows, state, history, now, hidden, blocked, allowed=None):
     """→ {'publish': [keys], 'state': state חדש, 'flood': bool, 'reason': str}.
     'חדש' = מספר מודעה שלא נראה (known) — לא _y2_first_seen, שנדרס בהזרמות ושחזורים."""
     st = {"known": dict((state or {}).get("known") or {}), "waiting": dict((state or {}).get("waiting") or {}),
@@ -294,6 +358,8 @@ def soc_plan_round(rows, state, history, now, hidden, blocked):
         if len(out["publish"]) >= slots:
             break
         r = by_key[k]
+        if allowed is not None and not allowed(r):   # [01/11] סוכן לא פעיל — נשאר בהמתנה (ידני עדיין אפשרי)
+            continue
         if soc_can_publish(r, "fb", history, now, hidden)[0] or soc_can_publish(r, "ig", history, now, hidden)[0]:
             out["publish"].append(k)
             st["waiting"].pop(k, None)
@@ -379,6 +445,23 @@ def soc_dhash(raw):
 def soc_is_placeholder(raw):
     h = soc_dhash(raw)
     return h is not None and any(bin(h ^ x).count("1") <= PLACEHOLDER_DIST for x in PLACEHOLDER_HASHES)
+
+
+PLACEHOLDER_REASON = "יש רק תמונת 'תמונות בקרוב' — מחכה לתמונות אמיתיות"
+
+
+def soc_real_images(http, images):
+    """(התמונות האמיתיות, כמה היו 'תמונות בקרוב'): הורדה של כל תמונה; כשל הורדה — התמונה מדולגת."""
+    real, ph = [], 0
+    for src in images or []:
+        j = soc_fetch_jpeg(http, src, False) if http is not None else None
+        if not j:
+            continue
+        if soc_is_placeholder(j):
+            ph += 1
+        else:
+            real.append(src)
+    return real, ph
 
 
 def soc_big_url(src_url):
@@ -710,21 +793,12 @@ def _soc_run_one(G, key, trigger, by_phone, channels, http, now, env):
         res["reason"] = " · ".join(reasons) or "אין ערוץ פעיל"
         return res
     post = soc_build_post(row, ((G["_load_config"]() or {}).get("v2_office") or {}).get("name", ""),
-                          _clean_desc(G), G["_row_feats"])
+                          _clean_desc(G), G["_row_feats"], agent=soc_agent_for(G, row))
     if http is None:
         import requests as http
-    # [01/11] בלי תמונות 'תמונות בקרוב': הורדה של כל תמונה (גם בתצוגה מקדימה) ושמירה רק של האמיתיות
-    real, ph = [], 0
-    for src in post["images"]:
-        j = soc_fetch_jpeg(http, src, False)
-        if not j:
-            continue
-        if soc_is_placeholder(j):
-            ph += 1
-        else:
-            real.append(src)
+    real, ph = soc_real_images(http, post["images"])   # [01/11] בלי תמונות 'תמונות בקרוב'
     if ph and not real:
-        res.update(placeholder=True, reason="יש רק תמונת 'תמונות בקרוב' — מחכה לתמונות אמיתיות")
+        res.update(placeholder=True, reason=PLACEHOLDER_REASON)
         return res
     post["images"] = real
     rec = {"property_key": key, "addr_key": soc_addr_key(row) + "#" + soc_floor(row), "trigger": trigger,
@@ -859,7 +933,14 @@ def soc_auto_tick(G, now, env=None, sleep=None):
     if hidden is None:
         return {"ran": True, "skipped": "hidden"}
     waiting0 = dict(scfg.get("waiting") or {})
-    plan = soc_plan_round(rows, scfg, history, now, hidden, blocked_now(now))
+    act = soc_active_agents(G, now)
+
+    def allowed(r):
+        from goals import g_canon, g_display
+        name = _norm(r.get("סוכן 1") or r.get("סוכן"))
+        return bool(act) and _real_agent(name) and g_canon(G, g_display(G, name)) in act
+
+    plan = soc_plan_round(rows, scfg, history, now, hidden, blocked_now(now), allowed=allowed)
     _social_mutate(G, lambda s: s.update(known=plan["state"]["known"], waiting=plan["state"]["waiting"], last_tick=now))
     if plan["flood"]:
         soc_daily_alert(G, "flood", "פרסום ברשתות", plan["reason"] + " — לא פורסם", now)
@@ -949,8 +1030,13 @@ def register(app, G):
         if not row:
             return jsonify({"ok": False, "error": "הנכס לא נמצא"})
         post = soc_build_post(row, ((G["_load_config"]() or {}).get("v2_office") or {}).get("name", ""),
-                              _clean_desc(G), G["_row_feats"])
-        return jsonify(dict(post, ok=True, key=key, can=can_map(row, hist(), _t.time(), soc_hidden(G))))
+                              _clean_desc(G), G["_row_feats"], agent=soc_agent_for(G, row))
+        can = can_map(row, hist(), _t.time(), soc_hidden(G))
+        real, ph = soc_real_images(_HTTP, post["images"])   # [01/11] גם בתצוגה המקדימה — בלי 'תמונות בקרוב'
+        post["images"] = real
+        if ph and not real:
+            can = {c: {"ok": False, "reason": PLACEHOLDER_REASON} for c in ("fb", "ig")}
+        return jsonify(dict(post, ok=True, key=key, can=can))
 
     @app.route("/v2/api/social/status")
     def soc_api_status():
