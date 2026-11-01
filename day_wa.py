@@ -28,7 +28,7 @@ def day_wa_counts(day, nb_status, sigs, deals, excl_now, canon):
     sigs = [{agent, address, type, signed, ts}] (goals.g_sigs); deals = _deals_load(); excl_now = נכסי משרד בבלעדיות."""
     b = day_bounds(day)
     nm = lambda s: canon(str(s or "").strip()) or "—"
-    out = {"meetings": None, "meetings_by": [], "buyers_sign": None, "buyers_signed": None, "gius": None, "gius_by": [],
+    out = {"meetings": None, "meetings_by": [], "buyers_sign": None, "buyers_sign_by": [], "gius": None, "gius_by": [],
            "deals_new": None, "deals_new_by": [], "open_now": None, "closed": None, "closed_by": [], "closed_month": None,
            "excl_now": None if _bad(excl_now) else int(excl_now)}
 
@@ -40,17 +40,17 @@ def day_wa_counts(day, nb_status, sigs, deals, excl_now, canon):
         out["meetings"], out["meetings_by"] = sum(by.values()), _top(by)
 
     if not _bad(sigs):
-        n = signed = 0
+        sby = _Counter()
         seen = set()
         for g in sigs or []:
             if not _in(parse_ts(g.get("ts")), b):
                 continue
             if g.get("type") == "קונים":
-                n += 1
-                signed += 1 if g.get("signed") else 0
+                if g.get("signed"):              # רק מה שנחתם (ts = שעת החתימה) — אייל 01/11
+                    sby[nm(g.get("agent"))] += 1
             elif g.get("type") == "בלעדיות" and g.get("signed") and "בדיקה בדיקה" not in str(g.get("address") or ""):
                 seen.add((nm(g.get("agent")), _anchor(g.get("address"))))
-        out["buyers_sign"], out["buyers_signed"] = n, signed
+        out["buyers_sign"], out["buyers_sign_by"] = sum(sby.values()), _top(sby)
         gby = _Counter(a for a, _ in seen)
         out["gius"], out["gius_by"] = sum(gby.values()), _top(gby)
 
@@ -89,14 +89,13 @@ def _who(pairs):
 def day_wa_text(c, day_str, office=""):
     """[01/11 אייל, 'אני רוצה אותו ככה'] כותרת, תאריך, מדדי היום, ואז הסיכומים. שורה לכל מדד — נקרא גם כשתבנית
     family_update מאחדת את השורות לשורה אחת. office נשאר בחתימה לתאימות, לא מוצג."""
-    sign = _v(c["buyers_sign"]) + ((" (נחתמו %d)" % c["buyers_signed"]) if c["buyers_sign"] else "")
     return "\n".join([
         "דוח סיכום יום",
         day_str,
         "",
         "פגישות שתואמו היום: %s%s" % (_v(c["meetings"]), _who(c["meetings_by"])),
         "גיוסים היום: %s%s" % (_v(c["gius"]), _who(c["gius_by"])),
-        "החתמות קונים היום: %s" % sign,
+        "החתמות קונים היום: %s%s" % (_v(c["buyers_sign"]), _who(c["buyers_sign_by"])),
         "תהליכים חדשים היום: %s%s" % (_v(c["deals_new"]), _who(c["deals_new_by"])),
         "עסקאות שנחתמו היום: %s%s" % (_v(c["closed"]), _who(c["closed_by"])),
         "",
