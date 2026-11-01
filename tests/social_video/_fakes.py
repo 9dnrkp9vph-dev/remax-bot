@@ -2,8 +2,9 @@
 import os, sys, threading, datetime as dt
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", ".."))
-sys.path.insert(0, os.path.join(HERE, "..", "social"))
-import _fakes as SF   # tests/social/_fakes.py
+import importlib.util as _ilu
+_sp = _ilu.spec_from_file_location("social_fakes", os.path.join(HERE, "..", "social", "_fakes.py"))
+SF = _ilu.module_from_spec(_sp); _sp.loader.exec_module(SF)   # tests/social/_fakes.py
 
 ROW = dict(SF.ROW, **{"סוכן 1": "דנה כהן",
                       "תמונות": ["https://img/a.jpg", "https://img/b.jpg", "https://img/c.jpg", "https://img/d.jpg"]})
