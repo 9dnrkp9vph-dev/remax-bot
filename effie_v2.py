@@ -763,7 +763,7 @@ function v2MeUpload(inp){
     var c = document.createElement('canvas');
     var s = Math.min(img.width, img.height);
     c.width = 256; c.height = 256;
-    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 256, 256);
+    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height > img.width ? (img.height - s) * 0.08 : (img.height - s) / 2), s, s, 0, 0, 256, 256);
     fetch('/v2/api/avatar', {method: 'POST', headers: {'X-Auth-Token': tok, 'Content-Type': 'application/json'},
       body: JSON.stringify({img: c.toDataURL('image/jpeg', 0.82)})}).then(function(r){ return r.json(); }).then(function(j){
       if (!j.ok){ v2meToast('שגיאה בשמירת התמונה'); return; }
@@ -2027,7 +2027,7 @@ function meUpload(inp){
     var c = document.createElement('canvas');
     var s = Math.min(img.width, img.height);
     c.width = 256; c.height = 256;   // 256 — חד גם על עיגול ה-TV (150px), עדיין ~20KB
-    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 256, 256);
+    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height > img.width ? (img.height - s) * 0.08 : (img.height - s) / 2), s, s, 0, 0, 256, 256);
     var data = c.toDataURL('image/jpeg', 0.82);
     POST('/v2/api/avatar', {img: data}).then(function(j){
       if (!j.ok){ toast('שגיאה בשמירת התמונה'); return; }
@@ -12919,7 +12919,7 @@ function openNew(){ CUR = null; var b = document.getElementById('drb');
   document.getElementById('dr').classList.add('open'); document.getElementById('svBtn').onclick = function(){ save(''); }; }
 function upAvatar(r, file){ if (!file) return; var fr = new FileReader();
   fr.onload = function(){ var im = new Image(); im.onload = function(){ var c = document.createElement('canvas'), s = Math.min(im.width, im.height), z = Math.min(512, s);
-      c.width = c.height = z; c.getContext('2d').drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, z, z);
+      c.width = c.height = z; c.getContext('2d').drawImage(im, (im.width - s) / 2, (im.height > im.width ? (im.height - s) * 0.08 : (im.height - s) / 2), s, s, 0, 0, z, z);
       api('/v2/api/crm/team/avatar', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone:r.phone, img:c.toDataURL('image/jpeg', .85)})})
         .then(function(x){ return x.json(); }).then(function(j){ toast(j.ok ? 'התמונה עודכנה' : 'לא עודכנה: ' + (j.reason || '')); if (j.ok) openRec(r.key); }); };
     im.src = fr.result; }; fr.readAsDataURL(file); }
@@ -16020,6 +16020,14 @@ def usage_now_rows(pings, now_ep, display, window=150, place_for=None, via_for=N
 _BP_SB = None   # הזרקה לבדיקות; בפרודקשן None → supabase_db
 
 
+
+def avatar_crop_box(w, h):
+    """ריבוע לתמונת פרופיל: לאורך — קרוב לחלק העליון (8% מהעודף), כדי שהראש לא ייחתך; לרוחב — מהאמצע (אייל 01/11)."""
+    side = min(w, h)
+    left = (w - side) // 2
+    top = int(round((h - side) * 0.08)) if h > w else (h - side) // 2
+    return left, top, side
+
 def register(app, G):
     """רישום מסלולי /v2 על אפליקציית Flask הקיימת. G = globals() של app.py —
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
@@ -17713,8 +17721,7 @@ def register(app, G):
             from PIL import Image as _PImg
             import io as _io
             im = _PImg.open(_io.BytesIO(raw)).convert("RGB")
-            side = min(im.size)
-            l, t = (im.width - side) // 2, (im.height - side) // 2
+            l, t, side = avatar_crop_box(im.width, im.height)
             im = im.crop((l, t, l + side, t + side))
             if side > 256:
                 im = im.resize((256, 256), _PImg.LANCZOS)
