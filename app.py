@@ -8658,7 +8658,7 @@ def api_my_properties():
                 "id": lid,
                 # מתאמת/מנהל יכולים לעדכן מחיר/להסיר מודעה של הסוכנים שלהם (התוצאות כבר מסוננות להיקף שלהם)
                 "own": (s["role"] in ("admin", "coordinator")) or _agent_owns_row(r, eff_name, eff_phones),
-                "pending": lid in pending,
+                "pending": lid in pending and lid not in _PENDING_AUTO_DONE,
                 "type": (r.get("סוג נכס", "") or "").strip(),
                 "city": (r.get("עיר / ישוב", "") or "").strip(),
                 "neighborhood": (r.get("שכונה", "") or "").strip(),
@@ -8698,6 +8698,102 @@ def _fetch_pending_listings():
     ids = set(str(x).strip() for x in (j.get("ids", []) if (j and j.get("ok")) else []))
     _cache_put("pending_listings", ids)
     return ids
+
+# [PENDING-AUTO 01/11] אייל: "שהמערכת תזהה שהמחיר ירד ושהסימון (בטיפול אצל המזכירה) יבוטל".
+# בבקשת עדכון מחיר נרשם המחיר באותו רגע (v2_price_reqs). סבב סריקת המחירים בודק את הממתינים:
+# המחיר בנכסי המשרד נמוך מהמחיר שנרשם → 'בוצע' אוטומטי (donelisting). בקשה ישנה בלי רישום
+# (מלפני הפריסה): ירידת מחיר שנרשמה ב-7 הימים → בוצע; אחרת נרשם המחיר הנוכחי כנקודת התחלה.
+PENDING_REQ_KEEP_DAYS = 60
+
+def pending_autoclear_plan(pending, reqs, cur_prices, drops, now):
+    """טהור. pending=מזהי מודעות ממתינים; reqs={lid:{ts,price}}; cur_prices={lid:ספרות};
+    drops=v2_price_drops ({'L:'+lid:{ts,old}}). מחזיר (לביטול, reqs מעודכן)."""
+    out = {}
+    for lid, rec in (reqs or {}).items():
+        if isinstance(rec, dict) and (now - (rec.get("ts") or 0)) < PENDING_REQ_KEEP_DAYS * 86400:
+            out[lid] = dict(rec)
+    clear = []
+    for lid in sorted(pending or ()):
+        if lid not in (cur_prices or {}):
+            continue                       # לא בנכסי המשרד (הסרה / לא ידוע) — לא נוגעים
+        cur = _price_digits(cur_prices.get(lid))
+        if not cur:
+            continue
+        rec = out.get(lid)
+        if rec and _price_digits(rec.get("price")):
+            if int(cur) < int(_price_digits(rec.get("price"))):
+                clear.append(lid)
+                out.pop(lid, None)
+            continue
+        d = (drops or {}).get("L:" + lid)
+        dts = (d.get("ts") if isinstance(d, dict) else d) or 0
+        if dts and (now - dts) < 7 * 86400:
+            clear.append(lid)
+            out.pop(lid, None)
+            continue
+        out[lid] = {"ts": int(now), "price": cur}
+    return clear, out
+
+_PENDING_AUTO_DONE = {}   # lid -> ts — מוסתר מיד במסך עד שהגיליון מתעדכן
+
+def _pending_autoclear_run(now=None):
+    """רץ ב-thread של סריקת המחירים."""
+    now = now or time.time()
+    try:
+        pending = set(_fetch_pending_listings() or ()) - _removed_listing_ids()   # בקשות הסרה — לא נוגעים
+        cfg = _load_config() or {}
+        reqs = cfg.get("v2_price_reqs") or {}
+        if not pending and not reqs:
+            return []
+        cur = {}
+        for r in fetch_sheet_rows() or []:
+            lid = str(r.get("מספר מודעה", "") or "").strip()
+            if lid and lid in pending:
+                cur[lid] = _price_digits(r.get("מחיר", ""))
+        clear, new_reqs = pending_autoclear_plan(pending, reqs, cur, cfg.get("v2_price_drops") or {}, now)
+    except Exception as _e:
+        log.warning(f"pending autoclear failed: {_e}")
+        return []
+    done = []
+    for lid in clear:
+        j = _buyers_apps_post("donelisting", {"listing_id": lid})
+        if j and j.get("ok"):
+            done.append(lid)
+            _PENDING_AUTO_DONE[lid] = now
+            _log_activity("אפי", "system", "", "סימון בוצע אוטומטי — המחיר ירד", lid)
+        elif reqs.get(lid):
+            new_reqs[lid] = reqs[lid]   # הגיליון לא אישר — הרישום נשאר, ננסה שוב בסבב הבא
+    if done:
+        _cache_clear("pending_listings")
+        _cache_clear("my_properties")
+    if new_reqs != reqs:
+        try:
+            _config_mutate(lambda c: c.__setitem__("v2_price_reqs", new_reqs))
+        except Exception as _e:
+            log.warning(f"pending autoclear save failed: {_e}")
+    return done
+
+def _pending_record_request(lid, now=None):
+    """בקשת עדכון מחיר — רישום המחיר הנוכחי של המודעה (בסיס להשוואה)."""
+    now = now or time.time()
+    price = ""
+    try:
+        for r in fetch_sheet_rows() or []:
+            if str(r.get("מספר מודעה", "") or "").strip() == lid:
+                price = _price_digits(r.get("מחיר", ""))
+                break
+    except Exception:
+        pass
+    if not price:
+        return
+    def _mut(cfg):
+        m = dict(cfg.get("v2_price_reqs") or {})
+        m[lid] = {"ts": int(now), "price": price}
+        cfg["v2_price_reqs"] = m
+    try:
+        _config_mutate(_mut)
+    except Exception as _e:
+        log.warning(f"price request record failed: {_e}")
 
 def _removed_listing_ids():
     """מזהי מודעות שסוכן ביקש להסיר — נסתרים מ'הנכסים שלי' ומהספירה מיד, עד שהמזכירה
@@ -8764,6 +8860,10 @@ def _scan_price_changes():
             _price_scan_run(t0)
         except Exception as _e:
             log.warning(f"price scan bg failed: {_e}")
+        try:
+            _pending_autoclear_run()   # [PENDING-AUTO 01/11] אחרי שהירידות נרשמו
+        except Exception as _e:
+            log.warning(f"pending autoclear bg failed: {_e}")
         finally:
             _PRICE_SCAN["last_s"] = round(time.time() - t0, 2)
             _PRICE_SCAN["running"] = False
@@ -8970,6 +9070,9 @@ def api_listing_request():
     if kind == "remove":   # הסרה — הנכס יורד מיד מהתצוגה והספירה (המייל למזכירה כבר יצא)
         _mark_listing_removed(lid)
         _cache_clear("my_properties")
+    else:                  # [PENDING-AUTO 01/11] המחיר עכשיו — כשירד, הסימון יורד לבד
+        _PENDING_AUTO_DONE.pop(lid, None)
+        _pending_record_request(lid)
     _log_activity(s["name"], s["role"], s["phone"], ("בקשת הסרת מודעה" if kind == "remove" else "בקשת עדכון מחיר"), lid)
     return jsonify({"ok": True})
 
