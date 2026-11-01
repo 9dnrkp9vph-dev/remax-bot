@@ -7450,7 +7450,59 @@ function propCard(p, i){
     (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' +
     (propDate(p) ? '<div style="font-size:11.5px;color:#8B8F99;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
-    acts + hotRow + fhRow + siteRow + socRow(p) + '</div>';
+    acts + shareRow(p, i) + hotRow + fhRow + siteRow + socRow(p) + '</div>';
+}
+/* [SHARE 01/11] שליחת נכס ללקוח עם תמונות (אייל): לחיצה ראשונה מכינה את התמונות, השנייה פותחת את חלון השיתוף
+   (חלון השיתוף חייב לחיצה טרייה — הורדת 10 תמונות לוקחת כמה שניות). בלי שם סוכן / מספר בית / קישורים. */
+var SHARE = {};
+function shareRow(p, i){
+  if (MODE === 'shtaf' || MODE === 'nb' || !p || !p.pkey) return '';
+  var st = SHARE[p.pkey] || {}, lbl = st.busy ? 'מכין את התמונות…' : st.files ? ('שלח עכשיו · ' + st.files.length + ' תמונות') : 'שלח ללקוח עם תמונות';
+  return '<div style="margin-top:8px"><button onclick="shareProp(' + i + ', this)" ' + (st.busy ? 'disabled ' : '') +
+    'style="width:100%;min-height:44px;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;border:none;background:#157A43;color:#fff;' +
+    'display:flex;align-items:center;justify-content:center;gap:7px">' +
+    '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+    esc(lbl) + '</button></div>';
+}
+function shareCanFiles(){
+  try{ return !!(navigator.canShare && navigator.canShare({files: [new File([''], 'x.jpg', {type: 'image/jpeg'})]})); }catch(e){ return false; }
+}
+function shareProp(i, btn){
+  var p = (el('list')._src || [])[i]; if (!p || !p.pkey) return;
+  var st = SHARE[p.pkey] = SHARE[p.pkey] || {};
+  if (st.files){ return shareSend(p, st); }
+  st.busy = true; render();
+  GET('/v2/api/prop/share?key=' + encodeURIComponent(p.pkey)).then(function(j){
+    if (!j || !j.ok) throw new Error('nf');
+    st.text = j.text;
+    return Promise.all((j.images || []).map(function(u, n){
+      return fetch(u, {headers: H()}).then(function(r){ return r.ok ? r.blob() : null; })
+        .then(function(b){ return b ? new File([b], 'property-' + (n + 1) + '.jpg', {type: 'image/jpeg'}) : null; })
+        .catch(function(){ return null; });
+    }));
+  }).then(function(fs){
+    st.busy = false; st.files = (fs || []).filter(Boolean);
+    if (!shareCanFiles()){ render(); return shareSend(p, st); }   // מחשב — אין חלון שיתוף עם קבצים
+    render(); toast(st.files.length ? 'מוכן — לחצו שוב לשליחה' : 'אין תמונות — לחצו שוב לשליחת הטקסט');
+  }).catch(function(){ st.busy = false; delete SHARE[p.pkey]; render(); toast('לא הצלחתי להכין את הנכס'); });
+}
+function shareSend(p, st){
+  var files = st.files || [];
+  if (shareCanFiles() && navigator.share){
+    var d = {text: st.text};
+    if (files.length && navigator.canShare({files: files})) d.files = files;
+    navigator.share(d).then(function(){ delete SHARE[p.pkey]; render(); })
+      .catch(function(e){ if (e && e.name !== 'AbortError') toast('השיתוף נכשל'); });
+    return;
+  }
+  // מחשב: הטקסט ללוח + הורדת התמונות, ואז גוררים לוואטסאפ ווב
+  var done = function(){ toast('הטקסט הועתק' + (files.length ? ' · ' + files.length + ' תמונות ירדו למחשב' : '') + ' — הדביקו בוואטסאפ'); };
+  try{ navigator.clipboard.writeText(st.text).then(done, done); }catch(e){ done(); }
+  files.forEach(function(f, n){ setTimeout(function(){
+    var a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name;
+    document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  }, n * 250); });
+  delete SHARE[p.pkey]; render();
 }
 function setDeal(node){   // [DEALS 13/10]
   DEAL = node.getAttribute('data-d') || '';

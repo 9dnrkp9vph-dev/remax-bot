@@ -13279,6 +13279,11 @@ except Exception as _goals_err:
 # ── פרסום נכסים בעמוד הפייסבוק ובאינסטגרם (אייל 31/10) — מודול נפרד ──
 try:
     _social.register(app, globals())
+    try:   # [SHARE 01/11] שליחת נכס ללקוח עם תמונות
+        import prop_share as _prop_share
+        _prop_share.register(app, globals())
+    except Exception as _pse:
+        log.error(f"prop_share register failed: {_pse}")
 except Exception as _social_err:
     log.error(f"social init failed (app unaffected): {_social_err}")
 
