@@ -669,6 +669,72 @@ class Graph:
             pass
         return mid, link
 
+    # ── [SOCIAL-VIDEO 02/11] וידאו: סטורי + ריל (social_video.py) ──
+    def ig_video(self, ig_id, kind, video_url, caption="", cover_url="", ai=True):
+        """kind = 'STORIES' / 'REELS'. container ← polling ← media_publish. → (media_id, permalink — לריל בלבד).
+        ai=True → is_ai_generated (סימון AI של Meta) — רק כשבסרטון יש קליפ AI אמיתי."""
+        self._guard()
+        f = {"media_type": kind, "video_url": video_url}
+        if ai:
+            f["is_ai_generated"] = "true"
+        if kind == "REELS":
+            f.update(caption=caption or "", share_to_feed="true")
+            if cover_url:
+                f["cover_url"] = cover_url
+        cid = self._call("POST", "%s/media" % ig_id, self.token, f)["id"]
+        self._wait(cid, poll_max=60)
+        mid = self._call("POST", "%s/media_publish" % ig_id, self.token, {"creation_id": cid}, final=True).get("id")
+        link = ""
+        if kind == "REELS":
+            try:
+                link = self._call("GET", mid, self.token, {"fields": "permalink"}).get("permalink") or ""
+            except MetaError:
+                pass
+        return mid, link
+
+    def _upload_hosted(self, page_id, url, file_url):
+        """העלאה מכתובת שלנו (header file_url) — Meta מושכת את הקובץ בעצמה."""
+        ptok = self.page_token(page_id)
+        try:
+            r = self.http.post(url, headers={"Authorization": "OAuth " + ptok, "file_url": file_url}, timeout=180)
+        except Exception as e:
+            raise MetaError(_scrub("upload: %s" % e, self._secrets()))
+        try:
+            j = r.json() or {}
+        except Exception:
+            j = {}
+        if getattr(r, "status_code", 200) >= 400 or "error" in j:
+            e = j.get("error") or {}
+            raise MetaError(_scrub(e.get("message") or str(j)[:200], self._secrets()), code=e.get("code"))
+        return j
+
+    def fb_video_story(self, page_id, file_url):
+        """סטורי וידאו לעמוד: start ← העלאה מ-file_url ← finish. → story/post id."""
+        self._guard()
+        st = self._page("POST", page_id, "%s/video_stories" % page_id, {"upload_phase": "start"})
+        self._upload_hosted(page_id, st["upload_url"], file_url)
+        j = self._page("POST", page_id, "%s/video_stories" % page_id,
+                       {"upload_phase": "finish", "video_id": st["video_id"]}, final=True)
+        return j.get("post_id") or st["video_id"]
+
+    def fb_reel(self, page_id, file_url, description):
+        """ריל לעמוד: start ← rupload עם file_url ← finish (PUBLISHED). → (video_id, permalink_url)."""
+        self._guard()
+        st = self._page("POST", page_id, "%s/video_reels" % page_id, {"upload_phase": "start"})
+        vid = st["video_id"]
+        self._upload_hosted(page_id, "https://rupload.facebook.com/video-upload/%s/%s" % (self.ver, vid), file_url)
+        self._page("POST", page_id, "%s/video_reels" % page_id,
+                   {"upload_phase": "finish", "video_id": vid, "video_state": "PUBLISHED",
+                    "description": description or ""}, final=True)
+        link = ""
+        try:
+            link = self._page("GET", page_id, vid, {"fields": "permalink_url"}).get("permalink_url") or ""
+            if link.startswith("/"):
+                link = "https://www.facebook.com" + link
+        except MetaError:
+            pass
+        return vid, link
+
 
 # ── הרצה של פרסום אחד ────────────────────────────────────────────────────────────
 PAGE_ID_DEFAULT = "750680235046279"   # 'REMAX family רימקס פמילי קריות' (asset_id ב-Business Suite); v2_social.page_id גובר

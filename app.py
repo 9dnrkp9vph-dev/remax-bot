@@ -708,6 +708,16 @@ def _d360_webhook(body):
             v = ch.get("value") or {}
             for m in v.get("messages") or []:
                 _wa_window_mark(m.get("from", ""))
+                try:   # [SOCIAL-VIDEO 02/11] כפתורי "פרסם"/"דלג" של סרטון לרשתות (social_video.vid_on_button)
+                    _pl = ""
+                    if m.get("type") == "interactive":
+                        _pl = ((m.get("interactive") or {}).get("button_reply") or {}).get("id", "")
+                    elif m.get("type") == "button":
+                        _pl = (m.get("button") or {}).get("payload", "")
+                    if str(_pl).startswith("vid:"):
+                        globals()["_social_video"].vid_on_button(globals(), m.get("from", ""), _pl)
+                except Exception as _ve:
+                    log.warning(f"video button hook: {_ve}")
                 try:   # [SITE-LEAD 14/10] 'סוכן AI אישי' מהאתר — רק הפורמט המדויק, מטופל ב-thread
                     _sli = globals().get("_site_lead_inbound")
                     if _sli and m.get("type") == "text":
@@ -7993,6 +8003,7 @@ def _activity_merge(c):
 import office_presence as _office_presence_mod
 import goals as _goals
 import social_publish as _social   # [SOCIAL 31/10] פרסום נכסים בעמוד ובאינסטגרם
+import social_video as _social_video   # [SOCIAL-VIDEO 02/11] סרטוני סטורי + ריל
 
 USAGE_RETENTION_DAYS = 60   # הפעימות נגזמות אחרי 60 יום (prune_pings)
 
@@ -13403,6 +13414,12 @@ try:
         log.error(f"prop_share register failed: {_pse}")
 except Exception as _social_err:
     log.error(f"social init failed (app unaffected): {_social_err}")
+
+# ── סרטוני סטורי + ריל לנכסי המשרד (אייל 02/11) — מודול נפרד ──
+try:
+    _social_video.register(app, globals())
+except Exception as _sv_err:
+    log.error(f"social_video init failed (app unaffected): {_sv_err}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # WARMUP — חימום ה-caches הכבדים בעליית התהליך (deploy/restart מרוקן הכל)
