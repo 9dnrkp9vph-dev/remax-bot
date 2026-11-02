@@ -1679,6 +1679,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="4" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="1.2" fill="#1E3A5F"/></svg>
       היעדים שלי להיום</a>
+    <a id="menuDialer" href="/v2/dialer" style="display:none;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z"/></svg>
+      חייגן חכם</a>
     <a id="menuContest" href="/v2/contest" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>
@@ -2582,6 +2586,7 @@ el('story').addEventListener('touchmove', function(e){
     if (j.role === 'admin' && !j.dev && !_inImp) el('menuLoginAs').style.display = 'flex';   // [LOGINAS-MGR] בעל המשרד — מהניהול
     if (['accountant','manager','developer'].indexOf(j.drole) >= 0) el('menuInvoices').style.display = 'flex';
     if (j.drole === 'manager' || j.dev) el('menuSite').style.display = 'flex';   // [SITE 13/10] ניהול האתר — מנהל/מפתח בלבד
+    GET('/v2/api/dialer/access').then(function(a){ if (a && a.allowed) el('menuDialer').style.display = 'flex'; }).catch(function(){});   // [DIALER 03/11] מתאמות בלבד
     hotMineLoad();   // [GOALS 28/10] אחרי שהתפקיד ידוע
     var impTok = null;
     try{ impTok = localStorage.getItem('fbTokAdmin'); }catch(e){}
@@ -16469,6 +16474,15 @@ def register(app, G):
                          'מסך התחרות לא זמין כרגע</body></html>')
         return _page(_contest.V2_CONTEST_HTML.replace("<!--CONTEST_KIT-->", _contest.V2_CONTEST_KIT, 1))
 
+    @app.route("/v2/dialer", methods=["GET"])   # [DIALER 03/11] חייגן חכם למתאמות
+    def v2_dialer():
+        try:
+            import dialer as _dialer
+        except Exception:
+            return _page('<!DOCTYPE html><html dir="rtl" lang="he"><body style="font-family:Heebo,sans-serif;padding:40px;text-align:center">'
+                         'החייגן לא זמין כרגע</body></html>')
+        return _page(_dialer.V2_DIALER_HTML)
+
     @app.route("/v2/effie", methods=["GET"])
     def v2_effie():
         return _page(V2_EFFIE_HTML)
@@ -17791,6 +17805,9 @@ def register(app, G):
     def _bstat_current():
         with _BSTAT_LOCK:
             return _bstat_current_locked()
+
+    G["_bstat_current"] = _bstat_current   # [DIALER 03/11] החייגן מסנן קונים שסגרו/בהקפאה
+    G["_bcanon"] = _bcanon
 
     def _bstat_set_locked(b, status):
         m = _bstat_current_locked()

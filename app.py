@@ -13586,6 +13586,13 @@ try:
 except Exception as _contest_err:
     log.error(f"contest init failed (app unaffected): {_contest_err}")
 
+# ── חייגן חכם למתאמות (אייל 03/11) — מודול נפרד ──
+try:
+    import dialer as _dialer
+    _dialer.register(app, globals())
+except Exception as _dialer_err:
+    log.error(f"dialer init failed (app unaffected): {_dialer_err}")
+
 # ── פרסום נכסים בעמוד הפייסבוק ובאינסטגרם (אייל 31/10) — מודול נפרד ──
 try:
     _social.register(app, globals())
