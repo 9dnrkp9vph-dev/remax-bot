@@ -4125,8 +4125,8 @@ def make_c2c_link(from_phone, to_phone):
 
 def make_c2c_run(from_phone, to_phone, agent_phone=""):
     """מריץ את סנריו 'קישור חיוג' ב-Make (7321077). מ-02/11/2026 הסנריו קורא ל-Maskyoo
-    `create_maskyoo_call_v2` (click2call_link בוטל ע"י Maskyoo). הסדר לפי C2C_FIRST_TARGET:
-    destination (ברירת מחדל) = הלקוח מצלצל ראשון ואז הנייד של הסוכן (agent_phone); agent = הפוך.
+    `create_maskyoo_call_v2` (click2call_link בוטל ע"י Maskyoo). הנייד של הסוכן (agent_phone) מצלצל
+    ראשון ואז הלקוח; C2C_FIRST_TARGET=customer הופך את הסדר.
     שני הצדדים רואים את הקו הווירטואלי (from_phone). ה-REST של Make לא מחזיר outputs לסנריו הזה, אז השרת מסתמך על
     סטטוס ההרצה — הסנריו זורק שגיאה כש-Maskyoo מסרב. מחזיר (ok, msg, link) — link תמיד ריק."""
     url = f"https://{MAKE_ZONE}/api/v2/scenarios/{MAKE_C2C_SCENARIO}/run"
@@ -4136,8 +4136,8 @@ def make_c2c_run(from_phone, to_phone, agent_phone=""):
                           json={"data": {"from_phone": str(from_phone or "").strip(),
                                          "to_phone": str(to_phone or "").strip(),
                                          "agent_phone": str(agent_phone or "").strip(),
-                                         # מי מצלצל ראשון (02/11 לילה): destination = הלקוח (עובד);
-                                         # agent = הסוכן — אצל מסקיו הרגל ללקוח מתבטלת אחרי כמה שניות.
+                                         # מי מצלצל ראשון: בסנריו 'customer' = הלקוח ראשון; כל ערך אחר
+                                         # (כולל ברירת המחדל destination) = הסוכן ראשון (02/11, אחרי תיקון 972).
                                          "first_target": (C2C_FIRST_TARGET or "destination")},
                                 "responsive": True}, timeout=40)
     except Exception as e:

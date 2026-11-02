@@ -806,7 +806,7 @@ function c2cDial(tel){
   var req = (typeof POST === 'function') ? POST('/api/click2call', {to: tel}) : Promise.resolve({ok: false, disabled: true});
   return req.then(function(j){
     /* השרת הפעיל את הקישור בעצמו (10/09): רק הודעה, בלי חלון — ב-iOS פתיחת דף מהאפליקציה לא אמינה */
-    if (j && j.ok && j.dialed){ if (typeof toast === 'function') toast('מחייג… הלקוח יצלצל ראשון, ואז הטלפון שלך'); return true; }
+    if (j && j.ok && j.dialed){ if (typeof toast === 'function') toast('מחייג… הטלפון שלך יצלצל ראשון, ואז הלקוח'); return true; }
     if (j && j.ok && j.link){   // גיבוי: יש קישור אבל השרת לא הצליח להפעיל — פתיחה בחלון
       var w = null; try{ w = window.open(j.link, '_blank'); }catch(_e){ w = null; }
       if (!w) location.href = j.link;
@@ -4099,7 +4099,7 @@ function toggleHidden(){ VIEW = (VIEW === 'hidden') ? 'main' : 'hidden'; render(
 function dialAny(){   // חיוג לכל מספר מהקו הווירטואלי של הסוכן (14/09) — click2call דרך השרת/Make
   var vp = el('vpNum').textContent || '';
   openSheet('<h3>חיוג מהמספר הווירטואלי</h3>' +
-    '<div style="font-size:12px;color:#6B7280">השיחה תצא מ-' + esc(vp) + ' · הלקוח יצלצל ראשון, ואז הטלפון שלך</div>' +
+    '<div style="font-size:12px;color:#6B7280">השיחה תצא מ-' + esc(vp) + ' · הטלפון שלך יצלצל ראשון, ואז הלקוח</div>' +
     '<input id="anyTel" type="tel" inputmode="tel" placeholder="050-1234567" autocomplete="off" ' +
     'style="width:100%;box-sizing:border-box;font-size:16px;padding:12px 14px;border:1px solid #E9E4D8;border-radius:13px;background:#fff;direction:ltr;text-align:right" ' +
     'onkeydown="if(event.key===\'Enter\')dialAnyGo()">' +
