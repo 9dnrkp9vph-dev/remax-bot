@@ -7454,6 +7454,9 @@ def api_history():
         raw = str(c.get("transcript_summary", ""))
         m = re.search(r"https?://\S+", raw)
         callback = m.group(0) if (m and ("maskyoo" in raw or "click2call" in raw)) else ""
+        # Maskyoo ביטלה את click2call_link (02/11/2026) — קישור כזה כבר לא מחייג; בלי callback
+        # 'חייג חזרה' עובר ל-c2cDial (create_maskyoo_call_v2 דרך Make).
+        if "click2call_link" in callback: callback = ""
         text = re.sub(r"https?://\S+", "", raw)
         text = re.sub(r"\*", "", text)                       # נקה כוכביות (סימון bold של וואטסאפ)
         text = re.sub(r"AI מתמלל ומסכם שיחות", "", text)

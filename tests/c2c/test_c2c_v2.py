@@ -108,5 +108,9 @@ print("3. effie_v2 texts")
 check("הלקוח יצלצל ראשון" not in V2, "אין יותר 'הלקוח יצלצל ראשון'")
 check(V2.count("הטלפון שלך יצלצל ראשון") >= 2, "toast + גיליון חיוג: 'הטלפון שלך יצלצל ראשון, ואז הלקוח'")
 
+# ── 4. קישור click2call_link ישן בסיכום לא משמש יותר ל'חייג חזרה' ────────────
+print("4. dead click2call_link callback")
+check('if "click2call_link" in callback: callback = ""' in SRC, "השרת מנקה callback של click2call_link (חייג חזרה → c2cDial)")
+
 print("\nRESULT:", "ALL GREEN" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)
