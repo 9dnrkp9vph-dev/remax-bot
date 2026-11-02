@@ -25,7 +25,7 @@ SAFE = (65, 290, 1015, 1240)
 XFADE = 0.4
 LOOP_SEC = 600
 STALE_S = 1800   # רינדור/פרסום שלא התקדם חצי שעה = נקטע (דפלוי/אתחול באמצע)
-CTA = "שלחו הודעה ונחזור אליכם"
+CTA = "חייגו"   # [02/11] אייל — במקום "שלחו הודעה ונחזור אליכם"
 
 
 # ── טקסטים ותזמון ────────────────────────────────────────────────────────────────
@@ -53,7 +53,8 @@ def vid_texts(row, feats, highlight, agent, vphone, office_phone):
     hl = SP.soc_scrub_house(SP.soc_scrub_phones(highlight or ""), row.get("כתובת")).strip(" ·-,")
     s3 = {"main": hl, "sub": ft} if hl else {"main": ft, "sub": ""}
     return {
-        "open": {"chip": "חדש בשוק", "title": what + " " + deal,
+        "open": {"chip": "",   # [02/11] אייל: בלי "חדש בשוק"
+                 "title": what + " " + deal,
                  "place": ", ".join(x for x in (nb, city) if x), "price": price},
         "s2": {"main": spec, "sub": ""},
         "s3": s3,
@@ -1005,7 +1006,10 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
         return res
     base = _base(env)
     vurl, curl = "%s/v2/social/vid/%s.mp4" % (base, tok), "%s/v2/social/vid/%s-cover.jpg" % (base, tok)
-    post = SP.soc_build_post(row, _office(G).get("name", ""), SP._clean_desc(G), G["_row_feats"])
+    # [02/11] אייל: שם הסוכן + הוואטסאפ האישי שלו גם בטקסט הריל (אינסטגרם: מספר; פייסבוק: קישור /w/)
+    l9 = _agent_personal(G, row)
+    agent = {"name": str(row.get("סוכן 1") or "").strip(), "phone": ("0" + l9) if l9 else ""}
+    post = SP.soc_build_post(row, _office(G).get("name", ""), SP._clean_desc(G), G["_row_feats"], agent=agent)
     want = [c for c in (channels or CHANNELS) if c in CHANNELS and rec.get(c + "_status") not in ("ok", "unknown")]
     page_id = str(scfg.get("page_id") or SP.PAGE_ID_DEFAULT)
     upd, errs = {}, []
@@ -1026,7 +1030,8 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
                 upd["fb_story_id"] = g.fb_video_story(page_id, vurl)
             else:
                 code = vid_new_link(G, rec, "fb_reel")
-                desc = post["body"] + (("\n\nלוואטסאפ ישיר: %s/w/%s" % (base, code)) if code else "")
+                desc = SP.soc_build_post(row, _office(G).get("name", ""), SP._clean_desc(G), G["_row_feats"], agent=agent,
+                                         wa_link=("%s/w/%s" % (base, code)) if code else None)["body"]
                 upd["fb_reel_id"], upd["fb_reel_permalink"] = g.fb_reel(page_id, vurl, desc)
             upd[c + "_status"] = res[c] = "ok"
         except SP.MetaError as e:
