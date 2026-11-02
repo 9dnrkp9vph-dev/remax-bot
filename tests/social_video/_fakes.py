@@ -59,7 +59,7 @@ def make_G(rows=None, cfg=None):
     G["send_text"] = lambda to, txt: (st["sent"].append((to, txt)), True)[1]
     G["_d360_on"] = lambda: True
     G["_wa_window_open"] = lambda to: str(to)[-9:] in st["window"]
-    G["_d360_post_message"] = lambda payload: (st["posted"].append(payload), {"ok": True})[1]
+    G["_d360_post_message"] = lambda payload: (st["posted"].append(payload), (True, None))[1]
     G["_quiet_hours"] = lambda: False
     G["DEV_PHONES"] = {"505709865"}
     return G, st, sb

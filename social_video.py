@@ -1032,5 +1032,232 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
     return res
 
 
-def vid_send_review(G, rec, base, env):   # pragma: no cover — מוגדר במלואו בהמשך הקובץ (Task 10)
-    return []
+# ── אישור בוואטסאפ ───────────────────────────────────────────────────────────────
+_CH_HE = {"fb_reel": "בריל בפייסבוק", "ig_reel": "בריל באינסטגרם", "fb_story": "בסטורי בפייסבוק",
+          "ig_story": "בסטורי באינסטגרם"}
+
+
+def _l9(s):
+    return re.sub(r"\D", "", str(s or ""))[-9:]
+
+
+def _wa(l9):
+    d = re.sub(r"\D", "", str(l9 or "")).lstrip("0")
+    if d.startswith("972"):
+        return d
+    return "972" + d if d else ""
+
+
+def _agent_personal(G, row):
+    """הנייד האישי של הסוכן של הנכס (בלי מספרי מרכזיה) → 9 ספרות או ''."""
+    agent = str((row or {}).get("סוכן 1") or "").strip()
+    if not agent:
+        return ""
+    try:
+        virt = set(G["_agent_vphones9"]() or ())
+    except Exception:
+        virt = set()
+    try:
+        phones = G["_phones_for_name"](agent) or []
+    except Exception:
+        phones = []
+    for p in phones:
+        l9 = _l9(p)
+        if len(l9) == 9 and l9.startswith("5") and l9 not in virt:
+            return l9
+    return ""
+
+
+def _blocked_now(G, t):
+    try:
+        return bool(G["_shabbat_quiet_now"]()) or bool(G["_quiet_mode"]()) or SP._is_night(t)
+    except Exception:
+        return SP._is_night(t)
+
+
+def _summary(rec):
+    o = ((rec.get("texts") or {}).get("open")) or {}
+    s = "סרטון סטורי + ריל מוכן — " + ", ".join(x for x in (o.get("title"), o.get("place")) if x)
+    if o.get("price"):
+        s += " · " + o["price"]
+    return s + ("" if rec.get("ai") else " (ללא AI)")
+
+
+def vid_send_review(G, rec, base, env):
+    """שולח את הסרטון לאישור לאייל ולסוכן. → רשימת 9 ספרות של מי שקיבל. בשעות שקט — review_due ולא שולח."""
+    try:
+        quiet = bool(G["_quiet_hours"]()) or bool(G["_shabbat_quiet_now"]())
+    except Exception:
+        quiet = False
+    if quiet:
+        G["_sbdb"].video_update(rec["id"], {"review_due": True})
+        return []
+    who = []
+    appr = _l9(env.get("SOCIAL_VIDEO_APPROVER")) or next(iter(sorted(G.get("DEV_PHONES") or [])), "")
+    if appr:
+        who.append(appr)
+    ag = _agent_personal(G, _row_by_key(G, rec.get("property_key")))
+    if ag and ag not in who:
+        who.append(ag)
+    vurl = "%s/v2/social/vid/%s.mp4" % (base, rec.get("video_token"))
+    text = _summary(rec)
+    ids = ("vid:%s:pub" % rec["id"], "vid:%s:skip" % rec["id"])
+    tpl = str(env.get("WA_TPL_VIDEO") or "").strip()
+    sent = []
+    for l9 in who:
+        to = _wa(l9)
+        try:
+            if G["_wa_window_open"](to):
+                G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
+                                         "type": "video", "video": {"link": vurl}})
+                G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
+                                         "type": "interactive", "interactive": {
+                                             "type": "button", "body": {"text": text[:1000]},
+                                             "action": {"buttons": [
+                                                 {"type": "reply", "reply": {"id": ids[0], "title": "פרסם"}},
+                                                 {"type": "reply", "reply": {"id": ids[1], "title": "דלג"}}]}}})
+            elif tpl:
+                G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
+                                         "type": "template", "template": {
+                                             "name": tpl, "language": {"code": str(env.get("WA_TPL_LANG") or "he")},
+                                             "components": [
+                                                 {"type": "header", "parameters": [{"type": "video", "video": {"link": vurl}}]},
+                                                 {"type": "body", "parameters": [{"type": "text", "text": text[:900]}]},
+                                                 {"type": "button", "sub_type": "quick_reply", "index": "0",
+                                                  "parameters": [{"type": "payload", "payload": ids[0]}]},
+                                                 {"type": "button", "sub_type": "quick_reply", "index": "1",
+                                                  "parameters": [{"type": "payload", "payload": ids[1]}]}]}})
+            else:
+                G["send_text"](to, "%s\nלצפייה ולאישור: %s/v2/social/review/%s" % (text, base, rec.get("review_token")))
+            sent.append(l9)
+        except Exception:
+            pass
+    return sent
+
+
+def _spawn(fn):
+    import threading
+    threading.Thread(target=fn, daemon=True, name="social-video").start()
+
+
+def _decide(G, rec, action, who, now, env):
+    """מכונת המצבים + מעבר אטומי + הפעלת פרסום. → הודעה למי שלחץ."""
+    new, msg = vid_decide(rec, action, who, now)
+    if new is None:
+        return msg
+    fields = {"decided_by": who, "decided_at": _iso(now)}
+    if new == "approved" and _blocked_now(G, now):
+        when = vid_publish_when(now, True)
+        fields["publish_at"] = _iso(when)
+        msg = "אושר — יעלה ב-%s" % SP._dt.datetime.fromtimestamp(when, SP._IL).strftime("%H:%M %d/%m")
+    if not G["_sbdb"].video_claim(rec["id"], "pending", new, fields if new != "expired" else {}):
+        cur = G["_sbdb"].video_get(rec["id"]) or {}
+        return vid_decide(cur, action, who, now)[1]
+    if new == "approved" and "publish_at" not in fields:
+        vid = rec["id"]
+        _spawn(lambda: vid_publish(G, vid, env=env))
+    G["_log_activity"](who, "system", "", "סרטון לרשתות — " + {"approved": "אושר", "skipped": "דולג",
+                                                                "expired": "פג"}[new], rec.get("property_key", ""))
+    return msg
+
+
+def vid_on_button(G, from_phone, payload, now=None, env=None):
+    """לחיצה על "פרסם"/"דלג" בוואטסאפ. → הודעת התשובה (נשלחת ללוחץ), או None להתעלמות."""
+    import time as _t
+    m = re.fullmatch(r"vid:([A-Za-z0-9-]+):(pub|skip)", str(payload or ""))
+    if not m:
+        return None
+    rec = G["_sbdb"].video_get(m.group(1))
+    l9 = _l9(from_phone)
+    if not rec or l9 not in [_l9(x) for x in (rec.get("recipients") or [])]:
+        return None
+    env = SP._env(env)
+    now = _t.time() if now is None else now
+    try:
+        who = G["_display_name_for"]("", l9) or l9
+    except Exception:
+        who = l9
+    msg = _decide(G, rec, m.group(2), who, now, env)
+    try:
+        G["send_text"](from_phone, msg)
+    except Exception:
+        pass
+    return msg
+
+
+def _by_review(G, tok):
+    if not tok or not re.fullmatch(r"[A-Za-z0-9_-]{2,64}", str(tok)):
+        return None
+    try:
+        return next((r for r in (G["_sbdb"].video_recent(APPROVE_H // 24 + 3) or []) if r.get("review_token") == tok), None)
+    except Exception:
+        return None
+
+
+_PAGE = """<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>אישור סרטון</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#F2EFE7;font-family:Heebo,sans-serif;color:#1E3A5F}
+.w{max-width:440px;margin:0 auto;padding:16px}.c{background:#fff;border-radius:22px;padding:16px;
+box-shadow:0 6px 20px rgba(30,58,95,.06)}h1{font-size:20px;font-weight:800;margin:4px 0 12px}
+video{width:100%%;border-radius:16px;background:#0E1D33}p{color:#5B6472;font-size:15px}
+.b{display:flex;gap:10px;margin-top:14px}button{flex:1;min-height:48px;border-radius:14px;font:800 16px Heebo,sans-serif;cursor:pointer}
+.p{background:#2E6BD6;color:#fff;border:none}.s{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
+#m{margin-top:12px;font-weight:800}</style></head><body><div class="w"><div class="c">
+<h1>%(title)s</h1>%(body)s</div></div>
+<script>function go(a){var m=document.getElementById('m');m.textContent='שולח…';
+fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})})
+.then(function(r){return r.text()}).then(function(t){m.textContent=t;var b=document.querySelector('.b');if(b)b.remove()})
+.catch(function(){m.textContent='שגיאה — נסו שוב'})}</script></body></html>"""
+
+
+def _esc(s):
+    import html
+    return html.escape(str(s or ""))
+
+
+def vid_review_page(G, tok, now):
+    """דף אישור (נפתח מקישור בוואטסאפ מחוץ לחלון 24ש'). → (קוד, html)."""
+    rec = _by_review(G, tok)
+    if not rec:
+        return 404, _PAGE % {"title": "הקישור לא נמצא", "body": "<p>ייתכן שהסרטון נמחק.</p>"}
+    st = vid_decide(rec, "pub", "", now)
+    if rec.get("status") != "pending" or st[0] == "expired":
+        return 200, _PAGE % {"title": "אישור סרטון", "body": "<p>%s</p>" % _esc(st[1])}
+    body = ('<video controls playsinline preload="metadata" poster="/v2/social/vid/%(t)s-cover.jpg" '
+            'src="/v2/social/vid/%(t)s.mp4"></video><p>%(s)s</p><div class="b">'
+            '<button class="p" onclick="go(\'pub\')">פרסם</button><button class="s" onclick="go(\'skip\')">דלג</button>'
+            '</div><div id="m"></div>') % {"t": _esc(rec.get("video_token")), "s": _esc(_summary(rec))}
+    return 200, _PAGE % {"title": "אישור סרטון לרשתות", "body": body}
+
+
+def vid_review_action(G, tok, action, now, env):
+    """POST מדף האישור. → (קוד, הודעה)."""
+    rec = _by_review(G, tok)
+    if not rec or action not in ("pub", "skip"):
+        return 404, "הקישור לא נמצא"
+    return 200, _decide(G, rec, action, "קישור אישור", now, SP._env(env))
+
+
+def vid_wa_redirect(G, code, env):
+    """/w/<code> → (302, כתובת wa.me לנייד האישי של הסוכן עם הודעה מוכנה) או (404, '')."""
+    from urllib.parse import quote
+    if not code or not re.fullmatch(r"[A-Za-z0-9]{2,16}", str(code)):
+        return 404, ""
+    link = G["_sbdb"].link_get(code)
+    if not link:
+        return 404, ""
+    row = _row_by_key(G, link.get("property_key")) or {}
+    l9 = _agent_personal(G, row)
+    to = _wa(l9) if l9 else _wa(_office(G).get("phone"))
+    if not to:
+        return 404, ""
+    t = vid_texts(row, [], "", "", "", "")["open"] if row else {}
+    what = ", ".join(x for x in (t.get("title"), t.get("place"), t.get("price")) if x)
+    msg = "היי, ראיתי %s את הדירה — %s (מודעה %s). אשמח לפרטים" % (
+        _CH_HE.get(link.get("channel"), "ברשתות"), what or "הנכס", link.get("property_key"))
+    try:
+        G["_sbdb"].link_click(code)
+    except Exception:
+        pass
+    return 302, "https://wa.me/%s?text=%s" % (to, quote(msg))

@@ -708,6 +708,16 @@ def _d360_webhook(body):
             v = ch.get("value") or {}
             for m in v.get("messages") or []:
                 _wa_window_mark(m.get("from", ""))
+                try:   # [SOCIAL-VIDEO 02/11] כפתורי "פרסם"/"דלג" של סרטון לרשתות (social_video.vid_on_button)
+                    _pl = ""
+                    if m.get("type") == "interactive":
+                        _pl = ((m.get("interactive") or {}).get("button_reply") or {}).get("id", "")
+                    elif m.get("type") == "button":
+                        _pl = (m.get("button") or {}).get("payload", "")
+                    if str(_pl).startswith("vid:"):
+                        globals()["_social_video"].vid_on_button(globals(), m.get("from", ""), _pl)
+                except Exception as _ve:
+                    log.warning(f"video button hook: {_ve}")
                 try:   # [SITE-LEAD 14/10] 'סוכן AI אישי' מהאתר — רק הפורמט המדויק, מטופל ב-thread
                     _sli = globals().get("_site_lead_inbound")
                     if _sli and m.get("type") == "text":
