@@ -106,6 +106,20 @@ def approved_video(G, sb, st_):
     v = sb.videos[-1]; v["status"] = "approved"; v["decided_by"] = "אייל"
     return v, stv
 
+# [02/11] ברירת מחדל: בלי סטורי פייסבוק משלנו — פייסבוק מעתיק את הריל לסטורי בעצמו (כפילות + מסך לבן באייפון)
+G, st, sb = make_G(); FG.calls = []
+v, stv = approved_video(G, sb, st)
+r = V.vid_publish(G, v["id"], http=HTTP, now=NOW, env=env, store=stv)
+ck([c[0] for c in FG.calls] == ["ig_STORIES", "ig_REELS", "fb_reel"], FG.calls)
+ck(r["ok"] and sb.videos[-1]["status"] == "published" and sb.videos[-1]["fb_story_status"] == "off", sb.videos[-1])
+ck(V.vid_channels({"SOCIAL_VIDEO_CHANNELS": "fb_story, ig_reel,bogus"}) == ("ig_reel", "fb_story"), "env channels")
+ck(V.vid_channels({"SOCIAL_VIDEO_CHANNELS": "bogus"}) == V.DEFAULT_CHANNELS, "bad env → default")
+# סטורי שכבר עלה (לפני השינוי) לא נדרס ל-off בניסיון חוזר
+sb.videos[-1].update(status="partial", fb_story_status="ok", ig_reel_status="failed"); FG.calls = []
+V.vid_publish(G, v["id"], http=HTTP, now=NOW, env=env, store=stv)
+ck([c[0] for c in FG.calls] == ["ig_REELS"] and sb.videos[-1]["fb_story_status"] == "ok", (FG.calls, sb.videos[-1]))
+
+env = dict(env, SOCIAL_VIDEO_CHANNELS="ig_story,ig_reel,fb_story,fb_reel")
 G, st, sb = make_G(); FG.calls = []
 v, stv = approved_video(G, sb, st)
 r = V.vid_publish(G, v["id"], http=HTTP, now=NOW, env=env, store=stv)

@@ -7240,9 +7240,10 @@ function vidRow(p){
   var css = 'width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;';
   var h = '', L = it.last, test = SOC.mode === 'publish' ? '' : ' (מצב בדיקה)';
   if (L){
-    var oks = ['ig_story', 'ig_reel', 'fb_story', 'fb_reel'].filter(function(c){ return L[c + '_status'] === 'ok'; }).length;
+    var chs = ['ig_story', 'ig_reel', 'fb_story', 'fb_reel'].filter(function(c){ return L[c + '_status'] !== 'off'; });
+    var oks = chs.filter(function(c){ return L[c + '_status'] === 'ok'; }).length;
     var line = 'סרטון: ' + (VID_ST[L.status] || L.status) + ' ' + socWhen(L.created_at);
-    if (L.status === 'published' || L.status === 'partial') line += ' · ' + oks + '/4';
+    if (L.status === 'published' || L.status === 'partial') line += ' · ' + oks + '/' + chs.length;
     h += '<div style="font-size:12px;color:#5B6472;font-weight:700;margin-top:8px">' + esc(line);
     if (L.video_token && (L.status === 'preview' || L.status === 'pending'))
       h += ' · <a href="/v2/social/vid/' + esc(L.video_token) + '.mp4" target="_blank" rel="noopener" style="color:#2E6BD6;font-weight:800">צפייה</a>';
@@ -11624,7 +11625,7 @@ function loadVid(){GET('/v2/api/social/video/health').then(function(j){
   show('oVid','fal: '+(j.fal==='set'?(j.fal_bad?'בעיה בחשבון — צריך לטעון קרדיט':'מחובר'):'מפתח חסר — סרטונים בלי AI')+' · '+(j.auto?'אוטומטי פעיל':'אוטומטי כבוי')+
     '\nהחודש: '+j.month_n+' קליפים מתוך '+j.month_cap+' · עלות משוערת $'+j.month_cost+'\nמודל: '+(j.model||'—'));
   var st={rendering:'בהכנה',preview:'בדיקה',pending:'ממתין לאישור',approved:'אושר',published:'פורסם',partial:'חלקי',skipped:'דולג',expired:'פג',failed:'נכשל'};
-  var ch=function(s){return s==='ok'?'✓':(s?'✗':'—');};
+  var ch=function(s){return s==='ok'?'✓':(s==='off'?'כבוי':(s?'✗':'—'));};
   el('vidRecent').innerHTML=(j.recent||[]).map(function(r){
     var v=r.video_token&&r.status!=='failed'?'<video controls playsinline preload="none" poster="/v2/social/vid/'+esc(r.video_token)+'-cover.jpg" src="/v2/social/vid/'+esc(r.video_token)+'.mp4" style="width:120px;border-radius:12px;background:#0E1D33"></video>':'';
     return '<div style="display:flex;gap:10px;align-items:flex-start;margin:8px 0">'+v+'<div class="sb">'+esc(String(r.created_at||'').slice(0,16).replace('T',' '))+

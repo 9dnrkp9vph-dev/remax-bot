@@ -952,6 +952,16 @@ def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
 
 
 CHANNELS = ("ig_story", "ig_reel", "fb_story", "fb_reel")
+# [02/11] אייל: פייסבוק מעתיק בעצמו כל ריל של העמוד לסטורי — סטורי פייסבוק משלנו היה כפילות (ובאייפון ההעתק מוצג לבן).
+# ברירת מחדל בלי fb_story; SOCIAL_VIDEO_CHANNELS ב-Render (למשל "ig_story,ig_reel,fb_story,fb_reel") משנה בלי קוד.
+DEFAULT_CHANNELS = ("ig_story", "ig_reel", "fb_reel")
+
+
+def vid_channels(env=None):
+    """הערוצים הפעילים, בסדר של CHANNELS. ערך לא תקין → ברירת המחדל."""
+    raw = str(SP._env(env).get("SOCIAL_VIDEO_CHANNELS") or "")
+    got = {x.strip() for x in raw.split(",") if x.strip()}
+    return tuple(c for c in CHANNELS if c in got) or DEFAULT_CHANNELS
 _PUBLISHABLE = ("approved", "partial", "publishing")
 
 
@@ -1010,9 +1020,10 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
     l9 = _agent_personal(G, row)
     agent = {"name": str(row.get("סוכן 1") or "").strip(), "phone": ("0" + l9) if l9 else ""}
     post = SP.soc_build_post(row, _office(G).get("name", ""), SP._clean_desc(G), G["_row_feats"], agent=agent)
-    want = [c for c in (channels or CHANNELS) if c in CHANNELS and rec.get(c + "_status") not in ("ok", "unknown")]
+    active = vid_channels(env)
+    want = [c for c in (channels or active) if c in active and rec.get(c + "_status") not in ("ok", "unknown")]
     page_id = str(scfg.get("page_id") or SP.PAGE_ID_DEFAULT)
-    upd, errs = {}, []
+    upd, errs = {c + "_status": "off" for c in CHANNELS if c not in active and rec.get(c + "_status") != "ok"}, []
     g = SP.Graph(http, token, env)
     ig_id = None
     for c in want:
@@ -1049,8 +1060,8 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
             upd[c + "_status"] = res[c] = "unknown"
             errs.append("%s: %s" % (c, SP._scrub("שגיאה: %s" % e, [token])))
     merged = dict(rec, **upd)
-    oks = [c for c in CHANNELS if merged.get(c + "_status") == "ok"]
-    upd["status"] = res["status"] = "published" if len(oks) == len(CHANNELS) else "partial"
+    oks = [c for c in active if merged.get(c + "_status") == "ok"]
+    upd["status"] = res["status"] = "published" if len(oks) == len(active) else "partial"
     if errs:
         upd["error"] = " | ".join(errs)[:900]
     G["_sbdb"].video_update(vid, upd)
@@ -1058,7 +1069,7 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
     res["reason"] = " · ".join(errs)
     name = rec.get("decided_by") or "אפי"
     G["_log_activity"](name, "system", "", "סרטון לרשתות — " + ("פורסם" if upd["status"] == "published" else "פורסם חלקית"),
-                       "%s %d/4" % (rec.get("property_key"), len(oks)))
+                       "%s %d/%d" % (rec.get("property_key"), len(oks), len(active)))
     return res
 
 
