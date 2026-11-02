@@ -523,3 +523,102 @@ def _duration(ff, path, run):
         return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else None
     except Exception:
         return None
+
+
+# ── fal.ai (image-to-video) ──────────────────────────────────────────────────────
+FAL_DEFAULT_MODEL = "fal-ai/kling-video/v2.5-turbo/pro/image-to-video"
+_NEG = "people, person, text, logo, watermark, new furniture, distortion, blur"
+MODEL_ARGS = {"kling": {"duration": "5", "negative_prompt": _NEG},
+              "hailuo": {"duration": "6", "prompt_optimizer": False}}
+FAL_COST = {"kling": 0.35, "hailuo": 0.19}
+
+
+class FalError(Exception):
+    def __init__(self, msg, code=None, unknown=False):
+        super().__init__(msg)
+        self.code, self.unknown = code, unknown
+
+
+def vid_prompt(room):
+    r = str(room or "").strip() or "room"
+    if "facade" in r or "building" in r or "חזית" in r:
+        return ("Slow cinematic push-in on the building facade, natural daylight, smooth stable camera, realistic, "
+                "keep the building exactly as in the photo, do not invent details, no people, no text, no logos, vertical 9:16")
+    return ("Slow cinematic dolly-in through the %s, natural daylight, smooth stable camera, realistic, "
+            "keep the room exactly as in the photo, do not invent details, no people, no text, no logos, vertical 9:16" % r)
+
+
+class Fal:
+    """fal queue REST. המפתח רק בכותרת Authorization; כל הודעת שגיאה עוברת _scrub."""
+
+    def __init__(self, http, key, model=None, sleep=None, clock=None):
+        import time as _t
+        self.http, self.key = http, key
+        self.model = (model or FAL_DEFAULT_MODEL).strip()
+        self.sleep, self.clock = sleep or _t.sleep, clock or _t.time
+
+    def _family(self):
+        return "hailuo" if ("hailuo" in self.model or "minimax" in self.model) else "kling"
+
+    def args(self):
+        return dict(MODEL_ARGS[self._family()])
+
+    def cost(self):
+        return FAL_COST[self._family()]
+
+    def _err(self, msg, code=None, unknown=False):
+        return FalError(SP._scrub(msg, [self.key]), code=code, unknown=unknown)
+
+    def clip(self, jpeg, prompt):
+        import base64
+        hd = {"Authorization": "Key " + self.key, "Content-Type": "application/json"}
+        body = dict(self.args(), prompt=prompt, image_url="data:image/jpeg;base64," + base64.b64encode(jpeg).decode())
+        try:
+            r = self.http.post("https://queue.fal.run/" + self.model, headers=hd, json=body, timeout=60)
+        except Exception as e:
+            raise self._err("fal submit: %s" % e, unknown=True)
+        if getattr(r, "status_code", 200) >= 400:
+            raise self._err("fal %s: %s" % (r.status_code, str(getattr(r, "text", ""))[:200]), code=r.status_code)
+        j = r.json() or {}
+        st_url, res_url = j.get("status_url"), j.get("response_url")
+        if not st_url or not res_url:
+            raise self._err("fal: no request urls")
+        t0 = self.clock()
+        while True:
+            if self.clock() - t0 > FAL_TIMEOUT_S:
+                raise self._err("fal: timeout", unknown=True)
+            try:
+                s = (self.http.get(st_url, headers=hd, timeout=30).json() or {}).get("status")
+            except Exception:
+                s = "IN_PROGRESS"   # תקלת רשת רגעית בבדיקת הסטטוס — ממשיכים לחכות
+            if s == "COMPLETED":
+                break
+            if s not in ("IN_QUEUE", "IN_PROGRESS"):
+                raise self._err("fal job %s" % s)
+            self.sleep(8)
+        res = self.http.get(res_url, headers=hd, timeout=30).json() or {}
+        url = (res.get("video") or {}).get("url")
+        if not url:
+            raise self._err("fal: no video url")
+        data = self.http.get(url, timeout=120).content
+        if not data:
+            raise self._err("fal: empty video")
+        return data
+
+
+def vid_ai_clip(fal, jpeg, room):
+    """→ (bytes|None, קוד שגיאה|'timeout'|None, עלות). ניסיון חוזר אחד רק לכשל ודאי שאינו הרשאה/קרדיט."""
+    cost = 0.0
+    for attempt in range(2):
+        try:
+            data = fal.clip(jpeg, vid_prompt(room))
+            return data, None, cost + fal.cost()
+        except FalError as e:
+            if e.code in (401, 402, 403):
+                return None, e.code, cost
+            cost += fal.cost() if e.code is None else 0
+            if e.unknown:
+                return None, "timeout", cost
+            if attempt == 1:
+                return None, e.code or "failed", cost
+    return None, "failed", cost
