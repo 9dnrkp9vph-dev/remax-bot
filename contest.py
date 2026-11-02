@@ -174,3 +174,212 @@ def score(contest, ledger, sigs, adjustments, canon, now):
     return {"id": contest["id"], "name": contest["name"], "start": contest["start"], "end": contest["end"],
             "days_left": max(0, (e - today).days + 1), "pts": dict(pts), "groups": out_groups,
             "leader": None if totals[0] == totals[1] else (0 if totals[0] > totals[1] else 1)}
+
+
+# ── ראוטים ──────────────────────────────────────────────────────────────────
+import copy as _copy
+import hmac as _hmac
+import os as _os
+import time as _time
+import uuid as _uuid
+
+import goals as _goals
+
+
+def _now():
+    return _time.time()
+
+
+def register(app, G):
+    from flask import jsonify, request
+
+    def canon(n):
+        n = str(n or "").strip()
+        try:
+            n = G["_canon_agent_name"](n) or n
+        except Exception:
+            pass
+        return G["_canon_key"](n)
+
+    def display(by, ph):
+        return G["_display_name_for"](by or "", ph or "")
+
+    def _today():
+        return _dt.datetime.fromtimestamp(_now(), _IL).date()
+
+    def _is_coord(s, cfg, ct):
+        if s.get("role") == "coordinator" or s.get("drole") == "coordinator":
+            return True
+        k = canon(s.get("name"))
+        if k:
+            for it in (cfg or {}).get("coordinators") or []:
+                if isinstance(it, dict) and k in (canon(it.get("coordinator")), canon(it.get("name"))):
+                    return True
+            if ct and any(canon(n) == k for g in ct.get("groups") or [] for n in g.get("coords") or []):
+                return True
+        try:
+            if G["_last9"](s.get("phone")) in (G["_coordinators_all"]() or {}):
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _can_edit(s, cfg):
+        if s.get("drole") not in ("manager", "developer"):
+            return False
+        cts = contests(cfg)
+        return not _is_coord(s, cfg, pick(cfg, _today())[0] or (cts[0] if cts else None))
+
+    def _me(s, ct):
+        k = canon(s.get("name"))
+        if not k or not ct:
+            return None
+        for gi, g in enumerate(ct["groups"]):
+            for r in g["rows"]:
+                if k in {canon(m) for m in r["members"]}:
+                    return {"group": gi, "kind": "row", "label": r["label"]}
+            for n in g.get("coords") or []:
+                if canon(n) == k:
+                    return {"group": gi, "kind": "coord", "label": n}
+        return None
+
+    def _build(ct, cfg):
+        now = _now()
+        lid = ct["id"]
+        old = ((cfg.get("v2_contest_ledger") or {}).get(lid)) or {}
+        new = ledger_update(old, cfg.get("nbStatus"), ct, now, display)
+        if new != old:
+            def fn(c):
+                lg = c.get("v2_contest_ledger")
+                if not isinstance(lg, dict):
+                    lg = {}
+                lg[lid] = new
+                c["v2_contest_ledger"] = lg
+            G["_config_mutate"](fn)
+        sigs = _goals.g_safe(G, lambda: _goals.g_sigs(G, prev_month(_d(ct["start"]))[0]))
+        if isinstance(sigs, Exception):
+            sigs = None
+        adj = ((cfg.get("v2_contest_adj") or {}).get(lid)) or []
+        return score(ct, new, sigs, adj, canon, now)
+
+    @app.route("/v2/api/contest", methods=["GET"])
+    def contest_get():
+        tv = (_os.environ.get("TV_KEY") or "").strip()
+        k = (request.args.get("k") or "").strip()
+        s = G["_web_auth"]()
+        if not (tv and k and _hmac.compare_digest(k, tv)) and not s:
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+        s = s or {}
+        cfg = G["_load_config"]() or {}
+        today = _today()
+        ct, mode = pick(cfg, today)
+        board = None
+        if ct:
+            board = G["_swr"]("contest:%s:%s" % (ct["id"], today.isoformat()), 120,
+                              lambda: _build(ct, G["_load_config"]() or {}), max_stale=600)
+        return jsonify({"ok": True, "mode": mode, "board": board, "me": _me(s, ct) if s else None,
+                        "can_edit": bool(s) and _can_edit(s, cfg)})
+
+    def _mgr():
+        s = G["_web_auth"]()
+        if not s or not _can_edit(s, G["_load_config"]() or {}):
+            return None
+        return s
+
+    def _clear(cid):
+        for d in (_today(), _today() + _dt.timedelta(days=1), _today() - _dt.timedelta(days=1)):
+            G["_cache_clear"]("contest:%s:%s" % (cid, d.isoformat()))
+
+    def _log(s, action, detail):
+        G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), action, detail)
+
+    @app.route("/v2/api/contest/save", methods=["POST"])
+    def contest_save():
+        s = _mgr()
+        if not s:
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        cfg = G["_load_config"]() or {}
+        if b.get("copy_from"):
+            src = next((x for x in contests(cfg) if x.get("id") == b.get("copy_from")), None)
+            if not src:
+                return jsonify({"ok": False, "error": "התחרות המקורית לא נמצאה"}), 400
+            ct = _copy.deepcopy(src)
+            for k in ("id", "name", "start", "end"):
+                ct[k] = str(b.get(k) or "").strip()
+            if not ct["id"] or not ct["name"]:
+                return jsonify({"ok": False, "error": "חסר מזהה או שם"}), 400
+            if any(x.get("id") == ct["id"] for x in contests(cfg)):
+                return jsonify({"ok": False, "error": "מזהה התחרות כבר קיים"}), 400
+        else:
+            ct = b.get("contest")
+            if not isinstance(ct, dict) or not str(ct.get("id") or "").strip():
+                return jsonify({"ok": False, "error": "חסרה תחרות"}), 400
+        err = validate(ct, canon)
+        if err:
+            return jsonify({"ok": False, "error": err}), 400
+
+        def fn(c):
+            v = c.get("v2_contests")
+            lst = list(v.get("list") or []) if isinstance(v, dict) else []
+            if not lst:
+                lst = [_copy.deepcopy(NOV_2026)]
+            for i, x in enumerate(lst):
+                if x.get("id") == ct["id"]:
+                    lst[i] = ct
+                    break
+            else:
+                lst.append(ct)
+            c["v2_contests"] = {"list": lst}
+        G["_config_mutate"](fn)
+        _clear(ct["id"])
+        _log(s, "תחרות — עדכון", ct.get("name", ""))
+        return jsonify({"ok": True})
+
+    @app.route("/v2/api/contest/adjust", methods=["POST"])
+    def contest_adjust():
+        s = _mgr()
+        if not s:
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        cid = str(b.get("contest") or "")
+        cfg = G["_load_config"]() or {}
+        if not any(x.get("id") == cid for x in contests(cfg)):
+            return jsonify({"ok": False, "error": "התחרות לא נמצאה"}), 400
+        if b.get("delete"):
+            aid = str(b["delete"])
+            hit = {}
+
+            def fn(c):
+                m = c.get("v2_contest_adj")
+                m = m if isinstance(m, dict) else {}
+                keep = []
+                for a in m.get(cid) or []:
+                    (hit.update(a) if a.get("id") == aid else keep.append(a))
+                m[cid] = keep
+                c["v2_contest_adj"] = m
+            G["_config_mutate"](fn)
+            if not hit:
+                return jsonify({"ok": False, "error": "התיקון לא נמצא"}), 400
+            _clear(cid)
+            _log(s, "תחרות — מחיקת תיקון", "%s · %s · %s" % (hit.get("label"), hit.get("pts"), hit.get("reason")))
+            return jsonify({"ok": True})
+        p, reason, label = b.get("pts"), str(b.get("reason") or "").strip(), str(b.get("label") or "").strip()
+        if isinstance(p, bool) or not isinstance(p, int) or p == 0 or abs(p) > MAX_PTS:
+            return jsonify({"ok": False, "error": "נקודות חייבות להיות מספר שלם בין -1000 ל-1000, לא אפס"}), 400
+        if not (1 <= len(reason) <= 200):
+            return jsonify({"ok": False, "error": "חובה לציין סיבה (עד 200 תווים)"}), 400
+        if b.get("kind") not in ("row", "coord") or b.get("group") not in (0, 1) or isinstance(b.get("group"), bool) or not label:
+            return jsonify({"ok": False, "error": "פרטי התיקון לא תקינים"}), 400
+        a = {"id": _uuid.uuid4().hex[:8], "group": b["group"], "kind": b["kind"], "label": label, "pts": p,
+             "reason": reason, "by": s.get("name", ""), "at": _now()}
+
+        def fn2(c):
+            m = c.get("v2_contest_adj")
+            m = m if isinstance(m, dict) else {}
+            m[cid] = list(m.get(cid) or []) + [a]
+            c["v2_contest_adj"] = m
+        G["_config_mutate"](fn2)
+        _clear(cid)
+        _log(s, "תחרות — תיקון ידני", "%s · %s · %s" % (label, p, reason))
+        return jsonify({"ok": True, "id": a["id"]})

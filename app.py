@@ -13388,6 +13388,13 @@ try:
 except Exception as _goals_err:
     log.error(f"goals init failed (app unaffected): {_goals_err}")
 
+# ── תחרות בין קבוצות (אייל 02/11) — מודול נפרד ──
+try:
+    import contest as _contest
+    _contest.register(app, globals())
+except Exception as _contest_err:
+    log.error(f"contest init failed (app unaffected): {_contest_err}")
+
 # ── פרסום נכסים בעמוד הפייסבוק ובאינסטגרם (אייל 31/10) — מודול נפרד ──
 try:
     _social.register(app, globals())
