@@ -7249,12 +7249,17 @@ function vidRow(p){
     if (L.ig_reel_permalink) h += ' · <a href="' + esc(L.ig_reel_permalink) + '" target="_blank" rel="noopener" style="color:#2E6BD6;font-weight:800">ריל באינסטגרם</a>';
     if (L.fb_reel_permalink) h += ' · <a href="' + esc(L.fb_reel_permalink) + '" target="_blank" rel="noopener" style="color:#2E6BD6;font-weight:800">ריל בפייסבוק</a>';
     h += '</div>';
+    if (L.status === 'pending' && L.error)   // [02/11] למה הודעת האישור לא יצאה
+      h += '<div style="font-size:12px;color:#7A5E1C;font-weight:700;margin-top:4px">' + esc(String(L.error).slice(0, 200)) + '</div>';
   }
   if (VID.busy[k]) return h + '<div style="margin-top:8px"><button disabled style="' + css +
     'cursor:default;background:#F2EFE7;color:#5B6472;border:1.5px solid #DCD6C8">בהכנה… (כמה דקות)</button></div>';
   if (L && L.status === 'partial')
     h += '<div style="margin-top:8px"><button onclick="vidRetry(\'' + esc(L.id) + '\')" style="' + css +
          'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">נסה שוב את מה שנכשל</button></div>';
+  if (L && L.status === 'pending' && !VID.busy['s:' + L.id])
+    h += '<div style="margin-top:8px"><button onclick="vidResend(\'' + esc(L.id) + '\')" style="' + css +
+         'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">שלח שוב לאישור בוואטסאפ</button></div>';
   var can = it.can || {};
   if (can.ok){
     h += '<div style="margin-top:8px"><button onclick="vidCreate(\'' + esc(k) + '\')" style="' + css +
@@ -7292,6 +7297,14 @@ function vidRetry(id){
     toast(j && j.ok ? 'מנסה שוב' : ((j && j.error) || 'שגיאה'));
     setTimeout(function(){ delete VID.busy['r:' + id]; }, 180000);
   }).catch(function(){ delete VID.busy['r:' + id]; toast('שגיאה'); });
+}
+function vidResend(id){
+  if (VID.busy['s:' + id]) return;
+  VID.busy['s:' + id] = 1; render();
+  POST('/v2/api/social/video/resend', {id: id}).then(function(j){
+    toast(j && j.ok ? 'נשלח שוב לאישור' : ((j && j.error) || 'שגיאה'));
+    setTimeout(function(){ delete VID.busy['s:' + id]; render(); }, 20000);
+  }).catch(function(){ delete VID.busy['s:' + id]; render(); toast('שגיאה'); });
 }
 var SITE = {hidden: {}, on: false, can: false, fh: {}};
 function loadSite(){
