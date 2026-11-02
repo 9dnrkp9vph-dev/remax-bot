@@ -364,3 +364,162 @@ def vid_layers(texts, timeline, logo_path, ai, out_dir):
         L.save(p)
         out[name] = p
     return out
+
+
+# ── הרכבה ב-ffmpeg ───────────────────────────────────────────────────────────────
+def vid_ffmpeg():
+    """נתיב ffmpeg: החבילה imageio-ffmpeg (בינארי סטטי, Render) ואחרת ffmpeg של המערכת."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        import shutil
+        return shutil.which("ffmpeg")
+
+
+def _music_dir():
+    import os
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "music")
+
+
+def vid_music(key):
+    """קטע מוזיקה לנכס (בחירה קבועה לפי מספר המודעה) מ-assets/music; אין קטעים → פד שקט שמיוצר
+    פעם אחת ב-ffmpeg (צלילים סינתטיים שלנו — בלי רישיון של אף אחד)."""
+    import os, hashlib, tempfile, subprocess
+    d = _music_dir()
+    tracks = sorted(f for f in (os.listdir(d) if os.path.isdir(d) else []) if f.lower().endswith((".mp3", ".m4a")))
+    if tracks:
+        i = int(hashlib.md5(str(key or "").encode()).hexdigest(), 16) % len(tracks)
+        return os.path.join(d, tracks[i])
+    pad = os.path.join(tempfile.gettempdir(), "effie_pad_v1.m4a")
+    if os.path.exists(pad) and os.path.getsize(pad) > 1000:
+        return pad
+    ff = vid_ffmpeg()
+    if not ff:
+        return None
+    # Am7 → Fmaj7 בשקט, עם נשימה איטית (טרמולו) — רקע עדין בלבד
+    expr = ("0.06*(sin(2*PI*220*t)+sin(2*PI*261.63*t)+sin(2*PI*329.63*t)+0.6*sin(2*PI*392*t))*lt(t,7)"
+            "+0.06*(sin(2*PI*174.61*t)+sin(2*PI*220*t)+sin(2*PI*261.63*t)+0.6*sin(2*PI*329.63*t))*gte(t,7)")
+    try:
+        subprocess.run([ff, "-v", "error", "-y", "-f", "lavfi", "-i",
+                        "aevalsrc='%s':s=48000:d=15" % expr, "-af",
+                        "tremolo=f=0.25:d=0.35,lowpass=f=1800,afade=in:d=1.5,afade=out:st=12.5:d=2.5",
+                        "-c:a", "aac", "-b:a", "128k", pad], check=True, capture_output=True, timeout=60)
+        return pad
+    except Exception:
+        return None
+
+
+def _jpeg_to_file(data, path):
+    with open(path, "wb") as f:
+        f.write(data)
+    return path
+
+
+def vid_compose(clip_path, slides, layers, timeline, music_path, out_path, run=None):
+    """קליפ AI (או Ken Burns על slides[0]) + שקפים בתנועה + שכבות טקסט + מוזיקה → MP4 9:16.
+    slides = [(jpeg_bytes, wm|None)]: [0]=תמונת ה-AI, [1:]=שקפים; הסיום על השקף הרביעי אם יש, אחרת האחרון.
+    → {'ok', 'duration', 'cover', 'error'}."""
+    import os, subprocess, tempfile
+    from PIL import Image
+    import io
+    run = run or subprocess.run
+    ff = vid_ffmpeg()
+    if not ff:
+        return {"ok": False, "error": "אין ffmpeg"}
+    tmp = tempfile.mkdtemp(prefix="vid_")
+    segs, durs = [], [d for _, d in timeline]
+    n = len(timeline)
+    enc = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "30", "-an",
+           "-threads", "1"]
+
+    def sh(cmd):
+        run(cmd, check=True, capture_output=True, timeout=RENDER_TIMEOUT_S)
+
+    try:
+        slide_i = 1
+        for i, (name, dur) in enumerate(timeline):
+            seg_d = dur + (XFADE if i < n - 1 else 0)
+            seg = os.path.join(tmp, "s%d.mp4" % i)
+            ov = layers[name]
+            if name == "ai" and clip_path:
+                fc = ("[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,setsar=1,"
+                      "tpad=stop_mode=clone:stop_duration=2[v];[v][1:v]overlay[o]")
+                sh([ff, "-v", "error", "-y", "-i", clip_path, "-i", ov, "-filter_complex", fc, "-map", "[o]",
+                    "-t", "%.2f" % seg_d] + enc + [seg])
+            elif name in ("ai", "kb"):
+                data, wm = slides[0]
+                im = Image.open(io.BytesIO(data)).convert("RGB")
+                box = vid_crop_box(im.width, im.height, wm) or vid_crop_box(im.width, im.height, None)
+                p = os.path.join(tmp, "kb.jpg")
+                im.crop(box).resize((1440, 2560), Image.LANCZOS).save(p, quality=92)
+                fr = int(round(seg_d * 30))
+                fc = ("[0:v]zoompan=z='1+0.08*on/%d':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=%d:s=1080x1920:fps=30,"
+                      "setsar=1[v];[v][1:v]overlay[o]" % (fr, fr))
+                sh([ff, "-v", "error", "-y", "-i", p, "-i", ov, "-filter_complex", fc, "-map", "[o]",
+                    "-frames:v", str(fr)] + enc + [seg])
+            else:
+                if name == "end" and len(slides) > 3:
+                    idx = 3
+                else:
+                    idx = min(slide_i, len(slides) - 1)
+                if name != "end":
+                    slide_i += 1
+                data, wm = slides[idx]
+                im = Image.open(io.BytesIO(data)).convert("RGB")
+                rng = vid_pan_range(im.width, im.height, wm) or (0.5, 0.5)
+                a, b = (rng[1], rng[0]) if name == "s3" else rng   # כיוון מתחלף בין שקפים
+                p = os.path.join(tmp, "sl%d.jpg" % i)
+                im.resize((max(1125, int(im.width * 2000 / im.height)), 2000), Image.LANCZOS).save(p, quality=92)
+                xexp = "(iw-ow)*(%.4f+(%.4f)*t/%.2f)" % (a, b - a, seg_d)
+                fc = ("[0:v]fps=30,crop=1125:2000:'%s':0,scale=1080:1920,setsar=1[v];[v][1:v]overlay[o]" % xexp)
+                sh([ff, "-v", "error", "-y", "-loop", "1", "-t", "%.2f" % seg_d, "-i", p, "-i", ov,
+                    "-filter_complex", fc, "-map", "[o]", "-t", "%.2f" % seg_d] + enc + [seg])
+            segs.append(seg)
+        total = sum(durs)
+        cmd = [ff, "-v", "error", "-y"]
+        for s in segs:
+            cmd += ["-i", s]
+        if music_path:
+            cmd += ["-i", music_path]
+        else:
+            cmd += ["-f", "lavfi", "-t", "%.2f" % total, "-i", "anullsrc=r=48000:cl=stereo"]
+        parts, last, off = [], "[0:v]", 0.0
+        for i in range(1, len(segs)):
+            off += durs[i - 1]
+            lab = "[x%d]" % i if i < len(segs) - 1 else "[v]"
+            parts.append("%s[%d:v]xfade=transition=fade:duration=%.2f:offset=%.2f%s" % (last, i, XFADE, off, lab))
+            last = lab
+        if len(segs) == 1:
+            parts.append("[0:v]null[v]")
+        ai = len(segs)
+        parts.append("[%d:a]atrim=0:%.2f,asetpts=PTS-STARTPTS,volume=0.35,afade=in:d=0.5,afade=out:st=%.2f:d=1.0,"
+                     "aresample=48000[a]" % (ai, total, max(0, total - 1.0)))
+        cmd += ["-filter_complex", ";".join(parts), "-map", "[v]", "-map", "[a]", "-t", "%.2f" % total,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-r", "30", "-g", "60",
+                "-c:a", "aac", "-ar", "48000", "-b:a", "128k", "-movflags", "+faststart", "-threads", "1", out_path]
+        sh(cmd)
+        cover = out_path.rsplit(".", 1)[0] + "-cover.jpg"
+        sh([ff, "-v", "error", "-y", "-ss", "0.5", "-i", out_path, "-frames:v", "1", "-q:v", "3", cover])
+        return {"ok": True, "duration": _duration(ff, out_path, run) or total, "cover": cover}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "timeout"}
+    except subprocess.CalledProcessError as e:
+        tail = (e.stderr or b"")[-300:]
+        return {"ok": False, "error": "ffmpeg: %s" % (tail.decode("utf-8", "replace") if isinstance(tail, bytes) else tail)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _duration(ff, path, run):
+    """משך הקובץ בשניות — מתוך הפלט של ffmpeg -i (בלי ffprobe, שאין ב-imageio-ffmpeg)."""
+    import subprocess
+    try:
+        r = subprocess.run([ff, "-i", path], capture_output=True, text=True, timeout=30)
+        m = re.search(r"Duration:\s*(\d+):(\d+):([\d.]+)", r.stderr or "")
+        return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else None
+    except Exception:
+        return None
