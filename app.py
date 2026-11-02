@@ -4110,18 +4110,19 @@ def make_c2c_link(from_phone, to_phone):
         return "", (err or "לא התקבל קישור")
     return link, ""
 
-def make_c2c_run(from_phone, to_phone):
-    """מריץ את סנריו 'קישור חיוג' ב-Make עם dial=1 (10/09 צהריים): **הסנריו עצמו מפעיל את קישור
-    ה-click2call** (ה-REST של Make לא מחזיר outputs לסנריו הזה, אז השרת מסתמך על סטטוס ההרצה —
-    הסנריו זורק שגיאה כש-Maskyoo מסרב). מחזיר (ok, msg, link) — link רק אם Make החזיר outputs."""
+def make_c2c_run(from_phone, to_phone, agent_phone=""):
+    """מריץ את סנריו 'קישור חיוג' ב-Make (7321077). מ-02/11/2026 הסנריו קורא ל-Maskyoo
+    `create_maskyoo_call_v2` (click2call_link בוטל ע"י Maskyoo): **הנייד של הסוכן (agent_phone)
+    מצלצל ראשון**, וכשהוא עונה Maskyoo מחייגת ללקוח (to_phone); שני הצדדים רואים את הקו
+    הווירטואלי (from_phone). ה-REST של Make לא מחזיר outputs לסנריו הזה, אז השרת מסתמך על
+    סטטוס ההרצה — הסנריו זורק שגיאה כש-Maskyoo מסרב. מחזיר (ok, msg, link) — link תמיד ריק."""
     url = f"https://{MAKE_ZONE}/api/v2/scenarios/{MAKE_C2C_SCENARIO}/run"
     try:
         r = requests.post(url, headers={"Authorization": "Token " + MAKE_API_TOKEN,
                                         "Content-Type": "application/json"},
                           json={"data": {"from_phone": str(from_phone or "").strip(),
                                          "to_phone": str(to_phone or "").strip(),
-                                         "first_target": (C2C_FIRST_TARGET or "destination"),
-                                         "dial": "1"},
+                                         "agent_phone": str(agent_phone or "").strip()},
                                 "responsive": True}, timeout=40)
     except Exception as e:
         log.warning(f"click2call: Make request failed: {e}")
@@ -10874,9 +10875,9 @@ def _hidden_write(action, eid):
 
 @app.route("/api/click2call", methods=["POST"])
 def api_click2call():
-    """חיוג ללקוח דרך המרכזיה (10/09): מבקש מ-Make קישור click2call מהקו הווירטואלי של הסוכן
-    אל היעד; הקליינט פותח את הקישור. בלי MAKE_API_TOKEN → disabled (הקליינט נופל ל-tel:).
-    מנהל ב'צפה כסוכן' (as) → הקו של הסוכן הנבחר."""
+    """חיוג ללקוח דרך המרכזיה (10/09; מ-02/11 דרך create_maskyoo_call_v2): Make מבקש מ-Maskyoo
+    לחייג קודם לנייד של הסוכן ואז ללקוח, מהקו הווירטואלי של הסוכן. בלי MAKE_API_TOKEN → disabled
+    (הקליינט נופל ל-tel:). מנהל ב'צפה כסוכן' (as) → הקו והנייד של הסוכן הנבחר."""
     s = _web_auth()
     if not s: return jsonify({"ok": False, "auth": False}), 401
     b = request.get_json(silent=True) or {}
@@ -10899,8 +10900,15 @@ def api_click2call():
     if not vphone:
         log.info(f"click2call: no vphone for name={name!r}")
         return jsonify({"ok": False, "error": "אין מספר וירטואלי מוגדר לסוכן — יש להגדיר בניהול הצוות"})
-    log.info(f"click2call: name={name!r} vphone={vphone} to={to}")
-    dialed, msg, link = make_c2c_run(vphone, to)   # הסנריו ב-Make מחייג בעצמו (dial=1)
+    # הנייד שמצלצל ראשון (create_maskyoo_call_v2, 02/11): הרשומה בצוות; בלי 'צפה כסוכן' — טלפון הסשן.
+    # מנהל ב'צפה כסוכן' לסוכן בלי נייד ברשומה → שגיאה (לא מצלצלים למנהל במקום הסוכן).
+    agent_phone = (ag.get("phone") or "").strip() if (as_name and s.get("role") == "admin") else \
+                  ((ag.get("phone") or "").strip() or str(s.get("phone", "") or "").strip())
+    if not agent_phone:
+        log.info(f"click2call: no agent phone for name={name!r}")
+        return jsonify({"ok": False, "error": "אין נייד מוגדר לסוכן בניהול הצוות — אי אפשר לחייג אליו ראשון"})
+    log.info(f"click2call: name={name!r} vphone={vphone} agent={_last9(agent_phone)} to={to}")
+    dialed, msg, link = make_c2c_run(vphone, to, agent_phone)   # הסנריו ב-Make מחייג בעצמו (v2)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "חיוג ללקוח",
                   (to + (" ✓" if dialed else " ✗ " + str(msg)))[:80])
     if not dialed:
