@@ -44,6 +44,22 @@ r = c.post("/v2/api/social/video/retry", json={"id": "v9", "channels": ["ig_reel
 ck(r.json["ok"] and PUBS == [("v9", ["ig_reel"])], (r.json, PUBS))
 sb.videos[-1]["status"] = "published"
 ck(c.post("/v2/api/social/video/retry", json={"id": "v9"}).json["ok"] is False, "retry only partial")
+# [02/11] שלח שוב לאישור — רק לסרטון שממתין
+RS = []
+_orig_send = V.vid_send_review
+V.vid_send_review = lambda G_, rec, base, env: (RS.append(rec["id"]), ["505709865"])[1]
+sb.videos.append({"id": "v8", "property_key": "tok1", "status": "pending", "video_token": "AbC123", "review_token": "R8",
+                  "created_at": SP._dt.datetime.now(SP._dt.timezone.utc).isoformat()})
+SESS["t"] = AG; ck(c.post("/v2/api/social/video/resend", json={"id": "v8"}).status_code == 403, "resend dev only")
+SESS["t"] = DEV
+r = c.post("/v2/api/social/video/resend", json={"id": "v8"})
+ck(r.json["ok"] and RS == ["v8"] and sb.video_get("v8")["recipients"] == ["505709865"], (r.json, RS))
+V.vid_send_review = lambda G_, rec, base, env: []
+r = c.post("/v2/api/social/video/resend", json={"id": "v8"})
+ck(r.json["ok"] is False and "לא נשלח" in r.json["error"], r.json)
+ck(c.post("/v2/api/social/video/resend", json={"id": "v9"}).json["ok"] is False, "resend only pending")
+V.vid_send_review = _orig_send
+sb.videos.remove(sb.video_get("v8"))
 h = c.get("/v2/api/social/video/health").json
 ck(h["ok"] and "fal" in h and "month_cost" in h and h["month_cap"] == V.MONTH_AI_CAP, h)
 

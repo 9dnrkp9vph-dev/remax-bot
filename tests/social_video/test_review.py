@@ -54,6 +54,33 @@ ck(comps["header"]["parameters"][0]["video"]["link"] == "https://app/v2/social/v
 qr = [c for c in tp["template"]["components"] if c["type"] == "button"]
 ck([c["parameters"][0]["payload"] for c in qr] == ["vid:%s:pub" % rec["id"], "vid:%s:skip" % rec["id"]], qr)
 
+# ── [02/11] וואטסאפ דחה את הכפתורים (החלון לא באמת פתוח) → נפילה לקישור דף אישור ──
+G, st, sb = make_G(); st["window"].add("505709865")
+G["_d360_post_message"] = lambda payload: (st["posted"].append(payload), (False, None))[1]
+rec = mkrec(sb)
+to = V.vid_send_review(G, rec, "https://app", ENV)
+ck("505709865" in to and any(t.startswith("972505709865") or "505709865" in t for t, _ in st["sent"]), (to, st["sent"]))
+ck(all("https://app/v2/social/review/RVW" in t for _, t in st["sent"]), st["sent"])
+
+# ── [02/11] תבנית נדחתה → נפילה לקישור ──
+G, st, sb = make_G()
+G["_d360_post_message"] = lambda payload: (st["posted"].append(payload), (False, None))[1]
+rec = mkrec(sb)
+to = V.vid_send_review(G, rec, "https://app", dict(ENV, WA_TPL_VIDEO="video_review"))
+ck(to == ["505709865", "521234567"] and len(st["sent"]) == 2, (to, st["sent"]))
+
+# ── [02/11] גם הקישור נכשל → לא נספר כנשלח, והסיבה נרשמת על הסרטון ──
+G, st, sb = make_G()
+G["send_text"] = lambda to, txt: (st["sent"].append((to, txt)), False)[1]
+rec = mkrec(sb)
+ck(V.vid_send_review(G, rec, "https://app", ENV) == [], "nothing delivered")
+ck("לא נשלח לאישור" in str(sb.video_get(rec["id"]).get("error") or ""), sb.video_get(rec["id"]))
+
+# ── [02/11] הצלחה מנקה שגיאת אישור קודמת ──
+G, st, sb = make_G()
+rec = mkrec(sb, error="לא נשלח לאישור בוואטסאפ")
+ck(V.vid_send_review(G, rec, "https://app", ENV) and not sb.video_get(rec["id"]).get("error"), sb.video_get(rec["id"]))
+
 # ── שעות שקט → לא נשלח, review_due ──
 G, st, sb = make_G(); G["_quiet_hours"] = lambda: True
 rec = mkrec(sb)

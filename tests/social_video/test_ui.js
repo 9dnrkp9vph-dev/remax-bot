@@ -35,6 +35,12 @@ ck(h.includes('צור סרטון') && h.includes("vidCreate('tok1')") && /min-he
 ctx.VID.items.tok1 = {last: {id: 'v1', status: 'pending', created_at: new Date().toISOString(), video_token: 'Tk1'}, can: {ok: false, reason: 'כבר נוצר סרטון ב-02/11'}};
 h = ctx.vidRow(P);
 ck(h.includes('ממתין לאישור') && h.includes('/v2/social/vid/Tk1.mp4') && h.includes('disabled'), h);
+// [02/11] ממתין — כפתור "שלח שוב לאישור", והסיבה כשלא נשלח
+ck(h.includes("vidResend('v1')") && h.includes('שלח שוב לאישור'), h);
+ctx.VID.items.tok1.last.error = 'לא נשלח לאישור בוואטסאפ (0505709865)';
+h = ctx.vidRow(P);
+ck(h.includes('לא נשלח לאישור בוואטסאפ') && h.includes('#C24040') === false, h);
+delete ctx.VID.items.tok1.last.error;
 ctx.VID.items.tok1.last = {id: 'v1', status: 'published', created_at: new Date().toISOString(), ig_story_status: 'ok', ig_reel_status: 'ok', fb_story_status: 'ok', fb_reel_status: 'ok', ig_reel_permalink: 'https://ig/r'};
 h = ctx.vidRow(P);
 ck(h.replace(/<[^>]+>/g, '').includes('פורסם') && h.includes('4/4') && h.includes('href="https://ig/r"'), h);

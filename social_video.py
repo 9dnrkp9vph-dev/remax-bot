@@ -1133,21 +1133,28 @@ def vid_send_review(G, rec, base, env):
     text = _summary(rec)
     ids = ("vid:%s:pub" % rec["id"], "vid:%s:skip" % rec["id"])
     tpl = str(env.get("WA_TPL_VIDEO") or "").strip()
-    sent = []
+    link_text = "%s\nלצפייה ולאישור: %s/v2/social/review/%s" % (text, base, rec.get("review_token"))
+
+    def _ok(res):
+        # _d360_post_message מחזיר (ok, resp) ולא זורק — [02/11] עד עכשיו דחייה של וואטסאפ נספרה כ"נשלח"
+        return bool(res[0]) if isinstance(res, tuple) else bool(res)
+
+    sent, fails = [], []
     for l9 in who:
         to = _wa(l9)
         try:
+            ok = False
             if G["_wa_window_open"](to):
                 G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
                                          "type": "video", "video": {"link": vurl}})
-                G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
+                ok = _ok(G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
                                          "type": "interactive", "interactive": {
                                              "type": "button", "body": {"text": text[:1000]},
                                              "action": {"buttons": [
                                                  {"type": "reply", "reply": {"id": ids[0], "title": "פרסם"}},
-                                                 {"type": "reply", "reply": {"id": ids[1], "title": "דלג"}}]}}})
+                                                 {"type": "reply", "reply": {"id": ids[1], "title": "דלג"}}]}}}))
             elif tpl:
-                G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
+                ok = _ok(G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
                                          "type": "template", "template": {
                                              "name": tpl, "language": {"code": str(env.get("WA_TPL_LANG") or "he")},
                                              "components": [
@@ -1156,12 +1163,20 @@ def vid_send_review(G, rec, base, env):
                                                  {"type": "button", "sub_type": "quick_reply", "index": "0",
                                                   "parameters": [{"type": "payload", "payload": ids[0]}]},
                                                  {"type": "button", "sub_type": "quick_reply", "index": "1",
-                                                  "parameters": [{"type": "payload", "payload": ids[1]}]}]}})
-            else:
-                G["send_text"](to, "%s\nלצפייה ולאישור: %s/v2/social/review/%s" % (text, base, rec.get("review_token")))
-            sent.append(l9)
+                                                  "parameters": [{"type": "payload", "payload": ids[1]}]}]}}))
+            if not ok:   # כפתורים/תבנית נדחו (או אין חלון ואין תבנית) → קישור לדף אישור (תבנית family_update מחוץ לחלון)
+                ok = bool(G["send_text"](to, link_text))
+            (sent if ok else fails).append(l9)
         except Exception:
-            pass
+            fails.append(l9)
+    try:
+        if who and not sent:
+            G["_sbdb"].video_update(rec["id"], {"error": "לא נשלח לאישור בוואטסאפ (%s) — ראו יומן שימוש: וואטסאפ רשמי"
+                                                         % ", ".join("0" + x for x in fails)})
+        elif sent and "לא נשלח לאישור" in str(rec.get("error") or ""):
+            G["_sbdb"].video_update(rec["id"], {"error": None})
+    except Exception:
+        pass
     return sent
 
 
@@ -1481,6 +1496,23 @@ def register(app, G):
         vid = rec["id"]
         _spawn(lambda: vid_publish(G, vid, channels=ch))
         return jsonify({"ok": True, "queued": True})
+
+    @app.route("/v2/api/social/video/resend", methods=["POST"])
+    def vid_api_resend():
+        """[02/11] אייל: "לא נשלחה לי הודעה לאישור" — שליחה חוזרת של הודעת האישור לסרטון שממתין."""
+        s, err = dev()
+        if err:
+            return err
+        j = request.get_json(silent=True) or {}
+        rec = G["_sbdb"].video_get(str(j.get("id") or ""))
+        if not rec or rec.get("status") != "pending":
+            return jsonify({"ok": False, "error": "הסרטון לא ממתין לאישור"})
+        to = vid_send_review(G, rec, _base(os.environ), os.environ) or []
+        if not to:
+            cur = G["_sbdb"].video_get(rec["id"]) or {}
+            return jsonify({"ok": False, "error": cur.get("error") or "לא נשלח (שעות שקט — יישלח בבוקר)"})
+        G["_sbdb"].video_update(rec["id"], {"recipients": to})
+        return jsonify({"ok": True, "to": len(to)})
 
     @app.route("/v2/api/social/video/health")
     def vid_api_health():
