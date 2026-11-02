@@ -79,6 +79,8 @@ G, st, sb = make_G()
 V.vid_compose = lambda *a, **k: {"ok": False, "error": "ffmpeg: boom fk"}
 r = V.vid_create_one(G, "tok1", "manual", "", http=HTTP, now=NOW, env=env, store=store())
 ck(not r["ok"] and sb.videos[-1]["status"] == "failed" and "fk" not in sb.videos[-1]["error"], sb.videos[-1])
+# קליפ Kling כבר שולם — גם כשהרינדור נכשל הרשומה מסומנת AI ונספרת בעלות/במכסה החודשית
+ck(sb.videos[-1]["ai"] is True and sb.videos[-1]["ai_cost_usd"] == 0.35, sb.videos[-1])
 V.vid_compose = fake_compose
 
 # ── vid_publish ──

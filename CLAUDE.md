@@ -663,3 +663,4 @@
 - 29/10: סיכום יעדים שבועי לכל סוכן בוואטסאפ הרשמי (goals.py: build_weekly/weekly_run/register_weekly + כרטיס בניהול). פירוט ביומן ההחלטות של remax-family/CLAUDE.md.
 - 29/10: לוח הבקרה — ריבוע "סיכום יעדים שבועי" בשורת הבריאות (goals.weekly_health): תקין = נשלח / עוד לא ראשון 11:00; איטי = נכשלו חלק או מאחר עד שני 12:00; תקלה = לא נשלח; שבת/חג; אין נתון = כבוי.
 - 29/10: סיכום יעדים חודשי (goals.py: build_monthly/monthly_run/monthly_preview, עמוד /v2/goals/monthly, כרטיס בניהול) + השבועי משתמש ב-g_active. פירוט ביומן ההחלטות של remax-family/CLAUDE.md.
+- 02/11: 🐞 סרטונים נכשלו בפרוד (No such filter: 'xfade') — imageio-ffmpeg 0.5.1 ארז ffmpeg 4.2.2 (xfade מ-4.3). שודרג ל-0.6.0 (ffmpeg 7.0.2). קליפ Kling שנוצר נספר כ-AI גם כשהרינדור נכשל (עלות/מכסה).
