@@ -1261,3 +1261,243 @@ def vid_wa_redirect(G, code, env):
     except Exception:
         pass
     return 302, "https://wa.me/%s?text=%s" % (to, quote(msg))
+
+
+# ── הסבב האוטומטי + תחזוקה ───────────────────────────────────────────────────────
+_STORE = None
+
+
+def _store():
+    global _STORE
+    if _STORE is None:
+        _STORE = VidStore()
+    return _STORE
+
+
+def _housekeeping(G, now, env, store):
+    """פג (48ש'), פרסום מתוזמן שהגיע זמנו, אישורים שחיכו לסוף השקט, ניקוי קבצים."""
+    try:
+        recs = G["_sbdb"].video_recent(KEEP_MAX_DAYS + 1) or []
+    except Exception:
+        return
+    base = _base(env)
+    for r in recs:
+        st = r.get("status")
+        if st == "pending":
+            sent = SP._ts(r.get("sent_at"))
+            if sent is not None and now - sent > APPROVE_H * 3600:
+                G["_sbdb"].video_claim(r["id"], "pending", "expired", {})
+                continue
+            if r.get("review_due"):
+                to = vid_send_review(G, r, base, env)
+                if to:
+                    G["_sbdb"].video_update(r["id"], {"review_due": False, "recipients": to})
+        elif st == "approved" and r.get("publish_at"):
+            t = SP._ts(r.get("publish_at"))
+            if t is not None and t <= now and not _blocked_now(G, now):
+                vid = r["id"]
+                G["_sbdb"].video_update(vid, {"publish_at": None})
+                _spawn(lambda vid=vid: vid_publish(G, vid, env=env))
+    try:
+        by_tok = {r.get("video_token"): r for r in recs if r.get("video_token")}
+        for tok in vid_gc(store.files(), by_tok, now):
+            store.remove(tok)
+    except Exception:
+        pass
+
+
+def vid_auto_tick(G, now, env=None, store=None):
+    """סבב אחד: רק SOCIAL_VIDEO_AUTO=1 + publish + META_TOKEN. נכסים חדשים (מספר מודעה שלא ראינו) → עד 3 ביום."""
+    env = SP._env(env)
+    if str(env.get("SOCIAL_VIDEO_AUTO") or "0").strip() != "1" or SP.soc_mode(env) != "publish" \
+            or not str(env.get("META_TOKEN") or "").strip():
+        return {"ran": False}
+    store = store or _store()
+    _housekeeping(G, now, env, store)
+    rows = SP.soc_office_rows(G)
+    keys = [SP._key(r.get("מספר מודעה")) for r in rows if SP._key(r.get("מספר מודעה"))]
+    scfg = SP._cfg_social(G)
+    gap = now - float(scfg.get("vid_last_tick") or 0)
+    if not scfg.get("vid_enabled_at") or gap > 86400:
+        seed = {"vid_known": {k: now for k in keys}, "vid_waiting": {}, "vid_last_tick": now,
+                "vid_enabled_at": scfg.get("vid_enabled_at") or now}
+        SP._social_mutate(G, lambda s: s.update(seed))
+        return {"ran": True, "seeded": len(keys)}
+    known = {k: v for k, v in (scfg.get("vid_known") or {}).items() if now - float(v or 0) < SP.KNOWN_TTL_DAYS * 86400}
+    waiting = {k: v for k, v in (scfg.get("vid_waiting") or {}).items()
+               if k in keys and now - float(v or 0) < SP.WAIT_DAYS * 86400}
+    new = [k for k in keys if k not in known and k not in waiting]
+    for k in new:
+        waiting[k] = now
+    for k in keys:
+        known.setdefault(k, now)
+    out = {"ran": True, "created": []}
+    if len(new) > SP.FLOOD:
+        for k in new:
+            waiting.pop(k, None)
+        SP.soc_daily_alert(G, "vid_flood", "סרטונים לרשתות", "%d נכסים חדשים בבת אחת — נראה כמו הזרמה, לא נוצרו סרטונים" % len(new), now)
+        out["flood"] = True
+    elif not _blocked_now(G, now) and waiting:
+        try:
+            hist = G["_sbdb"].video_recent(31) or []
+        except Exception:
+            hist = None
+        if hist is not None:
+            today = SP._day(now)
+            left = DAILY_CAP - sum(1 for h in hist if h.get("trigger") == "auto" and SP._ts(h.get("created_at"))
+                                   and SP._day(SP._ts(h.get("created_at"))) == today)
+            for k in sorted(waiting, key=lambda x: -float(waiting[x])):
+                if left <= 0:
+                    break
+                waiting.pop(k, None)
+                r = vid_create_one(G, k, "auto", "", env=env, store=store)
+                out["created"].append(k)
+                if (r or {}).get("ok") or (r or {}).get("status") == "failed":
+                    left -= 1
+    SP._social_mutate(G, lambda s: s.update(vid_known=known, vid_waiting=waiting, vid_last_tick=now))
+    return out
+
+
+# ── Flask ────────────────────────────────────────────────────────────────────────
+def register(app, G):
+    import os
+    import time as _t
+    import threading
+    from flask import jsonify, request, Response, send_file, redirect
+
+    def dev():
+        s = G["_web_auth"]()
+        if not s:
+            return None, (jsonify({"ok": False, "auth": False}), 401)
+        if s.get("drole") != "developer":
+            return None, (jsonify({"ok": False, "error": "forbidden"}), 403)
+        return s, None
+
+    def hist():
+        try:
+            return G["_sbdb"].video_recent(31) or []
+        except Exception:
+            return []
+
+    @app.route("/v2/api/social/video", methods=["POST"])
+    def vid_api_create():
+        s, err = dev()
+        if err:
+            return err
+        key = SP._key((request.get_json(silent=True) or {}).get("key"))
+        if not key:
+            return jsonify({"ok": False, "error": "key"}), 400
+        by = s.get("phone", "")
+        _spawn(lambda: vid_create_one(G, key, "manual", by))
+        return jsonify({"ok": True, "queued": True})
+
+    @app.route("/v2/api/social/videos")
+    def vid_api_list():
+        s, err = dev()
+        if err:
+            return err
+        keys = [SP._key(k) for k in str(request.args.get("keys") or "").split(",") if SP._key(k)][:200]
+        h = hist()
+        rows = {SP._key(r.get("מספר מודעה")): r for r in SP.soc_office_rows(G)}
+        now, hidden = _t.time(), SP.soc_hidden(G) or set()
+        items = {}
+        for k in keys:
+            if k not in rows:
+                continue
+            last = next((x for x in h if SP._key(x.get("property_key")) == k), None)
+            ok, why = vid_can_create(rows[k], h, now, hidden, "manual")
+            items[k] = {"last": {f: last.get(f) for f in ("id", "status", "created_at", "ai", "decided_by", "error",
+                                                          "ig_story_status", "ig_reel_status", "fb_story_status",
+                                                          "fb_reel_status", "ig_reel_permalink", "fb_reel_permalink",
+                                                          "video_token")} if last else None,
+                        "can": {"ok": ok, "reason": why}}
+        return jsonify({"ok": True, "mode": SP.soc_mode(os.environ), "items": items})
+
+    @app.route("/v2/api/social/video/retry", methods=["POST"])
+    def vid_api_retry():
+        s, err = dev()
+        if err:
+            return err
+        j = request.get_json(silent=True) or {}
+        rec = G["_sbdb"].video_get(str(j.get("id") or ""))
+        t = SP._ts((rec or {}).get("created_at"))
+        if not rec or rec.get("status") != "partial" or t is None or _t.time() - t > RETRY_DAYS * 86400:
+            return jsonify({"ok": False, "error": "אין מה לנסות שוב"})
+        ch = [c for c in (j.get("channels") or []) if c in CHANNELS] or None
+        vid = rec["id"]
+        _spawn(lambda: vid_publish(G, vid, channels=ch))
+        return jsonify({"ok": True, "queued": True})
+
+    @app.route("/v2/api/social/video/health")
+    def vid_api_health():
+        s, err = dev()
+        if err:
+            return err
+        h, now = hist(), _t.time()
+        m0 = _month_start(now)
+        mon = [x for x in h if x.get("ai") and (SP._ts(x.get("created_at")) or 0) >= m0]
+        return jsonify({"ok": True, "mode": SP.soc_mode(os.environ),
+                        "auto": str(os.environ.get("SOCIAL_VIDEO_AUTO") or "0") == "1",
+                        "fal": "set" if str(os.environ.get("FAL_KEY") or "").strip() else "missing",
+                        "fal_bad": (SP._cfg_social(G).get("alerts") or {}).get("fal") == SP._day(now).isoformat(),
+                        "model": os.environ.get("FAL_VIDEO_MODEL") or FAL_DEFAULT_MODEL,
+                        "month_n": len(mon), "month_cap": MONTH_AI_CAP,
+                        "month_cost": round(sum(float(x.get("ai_cost_usd") or 0) for x in mon), 2),
+                        "recent": [{f: x.get(f) for f in ("id", "property_key", "status", "created_at", "ai", "decided_by",
+                                                          "video_token", "error", "ig_story_status", "ig_reel_status",
+                                                          "fb_story_status", "fb_reel_status")} for x in h[:6]]})
+
+    @app.route("/v2/social/vid/<name>")
+    def vid_file(name):
+        m = re.fullmatch(r"([A-Za-z0-9]+)(-cover\.jpg|\.mp4)", str(name or ""))
+        st = _store()
+        if not m or not st.exists(m.group(1)):
+            return Response("not found", status=404)
+        p = st.path(m.group(1)) if m.group(2) == ".mp4" else st.cover(m.group(1))
+        if not os.path.exists(p):
+            return Response("not found", status=404)
+        r = send_file(p, mimetype="video/mp4" if m.group(2) == ".mp4" else "image/jpeg", conditional=True)
+        r.headers["Cache-Control"] = "no-store"
+        return r
+
+    @app.route("/v2/social/review/<tok>", methods=["GET", "POST"])
+    def vid_review(tok):
+        if request.method == "POST":
+            code, txt = vid_review_action(G, tok, str((request.get_json(silent=True) or {}).get("action") or ""),
+                                          _t.time(), os.environ)
+            return Response(txt, status=code, mimetype="text/plain")
+        code, html = vid_review_page(G, tok, _t.time())
+        return Response(html, status=code, mimetype="text/html", headers={"Cache-Control": "no-store"})
+
+    @app.route("/w/<code>")
+    def vid_wa(code):
+        c, loc = vid_wa_redirect(G, code, os.environ)
+        return redirect(loc, code=302) if c == 302 else Response("not found", status=404)
+
+    thr = {"t": None, "pid": 0}
+    lock = threading.Lock()
+
+    def loop():
+        _t.sleep(150)
+        while True:
+            try:
+                vid_auto_tick(G, _t.time())
+            except Exception as e:
+                lg = G.get("log")
+                if lg:
+                    lg.error("social video auto: %s" % SP._scrub(str(e), [os.environ.get("META_TOKEN", ""),
+                                                                           os.environ.get("FAL_KEY", "")]))
+            _t.sleep(LOOP_SEC)
+
+    @app.before_request
+    def _video_kick():
+        t = thr["t"]
+        if t is not None and t.is_alive() and thr["pid"] == os.getpid():
+            return
+        with lock:
+            t = thr["t"]
+            if t is not None and t.is_alive() and thr["pid"] == os.getpid():
+                return
+            thr["t"] = threading.Thread(target=loop, daemon=True, name="social-video-auto")
+            thr["t"].start()
+            thr["pid"] = os.getpid()

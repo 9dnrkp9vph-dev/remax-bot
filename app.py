@@ -7997,6 +7997,7 @@ def _activity_merge(c):
 import office_presence as _office_presence_mod
 import goals as _goals
 import social_publish as _social   # [SOCIAL 31/10] פרסום נכסים בעמוד ובאינסטגרם
+import social_video as _social_video   # [SOCIAL-VIDEO 02/11] סרטוני סטורי + ריל
 
 USAGE_RETENTION_DAYS = 60   # הפעימות נגזמות אחרי 60 יום (prune_pings)
 
@@ -13399,6 +13400,12 @@ try:
         log.error(f"prop_share register failed: {_pse}")
 except Exception as _social_err:
     log.error(f"social init failed (app unaffected): {_social_err}")
+
+# ── סרטוני סטורי + ריל לנכסי המשרד (אייל 02/11) — מודול נפרד ──
+try:
+    _social_video.register(app, globals())
+except Exception as _sv_err:
+    log.error(f"social_video init failed (app unaffected): {_sv_err}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # WARMUP — חימום ה-caches הכבדים בעליית התהליך (deploy/restart מרוקן הכל)
