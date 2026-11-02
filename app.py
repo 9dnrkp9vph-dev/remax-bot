@@ -22,6 +22,14 @@ try:
     app.json.ensure_ascii = False
 except Exception:
     app.config["JSON_AS_ASCII"] = False
+# [NOINDEX 02/11] השרת של אפי לא אמור להופיע בגוגל (האתר הציבורי הוא refamily.co.il) —
+# כל תשובה מסומנת noindex. לא חוסמים ב-robots.txt: גוגל צריך לסרוק כדי לראות את הסימון ולהסיר.
+# כיבוי: ROBOTS_NOINDEX=0.
+@app.after_request
+def _robots_noindex(resp):
+    if os.environ.get("ROBOTS_NOINDEX", "1") != "0" and "X-Robots-Tag" not in resp.headers:
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
 # ── Config from env vars ───────────────────────────────────────────────────────
 # Maytapi — אופציונלי מאז המעבר ל-360dialog (נשאר לקבוצות וואטסאפ ולחזרה מהירה)
 MAYTAPI_TOKEN    = os.environ.get("MAYTAPI_TOKEN", "")
