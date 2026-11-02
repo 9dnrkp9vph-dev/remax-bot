@@ -905,6 +905,7 @@ def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
                     with open(clip_path, "wb") as f:
                         f.write(data)
                     upd["ai_model"] = fal.model
+                    upd["ai"] = True   # שולם — נספר בעלות/במכסה גם אם הרינדור ייכשל
                 elif err in (401, 402, 403):
                     SP.soc_daily_alert(G, "fal", "סרטונים לרשתות", "חשבון fal — צריך לטעון קרדיט או מפתח חדש", now)
         ai = clip_path is not None
