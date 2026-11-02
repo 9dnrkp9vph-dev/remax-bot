@@ -56,6 +56,14 @@ C = W.day_wa_counts(DAY, nb, sigs, deals, excl_now=273, canon=canon)
 ck(C["meetings"] == 4, C["meetings"])
 ck(C["meetings_by"] == [("מתן", 2), ("רפי", 2)], C["meetings_by"])
 ck(C["meetings_coord"] == [("אוצר", 2)], C["meetings_coord"])
+
+# 1ב. [02/11 אייל: 'נחמי זקס 9'] אותה פגישה שנשמרה כמה פעמים (לחיצה כפולה) = אחת; פגישה אחרת באותו יום — נספרת
+nb2 = {"manual:%d" % i: {"status": "meeting", "agent": "נחמי", "by": "נחמי", "meeting_at": at(19, 25),
+                          "date": "2026-11-08T10:00", "addr": "רועי"} for i in range(4)}
+nb2["k"] = {"status": "meeting", "agent": "נחמי", "by": "נחמי", "meeting_at": at(10), "date": "2026-11-03T16:00", "addr": "הארזים 9"}
+nb2["k2"] = {"status": "meeting", "agent": "רויטל", "by": "נוי", "meeting_at": at(10), "date": "2026-11-08T10:00", "addr": "רועי"}
+C2 = W.day_wa_counts(DAY, nb2, [], [], 0, canon)
+ck(C2["meetings"] == 3 and C2["meetings_by"] == [("נחמי", 2), ("רויטל", 1)], (C2["meetings"], C2["meetings_by"]))
 # 2. [01/11 אייל 'תספור רק את החתמות קונים (ברגע שנחתמו)'] — רק מה שנחתם היום; נשלח ולא נחתם / נחתם אתמול — לא
 ck(C["buyers_sign"] == 1 and C["buyers_sign_by"] == [("רפי", 1)], (C["buyers_sign"], C.get("buyers_sign_by")))
 # 3. תהליכים חדשים מהיום + סה"כ פתוחים

@@ -3921,8 +3921,21 @@ def _display_name_for(name, phone):
     except Exception:
         real = ""
     if real and real not in _GENERIC_NAMES:
-        return real
+        return _full_team_name(real)
     return (nm or "משתמש") + " · " + l9[-4:]
+
+def _full_team_name(nm):
+    """[02/11 'אוצר 1' לצד 'אוצר בן חמו 6'] שם כניסה של מילה אחת → השם המלא מטבלת הצוות,
+    רק כשיש בדיוק חבר צוות אחד ששמו הפרטי כזה."""
+    nm = str(nm or "").strip()
+    if not nm or " " in nm:
+        return nm
+    try:
+        full = {str(r[0] or "").strip() for r in (_contacts_rows() or []) if r and str(r[0] or "").strip()}
+    except Exception:
+        return nm
+    hits = [f for f in full if f.split()[0] == nm and " " in f]
+    return hits[0] if len(hits) == 1 else nm
 
 def _resolve_roles(last9):
     """מחזיר (scope_role, display_role). scope ל-data (admin/coordinator/agent), display ל-UI/טאבים.
@@ -13127,7 +13140,9 @@ def _day_wa_build_and_send(now, cfg=None):
             return None
     excl_on = lambda v: str(v or "").strip().lower() in ("1", "1.0", "true", "yes", "כן", "בלעדי")
     # 'מי תיאם' — מנהלים נשמרים בשם הגנרי 'מנהל'; השם האמיתי לפי הטלפון (by_phone)
-    nb = _src(lambda: {k: (dict(r, by=_display_name_for(r.get("by") or r.get("agent") or "", r.get("by_phone") or ""))
+    # [02/11 אייל: 'אייל שמול פגישה?'] גם הסוכן נשמר כ'מנהל' כשמתאמת קובעת בלי לבחור סוכן → השם האמיתי לפי הטלפון
+    nb = _src(lambda: {k: (dict(r, by=_display_name_for(r.get("by") or r.get("agent") or "", r.get("by_phone") or ""),
+                                agent=_display_name_for(r.get("agent") or r.get("by") or "", r.get("by_phone") or ""))
                            if isinstance(r, dict) else r) for k, r in (cfg.get("nbStatus") or {}).items()}, "nbStatus")
     sigs = _src(lambda: _goals.g_sigs(globals(), now.date()), "get_signings")
     deals = _src(_deals_load, "deals")

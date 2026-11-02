@@ -178,6 +178,21 @@ def test_anchors():
     ck(c.listing_anchors(["א"], (0, 1), None, canon) is None)
     ck(c.listing_anchors(["א"], (0, 1e12), [], canon) == set())
 
+def test_ledger_dupes_and_generic_agent():
+    # [02/11 'נחמי זקס 9'] אותה פגישה נשמרה 4 פעמים → אחת; [02/11 'אייל שמול פגישה?'] סוכן 'מנהל' → לפי הטלפון
+    nb = {"manual:%d" % i: dict(rec("נחמי זקס", "נחמי זקס", "05/11/2026 10:00"), addr="רועי") for i in range(4)}
+    nb["m"] = dict(rec("מנהל", "מנהל", "05/11/2026 11:00"), by_phone="111", addr="נעמי שמר 18")
+    d2 = lambda by, ph: "אוצר בן חמו" if ph == "111" else by
+    L = c.ledger_update({}, nb, c.NOV_2026, NOW, d2)
+    ck(sum(1 for r in L.values() if r["agent"] == "נחמי זקס") == 1, L)
+    ck(L["m"]["agent"] == "אוצר בן חמו" and L["m"]["by"] == "אוצר בן חמו", L["m"])
+    # כפילות ישנה שכבר ברישום (מועד שעבר) לא חוזרת כשהמקורית עדיין קיימת
+    old = {k: dict(v, when=T(2026, 11, 1)) for k, v in L.items()}
+    nb1 = {"manual:0": dict(rec("נחמי זקס", "נחמי זקס", "05/11/2026 10:00", when="2026-11-01T10:00"), addr="רועי")}
+    old["manual:9"] = dict(old["manual:0"])
+    L2 = c.ledger_update(old, nb1, c.NOV_2026, NOW, disp)
+    ck(sum(1 for r in L2.values() if r["agent"] == "נחמי זקס") == 1, L2)
+
 for k, f in list(globals().items()):
     if k.startswith("test_"): f()
 print("OK", N[0])

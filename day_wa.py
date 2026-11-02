@@ -34,10 +34,15 @@ def day_wa_counts(day, nb_status, sigs, deals, excl_now, canon):
 
     if not _bad(nb_status):
         # [02/11 אייל+מתן, 'פגישות / מי תיאם' שגוי] לפי הסוכן שהפגישה שלו; מי שתיאם לסוכן אחר — בשורה נפרדת
-        by, coord = _Counter(), _Counter()
-        for rec in (nb_status or {}).values():
+        by, coord, seen_m = _Counter(), _Counter(), set()
+        for _k, rec in sorted((nb_status or {}).items(), key=lambda kv: str(kv[0])):
             if isinstance(rec, dict) and rec.get("status") == "meeting" and _in(parse_ts(rec.get("meeting_at")), b):
                 ag = nm(rec.get("agent") or rec.get("by"))
+                # [02/11 אייל: 'נחמי זקס 9'] אותה פגישה שנשמרה כמה פעמים (לחיצה כפולה) = פגישה אחת
+                dk = (ag, str(rec.get("date") or "").strip(), " ".join(str(rec.get("addr") or "").split()))
+                if dk[1] and dk in seen_m:     # בלי מועד — אין דרך לדעת שזו אותה פגישה
+                    continue
+                seen_m.add(dk)
                 by[ag] += 1
                 cb = nm(rec.get("by")) if str(rec.get("by") or "").strip() else ag
                 if cb != ag:

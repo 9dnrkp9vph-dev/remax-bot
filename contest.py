@@ -115,8 +115,9 @@ def ledger_update(ledger, nb, contest, now, display):
     if _bad(nb) or not isinstance(nb, dict):
         return copy.deepcopy(old)
     b0, b1 = day_bounds(_d(contest["start"]))[0], day_bounds(_d(contest["end"]))[1]
-    new = {}
-    for key, rec in nb.items():
+    new, seen = {}, set()
+    dkey = lambda ag, when, addr: (" ".join(str(ag or "").split()), when, " ".join(str(addr or "").split()))
+    for key, rec in sorted(nb.items(), key=lambda kv: str(kv[0])):
         if not isinstance(rec, dict) or rec.get("status") != "meeting":
             continue
         at = parse_ts(rec.get("meeting_at"))
@@ -127,10 +128,19 @@ def ledger_update(ledger, nb, contest, now, display):
         prev = str((old.get(key) or {}).get("by") or "")
         if _generic(nb_by) and prev and not _generic(prev):   # [FIX-m3] שם גנרי לא דורס שם אמיתי שכבר נרשם
             nb_by = prev
-        new[key] = {"agent": str(rec.get("agent") or by).strip(), "by": nb_by,
-                    "at": at, "when": parse_ts(rec.get("date"))}
+        ag = str(rec.get("agent") or by).strip()
+        if _generic(ag):   # [02/11] מתאמת שקבעה בלי לבחור סוכן — הסוכן נשמר כ'מנהל'
+            ag = display(ag, rec.get("by_phone")) or ag
+        when = parse_ts(rec.get("date"))
+        dk = dkey(ag, when, rec.get("addr"))
+        if when is not None and dk in seen:   # [02/11 'נחמי זקס 9'] אותה פגישה שנשמרה כמה פעמים = פגישה אחת
+            continue
+        seen.add(dk)
+        new[key] = {"agent": ag, "by": nb_by, "at": at, "when": when, "addr": str(rec.get("addr") or "")}
     for key, row in old.items():
         if key not in new:
+            if row.get("addr") is not None and row.get("when") is not None and dkey(row.get("agent"), row.get("when"), row.get("addr")) in seen:
+                continue
             w = row.get("when")
             if w is not None and w <= now:
                 new[key] = copy.deepcopy(row)
