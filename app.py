@@ -3663,6 +3663,7 @@ def _is_dev(phone):
     return _last9(phone) in DEV_PHONES
 
 _LAST_GOOD_CONFIG = None   # קונפיג תקין אחרון — מגן מפני דריסה כש-getconfig נכשל זמנית
+_CFG_DEGRADED = [False]    # [02/11] קריאת Supabase נכשלה בלי קונפיג תקין בזיכרון — שמירה חסומה
 
 def _load_config():
     """קונפיג מערכת (dict) מטאב 'config' ב-Apps Script. מטמון 60ש'.
@@ -3675,15 +3676,24 @@ def _load_config():
         c = _cache_get("app_config", 60)
         if c is not None: return c
         # מסלול Supabase — קונפיג משורות office_config (מהיר, בלי גוגל)
+        # 🐞 02/11: אין נפילה לגיליון — הוא קפוא מאוגוסט, ושמירה אחרי קריאה ממנו החזירה את
+        # הקונפיג הישן ל-Supabase ומחקה כל מפתח חדש (פגישות, מושהים, בקשות ביקורת).
+        # כשל = הקונפיג התקין האחרון; בלי כזה (מיד בעלייה) = ריק + מצב פגוע שחוסם שמירה.
         if CONFIG_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
             try:
                 cfg = _sbdb.fetch_config()
                 if isinstance(cfg, dict) and cfg:
                     _LAST_GOOD_CONFIG = cfg
+                    _CFG_DEGRADED[0] = False
                     _cache_put("app_config", cfg)
                     return cfg
+                log.error("supabase config read returned empty — not falling back to sheets")
             except Exception as _sbe:
-                log.error(f"supabase config read failed — falling back to sheets: {_sbe}")
+                log.error(f"supabase config read failed — not falling back to sheets: {_sbe}")
+            if isinstance(_LAST_GOOD_CONFIG, dict) and _LAST_GOOD_CONFIG:
+                return _LAST_GOOD_CONFIG
+            _CFG_DEGRADED[0] = True
+            return {}
         j = None
         try:
             j = _buyers_apps_post("getconfig", {})
@@ -3707,6 +3717,21 @@ def _load_config():
         return {}
 
 _CFG_BACKUP_MUTE_UNTIL = 0.0   # מנתק-זרם לגיבוי-הגיליון: אחרי כשל ממתינים 15 דק' (13/08)
+
+def _config_shrunk(prev, cfg, changed):
+    """[02/11] כיווץ חריג במפתח גדול (מילון/רשימה עם 20+ פריטים שנשאר עם פחות מחצי, או מפתח
+    כזה שנמחק) = כמעט תמיד קונפיג ישן או חלקי, לא פעולת משתמש — מחיקת פגישה מורידה אחת.
+    מחזיר תיאור ('nbStatus 200→70') או ''."""
+    for k in changed:
+        a = (prev or {}).get(k)
+        if not isinstance(a, (dict, list)) or len(a) < 20:
+            continue
+        b = cfg.get(k)
+        n = len(b) if isinstance(b, (dict, list)) else 0
+        if n * 2 < len(a):
+            return f"{k} {len(a)}→{n}"
+    return ""
+
 def _save_config(cfg):
     """כתיבת הקונפיג חזרה ל-Apps Script. מעדכן מטמון בהצלחה.
     הגנה: לא כותבים קונפיג שמרוקן את הסוכנים+תפקידים אם קודם היו כאלה (מונע מחיקה בטעות)."""
@@ -3720,6 +3745,9 @@ def _save_config(cfg):
     # מסלול Supabase — כותבים רק את המפתחות שהשתנו (שמירה אטומית פר-מפתח,
     # במקום דריסת הבלוב כולו). הגיליון מתעדכן במקביל דרך ה-hook ב-Apps Script.
     if CONFIG_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        if _CFG_DEGRADED[0]:
+            log.error("save_config refused: config read from Supabase failed — not writing a partial config")
+            return False
         try:
             prev = _LAST_GOOD_CONFIG if isinstance(_LAST_GOOD_CONFIG, dict) else None
             if prev is None:
@@ -3732,6 +3760,10 @@ def _save_config(cfg):
                     prev = {}
             changed = [k for k in cfg if _json.dumps(cfg.get(k), sort_keys=True, ensure_ascii=False)
                        != _json.dumps(prev.get(k), sort_keys=True, ensure_ascii=False)]
+            _shr = _config_shrunk(prev, cfg, changed)
+            if _shr:
+                log.error(f"save_config refused: abnormal shrink {_shr} — not writing")
+                return False
             for k in changed:
                 _sbdb.save_config_key(k, cfg[k])
             _LAST_GOOD_CONFIG = cfg
@@ -3756,7 +3788,10 @@ def _save_config(cfg):
                     log.error(f"config sheet backup exception (muting retries 15m): {_be}")
             return True
         except Exception as _sbe:
-            log.error(f"supabase config save failed — falling back to sheets: {_sbe}")
+            # 🐞 02/11: בלי נפילה ל-setconfig — ה-Apps Script מפצל את הבלוב ל-office_config ומוחק
+            # כל מפתח שאין בו; בלוב שנבנה מקריאה חלקית מוחק נתונים אמיתיים.
+            log.error(f"supabase config save failed — not falling back to sheets: {_sbe}")
+            return False
     try:
         j = _buyers_apps_post("setconfig", {"config": _json.dumps(cfg, ensure_ascii=False)})
         ok = bool(j and j.get("ok"))
