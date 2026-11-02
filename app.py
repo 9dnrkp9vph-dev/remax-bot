@@ -9069,6 +9069,10 @@ def api_listing_request():
         "agent_phone": _last9(s.get("phone", "")),
         "secretary": _secretary_for_agent(eff_name, eff_phone),
     }
+    # סיבת ההסרה (אייל 02/11): 'נגמרה הבלעדיות' / 'הנכס נמכר' — נכנסת לבקשה למזכירה וליומן
+    _reason = {"excl_end": "נגמרה הבלעדיות", "sold": "הנכס נמכר", "closed": "נסגרה עסקה"}.get((body.get("reason") or "").strip(), "")
+    if kind == "remove" and _reason:
+        payload["reason"] = _reason
     j = _buyers_apps_post("requestchange", payload)
     if not j or not j.get("ok"):
         return jsonify({"ok": False, "reason": (j or {}).get("error", "fail")}), 502
@@ -9079,7 +9083,8 @@ def api_listing_request():
     else:                  # [PENDING-AUTO 01/11] המחיר עכשיו — כשירד, הסימון יורד לבד
         _PENDING_AUTO_DONE.pop(lid, None)
         _pending_record_request(lid)
-    _log_activity(s["name"], s["role"], s["phone"], ("בקשת הסרת מודעה" if kind == "remove" else "בקשת עדכון מחיר"), lid)
+    _log_activity(s["name"], s["role"], s["phone"], ("בקשת הסרת מודעה" if kind == "remove" else "בקשת עדכון מחיר"),
+                  (lid + " · " + _reason) if (kind == "remove" and _reason) else lid)
     return jsonify({"ok": True})
 
 @app.route("/api/listing/done", methods=["POST"])

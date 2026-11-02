@@ -879,10 +879,12 @@ def register_site(app, G, store=None):
         if not s:
             return jsonify({"ok": False, "auth": False}), 401
         b = request.get_json(silent=True) or {}
-        # שדה אחד בכל בקשה: hidden (מזכירה/מנהל) או first_hand (יד ראשונה — גם הסוכן על הנכס שלו, אייל 18/10)
-        if ("hidden" in b) == ("first_hand" in b) or "featured" in b:
+        # שדה אחד בכל בקשה: hidden (מזכירה/מנהל), first_hand (יד ראשונה — גם הסוכן על הנכס שלו, אייל 18/10)
+        # או sold ('אני מכרתי' במחיקת נכס מ'שלי' — הנכס עובר ל'נמכרו' באתר, אייל 02/11)
+        _fields = [f for f in ("hidden", "first_hand", "sold") if f in b]
+        if len(_fields) != 1 or "featured" in b:
             return jsonify({"ok": False, "reason": "bad_field"}), 400
-        field = "hidden" if "hidden" in b else "first_hand"
+        field = _fields[0]
         key = str(b.get("key", "") or "").strip()[:80]
         row = next((r for r in (G["fetch_sheet_rows"]() or []) if str(r.get("מספר מודעה", "") or "").strip() == key), None) if key else None
         if not row:
@@ -898,7 +900,7 @@ def register_site(app, G, store=None):
         except Exception:
             pass
         allowed = can_edit_prop(sess, row, G["_agent_owns_row"], is_dev)
-        if not allowed and field == "first_hand":
+        if not allowed and field in ("first_hand", "sold"):
             try:
                 allowed = bool(G["_agent_owns_row"](row, s.get("name", ""), sess["_phones"]))
             except Exception:
@@ -912,12 +914,14 @@ def register_site(app, G, store=None):
         new_val = bool(b.get(field))
         if new_val == bool(cur.get(field)):
             return jsonify({"ok": True, field: new_val})
-        cur[field] = new_val   # השורה שומרת את כל הסימונים — שינוי אחד לא מוחק את השני
+        # השורה שומרת את כל הסימונים — שינוי אחד לא מוחק את השני; 'נמכר' נשמר כתאריך (epoch)
+        cur[field] = (int(__import__("time").time()) if new_val else False) if field == "sold" else new_val
         if not st().put("prop", key, cur, s.get("name", "")):
             return jsonify({"ok": False, "reason": "save_failed"})
         where = " ".join(str(row.get(k, "") or "") for k in ("כתובת", "עיר / ישוב")).strip()
-        what = ({True: "אתר — הסתרת נכס", False: "אתר — הצגת נכס"} if field == "hidden"
-                else {True: "אתר — סימון יד ראשונה", False: "אתר — ביטול יד ראשונה"})[new_val]
+        what = {"hidden": {True: "אתר — הסתרת נכס", False: "אתר — הצגת נכס"},
+                "first_hand": {True: "אתר — סימון יד ראשונה", False: "אתר — ביטול יד ראשונה"},
+                "sold": {True: "אתר — הנכס נמכר", False: "אתר — ביטול נמכר"}}[field][new_val]
         G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), what, (where + " · " + key).strip(" ·"))
         return jsonify({"ok": True, field: new_val})
 

@@ -7645,16 +7645,35 @@ function sendPrice(i){
     closeSheet(); toast('הבקשה נשלחה למזכירה'); load(el('q').value.trim());
   });
 }
+/* [REMOVE-WHY 02/11] מחיקת נכס מ'שלי' שואלת למה: 'נגמרה הבלעדיות' או 'אני מכרתי'.
+   'אני מכרתי' (במכירה) מסמן את הנכס כנמכר — והוא עובר לעמוד 'נמכרו' באתר. */
 function reqRemove(i){
   var p = el('list')._src[i]; if (!p) return;
-  if (!confirm('להסיר את המודעה? הנכס יירד מיד מהאפליקציה ובקשה תישלח למזכירה.\n' + [p.address, p.city].filter(Boolean).join(', '))) return;
-  POST('/api/listing/request', {kind:'remove', id: p.id, address: p.address || ''}).then(function(j){
-    if (!j.ok){ toast('השליחה נכשלה'); return; }
-    // ירידה מיידית — מסירים מהרשימה המקומית (המספר בטאב "שלי" יורד), ואז רענון מהשרת
-    try{ MINE = (MINE || []).filter(function(x){ return String(x.id||'') !== String(p.id||''); }); }catch(e){}
-    render();
-    toast('הנכס הוסר · הבקשה נשלחה למזכירה');
-    load(el('q').value.trim());
+  var sale = !DEAL;
+  openSheet('<h3>למה הנכס יורד?</h3>' +
+    '<div style="font-size:13px;color:#5B6472">' + esc([p.address, p.city].filter(Boolean).join(', ')) + '</div>' +
+    '<div style="font-size:12.5px;color:#6B7280;line-height:1.6">הנכס יירד מיד מהאפליקציה ובקשה תישלח למזכירה.' +
+    (sale ? ' אם מכרת — הנכס יעבור לעמוד \'נכסים שמכרנו\' באתר.' : '') + '</div>' +
+    '<button class="btn" style="background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25)" ' +
+    'onclick="doRemove(' + i + ',\'' + (sale ? 'sold' : 'closed') + '\')">' + (sale ? 'אני מכרתי' : 'סגרתי עסקה') + '</button>' +
+    '<button class="btn btn-sec" onclick="doRemove(' + i + ',\'excl_end\')">נגמרה הבלעדיות</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function doRemove(i, why){
+  var p = el('list')._src[i]; if (!p) return;
+  closeSheet();
+  var mark = (why === 'sold' && p.id) ? POST('/v2/api/site/prop', {key: String(p.id), sold: true})
+    .then(function(j){ return !!(j && j.ok); }).catch(function(){ return false; }) : Promise.resolve(null);
+  mark.then(function(siteOk){
+    POST('/api/listing/request', {kind:'remove', id: p.id, address: p.address || '', reason: why}).then(function(j){
+      if (!j.ok){ toast('השליחה נכשלה'); return; }
+      // ירידה מיידית — מסירים מהרשימה המקומית (המספר בטאב "שלי" יורד), ואז רענון מהשרת
+      try{ MINE = (MINE || []).filter(function(x){ return String(x.id||'') !== String(p.id||''); }); }catch(e){}
+      render();
+      toast(siteOk === true ? 'הנכס הוסר · יופיע ב\'נכסים שמכרנו\' באתר תוך כדקה' :
+            siteOk === false ? 'הנכס הוסר · לא הצלחנו לסמן כנמכר באתר' : 'הנכס הוסר · הבקשה נשלחה למזכירה');
+      load(el('q').value.trim());
+    });
   });
 }
 function doneListing(i){
