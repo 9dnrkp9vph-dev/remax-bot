@@ -47,6 +47,9 @@ ck(h.replace(/<[^>]+>/g, '').includes('פורסם') && h.includes('4/4') && h.in
 ctx.VID.items.tok1.last = {id: 'v1', status: 'partial', created_at: new Date().toISOString(), ig_story_status: 'ok', ig_reel_status: 'failed', fb_story_status: 'ok', fb_reel_status: 'ok'};
 h = ctx.vidRow(P);
 ck(h.includes('3/4') && h.includes("vidRetry('v1')"), h);
+// [02/11] ערוץ כבוי (סטורי פייסבוק) לא נספר במכנה
+ctx.VID.items.tok1.last = {id: 'v1', status: 'published', created_at: new Date().toISOString(), ig_story_status: 'ok', ig_reel_status: 'ok', fb_story_status: 'off', fb_reel_status: 'ok'};
+h = ctx.vidRow(P); ck(h.includes('3/3') && !h.includes('/4'), h);
 ctx.VID.busy.tok1 = 1; ck(ctx.vidRow(P).includes('disabled') && ctx.vidRow(P).includes('בהכנה'), 'busy'); delete ctx.VID.busy.tok1;
 ctx.MODE = 'shtaf'; ck(ctx.vidRow(P) === '', 'shtaf hidden'); ctx.MODE = 'mine';
 ctx.DEAL = 'commercial'; ck(ctx.vidRow(P) === '', 'commercial hidden'); ctx.DEAL = '';
