@@ -622,3 +622,81 @@ def vid_ai_clip(fal, jpeg, room):
             if attempt == 1:
                 return None, e.code or "failed", cost
     return None, "failed", cost
+
+
+# ── בחירת תמונות (Claude vision) ─────────────────────────────────────────────────
+WM_DEFAULT = (0.02, 0.02, 0.18, 0.14)   # הפינה השמאלית-העליונה — המקום הנפוץ של "Yad2"
+CLAUDE_MODEL = "claude-sonnet-4-5"
+_PICK_PROMPT = """These are photos of one apartment for sale (numbered from 0).
+Return ONLY a JSON object, no prose:
+{"ai": <index of the single best photo for a slow cinematic camera move: bright living room or building front, no people, no text>,
+ "room": "<short English room type of that photo, e.g. living room / kitchen / bedroom / balcony / building facade>",
+ "slides": [<up to 3 other indexes, different rooms, best first>],
+ "highlight": "<up to 4 Hebrew words taken ONLY from the description below, the strongest selling point, or empty>",
+ "wm": {"<index>": [x0, y0, x1, y1] or null},   // box of any "Yad2" watermark per photo, fractions 0-1 of width/height
+ "skip": [<indexes with people, floor plans, text-only or 'photos coming soon' placeholders>]}
+Description: """
+
+
+def _fallback_pick(n):
+    return {"ai": 0, "room": "room", "slides": list(range(1, min(n, 4))), "highlight": "",
+            "wm": {i: WM_DEFAULT for i in range(n)}, "skip": []}
+
+
+def _small_jpeg(data, px=512):
+    import io
+    from PIL import Image
+    im = Image.open(io.BytesIO(data)).convert("RGB")
+    im.thumbnail((px, px))
+    b = io.BytesIO()
+    im.save(b, "JPEG", quality=80)
+    return b.getvalue()
+
+
+def vid_pick(http, api_key, images, desc, feats):
+    """→ {'ai','room','slides','highlight','wm','skip'}; כל כשל → בחירה לפי סדר יד2."""
+    import base64, json
+    n = len(images or [])
+    fb = _fallback_pick(n)
+    if not http or not api_key or n < 2:
+        return fb
+    try:
+        content = []
+        for i, im in enumerate(images[:8]):
+            content.append({"type": "text", "text": "Photo %d:" % i})
+            content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                        "data": base64.b64encode(_small_jpeg(im)).decode()}})
+        content.append({"type": "text", "text": _PICK_PROMPT + str(desc or "")[:1500]})
+        r = http.post("https://api.anthropic.com/v1/messages",
+                      headers={"anthropic-version": "2023-06-01", "x-api-key": api_key, "content-type": "application/json"},
+                      json={"model": CLAUDE_MODEL, "max_tokens": 600, "messages": [{"role": "user", "content": content}]},
+                      timeout=90)
+        if getattr(r, "status_code", 200) >= 400:
+            return fb
+        text = "".join(c.get("text", "") for c in (r.json() or {}).get("content") or [])
+        m = re.search(r"\{.*\}", text, re.S)
+        j = json.loads(m.group()) if m else None
+        m_ = min(n, 8)
+        ai = j.get("ai") if isinstance(j, dict) else None
+        if not isinstance(ai, int) or not 0 <= ai < m_:
+            return fb
+        skip = [i for i in (j.get("skip") or []) if isinstance(i, int) and 0 <= i < m_ and i != ai]
+        slides = []
+        for i in j.get("slides") or []:
+            if isinstance(i, int) and 0 <= i < m_ and i != ai and i not in skip and i not in slides:
+                slides.append(i)
+        if not slides:
+            slides = [i for i in range(m_) if i != ai and i not in skip][:3]
+        wm = {}
+        for i in range(n):
+            v = (j.get("wm") or {}).get(str(i), WM_DEFAULT) if isinstance(j.get("wm"), dict) else WM_DEFAULT
+            ok = isinstance(v, (list, tuple)) and len(v) == 4 and all(isinstance(x, (int, float)) and 0 <= x <= 1 for x in v)
+            wm[i] = tuple(float(x) for x in v) if ok else (None if v is None else WM_DEFAULT)
+        hl = SP.soc_scrub_phones(str(j.get("highlight") or "")).strip()
+        words = hl.split()
+        if len(words) > 4 or any(w.strip(".,·\"'") not in str(desc or "") for w in words):
+            hl = ""
+        return {"ai": ai, "room": str(j.get("room") or "room")[:40], "slides": slides[:3], "highlight": hl,
+                "wm": wm, "skip": skip}
+    except Exception:
+        return fb
