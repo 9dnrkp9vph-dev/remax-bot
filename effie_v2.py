@@ -3969,7 +3969,7 @@ function isHot(c){   // ליד חם: יש סיכום ממשי עם פרטי לק
   return isAns(c.status) && !!c.summary && (!!c.clientDetails || c.summary.length > 60);
 }
 function stLabel(st){
-  return st === 'ANSWER' ? 'נענתה' : st === 'CALL2CALL' ? 'שיחה יוצאת' : st === 'BUSY' ? 'תפוס' : st === 'CALLER_CANCEL' ? 'נותקה' : 'לא נענתה';
+  return st === 'ANSWER' ? 'נענתה' : st === 'CALL2CALL' ? 'שיחה יוצאת' : st === 'C2C_MISS' ? 'יוצאת · לא ענה' : st === 'BUSY' ? 'תפוס' : st === 'CALLER_CANCEL' ? 'נותקה' : 'לא נענתה';
 }
 function fmtDur(d){
   d = parseInt(d, 10);
@@ -14376,7 +14376,7 @@ CRM_MODULES = {
 }
 
 _CRM_STATUS = {"ANSWER": "נענתה", "NOANSWER": "לא נענתה", "NO ANSWER": "לא נענתה", "BUSY": "תפוס",
-               "CALLER CANCEL": "בוטלה", "CANCEL": "בוטלה", "CALL2CALL": "יוצאת", "MANUAL": "ידנית"}
+               "CALLER CANCEL": "בוטלה", "CANCEL": "בוטלה", "CALL2CALL": "יוצאת", "C2C_MISS": "יוצאת · לא ענה", "MANUAL": "ידנית"}
 
 
 def crm_calls_records(rows, overrides, hidden, uid=None):

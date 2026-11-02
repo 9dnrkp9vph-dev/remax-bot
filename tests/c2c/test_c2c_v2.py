@@ -81,7 +81,8 @@ def build(session, body, agents, vphones=None):
           "_c2c_enabled_for": lambda w: True, "_c2c_agent_entry": entry,
           "_log_activity": lambda *a: acts.append(("log",) + a),
           "log": types.SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None),
-          "C2C_PILOT": "", "_last9": lambda p: re.sub(r"\D", "", str(p or ""))[-9:]}
+          "C2C_PILOT": "", "_c2c_clicks_mem": [], "_cache_clear": lambda k: None,
+          "time": __import__("time"), "_last9": lambda p: re.sub(r"\D", "", str(p or ""))[-9:]}
     _load(["api_click2call"], G4)
     return G4["api_click2call"]()
 def _r(x): return x if isinstance(x, tuple) else (x, 200)

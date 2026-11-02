@@ -4302,6 +4302,93 @@ def _strip_call_reviews(rows):
         out.append(r)
     return out
 
+_c2c_clicks_mem = []   # חיוגים מהאפליקציה בתהליך הזה (לפני שה-activity_log נקרא מחדש)
+
+def _c2c_parse_detail(detail):
+    """'0525640615 · 052-9125944 ✓' → (to9, vp9, ok). פורמט מ-02/11; שורות ישנות בלי קו → vp9 ריק."""
+    d = str(detail or "")
+    parts = [x for x in re.split(r"\s*·\s*", d.split("✓")[0].split("✗")[0]) if x.strip()]
+    to9 = _last9(parts[0]) if parts else ""
+    vp9 = _last9(parts[1]) if len(parts) > 1 else ""
+    return to9, vp9, ("✓" in d)
+
+def _c2c_clicks():
+    """חיוגי click2call מ-3 הימים האחרונים: [{ts, to9, vp9, agent9}] — מ-activity_log ('חיוג ללקוח')
+    + חיוגים מהתהליך הנוכחי. cache 60ש'. כשל בקריאה → רק מהזיכרון."""
+    c = _cache_get("c2c_clicks", 60)
+    if c is not None:
+        return c
+    out = []
+    try:
+        if _sbdb and _sbdb.enabled():
+            for e in _sbdb.fetch_activity_actions(time.time() - 3 * 86400, ["חיוג ללקוח"]):
+                to9, vp9, ok = _c2c_parse_detail(e.get("detail"))
+                if ok and to9 and not vp9:   # רשומה מלפני 02/11 22:30 — הקו מרשומת הצוות לפי הטלפון
+                    ag = _c2c_agent_entry({"phone": e.get("phone", ""), "name": e.get("name", "")}) or {}
+                    vp9 = _last9(ag.get("vphone", "") or _vphone_for_name(ag.get("name", "") or e.get("name", "")))
+                if ok and to9 and vp9:
+                    out.append({"ts": float(e.get("ts") or 0), "to9": to9, "vp9": vp9,
+                                "agent9": _last9(e.get("phone", ""))})
+    except Exception as _e:
+        log.warning(f"c2c clicks read failed: {_e}")
+    seen = {(round(x["ts"]), x["to9"]) for x in out}
+    for x in list(_c2c_clicks_mem)[-200:]:
+        if (round(x["ts"]), x["to9"]) not in seen:
+            out.append(dict(x))
+    out.sort(key=lambda x: x["ts"])
+    _cache_put("c2c_clicks", out)
+    return out
+
+def _apply_c2c(rows, clicks=None):
+    """שיחות click2call (create_maskyoo_call_v2, 02/11): מסקיו מדווחת כל רגל כשיחה שהמחייג שלה הוא
+    **הקו הווירטואלי של הסוכן** — ולכן ביומן הלקוח הופיע כ-0529125944. כל השורות של חיוג אחד
+    (קו → אותו חיוג מהאפליקציה, עד 30 דק' אחריו) מתאחדות לשורה אחת: הלקוח = מי שחויג,
+    טלפון הסוכן = הנייד שלו, סטטוס CALL2CALL כשהלקוח ענה, אחרת C2C_MISS ('יוצאת · לא ענה').
+    שורה שאין לה חיוג תואם — כמו שהיא."""
+    clicks = _c2c_clicks() if clicks is None else clicks
+    if not clicks or not rows:
+        return rows
+    vps = {}
+    for k in clicks:
+        vps.setdefault(k["vp9"], []).append(k)
+    groups, out = {}, []
+    for r in rows:
+        cp9 = _last9((r or {}).get("caller_phone", "")) if isinstance(r, dict) else ""
+        cand = vps.get(cp9) if cp9 else None
+        if not cand:
+            out.append(r); continue
+        ts = _epoch_from_iso(r.get("received_at", ""))
+        hit = None
+        for k in cand:   # החיוג האחרון שלפני השורה (עד 2 דק' סטייה בשעונים), בחלון 30 דק'
+            if k["ts"] - 120 <= ts <= k["ts"] + 1800:
+                hit = k
+        if not hit:
+            out.append(r); continue
+        key = (hit["vp9"], round(hit["ts"]), hit["to9"])
+        if key not in groups:
+            groups[key] = {"click": hit, "rows": [], "pos": len(out)}
+            out.append(None)
+        groups[key]["rows"].append(r)
+    for g in groups.values():
+        k, rs = g["click"], g["rows"]
+        def _st(x): return str(x.get("status", "") or "").strip().upper()
+        def _summ(x):
+            t = str(x.get("transcript_summary", "") or "")
+            return "" if "click2call_link" in t else t
+        cust_ans = any(_st(x) in ("ANSWER", "CALL2CALL") and _last9(x.get("agent_phone", "")) == k["to9"] for x in rs)
+        if not cust_ans:   # הרגל של הלקוח לא נשאה DESTINATION — שתי רגליים שנענו = הלקוח ענה
+            cust_ans = sum(1 for x in rs if _st(x) in ("ANSWER", "CALL2CALL")) >= 2
+        best = max(rs, key=lambda x: (len(_summ(x)), _st(x) in ("ANSWER", "CALL2CALL"), _epoch_from_iso(x.get("received_at", ""))))
+        m = dict(best)
+        m["caller_phone"] = "0" + k["to9"]
+        if k.get("agent9"):
+            m["agent_phone"] = "0" + k["agent9"]
+        m["status"] = "CALL2CALL" if cust_ans else "C2C_MISS"
+        m["transcript_summary"] = _summ(best)
+        m["c2c"] = True
+        out[g["pos"]] = m
+    return [x for x in out if x is not None]
+
 def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
     _ck = "raw:" + str(type_he) + ":" + str(frm) + ":" + str(to)
     _ttl = 60
@@ -4327,6 +4414,10 @@ def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
         rows = _web_fetch_raw_uncached(type_he, frm, to)
         if type_he == "שיחות":
             rows = _strip_call_reviews(rows)
+            try:
+                rows = _apply_c2c(rows)
+            except Exception as _ce:
+                log.warning(f"c2c normalize failed: {_ce}")
         if rows:
             _cache_put(_ck, rows)
         return rows
@@ -10929,7 +11020,11 @@ def api_click2call():
     log.info(f"click2call: name={name!r} vphone={vphone} agent={_last9(agent_phone)} to={to}")
     dialed, msg, link = make_c2c_run(vphone, to, agent_phone)   # הסנריו ב-Make מחייג בעצמו (v2)
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "חיוג ללקוח",
-                  (to + (" ✓" if dialed else " ✗ " + str(msg)))[:80])
+                  (to + " · " + vphone + (" ✓" if dialed else " ✗ " + str(msg)))[:80])
+    if dialed:
+        _c2c_clicks_mem.append({"ts": time.time(), "to9": _last9(to), "vp9": _last9(vphone),
+                                "agent9": _last9(agent_phone)})
+        _cache_clear("c2c_clicks")
     if not dialed:
         log.warning(f"click2call: not dialed: {msg}")
         return jsonify({"ok": False, "error": msg or "החיוג לא הופעל", "link": link, "vphone": vphone})
