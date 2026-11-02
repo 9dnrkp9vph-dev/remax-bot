@@ -115,8 +115,10 @@ vurl = "https://app/v2/social/vid/%s.mp4" % v["video_token"]
 ck(FG.calls[0][1] == vurl and FG.calls[1][3] == vurl.replace(".mp4", "-cover.jpg"), FG.calls[:2])
 cap, desc = FG.calls[1][2], FG.calls[3][2]
 ck("/w/" not in cap and "13" not in cap and "#נדלן" in cap, cap)
-ck("לוואטסאפ ישיר: https://app/w/" in desc, desc)
-code = desc.rsplit("/w/", 1)[1].strip()
+ck("וואטסאפ: https://app/w/" in desc and "דנה כהן" in desc and "הודעה לעמוד" not in desc, desc)
+# [02/11] אייל: גם בריל באינסטגרם — הסוכן והוואטסאפ האישי שלו (בטקסט — באינסטגרם קישור לא לחיץ)
+ck("לפרטים בוואטסאפ: דנה כהן · 052-123-4567" in cap and "הודעה לעמוד" not in cap, cap)
+code = desc.split("/w/", 1)[1].split()[0]
 ck(sb.links[code]["channel"] == "fb_reel" and sb.links[code]["property_key"] == "tok1", sb.links)
 ck(sb.videos[-1]["ig_reel_permalink"] == "https://ig/r" and sb.videos[-1]["fb_reel_permalink"] == "https://fb/r", sb.videos[-1])
 
