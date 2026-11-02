@@ -34,9 +34,9 @@ def coord(res, name):
 ck(c.NOV_2026["id"] == "2026-11" and c.NOV_2026["pts"] == {"gius": 30, "meeting": 5})
 ck(len(c.NOV_2026["groups"]) == 2)
 ck(c.NOV_2026["groups"][0]["coords"] == ["נוי רבן", "נויה"] and c.NOV_2026["groups"][1]["coords"] == ["הודיה צרויה", "אוצר בן חמו"])
-ck(c.NOV_2026["groups"][0]["rows"][5] == {"label": "בן ובנימין", "members": ["בנימין אביטן", "בן קדוש"]})
+ck(c.NOV_2026["groups"][0]["rows"][5] == {"label": "בן ובנימין", "members": ["בינימין אביטן", "בן קדוש"]})
 ck(not any("?" in m for g in c.NOV_2026["groups"] for r in g["rows"] for m in r["members"]))
-ck(any(m == "ליאור גרונפינקל" for r in c.NOV_2026["groups"][0]["rows"] for m in r["members"]))
+ck(any(m == "ליאור גורפינקל" for r in c.NOV_2026["groups"][0]["rows"] for m in r["members"]))
 
 def test_pick():
     ck(c.pick({}, D(2026, 11, 15)) == (c.NOV_2026, "live"))
@@ -67,6 +67,30 @@ def test_validate():
     ck(isinstance(c.validate(x, canon), str))
     x = copy.deepcopy(c.NOV_2026); x["groups"] = x["groups"][:1]
     ck(isinstance(c.validate(x, canon), str))
+    # [FIX4] מבנה: כל צורה שבורה נדחית (ולא מפילה)
+    def bad(mut):
+        x = copy.deepcopy(c.NOV_2026); mut(x)
+        try:
+            r = c.validate(x, canon)
+        except Exception as e:
+            raise AssertionError("validate crashed: %r" % e)
+        ck(isinstance(r, str), r)
+    bad(lambda x: x.__setitem__("groups", "ab"))
+    bad(lambda x: x["groups"].__setitem__(0, "קבוצה"))
+    bad(lambda x: x["groups"][0].__setitem__("name", 5))
+    bad(lambda x: x["groups"][0].__setitem__("rows", "x"))
+    bad(lambda x: x["groups"][0]["rows"].__setitem__(0, "נדב"))
+    bad(lambda x: x["groups"][0]["rows"][0].__setitem__("label", ""))
+    bad(lambda x: x["groups"][0]["rows"][0].__setitem__("label", 7))
+    bad(lambda x: x["groups"][0]["rows"][0].__setitem__("members", "נדב רייזר"))
+    bad(lambda x: x["groups"][0]["rows"][0].__setitem__("members", []))
+    bad(lambda x: x["groups"][0]["rows"][0].__setitem__("members", [""]))
+    bad(lambda x: x["groups"][0]["rows"][0].__setitem__("members", [3]))
+    bad(lambda x: x["groups"][0].__setitem__("coords", "נוי"))
+    bad(lambda x: x["groups"][0].__setitem__("coords", [None]))
+    bad(lambda x: x["pts"].__setitem__("gius", 2.5))
+    bad(lambda x: x["pts"].__setitem__("meeting", True))
+    bad(lambda x: x.__setitem__("pts", "x"))
 
 def test_ledger_add():
     nb = {"k1": rec("רויטל גל", "נוי רבן", "05/11/2026 10:00"),
@@ -78,6 +102,17 @@ def test_ledger_add():
     ck(L["k1"]["agent"] == "רויטל גל" and L["k1"]["by"] == "נוי רבן" and L["k1"]["when"] == T(2026, 11, 25))
     ck(L["k1"]["at"] == T(2026, 11, 5))
     src = {}; c.ledger_update(src, nb, c.NOV_2026, NOW, disp); ck(src == {})
+
+def test_ledger_keeps_real_by():
+    # [FIX-m3] שם גנרי ('מנהל…' / ריק) לא דורס שם אמיתי שכבר ברישום
+    nb = {"k1": rec("רויטל גל", "מנהל", "05/11/2026 10:00")}
+    old = {"k1": {"agent": "רויטל גל", "by": "נוי רבן", "at": T(2026, 11, 5), "when": T(2026, 11, 25)}}
+    L = c.ledger_update(old, nb, c.NOV_2026, NOW, lambda by, ph: "מנהל · 1234" if by == "מנהל" else by)
+    ck(L["k1"]["by"] == "נוי רבן", L)
+    L = c.ledger_update({}, nb, c.NOV_2026, NOW, lambda by, ph: "מנהל · 1234")
+    ck(L["k1"]["by"] == "מנהל · 1234", L)
+    L = c.ledger_update(old, {"k1": rec("רויטל גל", "הודיה צרויה", "05/11/2026 10:00")}, c.NOV_2026, NOW, disp)
+    ck(L["k1"]["by"] == "הודיה צרויה", L)
 
 def test_ledger_deleted():
     led = {"k": {"agent": "א", "by": "ב", "at": T(2026, 11, 5), "when": T(2026, 11, 25)}}
@@ -131,6 +166,8 @@ def test_unknown_and_missing():
     r = c.score(c.NOV_2026, {"1": {"agent": "נדב רייזר", "by": "נדב רייזר", "at": T(2026, 11, 3), "when": None}}, None, [], canon, NOW)
     x = row(r, "נדב רייזר")
     ck(x["gius"] is None and x["pd"] is None and x.get("partial") is True and x["points"] == 5)
+    ck(r.get("partial") is True and r["leader"] is None, "board partial + no leader when sigs fail")
+    ck("partial" not in c.score(c.NOV_2026, {}, [], [], canon, NOW))
 
 def test_leader():
     r = c.score(c.NOV_2026, {}, [], [], canon, NOW); ck(r["leader"] is None)

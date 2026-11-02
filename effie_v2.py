@@ -2322,11 +2322,14 @@ goalsLoad(0);
 var CJ;   // undefined = עוד לא נטען; null = אין או נכשל
 CJ = (typeof contestCacheGet === 'function' && contestCacheGet(TOK)) || undefined;
 var CO = 0;
+var CS = null;   // [FIX3] תמונת התחרות שהסטורי מציג — נלקחת בפתיחה (או בשדרוג המאוחר), לא CJ החי
 function contestLoad(tries){
   if (typeof contestCachePut !== 'function'){ CJ = null; return; }   // הערכה לא נטענה — הסטורי כמו בלי תחרות
   GET('/v2/api/contest').then(function(j){
     if (!j || !j.ok) throw new Error('contest');
     CJ = j; contestCachePut(TOK, j);
+    // [FIX3] הסטורי הראשון של היום נפתח לפני שהתחרות נטענה — אם עדיין על הכרטיס הראשון, עוברים לכרטיס התחרות
+    if (STORY.open && CO === 0 && STORY.i === 0 && j.mode){ CO = 1; CS = j; renderCard(0); }
   }).catch(function(){
     if ((tries || 0) < 2){ setTimeout(function(){ contestLoad((tries || 0) + 1); }, 4000); return; }
     if (CJ === undefined) CJ = null;
@@ -2360,6 +2363,7 @@ function seenKey(){ return 'v2BriefSeen'; }
 function openStory(fromBar){
   STORY.open = true; STORY.i = 0;   // [GOALS 28/10] כרטיס 0 = היעדים ([CONTEST] או התחרות, כשיש)
   CO = (CJ && CJ.mode) ? 1 : 0;
+  CS = CO ? CJ : null;
   STORY.mode = fromBar ? 'tap' : 'auto'; STORY.max = 1;   /* [21/10] כמה לחצו לראות — לדשבורד ב-CRM */
   el('story').style.display = 'flex';
   renderCard(0);
@@ -2428,12 +2432,12 @@ function renderCard(i){
     '<div style="flex:1;display:flex;flex-direction:column;gap:1px"><div style="font-size:11px;color:rgba(255,255,255,.5)">'+label+'</div>'+
     '<div style="font-size:13.5px;font-weight:700;color:#fff">'+val+'</div></div></div>'; };
   var k = i - CO;   // [CONTEST] אינדקס בתוך הסטורי הרגיל (כרטיס התחרות = i 0 כש-CO=1)
-  el('storyTitle').textContent = (CO && i === 0) ? (CJ.mode === 'winner' ? 'הקבוצה המנצחת' : 'תחרות')
+  el('storyTitle').textContent = (CO && i === 0) ? (CS.mode === 'winner' ? 'הקבוצה המנצחת' : 'תחרות')
     : (k === 0) ? (GJ && GJ.view && GJ.view !== 'agent' ? 'יעדי היום' : 'היעדים שלי להיום') : 'נכסים חמים';
   b.classList.toggle('gScroll', k <= 0);
   b.scrollTop = 0;
   if (CO && i === 0){
-    b.innerHTML = (CJ.mode === 'winner' ? contestWinnerHtml(CJ, {story: true}) : contestCardHtml(CJ, {story: true})) +
+    b.innerHTML = (CS.mode === 'winner' ? contestWinnerHtml(CS, {story: true}) : contestCardHtml(CS, {story: true})) +
       '<div class="btns" style="margin:14px auto 0;align-items:center">' +
       '<button class="bMain" style="width:100%" onclick="nextCard()">המשך לסטורי</button>' +
       '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';

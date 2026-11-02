@@ -22,7 +22,7 @@ NOV_2026 = {
     "groups": [
         {"name": "קבוצה א'",
          "rows": [_row("נדב רייזר"), _row("רויטל גל"), _row("אירנה אוברוב"), _row("עידן חלווה"), _row("אלמוג וייל"),
-                  _row("בן ובנימין", "בנימין אביטן", "בן קדוש"), _row("עוז דנילוב"), _row("ליאור גרונפינקל"),
+                  _row("בן ובנימין", "בינימין אביטן", "בן קדוש"), _row("עוז דנילוב"), _row("ליאור גורפינקל"),
                   _row("נחמי זקס"), _row("מירי ישראלוב")],
          "coords": ["נוי רבן", "נויה"]},
         {"name": "קבוצה ב'",
@@ -68,14 +68,30 @@ def validate(contest, canon):
         return "תאריך התחלה או סיום לא תקין"
     if e < s:
         return "תאריך הסיום לפני תאריך ההתחלה"
-    pts = contest.get("pts") or {}
+    pts = contest.get("pts")
+    if not isinstance(pts, dict):
+        return "נקודות לגיוס ולפגישה חסרות"
     for k, label in (("gius", "גיוס"), ("meeting", "פגישה")):
         v = pts.get(k)
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0 or v > MAX_PTS:
-            return "נקודות ל%s חייבות להיות בין 0 ל-%d" % (label, MAX_PTS)
-    groups = contest.get("groups") or []
-    if len(groups) != 2:
+        if type(v) is not int or v < 0 or v > MAX_PTS:
+            return "נקודות ל%s חייבות להיות מספר שלם בין 0 ל-%d" % (label, MAX_PTS)
+    groups = contest.get("groups")
+    if not isinstance(groups, list) or len(groups) != 2:
         return "בתחרות חייבות להיות בדיוק שתי קבוצות"
+    for g in groups:   # [FIX4] מבנה — הגדרה שבורה לא נשמרת (ואחר כך לא מפילה את הניקוד)
+        if not isinstance(g, dict) or not isinstance(g.get("name"), str) or not g["name"].strip():
+            return "לכל קבוצה חייב להיות שם"
+        rows, coords = g.get("rows"), g.get("coords", [])
+        if not isinstance(rows, list) or not isinstance(coords, list):
+            return "השורות או המתאמות בקבוצה \"%s\" לא תקינות" % g["name"]
+        for r in rows:
+            if not isinstance(r, dict) or not isinstance(r.get("label"), str) or not r["label"].strip():
+                return "לכל שורה בקבוצה \"%s\" חייבת להיות תווית" % g["name"]
+            mem = r.get("members")
+            if not isinstance(mem, list) or not mem or not all(isinstance(m, str) and m.strip() for m in mem):
+                return "בשורה \"%s\" חייב להיות לפחות חבר אחד" % r["label"]
+        if not all(isinstance(n, str) for n in coords):
+            return "שמות המתאמות בקבוצה \"%s\" לא תקינים" % g["name"]
     seen = set()
     for g in groups:
         names = [m for r in g.get("rows") or [] for m in r.get("members") or []] + list(g.get("coords") or [])
@@ -87,6 +103,11 @@ def validate(contest, canon):
                 return "השם \"%s\" מופיע יותר מפעם אחת בתחרות" % k
             seen.add(k)
     return None
+
+
+def _generic(name):
+    n = str(name or "").strip()
+    return not n or n.startswith("מנהל")
 
 
 def ledger_update(ledger, nb, contest, now, display):
@@ -102,7 +123,11 @@ def ledger_update(ledger, nb, contest, now, display):
         if at is None or not (b0 <= at < b1):
             continue
         by = str(rec.get("by") or "").strip()
-        new[key] = {"agent": str(rec.get("agent") or by).strip(), "by": display(by, rec.get("by_phone")) if by else "",
+        nb_by = display(by, rec.get("by_phone")) if by else ""
+        prev = str((old.get(key) or {}).get("by") or "")
+        if _generic(nb_by) and prev and not _generic(prev):   # [FIX-m3] שם גנרי לא דורס שם אמיתי שכבר נרשם
+            nb_by = prev
+        new[key] = {"agent": str(rec.get("agent") or by).strip(), "by": nb_by,
                     "at": at, "when": parse_ts(rec.get("date"))}
     for key, row in old.items():
         if key not in new:
@@ -171,9 +196,13 @@ def score(contest, ledger, sigs, adjustments, canon, now):
         total = sum(o["points"] for o in rows)
         totals.append(total)
         out_groups.append({"name": g["name"], "total": total, "rows": rows, "coords": coords})
-    return {"id": contest["id"], "name": contest["name"], "start": contest["start"], "end": contest["end"],
-            "days_left": max(0, (e - today).days + 1), "pts": dict(pts), "groups": out_groups,
-            "leader": None if totals[0] == totals[1] else (0 if totals[0] > totals[1] else 1)}
+    out = {"id": contest["id"], "name": contest["name"], "start": contest["start"], "end": contest["end"],
+           "days_left": max(0, (e - today).days + 1), "pts": dict(pts), "groups": out_groups,
+           "leader": None if totals[0] == totals[1] else (0 if totals[0] > totals[1] else 1)}
+    if _bad(sigs):   # [FIX2] בלי חתימות הסכומים חסרים — אין מובילה, והתצוגה מראה 'לא זמין'
+        out["partial"] = True
+        out["leader"] = None
+    return out
 
 
 # ── ראוטים ──────────────────────────────────────────────────────────────────
@@ -188,6 +217,10 @@ import goals as _goals
 
 def _now():
     return _time.time()
+
+
+_LAST_GOOD = {}   # [FIX2] הלוח התקין האחרון לכל תחרות — כשהחתימות נופלות מציגים אותו (stale) ולא סכומים חסרים
+_GEN = [0]        # [FIX-m2] דור המטמון: עולה בכל שמירה/תיקון, כך שבנייה ישנה שעוד רצה לא ממלאת את המפתח הגלוי
 
 
 def register(app, G):
@@ -207,16 +240,25 @@ def register(app, G):
     def _today():
         return _dt.datetime.fromtimestamp(_now(), _IL).date()
 
+    def _real(s):   # [FIX1] מנהלים ומתאמות נכנסים בשם הגנרי 'מנהל' — השם האמיתי לפי הטלפון
+        try:
+            return display(s.get("name"), s.get("phone")) or s.get("name")
+        except Exception:
+            return s.get("name")
+
     def _is_coord(s, cfg, ct):
         if s.get("role") == "coordinator" or s.get("drole") == "coordinator":
             return True
-        k = canon(s.get("name"))
+        k = canon(_real(s))
         if k:
             for it in (cfg or {}).get("coordinators") or []:
                 if isinstance(it, dict) and k in (canon(it.get("coordinator")), canon(it.get("name"))):
                     return True
-            if ct and any(canon(n) == k for g in ct.get("groups") or [] for n in g.get("coords") or []):
-                return True
+            try:
+                if ct and any(canon(n) == k for g in ct.get("groups") or [] for n in g.get("coords") or []):
+                    return True
+            except Exception:
+                pass
         try:
             if G["_last9"](s.get("phone")) in (G["_coordinators_all"]() or {}):
                 return True
@@ -227,21 +269,50 @@ def register(app, G):
     def _can_edit(s, cfg):
         if s.get("drole") not in ("manager", "developer"):
             return False
-        cts = contests(cfg)
-        return not _is_coord(s, cfg, pick(cfg, _today())[0] or (cts[0] if cts else None))
+        return not _is_coord(s, cfg, pick(cfg, _today())[0] or _latest(cfg))
+
+    def _latest(cfg):   # [FIX-m4] בלי תחרות פעילה — האחרונה לפי תאריך התחלה
+        cts = [x for x in contests(cfg) if isinstance(x, dict)]
+        return max(cts, key=lambda x: str(x.get("start") or "")) if cts else None
 
     def _me(s, ct):
-        k = canon(s.get("name"))
+        k = canon(_real(s))
         if not k or not ct:
             return None
-        for gi, g in enumerate(ct["groups"]):
-            for r in g["rows"]:
-                if k in {canon(m) for m in r["members"]}:
-                    return {"group": gi, "kind": "row", "label": r["label"]}
-            for n in g.get("coords") or []:
-                if canon(n) == k:
-                    return {"group": gi, "kind": "coord", "label": n}
+        try:
+            for gi, g in enumerate(ct["groups"]):
+                for r in g["rows"]:
+                    if k in {canon(m) for m in r["members"]}:
+                        return {"group": gi, "kind": "row", "label": r["label"]}
+                for n in g.get("coords") or []:
+                    if canon(n) == k:
+                        return {"group": gi, "kind": "coord", "label": n}
+        except Exception:
+            pass
         return None
+
+    def _unmatched(ct):   # [FIX5] שמות בתחרות שלא נמצאו באפי (לעורכים) — בלי מקור שמות לא מחזירים כלום
+        known = set()
+        try:
+            known |= {canon(n) for n in (G["fetch_agents_phones"]() or {})}
+        except Exception:
+            pass
+        try:
+            known |= {canon(n) for n in (_goals.g_roster(G) or [])}
+        except Exception:
+            pass
+        known.discard("")
+        if not known or not ct:
+            return None
+        out = []
+        try:
+            for g in ct.get("groups") or []:
+                for n in [m for r in g.get("rows") or [] for m in r.get("members") or []] + list(g.get("coords") or []):
+                    if canon(n) and canon(n) not in known and n not in out:
+                        out.append(n)
+        except Exception:
+            return None
+        return out
 
     def _build(ct, cfg):
         now = _now()
@@ -260,7 +331,14 @@ def register(app, G):
         if isinstance(sigs, Exception):
             sigs = None
         adj = ((cfg.get("v2_contest_adj") or {}).get(lid)) or []
-        return score(ct, new, sigs, adj, canon, now)
+        b = score(ct, new, sigs, adj, canon, now)
+        if b.get("partial"):
+            last = _LAST_GOOD.get(lid)
+            if last:
+                return dict(_copy.deepcopy(last), stale=True)
+        else:
+            _LAST_GOOD[lid] = _copy.deepcopy(b)
+        return b
 
     @app.route("/v2/api/contest", methods=["GET"])
     def contest_get():
@@ -275,8 +353,17 @@ def register(app, G):
         ct, mode = pick(cfg, today)
         board = None
         if ct:
-            board = G["_swr"]("contest:%s:%s" % (ct["id"], today.isoformat()), 120,
-                              lambda: _build(ct, G["_load_config"]() or {}), max_stale=600)
+            try:   # [FIX4] הגדרה שבורה או מקור שנופל — אין לוח, לא 500
+                board = G["_swr"]("contest:%s:%s:%d" % (ct["id"], today.isoformat(), _GEN[0]), 120,
+                                  lambda: _build(ct, G["_load_config"]() or {}), max_stale=600)
+            except Exception as e:
+                lg = G.get("log")
+                if lg:
+                    try:
+                        lg.warning("contest build failed: %s" % e)
+                    except Exception:
+                        pass
+                board = None
         edit = bool(s) and _can_edit(s, cfg)
         adjs = []
         if ct and s:   # רשימת התיקונים לסימן שליד הניקוד; מי ביצע — רק לעורכים
@@ -291,8 +378,11 @@ def register(app, G):
                 cts = [x for x in contests(cfg) if isinstance(x, dict)]
                 dfn = max(cts, key=lambda x: str(x.get("start") or "")) if cts else None
             dfn = _copy.deepcopy(dfn) if dfn else None
-        return jsonify({"ok": True, "mode": mode, "board": board, "me": _me(s, ct) if s else None,
-                        "can_edit": edit, "adjustments": adjs, "def": dfn})
+        out = {"ok": True, "mode": mode, "board": board, "me": _me(s, ct) if s else None,
+               "can_edit": edit, "adjustments": adjs, "def": dfn}
+        if edit:
+            out["unmatched"] = _unmatched(ct or dfn) or []
+        return jsonify(out)
 
     def _mgr():
         s = G["_web_auth"]()
@@ -302,7 +392,8 @@ def register(app, G):
 
     def _clear(cid):
         for d in (_today(), _today() + _dt.timedelta(days=1), _today() - _dt.timedelta(days=1)):
-            G["_cache_clear"]("contest:%s:%s" % (cid, d.isoformat()))
+            G["_cache_clear"]("contest:%s:%s:%d" % (cid, d.isoformat(), _GEN[0]))
+        _GEN[0] += 1
 
     def _log(s, action, detail):
         G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), action, detail)
@@ -383,10 +474,10 @@ def register(app, G):
             return jsonify({"ok": False, "error": "נקודות חייבות להיות מספר שלם בין -1000 ל-1000, לא אפס"}), 400
         if not (1 <= len(reason) <= 200):
             return jsonify({"ok": False, "error": "חובה לציין סיבה (עד 200 תווים)"}), 400
-        if b.get("kind") not in ("row", "coord") or b.get("group") not in (0, 1) or isinstance(b.get("group"), bool) or not label:
+        if b.get("kind") not in ("row", "coord") or type(b.get("group")) is not int or b.get("group") not in (0, 1) or not label:
             return jsonify({"ok": False, "error": "פרטי התיקון לא תקינים"}), 400
         a = {"id": _uuid.uuid4().hex[:8], "group": b["group"], "kind": b["kind"], "label": label, "pts": p,
-             "reason": reason, "by": s.get("name", ""), "at": _now()}
+             "reason": reason, "by": _real(s) or "", "at": _now()}
 
         def fn2(c):
             m = c.get("v2_contest_adj")
@@ -462,7 +553,7 @@ V2_CONTEST_KIT = r"""<style>
   .ck-col .cr{display:flex;align-items:center;gap:14px;margin-top:10px;font-size:26px;border-top:1px solid rgba(255,255,255,.12);padding-top:10px}
   .ck-col .cr .pos{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.12);font-weight:800;font-size:20px;
       display:flex;align-items:center;justify-content:center;flex:none}
-  .ck-col .cr:first-of-type .pos{background:#E4C56B;color:#231700}
+  .ck-col .ch + .cr .pos{background:#E4C56B;color:#231700}
   .ck-col .cr .l{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ck-col .cr .v{font-weight:800;font-variant-numeric:tabular-nums}
   .ck.tv .ck-track{height:14px;margin-top:22px}
@@ -493,6 +584,10 @@ function contestCacheGet(tok, day){
   }catch(e){}
   return null;
 }
+/* [FIX2] לוח חלקי (החתימות לא נטענו) — בלי סכומי קבוצות ובלי מובילה */
+function contestPartial(b){ return !!(b && b.partial); }
+function contestTotal(b, g){ return contestPartial(b) ? 'לא זמין' : cShow(g && g.total); }
+function contestLead(b){ return contestPartial(b) ? null : (b ? b.leader : null); }
 function contestGapGius(gap, ptsGius){ return ptsGius > 0 ? Math.round(gap / ptsGius) : 0; }
 function contestSplit(s){ return String(s || '').split(/[,،]/).map(function(x){ return x.trim(); }).filter(Boolean); }
 function contestRange(a, b){
@@ -552,34 +647,36 @@ function contestMeHtml(j){
 function contestTeamsHtml(j){
   var b = j.board, me = j.me, gs = b.groups || [];
   var t = gs.map(function(g, i){
-    return '<div class="ck-team' + (b.leader === i ? ' lead' : '') + '">' +
+    var pt = contestPartial(b);
+    return '<div class="ck-team' + (contestLead(b) === i ? ' lead' : '') + '">' +
       (me && me.group === i ? '<div class="mine">הקבוצה שלך</div>' : '') +
-      '<div class="nm">' + cEsc(g.name) + '</div><div class="pts">' + cShow(g.total) + '</div><div class="u">נקודות</div></div>';
+      '<div class="nm">' + cEsc(g.name) + '</div><div class="pts"' + (pt ? ' style="font-size:22px"' : '') + '>' + contestTotal(b, g) +
+      '</div><div class="u">' + (pt ? 'הניקוד יתעדכן בקרוב' : 'נקודות') + '</div></div>';
   });
   return '<div class="ck-vs">' + t.join('<div class="ck-vsx">מול</div>') + '</div>';
 }
 function contestTvHtml(j){
   var b = j && j.board;
   if (!b || !b.groups || b.groups.length < 2) return '';
-  var gs = b.groups, win = j.mode === 'winner';
-  var head = b.leader == null ? 'תיקו' : cEsc(gs[b.leader].name) + (win ? ' ניצחה' : ' מובילה');
+  var gs = b.groups, win = j.mode === 'winner', pt = contestPartial(b), ld = contestLead(b);
+  var head = pt ? 'הניקוד לא זמין כרגע' : ld == null ? 'תיקו' : cEsc(gs[ld].name) + (win ? ' ניצחה' : ' מובילה');
   var cols = gs.map(function(g, i){
     var rows = (g.rows || []).slice().sort(function(x, y){ return (cNum(y.points) || 0) - (cNum(x.points) || 0); }).slice(0, 5);
-    return '<div class="ck-col' + (b.leader === i ? ' lead' : '') + '"><div class="ch"><div class="cn">' + cEsc(g.name) +
-      '</div><div class="cp">' + cShow(g.total) + '<small>נק\'</small></div></div>' +
+    return '<div class="ck-col' + (ld === i ? ' lead' : '') + '"><div class="ch"><div class="cn">' + cEsc(g.name) +
+      '</div><div class="cp">' + (pt ? '<span style="font-size:32px">לא זמין</span>' : cShow(g.total) + '<small>נק\'</small>') + '</div></div>' +
       rows.map(function(r, k){
-        return '<div class="cr"><div class="pos">' + (k + 1) + '</div><div class="l">' + cEsc(r.label) + '</div><div class="v">' + cShow(r.points) + '</div></div>';
+        return '<div class="cr"><div class="pos">' + (k + 1) + '</div><div class="l">' + cEsc(r.label) + '</div><div class="v">' + cShow(pt ? null : r.points) + '</div></div>';
       }).join('') + '</div>';
   }).join('');
   var a = Math.max(0, cNum(gs[0].total) || 0), c = Math.max(0, cNum(gs[1].total) || 0);
-  var pa = (a + c) ? Math.round(a * 100 / (a + c)) : 50, gap = Math.abs((cNum(gs[0].total) || 0) - (cNum(gs[1].total) || 0));
+  var pa = (a + c && !pt) ? Math.round(a * 100 / (a + c)) : 50, gap = pt ? 0 : Math.abs((cNum(gs[0].total) || 0) - (cNum(gs[1].total) || 0));
   return '<div class="ck tv"><div class="ck-top"><span>' + cEsc(b.name) + '</span><span>' +
     cEsc(win ? contestRange(b.start, b.end) : contestDays(b.days_left)) + '</span></div>' +
     '<div class="ck-trophy">' + CONTEST_TROPHY + '</div><div class="ck-h">' + head + '</div>' +
-    '<div class="ck-sub">' + (win ? 'התחרות הסתיימה' : (gap ? 'פער של ' + gap + ' נקודות' : 'תיקו')) + '</div>' +
+    '<div class="ck-sub">' + (win ? 'התחרות הסתיימה' : pt ? 'החתימות לא נטענו — הניקוד יתעדכן בקרוב' : (gap ? 'פער של ' + gap + ' נקודות' : 'תיקו')) + '</div>' +
     '<div class="ck-cols">' + cols + '</div>' +
-    '<div class="ck-track"><i class="' + (b.leader === 0 ? 'lead' : '') + '" style="width:' + pa + '%"></i>' +
-    '<i class="' + (b.leader === 1 ? 'lead' : '') + '" style="width:' + (100 - pa) + '%"></i></div></div>';
+    '<div class="ck-track"><i class="' + (ld === 0 ? 'lead' : '') + '" style="width:' + pa + '%"></i>' +
+    '<i class="' + (ld === 1 ? 'lead' : '') + '" style="width:' + (100 - pa) + '%"></i></div></div>';
 }
 function contestCardHtml(j, opts){
   opts = opts || {};
@@ -588,9 +685,10 @@ function contestCardHtml(j, opts){
   var b = j && j.board;
   if (!b || !b.groups || b.groups.length < 2) return '';
   var gs = b.groups, a = Math.max(0, cNum(gs[0].total) || 0), c = Math.max(0, cNum(gs[1].total) || 0);
-  var pa = (a + c) ? Math.round(a * 100 / (a + c)) : 50;
-  var head = b.leader == null ? 'תיקו' : cEsc(gs[b.leader].name) + ' מובילה';
-  var gap = Math.abs((cNum(gs[0].total) || 0) - (cNum(gs[1].total) || 0)), gapL = '';
+  var pt = contestPartial(b), ld = contestLead(b);
+  var pa = (a + c && !pt) ? Math.round(a * 100 / (a + c)) : 50;
+  var head = pt ? 'הניקוד לא זמין כרגע' : ld == null ? 'תיקו' : cEsc(gs[ld].name) + ' מובילה';
+  var gap = pt ? 0 : Math.abs((cNum(gs[0].total) || 0) - (cNum(gs[1].total) || 0)), gapL = '';
   if (gap){
     var k = contestGapGius(gap, (b.pts || {}).gius);
     gapL = '<div class="ck-gap">פער של <b>' + gap + ' נקודות</b>' +
@@ -603,8 +701,8 @@ function contestCardHtml(j, opts){
     '<div class="ck-h">' + head + '</div>' +
     '<div class="ck-sub">גיוס בבלעדיות ' + cShow(p.gius) + ' נק\' · פגישה ' + cShow(p.meeting) + ' נק\'</div>' +
     contestTeamsHtml(j) +
-    '<div class="ck-track"><i class="' + (b.leader === 0 ? 'lead' : '') + '" style="width:' + pa + '%"></i>' +
-    '<i class="' + (b.leader === 1 ? 'lead' : '') + '" style="width:' + (100 - pa) + '%"></i></div>' +
+    '<div class="ck-track"><i class="' + (ld === 0 ? 'lead' : '') + '" style="width:' + pa + '%"></i>' +
+    '<i class="' + (ld === 1 ? 'lead' : '') + '" style="width:' + (100 - pa) + '%"></i></div>' +
     gapL + (opts.tv ? '' : contestMeHtml(j)) +
     (opts.story ? '<a class="ck-full" href="/v2/contest" onclick="event.stopPropagation()">לטבלה המלאה</a>' : '') +
     '</div>';
@@ -621,12 +719,13 @@ function contestWinnerHtml(j, opts){
     return '<div class="r"><div class="pos">' + (i + 1) + '</div><div class="nm">' + cEsc(x.r.label) +
       '<small>' + cEsc(x.g) + '</small></div><div class="p">' + cShow(x.r.points) + '</div></div>';
   }).join('');
-  var head = b.leader == null ? 'תיקו' : cEsc(b.groups[b.leader].name) + ' ניצחה';
+  var ld = contestLead(b);
+  var head = contestPartial(b) ? 'הניקוד לא זמין כרגע' : ld == null ? 'תיקו' : cEsc(b.groups[ld].name) + ' ניצחה';
   return '<div class="ck' + (opts.story ? ' story' : '') + (opts.tv ? ' tv' : '') + '">' +
     '<div class="ck-top"><span>' + cEsc(b.name) + '</span><span>' + cEsc(contestRange(b.start, b.end)) + '</span></div>' +
     '<div class="ck-trophy">' + CONTEST_TROPHY + '</div>' +
     '<div class="ck-h">' + head + '</div><div class="ck-sub">התחרות הסתיימה</div>' +
-    contestTeamsHtml(j) + (top ? '<div class="ck-top3">' + top + '</div>' : '') +
+    contestTeamsHtml(j) + (top && !contestPartial(b) ? '<div class="ck-top3">' + top + '</div>' : '') +
     (opts.story ? '<a class="ck-full" href="/v2/contest" onclick="event.stopPropagation()">לטבלה המלאה</a>' : '') +
     '</div>';
 }
@@ -787,9 +886,11 @@ function render(){
       (j && j.can_edit ? '<button class="btn blue" onclick="copyOpen()">צור תחרות</button>' : '') + '</div>';
     return;
   }
-  if (SEL == null) SEL = (j.me && j.me.group != null) ? j.me.group : (b.leader != null ? b.leader : 0);
+  if (SEL == null) SEL = (j.me && j.me.group != null) ? j.me.group : (contestLead(b) != null ? contestLead(b) : 0);
   var gs = b.groups, g = gs[SEL] || gs[0];
-  var mini = gs.map(function(x, i){ return '<div class="' + (b.leader === i ? 'lead' : '') + '"><b>' + cShow(x.total) + '</b><span>' + cEsc(x.name) + '</span></div>'; }).join('');
+  var mini = gs.map(function(x, i){ return '<div class="' + (contestLead(b) === i ? 'lead' : '') + '"><b>' + contestTotal(b, x) + '</b><span>' + cEsc(x.name) + '</span></div>'; }).join('');
+  var um = (j.can_edit && j.unmatched && j.unmatched.length) ? '<div class="note" style="color:#7A5E1C;font-weight:700">שמות שלא נמצאו באפי: ' +
+    j.unmatched.map(cEsc).join(', ') + '</div>' : '';
   var seg = gs.map(function(x, i){ return '<button class="' + (i === SEL ? 'on' : '') + '" onclick="pick(' + i + ')">' + cEsc(x.name) + '</button>'; }).join('');
   var co = contestCoordsHtml(j, SEL);
   el('app').innerHTML =
@@ -801,7 +902,7 @@ function render(){
     (j.can_edit ? '<div class="adm"><button class="btn sec" onclick="editOpen()">עריכת התחרות</button>' +
       '<button class="btn sec" onclick="copyOpen()">תחרות חדשה (העתק)</button></div>' : '') +
     '<div class="seg">' + seg + '</div>' +
-    '<div class="card"><h3>' + cEsc(g.name) + ' <span>' + cShow(g.total) + ' נק\'</span></h3>' + contestTableHtml(j, SEL, {}) + '</div>' +
+    um + '<div class="card"><h3>' + cEsc(g.name) + ' <span>' + (contestPartial(b) ? 'לא זמין' : cShow(g.total) + ' נק\'') + '</span></h3>' + contestTableHtml(j, SEL, {}) + '</div>' +
     (co ? '<div class="card"><h3>המתאמות של ' + cEsc(g.name) + '</h3><p class="s">פגישות שתיאמו לסוכנים — נספרות להן וגם לסוכן, לא בסך הקבוצה</p>' + co + '</div>' : '') +
     '<div class="note">פגישה שנמחקה לפני המועד שלה יורדת מהניקוד. גיוס נספר רק אחרי שהבלעדיות נחתמה.</div>';
 }

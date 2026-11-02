@@ -120,4 +120,33 @@ t = K.contestTableHtml(ja, 1, {});
 const oc = t.match(/onclick="adjOpen\(([^"]*)\)"/);
 ck(oc && oc[1].includes('%27') && !/פיצ'/.test(oc[1]), 'apostrophe encoded in onclick: ' + (oc && oc[1]));
 ck(decodeURIComponent(oc[1].split(",'")[2].replace(/'$/, '')) === "רפי דה פיצ'וטו", 'round-trips');
+
+// [FIX2] לוח חלקי — 'לא זמין' במקום סכומי קבוצות ומובילה
+const jp = J(); jp.board.partial = true; jp.board.leader = null;
+h = K.contestCardHtml(jp, {story: true});
+ck(h.includes('לא זמין') && !h.includes('מובילה') && !h.includes('395') && !h.includes('פער של') && !h.includes('ck-team lead'), 'partial story card: ' + h.slice(0, 200));
+h = K.contestCardHtml(jp, {tv: true});
+ck(h.includes('לא זמין') && !h.includes('מובילה') && !h.includes('395') && !h.includes('ck-col lead'), 'partial tv card');
+h = K.contestWinnerHtml(Object.assign({}, jp, {mode: 'winner'}), {});
+ck(h.includes('לא זמין') && !h.includes('ניצחה') && !h.includes('395'), 'partial winner card');
+ck(!K.contestCardHtml(J(), {}).includes('לא זמין'), 'full board → no לא זמין');
+ck(K.contestTotal(jp.board, jp.board.groups[0]) === 'לא זמין' && K.contestTotal(J().board, J().board.groups[0]) === '395', 'contestTotal');
+// מסך: mini-vs ושורת המתאמות על לוח חלקי + הודעת שמות שלא נמצאו לעורכים
+const PJS = scripts(PAGE).join('\n');
+function pageWorld(j) {
+  const els = {};
+  const pc = {localStorage: {getItem: () => 'T', setItem() {}}, location: {href: '', replace() {}}, Intl, Date, Math, JSON, String, Number,
+    isNaN, encodeURIComponent, decodeURIComponent, console, setTimeout() { return 1; }, clearTimeout() {},
+    fetch: () => new Promise(() => {}), Promise,
+    document: {getElementById: id => els[id] || (els[id] = {innerHTML: '', style: {}, textContent: ''})}};
+  vm.createContext(pc); vm.runInContext(kitJs + '\n' + PJS, pc);
+  pc.CJ = j; vm.runInContext('CJ = this.CJ; SEL = null; render();', pc);
+  return els.app.innerHTML;
+}
+let ph = pageWorld(jp);
+ck(ph.includes('לא זמין') && !/class="lead"/.test(ph) && !ph.includes('395'), 'page mini-vs partial');
+ph = pageWorld(J({can_edit: true, unmatched: ['נויה', 'פלוני']}));
+ck(ph.includes('שמות שלא נמצאו באפי') && ph.includes('נויה') && ph.includes('פלוני'), 'unmatched notice for editors');
+ck(!pageWorld(J({can_edit: false, unmatched: ['נויה']})).includes('שמות שלא נמצאו'), 'no notice for non-editors');
+ck(!pageWorld(J({can_edit: true, unmatched: []})).includes('שמות שלא נמצאו'), 'no notice when empty');
 console.log(n + ' passed');

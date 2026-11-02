@@ -26,25 +26,36 @@ COORD_ROLE = {"name": "מישהי", "role": "coordinator", "drole": "coordinator
 COORD_CFG = {"name": "אוצר", "role": "admin", "drole": "manager", "phone": "509999999"}
 
 
-def make(sess, tv_key="", nb=None, cfg_extra=None):
+def make(sess, tv_key="", nb=None, cfg_extra=None, disp=None, g_extra=None):
+    contest._LAST_GOOD.clear()
     os.environ["TV_KEY"] = tv_key
     cfg = {"nbStatus": nb if nb is not None else {
         "a": {"agent": "רויטל גל", "by": "רויטל גל", "status": "meeting", "meeting_at": NOW - 3600, "date": NOW - 3600}}}
     cfg.update(cfg_extra or {})
-    st = {"cfg": cfg, "mut": 0, "logs": [], "cleared": []}
+    st = {"cfg": cfg, "mut": 0, "logs": [], "cleared": [], "swr": [], "sig_fail": False}
+
+    def signings(a, b):
+        if st["sig_fail"]:
+            raise RuntimeError("sheets down")
+        return []
+
+    def swr(k, ttl, b, **kw):
+        st["swr"].append(k)
+        return b()
 
     def mutate(fn):
         st["mut"] += 1
         return True, fn(st["cfg"])
 
     G = AutoG(
-        log=None, _web_auth=lambda: sess, _swr=lambda k, ttl, b, **kw: b(),
+        log=None, _web_auth=lambda: sess, _swr=swr,
         _cache_clear=lambda k: st["cleared"].append(k), _load_config=lambda: st["cfg"],
         _config_mutate=mutate, _log_activity=lambda *a: st["logs"].append(a),
-        _display_name_for=lambda n, p: n, _canon_key=_key, _canon_agent_name=lambda n: n,
+        _display_name_for=disp or (lambda n, p: n), _canon_key=_key, _canon_agent_name=lambda n: n,
         _last9=lambda p: "".join(c for c in str(p or "") if c.isdigit())[-9:],
         _coordinators_all=lambda: {"509999999": {"name": "אוצר", "agents": set(), "names": set()}},
-        get_signings=lambda a, b: [], _deal_label=lambda c: "")
+        get_signings=signings, _deal_label=lambda c: "")
+    G.update(g_extra or {})
     app = Flask(__name__)
     contest.register(app, G)
     return app.test_client(), st
@@ -147,6 +158,103 @@ def test_get_adjustments_and_def():
     assert j.get("def") is None, "הגדרת התחרות רק למי שעורך"
     c3, _ = make(None, tv_key="K1")
     assert c3.get("/v2/api/contest?k=K1").get_json()["adjustments"] == []
+
+
+
+GEN_COORD = {"name": "מנהל", "role": "admin", "drole": "manager", "phone": "507777777"}
+GEN_MGR = {"name": "מנהל", "role": "admin", "drole": "manager", "phone": "505709865"}
+PH = {"507777777": "נוי רבן", "505709865": "אייל שמול"}
+
+
+def _disp(n, p):
+    return PH.get(p, n) if n == "מנהל" else n
+
+
+def test_generic_manager_name():   # [FIX1]
+    c, _ = make(GEN_COORD, disp=_disp)
+    j = c.get("/v2/api/contest").get_json()
+    assert j["can_edit"] is False, j
+    assert j["me"] == {"group": 0, "kind": "coord", "label": "נוי רבן"}, j["me"]
+    assert c.post("/v2/api/contest/save", json={"contest": contest.NOV_2026}).status_code == 403
+    assert c.post("/v2/api/contest/adjust", json={"contest": "2026-11", "group": 0, "kind": "row",
+                                                  "label": "רויטל גל", "pts": 5, "reason": "x"}).status_code == 403
+    c, _ = make(GEN_MGR, disp=_disp)
+    j = c.get("/v2/api/contest").get_json()
+    assert j["can_edit"] is True and j["me"] is None, j
+
+
+def test_sigs_failure_last_good():   # [FIX2]
+    c, st = make(REV)
+    good = c.get("/v2/api/contest").get_json()["board"]
+    assert "partial" not in good and "stale" not in good
+    st["sig_fail"] = True
+    b = c.get("/v2/api/contest").get_json()["board"]
+    assert b.get("stale") is True and b["groups"] == good["groups"] and b["leader"] == good["leader"], b
+    c, st = make(REV)
+    st["sig_fail"] = True
+    b = c.get("/v2/api/contest").get_json()["board"]
+    assert b.get("partial") is True and b["leader"] is None, b
+
+
+def test_malformed_save_and_adjust():   # [FIX4]
+    c, _ = make(MGR)
+    def m(fn):
+        x = copy.deepcopy(contest.NOV_2026); fn(x); return x
+    for bad in (m(lambda x: x.__setitem__("groups", [1, 2])),
+                m(lambda x: x["groups"][0]["rows"].append({"label": "x"})),
+                m(lambda x: x["groups"][0]["rows"][0].__setitem__("members", "נדב")),
+                m(lambda x: x["groups"][1].__setitem__("coords", "אוצר")),
+                m(lambda x: x["groups"][1].__setitem__("name", None)),
+                m(lambda x: x["pts"].__setitem__("gius", 1.5))):
+        r = c.post("/v2/api/contest/save", json={"contest": bad})
+        assert r.status_code == 400 and r.get_json()["ok"] is False, (r.status_code, bad)
+    base = {"contest": "2026-11", "kind": "row", "label": "רויטל גל", "pts": 5, "reason": "x"}
+    for g in (0.0, 1.0, True, "0", None, 2):
+        assert c.post("/v2/api/contest/adjust", json=dict(base, group=g)).status_code == 400, g
+    assert c.post("/v2/api/contest/adjust", json=dict(base, group=1)).get_json()["ok"]
+
+
+def test_build_exception_safe():   # [FIX4]
+    broken = copy.deepcopy(contest.NOV_2026)
+    broken["groups"][0]["rows"].append({"label": "שבור"})          # בלי members — score נופל
+    c, _ = make(MGR, cfg_extra={"v2_contests": {"list": [broken]}})
+    r = c.get("/v2/api/contest")
+    assert r.status_code == 200, r.status_code
+    j = r.get_json()
+    assert j["board"] is None and j["def"]["id"] == "2026-11", j
+    c, _ = make(REV, cfg_extra={"v2_contests": {"list": [broken]}})
+    r = c.get("/v2/api/contest")
+    assert r.status_code == 200 and r.get_json()["board"] is None
+
+
+def test_unmatched_for_editors():   # [FIX5]
+    known = {n: "0500000000" for n in ["רויטל גל", "נדב רייזר"]}
+    c, _ = make(MGR, g_extra={"fetch_agents_phones": lambda: known})
+    j = c.get("/v2/api/contest").get_json()
+    u = j.get("unmatched")
+    assert isinstance(u, list) and "אור צוקרמן" in u and "נויה" in u and "רויטל גל" not in u and "נדב רייזר" not in u, u
+    c, _ = make(REV, g_extra={"fetch_agents_phones": lambda: known})
+    assert "unmatched" not in c.get("/v2/api/contest").get_json()
+    c, _ = make(MGR)                      # אין מקור שמות — לא מציגים רשימה מטעה
+    assert not c.get("/v2/api/contest").get_json().get("unmatched")
+
+
+def test_generation_key():   # [FIX-m2]
+    c, st = make(MGR)
+    c.get("/v2/api/contest")
+    k1 = st["swr"][-1]
+    assert c.post("/v2/api/contest/adjust", json={"contest": "2026-11", "group": 0, "kind": "row",
+                                                  "label": "רויטל גל", "pts": 5, "reason": "x"}).get_json()["ok"]
+    c.get("/v2/api/contest")
+    assert st["swr"][-1] != k1 and k1 in st["cleared"], (k1, st["swr"][-1], st["cleared"])
+
+
+def test_can_edit_latest_contest():   # [FIX-m4]
+    old = dict(copy.deepcopy(contest.NOV_2026), id="2026-08", start="2026-08-01", end="2026-08-31")
+    old["groups"][0]["coords"] = ["אחר"]
+    new = dict(copy.deepcopy(contest.NOV_2026), id="2026-09", start="2026-09-01", end="2026-09-30")
+    c, _ = make(COORD_MGR, cfg_extra={"v2_contests": {"list": [old, new]}})
+    assert c.get("/v2/api/contest").get_json()["can_edit"] is False   # נוי מתאמת בתחרות האחרונה
 
 
 if __name__ == "__main__":

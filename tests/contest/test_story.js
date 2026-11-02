@@ -53,11 +53,11 @@ function world(CJ, hot) {
     STORY: {DUR: 9000, open: false, i: 0}, B: {hotProps: hot, _loaded: true}, M: {name: 'נדב רייזר'},
     HDAYS: ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'], HMON: Array(12).fill('נובמבר'),
     esc: s => String(s == null ? '' : s), firstName: s => String(s || '').split(' ')[0], greetWord: () => 'בוקר טוב',
-    GJ: {ok: true, view: 'agent', me: {counts: {}, targets: {}}}, CJ: CJ, CO: 0, TOK: 'T1',
+    GJ: {ok: true, view: 'agent', me: {counts: {}, targets: {}}}, CJ: CJ, CS: null, CO: 0, TOK: 'T1',
   };
   vm.createContext(ctx);
   vm.runInContext(GKIT + '\n' + CKIT, ctx);
-  vm.runInContext([fn('openStory'), fn('total'), fn('durFor'), fn('nextCard'), fn('go'), fn('renderCard'), fn('closeStory'), fn('storyLog')].join('\n'), ctx);
+  vm.runInContext([fn('openStory'), fn('total'), fn('durFor'), fn('nextCard'), fn('go'), fn('renderCard'), fn('closeStory'), fn('storyLog'), fn('contestLoad')].join('\n'), ctx);
   ctx.seenKey = () => 'x'; ctx.todayStr = () => 'd'; ctx.fetch = () => {}; ctx.goalsCardHtml = () => '<div class="gk">GOALS</div>';
   return ctx;
 }
@@ -118,4 +118,35 @@ ck(/STORY\.i === CO \+ 3\) renderCard\(CO \+ 3\)/.test(H), 'nb re-render at CO+3
 ck(/if \(STORY\.open && STORY\.i > CO\) renderCard\(STORY\.i\);/.test(H), 'loadData skips contest+goals cards');
 // תחביר
 scripts(HOME).forEach((js, i) => { new vm.Script(js); ck(true, 'syntax ' + i); });
-console.log(n + ' passed');
+
+// [FIX3] התמונה בפתיחה (CS) — CJ שמתעדכן אחרי הפתיחה לא משנה את הכרטיס שעל המסך
+w = world(LIVE, []); w.openStory(true);
+w.CJ = Object.assign({}, LIVE, {board: Object.assign({}, BOARD, {leader: 1})});
+w.renderCard(0);
+ck(w.el('storyBody').innerHTML.includes('קבוצה א&#39; מובילה'), 'card 0 rendered from snapshot CS');
+ck(/CS = CO \? CJ : null/.test(fn('openStory')), 'openStory snapshots CS');
+ck(!/contest(Card|Winner)Html\(CJ/.test(fn('renderCard')) && !/CJ\.mode/.test(fn('renderCard')), 'renderCard uses CS, not CJ');
+// [FIX3] סטורי שנפתח לפני שהתחרות נטענה (בוקר קר) — כשהיא מגיעה, עוברים לכרטיס התחרות
+function lateWorld(i, ans) {
+  const w = world(undefined, [{title: 'א'}]);
+  let res; w.GET = () => new Promise(r => { res = r; });
+  w.openStory(true); if (i) w.go(i);
+  w.contestLoad(0); res(ans);
+  return w;
+}
+const pending = [];
+let lw = lateWorld(0, LIVE);
+pending.push(Promise.resolve().then(() => new Promise(r => setImmediate(r))).then(() => {
+  ck(lw.CO === 1 && lw.STORY.i === 0 && lw.total() === 4, 'late upgrade: CO 1, total 4: ' + lw.CO + '/' + lw.total());
+  ck(lw.el('storyBody').innerHTML.includes('class="ck story"') && lw.el('storyTitle').textContent === 'תחרות', 'late upgrade renders contest card');
+  ck(lw.CS && lw.CS.mode === 'live', 'late upgrade snapshots CS');
+}));
+let lw2 = lateWorld(1, LIVE);
+pending.push(new Promise(r => setImmediate(r)).then(() => {
+  ck(lw2.CO === 0 && lw2.STORY.i === 1, 'no upgrade after user advanced');
+}));
+let lw3 = lateWorld(0, {ok: true, mode: null, board: null});
+pending.push(new Promise(r => setImmediate(r)).then(() => {
+  ck(lw3.CO === 0 && lw3.el('storyBody').innerHTML.includes('GOALS'), 'no upgrade when no contest');
+}));
+Promise.all(pending).then(() => console.log(n + ' passed')).catch(e => { console.error(e); process.exit(1); });

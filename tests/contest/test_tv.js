@@ -47,6 +47,11 @@ ck(nodes.card.cls.wide === 1, 'wide card'); run('render(1)'); ck(!nodes.card.cls
 run('C = ' + JSON.stringify(Object.assign({}, J, {mode: 'winner'}))); run('render(0)');
 ck(nodes.card._h.includes('ניצחה') && nodes.card._h.includes('התחרות הסתיימה'), 'winner variant');
 
+// [FIX2] לוח חלקי בטלוויזיה
+run('C = ' + JSON.stringify(Object.assign({}, J, {board: Object.assign({}, J.board, {partial: true, leader: null})}))); run('render(0)');
+ck(nodes.card._h.includes('לא זמין') && !nodes.card._h.includes('מובילה') && !nodes.card._h.includes('>39<'), 'partial board on TV');
+// [FIX-m1] הדגשת השורה הראשונה בעמודה
+ck(kit.includes('.ck-col .ch + .cr .pos') && !kit.includes('.cr:first-of-type'), 'first row highlight selector');
 // בלי הערכה (הזרקה כשלה) — contestCardHtml לא קיים → אין פריט תחרות
 const run2 = mk(html, {}, () => new Promise(() => {}));
 run2("B = {hotProps:[]}; G = null; C = " + JSON.stringify(J));
