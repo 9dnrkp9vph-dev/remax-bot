@@ -916,6 +916,10 @@ def register_site(app, G, store=None):
             return jsonify({"ok": True, field: new_val})
         # השורה שומרת את כל הסימונים — שינוי אחד לא מוחק את השני; 'נמכר' נשמר כתאריך (epoch)
         cur[field] = (int(__import__("time").time()) if new_val else False) if field == "sold" else new_val
+        if field == "sold" and new_val:   # עותק של הנכס — 'נמכרו' באתר לא תלוי בכך שהמודעה נשארת בסריקה
+            cur["sold_row"] = {k: v for k, v in row.items() if isinstance(k, str) and not k.startswith("_y2_hist")}
+        elif field == "sold":
+            cur.pop("sold_row", None)
         if not st().put("prop", key, cur, s.get("name", "")):
             return jsonify({"ok": False, "reason": "save_failed"})
         where = " ".join(str(row.get(k, "") or "") for k in ("כתובת", "עיר / ישוב")).strip()

@@ -33,3 +33,11 @@ def test_sold_keeps_other_flags_and_can_clear(make_app):
 def test_still_one_field(make_app):
     c, _, _ = mk(make_app, sess())
     assert c.post("/v2/api/site/prop", json={"key": "a1", "sold": True, "hidden": True}).status_code == 400
+
+
+def test_sold_keeps_copy_of_property(make_app):
+    # הסורק/המזכירה מורידים את המודעה מיד2 — האתר ממשיך להציג מהעותק שנשמר ברגע 'אני מכרתי'
+    c, store, _ = mk(make_app, sess("agent", "חי חיים אלבז"))
+    c.post("/v2/api/site/prop", json={"key": "a1", "sold": True})
+    d = store.puts[-1][2]
+    assert d["sold_row"]["מספר מודעה"] == "a1" and d["sold_row"]["כתובת"] == "אהוד מנור"
