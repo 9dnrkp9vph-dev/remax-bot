@@ -7332,10 +7332,18 @@ def api_dev_diag():
         return jsonify({"ok": False, "reason": "forbidden"}), 403
     raw_get = _buyers_apps_post("getconfig", {})
     getok = bool(raw_get and raw_get.get("ok") and "config" in raw_get)
-    probe = dict(_load_config()); probe["_diag_ts"] = int(time.time())
-    wrote = _save_config(probe)
-    raw2 = _buyers_apps_post("getconfig", {})
-    readback = bool(raw2 and raw2.get("ok") and ("_diag_ts" in (raw2.get("config") or "")))
+    if CONFIG_SOURCE == "supabase":
+        # 🐞 02/11 07:19: הבדיקה שמרה קונפיג שלם כ'ניסוי'; בקריאה שנפלה לגיליון זה החזיר את אוגוסט
+        # ומחק את כל המפתחות החדשים. במצב Supabase הבדיקה קוראת בלבד, לא כותבת.
+        try:
+            wrote = readback = bool(_sbdb.fetch_config())
+        except Exception:
+            wrote = readback = False
+    else:
+        probe = dict(_load_config()); probe["_diag_ts"] = int(time.time())
+        wrote = _save_config(probe)
+        raw2 = _buyers_apps_post("getconfig", {})
+        readback = bool(raw2 and raw2.get("ok") and ("_diag_ts" in (raw2.get("config") or "")))
     if getok and wrote and readback:
         msg = "✅ החיבור תקין — שמירה וקריאה עובדות."
     elif not APPS_SCRIPT_URL:
