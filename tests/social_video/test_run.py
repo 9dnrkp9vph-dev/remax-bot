@@ -87,7 +87,7 @@ class FG:
     def __init__(s, http, token, env, sleep=None, version=None): s.env = env
     def page_ig_id(s, pid): return "IG"
     def ig_quota(s, ig): return 25
-    def ig_video(s, ig, kind, url, caption="", cover_url=""):
+    def ig_video(s, ig, kind, url, caption="", cover_url="", ai=True):
         SF._GUARD(s); FG.calls.append(("ig_" + kind, url, caption, cover_url))
         e = FG.fail.get("ig_" + kind)
         if e: raise e

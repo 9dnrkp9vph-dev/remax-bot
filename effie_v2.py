@@ -7253,9 +7253,12 @@ function vidCreate(k){
   }).catch(function(){ delete VID.busy[k]; render(); toast('שגיאה — לא נשלח'); });
 }
 function vidRetry(id){
+  if (VID.busy['r:' + id]) return;   // [ביקורת] לחיצה שנייה לא שולחת פעם נוספת
+  VID.busy['r:' + id] = 1;
   POST('/v2/api/social/video/retry', {id: id}).then(function(j){
     toast(j && j.ok ? 'מנסה שוב' : ((j && j.error) || 'שגיאה'));
-  }).catch(function(){ toast('שגיאה'); });
+    setTimeout(function(){ delete VID.busy['r:' + id]; }, 180000);
+  }).catch(function(){ delete VID.busy['r:' + id]; toast('שגיאה'); });
 }
 var SITE = {hidden: {}, on: false, can: false, fh: {}};
 function loadSite(){

@@ -48,7 +48,7 @@ ck(not V.vid_can_create(ROW, same, NOW, set(), "manual")[0], "same apartment")
 for st in ("failed", "skipped", "expired"):
     ck(V.vid_can_create(ROW, [dict(H[0], status=st)], NOW, set(), "manual")[0], st)
 ck(V.vid_can_create(ROW, [dict(H[0], created_at=iso(NOW - 15 * 86400))], NOW, set(), "manual")[0], "old")
-ren = [{"property_key": "tok1", "status": "rendering", "created_at": iso(NOW - 20 * 86400)}]
+ren = [{"property_key": "tok1", "status": "rendering", "created_at": iso(NOW - 60)}]
 ck(V.vid_can_create(ROW, ren, NOW, set(), "manual") == (False, "כבר בתהליך"), "in flight")
 
 # ── תקרות ──

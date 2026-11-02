@@ -24,21 +24,30 @@ W, H = 1080, 1920
 SAFE = (65, 290, 1015, 1240)
 XFADE = 0.4
 LOOP_SEC = 600
+STALE_S = 1800   # רינדור/פרסום שלא התקדם חצי שעה = נקטע (דפלוי/אתחול באמצע)
 CTA = "שלחו הודעה ונחזור אליכם"
 
 
 # ── טקסטים ותזמון ────────────────────────────────────────────────────────────────
+def _pos(v):
+    """מספר חיובי כמחרוזת, אחרת '' (מחיר 0 / '—' / טקסט לא נכנסים למסך)."""
+    try:
+        return v if float(str(v).replace(",", "")) > 0 else ""
+    except ValueError:
+        return ""
+
+
 def vid_texts(row, feats, highlight, agent, vphone, office_phone):
     """שורת נכס → הטקסטים שעל המסך, לפי קטע. בלי מספר בית, בלי טלפון בעלים, בלי 'None'."""
     rent = "שכר" in str(row.get("סוג עסקה") or "")
-    rooms = SP._num(row.get("חדרים"))
+    rooms = _pos(SP._num(row.get("חדרים")))
     kind = SP._norm(row.get("סוג נכס")) or "נכס"
     deal = "להשכרה" if rent else "למכירה"
     what = (rooms + " חדרים") if rooms and rooms != "0" else kind
     nb, city = SP._norm(row.get("שכונה")), SP._norm(row.get("עיר / ישוב"))
-    pr = SP._price(row.get("מחיר"))
+    pr = SP._price(row.get("מחיר")) if _pos(SP._num(row.get("מחיר"))) else ""
     price = (pr + " ₪" + (" לחודש" if rent else "")) if pr else ""
-    size, fl = SP._num(row.get('מ"ר')), SP.soc_floor(row)
+    size, fl = _pos(SP._num(row.get('מ"ר'))), SP.soc_floor(row)
     spec = " · ".join(x for x in ((size + ' מ"ר') if size and size != "0" else "", ("קומה " + fl) if fl else "") if x)
     ft = " · ".join([f for f in (feats or []) if f][:3])
     hl = SP.soc_scrub_house(SP.soc_scrub_phones(highlight or ""), row.get("כתובת")).strip(" ·-,")
@@ -124,8 +133,10 @@ def vid_can_create(row, history_videos, now, hidden, trigger):
         mine = SP._key(h.get("property_key")) == key or SP._same_apartment(akey, afl, h.get("addr_key"))
         if not mine:
             continue
-        if st in ("rendering",):
-            return False, "כבר בתהליך"
+        if st in ("rendering", "publishing"):
+            if now - (SP._ts(h.get("updated_at") or h.get("created_at")) or 0) < STALE_S:
+                return False, "כבר בתהליך"
+            continue
         if st in _FINAL_BAD or st == "preview":
             continue
         t = SP._ts(h.get("created_at"))
@@ -579,7 +590,10 @@ class Fal:
             raise self._err("fal submit: %s" % e, unknown=True)
         if getattr(r, "status_code", 200) >= 400:
             raise self._err("fal %s: %s" % (r.status_code, str(getattr(r, "text", ""))[:200]), code=r.status_code)
-        j = r.json() or {}
+        try:
+            j = r.json() or {}
+        except Exception as e:
+            raise self._err("fal submit reply: %s" % e, unknown=True)
         st_url, res_url = j.get("status_url"), j.get("response_url")
         if not st_url or not res_url:
             raise self._err("fal: no request urls")
@@ -591,16 +605,21 @@ class Fal:
                 s = (self.http.get(st_url, headers=hd, timeout=30).json() or {}).get("status")
             except Exception:
                 s = "IN_PROGRESS"   # תקלת רשת רגעית בבדיקת הסטטוס — ממשיכים לחכות
+            if not s:
+                s = "IN_PROGRESS"   # תשובה בלי status (4xx/זמני) — לא כשל ודאי; ממשיכים עד ה-timeout
             if s == "COMPLETED":
                 break
             if s not in ("IN_QUEUE", "IN_PROGRESS"):
                 raise self._err("fal job %s" % s)
             self.sleep(8)
-        res = self.http.get(res_url, headers=hd, timeout=30).json() or {}
-        url = (res.get("video") or {}).get("url")
+        try:   # מכאן העבודה כבר הושלמה (ומחויבת) — כל תקלה = unknown, בלי הגשה חוזרת
+            res = self.http.get(res_url, headers=hd, timeout=30).json() or {}
+            url = (res.get("video") or {}).get("url")
+            data = self.http.get(url, timeout=120).content if url else b""
+        except Exception as e:
+            raise self._err("fal result: %s" % e, unknown=True)
         if not url:
-            raise self._err("fal: no video url")
-        data = self.http.get(url, timeout=120).content
+            raise self._err("fal: no video url", unknown=True)
         if not data:
             raise self._err("fal: empty video")
         return data
@@ -880,6 +899,7 @@ def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
                 im.crop(box).save(b, "JPEG", quality=92)
                 fal = Fal(http, fal_key, model=str(env.get("FAL_VIDEO_MODEL") or "") or None)
                 data, err, cost = vid_ai_clip(fal, b.getvalue(), pick["room"])
+                upd["ai_cost_usd"] = round(cost, 2)
                 if data:
                     clip_path = os.path.join(tmp, "clip.mp4")
                     with open(clip_path, "wb") as f:
@@ -930,6 +950,7 @@ def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
 
 
 CHANNELS = ("ig_story", "ig_reel", "fb_story", "fb_reel")
+_PUBLISHABLE = ("approved", "partial", "publishing")
 
 
 def vid_new_link(G, rec, channel):
@@ -956,28 +977,30 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
     if SP.soc_mode(env) != "publish":
         res["reason"] = "מצב בדיקה"
         return res
-    if rec.get("status") not in ("approved", "partial"):
+    if rec.get("status") not in _PUBLISHABLE:
         res["reason"] = "הסרטון לא מאושר לפרסום"
         return res
-    store = store or VidStore()
+    store = store or _store()
     tok = rec.get("video_token")
-    if not store.exists(tok):
-        res["reason"] = "הסרטון לא זמין — צור מחדש"
-        G["_sbdb"].video_update(vid, {"error": res["reason"]})
+
+    def stop(reason, **f):   # יציאה מוקדמת — לא משאירים את השורה תקועה ב'אושר'
+        res["reason"] = reason
+        G["_sbdb"].video_update(vid, dict({"status": "failed", "error": reason}, **f))
         return res
+    if not store.exists(tok):
+        return stop("הסרטון לא זמין — צור מחדש")
     token = str(env.get("META_TOKEN") or "").strip()
     if not token:
-        res["reason"] = "אין META_TOKEN"
-        return res
+        return stop("אין META_TOKEN")
     row = _row_by_key(G, rec.get("property_key"))
     if not row:
-        res["reason"] = "הנכס לא נמצא"
-        return res
+        return stop("הנכס לא נמצא")
     if http is None:
         import requests as http
     scfg = SP._cfg_social(G)
     if float(scfg.get("paused_until") or 0) > now:
         res["reason"] = "מושהה עד מחר (הגבלת קצב של Meta)"
+        G["_sbdb"].video_update(vid, {"status": "approved", "publish_at": _iso(float(scfg["paused_until"]))})
         return res
     base = _base(env)
     vurl, curl = "%s/v2/social/vid/%s.mp4" % (base, tok), "%s/v2/social/vid/%s-cover.jpg" % (base, tok)
@@ -994,9 +1017,10 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
                 if not ig_id:
                     raise SP.MetaError("אינסטגרם לא מקושר לעמוד")
                 if c == "ig_story":
-                    upd["ig_story_id"], _ = g.ig_video(ig_id, "STORIES", vurl)
+                    upd["ig_story_id"], _ = g.ig_video(ig_id, "STORIES", vurl, ai=bool(rec.get("ai")))
                 else:
-                    upd["ig_reel_id"], upd["ig_reel_permalink"] = g.ig_video(ig_id, "REELS", vurl, post["ig_caption"], curl)
+                    upd["ig_reel_id"], upd["ig_reel_permalink"] = g.ig_video(ig_id, "REELS", vurl, post["ig_caption"], curl,
+                                                                             ai=bool(rec.get("ai")))
             elif c == "fb_story":
                 upd["fb_story_id"] = g.fb_video_story(page_id, vurl)
             else:
@@ -1145,6 +1169,9 @@ def _decide(G, rec, action, who, now, env):
     new, msg = vid_decide(rec, action, who, now)
     if new is None:
         return msg
+    if new == "approved" and not _store().exists(rec.get("video_token")):
+        G["_sbdb"].video_claim(rec["id"], "pending", "failed", {"error": "הקובץ לא נמצא בשרת"})
+        return "הסרטון לא זמין — צור מחדש"
     fields = {"decided_by": who, "decided_at": _iso(now)}
     if new == "approved" and _blocked_now(G, now):
         when = vid_publish_when(now, True)
@@ -1152,6 +1179,8 @@ def _decide(G, rec, action, who, now, env):
         msg = "אושר — יעלה ב-%s" % SP._dt.datetime.fromtimestamp(when, SP._IL).strftime("%H:%M %d/%m")
     if not G["_sbdb"].video_claim(rec["id"], "pending", new, fields if new != "expired" else {}):
         cur = G["_sbdb"].video_get(rec["id"]) or {}
+        if cur.get("status") == "pending":
+            return "שגיאה — נסו שוב"
         return vid_decide(cur, action, who, now)[1]
     if new == "approved" and "publish_at" not in fields:
         vid = rec["id"]
@@ -1274,12 +1303,28 @@ def _store():
     return _STORE
 
 
+def _recover_stale(G, recs, now):
+    """שאריות של דפלוי/אתחול באמצע: רינדור תקוע → failed; אושר/בפרסום בלי התקדמות → partial (כפתור 'נסה שוב')."""
+    for r in recs or []:
+        st = r.get("status")
+        t = SP._ts(r.get("updated_at") or r.get("decided_at") or r.get("created_at")) or now
+        if now - t < STALE_S:
+            continue
+        if st == "rendering":
+            G["_sbdb"].video_update(r["id"], {"status": "failed", "error": "נקטע באמצע (אתחול השרת)"})
+            r["status"] = "failed"
+        elif st == "publishing" or (st == "approved" and not r.get("publish_at")):
+            G["_sbdb"].video_update(r["id"], {"status": "partial"})
+            r["status"] = "partial"
+
+
 def _housekeeping(G, now, env, store):
     """פג (48ש'), פרסום מתוזמן שהגיע זמנו, אישורים שחיכו לסוף השקט, ניקוי קבצים."""
     try:
         recs = G["_sbdb"].video_recent(KEEP_MAX_DAYS + 1) or []
     except Exception:
         return
+    _recover_stale(G, recs, now)
     base = _base(env)
     for r in recs:
         st = r.get("status")
@@ -1398,8 +1443,9 @@ def register(app, G):
             return err
         keys = [SP._key(k) for k in str(request.args.get("keys") or "").split(",") if SP._key(k)][:200]
         h = hist()
-        rows = {SP._key(r.get("מספר מודעה")): r for r in SP.soc_office_rows(G)}
         now, hidden = _t.time(), SP.soc_hidden(G) or set()
+        _recover_stale(G, h, now)
+        rows = {SP._key(r.get("מספר מודעה")): r for r in SP.soc_office_rows(G)}
         items = {}
         for k in keys:
             if k not in rows:
@@ -1423,6 +1469,8 @@ def register(app, G):
         t = SP._ts((rec or {}).get("created_at"))
         if not rec or rec.get("status") != "partial" or t is None or _t.time() - t > RETRY_DAYS * 86400:
             return jsonify({"ok": False, "error": "אין מה לנסות שוב"})
+        if not G["_sbdb"].video_claim(rec["id"], "partial", "publishing", {}):
+            return jsonify({"ok": False, "error": "כבר בתהליך"})
         ch = [c for c in (j.get("channels") or []) if c in CHANNELS] or None
         vid = rec["id"]
         _spawn(lambda: vid_publish(G, vid, channels=ch))

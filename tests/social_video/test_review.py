@@ -11,6 +11,9 @@ from _fakes import ROW, make_G
 NOW = time.time()
 def iso(t): return SP._dt.datetime.fromtimestamp(t, SP._dt.timezone.utc).isoformat()
 ENV = {"SOCIAL_MODE": "publish", "APP_BASE_URL": "https://app"}
+import tempfile
+V._STORE = V.VidStore(tempfile.mkdtemp())
+open(V._STORE.path("TOK"), "wb").write(b"mp4")
 
 def mkrec(sb, **kw):
     r = dict({"property_key": "tok1", "status": "pending", "sent_at": iso(NOW - 60), "video_token": "TOK",

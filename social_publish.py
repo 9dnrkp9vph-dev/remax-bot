@@ -535,10 +535,13 @@ class Graph:
         return mid, link
 
     # ── [SOCIAL-VIDEO 02/11] וידאו: סטורי + ריל (social_video.py) ──
-    def ig_video(self, ig_id, kind, video_url, caption="", cover_url=""):
-        """kind = 'STORIES' / 'REELS'. container ← polling ← media_publish. → (media_id, permalink — לריל בלבד)."""
+    def ig_video(self, ig_id, kind, video_url, caption="", cover_url="", ai=True):
+        """kind = 'STORIES' / 'REELS'. container ← polling ← media_publish. → (media_id, permalink — לריל בלבד).
+        ai=True → is_ai_generated (סימון AI של Meta) — רק כשבסרטון יש קליפ AI אמיתי."""
         self._guard()
-        f = {"media_type": kind, "video_url": video_url, "is_ai_generated": "true"}
+        f = {"media_type": kind, "video_url": video_url}
+        if ai:
+            f["is_ai_generated"] = "true"
         if kind == "REELS":
             f.update(caption=caption or "", share_to_feed="true")
             if cover_url:
