@@ -31,7 +31,7 @@ check(parse("0525640615 ✓") == ("525640615", "", True), "פורמט ישן ב�
 check(parse("0525640615 · 0529125944 ✗ Maskyoo: x")[2] is False, "✗ = לא חויג")
 
 CL = [{"ts": ep(20, 28, 20), "to9": "525640615", "vp9": "529125944", "agent9": "505709865"}]
-print("2. שיחה שנענתה (שתי רגליים ANSWER)")
+print("2. שיחה שנענתה")
 rows = [{"caller_phone": "529125944", "agent_phone": "505709865", "status": "ANSWER", "received_at": iso(20, 29, 20), "transcript_summary": "שיחה קצרה"},
         {"caller_phone": "529125944", "agent_phone": "", "status": "ANSWER", "received_at": iso(20, 29, 22), "transcript_summary": "הלקוח מחפש 4 חדרים בביאליק, תקציב 2 מיליון"},
         {"caller_phone": "0501111111", "status": "ANSWER", "received_at": iso(20, 30), "transcript_summary": "שיחה רגילה"}]
@@ -45,9 +45,10 @@ check(m["status"] == "CALL2CALL", "סטטוס שיחה יוצאת")
 check("4 חדרים" in m["transcript_summary"], "הסיכום הארוך נבחר")
 check(out[0] is m, "השורה המאוחדת במקום של הרגל הראשונה")
 
-print("3. הלקוח לא ענה")
-rows = [{"caller_phone": "529125944", "agent_phone": "505709865", "status": "ANSWER", "received_at": iso(20, 18, 10), "transcript_summary": ""},
-        {"caller_phone": "529125944", "status": "CALLER CANCEL", "received_at": iso(20, 18, 10), "transcript_summary": "https://maskyoo.com/zipper_993/api/public.php?service=click2call_link&t=x"}]
+print("3. הלקוח לא ענה (דיווח CALLER CANCEL)")
+one = apply([{"caller_phone": "529125944", "agent_phone": "505709865", "status": "ANSWER", "received_at": iso(20, 29, 32), "transcript_summary": "שיחה קצרה"}], CL)
+check(one[0]["status"] == "CALL2CALL" and one[0]["caller_phone"] == "0525640615", "דיווח ANSWER יחיד (כמו 22:29) → שיחה יוצאת")
+rows = [{"caller_phone": "529125944", "status": "CALLER CANCEL", "received_at": iso(20, 18, 10), "transcript_summary": "https://maskyoo.com/zipper_993/api/public.php?service=click2call_link&t=x"}]
 out = apply(rows, [{"ts": ep(20, 17, 3), "to9": "525640615", "vp9": "529125944", "agent9": "505709865"}])
 check(len(out) == 1 and out[0]["status"] == "C2C_MISS", "C2C_MISS ('יוצאת · לא ענה')")
 check(out[0]["transcript_summary"] == "", "בלי קישור click2call_link מת בסיכום")

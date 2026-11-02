@@ -4375,9 +4375,9 @@ def _apply_c2c(rows, clicks=None):
         def _summ(x):
             t = str(x.get("transcript_summary", "") or "")
             return "" if "click2call_link" in t else t
-        cust_ans = any(_st(x) in ("ANSWER", "CALL2CALL") and _last9(x.get("agent_phone", "")) == k["to9"] for x in rs)
-        if not cust_ans:   # הרגל של הלקוח לא נשאה DESTINATION — שתי רגליים שנענו = הלקוח ענה
-            cust_ans = sum(1 for x in rs if _st(x) in ("ANSWER", "CALL2CALL")) >= 2
+        # מסקיו שולחת לחיוג דיווח אחד: ANSWER רק כשהלקוח ענה והשיחה התחברה; כשהלקוח לא ענה —
+        # CALLER CANCEL (אומת מול CDR 02/11: 22:25/22:29 ANSWER, 21:58/22:17/22:21 CALLER CANCEL)
+        cust_ans = any(_st(x) in ("ANSWER", "CALL2CALL") for x in rs)
         best = max(rs, key=lambda x: (len(_summ(x)), _st(x) in ("ANSWER", "CALL2CALL"), _epoch_from_iso(x.get("received_at", ""))))
         m = dict(best)
         m["caller_phone"] = "0" + k["to9"]
