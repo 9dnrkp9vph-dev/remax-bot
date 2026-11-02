@@ -447,7 +447,25 @@ V2_CONTEST_KIT = r"""<style>
   .ck-top3 .nm{flex:1;min-width:0;font-weight:700;font-size:14.5px}
   .ck-top3 .nm small{display:block;font-weight:500;font-size:12px;color:#5B6472}
   .ck-top3 .p{font-weight:800;color:#1E3A5F;font-variant-numeric:tabular-nums}
-  .ck.tv .ck-h{font-size:34px}.ck.tv .ck-team .pts{font-size:56px}.ck.tv .ck-sub,.ck.tv .ck-gap{font-size:18px}
+  .ck.tv{padding:26px 34px 30px;border-radius:28px}
+  .ck.tv .ck-top{font-size:22px}
+  .ck.tv .ck-trophy{width:76px;height:76px;margin:10px auto 6px}
+  .ck.tv .ck-h{font-size:48px}.ck.tv .ck-sub,.ck.tv .ck-gap{font-size:24px}
+  .ck-cols{display:flex;gap:28px;margin-top:22px}
+  .ck-col{flex:1;min-width:0;border-radius:24px;padding:18px 22px;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.12)}
+  .ck-col.lead{background:rgba(228,197,107,.13);border-color:#E4C56B}
+  .ck-col .ch{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .ck-col .cn{font-size:34px;font-weight:800}
+  .ck-col .cp{font-size:64px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .ck-col.lead .cp{color:#E4C56B}
+  .ck-col .cp small{font-size:20px;font-weight:600;opacity:.75;margin-inline-start:8px}
+  .ck-col .cr{display:flex;align-items:center;gap:14px;margin-top:10px;font-size:26px;border-top:1px solid rgba(255,255,255,.12);padding-top:10px}
+  .ck-col .cr .pos{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.12);font-weight:800;font-size:20px;
+      display:flex;align-items:center;justify-content:center;flex:none}
+  .ck-col .cr:first-of-type .pos{background:#E4C56B;color:#231700}
+  .ck-col .cr .l{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ck-col .cr .v{font-weight:800;font-variant-numeric:tabular-nums}
+  .ck.tv .ck-track{height:14px;margin-top:22px}
 </style>
 <script>
 var CONTEST_MONTHS = ['בינואר','בפברואר','במרץ','באפריל','במאי','ביוני','ביולי','באוגוסט','בספטמבר','באוקטובר','בנובמבר','בדצמבר'];
@@ -540,8 +558,32 @@ function contestTeamsHtml(j){
   });
   return '<div class="ck-vs">' + t.join('<div class="ck-vsx">מול</div>') + '</div>';
 }
+function contestTvHtml(j){
+  var b = j && j.board;
+  if (!b || !b.groups || b.groups.length < 2) return '';
+  var gs = b.groups, win = j.mode === 'winner';
+  var head = b.leader == null ? 'תיקו' : cEsc(gs[b.leader].name) + (win ? ' ניצחה' : ' מובילה');
+  var cols = gs.map(function(g, i){
+    var rows = (g.rows || []).slice().sort(function(x, y){ return (cNum(y.points) || 0) - (cNum(x.points) || 0); }).slice(0, 5);
+    return '<div class="ck-col' + (b.leader === i ? ' lead' : '') + '"><div class="ch"><div class="cn">' + cEsc(g.name) +
+      '</div><div class="cp">' + cShow(g.total) + '<small>נק\'</small></div></div>' +
+      rows.map(function(r, k){
+        return '<div class="cr"><div class="pos">' + (k + 1) + '</div><div class="l">' + cEsc(r.label) + '</div><div class="v">' + cShow(r.points) + '</div></div>';
+      }).join('') + '</div>';
+  }).join('');
+  var a = Math.max(0, cNum(gs[0].total) || 0), c = Math.max(0, cNum(gs[1].total) || 0);
+  var pa = (a + c) ? Math.round(a * 100 / (a + c)) : 50, gap = Math.abs((cNum(gs[0].total) || 0) - (cNum(gs[1].total) || 0));
+  return '<div class="ck tv"><div class="ck-top"><span>' + cEsc(b.name) + '</span><span>' +
+    cEsc(win ? contestRange(b.start, b.end) : contestDays(b.days_left)) + '</span></div>' +
+    '<div class="ck-trophy">' + CONTEST_TROPHY + '</div><div class="ck-h">' + head + '</div>' +
+    '<div class="ck-sub">' + (win ? 'התחרות הסתיימה' : (gap ? 'פער של ' + gap + ' נקודות' : 'תיקו')) + '</div>' +
+    '<div class="ck-cols">' + cols + '</div>' +
+    '<div class="ck-track"><i class="' + (b.leader === 0 ? 'lead' : '') + '" style="width:' + pa + '%"></i>' +
+    '<i class="' + (b.leader === 1 ? 'lead' : '') + '" style="width:' + (100 - pa) + '%"></i></div></div>';
+}
 function contestCardHtml(j, opts){
   opts = opts || {};
+  if (opts.tv) return contestTvHtml(j);
   if (j && j.mode === 'winner') return contestWinnerHtml(j, opts);
   var b = j && j.board;
   if (!b || !b.groups || b.groups.length < 2) return '';
@@ -569,6 +611,7 @@ function contestCardHtml(j, opts){
 }
 function contestWinnerHtml(j, opts){
   opts = opts || {};
+  if (opts.tv) return contestTvHtml(j);
   var b = j && j.board;
   if (!b || !b.groups || b.groups.length < 2) return '';
   var all = [];

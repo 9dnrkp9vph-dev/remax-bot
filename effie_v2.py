@@ -11058,6 +11058,7 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .bars i b{display:block;height:100%;width:0;background:#E4C56B;border-radius:999px}
   main{flex:1;display:flex;align-items:center;justify-content:center;padding:20px 46px 40px;min-height:0}
   .card{width:100%;max-width:1060px;display:flex;flex-direction:column;gap:26px;align-items:stretch}
+  .card.wide{max-width:1560px}
   .fade{animation:fadeIn .45s ease-out}
   @keyframes fadeIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion: reduce){.fade{animation:none}}
@@ -11153,7 +11154,7 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
     .empty .t{font-size:24px}
     .empty .s{font-size:15px}
   }
-</style></head><body>
+</style><!--CONTEST_STYLE--></head><body>
   <header>
     <div class="brand">
       <svg viewBox="0 0 118 106" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -11230,16 +11231,17 @@ function hebDate(d){
 }
 tick(); setInterval(tick, 15000);
 
-var B = null, G = null, IDX = 0, TIMER = null;
+/*CONTEST_KIT_JS*/
+var B = null, G = null, C = null, IDX = 0, TIMER = null;
 /* [TV-TEMPO] סיבוב מלא = 5 דקות קבוע (בקשת אייל 15/07): הזמן מתחלק בין הכרטיסים —
    כל נכס חם שנוסף מאיץ את כולם, וכשיש מעט הם רצים לאט יותר. הסיכום ארוך פי 1.4.
    גבולות שפיות: 5ש' רצפה (קריאוּת) · 60ש' תקרה (שלא ייראה קפוא). */
 var LOOP_MS = 300000, SUM_W = 1.4;
 function durFor(pl, it){
   var sums = 0, hots = 0;
-  for (var k = 0; k < pl.length; k++){ if (pl[k].t === 'sum' || pl[k].t === 'goals') sums++; else hots++; }
+  for (var k = 0; k < pl.length; k++){ if (pl[k].t === 'sum' || pl[k].t === 'goals' || pl[k].t === 'contest') sums++; else hots++; }
   var unit = LOOP_MS / ((sums * SUM_W + hots) || 1);
-  var d = ((it.t === 'sum' || it.t === 'goals') ? SUM_W : 1) * unit;
+  var d = ((it.t === 'sum' || it.t === 'goals' || it.t === 'contest') ? SUM_W : 1) * unit;
   return Math.max(5000, Math.min(60000, Math.round(d)));
 }
 var GROUP = 6;   // כרטיס נתוני-המשרד חוזר כל 6 נכסים — מקבל זמן מסך קבוע גם כשהרשימה גדלה
@@ -11249,7 +11251,9 @@ function q(v){ return (v == null || v === '' || isNaN(Number(v))) ? '…' : v; }
    (עוד סוכנים = עוד נכסים חמים; הסיכום תמיד מוצג, פסי ההתקדמות פר-בלוק). */
 function playlist(){
   var hp = (B && B.hotProps) || [];
-  var out = G ? [{t: 'goals'}] : [];   // יעדי המשרד — ראשון בכל סיבוב (נכשל/אין נתון → כמו קודם)
+  var out = [];
+  if (C && C.mode && C.board && typeof contestCardHtml === 'function') out.push({t: 'contest'});   // התחרות — ראשונה (אין תחרות/נכשל → כמו קודם)
+  if (G) out.push({t: 'goals'});   // יעדי המשרד — ראשון בכל סיבוב (נכשל/אין נתון → כמו קודם)
   if (!hp.length){ out.push({t: 'sum'}); return out; }
   for (var g = 0; g < hp.length; g += GROUP){
     out.push({t: 'sum'});
@@ -11260,9 +11264,9 @@ function playlist(){
 }
 function blockInfo(pl, i){   // גבולות הבלוק הנוכחי (מהסיכום האחרון עד הסיכום הבא)
   var start = i;
-  while (start > 0 && pl[start].t !== 'sum' && pl[start].t !== 'goals') start--;
+  while (start > 0 && pl[start].t !== 'sum' && pl[start].t !== 'goals' && pl[start].t !== 'contest') start--;
   var end = start + 1;
-  while (end < pl.length && pl[end].t !== 'sum' && pl[end].t !== 'goals') end++;
+  while (end < pl.length && pl[end].t !== 'sum' && pl[end].t !== 'goals' && pl[end].t !== 'contest') end++;
   return {pos: i - start, len: end - start};
 }
 function setBars(pl, i){
@@ -11317,7 +11321,10 @@ function render(i){
   if (i >= pl.length){ i = 0; IDX = 0; }
   setBars(pl, i);
   var it = pl[i];
-  if (it.t === 'goals'){
+  c.classList[it.t === 'contest' ? 'add' : 'remove']('wide');
+  if (it.t === 'contest'){
+    c.innerHTML = contestCardHtml(C, {tv: true});
+  } else if (it.t === 'goals'){
     c.innerHTML = goalsTvHtml(G);
   } else if (it.t === 'sum'){
     c.innerHTML =
@@ -11385,8 +11392,15 @@ function loadGoals(){
     if (IDX >= playlist().length) IDX = 0;
   }).catch(function(){ G = null; });
 }
+function loadContest(){
+  GET('/v2/api/contest').then(function(j){
+    C = (j && j.ok && j.mode && j.board) ? j : null;
+    if (IDX >= playlist().length) IDX = 0;
+  }).catch(function(){ C = null; });
+}
 function load(){
   loadGoals();
+  loadContest();
   GET('/v2/api/brief').then(function(j){
     if (!j || !j.ok){
       if (j && j.auth === false) location.replace('/v2');
@@ -16291,7 +16305,17 @@ def register(app, G):
     @app.route("/v2/tv", methods=["GET"])
     def v2_tv():
         # בכוונה בלי _page(): בלי heartbeat (יומן שימוש נקי) ובלי שכבות boost — מסך שילוט
-        resp = Response(V2_TV_HTML, mimetype="text/html")
+        _html = V2_TV_HTML
+        try:   # [CONTEST] כרטיס התחרות בטלוויזיה — כשל בערכה לא פוגע במסך (בלי ערכה = כמו קודם)
+            import contest as _contest
+            _kit = _contest.V2_CONTEST_KIT
+            _i0, _i1 = _kit.index("<script>") + 8, _kit.rindex("</script>")
+            _html = (_html.replace("<!--CONTEST_STYLE-->", _kit[:_kit.index("<script>")], 1)
+                          .replace("/*CONTEST_KIT_JS*/", _kit[_i0:_i1], 1))
+        except Exception as e:
+            _html = V2_TV_HTML
+            if log: log.warning(f"contest tv kit unavailable: {e}")
+        resp = Response(_html, mimetype="text/html")
         resp.headers["Cache-Control"] = "private, max-age=300"
         return resp
 
