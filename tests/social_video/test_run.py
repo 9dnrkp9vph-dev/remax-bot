@@ -13,7 +13,7 @@ HTTP = SF.ImgHttp()
 NOW = time.time()
 
 REVIEWS = []
-V.vid_send_review = lambda G, rec, base, env: (REVIEWS.append((rec["id"], base)), ["505709865", "521234567"])[1]
+V.vid_send_review = lambda G, rec, base, env, initiator="": (REVIEWS.append((rec["id"], base, initiator)), ["505709865", "521234567"])[1]
 COMPOSED = []
 def fake_compose(clip, slides, layers, timeline, music, out, run=None):
     COMPOSED.append({"clip": clip, "n": len(slides), "tl": timeline, "layers": sorted(layers)})
@@ -49,6 +49,7 @@ r = V.vid_create_one(G, "tok1", "manual", "505709865", http=HTTP, now=NOW, env=e
 rec = sb.videos[-1]
 ck(r["status"] == "pending" and rec["status"] == "pending" and rec.get("sent_at") and rec.get("review_token"), rec)
 ck(REVIEWS[-1][0] == rec["id"] and rec["recipients"] == ["505709865", "521234567"], (REVIEWS, rec.get("recipients")))
+ck(REVIEWS[-1][2] == "505709865", "manual → initiator passed")
 
 # ── בלי FAL_KEY → בלי AI ──
 G, st, sb = make_G(); calls = FAL["calls"]
