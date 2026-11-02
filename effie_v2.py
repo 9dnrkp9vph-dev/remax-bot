@@ -7196,6 +7196,67 @@ function socPublish(k, ch){
     setTimeout(function(){ delete SOC.busy[k]; delete SOC.asked[k]; socLoad([{id: k}]); }, 8000);
   }).catch(function(){ delete SOC.busy[k]; render(); toast('שגיאה — לא נשלח'); });
 }
+/* [SOCIAL-VIDEO 02/11] סרטון סטורי + ריל לנכס — למפתח בלבד (social_video.py) */
+var VID = {items: {}, busy: {}, asked: {}};
+var VID_ST = {rendering: 'בהכנה', preview: 'מוכן (מצב בדיקה)', pending: 'ממתין לאישור בוואטסאפ', approved: 'אושר — עולה',
+  published: 'פורסם', partial: 'פורסם חלקית', skipped: 'דולג', expired: 'פג — לא אושר בזמן', failed: 'נכשל'};
+function vidRow(p){
+  if (!SOC.dev || MODE === 'shtaf' || MODE === 'nb' || DEAL === 'commercial') return '';
+  var k = String((p && p.id) || ''); var it = k && VID.items[k];
+  if (!it) return '';
+  var css = 'width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;';
+  var h = '', L = it.last, test = SOC.mode === 'publish' ? '' : ' (מצב בדיקה)';
+  if (L){
+    var oks = ['ig_story', 'ig_reel', 'fb_story', 'fb_reel'].filter(function(c){ return L[c + '_status'] === 'ok'; }).length;
+    var line = 'סרטון: ' + (VID_ST[L.status] || L.status) + ' ' + socWhen(L.created_at);
+    if (L.status === 'published' || L.status === 'partial') line += ' · ' + oks + '/4';
+    h += '<div style="font-size:12px;color:#5B6472;font-weight:700;margin-top:8px">' + esc(line);
+    if (L.video_token && (L.status === 'preview' || L.status === 'pending'))
+      h += ' · <a href="/v2/social/vid/' + esc(L.video_token) + '.mp4" target="_blank" rel="noopener" style="color:#2E6BD6;font-weight:800">צפייה</a>';
+    if (L.ig_reel_permalink) h += ' · <a href="' + esc(L.ig_reel_permalink) + '" target="_blank" rel="noopener" style="color:#2E6BD6;font-weight:800">ריל באינסטגרם</a>';
+    if (L.fb_reel_permalink) h += ' · <a href="' + esc(L.fb_reel_permalink) + '" target="_blank" rel="noopener" style="color:#2E6BD6;font-weight:800">ריל בפייסבוק</a>';
+    h += '</div>';
+  }
+  if (VID.busy[k]) return h + '<div style="margin-top:8px"><button disabled style="' + css +
+    'cursor:default;background:#F2EFE7;color:#5B6472;border:1.5px solid #DCD6C8">בהכנה… (כמה דקות)</button></div>';
+  if (L && L.status === 'partial')
+    h += '<div style="margin-top:8px"><button onclick="vidRetry(\'' + esc(L.id) + '\')" style="' + css +
+         'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">נסה שוב את מה שנכשל</button></div>';
+  var can = it.can || {};
+  if (can.ok){
+    h += '<div style="margin-top:8px"><button onclick="vidCreate(\'' + esc(k) + '\')" style="' + css +
+         'background:#C29435;color:#231700;border:none">צור סרטון סטורי + ריל' + test + '</button></div>';
+  } else if (!L || L.status !== 'partial'){
+    h += '<div style="margin-top:8px"><button disabled style="' + css + 'cursor:default;background:#F2EFE7;color:#5B6472;border:1.5px solid #DCD6C8">' +
+         esc(can.reason || 'לא זמין') + '</button></div>';
+  }
+  return h;
+}
+function vidLoad(list){
+  if (!SOC.dev) return;
+  var keys = (list || []).slice(0, 40).map(function(p){ return String((p && p.id) || ''); })
+    .filter(function(k){ return k && !VID.asked[k]; });
+  if (!keys.length) return;
+  keys.forEach(function(k){ VID.asked[k] = 1; });
+  GET('/v2/api/social/videos?keys=' + encodeURIComponent(keys.join(','))).then(function(j){
+    if (!j || !j.ok) return;
+    Object.keys(j.items || {}).forEach(function(k){ VID.items[k] = j.items[k]; });
+    render();
+  }).catch(function(){});
+}
+function vidCreate(k){
+  if (VID.busy[k]) return;
+  VID.busy[k] = 1; render();
+  POST('/v2/api/social/video', {key: k}).then(function(j){
+    toast(j && j.ok ? 'יוצר סרטון — זה לוקח כמה דקות' : 'שגיאה — לא נשלח');
+    setTimeout(function(){ delete VID.busy[k]; delete VID.asked[k]; vidLoad([{id: k}]); }, 150000);
+  }).catch(function(){ delete VID.busy[k]; render(); toast('שגיאה — לא נשלח'); });
+}
+function vidRetry(id){
+  POST('/v2/api/social/video/retry', {id: id}).then(function(j){
+    toast(j && j.ok ? 'מנסה שוב' : ((j && j.error) || 'שגיאה'));
+  }).catch(function(){ toast('שגיאה'); });
+}
 var SITE = {hidden: {}, on: false, can: false, fh: {}};
 function loadSite(){
   GET('/v2/api/site/state').then(function(j){
@@ -7355,6 +7416,7 @@ function render(){
     '<div class="s">' + (_dealTxt && MODE !== 'shtaf' ? 'נכסים ' + _dealTxt + ' של סניפי המשרד נאספים מיד2 בכל סריקה' : (MODE === 'mine' ? 'נכסים שמשויכים אליך בגיליון המשרד יופיעו כאן' : 'נסה ניסוח אחר — החיפוש מבין תקציב, חדרים ואזור')) + '</div></div>';
   el('list')._src = src;
   socLoad(src);   // [SOCIAL 31/10] מצב הפרסום ברשתות — קריאה אחת לרשימה המוצגת
+  vidLoad(src);   // [SOCIAL-VIDEO 02/11] מצב הסרטון לכל נכס
 }
 function propDate(p){
   // תאריך כניסת הנכס — משרד: "תאריך יצירה"; שת"פ: received_at (ISO). תצוגה: DD/MM/YYYY + זמן יחסי.
@@ -7450,7 +7512,7 @@ function propCard(p, i){
     (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' +
     (propDate(p) ? '<div style="font-size:11.5px;color:#8B8F99;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
-    acts + shareRow(p, i) + hotRow + fhRow + siteRow + socRow(p) + '</div>';
+    acts + shareRow(p, i) + hotRow + fhRow + siteRow + socRow(p) + vidRow(p) + '</div>';
 }
 /* [SHARE 01/11] שליחת נכס ללקוח עם תמונות (אייל): לחיצה ראשונה מכינה את התמונות, השנייה פותחת את חלון השיתוף
    (חלון השיתוף חייב לחיצה טרייה — הורדת 10 תמונות לוקחת כמה שניות). בלי שם סוכן / מספר בית / קישורים. */
@@ -11446,7 +11508,9 @@ var MAIN = [
   '<div class="card"><h2>פרסום ברשתות</h2><div class="sb">עמוד הפייסבוק והאינסטגרם של המשרד דרך Meta. במצב בדיקה שום דבר לא נשלח.</div>'+
     '<div class="out show" id="oSoc">טוען…</div>'+
     '<div class="row" style="margin-top:8px"><input id="socKey" placeholder="מספר מודעה" style="flex:1"><button class="btn" onclick="socPrev()">תצוגה מקדימה</button></div>'+
-    '<div id="socPv" style="margin-top:8px"></div><div id="socRecent" style="margin-top:8px"></div></div>'
+    '<div id="socPv" style="margin-top:8px"></div><div id="socRecent" style="margin-top:8px"></div></div>',
+  '<div class="card"><h2>סרטונים לרשתות</h2><div class="sb">סטורי + ריל לאינסטגרם ולעמוד. כל סרטון נשלח לאישור בוואטסאפ לפני שעולה.</div>'+
+    '<div class="out show" id="oVid">טוען…</div><div id="vidRecent" style="margin-top:8px"></div></div>'
 ].join('');
 
 function loadSources(){GET('/api/dev/sources').then(function(j){
@@ -11472,6 +11536,19 @@ function loadSoc(){GET('/v2/api/social/health').then(function(j){
   var st={ok:'✓',failed:'נכשל',unknown:'לא ידוע',preview:'בדיקה',skipped:'—'};
   el('socRecent').innerHTML=(j.recent||[]).map(function(r){return '<div class="sb" style="margin:3px 0">'+esc(String(r.created_at||'').slice(0,16).replace('T',' '))+
     ' · '+esc(r.property_key)+' · '+esc(r.mode)+' · פייסבוק '+esc(st[r.fb_status]||'—')+' · אינסטגרם '+esc(st[r.ig_status]||'—')+'</div>';}).join('')||'<div class="sb">עדיין אין פרסומים</div>';
+});}
+function loadVid(){GET('/v2/api/social/video/health').then(function(j){
+  if(!j||!j.ok){show('oVid','שגיאה');return;}
+  show('oVid','fal: '+(j.fal==='set'?(j.fal_bad?'בעיה בחשבון — צריך לטעון קרדיט':'מחובר'):'מפתח חסר — סרטונים בלי AI')+' · '+(j.auto?'אוטומטי פעיל':'אוטומטי כבוי')+
+    '\nהחודש: '+j.month_n+' קליפים מתוך '+j.month_cap+' · עלות משוערת $'+j.month_cost+'\nמודל: '+(j.model||'—'));
+  var st={rendering:'בהכנה',preview:'בדיקה',pending:'ממתין לאישור',approved:'אושר',published:'פורסם',partial:'חלקי',skipped:'דולג',expired:'פג',failed:'נכשל'};
+  var ch=function(s){return s==='ok'?'✓':(s?'✗':'—');};
+  el('vidRecent').innerHTML=(j.recent||[]).map(function(r){
+    var v=r.video_token&&r.status!=='failed'?'<video controls playsinline preload="none" poster="/v2/social/vid/'+esc(r.video_token)+'-cover.jpg" src="/v2/social/vid/'+esc(r.video_token)+'.mp4" style="width:120px;border-radius:12px;background:#0E1D33"></video>':'';
+    return '<div style="display:flex;gap:10px;align-items:flex-start;margin:8px 0">'+v+'<div class="sb">'+esc(String(r.created_at||'').slice(0,16).replace('T',' '))+
+      ' · '+esc(r.property_key)+'<br>'+esc(st[r.status]||r.status)+(r.ai?'':' · ללא AI')+(r.decided_by?' · '+esc(r.decided_by):'')+
+      '<br>IG סטורי '+ch(r.ig_story_status)+' · IG ריל '+ch(r.ig_reel_status)+' · FB סטורי '+ch(r.fb_story_status)+' · FB ריל '+ch(r.fb_reel_status)+
+      (r.error?'<br>'+esc(String(r.error).slice(0,160)):'')+'</div></div>';}).join('')||'<div class="sb">עדיין אין סרטונים</div>';
 });}
 function socPrev(){var k=el('socKey').value.trim();if(!k)return;el('socPv').innerHTML='<div class="sb">טוען…</div>';
   GET('/v2/api/social/preview?key='+encodeURIComponent(k)).then(function(j){
@@ -11506,7 +11583,7 @@ function saveContract(){var t=el('cType').value;POST('/api/dev/contract',{type:t
     if(!j.ok){location.replace('/v2');return;}
     if(!j.dev){document.body.innerHTML='<div style="padding:60px 24px;text-align:center;color:#6B7280;font-weight:700">כלי מפתח — למפתח בלבד</div>';return;}
     el('main').innerHTML=MAIN;
-    loadSources();loadQuiet();loadRp();loadContract();loadSoc();
+    loadSources();loadQuiet();loadRp();loadContract();loadSoc();loadVid();
   }).catch(function(){location.replace('/v2');});
 })();
 </script></body></html>'''
