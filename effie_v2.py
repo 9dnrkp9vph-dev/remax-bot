@@ -1846,6 +1846,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto;max-width:600px;margin:0 auto"></div>
   <div id="toast"></div>
 <!--GOALS_KIT-->
+<!--CONTEST_KIT-->
 <script>
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
@@ -2153,7 +2154,7 @@ function loadData(){
       M.ready = true;
       renderDash();
       homeSnapSave();
-      if (STORY.open && STORY.i !== 0) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי (לא כרטיס היעדים — הוא נטען לבד)
+      if (STORY.open && STORY.i > CO) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי (לא כרטיס התחרות והיעדים — הם נטענים לבד)
     }).catch(function(){ ldFailed = true; });
   }
   return Promise.all([
@@ -2290,7 +2291,7 @@ GET('/v2/api/brief').then(function(j){
   B = j; B._loaded = true;
   try{ localStorage.setItem('v2c:brief', JSON.stringify(j)); }catch(e){}
   briefTitleSync();
-  if (STORY.open && STORY.i === 1) renderCard(1);
+  if (STORY.open && STORY.i === CO + 1) renderCard(CO + 1);
   hotMineRender();
 }).catch(function(){});
 
@@ -2308,14 +2309,30 @@ function goalsLoad(tries){
     var wasLoading = (GJ === undefined);   // מציירים מחדש רק את מצב 'טוען' — לא קופצים באמצע קריאה
     GJ = j; goalsCachePut(TOK, j);
     goalsMiniRender();
-    if (wasLoading && STORY.open && STORY.i === 0) renderCard(0);
+    if (wasLoading && STORY.open && STORY.i === CO) renderCard(CO);
   }).catch(function(){
     if ((tries || 0) < 2){ setTimeout(function(){ goalsLoad((tries || 0) + 1); }, 4000); return; }
-    if (GJ === undefined){ GJ = null; goalsMiniRender(); if (STORY.open && STORY.i === 0) renderCard(0); }
+    if (GJ === undefined){ GJ = null; goalsMiniRender(); if (STORY.open && STORY.i === CO) renderCard(CO); }
   });
 }
 goalsMiniRender();
 goalsLoad(0);
+/* ── [CONTEST 02/11] תחרות: כרטיס ראשון בסטורי כשיש תחרות (חיה או מנצחת) ──
+   CO = היסט הכרטיסים: 1 כשיש תחרות, אחרת 0. נקבע בפתיחת הסטורי ולא משתנה כל עוד הוא פתוח. */
+var CJ;   // undefined = עוד לא נטען; null = אין או נכשל
+CJ = (typeof contestCacheGet === 'function' && contestCacheGet(TOK)) || undefined;
+var CO = 0;
+function contestLoad(tries){
+  if (typeof contestCachePut !== 'function'){ CJ = null; return; }   // הערכה לא נטענה — הסטורי כמו בלי תחרות
+  GET('/v2/api/contest').then(function(j){
+    if (!j || !j.ok) throw new Error('contest');
+    CJ = j; contestCachePut(TOK, j);
+  }).catch(function(){
+    if ((tries || 0) < 2){ setTimeout(function(){ contestLoad((tries || 0) + 1); }, 4000); return; }
+    if (CJ === undefined) CJ = null;
+  });
+}
+contestLoad(0);
 /* הנכס החם שלי — לסוכן: הנכס או מצב ריק; למנהל/מתאמת: רק אם סימנו */
 var HM;   // undefined = עוד לא נטען; null = אין; {key,title}
 function hotMineRender(){
@@ -2341,7 +2358,8 @@ function hotMineLoad(){
 }
 function seenKey(){ return 'v2BriefSeen'; }
 function openStory(fromBar){
-  STORY.open = true; STORY.i = 0;   // [GOALS 28/10] כרטיס 0 = היעדים
+  STORY.open = true; STORY.i = 0;   // [GOALS 28/10] כרטיס 0 = היעדים ([CONTEST] או התחרות, כשיש)
+  CO = (CJ && CJ.mode) ? 1 : 0;
   STORY.mode = fromBar ? 'tap' : 'auto'; STORY.max = 1;   /* [21/10] כמה לחצו לראות — לדשבורד ב-CRM */
   el('story').style.display = 'flex';
   renderCard(0);
@@ -2361,8 +2379,8 @@ function closeStory(){
   try{ localStorage.setItem(seenKey(), todayStr()); }catch(e){}
   el('briefCta').textContent = 'צפה שוב';
 }
-function total(){ return 2 + ((B.hotProps && B.hotProps.length) || 0); }   // יעדים + סיכום + נכסים חמים
-function durFor(i){ return i === 0 ? 20000 : STORY.DUR; }   // יעדים — יותר זמן לקרוא
+function total(){ return CO + 2 + ((B.hotProps && B.hotProps.length) || 0); }   // [תחרות] + יעדים + סיכום + נכסים חמים
+function durFor(i){ return (CO && i === 0) ? 15000 : (i - CO === 0) ? 20000 : STORY.DUR; }   // תחרות/יעדים — יותר זמן לקרוא
 function nextCard(){ (STORY.i < total() - 1) ? go(STORY.i + 1) : closeStory(); }
 function prevCard(){ if (STORY.i > 0) go(STORY.i - 1); }
 function go(i){ STORY.i = i; renderCard(i); }
@@ -2409,17 +2427,24 @@ function renderCard(i){
     '<div style="width:34px;height:34px;border-radius:10px;background:rgba(228,197,107,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+icon+'</div>'+
     '<div style="flex:1;display:flex;flex-direction:column;gap:1px"><div style="font-size:11px;color:rgba(255,255,255,.5)">'+label+'</div>'+
     '<div style="font-size:13.5px;font-weight:700;color:#fff">'+val+'</div></div></div>'; };
-  el('storyTitle').textContent = (i === 0) ? (GJ && GJ.view && GJ.view !== 'agent' ? 'יעדי היום' : 'היעדים שלי להיום') : 'נכסים חמים';
-  b.classList.toggle('gScroll', i === 0);
+  var k = i - CO;   // [CONTEST] אינדקס בתוך הסטורי הרגיל (כרטיס התחרות = i 0 כש-CO=1)
+  el('storyTitle').textContent = (CO && i === 0) ? (CJ.mode === 'winner' ? 'הקבוצה המנצחת' : 'תחרות')
+    : (k === 0) ? (GJ && GJ.view && GJ.view !== 'agent' ? 'יעדי היום' : 'היעדים שלי להיום') : 'נכסים חמים';
+  b.classList.toggle('gScroll', k <= 0);
   b.scrollTop = 0;
-  if (i === 0){
+  if (CO && i === 0){
+    b.innerHTML = (CJ.mode === 'winner' ? contestWinnerHtml(CJ, {story: true}) : contestCardHtml(CJ, {story: true})) +
+      '<div class="btns" style="margin:14px auto 0;align-items:center">' +
+      '<button class="bMain" style="width:100%" onclick="nextCard()">המשך לסטורי</button>' +
+      '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
+  } else if (k === 0){
     b.innerHTML = (GJ === undefined)
       ? '<div style="text-align:center;color:rgba(255,255,255,.7);font-size:14px">טוען את היעדים…</div>'
       : goalsCardHtml(GJ, {story: true, greet: firstName(M.name) ? greetWord() + ', ' + firstName(M.name) : greetWord()});
     b.innerHTML += '<div class="btns" style="margin:14px auto 0;align-items:center">' +
       '<button class="bMain" style="width:100%" onclick="nextCard()">המשך לסטורי</button>' +
       '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
-  } else if (i === 1){
+  } else if (k === 1){
     var hpArr = B.hotProps || [];
     var byA = {}; hpArr.forEach(function(x){ if(x.agent) byA[x.agent]=(byA[x.agent]||0)+1; });
     var tA='', tN=0; for (var a in byA) if (byA[a]>tN){ tN=byA[a]; tA=a; }
@@ -2452,10 +2477,10 @@ function renderCard(i){
         '</div>'+
       '</div>'+
       '<div class="btns" style="margin-top:auto;align-items:center">'+
-        '<button class="bMain" style="width:100%" onclick="'+(total()>2?'nextCard()':'closeStory()')+'">'+(total()>2?'המשך לנכסים החמים ←':'בוא נתחיל את היום')+'</button>'+
+        '<button class="bMain" style="width:100%" onclick="'+(total()>CO+2?'nextCard()':'closeStory()')+'">'+(total()>CO+2?'המשך לנכסים החמים ←':'בוא נתחיל את היום')+'</button>'+
         '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
   } else {
-    var hp = (B.hotProps || [])[i - 2] || {};
+    var hp = (B.hotProps || [])[k - 2] || {};
     var isLast = (i >= total() - 1);
     var prF = parseFloat(String(hp.price || '').replace(/[^0-9.]/g, ''));
     var prTxt = (prF && isFinite(prF)) ? '₪' + Math.round(prF).toLocaleString() : esc(hp.price || '');
@@ -2512,7 +2537,7 @@ function resumeStory(){
 }
 el('story').addEventListener('click', function(e){
   if (e.target.closest('button')) return;
-  if (e.target.closest('.gk')) return;   // [GOALS] כרטיס היעדים נגלל — הקשה בתוכו לא מדפדפת
+  if (e.target.closest('.gk') || e.target.closest('.ck')) return;   // [GOALS] כרטיס היעדים/התחרות נגלל — הקשה בתוכו לא מדפדפת
   var x = e.clientX, w = window.innerWidth;
   if (x > w * 0.33 && x < w * 0.66){   // אמצע המסך — השהיה/המשך
     STORY.paused ? resumeStory() : pauseStory();
@@ -2581,7 +2606,7 @@ el('story').addEventListener('touchmove', function(e){
       _homeNbBadge();
       renderDash();
       homeSnapSave();
-      if (STORY.open && STORY.i === 3) renderCard(3);
+      if (STORY.open && STORY.i === CO + 3) renderCard(CO + 3);
     }).catch(function(){});
   }).catch(function(){ location.replace('/v2'); });
   fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
@@ -16202,7 +16227,13 @@ def register(app, G):
 
     @app.route("/v2/home", methods=["GET"])
     def v2_home():
-        return _page(V2_HOME_HTML.replace("<!--GOALS_KIT-->", V2_GOALS_KIT, 1))
+        _ck = ''
+        try:   # [CONTEST] הערכה של התחרות — כשל לא מפיל את הבית (בלי ערכה = סטורי כמו היום)
+            import contest as _contest
+            _ck = _contest.V2_CONTEST_KIT
+        except Exception as e:
+            if log: log.warning(f"contest kit unavailable: {e}")
+        return _page(V2_HOME_HTML.replace("<!--GOALS_KIT-->", V2_GOALS_KIT, 1).replace("<!--CONTEST_KIT-->", _ck, 1))
 
     @app.route("/v2/onboard", methods=["GET"])
     def v2_onboard():
