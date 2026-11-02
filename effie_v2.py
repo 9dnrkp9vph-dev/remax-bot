@@ -1679,6 +1679,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="4" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="1.2" fill="#1E3A5F"/></svg>
       היעדים שלי להיום</a>
+    <a id="menuContest" href="/v2/contest" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>
+      תחרות</a>
     <a id="menuReviews" href="/v2/reviews" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M5 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6H5zM13 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6h-5z" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -1842,6 +1846,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto;max-width:600px;margin:0 auto"></div>
   <div id="toast"></div>
 <!--GOALS_KIT-->
+<!--CONTEST_KIT-->
 <script>
 var TOK = null;
 try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
@@ -2149,7 +2154,7 @@ function loadData(){
       M.ready = true;
       renderDash();
       homeSnapSave();
-      if (STORY.open && STORY.i !== 0) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי (לא כרטיס היעדים — הוא נטען לבד)
+      if (STORY.open && STORY.i > CO) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי (לא כרטיס התחרות והיעדים — הם נטענים לבד)
     }).catch(function(){ ldFailed = true; });
   }
   return Promise.all([
@@ -2286,7 +2291,7 @@ GET('/v2/api/brief').then(function(j){
   B = j; B._loaded = true;
   try{ localStorage.setItem('v2c:brief', JSON.stringify(j)); }catch(e){}
   briefTitleSync();
-  if (STORY.open && STORY.i === 1) renderCard(1);
+  if (STORY.open && STORY.i === CO + 1) renderCard(CO + 1);
   hotMineRender();
 }).catch(function(){});
 
@@ -2304,14 +2309,33 @@ function goalsLoad(tries){
     var wasLoading = (GJ === undefined);   // מציירים מחדש רק את מצב 'טוען' — לא קופצים באמצע קריאה
     GJ = j; goalsCachePut(TOK, j);
     goalsMiniRender();
-    if (wasLoading && STORY.open && STORY.i === 0) renderCard(0);
+    if (wasLoading && STORY.open && STORY.i === CO) renderCard(CO);
   }).catch(function(){
     if ((tries || 0) < 2){ setTimeout(function(){ goalsLoad((tries || 0) + 1); }, 4000); return; }
-    if (GJ === undefined){ GJ = null; goalsMiniRender(); if (STORY.open && STORY.i === 0) renderCard(0); }
+    if (GJ === undefined){ GJ = null; goalsMiniRender(); if (STORY.open && STORY.i === CO) renderCard(CO); }
   });
 }
 goalsMiniRender();
 goalsLoad(0);
+/* ── [CONTEST 02/11] תחרות: כרטיס ראשון בסטורי כשיש תחרות (חיה או מנצחת) ──
+   CO = היסט הכרטיסים: 1 כשיש תחרות, אחרת 0. נקבע בפתיחת הסטורי ולא משתנה כל עוד הוא פתוח. */
+var CJ;   // undefined = עוד לא נטען; null = אין או נכשל
+CJ = (typeof contestCacheGet === 'function' && contestCacheGet(TOK)) || undefined;
+var CO = 0;
+var CS = null;   // [FIX3] תמונת התחרות שהסטורי מציג — נלקחת בפתיחה (או בשדרוג המאוחר), לא CJ החי
+function contestLoad(tries){
+  if (typeof contestCachePut !== 'function'){ CJ = null; return; }   // הערכה לא נטענה — הסטורי כמו בלי תחרות
+  GET('/v2/api/contest').then(function(j){
+    if (!j || !j.ok) throw new Error('contest');
+    CJ = j; contestCachePut(TOK, j);
+    // [FIX3] הסטורי הראשון של היום נפתח לפני שהתחרות נטענה — אם עדיין על הכרטיס הראשון, עוברים לכרטיס התחרות
+    if (STORY.open && CO === 0 && STORY.i === 0 && j.mode){ CO = 1; CS = j; renderCard(0); }
+  }).catch(function(){
+    if ((tries || 0) < 2){ setTimeout(function(){ contestLoad((tries || 0) + 1); }, 4000); return; }
+    if (CJ === undefined) CJ = null;
+  });
+}
+contestLoad(0);
 /* הנכס החם שלי — לסוכן: הנכס או מצב ריק; למנהל/מתאמת: רק אם סימנו */
 var HM;   // undefined = עוד לא נטען; null = אין; {key,title}
 function hotMineRender(){
@@ -2337,7 +2361,9 @@ function hotMineLoad(){
 }
 function seenKey(){ return 'v2BriefSeen'; }
 function openStory(fromBar){
-  STORY.open = true; STORY.i = 0;   // [GOALS 28/10] כרטיס 0 = היעדים
+  STORY.open = true; STORY.i = 0;   // [GOALS 28/10] כרטיס 0 = היעדים ([CONTEST] או התחרות, כשיש)
+  CO = (CJ && CJ.mode) ? 1 : 0;
+  CS = CO ? CJ : null;
   STORY.mode = fromBar ? 'tap' : 'auto'; STORY.max = 1;   /* [21/10] כמה לחצו לראות — לדשבורד ב-CRM */
   el('story').style.display = 'flex';
   renderCard(0);
@@ -2357,8 +2383,8 @@ function closeStory(){
   try{ localStorage.setItem(seenKey(), todayStr()); }catch(e){}
   el('briefCta').textContent = 'צפה שוב';
 }
-function total(){ return 2 + ((B.hotProps && B.hotProps.length) || 0); }   // יעדים + סיכום + נכסים חמים
-function durFor(i){ return i === 0 ? 20000 : STORY.DUR; }   // יעדים — יותר זמן לקרוא
+function total(){ return CO + 2 + ((B.hotProps && B.hotProps.length) || 0); }   // [תחרות] + יעדים + סיכום + נכסים חמים
+function durFor(i){ return (CO && i === 0) ? 15000 : (i - CO === 0) ? 20000 : STORY.DUR; }   // תחרות/יעדים — יותר זמן לקרוא
 function nextCard(){ (STORY.i < total() - 1) ? go(STORY.i + 1) : closeStory(); }
 function prevCard(){ if (STORY.i > 0) go(STORY.i - 1); }
 function go(i){ STORY.i = i; renderCard(i); }
@@ -2405,17 +2431,24 @@ function renderCard(i){
     '<div style="width:34px;height:34px;border-radius:10px;background:rgba(228,197,107,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+icon+'</div>'+
     '<div style="flex:1;display:flex;flex-direction:column;gap:1px"><div style="font-size:11px;color:rgba(255,255,255,.5)">'+label+'</div>'+
     '<div style="font-size:13.5px;font-weight:700;color:#fff">'+val+'</div></div></div>'; };
-  el('storyTitle').textContent = (i === 0) ? (GJ && GJ.view && GJ.view !== 'agent' ? 'יעדי היום' : 'היעדים שלי להיום') : 'נכסים חמים';
-  b.classList.toggle('gScroll', i === 0);
+  var k = i - CO;   // [CONTEST] אינדקס בתוך הסטורי הרגיל (כרטיס התחרות = i 0 כש-CO=1)
+  el('storyTitle').textContent = (CO && i === 0) ? (CS.mode === 'winner' ? 'הקבוצה המנצחת' : 'תחרות')
+    : (k === 0) ? (GJ && GJ.view && GJ.view !== 'agent' ? 'יעדי היום' : 'היעדים שלי להיום') : 'נכסים חמים';
+  b.classList.toggle('gScroll', k <= 0);
   b.scrollTop = 0;
-  if (i === 0){
+  if (CO && i === 0){
+    b.innerHTML = (CS.mode === 'winner' ? contestWinnerHtml(CS, {story: true}) : contestCardHtml(CS, {story: true})) +
+      '<div class="btns" style="margin:14px auto 0;align-items:center">' +
+      '<button class="bMain" style="width:100%" onclick="nextCard()">המשך לסטורי</button>' +
+      '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
+  } else if (k === 0){
     b.innerHTML = (GJ === undefined)
       ? '<div style="text-align:center;color:rgba(255,255,255,.7);font-size:14px">טוען את היעדים…</div>'
       : goalsCardHtml(GJ, {story: true, greet: firstName(M.name) ? greetWord() + ', ' + firstName(M.name) : greetWord()});
     b.innerHTML += '<div class="btns" style="margin:14px auto 0;align-items:center">' +
       '<button class="bMain" style="width:100%" onclick="nextCard()">המשך לסטורי</button>' +
       '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
-  } else if (i === 1){
+  } else if (k === 1){
     var hpArr = B.hotProps || [];
     var byA = {}; hpArr.forEach(function(x){ if(x.agent) byA[x.agent]=(byA[x.agent]||0)+1; });
     var tA='', tN=0; for (var a in byA) if (byA[a]>tN){ tN=byA[a]; tA=a; }
@@ -2448,10 +2481,10 @@ function renderCard(i){
         '</div>'+
       '</div>'+
       '<div class="btns" style="margin-top:auto;align-items:center">'+
-        '<button class="bMain" style="width:100%" onclick="'+(total()>2?'nextCard()':'closeStory()')+'">'+(total()>2?'המשך לנכסים החמים ←':'בוא נתחיל את היום')+'</button>'+
+        '<button class="bMain" style="width:100%" onclick="'+(total()>CO+2?'nextCard()':'closeStory()')+'">'+(total()>CO+2?'המשך לנכסים החמים ←':'בוא נתחיל את היום')+'</button>'+
         '<button class="skip" onclick="closeStory()">דלג לדשבורד</button></div>';
   } else {
-    var hp = (B.hotProps || [])[i - 2] || {};
+    var hp = (B.hotProps || [])[k - 2] || {};
     var isLast = (i >= total() - 1);
     var prF = parseFloat(String(hp.price || '').replace(/[^0-9.]/g, ''));
     var prTxt = (prF && isFinite(prF)) ? '₪' + Math.round(prF).toLocaleString() : esc(hp.price || '');
@@ -2508,7 +2541,7 @@ function resumeStory(){
 }
 el('story').addEventListener('click', function(e){
   if (e.target.closest('button')) return;
-  if (e.target.closest('.gk')) return;   // [GOALS] כרטיס היעדים נגלל — הקשה בתוכו לא מדפדפת
+  if (e.target.closest('.gk') || e.target.closest('.ck')) return;   // [GOALS] כרטיס היעדים/התחרות נגלל — הקשה בתוכו לא מדפדפת
   var x = e.clientX, w = window.innerWidth;
   if (x > w * 0.33 && x < w * 0.66){   // אמצע המסך — השהיה/המשך
     STORY.paused ? resumeStory() : pauseStory();
@@ -2577,7 +2610,7 @@ el('story').addEventListener('touchmove', function(e){
       _homeNbBadge();
       renderDash();
       homeSnapSave();
-      if (STORY.open && STORY.i === 3) renderCard(3);
+      if (STORY.open && STORY.i === CO + 3) renderCard(CO + 3);
     }).catch(function(){});
   }).catch(function(){ location.replace('/v2'); });
   fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
@@ -11113,6 +11146,7 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .bars i b{display:block;height:100%;width:0;background:#E4C56B;border-radius:999px}
   main{flex:1;display:flex;align-items:center;justify-content:center;padding:20px 46px 40px;min-height:0}
   .card{width:100%;max-width:1060px;display:flex;flex-direction:column;gap:26px;align-items:stretch}
+  .card.wide{max-width:1560px}
   .fade{animation:fadeIn .45s ease-out}
   @keyframes fadeIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion: reduce){.fade{animation:none}}
@@ -11208,7 +11242,7 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
     .empty .t{font-size:24px}
     .empty .s{font-size:15px}
   }
-</style></head><body>
+</style><!--CONTEST_STYLE--></head><body>
   <header>
     <div class="brand">
       <svg viewBox="0 0 118 106" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -11285,16 +11319,17 @@ function hebDate(d){
 }
 tick(); setInterval(tick, 15000);
 
-var B = null, G = null, IDX = 0, TIMER = null;
+/*CONTEST_KIT_JS*/
+var B = null, G = null, C = null, IDX = 0, TIMER = null;
 /* [TV-TEMPO] סיבוב מלא = 5 דקות קבוע (בקשת אייל 15/07): הזמן מתחלק בין הכרטיסים —
    כל נכס חם שנוסף מאיץ את כולם, וכשיש מעט הם רצים לאט יותר. הסיכום ארוך פי 1.4.
    גבולות שפיות: 5ש' רצפה (קריאוּת) · 60ש' תקרה (שלא ייראה קפוא). */
 var LOOP_MS = 300000, SUM_W = 1.4;
 function durFor(pl, it){
   var sums = 0, hots = 0;
-  for (var k = 0; k < pl.length; k++){ if (pl[k].t === 'sum' || pl[k].t === 'goals') sums++; else hots++; }
+  for (var k = 0; k < pl.length; k++){ if (pl[k].t === 'sum' || pl[k].t === 'goals' || pl[k].t === 'contest') sums++; else hots++; }
   var unit = LOOP_MS / ((sums * SUM_W + hots) || 1);
-  var d = ((it.t === 'sum' || it.t === 'goals') ? SUM_W : 1) * unit;
+  var d = ((it.t === 'sum' || it.t === 'goals' || it.t === 'contest') ? SUM_W : 1) * unit;
   return Math.max(5000, Math.min(60000, Math.round(d)));
 }
 var GROUP = 6;   // כרטיס נתוני-המשרד חוזר כל 6 נכסים — מקבל זמן מסך קבוע גם כשהרשימה גדלה
@@ -11304,7 +11339,9 @@ function q(v){ return (v == null || v === '' || isNaN(Number(v))) ? '…' : v; }
    (עוד סוכנים = עוד נכסים חמים; הסיכום תמיד מוצג, פסי ההתקדמות פר-בלוק). */
 function playlist(){
   var hp = (B && B.hotProps) || [];
-  var out = G ? [{t: 'goals'}] : [];   // יעדי המשרד — ראשון בכל סיבוב (נכשל/אין נתון → כמו קודם)
+  var out = [];
+  if (C && C.mode && C.board && typeof contestCardHtml === 'function') out.push({t: 'contest'});   // התחרות — ראשונה (אין תחרות/נכשל → כמו קודם)
+  if (G) out.push({t: 'goals'});   // יעדי המשרד — ראשון בכל סיבוב (נכשל/אין נתון → כמו קודם)
   if (!hp.length){ out.push({t: 'sum'}); return out; }
   for (var g = 0; g < hp.length; g += GROUP){
     out.push({t: 'sum'});
@@ -11315,9 +11352,9 @@ function playlist(){
 }
 function blockInfo(pl, i){   // גבולות הבלוק הנוכחי (מהסיכום האחרון עד הסיכום הבא)
   var start = i;
-  while (start > 0 && pl[start].t !== 'sum' && pl[start].t !== 'goals') start--;
+  while (start > 0 && pl[start].t !== 'sum' && pl[start].t !== 'goals' && pl[start].t !== 'contest') start--;
   var end = start + 1;
-  while (end < pl.length && pl[end].t !== 'sum' && pl[end].t !== 'goals') end++;
+  while (end < pl.length && pl[end].t !== 'sum' && pl[end].t !== 'goals' && pl[end].t !== 'contest') end++;
   return {pos: i - start, len: end - start};
 }
 function setBars(pl, i){
@@ -11372,7 +11409,10 @@ function render(i){
   if (i >= pl.length){ i = 0; IDX = 0; }
   setBars(pl, i);
   var it = pl[i];
-  if (it.t === 'goals'){
+  c.classList[it.t === 'contest' ? 'add' : 'remove']('wide');
+  if (it.t === 'contest'){
+    c.innerHTML = contestCardHtml(C, {tv: true});
+  } else if (it.t === 'goals'){
     c.innerHTML = goalsTvHtml(G);
   } else if (it.t === 'sum'){
     c.innerHTML =
@@ -11440,8 +11480,15 @@ function loadGoals(){
     if (IDX >= playlist().length) IDX = 0;
   }).catch(function(){ G = null; });
 }
+function loadContest(){
+  GET('/v2/api/contest').then(function(j){
+    C = (j && j.ok && j.mode && j.board) ? j : null;
+    if (IDX >= playlist().length) IDX = 0;
+  }).catch(function(){ C = null; });
+}
 function load(){
   loadGoals();
+  loadContest();
   GET('/v2/api/brief').then(function(j){
     if (!j || !j.ok){
       if (j && j.auth === false) location.replace('/v2');
@@ -16297,7 +16344,13 @@ def register(app, G):
 
     @app.route("/v2/home", methods=["GET"])
     def v2_home():
-        return _page(V2_HOME_HTML.replace("<!--GOALS_KIT-->", V2_GOALS_KIT, 1))
+        _ck = ''
+        try:   # [CONTEST] הערכה של התחרות — כשל לא מפיל את הבית (בלי ערכה = סטורי כמו היום)
+            import contest as _contest
+            _ck = _contest.V2_CONTEST_KIT
+        except Exception as e:
+            if log: log.warning(f"contest kit unavailable: {e}")
+        return _page(V2_HOME_HTML.replace("<!--GOALS_KIT-->", V2_GOALS_KIT, 1).replace("<!--CONTEST_KIT-->", _ck, 1))
 
     @app.route("/v2/onboard", methods=["GET"])
     def v2_onboard():
@@ -16355,7 +16408,17 @@ def register(app, G):
     @app.route("/v2/tv", methods=["GET"])
     def v2_tv():
         # בכוונה בלי _page(): בלי heartbeat (יומן שימוש נקי) ובלי שכבות boost — מסך שילוט
-        resp = Response(V2_TV_HTML, mimetype="text/html")
+        _html = V2_TV_HTML
+        try:   # [CONTEST] כרטיס התחרות בטלוויזיה — כשל בערכה לא פוגע במסך (בלי ערכה = כמו קודם)
+            import contest as _contest
+            _kit = _contest.V2_CONTEST_KIT
+            _i0, _i1 = _kit.index("<script>") + 8, _kit.rindex("</script>")
+            _html = (_html.replace("<!--CONTEST_STYLE-->", _kit[:_kit.index("<script>")], 1)
+                          .replace("/*CONTEST_KIT_JS*/", _kit[_i0:_i1], 1))
+        except Exception as e:
+            _html = V2_TV_HTML
+            if log: log.warning(f"contest tv kit unavailable: {e}")
+        resp = Response(_html, mimetype="text/html")
         resp.headers["Cache-Control"] = "private, max-age=300"
         return resp
 
@@ -16382,6 +16445,15 @@ def register(app, G):
     @app.route("/v2/goals", methods=["GET"])   # [GOALS 28/10] היעדים שלי להיום
     def v2_goals():
         return _page(V2_GOALS_HTML.replace("<!--GOALS_KIT-->", V2_GOALS_KIT, 1))
+
+    @app.route("/v2/contest", methods=["GET"])   # [CONTEST 02/11] תחרות בין שתי קבוצות
+    def v2_contest():
+        try:
+            import contest as _contest
+        except Exception as _e:
+            return _page('<!DOCTYPE html><html dir="rtl" lang="he"><body style="font-family:Heebo,sans-serif;padding:40px;text-align:center">'
+                         'מסך התחרות לא זמין כרגע</body></html>')
+        return _page(_contest.V2_CONTEST_HTML.replace("<!--CONTEST_KIT-->", _contest.V2_CONTEST_KIT, 1))
 
     @app.route("/v2/effie", methods=["GET"])
     def v2_effie():

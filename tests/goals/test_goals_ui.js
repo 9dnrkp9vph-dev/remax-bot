@@ -132,11 +132,11 @@ ck(K.goalsCacheGet('T1', '2026-10-28') && !K.goalsCacheGet('T2', '2026-10-28') &
 
 // הסטורי: יעדים + סיכום + נכסים חמים
 const tot = /function total\(\)\{[^\n]*\}/.exec(HOME)[0];
-const sx = {B: {hotProps: [1, 2, 3]}}; vm.createContext(sx); vm.runInContext(tot, sx);
+const sx = {B: {hotProps: [1, 2, 3]}, CO: 0}; vm.createContext(sx); vm.runInContext(tot, sx);   // [CONTEST] CO=0 = בלי תחרות
 ck(sx.total() === 5, 'story total with 3 hot = 5');
 sx.B = {}; ck(sx.total() === 2, 'story total no hot = 2');
 ck(/goalsCardHtml\(GJ/.test(HOME), 'story renders goals card');
-ck(/\(B\.hotProps \|\| \[\]\)\[i - 2\]/.test(HOME), 'hot props shifted by 2');
+ck(/\(B\.hotProps \|\| \[\]\)\[k - 2\]/.test(HOME) && /var k = i - CO;/.test(HOME), 'hot props shifted by 2 (+contest offset)');
 ck(/storyLog/.test(HOME) && /seen: STORY\.max \|\| 1, total: total\(\)/.test(HOME), 'story log unchanged');
 // goalsGo סוגר את הסטורי ומנווט
 let closed = 0; ctx.STORY = {open: true}; ctx.closeStory = () => { closed++; ctx.STORY.open = false; };
@@ -147,10 +147,10 @@ ck(/inputmode="numeric"/.test(PAGE) && /font-size:16px/.test(PAGE), 'numeric 16p
 const one = JSON.parse(JSON.stringify(agentJ)); one.me.week.counts = Object.assign({}, one.me.week.targets, {meetings: 3});
 ck(K.goalsCardHtml(one, {}).includes('רק עוד פגישה אחת'), 'singular push');
 // fix 2: רינדור מחדש רק אחרי מצב 'טוען'
-ck(/var wasLoading = \(GJ === undefined\);[\s\S]{0,300}if \(wasLoading && STORY\.open && STORY\.i === 0\) renderCard\(0\);/.test(HOME), 'goalsLoad re-renders only from loading');
-ck((HOME.match(/STORY\.i === 0\) renderCard\(0\)/g) || []).length === 2, 'no unconditional re-render');
+ck(/var wasLoading = \(GJ === undefined\);[\s\S]{0,300}if \(wasLoading && STORY\.open && STORY\.i === CO\) renderCard\(CO\);/.test(HOME), 'goalsLoad re-renders only from loading');
+ck((HOME.match(/STORY\.i === CO\) renderCard\(CO\)/g) || []).length === 2, 'no unconditional re-render');
 // fix final: צעדי loadData לא מציירים מחדש את כרטיס היעדים (כרטיס 0)
-ck(/if \(STORY\.open && STORY\.i !== 0\) renderCard\(STORY\.i\);/.test(HOME), 'loadData step skips card 0');
+ck(/if \(STORY\.open && STORY\.i > CO\) renderCard\(STORY\.i\);/.test(HOME), 'loadData step skips goals (and contest) card');
 ck(!/if \(STORY\.open\) renderCard\(STORY\.i\)/.test(HOME), 'no unconditional renderCard(STORY.i)');
 // fix 3: בלי פסיק כשאין שם
 ck(/greet: firstName\(M\.name\) \? greetWord\(\) \+ ', ' \+ firstName\(M\.name\) : greetWord\(\)/.test(HOME), 'story greet no trailing comma');
