@@ -700,3 +700,337 @@ def vid_pick(http, api_key, images, desc, feats):
                 "wm": wm, "skip": skip}
     except Exception:
         return fb
+
+
+# ── תזמור: יצירה ופרסום ──────────────────────────────────────────────────────────
+class VidStore:
+    """קבצי הסרטונים על הדיסק הקבוע (MAP_CACHE_DIR/social_videos), בשם טוקן אקראי."""
+
+    def __init__(self, root=None):
+        import os, tempfile
+        base = root or os.path.join(os.environ.get("MAP_CACHE_DIR") or tempfile.gettempdir(), "social_videos")
+        os.makedirs(base, exist_ok=True)
+        self.root = base
+
+    def new_token(self):
+        import secrets
+        return secrets.token_urlsafe(12).replace("-", "x").replace("_", "y")
+
+    def path(self, tok):
+        import os
+        return os.path.join(self.root, "%s.mp4" % tok)
+
+    def cover(self, tok):
+        import os
+        return os.path.join(self.root, "%s-cover.jpg" % tok)
+
+    def exists(self, tok):
+        import os
+        return bool(tok) and re.fullmatch(r"[A-Za-z0-9]+", str(tok)) is not None and os.path.exists(self.path(tok))
+
+    def files(self):
+        import os
+        out = []
+        for f in os.listdir(self.root):
+            m = re.fullmatch(r"([A-Za-z0-9]+)\.mp4", f)
+            if m:
+                p = os.path.join(self.root, f)
+                out.append((m.group(1), os.path.getsize(p), os.path.getmtime(p)))
+        return out
+
+    def remove(self, tok):
+        import os
+        for p in (self.path(tok), self.cover(tok)):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+_VLOCK = None
+_VINFLIGHT = set()
+
+
+def _vlock():
+    global _VLOCK
+    if _VLOCK is None:
+        import threading
+        _VLOCK = threading.Lock()
+    return _VLOCK
+
+
+_RENDER_LOCK = None
+
+
+def _render_lock():
+    """רינדור אחד בכל רגע (worker יחיד — לא להאט את השרת שמשרת סוכנים)."""
+    global _RENDER_LOCK
+    if _RENDER_LOCK is None:
+        import threading
+        _RENDER_LOCK = threading.Lock()
+    return _RENDER_LOCK
+
+
+def _office(G):
+    return ((G["_load_config"]() or {}).get("v2_office")) or {}
+
+
+def _iso(t):
+    return SP._dt.datetime.fromtimestamp(t, SP._dt.timezone.utc).isoformat()
+
+
+def _base(env):
+    return str(env.get("APP_BASE_URL") or "https://remax-bot.onrender.com").rstrip("/")
+
+
+def _row_by_key(G, key):
+    return next((r for r in SP.soc_office_rows(G) if SP._key(r.get("מספר מודעה")) == key), None)
+
+
+def _logo_path():
+    import os
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "family-logo.png")
+
+
+def vid_create_one(G, key, trigger, by_phone, http=None, now=None, env=None, store=None):
+    """יוצר סרטון לנכס אחד. → {'ok','id','status','reason','ai'}. preview: נשמר לכרטיס; publish: נשלח לאישור."""
+    k0 = SP._key(key)
+    with _vlock():
+        if k0 in _VINFLIGHT:
+            return {"ok": False, "id": "", "status": "", "reason": "הנכס כבר בתהליך", "ai": False}
+        _VINFLIGHT.add(k0)
+    try:
+        return _vid_create_one(G, k0, trigger, by_phone, http, now, env, store)
+    finally:
+        with _vlock():
+            _VINFLIGHT.discard(k0)
+
+
+def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
+    import time as _t, os, tempfile, shutil
+    env = SP._env(env)
+    now = _t.time() if now is None else now
+    mode = SP.soc_mode(env)
+    res = {"ok": False, "id": "", "status": "", "reason": "", "ai": False}
+    if mode == "off":
+        res["reason"] = "כבוי"
+        return res
+    row = _row_by_key(G, key)
+    if not row:
+        res["reason"] = "הנכס לא נמצא"
+        return res
+    try:
+        hist = G["_sbdb"].video_recent(31) or []
+    except Exception:
+        if mode == "publish":
+            res["reason"] = "לא ניתן לקרוא את היסטוריית הסרטונים"
+            return res
+        hist = []
+    hidden = SP.soc_hidden(G)
+    if hidden is None:
+        if mode == "publish":
+            res["reason"] = "לא ניתן לבדוק הסתרה מהאתר"
+            return res
+        hidden = set()
+    for ok, why in (vid_can_create(row, hist, now, hidden, trigger), vid_caps(hist, now, trigger)):
+        if not ok:
+            res["reason"] = why
+            return res
+    if http is None:
+        import requests as http
+    store = store or VidStore()
+    tok = store.new_token()
+    secrets_ = [str(env.get(k) or "") for k in ("FAL_KEY", "CLAUDE_API_KEY", "META_TOKEN")]
+    rec = {"property_key": key, "addr_key": SP.soc_addr_key(row) + "#" + SP.soc_floor(row), "floor": SP.soc_floor(row),
+           "trigger": trigger, "mode": mode, "by_phone": str(by_phone or ""), "status": "rendering",
+           "video_token": tok, "ai": False}
+    saved = G["_sbdb"].video_insert(rec)
+    if not saved or not saved.get("id"):
+        res["reason"] = "לא ניתן לרשום את הסרטון"
+        return res
+    vid = res["id"] = saved["id"]
+    name, role = SP._who(G, trigger, by_phone)
+    tmp = tempfile.mkdtemp(prefix="vidc_")
+    upd = {}
+    try:
+        imgs = []
+        for src in SP.soc_images(row)[:8]:
+            data = SP.soc_fetch_jpeg(http, src, False)
+            if data:
+                imgs.append(data)
+        if len(imgs) < 2:
+            raise RuntimeError("פחות מ-2 תמונות ירדו")
+        desc = SP._clean_desc(G)(row.get("_desc_ae") or row.get("תיאור") or "")
+        feats = [f for f in (G["_row_feats"](row) or []) if f]
+        pick = vid_pick(http, str(env.get("CLAUDE_API_KEY") or ""), imgs, desc, feats)
+        ai_i = pick["ai"]
+        order = [ai_i] + [i for i in pick["slides"] if i != ai_i]
+        if len(order) < 2:
+            order = [ai_i] + [i for i in range(len(imgs)) if i != ai_i][:3]
+        slides = [(imgs[i], pick["wm"].get(i)) for i in order]
+        clip_path, cost = None, 0.0
+        fal_key = str(env.get("FAL_KEY") or "").strip()
+        if fal_key:
+            from PIL import Image
+            import io
+            im = Image.open(io.BytesIO(imgs[ai_i])).convert("RGB")
+            box = vid_crop_box(im.width, im.height, pick["wm"].get(ai_i))
+            if box:
+                b = io.BytesIO()
+                im.crop(box).save(b, "JPEG", quality=92)
+                fal = Fal(http, fal_key, model=str(env.get("FAL_VIDEO_MODEL") or "") or None)
+                data, err, cost = vid_ai_clip(fal, b.getvalue(), pick["room"])
+                if data:
+                    clip_path = os.path.join(tmp, "clip.mp4")
+                    with open(clip_path, "wb") as f:
+                        f.write(data)
+                    upd["ai_model"] = fal.model
+                elif err in (401, 402, 403):
+                    SP.soc_daily_alert(G, "fal", "סרטונים לרשתות", "חשבון fal — צריך לטעון קרדיט או מפתח חדש", now)
+        ai = clip_path is not None
+        agent = str(row.get("סוכן 1") or "").strip()
+        try:
+            vphone = G["_vphone_for_name"](agent) if agent else ""
+        except Exception:
+            vphone = ""
+        texts = vid_texts(row, feats, pick["highlight"], agent, vphone, str(_office(G).get("phone") or ""))
+        tl = vid_timeline(min(2, len(slides) - 1), ai)
+        layers = vid_layers(texts, tl, _logo_path(), ai, os.path.join(tmp, "L"))
+        music = vid_music(key)
+        with _render_lock():
+            out = vid_compose(clip_path, slides, layers, tl, music, store.path(tok))
+        if not out.get("ok"):
+            raise RuntimeError(out.get("error") or "רינדור נכשל")
+        upd.update(ai=ai, ai_cost_usd=round(cost, 2), texts=texts, music=os.path.basename(music or ""))
+        if mode == "publish":
+            import secrets
+            upd.update(status="pending", sent_at=_iso(now), review_token=secrets.token_urlsafe(16))
+            G["_sbdb"].video_update(vid, upd)
+            full = dict(saved, **upd)
+            try:
+                upd2 = {"recipients": vid_send_review(G, full, _base(env), env) or []}
+            except Exception as e:
+                upd2 = {"recipients": [], "error": SP._scrub("אישור: %s" % e, secrets_)[:300]}
+            G["_sbdb"].video_update(vid, upd2)
+            upd.update(upd2)
+        else:
+            upd["status"] = "preview"
+            G["_sbdb"].video_update(vid, upd)
+        res.update(ok=True, status=upd["status"], ai=ai)
+        G["_log_activity"](name, role, by_phone or "", "סרטון לרשתות — נוצר" + ("" if ai else " (ללא AI)"), key)
+    except Exception as e:
+        msg = SP._scrub(str(e), secrets_)[:600]
+        G["_sbdb"].video_update(vid, dict(upd, status="failed", error=msg))
+        store.remove(tok)
+        res.update(status="failed", reason=msg)
+        G["_log_activity"](name, role, by_phone or "", "סרטון לרשתות — נכשל", key)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return res
+
+
+CHANNELS = ("ig_story", "ig_reel", "fb_story", "fb_reel")
+
+
+def vid_new_link(G, rec, channel):
+    """קוד קישור וואטסאפ חדש (social_links) → code."""
+    import secrets
+    for _ in range(3):
+        code = secrets.token_urlsafe(6).replace("-", "x").replace("_", "y")[:7]
+        if G["_sbdb"].link_insert({"code": code, "video_id": rec.get("id"), "property_key": rec.get("property_key"),
+                                   "channel": channel}):
+            return code
+    return ""
+
+
+def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None):
+    """מעלה סרטון מאושר לערוצים שעוד לא הצליחו. → {'ok','status','reason', <ערוץ>: מצב}."""
+    import time as _t
+    env = SP._env(env)
+    now = _t.time() if now is None else now
+    res = {"ok": False, "status": "", "reason": ""}
+    rec = G["_sbdb"].video_get(vid)
+    if not rec:
+        res["reason"] = "הסרטון לא נמצא"
+        return res
+    if SP.soc_mode(env) != "publish":
+        res["reason"] = "מצב בדיקה"
+        return res
+    if rec.get("status") not in ("approved", "partial"):
+        res["reason"] = "הסרטון לא מאושר לפרסום"
+        return res
+    store = store or VidStore()
+    tok = rec.get("video_token")
+    if not store.exists(tok):
+        res["reason"] = "הסרטון לא זמין — צור מחדש"
+        G["_sbdb"].video_update(vid, {"error": res["reason"]})
+        return res
+    token = str(env.get("META_TOKEN") or "").strip()
+    if not token:
+        res["reason"] = "אין META_TOKEN"
+        return res
+    row = _row_by_key(G, rec.get("property_key"))
+    if not row:
+        res["reason"] = "הנכס לא נמצא"
+        return res
+    if http is None:
+        import requests as http
+    scfg = SP._cfg_social(G)
+    if float(scfg.get("paused_until") or 0) > now:
+        res["reason"] = "מושהה עד מחר (הגבלת קצב של Meta)"
+        return res
+    base = _base(env)
+    vurl, curl = "%s/v2/social/vid/%s.mp4" % (base, tok), "%s/v2/social/vid/%s-cover.jpg" % (base, tok)
+    post = SP.soc_build_post(row, _office(G).get("name", ""), SP._clean_desc(G), G["_row_feats"])
+    want = [c for c in (channels or CHANNELS) if c in CHANNELS and rec.get(c + "_status") not in ("ok", "unknown")]
+    page_id = str(scfg.get("page_id") or SP.PAGE_ID_DEFAULT)
+    upd, errs = {}, []
+    g = SP.Graph(http, token, env)
+    ig_id = None
+    for c in want:
+        try:
+            if c.startswith("ig"):
+                ig_id = ig_id or scfg.get("ig_id") or g.page_ig_id(page_id)
+                if not ig_id:
+                    raise SP.MetaError("אינסטגרם לא מקושר לעמוד")
+                if c == "ig_story":
+                    upd["ig_story_id"], _ = g.ig_video(ig_id, "STORIES", vurl)
+                else:
+                    upd["ig_reel_id"], upd["ig_reel_permalink"] = g.ig_video(ig_id, "REELS", vurl, post["ig_caption"], curl)
+            elif c == "fb_story":
+                upd["fb_story_id"] = g.fb_video_story(page_id, vurl)
+            else:
+                code = vid_new_link(G, rec, "fb_reel")
+                desc = post["body"] + (("\n\nלוואטסאפ ישיר: %s/w/%s" % (base, code)) if code else "")
+                upd["fb_reel_id"], upd["fb_reel_permalink"] = g.fb_reel(page_id, vurl, desc)
+            upd[c + "_status"] = res[c] = "ok"
+        except SP.MetaError as e:
+            upd[c + "_status"] = res[c] = "unknown" if getattr(e, "unknown", False) else "failed"
+            errs.append("%s: %s" % (c, SP._scrub(str(e), [token])))
+            code_ = getattr(e, "code", None)
+            if code_ in (190, 102):
+                SP._social_mutate(G, lambda s2: s2.__setitem__("token_bad", True))
+                SP.soc_daily_alert(G, "token", "פרסום ברשתות", "החיבור לפייסבוק נותק — צריך טוקן חדש ב-Render", now)
+                break
+            if code_ in SP._RATE_CODES:
+                SP._social_mutate(G, lambda s2: s2.__setitem__("paused_until", SP._next_midnight(now)))
+                break
+        except Exception as e:
+            upd[c + "_status"] = res[c] = "unknown"
+            errs.append("%s: %s" % (c, SP._scrub("שגיאה: %s" % e, [token])))
+    merged = dict(rec, **upd)
+    oks = [c for c in CHANNELS if merged.get(c + "_status") == "ok"]
+    upd["status"] = res["status"] = "published" if len(oks) == len(CHANNELS) else "partial"
+    if errs:
+        upd["error"] = " | ".join(errs)[:900]
+    G["_sbdb"].video_update(vid, upd)
+    res["ok"] = bool(oks)
+    res["reason"] = " · ".join(errs)
+    name = rec.get("decided_by") or "אפי"
+    G["_log_activity"](name, "system", "", "סרטון לרשתות — " + ("פורסם" if upd["status"] == "published" else "פורסם חלקית"),
+                       "%s %d/4" % (rec.get("property_key"), len(oks)))
+    return res
+
+
+def vid_send_review(G, rec, base, env):   # pragma: no cover — מוגדר במלואו בהמשך הקובץ (Task 10)
+    return []
