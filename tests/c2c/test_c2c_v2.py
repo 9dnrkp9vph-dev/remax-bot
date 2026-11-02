@@ -49,7 +49,7 @@ check(ok is True, "status 1 → מחייג")
 d = calls[-1]["json"]["data"]
 check(d.get("from_phone") == "052-9125944" and d.get("to_phone") == "050-1234567", "from/to נשלחים")
 check(d.get("agent_phone") == "050-5709865", "agent_phone (הנייד של הסוכן) נשלח ל-Make")
-check("first_target" not in d and "dial" not in d, "בלי first_target/dial (לא בשימוש ב-v2)")
+check(d.get("first_target") == "destination" and "dial" not in d, "first_target מ-C2C_FIRST_TARGET (ברירת מחדל: הלקוח ראשון), בלי dial")
 check(calls[-1]["json"].get("responsive") is True, "responsive")
 ok, msg, link = mk("052-9125944", "050-1234567")
 check(ok is True and calls[-1]["json"]["data"].get("agent_phone") == "", "בלי agent_phone → נשלח ריק (Make נופל לקו הווירטואלי)")
@@ -105,8 +105,7 @@ check(not any(a[0] == "mk" for a in acts), "ולא נקרא Make")
 
 # ── 3. טקסטים בקליינט — הסוכן ראשון ─────────────────────────────────────────
 print("3. effie_v2 texts")
-check("הלקוח יצלצל ראשון" not in V2, "אין יותר 'הלקוח יצלצל ראשון'")
-check(V2.count("הטלפון שלך יצלצל ראשון") >= 2, "toast + גיליון חיוג: 'הטלפון שלך יצלצל ראשון, ואז הלקוח'")
+check(V2.count("הלקוח יצלצל ראשון, ואז הטלפון שלך") >= 2, "toast + גיליון חיוג: 'הלקוח יצלצל ראשון, ואז הטלפון שלך'")
 
 # ── 4. קישור click2call_link ישן בסיכום לא משמש יותר ל'חייג חזרה' ────────────
 print("4. dead click2call_link callback")
