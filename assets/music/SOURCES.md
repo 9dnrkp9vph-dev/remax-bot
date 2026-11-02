@@ -1,7 +1,15 @@
 # מוזיקת רקע לסרטוני הנכסים
 
 כל קובץ `.mp3` / `.m4a` בתיקייה הזו משמש כמוזיקת רקע (בחירה קבועה לפי מספר המודעה — `social_video.vid_music`).
-**כרגע אין קטעים** — הסרטונים מקבלים פד רקע עדין שמיוצר ב-ffmpeg מצלילים סינתטיים (שלנו, בלי רישיון של אף אחד).
+אם התיקייה ריקה — הסרטונים מקבלים פד רקע עדין שמיוצר ב-ffmpeg מצלילים סינתטיים.
 
-להוספת קטעים: רק מקור שמתיר שימוש מסחרי **בלי קרדיט** (למשל Pixabay Music — Pixabay Content License).
-לכל קטע שנוסף — שורה כאן: שם הקובץ · קישור למקור · תאריך הורדה · הרישיון.
+להוספת קטעים: רק מקור שמתיר שימוש מסחרי **בלי קרדיט**. לכל קטע — שורה כאן: קובץ · מקור · תאריך · רישיון.
+הקבצים קוצרו ל-30 שניות (הסרטון ~14ש'), נורמלו לעוצמה אחידה (loudnorm I=-16) ונשמרו ב-128k.
+
+| קובץ | מקור | הורדה | רישיון |
+|---|---|---|---|
+| mixkit-close-up.mp3 | Mixkit — Close Up (https://assets.mixkit.co/music/132/132.mp3) | 02/11/2026 (אייל) | Mixkit Stock Music Free License — מסחרי, בלי קרדיט |
+| mixkit-digital-clouds.mp3 | Mixkit — Digital Clouds (https://assets.mixkit.co/music/471/471.mp3) | 02/11/2026 (אייל) | Mixkit Stock Music Free License — מסחרי, בלי קרדיט |
+| mixkit-rising-forest.mp3 | Mixkit — Rising Forest (https://assets.mixkit.co/music/744/744.mp3) | 02/11/2026 (אייל) | Mixkit Stock Music Free License — מסחרי, בלי קרדיט |
+
+הרישיון לפי https://mixkit.co/llm-info/ ו-https://mixkit.co/license/ — שימוש מסחרי כולל רשתות חברתיות ופרסום, בלי ייחוס.
