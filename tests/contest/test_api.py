@@ -133,6 +133,22 @@ def test_ledger_write_once():
     assert st["mut"] == m, "ה-ledger לא השתנה — אסור לכתוב שוב"
 
 
+def test_get_adjustments_and_def():
+    c, st = make(MGR)
+    base = {"contest": "2026-11", "group": 0, "kind": "row", "label": "רויטל גל", "pts": 25, "reason": "בונוס"}
+    assert c.post("/v2/api/contest/adjust", json=base).get_json()["ok"]
+    j = c.get("/v2/api/contest").get_json()
+    assert [a["reason"] for a in j["adjustments"]] == ["בונוס"], j.get("adjustments")
+    assert j["def"]["id"] == "2026-11" and j["def"]["groups"][0]["rows"][0]["label"] == "נדב רייזר", j.get("def")
+    c2, st2 = make(REV)
+    st2["cfg"]["v2_contest_adj"] = st["cfg"]["v2_contest_adj"]
+    j = c2.get("/v2/api/contest").get_json()
+    assert [a["label"] for a in j["adjustments"]] == ["רויטל גל"] and "by" not in j["adjustments"][0], j
+    assert j.get("def") is None, "הגדרת התחרות רק למי שעורך"
+    c3, _ = make(None, tv_key="K1")
+    assert c3.get("/v2/api/contest?k=K1").get_json()["adjustments"] == []
+
+
 if __name__ == "__main__":
     n = 0
     for k, v in sorted(globals().items()):

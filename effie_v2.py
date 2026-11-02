@@ -1679,6 +1679,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="4" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="1.2" fill="#1E3A5F"/></svg>
       היעדים שלי להיום</a>
+    <a id="menuContest" href="/v2/contest" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>
+      תחרות</a>
     <a id="menuReviews" href="/v2/reviews" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M5 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6H5zM13 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6h-5z" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -16283,6 +16287,15 @@ def register(app, G):
     @app.route("/v2/goals", methods=["GET"])   # [GOALS 28/10] היעדים שלי להיום
     def v2_goals():
         return _page(V2_GOALS_HTML.replace("<!--GOALS_KIT-->", V2_GOALS_KIT, 1))
+
+    @app.route("/v2/contest", methods=["GET"])   # [CONTEST 02/11] תחרות בין שתי קבוצות
+    def v2_contest():
+        try:
+            import contest as _contest
+        except Exception as _e:
+            return _page('<!DOCTYPE html><html dir="rtl" lang="he"><body style="font-family:Heebo,sans-serif;padding:40px;text-align:center">'
+                         'מסך התחרות לא זמין כרגע</body></html>')
+        return _page(_contest.V2_CONTEST_HTML.replace("<!--CONTEST_KIT-->", _contest.V2_CONTEST_KIT, 1))
 
     @app.route("/v2/effie", methods=["GET"])
     def v2_effie():
