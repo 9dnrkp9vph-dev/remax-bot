@@ -930,7 +930,8 @@ def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
             G["_sbdb"].video_update(vid, upd)
             full = dict(saved, **upd)
             try:
-                upd2 = {"recipients": vid_send_review(G, full, _base(env), env) or []}
+                upd2 = {"recipients": vid_send_review(G, full, _base(env), env,
+                                                      initiator=by_phone if trigger == "manual" else "") or []}
             except Exception as e:
                 upd2 = {"recipients": [], "error": SP._scrub("אישור: %s" % e, secrets_)[:300]}
             G["_sbdb"].video_update(vid, upd2)
@@ -1124,15 +1125,19 @@ def _summary(rec):
     return s + ("" if rec.get("ai") else " (ללא AI)")
 
 
-def vid_send_review(G, rec, base, env):
-    """שולח את הסרטון לאישור לאייל ולסוכן. → רשימת 9 ספרות של מי שקיבל. בשעות שקט — review_due ולא שולח."""
+def vid_send_review(G, rec, base, env, initiator=""):
+    """שולח את הסרטון לאישור לאייל ולסוכן. → רשימת 9 ספרות של מי שקיבל. בשעות שקט — review_due ולא שולח,
+    חוץ ממי שיזם את הפעולה בעצמו (initiator — יצירה ידנית / "שלח שוב"), שמקבל מיד; השאר בבוקר.
+    שליחת הבוקר מדלגת על מי שכבר ב-recipients."""
     try:
         quiet = bool(G["_quiet_hours"]()) or bool(G["_shabbat_quiet_now"]())
     except Exception:
         quiet = False
+    me = _l9(initiator)
     if quiet:
         G["_sbdb"].video_update(rec["id"], {"review_due": True})
-        return []
+        if not me:
+            return []
     who = []
     appr = _l9(env.get("SOCIAL_VIDEO_APPROVER")) or next(iter(sorted(G.get("DEV_PHONES") or [])), "")
     if appr:
@@ -1140,6 +1145,13 @@ def vid_send_review(G, rec, base, env):
     ag = _agent_personal(G, _row_by_key(G, rec.get("property_key")))
     if ag and ag not in who:
         who.append(ag)
+    if quiet:
+        who = [me]
+    elif not me:
+        done = {_l9(x) for x in (rec.get("recipients") or [])}
+        who = [x for x in who if x not in done]
+        if not who and rec.get("review_due"):   # כולם כבר קיבלו — אין מה לשלוח בבוקר
+            G["_sbdb"].video_update(rec["id"], {"review_due": False})
     vurl = "%s/v2/social/vid/%s.mp4" % (base, rec.get("video_token"))
     text = _summary(rec)
     ids = ("vid:%s:pub" % rec["id"], "vid:%s:skip" % rec["id"])
@@ -1368,7 +1380,8 @@ def _housekeeping(G, now, env, store):
             if r.get("review_due"):
                 to = vid_send_review(G, r, base, env)
                 if to:
-                    G["_sbdb"].video_update(r["id"], {"review_due": False, "recipients": to})
+                    prev = [x for x in (r.get("recipients") or []) if x not in to]
+                    G["_sbdb"].video_update(r["id"], {"review_due": False, "recipients": prev + to})
         elif st == "approved" and r.get("publish_at"):
             t = SP._ts(r.get("publish_at"))
             if t is not None and t <= now and not _blocked_now(G, now):
@@ -1384,13 +1397,15 @@ def _housekeeping(G, now, env, store):
 
 
 def vid_auto_tick(G, now, env=None, store=None):
-    """סבב אחד: רק SOCIAL_VIDEO_AUTO=1 + publish + META_TOKEN. נכסים חדשים (מספר מודעה שלא ראינו) → עד 3 ביום."""
+    """סבב אחד: publish + META_TOKEN → תחזוקה (אישורים שחיכו לבוקר, פג, פרסום מתוזמן) גם לסרטונים ידניים;
+    יצירה אוטומטית רק עם SOCIAL_VIDEO_AUTO=1 — נכסים חדשים (מספר מודעה שלא ראינו) → עד 3 ביום."""
     env = SP._env(env)
-    if str(env.get("SOCIAL_VIDEO_AUTO") or "0").strip() != "1" or SP.soc_mode(env) != "publish" \
-            or not str(env.get("META_TOKEN") or "").strip():
+    if SP.soc_mode(env) != "publish" or not str(env.get("META_TOKEN") or "").strip():
         return {"ran": False}
     store = store or _store()
     _housekeeping(G, now, env, store)
+    if str(env.get("SOCIAL_VIDEO_AUTO") or "0").strip() != "1":
+        return {"ran": False, "housekeeping": True}
     rows = SP.soc_office_rows(G)
     keys = [SP._key(r.get("מספר מודעה")) for r in rows if SP._key(r.get("מספר מודעה"))]
     scfg = SP._cfg_social(G)
@@ -1518,7 +1533,7 @@ def register(app, G):
         rec = G["_sbdb"].video_get(str(j.get("id") or ""))
         if not rec or rec.get("status") != "pending":
             return jsonify({"ok": False, "error": "הסרטון לא ממתין לאישור"})
-        to = vid_send_review(G, rec, _base(os.environ), os.environ) or []
+        to = vid_send_review(G, rec, _base(os.environ), os.environ, initiator=s.get("phone", "")) or []
         if not to:
             cur = G["_sbdb"].video_get(rec["id"]) or {}
             return jsonify({"ok": False, "error": cur.get("error") or "לא נשלח (שעות שקט — יישלח בבוקר)"})

@@ -47,14 +47,14 @@ ck(c.post("/v2/api/social/video/retry", json={"id": "v9"}).json["ok"] is False, 
 # [02/11] שלח שוב לאישור — רק לסרטון שממתין
 RS = []
 _orig_send = V.vid_send_review
-V.vid_send_review = lambda G_, rec, base, env: (RS.append(rec["id"]), ["505709865"])[1]
+V.vid_send_review = lambda G_, rec, base, env, initiator="": (RS.append((rec["id"], initiator)), ["505709865"])[1]
 sb.videos.append({"id": "v8", "property_key": "tok1", "status": "pending", "video_token": "AbC123", "review_token": "R8",
                   "created_at": SP._dt.datetime.now(SP._dt.timezone.utc).isoformat()})
 SESS["t"] = AG; ck(c.post("/v2/api/social/video/resend", json={"id": "v8"}).status_code == 403, "resend dev only")
 SESS["t"] = DEV
 r = c.post("/v2/api/social/video/resend", json={"id": "v8"})
-ck(r.json["ok"] and RS == ["v8"] and sb.video_get("v8")["recipients"] == ["505709865"], (r.json, RS))
-V.vid_send_review = lambda G_, rec, base, env: []
+ck(r.json["ok"] and RS == [("v8", "505709865")] and sb.video_get("v8")["recipients"] == ["505709865"], (r.json, RS))
+V.vid_send_review = lambda G_, rec, base, env, initiator="": []
 r = c.post("/v2/api/social/video/resend", json={"id": "v8"})
 ck(r.json["ok"] is False and "לא נשלח" in r.json["error"], r.json)
 ck(c.post("/v2/api/social/video/resend", json={"id": "v9"}).json["ok"] is False, "resend only pending")
@@ -116,9 +116,18 @@ sb4.videos += [{"id": "a", "property_key": "k0", "status": "pending", "sent_at":
                {"id": "c", "property_key": "k2", "status": "pending", "review_due": True, "sent_at": iso(DAY - 600),
                 "created_at": iso(DAY - 600), "video_token": "AbC123", "texts": V.vid_texts(ROW, [], "", "", "", "")}]
 SENT = []
-V.vid_send_review = lambda G_, rec, base, env: (SENT.append(rec["id"]), ["505709865"])[1]
+V.vid_send_review = lambda G_, rec, base, env, initiator="": (SENT.append(rec["id"]), ["505709865"])[1]
 V.vid_auto_tick(G4, DAY, env=pub)
 ck(sb4.video_get("a")["status"] == "expired", sb4.video_get("a"))
 ck(("b", None) in PUBS, PUBS)
 ck(SENT == ["c"] and sb4.video_get("c")["review_due"] is False and sb4.video_get("c")["recipients"] == ["505709865"], sb4.video_get("c"))
+# [02/11] הודעת אישור שנדחתה לבוקר נשלחת גם כשיצירה אוטומטית כבויה (SOCIAL_VIDEO_AUTO), ובלי ליצור סרטונים
+G5, st5, sb5 = make_G(rows=rows); SENT.clear(); RUNS.clear()
+sb5.videos.append({"id": "d", "property_key": "k3", "status": "pending", "review_due": True, "sent_at": iso(DAY - 600),
+                   "created_at": iso(DAY - 600), "video_token": "AbC124", "recipients": ["505709865"],
+                   "texts": V.vid_texts(ROW, [], "", "", "", "")})
+V.vid_send_review = lambda G_, rec, base, env, initiator="": (SENT.append(rec["id"]), ["521234567"])[1]
+r = V.vid_auto_tick(G5, DAY, env=dict(pub, SOCIAL_VIDEO_AUTO="0"))
+ck(SENT == ["d"] and RUNS == [] and r.get("ran") is False, (SENT, RUNS, r))
+ck(sb5.video_get("d")["recipients"] == ["505709865", "521234567"] and sb5.video_get("d")["review_due"] is False, sb5.video_get("d"))
 print("video_routes OK", n)

@@ -86,6 +86,14 @@ G, st, sb = make_G(); G["_quiet_hours"] = lambda: True
 rec = mkrec(sb)
 ck(V.vid_send_review(G, rec, "https://app", ENV) == [] and sb.video_get(rec["id"])["review_due"] is True, sb.video_get(rec["id"]))
 ck(not st["posted"] and not st["sent"], "quiet")
+# [02/11] אייל יצר סרטון בעצמו בלילה ולא קיבל כלום — מי שיזם מקבל מיד; הסוכן בבוקר
+G, st, sb = make_G(); G["_quiet_hours"] = lambda: True
+rec = mkrec(sb)
+ck(V.vid_send_review(G, rec, "https://app", ENV, initiator="505709865") == ["505709865"], st)
+ck(sb.video_get(rec["id"])["review_due"] is True and {x[0] for x in st["sent"]} == {"972505709865"}, (st["sent"], sb.video_get(rec["id"])))
+G["_quiet_hours"] = lambda: False; st["sent"].clear()
+rec2 = dict(sb.video_get(rec["id"]), recipients=["505709865"])
+ck(V.vid_send_review(G, rec2, "https://app", ENV) == ["521234567"] and {x[0] for x in st["sent"]} == {"972521234567"}, st["sent"])
 
 # ── לחיצה: ראשון קובע ──
 G, st, sb = make_G()

@@ -85,7 +85,7 @@ G, st, sb = make_G()
 V.vid_pick = lambda *a: {"ai": 0, "room": "room", "slides": [1, 2], "highlight": "", "wm": {0: None, 1: None, 2: None, 3: None}, "skip": []}
 V.vid_ai_clip = lambda fal, j, room: (None, "timeout", 0.35)
 V.vid_compose = lambda clip, slides, layers, tl, music, out, run=None: (open(out, "wb").write(b"m"), {"ok": True, "duration": 14, "cover": out})[1]
-V.vid_send_review = lambda *a: []
+V.vid_send_review = lambda *a, **k: []
 V.vid_create_one(G, "tok1", "manual", "", http=SF.ImgHttp(), now=NOW, env=dict(ENV, SOCIAL_MODE="preview", FAL_KEY="fk"), store=STORE)
 ck(sb.videos[-1]["ai"] is False and sb.videos[-1]["ai_cost_usd"] == 0.35, sb.videos[-1])
 
