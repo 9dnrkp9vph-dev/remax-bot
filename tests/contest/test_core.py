@@ -145,10 +145,15 @@ def test_team_shared_gius():
 def test_coord_credit():
     led = {"1": {"agent": "רויטל גל", "by": "נוי רבן", "at": T(2026, 11, 3), "when": None},
            "2": {"agent": "רויטל גל", "by": "אייל שמול", "at": T(2026, 11, 3), "when": None},
-           "3": {"agent": "נוי רבן", "by": "נוי רבן", "at": T(2026, 11, 3), "when": None}}
+           "3": {"agent": "נוי רבן", "by": "נוי רבן", "at": T(2026, 11, 3), "when": None},
+           "4": {"agent": "רויטל גל", "by": "רויטל גל", "at": T(2026, 11, 3), "when": None},
+           "5": {"agent": "רויטל גל", "by": "מנהל", "at": T(2026, 11, 3), "when": None},
+           "6": {"agent": "נדב רייזר", "by": "רויטל גל", "at": T(2026, 11, 3), "when": None}}
     r = c.score(c.NOV_2026, led, [], [], canon, NOW)
-    ck(row(r, "רויטל גל")["meetings"] == 2)
-    ck(coord(r, "נוי רבן")["meetings"] == 1 and coord(r, "נוי רבן")["points"] == 5)
+    # [03/11] רק למי שתיאם: 1 ו-3 לנוי, 2 לאייל, 4 ו-6 לרויטל, 5 (מתאם לא ידוע) לסוכן
+    ck(row(r, "רויטל גל")["meetings"] == 3, row(r, "רויטל גל"))
+    ck(row(r, "נדב רייזר")["meetings"] == 0)
+    ck(coord(r, "נוי רבן")["meetings"] == 2 and coord(r, "נוי רבן")["points"] == 10)
 
 def test_total_and_adj():
     led = {"1": {"agent": "רויטל גל", "by": "נוי רבן", "at": T(2026, 11, 3), "when": None}}
@@ -157,7 +162,7 @@ def test_total_and_adj():
     r = c.score(c.NOV_2026, led, [], adj, canon, NOW)
     ck(row(r, "נדב רייזר")["points"] == 25 and row(r, "נדב רייזר")["adj"] == 25)
     ck(coord(r, "נוי רבן")["points"] == 0 and coord(r, "נוי רבן")["adj"] == -5)
-    ck(r["groups"][0]["total"] == 30)      # 25 + 5 של רויטל; בלי המתאמת
+    ck(r["groups"][0]["total"] == 25)      # הפגישה שנוי קבעה לרויטל — לנוי בלבד, לא לקבוצה
     ck(row(r, "נדב רייזר")["rank"] == 1 and row(r, "רויטל גל")["rank"] == 2)
 
 def test_unknown_and_missing():

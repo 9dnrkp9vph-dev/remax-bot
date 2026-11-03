@@ -177,13 +177,15 @@ def score(contest, ledger, sigs, adjustments, canon, now):
     pb = (day_bounds(ps)[0], day_bounds(pe)[1])
     today = _dt.datetime.fromtimestamp(now, _IL).date()
     rows_l = list((ledger or {}).values())
+    # [03/11 אייל] פגישה נספרת רק למי שתיאם: מתאמת — למתאמת, סוכן — לסוכן. בלי מתאם ידוע — לסוכן.
+    booker = lambda x: x.get("agent") if _generic(str(x.get("by") or "").strip()) else x.get("by")
     out_groups, totals = [], []
     for gi, g in enumerate(contest["groups"]):
         g = dict(g, _i=gi)
         rows = []
         for r in g["rows"]:
             mem = {canon(m) for m in r["members"]}
-            meetings = sum(1 for x in rows_l if canon(x.get("agent")) in mem)
+            meetings = sum(1 for x in rows_l if canon(booker(x)) in mem)
             a = listing_anchors(r["members"], cb, sigs, canon)
             p = listing_anchors(r["members"], pb, sigs, canon)
             adj = _adj_sum(adjustments, g, "row", r["label"], canon)
@@ -200,7 +202,7 @@ def score(contest, ledger, sigs, adjustments, canon, now):
         coords = []
         for n in g.get("coords") or []:
             k = canon(n)
-            m = sum(1 for x in rows_l if canon(x.get("by")) == k and canon(x.get("agent")) != k)
+            m = sum(1 for x in rows_l if canon(booker(x)) == k)
             adj = _adj_sum(adjustments, g, "coord", n, canon)
             coords.append({"name": n, "meetings": m, "adj": adj, "points": m * pts["meeting"] + adj})
         total = sum(o["points"] for o in rows)
@@ -913,7 +915,7 @@ function render(){
       '<button class="btn sec" onclick="copyOpen()">תחרות חדשה (העתק)</button></div>' : '') +
     '<div class="seg">' + seg + '</div>' +
     um + '<div class="card"><h3>' + cEsc(g.name) + ' <span>' + (contestPartial(b) ? 'לא זמין' : cShow(g.total) + ' נק\'') + '</span></h3>' + contestTableHtml(j, SEL, {}) + '</div>' +
-    (co ? '<div class="card"><h3>המתאמות של ' + cEsc(g.name) + '</h3><p class="s">פגישות שתיאמו לסוכנים — נספרות להן וגם לסוכן, לא בסך הקבוצה</p>' + co + '</div>' : '') +
+    (co ? '<div class="card"><h3>המתאמות של ' + cEsc(g.name) + '</h3><p class="s">פגישות שהן תיאמו — נספרות להן בלבד, לא בסך הקבוצה</p>' + co + '</div>' : '') +
     '<div class="note">פגישה שנמחקה לפני המועד שלה יורדת מהניקוד. גיוס נספר רק אחרי שהבלעדיות נחתמה.</div>';
 }
 function pick(i){ SEL = i; render(); }
