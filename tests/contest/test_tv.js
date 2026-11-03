@@ -41,6 +41,10 @@ ck(run('durFor(playlist(), playlist()[0])') > run('durFor(playlist(), playlist()
 run("var _B0 = B; B = {hotProps: Array.apply(null, Array(18)).map(function(_, i){ return {title: 'p' + i}; })};");
 ck(Math.abs(run('durFor(playlist(), playlist()[0])') / run('durFor(playlist(), playlist()[3])') - 3) < 0.01, 'contest = 3x hot prop');
 ck(run('durFor(playlist(), playlist()[0])') <= 60000, 'contest capped at 60s');
+// [TV-CONTEST3] התחרות חוזרת אחרי כל 3 נכסים חמים, לא אחרי האחרון
+var _seq = run("playlist().map(function(x){return x.t==='hot'?'h':x.t[0]}).join('')");
+ck(_seq === 'cgshhhchhhcshhhchhhcshhhchhh', 'contest every 3 hot: ' + _seq);
+ck(run("playlist().filter(function(x){return x.t==='contest'}).length") === 6, '6 contest cards for 18 hot');
 run('B = _B0;');
 ck(run('blockInfo(playlist(), 0).len') === 1 && run('blockInfo(playlist(), 1).len') === 1 && run('blockInfo(playlist(), 3).pos') === 1, 'contest is a block boundary');
 run('render(0)');

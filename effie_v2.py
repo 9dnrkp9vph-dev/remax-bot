@@ -11410,10 +11410,14 @@ function playlist(){
   if (C && C.mode && C.board && typeof contestCardHtml === 'function') out.push({t: 'contest'});   // התחרות — ראשונה (אין תחרות/נכשל → כמו קודם)
   if (G) out.push({t: 'goals'});   // יעדי המשרד — ראשון בכל סיבוב (נכשל/אין נתון → כמו קודם)
   if (!hp.length){ out.push({t: 'sum'}); return out; }
+  var hasC = out.length && out[0].t === 'contest';
   for (var g = 0; g < hp.length; g += GROUP){
     out.push({t: 'sum'});
-    for (var k = g; k < Math.min(g + GROUP, hp.length); k++)
+    for (var k = g; k < Math.min(g + GROUP, hp.length); k++){
       out.push({t: 'hot', hp: hp[k], n: k + 1, of: hp.length});   // מיקום גלובלי — "נכס X מתוך Y"
+      /* [TV-CONTEST3 03/11] אייל: "שכל 3 נכסים חמים יקפוץ התחרות" — לא אחרי הנכס האחרון (הסבב חוזר ממילא לתחרות) */
+      if (hasC && (k + 1) % 3 === 0 && k + 1 < hp.length) out.push({t: 'contest'});
+    }
   }
   return out;
 }
