@@ -36,12 +36,17 @@ ck(run('JSON.stringify(playlist())') === base, 'mode null -> unchanged');
 run('C = ' + JSON.stringify(J));
 let pl = run('playlist()');
 ck(pl[0].t === 'contest' && pl[1].t === 'goals' && pl[2].t === 'sum' && pl.length === 6, 'contest, goals, sum, props');
-ck(run('durFor(playlist(), playlist()[0])') === run('durFor(playlist(), playlist()[1])'), 'contest duration == goals');
+// [TV-BIG 03/11] התחרות מקבלת יותר זמן מסך: פי 3 מנכס חם (היעדים פי 1.4)
+ck(run('durFor(playlist(), playlist()[0])') > run('durFor(playlist(), playlist()[1])'), 'contest longer than goals');
+run("var _B0 = B; B = {hotProps: Array.apply(null, Array(18)).map(function(_, i){ return {title: 'p' + i}; })};");
+ck(Math.abs(run('durFor(playlist(), playlist()[0])') / run('durFor(playlist(), playlist()[3])') - 3) < 0.01, 'contest = 3x hot prop');
+ck(run('durFor(playlist(), playlist()[0])') <= 60000, 'contest capped at 60s');
+run('B = _B0;');
 ck(run('blockInfo(playlist(), 0).len') === 1 && run('blockInfo(playlist(), 1).len') === 1 && run('blockInfo(playlist(), 3).pos') === 1, 'contest is a block boundary');
 run('render(0)');
 const h = nodes.card._h;
 ck(h.includes('class="ck tv"') && h.includes('הכחולים מובילה') && h.includes('הזהובים'), 'tv card rendered');
-ck(h.includes('כ0') && h.includes('כ4') && !h.includes('כ5') && h.includes('ז4') && !h.includes('ז5'), 'top 5 names per group');
+ck(h.includes('כ0') && h.includes('כ5') && h.includes('ז5'), 'all names per group (TV-BIG)');
 ck((h.match(/class="ck-col( lead)?"/g) || []).length === 2 && h.includes('39') && h.includes('21'), 'two columns with totals');
 ck(nodes.card.cls.wide === 1, 'wide card'); run('render(1)'); ck(!nodes.card.cls.wide, 'goals not wide');
 run('C = ' + JSON.stringify(Object.assign({}, J, {mode: 'winner'}))); run('render(0)');
@@ -51,7 +56,10 @@ ck(nodes.card._h.includes('ניצחה') && nodes.card._h.includes('התחרות 
 run('C = ' + JSON.stringify(Object.assign({}, J, {board: Object.assign({}, J.board, {partial: true, leader: null})}))); run('render(0)');
 ck(nodes.card._h.includes('לא זמין') && !nodes.card._h.includes('מובילה') && !nodes.card._h.includes('>39<'), 'partial board on TV');
 // [FIX-m1] הדגשת השורה הראשונה בעמודה
-ck(kit.includes('.ck-col .ch + .cr .pos') && !kit.includes('.cr:first-of-type'), 'first row highlight selector');
+ck(kit.includes('.ck-col .crs .cr:first-child .pos') && !kit.includes('.cr:first-of-type'), 'first row highlight selector');
+// [TV-BIG] מתאמות בטלוויזיה — לא בסך הקבוצה
+run('C = ' + JSON.stringify(Object.assign({}, J, {board: Object.assign({}, J.board, {groups: [Object.assign({}, J.board.groups[0], {coords: [{name: 'מתאמתא', points: 15, meetings: 3}]}), J.board.groups[1]]})}))); run('render(0)');
+ck(nodes.card._h.includes('מתאמתא') && nodes.card._h.includes('3 פגישות') && nodes.card._h.includes('לא נספרות בסך הקבוצה'), 'coords on TV');
 // בלי הערכה (הזרקה כשלה) — contestCardHtml לא קיים → אין פריט תחרות
 const run2 = mk(html, {}, () => new Promise(() => {}));
 run2("B = {hotProps:[]}; G = null; C = " + JSON.stringify(J));

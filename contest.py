@@ -559,25 +559,35 @@ V2_CONTEST_KIT = r"""<style>
   .ck-top3 .nm{flex:1;min-width:0;font-weight:700;font-size:14.5px}
   .ck-top3 .nm small{display:block;font-weight:500;font-size:12px;color:#5B6472}
   .ck-top3 .p{font-weight:800;color:#1E3A5F;font-variant-numeric:tabular-nums}
-  .ck.tv{padding:26px 34px 30px;border-radius:28px}
+  /* [TV-BIG 03/11] אייל: "יותר מקום לתחרות בטלוויזיה" — הכרטיס ממלא את כל המסך, כל המשתתפים + המתאמות */
+  .ck.tv{padding:clamp(14px,2vh,26px) 34px clamp(14px,2.2vh,28px);border-radius:28px;height:100%;box-sizing:border-box;min-height:0}
   .ck.tv .ck-top{font-size:22px}
-  .ck.tv .ck-trophy{width:76px;height:76px;margin:10px auto 6px}
-  .ck.tv .ck-h{font-size:48px}.ck.tv .ck-sub,.ck.tv .ck-gap{font-size:24px}
-  .ck-cols{display:flex;gap:28px;margin-top:22px}
-  .ck-col{flex:1;min-width:0;border-radius:24px;padding:18px 22px;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.12)}
+  .ck-tvh{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:4px}
+  .ck.tv .ck-trophy{width:64px;height:64px;margin:0;flex:none}
+  .ck.tv .ck-h{font-size:clamp(34px,4.6vh,52px);text-align:right}
+  .ck.tv .ck-sub,.ck.tv .ck-gap{font-size:clamp(18px,2.3vh,26px);text-align:right}
+  .ck-cols{display:flex;gap:28px;margin-top:clamp(10px,1.6vh,20px);flex:1;min-height:0}
+  .ck-col{flex:1;min-width:0;border-radius:24px;padding:14px 22px;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.12);
+      display:flex;flex-direction:column;min-height:0}
   .ck-col.lead{background:rgba(228,197,107,.13);border-color:#E4C56B}
-  .ck-col .ch{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-  .ck-col .cn{font-size:34px;font-weight:800}
-  .ck-col .cp{font-size:64px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .ck-col .ch{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:6px}
+  .ck-col .cn{font-size:clamp(28px,3.6vh,40px);font-weight:800}
+  .ck-col .cp{font-size:clamp(48px,6.4vh,76px);font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
   .ck-col.lead .cp{color:#E4C56B}
   .ck-col .cp small{font-size:20px;font-weight:600;opacity:.75;margin-inline-start:8px}
-  .ck-col .cr{display:flex;align-items:center;gap:14px;margin-top:10px;font-size:26px;border-top:1px solid rgba(255,255,255,.12);padding-top:10px}
-  .ck-col .cr .pos{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.12);font-weight:800;font-size:20px;
+  .ck-col .crs{flex:1;min-height:0;display:flex;flex-direction:column}
+  .ck-col .cr{flex:1 1 0;min-height:0;display:flex;align-items:center;gap:14px;font-size:clamp(17px,2.6vh,30px);
+      border-top:1px solid rgba(255,255,255,.12)}
+  .ck-col .cr.z{opacity:.5}
+  .ck-col .cr .pos{width:1.4em;height:1.4em;border-radius:50%;background:rgba(255,255,255,.12);font-weight:800;font-size:.72em;
       display:flex;align-items:center;justify-content:center;flex:none}
-  .ck-col .ch + .cr .pos{background:#E4C56B;color:#231700}
+  .ck-col .crs .cr:first-child .pos{background:#E4C56B;color:#231700}
   .ck-col .cr .l{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ck-col .cr .l small{font-size:.65em;font-weight:500;opacity:.7;margin-inline-start:10px}
   .ck-col .cr .v{font-weight:800;font-variant-numeric:tabular-nums}
-  .ck.tv .ck-track{height:14px;margin-top:22px}
+  .ck-col .cct{font-size:clamp(14px,1.8vh,19px);font-weight:700;color:#E4C56B;margin-top:8px;padding-top:6px;border-top:2px solid rgba(228,197,107,.35)}
+  .ck-col .cc .cr{flex:none;min-height:clamp(30px,4.6vh,52px)}
+  .ck.tv .ck-track{height:14px;margin-top:clamp(10px,1.6vh,20px);flex:none}
 </style>
 <script>
 var CONTEST_MONTHS = ['בינואר','בפברואר','במרץ','באפריל','במאי','ביוני','ביולי','באוגוסט','בספטמבר','באוקטובר','בנובמבר','בדצמבר'];
@@ -682,19 +692,25 @@ function contestTvHtml(j){
   var gs = b.groups, win = j.mode === 'winner', pt = contestPartial(b), ld = contestLead(b);
   var head = pt ? 'הניקוד לא זמין כרגע' : ld == null ? 'תיקו' : cEsc(gs[ld].name) + (win ? ' ניצחה' : ' מובילה');
   var cols = gs.map(function(g, i){
-    var rows = (g.rows || []).slice().sort(function(x, y){ return (cNum(y.points) || 0) - (cNum(x.points) || 0); }).slice(0, 5);
+    var rows = (g.rows || []).slice().sort(function(x, y){ return (cNum(y.points) || 0) - (cNum(x.points) || 0); });
+    var co = (g.coords || []).slice().sort(function(x, y){ return (cNum(y.points) || 0) - (cNum(x.points) || 0); });
     return '<div class="ck-col' + (ld === i ? ' lead' : '') + '"><div class="ch"><div class="cn">' + cEsc(g.name) +
       '</div><div class="cp">' + (pt ? '<span style="font-size:32px">לא זמין</span>' : cShow(g.total) + '<small>נק\'</small>') + '</div></div>' +
-      rows.map(function(r, k){
-        return '<div class="cr"><div class="pos">' + (k + 1) + '</div><div class="l">' + cEsc(r.label) + '</div><div class="v">' + cShow(pt ? null : r.points) + '</div></div>';
-      }).join('') + '</div>';
+      '<div class="crs">' + rows.map(function(r, k){
+        return '<div class="cr' + (!pt && !cNum(r.points) ? ' z' : '') + '"><div class="pos">' + (k + 1) + '</div><div class="l">' + cEsc(r.label) +
+          '</div><div class="v">' + cShow(pt ? null : r.points) + '</div></div>';
+      }).join('') + '</div>' +
+      (co.length ? '<div class="cct">מתאמות · לא נספרות בסך הקבוצה</div><div class="cc">' + co.map(function(c){
+        return '<div class="cr"><div class="l">' + cEsc(c.name) + '<small>' + cShow(c.meetings) + ' פגישות</small></div><div class="v">' +
+          cShow(c.points) + '</div></div>';
+      }).join('') + '</div>' : '') + '</div>';
   }).join('');
   var a = Math.max(0, cNum(gs[0].total) || 0), c = Math.max(0, cNum(gs[1].total) || 0);
   var pa = (a + c && !pt) ? Math.round(a * 100 / (a + c)) : 50, gap = pt ? 0 : Math.abs((cNum(gs[0].total) || 0) - (cNum(gs[1].total) || 0));
   return '<div class="ck tv"><div class="ck-top"><span>' + cEsc(b.name) + '</span><span>' +
     cEsc(win ? contestRange(b.start, b.end) : contestDays(b.days_left)) + '</span></div>' +
-    '<div class="ck-trophy">' + CONTEST_TROPHY + '</div><div class="ck-h">' + head + '</div>' +
-    '<div class="ck-sub">' + (win ? 'התחרות הסתיימה' : pt ? 'החתימות לא נטענו — הניקוד יתעדכן בקרוב' : (gap ? 'פער של ' + gap + ' נקודות' : 'תיקו')) + '</div>' +
+    '<div class="ck-tvh"><div class="ck-trophy">' + CONTEST_TROPHY + '</div><div><div class="ck-h">' + head + '</div>' +
+    '<div class="ck-sub">' + (win ? 'התחרות הסתיימה' : pt ? 'החתימות לא נטענו — הניקוד יתעדכן בקרוב' : (gap ? 'פער של ' + gap + ' נקודות' : 'תיקו')) + '</div></div></div>' +
     '<div class="ck-cols">' + cols + '</div>' +
     '<div class="ck-track"><i class="' + (ld === 0 ? 'lead' : '') + '" style="width:' + pa + '%"></i>' +
     '<i class="' + (ld === 1 ? 'lead' : '') + '" style="width:' + (100 - pa) + '%"></i></div></div>';

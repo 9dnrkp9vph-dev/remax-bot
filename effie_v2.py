@@ -11208,7 +11208,10 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .bars i b{display:block;height:100%;width:0;background:#E4C56B;border-radius:999px}
   main{flex:1;display:flex;align-items:center;justify-content:center;padding:20px 46px 40px;min-height:0}
   .card{width:100%;max-width:1060px;display:flex;flex-direction:column;gap:26px;align-items:stretch}
-  .card.wide{max-width:1560px}
+  .card.wide{max-width:1640px;align-self:stretch;min-height:0}
+  /* [TV-BIG 03/11] התחרות ממלאת את כל גובה המסך */
+  main:has(.card.wide){padding:14px 46px 20px}
+  body:has(.card.wide) footer{display:none}
   .fade{animation:fadeIn .45s ease-out}
   @keyframes fadeIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion: reduce){.fade{animation:none}}
@@ -11386,12 +11389,14 @@ var B = null, G = null, C = null, IDX = 0, TIMER = null;
 /* [TV-TEMPO] סיבוב מלא = 5 דקות קבוע (בקשת אייל 15/07): הזמן מתחלק בין הכרטיסים —
    כל נכס חם שנוסף מאיץ את כולם, וכשיש מעט הם רצים לאט יותר. הסיכום ארוך פי 1.4.
    גבולות שפיות: 5ש' רצפה (קריאוּת) · 60ש' תקרה (שלא ייראה קפוא). */
-var LOOP_MS = 300000, SUM_W = 1.4;
+var LOOP_MS = 300000, SUM_W = 1.4, CONTEST_W = 3;   // [TV-BIG 03/11] התחרות — פי 3 מנכס חם
 function durFor(pl, it){
   var sums = 0, hots = 0;
   for (var k = 0; k < pl.length; k++){ if (pl[k].t === 'sum' || pl[k].t === 'goals' || pl[k].t === 'contest') sums++; else hots++; }
-  var unit = LOOP_MS / ((sums * SUM_W + hots) || 1);
-  var d = ((it.t === 'sum' || it.t === 'goals' || it.t === 'contest') ? SUM_W : 1) * unit;
+  var cont = 0;
+  for (var m = 0; m < pl.length; m++) if (pl[m].t === 'contest') cont++;
+  var unit = LOOP_MS / (((sums - cont) * SUM_W + cont * CONTEST_W + hots) || 1);
+  var d = (it.t === 'contest' ? CONTEST_W : (it.t === 'sum' || it.t === 'goals') ? SUM_W : 1) * unit;
   return Math.max(5000, Math.min(60000, Math.round(d)));
 }
 var GROUP = 6;   // כרטיס נתוני-המשרד חוזר כל 6 נכסים — מקבל זמן מסך קבוע גם כשהרשימה גדלה
