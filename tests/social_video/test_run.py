@@ -33,7 +33,7 @@ def store():
 
 # ── preview: נוצר, בלי אישורים ובלי Meta ──
 G, st, sb = make_G()
-env = {"SOCIAL_MODE": "preview", "FAL_KEY": "fk", "CLAUDE_API_KEY": "ck", "APP_BASE_URL": "https://app"}
+env = {"SOCIAL_MODE": "preview", "FAL_KEY": "fk", "CLAUDE_API_KEY": "ck", "APP_BASE_URL": "https://app", "SOCIAL_VIDEO_STYLE": "classic"}
 r = V.vid_create_one(G, "tok1", "manual", "505709865", http=HTTP, now=NOW, env=env, store=store())
 ck(r["ok"] and r["status"] == "preview" and r["ai"] is True, r)
 rec = sb.videos[-1]

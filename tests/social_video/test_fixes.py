@@ -11,7 +11,7 @@ from _fakes import ROW, make_G, SF
 SP.soc_hidden = lambda G: set()
 NOW = time.time()
 def iso(t): return SP._dt.datetime.fromtimestamp(t, SP._dt.timezone.utc).isoformat()
-ENV = {"SOCIAL_MODE": "publish", "META_TOKEN": "mt", "APP_BASE_URL": "https://app"}
+ENV = {"SOCIAL_MODE": "publish", "META_TOKEN": "mt", "APP_BASE_URL": "https://app", "SOCIAL_VIDEO_STYLE": "classic"}
 V._blocked_now = lambda G_, t: False
 V._spawn = lambda fn: fn()
 STORE = V.VidStore(tempfile.mkdtemp()); V._STORE = STORE

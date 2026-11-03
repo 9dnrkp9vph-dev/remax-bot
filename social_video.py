@@ -826,6 +826,89 @@ def vid_create_one(G, key, trigger, by_phone, http=None, now=None, env=None, sto
             _VINFLIGHT.discard(k0)
 
 
+def vid_style(env=None):
+    """[04/11] אייל: ברירת המחדל — "סיור בדירה" (social_video_tour). SOCIAL_VIDEO_STYLE=classic מחזיר את הסגנון הקודם
+    (קליפ AI + 3 שקפים) בלי קוד."""
+    return "classic" if str(SP._env(env).get("SOCIAL_VIDEO_STYLE") or "").strip().lower() == "classic" else "tour"
+
+
+def _agent_texts(G, row, feats, highlight):
+    agent = str(row.get("סוכן 1") or "").strip()
+    try:
+        vphone = G["_vphone_for_name"](agent) if agent else ""
+    except Exception:
+        vphone = ""
+    return vid_texts(row, feats, highlight, agent, vphone, str(_office(G).get("phone") or ""))
+
+
+def _agent_photo(G, row):
+    """תמונת הפרופיל של הסוכן מהאזור האישי (v2_avatars/<9 ספרות>.jpg) — או None."""
+    import os
+    l9 = _agent_personal(G, row)
+    if not l9:
+        return None
+    p = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)),
+                     "v2_avatars", l9 + ".jpg")
+    return p if os.path.exists(p) else None
+
+
+def _render_tour(G, row, key, imgs, desc, feats, hist, env, out_path, http):
+    import social_video_tour as T
+    pick = T.tour_pick(http, str(env.get("CLAUDE_API_KEY") or ""), imgs, desc, CLAUDE_MODEL)
+    clean = T.tour_slides(imgs, pick)
+    if len(clean) < 2:
+        return {"ok": False, "error": "אין מספיק תמונות בלי סימן מים"}, {}
+    texts = _agent_texts(G, row, feats, "")
+    photos = {i: data for data, i in clean}
+    shots = T.tour_plan(texts, [i for _, i in clean], pick["captions"], feats)
+    theme = T.tour_theme(len(hist or []))
+    texts["tour"] = {"theme": theme, "shots": [{"title": s["title"], "sub": s["sub"]} for s in shots]}
+    music = vid_music(key)
+    with _render_lock():
+        out = T.vid_compose_tour(photos, shots, texts, theme, music, out_path, _logo_path(), _agent_photo(G, row))
+    out["music"] = music
+    return out, texts
+
+
+def _render_classic(G, row, key, imgs, desc, feats, env, http, tmp, out_path, upd, now):
+    import os
+    pick = vid_pick(http, str(env.get("CLAUDE_API_KEY") or ""), imgs, desc, feats)
+    ai_i = pick["ai"]
+    order = [ai_i] + [i for i in pick["slides"] if i != ai_i]
+    if len(order) < 2:
+        order = [ai_i] + [i for i in range(len(imgs)) if i != ai_i][:3]
+    slides = [(imgs[i], pick["wm"].get(i)) for i in order]
+    clip_path, cost = None, 0.0
+    fal_key = str(env.get("FAL_KEY") or "").strip()
+    if fal_key:
+        from PIL import Image
+        import io
+        im = Image.open(io.BytesIO(imgs[ai_i])).convert("RGB")
+        box = vid_crop_box(im.width, im.height, pick["wm"].get(ai_i))
+        if box:
+            b = io.BytesIO()
+            im.crop(box).save(b, "JPEG", quality=92)
+            fal = Fal(http, fal_key, model=str(env.get("FAL_VIDEO_MODEL") or "") or None)
+            data, err, cost = vid_ai_clip(fal, b.getvalue(), pick["room"])
+            upd["ai_cost_usd"] = round(cost, 2)
+            if data:
+                clip_path = os.path.join(tmp, "clip.mp4")
+                with open(clip_path, "wb") as f:
+                    f.write(data)
+                upd["ai_model"] = fal.model
+                upd["ai"] = True   # שולם — נספר בעלות/במכסה גם אם הרינדור ייכשל
+            elif err in (401, 402, 403):
+                SP.soc_daily_alert(G, "fal", "סרטונים לרשתות", "חשבון fal — צריך לטעון קרדיט או מפתח חדש", now)
+    ai = clip_path is not None
+    texts = _agent_texts(G, row, feats, pick["highlight"])
+    tl = vid_timeline(min(2, len(slides) - 1), ai)
+    layers = vid_layers(texts, tl, _logo_path(), ai, os.path.join(tmp, "L"))
+    music = vid_music(key)
+    with _render_lock():
+        out = vid_compose(clip_path, slides, layers, tl, music, out_path)
+    return out, texts, ai, cost, music, clip_path
+
+
 def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
     import time as _t, os, tempfile, shutil
     env = SP._env(env)
@@ -873,8 +956,9 @@ def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
     tmp = tempfile.mkdtemp(prefix="vidc_")
     upd = {}
     try:
+        style = vid_style(env)
         imgs = []
-        for src in SP.soc_images(row)[:8]:
+        for src in SP.soc_images(row)[:10 if style == "tour" else 8]:
             data = SP.soc_fetch_jpeg(http, src, False)
             if data:
                 imgs.append(data)
@@ -882,45 +966,13 @@ def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
             raise RuntimeError("פחות מ-2 תמונות ירדו")
         desc = SP._clean_desc(G)(row.get("_desc_ae") or row.get("תיאור") or "")
         feats = [f for f in (G["_row_feats"](row) or []) if f]
-        pick = vid_pick(http, str(env.get("CLAUDE_API_KEY") or ""), imgs, desc, feats)
-        ai_i = pick["ai"]
-        order = [ai_i] + [i for i in pick["slides"] if i != ai_i]
-        if len(order) < 2:
-            order = [ai_i] + [i for i in range(len(imgs)) if i != ai_i][:3]
-        slides = [(imgs[i], pick["wm"].get(i)) for i in order]
-        clip_path, cost = None, 0.0
-        fal_key = str(env.get("FAL_KEY") or "").strip()
-        if fal_key:
-            from PIL import Image
-            import io
-            im = Image.open(io.BytesIO(imgs[ai_i])).convert("RGB")
-            box = vid_crop_box(im.width, im.height, pick["wm"].get(ai_i))
-            if box:
-                b = io.BytesIO()
-                im.crop(box).save(b, "JPEG", quality=92)
-                fal = Fal(http, fal_key, model=str(env.get("FAL_VIDEO_MODEL") or "") or None)
-                data, err, cost = vid_ai_clip(fal, b.getvalue(), pick["room"])
-                upd["ai_cost_usd"] = round(cost, 2)
-                if data:
-                    clip_path = os.path.join(tmp, "clip.mp4")
-                    with open(clip_path, "wb") as f:
-                        f.write(data)
-                    upd["ai_model"] = fal.model
-                    upd["ai"] = True   # שולם — נספר בעלות/במכסה גם אם הרינדור ייכשל
-                elif err in (401, 402, 403):
-                    SP.soc_daily_alert(G, "fal", "סרטונים לרשתות", "חשבון fal — צריך לטעון קרדיט או מפתח חדש", now)
-        ai = clip_path is not None
-        agent = str(row.get("סוכן 1") or "").strip()
-        try:
-            vphone = G["_vphone_for_name"](agent) if agent else ""
-        except Exception:
-            vphone = ""
-        texts = vid_texts(row, feats, pick["highlight"], agent, vphone, str(_office(G).get("phone") or ""))
-        tl = vid_timeline(min(2, len(slides) - 1), ai)
-        layers = vid_layers(texts, tl, _logo_path(), ai, os.path.join(tmp, "L"))
-        music = vid_music(key)
-        with _render_lock():
-            out = vid_compose(clip_path, slides, layers, tl, music, store.path(tok))
+        if style == "tour":
+            out, texts = _render_tour(G, row, key, imgs, desc, feats, hist, env, store.path(tok), http)
+            ai, cost, music = False, 0.0, out.get("music")
+            clip_path = None
+        else:
+            out, texts, ai, cost, music, clip_path = _render_classic(G, row, key, imgs, desc, feats, env, http, tmp,
+                                                                     store.path(tok), upd, now)
         if not out.get("ok"):
             raise RuntimeError(out.get("error") or "רינדור נכשל")
         upd.update(ai=ai, ai_cost_usd=round(cost, 2), texts=texts, music=os.path.basename(music or ""))
@@ -1122,11 +1174,13 @@ def _summary(rec):
     s = "סרטון סטורי + ריל מוכן — " + ", ".join(x for x in (o.get("title"), o.get("place")) if x)
     if o.get("price"):
         s += " · " + o["price"]
+    if (rec.get("texts") or {}).get("tour"):
+        return s
     return s + ("" if rec.get("ai") else " (ללא AI)")
 
 
 def vid_send_review(G, rec, base, env, initiator=""):
-    """שולח את הסרטון לאישור לאייל ולסוכן. → רשימת 9 ספרות של מי שקיבל. בשעות שקט — review_due ולא שולח,
+    """שולח את הסרטון לאישור לאייל (ולסוכן — רק עם SOCIAL_VIDEO_REVIEW_AGENT=1). → רשימת 9 ספרות של מי שקיבל. בשעות שקט — review_due ולא שולח,
     חוץ ממי שיזם את הפעולה בעצמו (initiator — יצירה ידנית / "שלח שוב"), שמקבל מיד; השאר בבוקר.
     שליחת הבוקר מדלגת על מי שכבר ב-recipients."""
     try:
@@ -1142,7 +1196,9 @@ def vid_send_review(G, rec, base, env, initiator=""):
     appr = _l9(env.get("SOCIAL_VIDEO_APPROVER")) or next(iter(sorted(G.get("DEV_PHONES") or [])), "")
     if appr:
         who.append(appr)
-    ag = _agent_personal(G, _row_by_key(G, rec.get("property_key")))
+    # [04/11] אייל: "אני בלבד כרגע" — הסוכן מקבל לאישור רק עם SOCIAL_VIDEO_REVIEW_AGENT=1 ב-Render
+    ag = _agent_personal(G, _row_by_key(G, rec.get("property_key"))) \
+        if str(env.get("SOCIAL_VIDEO_REVIEW_AGENT") or "").strip() == "1" else ""
     if ag and ag not in who:
         who.append(ag)
     if quiet:
