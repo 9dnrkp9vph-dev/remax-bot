@@ -2787,6 +2787,13 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       </div>
     </div>
 
+    <!-- [DIALER-USERS 03/11] חייגן חכם — מי רואה (אייל: "לכל מי שאבחר ולא רק למתאמות") -->
+    <div class="card" id="dlrCard">
+      <div class="cardTitle">חייגן חכם — מי רואה</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">מתאמות שמשויכות לסוכנים במסך המתאמות רואות את החייגן תמיד. כאן מוסיפים כל אחד אחר — מסמנים, וזה נשמר מיד. אצל מי שסומן החייגן מופיע בתפריט הצד בבית.</div>
+      <div id="dlrList" style="margin-top:8px"></div>
+    </div>
+
     <!-- גיבוי/שחזור נכסי המשרד (אייל 11/09) -->
     <div class="card" id="snapCard">
       <div class="cardTitle">גיבוי נכסי המשרד</div>
@@ -3029,7 +3036,7 @@ function boot(){
         UNMATCHED = unmMerge(rs[1] || {});
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
-        render(); loadSnaps(); repLoad(); oipLoad();
+        render(); loadSnaps(); repLoad(); oipLoad(); dlrLoad();
       });
   }).catch(function(){ location.replace('/v2'); });
 }
@@ -3100,6 +3107,42 @@ function oipRender(){
   el('oipBranches').innerHTML = Object.keys(br).map(function(b){ return '<option value="' + esc(b) + '">'; }).join('');
 }
 function oipLoad(){ GET('/v2/api/admin/office_ips').then(function(j){ if (j && j.ok){ OIP = j; oipRender(); } }).catch(function(){}); }
+// [DIALER-USERS 03/11] חייגן חכם — מי רואה: מתאמות תמיד, ועוד כל מי שבעל המשרד מסמן
+var DLR = {names: [], coords: []}, DLR_ALL = false;
+function dlrKey(s){ return String(s || '').replace(/\s+/g, ' ').trim(); }
+function dlrLoad(){ GET('/v2/api/dialer/users').then(function(j){ if (j && j.ok){ DLR = j; dlrRender(); } }).catch(function(){}); }
+function dlrRender(){
+  var box = el('dlrList'); if (!box) return;
+  var on = {}, co = {};
+  (DLR.names || []).forEach(function(n){ on[dlrKey(n)] = 1; });
+  (DLR.coords || []).forEach(function(n){ co[dlrKey(n)] = 1; });
+  var ppl = PEOPLE.filter(function(p){ return p.name && p.role !== 'developer' && !p.suspended; }).map(function(p){
+    var k = dlrKey(p.name), auto = !!co[k] || p.role === 'coordinator';
+    return {p: p, auto: auto, on: auto || !!on[k]};
+  }).sort(function(a, b){ return (b.on - a.on) || a.p.name.localeCompare(b.p.name, 'he'); });
+  var n = ppl.length, show = (DLR_ALL || n <= 8) ? ppl : ppl.slice(0, Math.max(8, ppl.filter(function(x){ return x.on; }).length));
+  box.innerHTML = (show.map(function(x){
+    return '<label class="setRow" style="cursor:' + (x.auto ? 'default' : 'pointer') + '">' +
+      '<input type="checkbox" data-dlr="' + esc(x.p.name) + '"' + (x.on ? ' checked' : '') + (x.auto ? ' disabled' : '') +
+      ' onchange="dlrSave()" style="width:20px;height:20px;margin:0;accent-color:#2E6BD6">' +
+      '<div class="mid"><div class="nm">' + esc(x.p.name) + '</div>' +
+      '<div class="sb">' + (x.auto ? 'מתאמת · תמיד רואה' : esc(ROLE_LABEL[x.p.role] || 'סוכן')) + '</div></div></label>';
+  }).join('') || '<div style="font-size:13px;color:#6B7280;padding:6px 0">אין אנשי צוות</div>') +
+    (show.length < n ? '<button onclick="DLR_ALL=true;dlrRender()" style="margin-top:6px;width:100%;min-height:44px;border:1.5px solid #E9E4D8;border-radius:12px;background:#fff;color:#1E3A5F;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">הצג את כולם (' + n + ')</button>' : '');
+}
+function dlrSave(){
+  var names = [];
+  Array.prototype.forEach.call(document.querySelectorAll('#dlrList input[data-dlr]'), function(i){
+    if (i.checked && !i.disabled) names.push(i.getAttribute('data-dlr'));
+  });
+  (DLR.names || []).forEach(function(nm){   // מסומנים שלא מוצגים כרגע (רשימה מקוצרת) — נשארים
+    if (!document.querySelector('#dlrList input[data-dlr="' + String(nm).replace(/"/g, '\\"') + '"]')) names.push(nm);
+  });
+  POST('/v2/api/dialer/users', {names: names}).then(function(j){
+    if (j && j.ok){ DLR.names = j.names; toast(j.names.length ? 'נשמר · ' + j.names.length + ' עם חייגן' : 'נשמר'); }
+    else { toast('השמירה נכשלה'); dlrRender(); }
+  }).catch(function(){ toast('שגיאה'); dlrRender(); });
+}
 function oipMine(){ if (OIP.my_ip) el('oipIp').value = OIP.my_ip; else toast('לא זוהתה כתובת'); }
 function oipSave(d, okMsg){
   POST('/v2/api/admin/office_ips', d).then(function(j){

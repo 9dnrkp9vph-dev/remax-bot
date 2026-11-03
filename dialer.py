@@ -240,7 +240,30 @@ def register(app, G):
                     return True
         except Exception:
             pass
+        return _chosen(s, k)
+
+    def _chosen_names():
+        try:
+            v = G["_load_config"]().get("v2_dialer_users")
+        except Exception:
+            return []
+        return [str(n).strip() for n in v if isinstance(n, str) and n.strip()] if isinstance(v, list) else []
+
+    def _chosen(s, k):
+        """[DIALER-USERS 03/11] מי שבעל המשרד בחר בניהול — לפי השם, או לפי הטלפון (מנהלות נכנסות בשם הגנרי)."""
+        me9 = G["_last9"](s.get("phone", ""))
+        for n in _chosen_names():
+            if k and canon(n) == k:
+                return True
+            try:
+                if me9 and me9 in {G["_last9"](p) for p in (G["_phones_for_name"](n) or ())}:
+                    return True
+            except Exception:
+                continue
         return False
+
+    def _owner(s):
+        return bool(s) and (s.get("dev") or bool(G["_is_dev"](s.get("phone", ""))))
 
     def _team(s):
         rec = _coord_rec(s) or {}
@@ -398,6 +421,37 @@ def register(app, G):
         if not s:
             return jsonify({"ok": False, "auth": False}), 401
         return jsonify({"ok": True, "allowed": allowed(s)})
+
+    @app.route("/v2/api/dialer/users", methods=["GET", "POST"])   # [DIALER-USERS 03/11] בעל המשרד בוחר מי רואה
+    def dialer_users():
+        s = G["_web_auth"]()
+        if not _owner(s):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        if request.method == "GET":
+            try:
+                coords = sorted({(v or {}).get("name") or "" for v in (G["_coordinators_all"]() or {}).values()} - {""})
+            except Exception:
+                coords = []
+            return jsonify({"ok": True, "names": _chosen_names(), "coords": coords})
+        raw = (request.get_json(silent=True) or {}).get("names")
+        names, seen = [], set()
+        for n in (raw if isinstance(raw, list) else [])[:200]:
+            n = " ".join(n.split())[:60] if isinstance(n, str) else ""
+            if n and canon(n) not in seen:
+                seen.add(canon(n))
+                names.append(n)
+
+        def m(cfg):
+            cfg["v2_dialer_users"] = names
+        ok = G["_config_mutate"](m)
+        if not (ok[0] if isinstance(ok, tuple) else ok):
+            return jsonify({"ok": False, "reason": "save_failed"}), 500
+        try:
+            G["_log_activity"](_real(s), s.get("role", ""), s.get("phone", ""), "חייגן חכם — הרשאות",
+                               ", ".join(names) or "אין")
+        except Exception:
+            pass
+        return jsonify({"ok": True, "names": names})
 
     @app.route("/v2/api/dialer/queue", methods=["GET"])
     def dialer_queue():
