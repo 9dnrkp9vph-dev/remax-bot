@@ -531,7 +531,7 @@ V2_CONTEST_KIT = r"""<style>
   .ck-team.lead .pts{color:#E4C56B}
   .ck-team .u{font-size:12px;opacity:.75}
   .ck-team .mine{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:#fff;color:#1E3A5F;
-      font-size:11px;font-weight:800;border-radius:99px;padding:2px 10px;white-space:nowrap}
+      font-size:12px;font-weight:800;border-radius:99px;padding:2px 10px;white-space:nowrap}
   .ck-vsx{align-self:center;font-weight:800;opacity:.6;font-size:14px}
   .ck-track{height:10px;border-radius:99px;background:rgba(255,255,255,.12);margin:12px 4px 0;overflow:hidden;display:flex}
   .ck-track i{display:block;height:100%;background:rgba(255,255,255,.45)}
@@ -845,7 +845,7 @@ V2_CONTEST_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .card h3 span{color:#7A5E1C}
   .card p.s{font-size:12px;color:#5B6472;padding:0 4px 4px}
   table{width:100%;border-collapse:collapse;font-size:13.5px}
-  th{font-size:11.5px;color:#5B6472;font-weight:600;text-align:center;padding:4px 2px}
+  th{font-size:12px;color:#5B6472;font-weight:600;text-align:center;padding:4px 2px}
   th:first-child,td:first-child{text-align:right}
   td{text-align:center;padding:8px 2px;border-top:1px solid #F0ECE3;font-variant-numeric:tabular-nums}
   td.pos{width:22px;color:#5B6472;font-weight:700;font-size:12px}
@@ -854,7 +854,7 @@ V2_CONTEST_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   td.pd{color:#5B6472}
   td.ed{width:52px}
   tr.me td{background:#FFF8E6}
-  tr.me td.n::after{content:" (את/ה)";color:#7A5E1C;font-size:11px;font-weight:700}
+  tr.me td.n::after{content:" (את/ה)";color:#7A5E1C;font-size:12px;font-weight:700}
   tr.top1 td.p{color:#7A5E1C}
   .cAdj{position:relative;font:700 11px 'Heebo',sans-serif;color:#7A5E1C;background:#FBF3DF;border:1px solid #E4C56B;border-radius:99px;
       padding:1px 6px;cursor:pointer;vertical-align:middle}

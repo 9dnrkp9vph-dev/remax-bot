@@ -66,8 +66,8 @@ V2_LOGIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .cap{font-size:12px;color:rgba(255,255,255,.5);line-height:1.6}
   .or{display:flex;align-items:center;gap:10px;margin:2px 0}
   .or i{flex:1;height:1px;background:rgba(255,255,255,.15)}
-  .or span{font-size:11px;color:rgba(255,255,255,.4)}
-  .foot{font-size:11px;color:rgba(255,255,255,.35);margin-top:6px}
+  .or span{font-size:12px;color:rgba(255,255,255,.4)}
+  .foot{font-size:12px;color:rgba(255,255,255,.35);margin-top:6px}
   #smsBox{display:none;flex-direction:column;gap:10px}
   #smsBox input{width:100%;padding:14px;border-radius:14px;border:1px solid rgba(255,255,255,.22);
     background:rgba(255,255,255,.1);color:#fff;font-size:16px;text-align:center;font-family:inherit;outline:none}
@@ -271,7 +271,7 @@ function bioLock(){
   d.innerHTML =
     '<div style="width:92px;height:92px;border-radius:50%;background:#fff;border:2px solid #E4C56B;display:flex;' +
       'align-items:center;justify-content:center;margin-bottom:20px;overflow:hidden">' +
-      '<img src="/assets/logo" style="width:64px;height:64px;object-fit:contain" onerror="this.style.display=\'none\'"></div>' +
+      '<img src="/assets/logo" alt="לוגו המשרד" style="width:64px;height:64px;object-fit:contain" onerror="this.style.display=\'none\'"></div>' +
     '<svg width="34" height="34" viewBox="0 0 24 24" style="margin-bottom:10px"><rect x="5" y="10" width="14" height="10" rx="3" ' +
       'fill="none" stroke="#1E3A5F" stroke-width="1.8"/><path d="M8 10V7.5a4 4 0 018 0V10" fill="none" stroke="#1E3A5F" ' +
       'stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="15" r="1.6" fill="#1E3A5F"/></svg>' +
@@ -670,7 +670,7 @@ function v2Me(){
     '<div style="display:flex;align-items:center;gap:14px">' +
     '<div style="position:relative;width:72px;height:72px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;overflow:hidden;flex-shrink:0">' +
     '<span style="position:absolute">' + (name || ' ').charAt(0) + '</span>' +
-    (phone ? '<img id="v2meAv" src="/v2/api/avatar?p=' + phone + '&t=' + Date.now() + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove()">' : '') +
+    (phone ? '<img id="v2meAv" alt="" src="/v2/api/avatar?p=' + phone + '&t=' + Date.now() + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.remove()">' : '') +
     '</div>' +
     '<div><div style="font-size:16.5px;font-weight:800">' + name.replace(/</g, '&lt;') + '</div>' +
     '<div style="font-size:12.5px;color:#6B7280">' + roleTx + (phone ? ' · 0' + phone : '') + '</div></div></div>' +
@@ -983,7 +983,7 @@ V2_GOALS_KIT = r"""<style>
   .gk-g.hl{border:2px solid #E4C56B;background:#FFFBEF}
   .gk-g.hl .gBar div{background:#C29435}
   .gk-ic.gold{background:#F6EDD6}
-  .gk-wk{display:inline-block;font-size:11.5px;font-weight:700;color:#7A5E1C;background:#F6EDD6;border-radius:99px;padding:1px 8px;margin-inline-start:6px;vertical-align:2px}
+  .gk-wk{display:inline-block;font-size:12px;font-weight:700;color:#7A5E1C;background:#F6EDD6;border-radius:99px;padding:1px 8px;margin-inline-start:6px;vertical-align:2px}
   .gBtn.gold{background:#C29435;color:#231700}
   .gk-done{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:#1E3A5F;
       background:#E9EDF3;border-radius:99px;padding:3px 10px}
@@ -1029,7 +1029,7 @@ V2_GOALS_KIT = r"""<style>
   .gk-pt .l{font-size:12.5px;font-weight:700;color:#E4C56B;letter-spacing:.04em}
   .gk-pt .v{font-size:20px;font-weight:800;line-height:1.15}
   .gk-pt .v i{font-style:normal;font-size:13px;font-weight:600;opacity:.8}
-  .gk-pt .s{font-size:11.5px;opacity:.8;line-height:1.35}
+  .gk-pt .s{font-size:12px;opacity:.8;line-height:1.35}
   .gk-push{margin-top:12px;background:#E4C56B;color:#231700;border-radius:14px;padding:10px 12px;font-size:13.5px;font-weight:700;line-height:1.45}
   .gk-push.done{background:rgba(255,255,255,.14);color:#fff}
   .gk-st{flex:0 0 auto;font-size:12px;font-weight:700;border-radius:99px;padding:3px 10px;white-space:nowrap}
@@ -1351,7 +1351,7 @@ V2_GOALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       pointer-events:none;z-index:95;white-space:nowrap}
 </style></head><body>
   <header>
-    <button class="backBtn" onclick="location.href='/v2/home'" aria-label="חזרה">
+    <button class="backBtn" aria-label="חזרה" onclick="location.href='/v2/home'" aria-label="חזרה">
       <svg width="10" height="16" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="pt" id="pt">היעדים שלי</div>
@@ -1500,7 +1500,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       border:1px solid rgba(228,197,107,.35);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
   .briefBar .ic img{width:26px;height:26px;object-fit:contain;border-radius:6px;background:#fff;padding:2px}
   .briefBar .t{font-size:14.5px;font-weight:800;color:#fff}
-  .briefBar .s{font-size:11.5px;color:rgba(255,255,255,.6)}
+  .briefBar .s{font-size:12px;color:rgba(255,255,255,.6)}
   .briefBar .cta{background:#E4C56B;color:#1E3A5F;border-radius:11px;padding:9px 15px;font-size:12.5px;
       font-weight:800;white-space:nowrap;border:0;cursor:pointer;font-family:inherit}
   .qa{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -1513,14 +1513,14 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .qa .gold .l{color:#231700}
   .qa .blue .ic,.qa .gold .ic{background:rgba(255,255,255,.18)}
   .qa .lite{background:#fff;border:1.5px solid #E9E4D8}
-  .qaBadge{display:none;position:absolute;top:-7px;left:-4px;background:#C29435;color:#231700;font-size:11px;
+  .qaBadge{display:none;position:absolute;top:-7px;left:-4px;background:#C29435;color:#231700;font-size:12px;
       font-weight:800;min-width:20px;height:20px;border-radius:999px;padding:0 6px;align-items:center;
       justify-content:center;box-shadow:0 2px 6px rgba(194,148,53,.35)}
   .strip{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
       display:flex;align-items:center;gap:12px}
   .strip .ic{width:38px;height:38px;border-radius:12px;background:#EAF0FA;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .strip .t{font-size:14.5px;font-weight:800}
-  .strip .s{font-size:11.5px;color:#6B7280}
+  .strip .s{font-size:12px;color:#6B7280}
   .strip .cta{display:flex;align-items:center;gap:7px;background:#EAF0FA;color:#2E6BD6;border-radius:11px;
       padding:9px 15px;font-size:12.5px;font-weight:800;white-space:nowrap;border:0;cursor:pointer;font-family:inherit}
   .care{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
@@ -1545,11 +1545,11 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .careEmpty .s{font-size:12px;color:#6B7280}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
       font-weight:600;color:#6E7683;cursor:pointer;position:relative}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
-  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#231700;font-size:10px;font-weight:800;
+  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#231700;font-size:12px;font-weight:800;
       padding:1px 8px;border-radius:999px;display:none}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
       font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
@@ -1573,8 +1573,9 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       border:1px solid rgba(228,197,107,.4);display:flex;align-items:center;justify-content:center;overflow:hidden}
   #story .shead .lg img{width:26px;height:26px;object-fit:contain;border-radius:6px;background:#fff;padding:2px}
   #story .shead .t{font-size:14.5px;font-weight:800}
-  #story .shead .s{font-size:11.5px;color:rgba(255,255,255,.55);white-space:nowrap}
-  #story .x{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;cursor:pointer}
+  #story .shead .s{font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap}
+  #story .x{position:relative;width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;cursor:pointer}
+  #story .x::after{content:"";position:absolute;inset:-5px}  /* [UX-11/04] שטח לחיצה 44px בלי לשנות את המראה */
   #story .body{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:14px;padding-bottom:18px}
   #story .kicker{font-size:13px;font-weight:700;color:#E4C56B;letter-spacing:.12em}
   #story .big{display:flex;align-items:baseline;gap:14px}
@@ -1589,9 +1590,9 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   #story .skip{background:none;border:0;color:rgba(255,255,255,.55);font-size:13px;font-weight:600;
       cursor:pointer;font-family:inherit;text-decoration:underline;text-underline-offset:3px}
   #story .sfoot{display:flex;flex-direction:column;align-items:center;gap:7px}
-  #story .load{display:flex;align-items:center;gap:7px;font-size:11px;color:rgba(255,255,255,.45)}
+  #story .load{display:flex;align-items:center;gap:7px;font-size:12px;color:rgba(255,255,255,.45)}
   #story .load i{width:6px;height:6px;border-radius:50%;background:#1FAF5E;display:block}
-  #story .hint{font-size:11.5px;color:rgba(255,255,255,.4);text-align:center}
+  #story .hint{font-size:12px;color:rgba(255,255,255,.4);text-align:center}
   #story .ringWrap{align-self:center;width:104px;height:104px;border-radius:50%;border:3px solid #E4C56B;padding:6px}
   #story .ringWrap>div{width:100%;height:100%;border-radius:50%;background:#fff;
       display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -1641,7 +1642,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        font-size:12.5px;font-weight:700">
     <span id="impTx"></span>
     <button onclick="impBack()" style="background:#fff;color:#7A5E1C;border:0;border-radius:999px;
-        padding:5px 12px;font-size:11.5px;font-weight:800;font-family:inherit;cursor:pointer">חזרה למנהל</button>
+        padding:5px 12px;font-size:12px;font-weight:800;font-family:inherit;cursor:pointer">חזרה למנהל</button>
   </div>
 
   <header>
@@ -1663,7 +1664,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div style="display:flex;align-items:center;gap:11px;padding-bottom:14px">
       <div class="avatar"><div class="c" id="menuAv"></div><div class="dot"></div></div>
       <div><div style="font-size:15.5px;font-weight:800" id="menuNm"></div>
-           <div style="font-size:11.5px;color:#6B7280" id="menuRole"></div></div>
+           <div style="font-size:12px;color:#6B7280" id="menuRole"></div></div>
     </div>
     <div style="height:1px;background:#F0EDE3;margin-bottom:8px"></div>
     <a id="menuAdmin" href="/v2/admin" style="display:none;align-items:center;gap:11px;padding:12px 4px;
@@ -1789,7 +1790,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
         <div class="ic" style="background:#EAF0FA"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#2E6BD6" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
         <div style="flex:1;min-width:0">
           <div class="l" id="propsT">נכסי המשרד</div>
-          <div id="propsSum" style="font-size:10px;color:#6E7683;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+          <div id="propsSum" style="font-size:12px;color:#6E7683;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
         </div>
       </div>
     </div>
@@ -1956,7 +1957,7 @@ function openMe(){
     '<svg width="12" height="12" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>' +
     '<div style="display:flex;align-items:center;gap:14px">' +
     '<div style="position:relative;width:72px;height:72px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;overflow:hidden;flex-shrink:0">' +
-    '<img id="meAv" src="' + avUrl + '" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">' +
+    '<img id="meAv" alt="" src="' + avUrl + '" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">' +
     '<span style="position:absolute">' + esc((ME.name || ' ')[0]) + '</span></div>' +
     '<div><div style="font-size:16.5px;font-weight:800">' + esc(ME.name) + '</div>' +
     '<div style="font-size:12.5px;color:#6B7280">' + esc(ME.role) + (ME.phone ? ' · 0' + esc(ME.phone) : '') + '</div></div></div>' +
@@ -2051,7 +2052,7 @@ function setHeaderAvatar(){
   if (!ME.phone) return;
   var c = el('avatarTx');
   if (!c) return;
-  c.innerHTML = '<img src="/v2/api/avatar?p=' + ME.phone + '&t=' + Date.now() + '" ' +
+  c.innerHTML = '<img alt="" src="/v2/api/avatar?p=' + ME.phone + '&t=' + Date.now() + '" ' +
     'style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.remove()">' +
     '<span>' + esc((ME.name || ' ')[0]) + '</span>';
 }
@@ -2433,7 +2434,7 @@ function renderCard(i){
     '<div style="font-size:30px;font-weight:800;color:'+col+'">'+n+'</div><div style="font-size:12.5px;color:rgba(255,255,255,.6)">'+label+'</div></div>'; };
   var hlRow = function(icon,label,val){ return '<div style="display:flex;align-items:center;gap:11px;background:rgba(255,255,255,.06);border-radius:14px;padding:12px 14px">'+
     '<div style="width:34px;height:34px;border-radius:10px;background:rgba(228,197,107,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+icon+'</div>'+
-    '<div style="flex:1;display:flex;flex-direction:column;gap:1px"><div style="font-size:11px;color:rgba(255,255,255,.5)">'+label+'</div>'+
+    '<div style="flex:1;display:flex;flex-direction:column;gap:1px"><div style="font-size:12px;color:rgba(255,255,255,.5)">'+label+'</div>'+
     '<div style="font-size:13.5px;font-weight:700;color:#fff">'+val+'</div></div></div>'; };
   var k = i - CO;   // [CONTEST] אינדקס בתוך הסטורי הרגיל (כרטיס התחרות = i 0 כש-CO=1)
   el('storyTitle').textContent = (CO && i === 0) ? (CS.mode === 'winner' ? 'הקבוצה המנצחת' : 'תחרות')
@@ -2474,7 +2475,7 @@ function renderCard(i){
       '</div>'+
       // באנר הישג — דירוג המשרד ברשת רימקס ישראל מתחילת השנה (טקסט קבוע)
       '<div style="margin-top:12px;background:linear-gradient(135deg,rgba(228,197,107,.14),rgba(228,197,107,.05));border:1px solid rgba(228,197,107,.35);border-radius:16px;padding:14px 15px">'+
-        '<div style="font-size:11px;font-weight:700;color:#E4C56B;letter-spacing:.06em;margin-bottom:10px">רימקס פמילי קריות · רשת רימקס ישראל</div>'+
+        '<div style="font-size:12px;font-weight:700;color:#E4C56B;letter-spacing:.06em;margin-bottom:10px">רימקס פמילי קריות · רשת רימקס ישראל</div>'+
         '<div style="display:flex;align-items:center;gap:11px;margin-bottom:9px">'+
           '<svg width="17" height="17" viewBox="0 0 16 16"><path d="M4.5 2h7v3a3.5 3.5 0 0 1-7 0V2z" fill="none" stroke="#E4C56B" stroke-width="1.2"/><path d="M4.5 3H2.8v1.2A2 2 0 0 0 4.8 6.2M11.5 3h1.7v1.2a2 2 0 0 1-2 2M6.5 9.7h3M5.7 13.2h4.6M8 9.7v3.5" fill="none" stroke="#E4C56B" stroke-width="1.2" stroke-linecap="round"/></svg>'+
           '<div style="font-size:13.5px;color:#fff;line-height:1.35"><b style="color:#E4C56B">מקום 2</b> בעסקאות מתחילת השנה</div>'+
@@ -2503,7 +2504,7 @@ function renderCard(i){
         '<div style="width:80px;height:80px;border-radius:50%;border:3px solid #E4C56B;padding:4px;box-sizing:border-box;animation:chickGlow 2.6s ease-out infinite">'+
           '<div style="position:relative;overflow:hidden;width:100%;height:100%;border-radius:50%;background:rgba(228,197,107,.15);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#E4C56B">'+ini+avImg+'</div></div>'+
         '<div style="text-align:center"><div style="font-size:17px;font-weight:800;color:#fff">'+esc(hp.agent||'')+'</div>'+
-          '<div style="font-size:11.5px;font-weight:600;color:#E4C56B">משתפת נכס חם'+(hp.ts?' · '+timeAgo(hp.ts):'')+'</div></div></div>'+
+          '<div style="font-size:12px;font-weight:600;color:#E4C56B">משתפת נכס חם'+(hp.ts?' · '+timeAgo(hp.ts):'')+'</div></div></div>'+
       '<div style="display:flex;justify-content:center;margin-top:2px"><div style="background:rgba(228,197,107,.16);border:1px solid rgba(228,197,107,.4);color:#E4C56B;border-radius:999px;padding:6px 15px;font-size:12px;font-weight:800">נכס חם</div></div>'+
       '<div style="display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;margin-top:2px;min-height:0;flex-shrink:1">'+
         (hp.img?'<img src="'+esc(hp.img)+'" onerror="this.remove()" alt="" style="width:100%;max-width:320px;max-height:24vh;min-height:0;flex-shrink:1;object-fit:cover;border-radius:16px;box-shadow:0 10px 26px rgba(0,0,0,.35)">':'')+
@@ -2636,11 +2637,11 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
        display:flex;flex-direction:column;color:#1E3A5F}
   header{padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 10px;display:flex;align-items:center;justify-content:space-between}
-  .backBtn{width:40px;height:40px;border-radius:13px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+  .backBtn{width:44px;height:44px;border-radius:13px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
        display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
   header .mid{display:flex;flex-direction:column;align-items:center}
   header .t{font-size:17px;font-weight:800}
-  header .s{font-size:11px;color:#6B7280}
+  header .s{font-size:12px;color:#6B7280}
   main{flex:1;overflow:auto;padding:2px 16px 14px;display:flex;flex-direction:column;gap:12px}
   .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 16px;
         display:flex;flex-direction:column;gap:11px}
@@ -2656,26 +2657,26 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       font-size:14px;font-weight:700;flex-shrink:0}
   .member .mid{flex:1;display:flex;flex-direction:column;min-width:0}
   .member .nm{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .member .sb{font-size:11.5px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .member .sb{font-size:12px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .roleChip{display:flex;align-items:center;gap:7px;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:700;flex-shrink:0}
   .role-agent{background:#F5F3EC;border:1px solid #E9E4D8;color:#1E3A5F}
   .role-coordinator{background:#F6EEDB;border:1px solid #E4C56B;color:#7A5E1C}
   .role-manager{background:#EAF0FA;border:1px solid #BFD2F0;color:#2E6BD6}
   .role-dev{background:#1E3A5F;border:1px solid #1E3A5F;color:#fff}
-  .resend{font-size:11.5px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:5px 11px;border-radius:999px;
+  .resend{font-size:12px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:5px 11px;border-radius:999px;
        border:0;cursor:pointer;font-family:inherit;flex-shrink:0}
   .setRow{display:flex;align-items:center;gap:11px;min-height:44px;cursor:pointer}
   .setIc{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .setRow .mid{flex:1;display:flex;flex-direction:column;min-width:0}
   .setRow .nm{font-size:13.5px;font-weight:700}
-  .setRow .sb{font-size:11.5px;color:#6B7280}
+  .setRow .sb{font-size:12px;color:#6B7280}
   .tg{width:34px;height:20px;border-radius:999px;background:#DCD6C8;position:relative;flex-shrink:0;transition:background .15s;cursor:pointer}
   .tg::after{content:'';position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
   .tg.on{background:#1FAF5E}
   .tg.on::after{transform:translateX(-14px)}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;font-weight:600;color:#6E7683}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;font-weight:600;color:#6E7683}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
             box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
   /* bottom sheet */
@@ -2686,7 +2687,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
   #sheet h3{font-size:19px;font-weight:800}
   .fld{display:flex;flex-direction:column;gap:5px}
-  .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld span{font-size:12px;font-weight:700;color:#5B6472}
   .fld input{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;font-size:14px;
        font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%}
   .segs{display:flex;gap:8px}
@@ -2704,7 +2705,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
   .swRow{display:flex;align-items:center;justify-content:space-between;min-height:44px}
   .swRow .lb{font-size:13.5px;font-weight:700}
-  .swRow .sb{font-size:11.5px;color:#6B7280}
+  .swRow .sb{font-size:12px;color:#6B7280}
   .phChip{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:10px;padding:7px 11px;
       font-size:12px;font-weight:700;color:#1E3A5F;white-space:nowrap}
   .phChip.gold{background:#F6EEDB;border-color:#E4C56B;color:#7A5E1C}
@@ -2728,7 +2729,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
 </style></head><body>
 
   <header>
-    <button class="backBtn" onclick="location.href='/v2/home'">
+    <button class="backBtn" aria-label="חזרה" onclick="location.href='/v2/home'">
       <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="mid"><div class="t">ניהול</div><div class="s" id="subTitle">&nbsp;</div></div>
@@ -2884,7 +2885,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <input type="file" id="propsUpFile" accept=".xlsx" style="display:none" onchange="propsUpGo(this.files&&this.files[0])">
       <div class="sep"></div>
       <div class="setRow" onclick="openOffice()">
-        <div class="setIc" style="background:#F6EEDB"><img id="miniLogo" src="/assets/logo" style="width:22px;height:22px;object-fit:contain" onerror="this.style.display='none'"></div>
+        <div class="setIc" style="background:#F6EEDB"><img id="miniLogo" src="/assets/logo" alt="לוגו המשרד" style="width:22px;height:22px;object-fit:contain" onerror="this.style.display='none'"></div>
         <div class="mid"><div class="nm">שם ולוגו המשרד</div><div class="sb" id="officeNameRow"></div></div>
         <svg width="8" height="12" viewBox="0 0 8 12"><path d="M6 1L2 6l4 5" fill="none" stroke="#6E7683" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
@@ -2916,7 +2917,7 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
           צוות חדש
         </button>
       </div>
-      <div style="font-size:11.5px;color:#6B7280;line-height:1.5">חברי צוות רואים הכל אחד של השני —
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">חברי צוות רואים הכל אחד של השני —
         שיחות, קונים, חתימות, נכסים, תהליכים ועסקאות.</div>
       <div id="teamsList"></div>
     </div>
@@ -3316,7 +3317,7 @@ function repSend(d){
     _repPoll = setInterval(function(){
       GET('/api/daily-report/status').then(function(st){
         var L = (st && st.last) || {};
-        if (L.state === 'done'){ clearInterval(_repPoll); toast(L.ok ? ('נשלח למייל ✓ ' + (L.secs ? L.secs + 'ש׳' : '')) : ('לא נשלח: ' + (L.msg || 'ללא סיבה'))); }
+        if (L.state === 'done'){ clearInterval(_repPoll); toast(L.ok ? ('נשלח למייל · ' + (L.secs ? L.secs + 'ש׳' : '')) : ('לא נשלח: ' + (L.msg || 'ללא סיבה'))); }
         repLoad();
       }).catch(function(){});
       if (++n >= 36){ clearInterval(_repPoll); toast('עדיין מפיק… תרענן את הדף בעוד דקה'); }
@@ -3347,7 +3348,7 @@ function renderRemoved(){
   el('rmvList').innerHTML = RMV.map(function(r, i){
     return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid #F0EDE3">' +
       '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.name) + '</div>' +
-      '<div style="font-size:11px;color:#6B7280">' + (r.sigs ? r.sigs + ' חתימות במערכת' : 'ללא רשומות') + '</div></div>' +
+      '<div style="font-size:12px;color:#6B7280">' + (r.sigs ? r.sigs + ' חתימות במערכת' : 'ללא רשומות') + '</div></div>' +
       '<button onclick="restoreMember(' + i + ')" style="padding:9px 16px;border:none;border-radius:11px;background:#2E6BD6;' +
       'color:#fff;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer">שחזר</button>' +
       '<button onclick="purgeMember(' + i + ')" style="padding:9px 12px;border:1.5px solid #C24040;border-radius:11px;background:#fff;' +
@@ -3390,7 +3391,7 @@ function renderUnmatched(){
   el('unmList').innerHTML = UNMATCHED.map(function(u, i){
     return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid #F0EDE3">' +
       '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(u.n) + '</div>' +
-      '<div style="font-size:11px;color:#6B7280">' + u.c + ' רשומות · ' + u.w + '</div></div>' +
+      '<div style="font-size:12px;color:#6B7280">' + u.c + ' רשומות · ' + u.w + '</div></div>' +
       '<select id="unmSel' + i + '" style="max-width:130px;padding:9px 10px;border:1.5px solid #DCD6C8;border-radius:11px;' +
       'font-size:12.5px;font-family:inherit;background:#fff;color:#1E3A5F"><option value="">— שייך לסוכן —</option>' + opts + '</select>' +
       '<button onclick="assignAlias(' + i + ')" style="padding:9px 14px;border:none;border-radius:11px;background:#C29435;' +
@@ -3545,7 +3546,7 @@ function openInvite(prefillName){
     '<div class="fld"><span>נייד</span><input id="invPh" type="tel" inputmode="numeric" placeholder="05X-XXXXXXX"></div>' +
     '<div class="fld"><span>תפקיד</span><div class="segs">' +
       seg('agent', 'סוכן') + seg('coordinator', 'מתאמת') + seg('manager', 'מנהל') + '</div></div>' +
-    '<div style="font-size:11.5px;color:#6B7280;line-height:1.5">ההזמנה נשלחת ב-SMS עם קישור כניסה. ' +
+    '<div style="font-size:12px;color:#6B7280;line-height:1.5">ההזמנה נשלחת ב-SMS עם קישור כניסה. ' +
       'ההצטרפות למשרד היא בהזמנה בלבד — אין הרשמה פתוחה.</div>' +
     '<button class="btn btn-green" onclick="sendInvite(\'sms\')">' +
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M2.5 3h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8l-3 2.5V11H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>' +
@@ -3712,8 +3713,8 @@ function openOffice(){
     '<div class="fld"><span>עמוד המשרד במדלן</span><input id="offMd" dir="ltr" type="url" value="' + esc(OV.office.madlan || '') + '" placeholder="https://www.madlan.co.il/..."></div>' +
     '<div class="fld"><span>קישור לכתיבת ביקורת בגוגל</span><input id="offRv" dir="ltr" type="url" value="' + esc(OV.office.review || '') + '" placeholder="https://g.page/r/.../review"></div>' +
     '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E9E4D8;border-radius:13px;padding:10px 13px">' +
-      '<img src="/assets/logo" style="width:34px;height:34px;object-fit:contain" onerror="this.style.display=\'none\'">' +
-      '<div style="font-size:11.5px;color:#6B7280;line-height:1.5">הלוגו מוצג מ-offices.settings.logo_url — החלפה דרך מנהל המערכת. הקישורים מוצגים לצוות בתפריט הצד.</div></div>' +
+      '<img src="/assets/logo" alt="לוגו המשרד" style="width:34px;height:34px;object-fit:contain" onerror="this.style.display=\'none\'">' +
+      '<div style="font-size:12px;color:#6B7280;line-height:1.5">הלוגו מוצג מ-offices.settings.logo_url — החלפה דרך מנהל המערכת. הקישורים מוצגים לצוות בתפריט הצד.</div></div>' +
     '<button class="btn btn-blue" onclick="saveOffice()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
@@ -3808,12 +3809,12 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .funnel{display:flex;align-items:center;gap:0;background:#F7F5EE;border-radius:14px;padding:11px 8px}
   .funnel .st{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px}
   .funnel .st .n{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
-  .funnel .st .l{font-size:10.5px;font-weight:600;color:#6B7280}
+  .funnel .st .l{font-size:12px;font-weight:600;color:#6B7280}
   .vp{display:flex;align-items:center;justify-content:space-between;background:#F5F3EC;border:1px solid #E9E4D8;
       border-radius:13px;padding:10px 14px;cursor:pointer}
   .vp .r{display:flex;align-items:center;gap:8px}
   .vp .num{font-size:14px;font-weight:700;letter-spacing:.03em}
-  .vp .sub{font-size:11px;color:#6B7280}
+  .vp .sub{font-size:12px;color:#6B7280}
   .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
   .segs .sg{flex:1;text-align:center;padding:7px 0;font-size:12.5px;font-weight:700;color:#5B6472;
       border-radius:10px;cursor:pointer}
@@ -3825,11 +3826,11 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .call .mid{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
   .call .num{font-size:16px;font-weight:800;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .call .sub{font-size:12px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
   .chip.hot{color:#1FAF5E;background:#E7F7EE}
   .chip.back{color:#C24040;background:#FBEDED}
   .ai{background:#F7F5EE;border-radius:13px;padding:10px 13px;display:flex;flex-direction:column;gap:4px;cursor:pointer}
-  .ai .t{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:#7A5E1C;letter-spacing:.05em}
+  .ai .t{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:#7A5E1C;letter-spacing:.05em}
   .ai .x{font-size:12.5px;color:#5B6472;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .acts{display:flex;gap:9px;align-items:center}
   .acts .main{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:12px;
@@ -3848,7 +3849,7 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:250px}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
       font-weight:600;color:#6E7683;cursor:pointer;position:relative}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
@@ -3859,7 +3860,7 @@ V2_CALLS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
   #sheet h3{font-size:19px;font-weight:800}
   .fld{display:flex;flex-direction:column;gap:5px}
-  .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld span{font-size:12px;font-weight:700;color:#5B6472}
   .fld input,.fld textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;
       font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;resize:vertical}
   .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
@@ -4360,14 +4361,14 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .buyer.hot{border-color:#C29435}
   .buyer .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .buyer .nm{font-size:16.5px;font-weight:800;display:flex;align-items:center;gap:7px}
-  .buyer .tag{font-size:10.5px;font-weight:800;color:#231700;background:#C29435;padding:2px 8px;border-radius:999px}
+  .buyer .tag{font-size:12px;font-weight:800;color:#231700;background:#C29435;padding:2px 8px;border-radius:999px}
   .buyer .tag.site{background:#EAF1FD;color:#2E6BD6;margin-inline-start:4px}
   .buyer .sb{font-size:12px;color:#6B7280}
-  .buyer .bdg{font-size:11.5px;font-weight:700;color:#7A5E1C;background:#F6EEDB;padding:3px 9px;
+  .buyer .bdg{font-size:12px;font-weight:700;color:#7A5E1C;background:#F6EEDB;padding:3px 9px;
       border-radius:999px;white-space:nowrap;cursor:pointer}
-  .buyer .req{font-size:11px;color:#6B7280;text-align:left}
+  .buyer .req{font-size:12px;color:#6B7280;text-align:left}
   .ai{background:#F7F5EE;border-radius:13px;padding:10px 13px;display:flex;flex-direction:column;gap:4px}
-  .ai .t{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:#7A5E1C;letter-spacing:.05em}
+  .ai .t{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:#7A5E1C;letter-spacing:.05em}
   .ai .x{font-size:12.5px;color:#5B6472;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .acts{display:flex;gap:9px;align-items:center}
   .acts .main{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:12px;
@@ -4381,7 +4382,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:250px}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
       font-weight:600;color:#6E7683;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
@@ -4393,7 +4394,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center;flex-shrink:0}
   #sheet h3{font-size:19px;font-weight:800}
   .fld{display:flex;flex-direction:column;gap:5px}
-  .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld span{font-size:12px;font-weight:700;color:#5B6472}
   .fld input,.fld textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;
       font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;resize:vertical}
   .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
@@ -4407,17 +4408,17 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   /* [MATCH-TABS 01/10] טאבים בחלון התאמת נכסים — נשארים למעלה (בתוך הכותרת הדביקה) */
   .mtabs{display:flex;gap:3px;background:#EBE8DD;border-radius:12px;padding:4px;margin-top:9px;overflow-x:auto;scrollbar-width:none}
   .mtabs::-webkit-scrollbar{display:none}
-  .whyc{font-size:11px;font-weight:700;color:#5B6472;background:#F0EDE3;border-radius:999px;padding:3px 9px}
+  .whyc{font-size:12px;font-weight:700;color:#5B6472;background:#F0EDE3;border-radius:999px;padding:3px 9px}
   .mtabs .t{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;padding:0 7px;
       min-height:40px;border-radius:9px;font-size:12px;font-weight:700;color:#5B6472;cursor:pointer}
-  .mtabs .t b{font-size:11px;font-weight:800}
+  .mtabs .t b{font-size:12px;font-weight:800}
   .mtabs .t.on{background:#2E6BD6;color:#fff;box-shadow:0 2px 8px rgba(46,107,214,.3)}
   .prop{background:#fff;border-radius:18px;box-shadow:0 4px 14px rgba(30,58,95,.05);padding:13px 15px;
       display:flex;flex-direction:column;gap:8px;flex-shrink:0}
   .prop.shtaf{background:#F7F5EE;border:1.5px dashed #DCD6C8;box-shadow:none}
   .prop .r1{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .prop .ad{font-size:14.5px;font-weight:800}
-  .prop .dt{font-size:11.5px;color:#6B7280;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .prop .dt{font-size:12px;color:#6B7280;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .prop .pr{font-size:15px;font-weight:800;white-space:nowrap}
   .prop .dxBtn{width:30px;height:30px;border-radius:9px;background:#F5F3EC;border:none;padding:0;
       display:flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center;cursor:pointer}
@@ -4425,7 +4426,7 @@ V2_BUYERS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charse
   .prop .dx{font-size:12.5px;color:#5B6472;line-height:1.55;background:#FAF8F2;border-radius:12px;
       padding:10px 12px;white-space:pre-wrap}
   .prop.shtaf .dx{background:#F1EDE0}
-  .score{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .score{font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
   .score.hi{color:#157A43;background:#E7F7EE}
   .score.md{color:#7A5E1C;background:#F6EEDB}
   .prop .acts2{display:flex;gap:8px}
@@ -4771,7 +4772,7 @@ function pickStatus(i){
   var opts = ['active','hot','frozen','closed'].map(function(st){
     return '<div class="stChoice" onclick="setStatusIdx(' + i + ',\'' + st + '\')">' +
       '<div class="d" style="background:' + ST_COLOR[st] + '"></div>' + ST_LABEL[st] +
-      (st === cur ? ' <span style="color:#6B7280;font-size:11px">· נוכחי</span>' : '') + '</div>';
+      (st === cur ? ' <span style="color:#6B7280;font-size:12px">· נוכחי</span>' : '') + '</div>';
   }).join('<div style="height:1px;background:#F0EDE3"></div>');
   openSheet('<h3>' + esc(b.name || 'קונה') + ' — סטטוס</h3>' + opts +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
@@ -4814,7 +4815,7 @@ function openEdit(i){
       'border-radius:999px;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F;font-weight:700;font-size:13px;font-family:inherit">נקה חיפוש</button></div>' +
       '<textarea id="edSearch" rows="3" placeholder="לדוגמה: 4 חדרים בקריות עד 1.5M, קומה נמוכה, מעלית">' + esc(b.search || '') + '</textarea></div>' +
     '<div id="edAgentBox"></div>' +
-    '<div style="font-size:11px;color:#6B7280;line-height:1.5">שם הקונה נערך בינתיים בגיליון.</div>' +
+    '<div style="font-size:12px;color:#6B7280;line-height:1.5">שם הקונה נערך בינתיים בגיליון.</div>' +
     '<button class="btn btn-blue" onclick="saveEdit(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>', true);
   el('sheet')._st = cur;
@@ -4969,7 +4970,7 @@ function _matchShell(){
     '<div style="display:flex;align-items:flex-start;gap:10px">' +
     '<div style="flex:1;min-width:0"><h3 style="margin:0">התאמת נכסים · ' + esc(b.name || '') + '</h3>' +
     '<div style="font-size:12px;color:#6B7280;margin-top:3px">מחפש: ' + esc(mq || '—') + '</div>' +
-    (MQ_NEEDS ? '' : '<div style="font-size:11.5px;color:#7A5E1C;font-weight:700;margin-top:2px">אין דרישות לקונה — ההתאמה לפי תקציב בלבד. הוסף "מה מחפש" בעריכת הקונה לדיוק</div>') +
+    (MQ_NEEDS ? '' : '<div style="font-size:12px;color:#7A5E1C;font-weight:700;margin-top:2px">אין דרישות לקונה — ההתאמה לפי תקציב בלבד. הוסף "מה מחפש" בעריכת הקונה לדיוק</div>') +
     '</div>' +
     '<button onclick="closeSheet()" aria-label="סגירה" style="width:36px;height:36px;border-radius:50%;background:#F5F3EC;' +
     'border:none;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer">' +
@@ -5033,9 +5034,9 @@ function bpChip(k){
   if (!k) return '';
   if (Object.prototype.hasOwnProperty.call(BP_STATE.keys, k)){
     var m = BP_STATE.keys[k], t = (m === 'like' || m === 'visit') ? 'בדף · מתאים' : m === 'dislike' ? 'בדף · לא מתאים' : m === 'seen' ? 'בדף · ראיתי' : 'בדף הקונה';
-    return '<span class="bpc" style="display:inline-block;background:#EAF0FA;color:#2E6BD6;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' + t + '</span>';
+    return '<span class="bpc" style="display:inline-block;background:#EAF0FA;color:#2E6BD6;font-size:12px;font-weight:800;border-radius:999px;padding:2px 9px">' + t + '</span>';
   }
-  if (BP_STATE.newK[k]) return '<span class="bpc" style="display:inline-block;background:#2E6BD6;color:#fff;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">התאמה חדשה</span>';
+  if (BP_STATE.newK[k]) return '<span class="bpc" style="display:inline-block;background:#2E6BD6;color:#fff;font-size:12px;font-weight:800;border-radius:999px;padding:2px 9px">התאמה חדשה</span>';
   return '';
 }
 function bpCopy(text){   // 07/10: העתקת קישור דף הקונה — clipboard, נפילה ל-execCommand, ולבסוף prompt
@@ -5142,7 +5143,7 @@ function bpGone(at){   // 07/10 (אייל): ממתי הנכס ירד מפרסו�
 function bpCatChip(x){   // [BPAGE 07/10] קטגוריה: נכס נולד (זהב) / שת"פ · משרד / המשרד · סוכן
   if (!x.cat) return '';
   var st = x.source === 'newborn' ? 'background:#F6EEDB;color:#7A5E1C' : x.source === 'shtaf' ? 'background:#F0EDE3;color:#5B6472' : 'background:#EAF0FA;color:#1E3A5F';
-  return '<span style="display:inline-block;' + st + ';font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px;margin-bottom:4px">' +
+  return '<span style="display:inline-block;' + st + ';font-size:12px;font-weight:800;border-radius:999px;padding:2px 9px;margin-bottom:4px">' +
     esc(x.cat + (x.who ? ' · ' + x.who : '')) + '</span>';
 }
 var BP_CUR = null;
@@ -5244,7 +5245,7 @@ function msgLine(p, shtaf){
 }
 /* [FEATS 21/10] מעלית / ממ"ד / מרפסת — תגיות קטנות, רק כשכתוב שיש (מהשרת: p.feats) */
 function featChips(p){var f=(p&&p.feats)||[];if(!f.length)return '';
-  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">'+f.map(function(x){return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px">'+esc(x)+'</span>';}).join('')+'</div>';}
+  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">'+f.map(function(x){return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px">'+esc(x)+'</span>';}).join('')+'</div>';}
 function propCard(p, b, shtaf){
   var mi = (p._mi != null) ? p._mi : (p._mi = MITEMS.push({p: p, shtaf: shtaf}) - 1);   // [MATCH-TABS] אותו נכס = אותו אינדקס בכל טאב
   // שת"פ באותו פורמט של המשרד: שורת פרטים קצרה; התיאור המלא נפתח באייקון "הרחב לתיאור"
@@ -5260,7 +5261,7 @@ function propCard(p, b, shtaf){
     '<div class="dt">' + esc(dt) + '</div>' + featChips(p) + '</div>' +
     '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px">' +
     '<div class="pr">' + esc(p.price ? '₪' + p.price : '') + '</div>' + scoreChip(p.score) + bpChip(p.pkey) +
-    (p.delisted ? '<span style="display:inline-block;background:#F0EDE3;color:#5B6472;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px">' +
+    (p.delisted ? '<span style="display:inline-block;background:#F0EDE3;color:#5B6472;font-size:12px;font-weight:800;border-radius:999px;padding:2px 9px">' +
       esc(bpGone(p.delisted)) + '</span>' : '') + '</div>' +
     (desc ? '<button class="dxBtn" onclick="toggleDx(\'' + did + '\', this)" aria-label="הרחב לתיאור">' +
       '<svg width="13" height="13" viewBox="0 0 16 16" style="transition:transform .18s"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' : '') +
@@ -5721,8 +5722,8 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .sig .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .sig .ad{font-size:15.5px;font-weight:700}
   .sig .sb{font-size:12px;color:#6B7280}
-  .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
-  .chip.owner{color:#C24040;background:#FBEDED}
+  .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .chip.owner{color:#7A5E1C;background:#F6EEDB}
   .chip.buyer{color:#2E6BD6;background:#EAF0FA}
   .chip.other{color:#5B6472;background:#F0EDE3}
   .st{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
@@ -5740,7 +5741,7 @@ V2_SIGS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
       font-weight:600;color:#6E7683;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
@@ -6023,7 +6024,7 @@ function render(){
       (signed ? ('נחתם' + ((g.signed_time || g.time) ? ' · ' + esc(g.signed_time || g.time) : ''))
               : ('נשלח' + (g.time ? ' · ' + esc(g.time) : '') + ' · ממתין לחתימה')) +
       (signed && g.pct ? ' · עמלה ' + esc(String(g.pct)) + '%' : '') + '</div>' +
-      (g.avg ? '<div style="font-size:11px;color:#6E7683;margin-top:3px">ממוצע הנכסים שנצפו: ' +
+      (g.avg ? '<div style="font-size:12px;color:#6E7683;margin-top:3px">ממוצע הנכסים שנצפו: ' +
         esc(g.avg) + ' ₪' + (g.avg_n > 1 ? ' · ' + g.avg_n + ' נכסים' : '') + '</div>' : '') +
       (g.notes ? '<div style="margin-top:8px;font-size:12.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:8px 11px;line-height:1.5">הערה: ' + esc(g.notes) + '</div>' : '') +
       acts + '</div>';
@@ -6123,14 +6124,14 @@ V2_NB_KIT = r"""<style>
   .nbk .nb .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .nbk .nb .ad{font-size:16px;font-weight:700;line-height:1.3}
   .nbk .nb .dt{font-size:12.5px;color:#6B7280}
-  .nbk .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .nbk .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
   .nbk .chip.new{color:#7A5E1C;background:#F6EEDB}
   .nbk .chip.age{color:#6B7280;background:#F0EDE3}
   .nbk .nb .pr{font-size:21px;font-weight:800}
   .nbk .owner{display:flex;align-items:center;gap:10px;background:#F7F5EE;border-radius:12px;padding:9px 12px}
   .nbk .owner .ic{width:30px;height:30px;border-radius:50%;background:#EAF0FA;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .nbk .owner .nm{font-size:13.5px;font-weight:800}
-  .nbk .owner .sb{font-size:10.5px;color:#6B7280}
+  .nbk .owner .sb{font-size:12px;color:#6B7280}
   .nbk .oActs{display:flex;gap:8px}
   .nbk .oActs .a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:11px;
       padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;text-decoration:none}
@@ -6138,19 +6139,19 @@ V2_NB_KIT = r"""<style>
   .nbk .oActs .wa{background:#E7F7EE;color:#1FAF5E}
   .nbk .oActs .view{flex:1.2;background:#1E3A5F;color:#fff}
   .nbk .contacted{display:flex;align-items:center;gap:6px;background:#E7F7EE;border-radius:999px;
-      padding:5px 12px;align-self:flex-start;font-size:11.5px;font-weight:700;color:#1FAF5E}
+      padding:5px 12px;align-self:flex-start;font-size:12px;font-weight:700;color:#1FAF5E}
   .nbk .stActs{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px}
   .nbk .stActs .s{display:flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #DCD6C8;
-      border-radius:11px;padding:9px 0;font-size:11px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit}
+      border-radius:11px;padding:9px 0;font-size:12px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit}
   .nbk .stActs .s.red{color:#C24040}
   .nbk .stActs .s.on{background:#C29435;border-color:#C29435;color:#231700;box-shadow:0 3px 10px rgba(194,148,53,.25)}
   .nbk .stActs .s.red.on{background:#C24040;border-color:#C24040;color:#fff;box-shadow:0 3px 10px rgba(194,64,64,.25)}
-  .nbk .stLine{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#6B7280}
+  .nbk .stLine{display:flex;align-items:center;gap:6px;font-size:12px;color:#6B7280}
   .nbk .stLine i{width:6px;height:6px;border-radius:50%;background:#C29435;display:block;flex-shrink:0}
-  .nbk .notes{font-size:11.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
-  #sheet .notes{font-size:11.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
+  .nbk .notes{font-size:12px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
+  #sheet .notes{font-size:12px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
   #sheet .fld{display:flex;flex-direction:column;gap:5px}
-  #sheet .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  #sheet .fld span{font-size:12px;font-weight:700;color:#5B6472}
   #sheet .fld input,#sheet .fld textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;
       font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;resize:vertical}
   #sheet .btn-gold{background:#C29435;color:#231700;box-shadow:0 4px 12px rgba(194,148,53,.25)}
@@ -6197,33 +6198,33 @@ function nbCard(r, i){
   // r.famexcl מהשרת; r.famexclAgent = שם הסוכן שבבלעדיות (אם ידוע).
   var fam = r.famexcl
     ? '<div style="display:inline-flex;align-items:center;gap:5px;background:#FBEDED;color:#C24040;' +
-      'border:1px solid #F0B8B8;font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px">' +
-      '🔴 כבר בבלעדיות RE/MAX Family' + (r.famexclAgent ? ' · ' + esc(r.famexclAgent) : '') + '</div>'
+      'border:1px solid #F0B8B8;font-weight:800;font-size:12px;padding:4px 10px;border-radius:999px;margin-top:6px">' +
+      '<span style="width:8px;height:8px;border-radius:50%;background:#C24040;flex-shrink:0" aria-hidden="true"></span>כבר בבלעדיות RE/MAX Family' + (r.famexclAgent ? ' · ' + esc(r.famexclAgent) : '') + '</div>'
     : '';
   // [NB-RENT 27/10] השכרה — תווית בראש הכרטיס
   if (r.rent) fam = '<div style="display:inline-flex;align-items:center;background:#EAF0FA;color:#1E3A5F;' +
-    'font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-end:6px">להשכרה</div>' + fam;
+    'font-weight:800;font-size:12px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-end:6px">להשכרה</div>' + fam;
   // ירד מפרסום ביד2 — תווית 3 ימים ואז נעלם מהמסך (החלטת אייל 09/09)
   if (r.delisted) fam += '<div style="display:inline-flex;align-items:center;background:#EBE8DD;color:#5B6472;' +
-    'font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-start:6px">' +
+    'font-weight:800;font-size:12px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-start:6px">' +
     'ירד מפרסום · ' + esc(r.delisted) + '</div>';
   return '<div class="nb">' +
     '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
     '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' +
     // 28/10: מעלית / ממ"ד / מרפסת (סורק v14.5) — אותו מראה כמו בכרטיסי המשרד
     ((r.feats && r.feats.length) ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">' + r.feats.map(function(x){
-      return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px">' + esc(x) + '</span>'; }).join('') + '</div>' : '') +
+      return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px">' + esc(x) + '</span>'; }).join('') + '</div>' : '') +
     fam + '</div>' + chip + '</div>' +
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
     // 24/09 (אייל): ירידת מחיר גם בנכס נולד — מחיר ישן מחוק + תג ירוק (אותו מראה כמו במשרד)
     '<div style="display:flex;align-items:center;gap:8px">' +
     ((r.priceDropped && r.priceOld)
-      ? '<span style="text-decoration:line-through;color:#8B8F99;font-size:14px;font-weight:600">' + esc(nbFmtPrice(r.priceOld)) + '</span>' +
+      ? '<span style="text-decoration:line-through;color:#6B7280;font-size:14px;font-weight:600">' + esc(nbFmtPrice(r.priceOld)) + '</span>' +
         '<div class="pr" style="font-size:1.18em">' + esc(nbFmtPrice(r.price)) + '</div>'
       : '<div class="pr">' + esc(nbFmtPrice(r.price)) + (r.rent && r.price ? ' <span style="font-size:.72em;font-weight:700">לחודש</span>' : '') + '</div>') +
-    (r.priceDropped ? '<span style="font-size:11px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>' : '') +
+    (r.priceDropped ? '<span style="font-size:12px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>' : '') +
     '</div>' +
-    '<div style="font-size:11.5px;color:#6B7280">' + esc(r.date || '') + '</div></div>' +
+    '<div style="font-size:12px;color:#6B7280">' + esc(r.date || '') + '</div></div>' +
     owner + contacted +
     '<div class="stActs">' +
     '<button class="s' + (st && st.status === 'meeting' ? ' on' : '') + '" onclick="stDate(' + i + ',\'meeting\')">פגישה</button>' +
@@ -6318,7 +6319,7 @@ function stDate(i, status){
     '<div class="fld"><span>הערה</span><textarea id="stNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)" ' +
     'style="background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;font-size:14px;' +
     'font-family:inherit;outline:none;color:#1E3A5F;width:100%;resize:vertical"></textarea></div>' +
-    '<div style="font-size:11.5px;color:#6B7280">נשמר גם ביומן Google שלך (אם מחובר)</div>' +
+    '<div style="font-size:12px;color:#6B7280">נשמר גם ביומן Google שלך (אם מחובר)</div>' +
     '<button class="btn btn-gold" onclick="stSave(' + i + ',\'' + status + '\')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
 }
@@ -6411,15 +6412,15 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       min-height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer}
   .dealSeg div.on{background:#1E3A5F;color:#fff;box-shadow:0 3px 10px rgba(30,58,95,.18)}
   .ageHead{display:flex;align-items:center;justify-content:space-between}
-  .ageHead .l{font-size:11.5px;font-weight:700;color:#6B7280}
-  .ageHead .r{font-size:11.5px;font-weight:700;color:#7A5E1C}
+  .ageHead .l{font-size:12px;font-weight:700;color:#6B7280}
+  .ageHead .r{font-size:12px;font-weight:700;color:#7A5E1C}
   .ages{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;
       mask-image:linear-gradient(to left, black 88%, transparent)}
   .ages::-webkit-scrollbar{display:none}
   .age{display:flex;flex-direction:column;align-items:center;background:#fff;border:1.5px solid #E9E4D8;
       border-radius:12px;padding:7px 14px;flex-shrink:0;cursor:pointer}
   .age .t{font-size:12.5px;font-weight:700;color:#1E3A5F}
-  .age .n{font-size:10.5px;font-weight:600;color:#6E7683}
+  .age .n{font-size:12px;font-weight:600;color:#6E7683}
   .age.on{background:#C29435;border-color:#C29435;box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .age.on .t,.age.on .n{color:#231700}
   .srch{display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;
@@ -6435,11 +6436,11 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
       font-weight:600;color:#6E7683;cursor:pointer;position:relative}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
-  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#231700;font-size:10px;font-weight:800;
+  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#231700;font-size:12px;font-weight:800;
       padding:1px 8px;border-radius:999px;display:none}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
   #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
@@ -6448,7 +6449,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
   #sheet h3{font-size:19px;font-weight:800}
   .fld{display:flex;flex-direction:column;gap:5px}
-  .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld span{font-size:12px;font-weight:700;color:#5B6472}
   .fld input,.fld textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:11px 13px;
       font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;resize:vertical}
   .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
@@ -6459,7 +6460,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .mRow{display:flex;align-items:center;gap:10px;background:#fff;border-radius:14px;padding:11px 13px}
   .mRow .mid{flex:1;min-width:0}
   .mRow .t{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mRow .s{font-size:11.5px;color:#6B7280}
+  .mRow .s{font-size:12px;color:#6B7280}
   .mRow .sq{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;
       flex-shrink:0;border:0;cursor:pointer;text-decoration:none}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
@@ -6828,7 +6829,7 @@ body{background:#F2EFE7;min-height:100dvh;display:flex;flex-direction:column}
 header{position:sticky;top:0;z-index:10;background:#F2EFE7;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;display:flex;align-items:center;gap:10px}
 header .bk{width:38px;height:38px;border-radius:12px;background:#fff;border:none;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(30,58,95,.06);cursor:pointer}
 header h1{font-size:18px;font-weight:800;color:#1E3A5F;flex:1}
-header .badge{font-size:10.5px;font-weight:700;color:#7A5E1C;background:#F6EEDB;border-radius:999px;padding:3px 10px}
+header .badge{font-size:12px;font-weight:700;color:#7A5E1C;background:#F6EEDB;border-radius:999px;padding:3px 10px}
 #chat{flex:1;overflow-y:auto;padding:6px 16px 12px;-webkit-overflow-scrolling:touch}
 .msg{max-width:88%;border-radius:18px;padding:11px 14px;margin:7px 0;font-size:14px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
 .me{background:#2E6BD6;color:#fff;margin-inline-start:auto;border-bottom-left-radius:6px}
@@ -6873,20 +6874,20 @@ function trendArrow(tr, k){
 function statusCard(j){
   var s = j.snap, L = [];
   L.push('<b>' + esc(j.who) + ' · ' + esc(s.period) + '</b>');
-  L.push('🏆 גיוסים (נחתמו): <b>' + fmtN(s.giusN) + '</b>' + trendArrow(s.trends4w, 'gius') +
+  L.push('גיוסים (נחתמו): <b>' + fmtN(s.giusN) + '</b>' + trendArrow(s.trends4w, 'gius') +
          (s.gius && s.gius.length ? ' — ' + s.gius.slice(0, 4).map(function(g){ return esc(g.address); }).join(' · ') : ''));
-  L.push('✍️ החתמות קונים (נחתמו): <b>' + fmtN(s.konimN) + '</b>' + trendArrow(s.trends4w, 'konim'));
+  L.push('החתמות קונים (נחתמו): <b>' + fmtN(s.konimN) + '</b>' + trendArrow(s.trends4w, 'konim'));
   if (s.pendingN) L.push('⏳ ממתינות לחתימה: <b>' + s.pendingN + '</b>' + (s.pending.length ? ' — ' + s.pending.slice(0, 3).map(function(p){ return esc(p.client || p.address); }).join(', ') : ''));
-  L.push('👥 קונים: <b>' + fmtN(s.buyersN) + '</b>' + (s.buyersRecent && s.buyersRecent[0] ? ' — האחרון: ' + esc(s.buyersRecent[0].name) : ''));
-  L.push('💼 תהליכים פתוחים: <b>' + fmtN(s.dealsOpen) + '</b> · עסקאות סגורות: <b>' + fmtN(s.dealsClosed) + '</b>');
-  L.push(s.meetsOpen && s.meetsOpen.length ? '📅 פגישות/פולו-אפ פתוחים: <b>' + s.meetsOpen.length + '</b>'
-       : '📅 אין פגישות מתוכננות — אולי הזמן לקבוע 🙂');
+  L.push('קונים: <b>' + fmtN(s.buyersN) + '</b>' + (s.buyersRecent && s.buyersRecent[0] ? ' — האחרון: ' + esc(s.buyersRecent[0].name) : ''));
+  L.push('תהליכים פתוחים: <b>' + fmtN(s.dealsOpen) + '</b> · עסקאות סגורות: <b>' + fmtN(s.dealsClosed) + '</b>');
+  L.push(s.meetsOpen && s.meetsOpen.length ? 'פגישות/פולו-אפ פתוחים: <b>' + s.meetsOpen.length + '</b>'
+       : 'אין פגישות מתוכננות — אולי הזמן לקבוע');
   if (s.topAgents && s.topAgents.length){
-    L.push('🥇 מובילים: ' + s.topAgents.slice(0, 3).map(function(a, i){ return (i + 1) + '. ' + esc(a.name) + ' (' + a.gius + ' גיוסים, ' + a.konim + ' קונים)'; }).join(' · '));
+    L.push('מובילים: ' + s.topAgents.slice(0, 3).map(function(a, i){ return (i + 1) + '. ' + esc(a.name) + ' (' + a.gius + ' גיוסים, ' + a.konim + ' קונים)'; }).join(' · '));
   }
   var w = s.trends4w;
   if (w && w.length === 4){
-    L.push('📈 4 שבועות (ישן→חדש): גיוסים ' + [w[3].gius, w[2].gius, w[1].gius, w[0].gius].join('→') +
+    L.push('4 שבועות (ישן→חדש): גיוסים ' + [w[3].gius, w[2].gius, w[1].gius, w[0].gius].join('→') +
            ' · קונים ' + [w[3].konim, w[2].konim, w[1].konim, w[0].konim].join('→'));
   }
   return L.join('<br>');
@@ -6914,12 +6915,12 @@ function ask(free){
 function chip(tx, fn){ var c = document.createElement('div'); c.className = 'chip'; c.textContent = tx; c.onclick = fn; el('chips').appendChild(c); }
 GET('/api/auth/whoami').then(function(w){
   ROLE = (w && w.role) || '';
-  chip(ROLE === 'admin' ? 'מצב המשרד 📊' : 'המצב שלי 📊', function(){ card(''); });
+  chip(ROLE === 'admin' ? 'מצב המשרד' : 'המצב שלי', function(){ card(''); });
   if (ROLE === 'admin') chip('מה המצב של סוכן…', function(){ var n = prompt('שם הסוכן (כמו במערכת):'); if (n) card(n); });
   chip('מה תקוע בחתימות?', function(){ ask('מה ממתין אצלי לחתימה וכמה זמן?'); });
   chip('הקונים הטריים', function(){ ask('מי הקונים החדשים מהשבוע האחרון ומה הם מחפשים?'); });
-  chip('תן לי תובנה 💡', function(){ ask('תסתכל על הנתונים ותן לי תובנה אחת שכדאי לי לפעול עליה היום'); });
-  add('ef', 'היי! אני אפי 🐥 שאל אותי על הנתונים שלך — או גע באחד הכפתורים למעלה.' +
+  chip('תן לי תובנה', function(){ ask('תסתכל על הנתונים ותן לי תובנה אחת שכדאי לי לפעול עליה היום'); });
+  add('ef', 'היי! אני אפי שאל אותי על הנתונים שלך — או גע באחד הכפתורים למעלה.' +
     (ROLE === 'admin' ? '<br>כמנהל אתה רואה את כל המשרד, ואפשר גם לשאול על סוכן ספציפי.' : ''));
 });
 </script></body></html>'''
@@ -6954,7 +6955,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .segs::-webkit-scrollbar{display:none}
   .segs .sg{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 0;
       font-size:13px;font-weight:600;color:#6B7280;border-radius:10px;cursor:pointer;white-space:nowrap}
-  .segs .sg b{font-size:11px;font-weight:700}
+  .segs .sg b{font-size:12px;font-weight:700}
   .segs .sg.on{color:#fff;font-weight:700;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
   .segs .sg.on b{background:rgba(255,255,255,.22);padding:1px 8px;border-radius:999px;font-weight:800}
   /* [DEALS 13/10] מכירה / השכרה / מסחרי — "המשרד שלנו" ו"שלי" (סניפי Family, מהסורק v13.45) */
@@ -6983,7 +6984,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .prop.shtaf .ad{color:#3D5273}
   .prop .dt{font-size:12.5px;color:#6B7280}
   .prop .dt b{color:#1E3A5F}
-  .chip{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
   .chip.office{color:#2E6BD6;background:#EAF0FA}
   .chip.shtaf{color:#6B7280;background:#EBE8DD}
   .chip.mine{color:#7A5E1C;background:#F6EEDB}
@@ -7010,7 +7011,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
       font-weight:600;color:#6E7683;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
@@ -7090,7 +7091,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         חפש
       </button>
       </div>
-      <div style="font-size:11.5px;color:#6B7280" id="sumLine"></div>
+      <div style="font-size:12px;color:#6B7280" id="sumLine"></div>
     </div>
     <div id="list"></div>
   </main>
@@ -7533,7 +7534,7 @@ function propDate(p){
 }
 /* [FEATS 21/10] מעלית / ממ"ד / מרפסת — תגיות קטנות, רק כשכתוב שיש (מהשרת: p.feats) */
 function featChips(p){var f=(p&&p.feats)||[];if(!f.length)return '';
-  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">'+f.map(function(x){return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px">'+esc(x)+'</span>';}).join('')+'</div>';}
+  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">'+f.map(function(x){return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px">'+esc(x)+'</span>';}).join('')+'</div>';}
 function propCard(p, i){
   var isShtaf = MODE === 'shtaf';
   var isMine = MODE === 'mine';
@@ -7601,15 +7602,15 @@ function propCard(p, i){
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
     '<div style="display:flex;align-items:center;gap:8px">' +
     ((p.priceDropped && p.priceOld)
-      ? '<span style="text-decoration:line-through;color:#8B8F99;font-size:14px;font-weight:600">' + esc(fmtPrice(p.priceOld)) + '</span>' +
+      ? '<span style="text-decoration:line-through;color:#6B7280;font-size:14px;font-weight:600">' + esc(fmtPrice(p.priceOld)) + '</span>' +
         '<div class="pr" style="font-size:1.18em">' + esc(fmtPrice(p.price)) + '</div>'
       : '<div class="pr">' + esc(fmtPrice(p.price)) + '</div>') +
-    (p.priceDropped ? '<span style="font-size:11px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>'
-      : p.priceChanged ? '<span style="font-size:11px;font-weight:800;color:#231700;background:#E4C56B;border-radius:999px;padding:3px 10px;white-space:nowrap">עדכון מחיר</span>' : '') +
+    (p.priceDropped ? '<span style="font-size:12px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>'
+      : p.priceChanged ? '<span style="font-size:12px;font-weight:800;color:#231700;background:#E4C56B;border-radius:999px;padding:3px 10px;white-space:nowrap">עדכון מחיר</span>' : '') +
     '</div>' +
-    (p.score != null ? '<div style="font-size:11.5px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
+    (p.score != null ? '<div style="font-size:12px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' +
-    (propDate(p) ? '<div style="font-size:11.5px;color:#8B8F99;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
+    (propDate(p) ? '<div style="font-size:12px;color:#6B7280;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
     acts + shareRow(p, i) + hotRow + fhRow + siteRow + socRow(p) + vidRow(p) + '</div>';
 }
 /* [SHARE 01/11] שליחת נכס ללקוח עם תמונות (אייל): לחיצה ראשונה מכינה את התמונות, השנייה פותחת את חלון השיתוף
@@ -7943,7 +7944,7 @@ V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
       width:48px;height:48px;border-radius:50%;background:#fff;box-shadow:0 6px 18px rgba(30,58,95,.22);
       display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
   /* פיני מחיר */
-  .pin{background:#1E3A5F;color:#fff;border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:800;
+  .pin{background:#1E3A5F;color:#fff;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800;
       font-family:'Heebo',sans-serif;box-shadow:0 3px 10px rgba(30,58,95,.35);white-space:nowrap;
       border:2px solid #fff;direction:ltr}
   .pin.coop{background:#2E6BD6}
@@ -7958,13 +7959,14 @@ V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
   #propCard .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   #propCard .ad{font-size:15.5px;font-weight:800}
   #propCard .dt{font-size:12.5px;color:#6B7280}
-  #propCard .x{width:30px;height:30px;border-radius:50%;background:#F5F3EC;display:flex;align-items:center;
+  #propCard .x{position:relative;width:30px;height:30px;border-radius:50%;background:#F5F3EC;display:flex;align-items:center;
       justify-content:center;border:0;cursor:pointer;flex-shrink:0}
+  #propCard .x::after{content:"";position:absolute;inset:-7px}  /* [UX-11/04] שטח לחיצה 44px בלי לשנות את המראה */
   .feats{display:flex;gap:6px;flex-wrap:wrap}
-  .feat{font-size:11px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:3px 9px;border-radius:999px}
+  .feat{font-size:12px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:3px 9px;border-radius:999px}
   #propCard .pr{display:flex;align-items:baseline;gap:8px}
   #propCard .pr b{font-size:20px;font-weight:800}
-  #propCard .pr span{font-size:11.5px;color:#6B7280}
+  #propCard .pr span{font-size:12px;color:#6B7280}
   #propCard .cta{display:flex;align-items:center;justify-content:center;background:#2E6BD6;color:#fff;
       border-radius:12px;padding:11px 0;font-size:13.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;
       box-shadow:0 4px 12px rgba(46,107,214,.25)}
@@ -7979,7 +7981,7 @@ V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
   <div id="map"></div>
   <div class="topBar">
     <div class="row1">
-      <button class="backBtn" onclick="location.href='/v2/props'" aria-label="חזרה">
+      <button class="backBtn" aria-label="חזרה" onclick="location.href='/v2/props'" aria-label="חזרה">
         <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div class="srch">
@@ -7998,7 +8000,7 @@ V2_MAP_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
 
   <div id="propCard">
     <div class="top"><div><div class="ad" id="pcAd"></div><div class="dt" id="pcDt"></div></div>
-      <button class="x" onclick="hideCard()"><svg width="11" height="11" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+      <button class="x" onclick="hideCard()" aria-label="סגירה"><svg width="11" height="11" viewBox="0 0 14 14"><path d="M2.5 2.5l9 9M11.5 2.5l-9 9" stroke="#5B6472" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
     <div class="feats" id="pcFeats"></div>
     <div class="pr"><b id="pcPr"></b><span id="pcSqm"></span></div>
     <button class="cta" id="pcCta">לכרטיס הנכס</button>
@@ -8207,7 +8209,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .deal .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .deal .ad{font-size:15.5px;font-weight:700}
   .deal .sb{font-size:12.5px;color:#6B7280}
-  .chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
   .chip.stage{color:#7A5E1C;background:#F6EEDB}
   .chip.open{color:#2E6BD6;background:#EAF0FA}
   .chip.closed{color:#1FAF5E;background:#E7F7EE}
@@ -8227,7 +8229,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;
       padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
       font-weight:600;color:#6E7683;cursor:pointer}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
@@ -8243,7 +8245,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       display:flex;flex-direction:column;gap:11px}
   .sec2 .st{font-size:12px;font-weight:800;color:#7A5E1C;letter-spacing:.06em}
   .fld{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}
-  .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld span{font-size:12px;font-weight:700;color:#5B6472}
   .fld input,.fld select{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:10px 13px;
       font-size:13.5px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%;
       appearance:none;-webkit-appearance:none}
@@ -8282,7 +8284,7 @@ V2_DEALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
         <div class="tt">
           <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="1.5" width="12" height="13" rx="2.5" fill="none" stroke="#7A5E1C" stroke-width="1.6"/><path d="M5.5 5.5h5M5.5 8.5h5M5.5 11.5h3" stroke="#7A5E1C" stroke-width="1.6" stroke-linecap="round"/></svg></div>
           <h1>תהליכים ועסקאות</h1>
-          <span style="font-size:11px;font-weight:700;color:#6B7280;align-self:flex-start;margin-top:2px">בס"ד</span>
+          <span style="font-size:12px;font-weight:700;color:#6B7280;align-self:flex-start;margin-top:2px">בס"ד</span>
         </div>
         <div class="cnt" id="cnt">—</div>
       </div>
@@ -8631,7 +8633,7 @@ function saveForm(i, isDeal){
   POST('/api/deals/save', body).then(function(j){
     if (!j.ok){ toast(j.reason || 'שגיאה בשמירה'); return; }
     closeSheet();
-    toast(isDeal ? 'העסקה נסגרה 🎉'.replace(' 🎉','') : 'נשמר');
+    toast(isDeal ? 'העסקה נסגרה' : 'נשמר');
     load();
   });
 }
@@ -8719,8 +8721,8 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
   .kpi{background:#F7F5EE;border-radius:14px;padding:11px 6px;display:flex;flex-direction:column;align-items:center;gap:1px}
   .kpi .n{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
-  .kpi .l{font-size:10px;font-weight:600;color:#6B7280;text-align:center}
-  .kpi .s{font-size:9.5px;color:#7A5E1C;font-weight:700}
+  .kpi .l{font-size:12px;font-weight:600;color:#6B7280;text-align:center}
+  .kpi .s{font-size:12px;color:#7A5E1C;font-weight:700}
   .secT{font-size:15.5px;font-weight:800}
   .chips{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
   .chips::-webkit-scrollbar{display:none}
@@ -8736,7 +8738,7 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .bar{height:6px;border-radius:999px;background:#F0EDE3;overflow:hidden;margin:2px 37px 6px 0}
   .bar i{display:block;height:100%;background:linear-gradient(90deg,#E4C56B,#C29435);border-radius:999px}
   .sideSplit{display:flex;gap:7px;flex-wrap:wrap}
-  .sideSplit .sp{font-size:11.5px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:4px 11px;border-radius:999px}
+  .sideSplit .sp{font-size:12px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:4px 11px;border-radius:999px}
   .expand{font-size:12.5px;font-weight:700;color:#2E6BD6;cursor:pointer;text-align:center;padding:4px 0}
   .tRow{display:flex;align-items:center;justify-content:space-between;padding:7px 2px;font-size:13px}
   .tRow .n{font-weight:700}
@@ -8751,7 +8753,7 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .exports .cp{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;
       padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
       font-weight:600;color:#6E7683;cursor:pointer}
   #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
       font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
@@ -8822,7 +8824,7 @@ V2_REPORTS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
     </div>
     <div class="card" id="meetMgrCard" style="display:none">
       <div class="secT" id="meetMgrT">פגישות שתואמו · לפי מתאם</div>
-      <div style="font-size:11.5px;color:#6B7280;line-height:1.5;margin:-4px 0 4px">פגישות בלבד (בלי פולו-אפ) — לפי מי שתיאם במערכת. הקש שם לראות את הנכסים.</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5;margin:-4px 0 4px">פגישות בלבד (בלי פולו-אפ) — לפי מי שתיאם במערכת. הקש שם לראות את הנכסים.</div>
       <div id="meetMgrList"></div>
     </div>
     <div class="card" id="meetsCard" style="display:none">
@@ -9168,12 +9170,12 @@ V2_TUTORIALS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta cha
   .th img{width:100%;height:100%;object-fit:cover;display:block}
   .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
   .play span{width:52px;height:52px;border-radius:50%;background:rgba(14,29,51,.72);display:flex;align-items:center;justify-content:center}
-  .dur{position:absolute;bottom:7px;left:7px;background:rgba(14,29,51,.78);color:#fff;font-size:11px;font-weight:700;
+  .dur{position:absolute;bottom:7px;left:7px;background:rgba(14,29,51,.78);color:#fff;font-size:12px;font-weight:700;
       padding:2px 8px;border-radius:999px;font-variant-numeric:tabular-nums}
   .nm{font-size:13.5px;font-weight:800;line-height:1.35;padding:0 4px;display:flex;gap:5px}
   .nm .n{color:#7A5E1C}
   .ds{font-size:12px;color:#5B6472;line-height:1.45;padding:0 4px 4px}
-  .foot{font-size:11.5px;color:#6B7280;line-height:1.6;text-align:center;padding:6px 10px 0}
+  .foot{font-size:12px;color:#6B7280;line-height:1.6;text-align:center;padding:6px 10px 0}
   /* נגן מלא */
   #pl{position:fixed;inset:0;background:#0E1D33;z-index:90;display:none;flex-direction:column}
   #pl.on{display:flex}
@@ -9310,14 +9312,14 @@ V2_UPDATES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .hd .av{width:34px;height:34px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
       align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
   .hd .nm{font-size:13px;font-weight:800}
-  .hd .sb{font-size:11px;color:#6B7280}
-  .pin{margin-right:auto;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#7A5E1C}
+  .hd .sb{font-size:12px;color:#6B7280}
+  .pin{margin-right:auto;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#7A5E1C}
   .body{font-size:13.5px;line-height:1.7;color:#1E3A5F;white-space:pre-wrap}
   .foot{display:flex;align-items:center;gap:8px}
   .ok{display:flex;align-items:center;justify-content:center;gap:6px;background:#2E6BD6;color:#fff;
       border-radius:11px;padding:9px 16px;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
   .okd{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#1FAF5E}
-  .cnt{font-size:11.5px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:4px 11px;border-radius:999px}
+  .cnt{font-size:12px;font-weight:700;color:#5B6472;background:#F0EDE3;padding:4px 11px;border-radius:999px}
   .trash{width:36px;height:36px;border-radius:10px;background:#FBEDED;border:0;cursor:pointer;
       display:flex;align-items:center;justify-content:center;margin-right:auto}
   .waSh{width:36px;height:36px;border-radius:11px;background:#E7F7EE;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer}
@@ -9343,7 +9345,7 @@ V2_UPDATES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   @media (min-width:700px){ header,main{width:100%;max-width:600px;margin-left:auto;margin-right:auto} }
 </style></head><body>
   <header>
-    <button class="backBtn" onclick="location.href='/v2/home'">
+    <button class="backBtn" aria-label="חזרה" onclick="location.href='/v2/home'">
       <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="t">עדכונים למשרד</div>
@@ -9494,9 +9496,9 @@ V2_INVOICES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta char
   .cc .nm{font-size:15px;font-weight:800}
   .ags{font-size:12.5px;font-weight:700;color:#1E3A5F;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
   .ags.none{color:#6B7280;font-weight:600}
-  .agc{background:#EAF0FA;border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:800;white-space:nowrap}
+  .agc{background:#EAF0FA;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:800;white-space:nowrap}
   .agc i{font-style:normal;font-weight:600;color:#6B7280}
-  .sec{font-size:11.5px;font-weight:800;color:#6B7280;border-top:1px solid #F0EDE3;padding-top:9px;margin-top:2px}
+  .sec{font-size:12px;font-weight:800;color:#6B7280;border-top:1px solid #F0EDE3;padding-top:9px;margin-top:2px}
   .ivr{display:flex;flex-direction:column;gap:3px;padding:7px 0;border-bottom:1px dashed #F0EDE3}
   .ivr:last-child{border-bottom:0}
   .ivr .l1{font-size:13px;font-weight:700}
@@ -9522,7 +9524,7 @@ V2_INVOICES_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta char
   @media (min-width:700px){ header,.sub,.srch,main{width:100%;max-width:640px;margin-left:auto;margin-right:auto} }
 </style></head><body>
   <header>
-    <button class="backBtn" onclick="location.href='/v2/home'" aria-label="חזרה">
+    <button class="backBtn" aria-label="חזרה" onclick="location.href='/v2/home'" aria-label="חזרה">
       <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="t">הנהלת חשבונות</div>
@@ -9677,7 +9679,7 @@ V2_ACTIVITY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta char
   .backBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
       display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
   .t{font-size:17px;font-weight:800}
-  .live{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:#1FAF5E}
+  .live{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#1FAF5E}
   .live i{width:8px;height:8px;border-radius:50%;background:#1FAF5E;display:block}
   @media (prefers-reduced-motion:no-preference){
     @keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
@@ -9692,13 +9694,13 @@ V2_ACTIVITY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta char
   .row .av.login{background:#E7F7EE;color:#1FAF5E}
   .row .mid{flex:1;min-width:0}
   .row .a{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .row .d{font-size:11.5px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .row .tm{font-size:11.5px;font-weight:700;color:#6B7280;flex-shrink:0;font-variant-numeric:tabular-nums}
+  .row .d{font-size:12px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .tm{font-size:12px;font-weight:700;color:#6B7280;flex-shrink:0;font-variant-numeric:tabular-nums}
   .empty{text-align:center;color:#6B7280;font-size:13px;padding:24px 0}
   @media (min-width:700px){ header,main{width:100%;max-width:600px;margin-left:auto;margin-right:auto} }
 </style></head><body>
   <header>
-    <button class="backBtn" onclick="location.href='/v2/home'">
+    <button class="backBtn" aria-label="חזרה" onclick="location.href='/v2/home'">
       <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="t">יומן שימוש</div>
@@ -9788,7 +9790,7 @@ function setUsageMode(m){
 }
 function usageChips(){
   function c(m, lb){
-    return '<button onclick="setUsageMode(\'' + m + '\')" style="border-radius:999px;padding:5px 12px;font-size:11.5px;' +
+    return '<button onclick="setUsageMode(\'' + m + '\')" style="border-radius:999px;padding:5px 12px;font-size:12px;' +
       'font-weight:700;font-family:inherit;cursor:pointer;border:1.5px solid ' +
       (USAGE_MODE === m ? '#2E6BD6;background:#EAF0FA;color:#2E6BD6' : '#DCD6C8;background:#fff;color:#5B6472') + '">' + lb + '</button>';
   }
@@ -9809,11 +9811,11 @@ function renderUsagePings(rows){
         '<div style="width:92px;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.name) + '</div>' +
         '<div style="flex:1;height:9px;border-radius:999px;background:#F0EDE3;overflow:hidden">' +
         '<div style="height:100%;width:' + Math.max(4, Math.round(r.min / mx * 100)) + '%;border-radius:999px;background:#2E6BD6"></div></div>' +
-        '<div style="font-size:11.5px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.min) +
+        '<div style="font-size:12px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.min) +
         (week && r.days ? ' · ' + r.days + ' ימים' : '') +
         (r.office != null && r.min ? ' · במשרד ' + fmtMin(r.office) : '') + '</div></div>';
     }).join('') +
-    '<div style="font-size:10.5px;color:#6B7280;padding:8px 2px 2px">זמן פעיל אמיתי — נמדד לפי נוכחות באפליקציה (פעימה כל 45 שנ\')' +
+    '<div style="font-size:12px;color:#6B7280;padding:8px 2px 2px">זמן פעיל אמיתי — נמדד לפי נוכחות באפליקציה (פעימה כל 45 שנ\')' +
     (week ? ' · ממוצע יומי = הזמן חלקי מספר הימים' : '') + '</div>';
   return true;
 }
@@ -9850,9 +9852,9 @@ function renderUsage(items){
         '<div style="width:92px;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.n) + '</div>' +
         '<div style="flex:1;height:9px;border-radius:999px;background:#F0EDE3;overflow:hidden">' +
         '<div style="height:100%;width:' + Math.max(4, Math.round(r.m / mx * 100)) + '%;border-radius:999px;background:#2E6BD6"></div></div>' +
-        '<div style="font-size:11.5px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.m) + ' · ' + r.c + ' פעולות</div></div>';
+        '<div style="font-size:12px;color:#5B6472;font-weight:700;white-space:nowrap">' + fmtMin(r.m) + ' · ' + r.c + ' פעולות</div></div>';
     }).join('') +
-    '<div style="font-size:10.5px;color:#6B7280;padding:8px 2px 2px">הערכה לפי יומן הפעילות — פעולות ברצף נספרות כסשן אחד</div>';
+    '<div style="font-size:12px;color:#6B7280;padding:8px 2px 2px">הערכה לפי יומן הפעילות — פעולות ברצף נספרות כסשן אחד</div>';
 }
 (function(){
   GET('/api/auth/whoami').then(function(j){
@@ -9874,18 +9876,18 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
        display:flex;flex-direction:column;color:#1E3A5F}
   header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 10px;display:flex;align-items:center;justify-content:space-between}
-  .backBtn{width:40px;height:40px;border-radius:13px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+  .backBtn{width:44px;height:44px;border-radius:13px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
       display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
   header .mid{display:flex;flex-direction:column;align-items:center}
   header .t{font-size:17px;font-weight:800}
-  header .s{font-size:11px;color:#6B7280}
+  header .s{font-size:12px;color:#6B7280}
   main{flex:1;padding:0 16px 130px;display:flex;flex-direction:column;gap:11px;overflow:auto}
   .sec{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 16px;
       display:flex;flex-direction:column;gap:11px}
   .sec .hd{display:flex;align-items:center;gap:8px}
   .sec .ic{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   .sec .tt{font-size:14px;font-weight:800}
-  .sec .note{font-size:11px;color:#6B7280;margin-right:auto}
+  .sec .note{font-size:12px;color:#6B7280;margin-right:auto}
   .dRow{display:flex;align-items:center;justify-content:space-between;gap:8px}
   .dRow.off{opacity:.55}
   .dRow .r{display:flex;align-items:center;gap:9px;cursor:pointer}
@@ -9903,20 +9905,21 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       font-size:12px;font-weight:700;font-family:inherit;cursor:pointer}
   .moChip.on{background:#C29435;border-color:#C29435;color:#231700}
   .fld{display:flex;flex-direction:column;gap:5px}
-  .fld span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld span{font-size:12px;font-weight:700;color:#5B6472}
   .fld input{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:12px;padding:11px 13px;
       font-size:14px;font-weight:700;color:#1E3A5F;font-family:inherit;outline:none;width:100%}
   .preChip{background:#EAF0FA;border:1.5px solid #2E6BD6;border-radius:12px;padding:10px 13px;
       display:flex;align-items:center;justify-content:space-between}
   .preChip b{font-size:13.5px;font-weight:700}
-  .preChip i{font-size:10.5px;font-weight:800;color:#2E6BD6;font-style:normal}
-  #idMsg{font-size:11.5px;font-weight:700;min-height:15px}
+  .preChip i{font-size:12px;font-weight:800;color:#2E6BD6;font-style:normal}
+  #idMsg{font-size:12px;font-weight:700;min-height:15px}
   .propRow{background:#F7F5EE;border-radius:12px;padding:10px 13px;display:flex;align-items:center;gap:8px}
   .propRow .mid2{flex:1;min-width:0}
   .propRow .a{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .propRow .p{font-size:11.5px;color:#6B7280}
-  .propRow .x{width:28px;height:28px;border-radius:50%;background:#FBEDED;border:0;cursor:pointer;
+  .propRow .p{font-size:12px;color:#6B7280}
+  .propRow .x{position:relative;width:28px;height:28px;border-radius:50%;background:#FBEDED;border:0;cursor:pointer;
       display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .propRow .x::after{content:"";position:absolute;inset:-8px}  /* [UX-11/04] שטח לחיצה 44px בלי לשנות את המראה */
   .pBtns{display:flex;gap:8px}
   .pBtns .b{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#fff;
       border-radius:12px;padding:10px 0;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
@@ -9927,7 +9930,7 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .radio.on .dot{border:6px solid #C29435}
   .radio .lb{font-size:13.5px;font-weight:700}
   .radio:not(.on){opacity:.6}
-  .hint{background:#EAF0FA;border-radius:11px;padding:9px 12px;font-size:11.5px;color:#3D5273;line-height:1.55}
+  .hint{background:#EAF0FA;border-radius:11px;padding:9px 12px;font-size:12px;color:#3D5273;line-height:1.55}
   #padWrap{display:none;flex-direction:column;gap:8px}
   #pad{width:100%;height:160px;background:#fff;border:1.5px dashed #C9CDD4;border-radius:14px;touch-action:none}
   .padClear{align-self:flex-start;font-size:12px;font-weight:700;color:#2E6BD6;background:none;border:0;
@@ -9948,7 +9951,7 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .pick{background:#fff;border-radius:13px;padding:11px 13px;display:flex;align-items:center;
       justify-content:space-between;gap:8px;cursor:pointer}
   .pick .a{font-size:13px;font-weight:700}
-  .pick .p{font-size:11.5px;color:#6B7280}
+  .pick .p{font-size:12px;color:#6B7280}
   .btnSec{display:flex;align-items:center;justify-content:center;background:#fff;color:#5B6472;
       border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 0;font-size:14px;font-weight:700;
       cursor:pointer;font-family:inherit}
@@ -9962,7 +9965,7 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
 </style></head><body>
 
   <header>
-    <button class="backBtn" onclick="location.href='/v2/sigs'">
+    <button class="backBtn" aria-label="חזרה" onclick="location.href='/v2/sigs'">
       <svg width="15" height="15" viewBox="0 0 14 14"><path d="M5 2L10 7l-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="mid"><div class="t" id="pgT">החתמה</div><div class="s" id="pgS"></div></div>
@@ -10149,7 +10152,7 @@ function clSuggest(){
     return c.name.indexOf(q) >= 0 || (c.phone || '').indexOf(q) >= 0;
   }).slice(0, 6);
   box.innerHTML = CL_HITS.length
-    ? ('<div style="font-size:11px;font-weight:700;color:#6B7280">לקוחות שמורים</div>' +
+    ? ('<div style="font-size:12px;font-weight:700;color:#6B7280">לקוחות שמורים</div>' +
        CL_HITS.map(function(c, i){
          return '<div class="pick" onclick="clPick(' + i + ')"><span class="a">' + esc(c.name) + '</span>' +
            '<span class="p">' + esc(c.phone || '') + '</span></div>';
@@ -10186,7 +10189,7 @@ function npSuggest(){
     var hint = [p.type, p.rooms ? p.rooms + " חד'" : ''].filter(Boolean).join(' · ');
     return '<div class="pick" onclick="npPick(' + i + ')">' +
       '<span class="a">' + esc(p.address) +
-      (hint ? ' <span style="color:#6B7280;font-size:11px">' + esc(hint) + '</span>' : '') + '</span>' +
+      (hint ? ' <span style="color:#6B7280;font-size:12px">' + esc(hint) + '</span>' : '') + '</span>' +
       '<span class="p">' + esc(p.price ? '₪' + p.price : '') + '</span></div>';
   }).join('');
 }
@@ -10253,8 +10256,8 @@ function checkId(){
   var v = el('cId').value.trim(), m = el('idMsg');
   if (!v){ m.textContent = ''; return; }
   var ok = validILID(v);
-  m.textContent = ok ? '✓ תעודת זהות תקינה' : '✗ תעודת זהות לא תקינה';
-  m.style.color = ok ? '#1FAF5E' : '#C24040';
+  m.textContent = ok ? 'תעודת זהות תקינה' : 'תעודת זהות לא תקינה';
+  m.style.color = ok ? '#157A43' : '#C24040';
 }
 function setMode(m){
   MODE = m;
@@ -10438,7 +10441,7 @@ function submitSign(){
           if (el('go').parentNode) el('go').parentNode.style.display = 'none';
           document.querySelector('main').innerHTML =
             '<div class="sec" style="text-align:center">' +
-              '<div style="font-size:40px">📲</div>' +
+              '<div style="width:64px;height:64px;margin:0 auto;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#7A5E1C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18h4M9 9.5l2 2 4-4"/></svg></div>' +
               '<div style="font-weight:800;font-size:18px;margin-top:6px">המסמך מוכן!</div>' +
               '<div style="color:#5B6472;font-size:14px;line-height:1.6;margin:8px 0 14px">' + _sln + '<br>אפשר לשלוח ללקוח גם בוואטסאפ מהמספר שלך:</div>' +
               (_lk ? '<a href="' + _wurl + '" target="_blank" rel="noopener" style="display:block;box-sizing:border-box;width:100%;padding:15px;background:#157A43;color:#fff;font-weight:800;border-radius:14px;text-decoration:none">שלח ללקוח בוואטסאפ</a>' : '') +
@@ -10555,7 +10558,7 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .sg.on{color:#fff;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
   .sync{display:flex;align-items:center;gap:7px}
   .sync i{width:7px;height:7px;border-radius:50%;background:#1FAF5E;display:block}
-  .sync span{font-size:11.5px;font-weight:600;color:#6B7280}
+  .sync span{font-size:12px;font-weight:600;color:#6B7280}
   .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:6px 15px;display:flex;flex-direction:column}
   .mt{display:flex;align-items:center;gap:11px;padding:11px 0}
   .mt + .mt{border-top:1px solid #F0EDE3}
@@ -10581,11 +10584,11 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       align-items:center;justify-content:center;cursor:pointer}
   nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
       display:flex;justify-content:space-around;align-items:flex-end}
-  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:10.5px;
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
       font-weight:600;color:#6E7683;cursor:pointer;position:relative}
   nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
       box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
-  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#231700;font-size:10px;font-weight:800;
+  nav .badge{position:absolute;top:-13px;z-index:2;background:#C29435;color:#231700;font-size:12px;font-weight:800;
       padding:1px 8px;border-radius:999px;display:none}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
   #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
@@ -10599,7 +10602,7 @@ V2_MEETS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .btn-gold{background:#C29435;color:#231700;box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
   .fld2{display:flex;flex-direction:column;gap:5px;min-width:0}
-  .fld2 span{font-size:11.5px;font-weight:700;color:#5B6472}
+  .fld2 span{font-size:12px;font-weight:700;color:#5B6472}
   .fld2 input,.fld2 textarea,.fld2 select{background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:12px 13px;
       font-size:14px;font-family:inherit;outline:none;color:#1E3A5F;width:100%;min-width:0;max-width:100%}
   /* iOS: לשדה datetime-local יש רוחב מינימלי משלו שגורם לגלישה רוחבית — מנטרלים */
@@ -10759,7 +10762,7 @@ function itemRow(m, i){
     '</div>';
   // תגית לפני/אחרי פגישה — צ'יפ קטן על הפולו-אפ
   var tagChip = (!meet && m.tag)
-    ? '<span style="display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;margin-inline-start:6px;' +
+    ? '<span style="display:inline-block;font-size:12px;font-weight:800;padding:2px 8px;border-radius:999px;margin-inline-start:6px;' +
       (m.tag === 'before' ? 'background:#EAF0FA;color:#2E6BD6">לפני פגישה' : 'background:#F6EEDB;color:#7A5E1C">אחרי פגישה') + '</span>'
     : '';
   return '<div class="mt"' + (m.done ? ' style="opacity:.72"' : '') + '>' +
@@ -10876,7 +10879,7 @@ function newMeet(){
     '<input id="nmDtD" type="date" style="flex:1.2">' +
     '<select id="nmDtT" style="flex:1">' + dt15Opts(dtNextQ()) + '</select></div></div>' +
     '<div class="fld2"><span>הערה</span><textarea id="nmNote" rows="2" placeholder="הערה במלל חופשי (אופציונלי)"></textarea></div>' +
-    '<div style="font-size:11.5px;color:#6B7280">נשמר גם ביומן Google (אם מחובר)</div>' +
+    '<div style="font-size:12px;color:#6B7280">נשמר גם ביומן Google (אם מחובר)</div>' +
     '<button class="btn btn-gold" onclick="saveNewMeet()">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
   el('sheet')._nst = 'meeting';
@@ -10934,7 +10937,7 @@ function editMeet(i){
     '<input id="emDtD" type="date" style="flex:1.2" value="' + dVal + '">' +
     '<select id="emDtT" style="flex:1">' + dt15Opts(tVal) + '</select></div></div>' +
     '<div class="fld2"><span>הערה</span><textarea id="emNote" rows="3" placeholder="הערה לפגישה (אופציונלי)">' + esc(m.note || '') + '</textarea></div>' +
-    '<div style="font-size:11.5px;color:#6B7280">שינוי מועד מעדכן גם את האירוע ביומן Google</div>' +
+    '<div style="font-size:12px;color:#6B7280">שינוי מועד מעדכן גם את האירוע ביומן Google</div>' +
     '<button class="btn btn-gold" onclick="saveMeet(' + i + ')">שמירה</button>' +
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
   el('sheet')._st = m.status;
@@ -11004,7 +11007,7 @@ function draftRow(d, di){
     '<svg width="16" height="16" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linejoin="round"/></svg></div>' +
     '<div style="flex:1"><div class="tt">טיוטא להחתמה · ' + esc(d.client || '') + '</div>' +
     '<div class="sb">' + esc([d.addr, d.kind === 'buyer' ? 'מתעניין' : 'בעל נכס'].filter(Boolean).join(' · ')) + '</div></div>' +
-    '<div style="font-size:11.5px;font-weight:700;color:#7A5E1C;background:#F6EEDB;padding:3px 10px;border-radius:999px;flex-shrink:0">טיוטא</div></div>';
+    '<div style="font-size:12px;font-weight:700;color:#7A5E1C;background:#F6EEDB;padding:3px 10px;border-radius:999px;flex-shrink:0">טיוטא</div></div>';
 }
 function goDraft(di){
   var d = DRAFTS[di]; if (!d) return;
@@ -11066,12 +11069,12 @@ V2_ONBOARD_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta chars
   .dot.no{background:#C24040}
   .dot.info{background:#C29435}
   .row .nm{font-size:13.5px;font-weight:700}
-  .row .ds{font-size:11.5px;color:#6B7280;line-height:1.55;margin-top:1px}
+  .row .ds{font-size:12px;color:#6B7280;line-height:1.55;margin-top:1px}
   .steps{background:#1E3A5F;border-radius:20px;padding:16px 18px;color:#fff;display:flex;flex-direction:column;gap:9px}
   .steps .tt{font-size:14.5px;font-weight:800;color:#E4C56B}
   .steps .st{display:flex;gap:10px;font-size:12.5px;line-height:1.55}
   .steps .n{width:20px;height:20px;border-radius:50%;background:rgba(228,197,107,.2);color:#E4C56B;
-      display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;margin-top:1px}
+      display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;margin-top:1px}
 </style></head><body>
 
   <header>
@@ -11495,8 +11498,8 @@ function render(i){
         statCard(q(B.buyersTotal), 'קונים במערכת', '#E4C56B') +
       '</div>' +
       '<div class="rank"><div class="t">רשת רימקס ישראל</div>' +
-        '<div class="r">🏆 <b>מקום 2</b> בעסקאות מתחילת השנה</div>' +
-        '<div class="r">🥇 <b>מקום 4</b> בעמלות משרדים</div></div>' +
+        '<div class="r"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E4C56B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-inline-end:6px" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg><b>מקום 2</b> בעסקאות מתחילת השנה</div>' +
+        '<div class="r"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E4C56B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-inline-end:6px" aria-hidden="true"><circle cx="12" cy="15" r="6"/><path d="M8.5 10L6 3h4l2 4 2-4h4l-2.5 7"/></svg><b>מקום 4</b> בעמלות משרדים</div></div>' +
       (((B.hotProps || []).length) ? '<div style="text-align:center;font-size:17px;color:rgba(255,255,255,.55)">' +
         (B.hotProps.length) + ' נכסים חמים בסבב ←</div>' : '');
   } else {
@@ -11592,7 +11595,7 @@ V2_DEV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
   main{padding:4px 16px;display:flex;flex-direction:column;gap:12px;max-width:640px;margin:0 auto}
   .card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 16px}
   .card h2{font-size:15px;font-weight:800;margin-bottom:4px}
-  .card .sb{font-size:11.5px;color:#6B7280;line-height:1.5;margin-bottom:10px}
+  .card .sb{font-size:12px;color:#6B7280;line-height:1.5;margin-bottom:10px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   input,select,textarea{background:#F5F3EC;border:1px solid #E9E4D8;border-radius:11px;padding:9px 12px;
         font-size:13px;font-family:inherit;color:#1E3A5F;outline:none}
@@ -11603,7 +11606,7 @@ V2_DEV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="
   .out{margin-top:10px;background:#F7F5EE;border-radius:12px;padding:11px 13px;font-size:12px;
         line-height:1.6;white-space:pre-wrap;word-break:break-word;display:none}
   .out.show{display:block}
-  .tag{display:inline-block;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;margin:2px 3px 0 0}
+  .tag{display:inline-block;font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;margin:2px 3px 0 0}
   .tag.sb{background:#E7F1FF;color:#2E6BD6}.tag.sh{background:#F6EEDB;color:#7A5E1C}
   .tg{width:46px;height:27px;border-radius:999px;background:#D8D3C6;position:relative;cursor:pointer;flex-shrink:0;transition:.15s}
   .tg.on{background:#1FAF5E}.tg i{position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:.15s}
@@ -11696,7 +11699,7 @@ function socPrev(){var k=el('socKey').value.trim();if(!k)return;el('socPv').inne
     var why=function(c,n){return n+': '+(c&&c.ok?'אפשר לפרסם':esc((c&&c.reason)||'—'));};
     el('socPv').innerHTML='<div class="sb">'+why(j.can.fb,'פייסבוק')+' · '+why(j.can.ig,'אינסטגרם')+'</div>'+
       '<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;background:#F2EFE7;border-radius:12px;padding:10px">'+esc(j.ig_caption)+'</pre>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+(j.images||[]).map(function(u){return '<img src="'+esc(u)+'" style="width:72px;height:72px;object-fit:cover;border-radius:10px" loading="lazy">';}).join('')+'</div>';
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+(j.images||[]).map(function(u){return '<img alt="" src="'+esc(u)+'" style="width:72px;height:72px;object-fit:cover;border-radius:10px" loading="lazy">';}).join('')+'</div>';
   });}
 
 var QON=false;
@@ -12936,7 +12939,7 @@ button,input,select,textarea{font-family:Heebo;font-size:16px}
 .logo{font-weight:800;font-size:17px;margin-left:16px;white-space:nowrap}
 .mod{height:60px;display:flex;align-items:center;padding:0 12px;color:var(--mut);font-weight:500;border-bottom:3px solid transparent;white-space:nowrap;text-decoration:none}
 .mod.on{color:var(--navy);font-weight:700;border-color:var(--gold)}.mod.soon{opacity:.45;cursor:default}
-.mod.soon small{font-size:11px;margin-inline-start:4px}
+.mod.soon small{font-size:12px;margin-inline-start:4px}
 .page{display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;padding:18px 20px}
 .views{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:12px;align-self:start;position:sticky;top:78px}
 .v{padding:10px 12px;border-radius:12px;cursor:pointer;display:flex;justify-content:space-between;gap:8px;min-height:44px;align-items:center}
@@ -13482,7 +13485,7 @@ function siteCt(){var c=D.site_contacts;if(!c||!c.periods)return '';var P4=['day
   row('וואטסאפ לסוכן','wa')+row('טלפון לסוכן','tel')+row('טפסים','form')+row('סוכן AI אישי','ai')+'</table>';
  var T=c.month_top||{};function lst(lb,a){return a&&a.length?'<div style="font-size:12.5px;margin-top:6px"><b>'+lb+':</b> '+a.map(function(x){return esc(x[0])+' · '+n(x[1]);}).join(' &nbsp;|&nbsp; ')+'</div>':'';}
  t+=lst('הכי פנו החודש — סוכנים',T.agents)+lst('נכסים',T.listings)+lst('מאיפה הגיעו',T.src);
- return t+'<div class="mut" style="font-size:11.5px;margin-top:6px">'+(c.since?'לחיצות נספרות מ-'+new Date(c.since*1000).toLocaleDateString('he-IL'):'לחיצות וואטסאפ/טלפון נספרות מהלחיצה הבאה באתר')+' · כל גולש פעם בחצי שעה לכל סוכן ונכס</div>';}
+ return t+'<div class="mut" style="font-size:12px;margin-top:6px">'+(c.since?'לחיצות נספרות מ-'+new Date(c.since*1000).toLocaleDateString('he-IL'):'לחיצות וואטסאפ/טלפון נספרות מהלחיצה הבאה באתר')+' · כל גולש פעם בחצי שעה לכל סוכן ונכס</div>';}
 function render(){
  var h=D.health.map(function(x){return '<div class="hc '+x.status+'"><div class="t">'+esc(x.label)+'</div><div class="s">'+ST[x.status]+'</div><div class="a">'+ago(x.last)+'</div></div>';}).join('');
  var a=D.ai.site,pct=a.cap?Math.min(100,Math.round(a.today*100/a.cap)):0,e=D.ai.effie_today;
@@ -13563,7 +13566,7 @@ function visitsHtml(v){if(!v||!v.today)return '';var P=['today','week','month','
   function row(lb,f,cls){return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lb+'</td>'+P.map(function(p){return '<td>'+f(v[p])+'</td>';}).join('')+'</tr>';}
   return '<table class="vt"><tr><th>כניסות</th>'+P.map(function(p){return '<th>'+H[p]+'</th>';}).join('')+'</tr>'+
     row('סה״כ',function(x){return x.v||0;},'tot')+srcs.map(function(k){return row(SL[k],function(x){return (x.src||{})[k]||0;});}).join('')+'</table>'+
-    (v.since?'<div class="mut" style="font-size:11.5px;margin-top:6px">נספר מ-'+v.since.split('-').reverse().join('/')+' · מבקר אחד ביום</div>':'<div class="mut" style="font-size:11.5px;margin-top:6px">הספירה מתחילה עם המבקר הבא באתר</div>');}
+    (v.since?'<div class="mut" style="font-size:12px;margin-top:6px">נספר מ-'+v.since.split('-').reverse().join('/')+' · מבקר אחד ביום</div>':'<div class="mut" style="font-size:12px;margin-top:6px">הספירה מתחילה עם המבקר הבא באתר</div>');}
 function siteLive(){fetch('/v2/api/crm/site_live',{headers:hdr()}).then(function(r){return r.json();}).then(function(j){
   var el=document.getElementById('slList');if(!el)return;var vs=document.getElementById('slStats');if(vs)vs.innerHTML=visitsHtml(j&&j.visits);
   if(!j||!j.ok){el.innerHTML='<span class="mut">האתר לא ענה כרגע</span>';document.getElementById('slN').textContent='';return;}
@@ -19754,7 +19757,7 @@ def register(app, G):
         if not q:
             return jsonify({"ok": False, "reason": "empty"}), 400
         if not ef_quota_ok(_EFFIE_QUOTA, _last9(s.get("phone", ""))):
-            return jsonify({"ok": False, "reason": "quota", "msg": "הגעת ל-20 שאלות היום — הכפתורים המהירים תמיד פתוחים 🙂"})
+            return jsonify({"ok": False, "reason": "quota", "msg": "הגעת ל-20 שאלות היום — הכפתורים המהירים תמיד פתוחים"})
         try:
             name, office = _effie_scope(s)
             snap = _effie_snapshot(name, office, q=q)

@@ -1230,7 +1230,7 @@ V2_SITE_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .cc{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:16px;display:flex;flex-direction:column;gap:10px}
   .h{font-size:15px;font-weight:800}.s{font-size:12.5px;color:#5B6472;line-height:1.6}
   .stats{display:flex;gap:8px}.stat{flex:1;background:#F6F4EE;border-radius:14px;padding:10px;text-align:center}
-  .stat b{display:block;font-size:20px}.stat span{font-size:11.5px;color:#5B6472;font-weight:600}
+  .stat b{display:block;font-size:20px}.stat span{font-size:12px;color:#5B6472;font-weight:600}
   label{font-size:12.5px;font-weight:700;display:block;margin-bottom:4px}
   input,textarea{width:100%;font:400 16px Heebo;border:1.5px solid #DCD6C8;border-radius:12px;padding:10px 12px;color:#1E3A5F;background:#fff;min-height:44px}
   textarea{min-height:84px;resize:vertical}

@@ -11097,7 +11097,7 @@ _PRIVACY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <svg width="44" height="40" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"></path><path d="M58 8L20 44h38z" fill="#C29435"></path><path d="M58 8l38 36H58z" fill="#EED9A0"></path><path d="M58 44L34 98h24z" fill="#D8AC4E"></path><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"></path><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"></circle></svg>
     <div style="display:flex; flex-direction:column; gap:2px;">
       <div style="font-size:26px; font-weight:800;">מדיניות פרטיות</div>
-      <div style="font-size:14px; color:#8B8F99;">אפי · אפליקציה לניהול נדל״ן · עדכון אחרון: יולי 2026</div>
+      <div style="font-size:14px; color:#6B7280;">אפי · אפליקציה לניהול נדל״ן · עדכון אחרון: יולי 2026</div>
     </div>
   </div>
 
@@ -11160,7 +11160,7 @@ _PRIVACY_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
     <p style="margin:0; font-size:15px; color:#3D5273;">You can revoke access at any time at myaccount.google.com/permissions, or ask us to delete your data: eyalshmul@gmail.com.</p>
   </div>
 
-  <div style="margin-top:36px; padding-top:18px; border-top:1px solid #DCD6C8; font-size:13px; color:#8B8F99;">
+  <div style="margin-top:36px; padding-top:18px; border-top:1px solid #DCD6C8; font-size:13px; color:#6B7280;">
     מסמך זה עשוי להתעדכן מעת לעת; הודעה על שינוי מהותי תוצג באפליקציה.
   </div>
 </div>
