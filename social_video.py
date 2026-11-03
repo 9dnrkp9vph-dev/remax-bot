@@ -842,14 +842,40 @@ def _agent_texts(G, row, feats, highlight):
 
 
 def _agent_photo(G, row):
-    """תמונת הפרופיל של הסוכן מהאזור האישי (v2_avatars/<9 ספרות>.jpg) — או None."""
-    import os
-    l9 = _agent_personal(G, row)
-    if not l9:
+    """תמונת הפרופיל של הסוכן מהאזור האישי → נתיב JPEG או None (אז מוצגת האות הראשונה).
+    כמו בדף ההסכם (_pick_avatar_phone): כל מספרי הסוכן; קודם קובץ בדיסק (v2_avatars/<9>.jpg),
+    אחר כך העותק העמיד ב-Supabase (הדיסק מתאפס בפריסה) — נשמר חזרה לדיסק כמו ב-/v2/api/avatar."""
+    import os, base64
+    agent = str((row or {}).get("סוכן 1") or "").strip()
+    if not agent:
         return None
-    p = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)),
-                     "v2_avatars", l9 + ".jpg")
-    return p if os.path.exists(p) else None
+    cands = []
+    try:
+        for p in [_agent_personal(G, row)] + list(G["_phones_for_name"](agent) or []):
+            c = _l9(p)
+            if len(c) == 9 and c not in cands:
+                cands.append(c)
+    except Exception:
+        pass
+    d = os.path.join(os.environ.get("MAP_CACHE_DIR", "") or os.path.dirname(os.path.abspath(__file__)), "v2_avatars")
+    for c in cands:
+        if os.path.exists(os.path.join(d, c + ".jpg")):
+            return os.path.join(d, c + ".jpg")
+    get = getattr(G.get("_sbdb"), "avatar_get", None)
+    for c in cands[:4] if get else ():
+        try:
+            b64 = get(c)
+            if not b64:
+                continue
+            raw = base64.b64decode(b64)
+            os.makedirs(d, exist_ok=True)
+            fp = os.path.join(d, c + ".jpg")
+            with open(fp, "wb") as f:
+                f.write(raw)
+            return fp
+        except Exception:
+            continue
+    return None
 
 
 def _render_tour(G, row, key, imgs, desc, feats, hist, env, out_path, http):

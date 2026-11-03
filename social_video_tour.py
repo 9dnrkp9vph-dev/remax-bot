@@ -229,9 +229,10 @@ class _Painter:
         self.agent_photo = None
         if agent_photo:
             try:
-                ap = _cover(Image.open(agent_photo).convert("RGB"), 280, 280)
-                m = Image.new("L", (280, 280), 0)
-                ImageDraw.Draw(m).ellipse((0, 0, 279, 279), fill=255)
+                # 256 = גודל התמונה שנשמרת באזור האישי — בלי הגדלה (חדות)
+                ap = _cover(Image.open(agent_photo).convert("RGB"), 256, 256)
+                m = Image.new("L", (256, 256), 0)
+                ImageDraw.Draw(m).ellipse((0, 0, 255, 255), fill=255)
                 ap = ap.convert("RGBA")
                 ap.putalpha(m)
                 self.agent_photo = ap
@@ -342,15 +343,15 @@ class _Painter:
         d = ImageDraw.Draw(lay)
         al = int(255 * _ease(t / 0.5))
         cy = 640
-        d.ellipse((W // 2 - 152, cy - 152, W // 2 + 152, cy + 152), fill=GOLD + (al,))
+        d.ellipse((W // 2 - 142, cy - 142, W // 2 + 142, cy + 142), fill=GOLD + (al,))
         if self.agent_photo:
             ap = self.agent_photo.copy()
             ap.putalpha(Image.eval(ap.getchannel("A"), lambda v: v * al // 255))
-            lay.alpha_composite(ap, (W // 2 - 140, cy - 140))
+            lay.alpha_composite(ap, (W // 2 - 128, cy - 128))
         else:
-            d.ellipse((W // 2 - 140, cy - 140, W // 2 + 140, cy + 140), fill=NAVY + (al,))
+            d.ellipse((W // 2 - 128, cy - 128, W // 2 + 128, cy + 128), fill=NAVY + (al,))
             if e.get("agent"):
-                d.text((W // 2, cy), self.V._rtl(e["agent"][0]), font=self.V._font(150, 800), fill=WHITE + (al,), anchor="mm")
+                d.text((W // 2, cy), self.V._rtl(e["agent"][0]), font=self.V._font(140, 800), fill=WHITE + (al,), anchor="mm")
         self._text(d, W // 2, cy + 200, e.get("agent"), 80, 800, self.fg + (al,))
         self._text(d, W // 2, cy + 310, e.get("recap"), 46, 600, self.fg2 + (al,))
         if o.get("place"):

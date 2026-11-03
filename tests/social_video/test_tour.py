@@ -86,6 +86,28 @@ sb.videos[-1]["created_at"] = "2020-01-01T00:00:00+00:00"
 V.vid_create_one(G, "tok1", "manual", "", http=SF.ImgHttp(), now=time.time(), env=env, store=V.VidStore(tempfile.mkdtemp()))
 ck(CALLS[-1]["theme"] in ("cream", "dark"), CALLS[-1])
 
+# ── תמונת הסוכן לסוף הסרטון: דיסק → Supabase → אין (אות) ──
+import base64
+AVD = tempfile.mkdtemp(); os.environ["MAP_CACHE_DIR"] = AVD
+G, st, sb = make_G()
+G["_agent_vphones9"] = lambda: {"725550101"}
+G["_phones_for_name"] = lambda n: ["072-555-0101", "0521234567"]
+ck(V._agent_photo(G, {"סוכן 1": ""}) is None, "no agent")
+class SB:
+    def __init__(s, has): s.has, s.asked = has, []
+    def avatar_get(s, p): s.asked.append(p); return base64.b64encode(jpg((10, 200, 10), (256, 256))).decode() if p in s.has else ""
+G["_sbdb"] = SB(set())
+ck(V._agent_photo(G, ROW) is None and G["_sbdb"].asked[0] == "521234567", G["_sbdb"].asked)   # הנייד האישי קודם
+G["_sbdb"] = SB({"725550101"})          # התמונה שמורה דווקא על מספר אחר של הסוכן
+fp = V._agent_photo(G, ROW)
+ck(fp and fp.endswith("v2_avatars/725550101.jpg") and Image.open(fp).size == (256, 256), fp)
+G["_sbdb"] = SB(set())
+ck(V._agent_photo(G, ROW) == fp, "cached on disk after first fetch")
+os.makedirs(os.path.join(AVD, "v2_avatars"), exist_ok=True)
+Image.new("RGB", (256, 256), (1, 2, 3)).save(os.path.join(AVD, "v2_avatars", "521234567.jpg"))
+ck(V._agent_photo(G, ROW).endswith("521234567.jpg"), "disk: personal phone first")
+del os.environ["MAP_CACHE_DIR"]
+
 # ── אישור: אייל בלבד כברירת מחדל ──
 G, st, sb = make_G()
 G["_quiet_hours"] = lambda: False; G["_shabbat_quiet_now"] = lambda: False
@@ -111,7 +133,7 @@ if V.vid_ffmpeg():
     shots = T.tour_plan(TX, [0, 1, 2], {0: "נוף פתוח"}, ["מעלית"])
     for theme in T.THEMES:
         out = os.path.join(d, theme + ".mp4")
-        rr = T.vid_compose_tour(photos, shots, TX, theme, None, out, os.path.join(ROOT, "family-logo.png"))
+        rr = T.vid_compose_tour(photos, shots, TX, theme, None, out, os.path.join(ROOT, "family-logo.png"), fp)
         ck(rr["ok"] and os.path.getsize(out) > 10000, rr)
         ck(Image.open(rr["cover"]).size == (1080, 1920), rr)
     ck(not T.vid_compose_tour({0: photos[0]}, shots[:1], TX, "dark", None, os.path.join(d, "x.mp4"), None)["ok"], "1 shot")
