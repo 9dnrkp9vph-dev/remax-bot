@@ -10100,11 +10100,13 @@ def api_newborn_status():
         cal_ok = bool(rec["cal"])
     # שמירה בקונפיג — RMW בטוח (נעילה + קריאה טרייה + כתיבה durable). בלי זה כמה
     # פגישות ברצף (או _mark_joined ברקע בכניסה) דרסו זו את זו והפגישות "נעלמו". אייל 13/07.
+    _old_cal = []   # 🐞 04/11 (אירנה: אותו פולו-אפ 4 פעמים ביומן) — אירועי השמירה הקודמת נמחקים אחרי השמירה
     def _mut(cfg):
         m = cfg.get("nbStatus")
         if not isinstance(m, dict): m = {}
         # "מי תיאם" — נשמר מהיוצר; בעריכה נשמר המקורי (לא נדרס למי שערך אחרון).
         _prev = m.get(skey) or {}
+        _old_cal[:] = [e for e in (_prev.get("cal") or []) if isinstance(e, dict)]
         rec["by"] = _prev.get("by") or s.get("name", "")
         rec["by_phone"] = _prev.get("by_phone") or _last9(s.get("phone", ""))
         _ms = _goals.meeting_stamp(_prev, status, time.time())   # יעדים: מתי נקבעה הפגישה (קבוע)
@@ -10112,8 +10114,18 @@ def api_newborn_status():
         m[skey] = rec
         cfg["nbStatus"] = m
     ok, _ = _config_mutate(_mut)
-    if not ok:   # שמירה נכשלה — לא מדווחים הצלחה כוזבת
+    def _cal_drop(evs):
+        for ev in evs:
+            try: gcal_delete_event(ev.get("email", ""), ev.get("id", ""))
+            except Exception: pass
+    if not ok:   # שמירה נכשלה — לא מדווחים הצלחה כוזבת; האירוע החדש שלא נשמר לא נשאר יתום ביומן
+        if rec["cal"]:
+            _threading.Thread(target=_cal_drop, args=(list(rec["cal"]),), daemon=True).start()
         return jsonify({"ok": False, "reason": "save_failed"})
+    _keep = {(e.get("email", ""), e.get("id", "")) for e in rec["cal"]}
+    _stale = [e for e in _old_cal if (e.get("email", ""), e.get("id", "")) not in _keep]
+    if _stale:
+        _threading.Thread(target=_cal_drop, args=(_stale,), daemon=True).start()
     _NB_RESULT_VER[0] += 1
     # יומן פעילות: מי עשה = המתאם בפועל (המשתמש), לא סוכן היעד; היעד נכנס לפירוט
     _tgt = (" · לסוכן " + nm) if _canon_key(nm) != _canon_key(s.get("name", "")) else ""
