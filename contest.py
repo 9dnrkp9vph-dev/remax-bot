@@ -169,6 +169,10 @@ def _adj_sum(adjs, group, kind, label, canon):
     return t
 
 
+# [03/11] מאז הפגישה נספרת רק למי שתיאם (14:35 שעון ישראל)
+BOOKER_ONLY_FROM = _dt.datetime(2026, 11, 3, 14, 35, tzinfo=_IL).timestamp()
+
+
 def score(contest, ledger, sigs, adjustments, canon, now):
     pts = contest["pts"]
     s, e = _d(contest["start"]), _d(contest["end"])
@@ -177,15 +181,20 @@ def score(contest, ledger, sigs, adjustments, canon, now):
     pb = (day_bounds(ps)[0], day_bounds(pe)[1])
     today = _dt.datetime.fromtimestamp(now, _IL).date()
     rows_l = list((ledger or {}).values())
-    # [03/11 אייל] פגישה נספרת רק למי שתיאם: מתאמת — למתאמת, סוכן — לסוכן. בלי מתאם ידוע — לסוכן.
+    # [03/11 אייל] מ-03/11 14:35 פגישה נספרת רק למי שתיאם: מתאמת — למתאמת, סוכן — לסוכן; בלי מתאם ידוע — לסוכן.
+    # פגישות שנקבעו לפני כן — לפי הכלל הקודם (לסוכן, ומתאמת שקבעה לסוכן — גם לה), כי אייל יישר אותן ידנית.
     booker = lambda x: x.get("agent") if _generic(str(x.get("by") or "").strip()) else x.get("by")
+    cut = contest.get("booker_only_from", BOOKER_ONLY_FROM)
+    is_new = lambda x: (x.get("at") or 0) >= cut
+    mem_of = lambda x: canon(booker(x)) if is_new(x) else canon(x.get("agent"))
+    coord_of = lambda x, k: canon(booker(x)) == k if is_new(x) else (canon(x.get("by")) == k and canon(x.get("agent")) != k)
     out_groups, totals = [], []
     for gi, g in enumerate(contest["groups"]):
         g = dict(g, _i=gi)
         rows = []
         for r in g["rows"]:
             mem = {canon(m) for m in r["members"]}
-            meetings = sum(1 for x in rows_l if canon(booker(x)) in mem)
+            meetings = sum(1 for x in rows_l if mem_of(x) in mem)
             a = listing_anchors(r["members"], cb, sigs, canon)
             p = listing_anchors(r["members"], pb, sigs, canon)
             adj = _adj_sum(adjustments, g, "row", r["label"], canon)
@@ -202,7 +211,7 @@ def score(contest, ledger, sigs, adjustments, canon, now):
         coords = []
         for n in g.get("coords") or []:
             k = canon(n)
-            m = sum(1 for x in rows_l if canon(booker(x)) == k)
+            m = sum(1 for x in rows_l if coord_of(x, k))
             adj = _adj_sum(adjustments, g, "coord", n, canon)
             coords.append({"name": n, "meetings": m, "adj": adj, "points": m * pts["meeting"] + adj})
         total = sum(o["points"] for o in rows)
