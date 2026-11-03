@@ -1653,9 +1653,12 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   </header>
 
   <!-- תפריט צד מינימלי (הגרסה המלאה — סעיף 10 במפרט, בסשן התפריט) -->
-  <div id="menuOvl" style="position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:70" onclick="closeMenu()"></div>
-  <div id="menu" style="position:fixed;top:0;bottom:0;right:0;width:78%;max-width:320px;z-index:71;background:#fff;
-       box-shadow:-16px 0 40px rgba(23,37,60,.25);padding:calc(env(safe-area-inset-top,0px) + 56px) 20px 36px;
+  <div id="menuOvl" data-noptr style="position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:70" onclick="closeMenu()"></div>
+  <!-- [MENU-SCROLL 03/11] התפריט נגלל בתוך עצמו (בטלפון 'התנתקות' והפריטים האחרונים נחתכו) -->
+  <style>#menu>*{flex-shrink:0}</style>
+  <div id="menu" data-noptr style="position:fixed;top:0;bottom:0;right:0;width:78%;max-width:320px;z-index:71;background:#fff;
+       box-shadow:-16px 0 40px rgba(23,37,60,.25);padding:calc(env(safe-area-inset-top,0px) + 56px) 20px calc(env(safe-area-inset-bottom,0px) + 36px);
+       overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
        display:none;flex-direction:column;gap:3px">
     <div style="display:flex;align-items:center;gap:11px;padding-bottom:14px">
       <div class="avatar"><div class="c" id="menuAv"></div><div class="dot"></div></div>
@@ -1723,10 +1726,6 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 16 16"><path d="M8 14s-5-4.2-5-8a5 5 0 0 1 10 0c0 3.8-5 8-5 8z" fill="none" stroke="#1E3A5F" stroke-width="1.5"/><circle cx="8" cy="6" r="1.8" fill="none" stroke="#1E3A5F" stroke-width="1.5"/></svg>
       נכסים במפה</a>
-    <a href="/app" style="display:flex;align-items:center;gap:11px;padding:12px 4px;text-decoration:none;
-       color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
-      <svg width="18" height="18" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/></svg>
-      האפליקציה הקיימת</a>
     <a id="menuIg" target="_blank" rel="noopener" style="display:none;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><rect x="3.5" y="3.5" width="15" height="15" rx="4.5" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="3.6" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="15.6" cy="6.4" r="1.1" fill="#1E3A5F"/></svg>
@@ -1881,8 +1880,9 @@ function toast(msg){
   var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
   clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 1800);
 }
-function openMenu(){ el('menuOvl').style.display = 'block'; el('menu').style.display = 'flex'; }
-function closeMenu(){ el('menuOvl').style.display = 'none'; el('menu').style.display = 'none'; }
+function openMenu(){ el('menuOvl').style.display = 'block'; el('menu').style.display = 'flex'; el('menu').scrollTop = 0;
+  document.body.style.overflow = 'hidden'; }   // [MENU-SCROLL 03/11] המסך שמאחור לא זז כשגוללים בתפריט
+function closeMenu(){ el('menuOvl').style.display = 'none'; el('menu').style.display = 'none'; document.body.style.overflow = ''; }
 function impBack(){   // חזרה מסשן בדיקה לחשבון המנהל
   var back = '/v2/admin';
   try{
