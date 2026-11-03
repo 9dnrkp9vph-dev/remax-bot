@@ -1121,6 +1121,27 @@ def stale_office_update(branch_rows, incoming, now_ts):
         return []   # הסבב המלא לא מוכח — לא מורידים כלום
     return [r for r in branch_rows if int(r.get("_y2_miss") or 0) >= STALE_MISSES and now_ts - _last(r) >= day]
 
+# ── [STALE7 04/11] נכס שהסורק לא שלח 7 ימים → 'ירד מפרסום' (אייל: 'כן תבנה את הכלל של 7 ימים') ──
+# ספיר 3 (bol7k1cw) נשלח לאחרונה ב-12/10 ונשאר פעיל שלושה שבועות, יחד עם 52 נכסים נוספים: יד2 הוריד
+# אותם, ודיווח הירידה מהסורק לא הגיע/נחסם. הכלל: לא נשלח N ימים (env PROPS_STALE_DAYS, ברירת מחדל 7,
+# 0 = כבוי) + שער: לפחות 70% מנכסי הסניף נשלחו באותם N ימים (הסבב המלא באמת רץ) + סניף של 5 ומעלה.
+# התווית בתאריך השליחה האחרונה; הנכס לא נמחק וחוזר לפעיל כשהסורק שולח אותו שוב.
+STALE7_COVERAGE = 0.7
+
+def stale7_office_rows(branch_rows, incoming, now_ts, days=7):
+    """[STALE7] branch_rows = שורות הסניף שלא הגיעו במנה ולא מסומנות 'ירד מפרסום'; incoming = השורות
+    שהגיעו. מחזיר את השורות שלא נשלחו `days` ימים (בלי חותמת שליחה בכלל — לא נוגעים). טהורה."""
+    total = len(branch_rows) + len(incoming)
+    if days <= 0 or total < STALE_MIN_BRANCH:
+        return []
+    lim = days * 86400
+    def _last(r):
+        return _il_epoch(r.get("_y2_ingested")) or _il_epoch(r.get("_y2_first_seen"))
+    recent = len(incoming) + sum(1 for r in branch_rows if _last(r) and now_ts - _last(r) < lim)
+    if recent < STALE7_COVERAGE * total:
+        return []   # רוב הסניף לא נשלח — הסורק לא בריא, לא מורידים כלום
+    return [r for r in branch_rows if _last(r) and now_ts - _last(r) >= lim]
+
 _PLACEHOLDER_AGENT_RE = re.compile(r"^(סוכן\s*\d+|משרד(\s*\d+)?)$")
 
 
@@ -1262,6 +1283,28 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
                 r["_y2_auto_delist"] = r["ירד מפרסום"]   # סימון: ירד לפי הכלל (לא אות מהסורק)
         except Exception:
             pass   # הכלל לעולם לא מפיל את הקליטה
+    # [STALE7 04/11] לא נשלח 7 ימים בסניף בריא → 'ירד מפרסום' בתאריך השליחה האחרונה
+    try:
+        import time as _time
+        try:
+            _days = int(os.environ.get("PROPS_STALE_DAYS", "7") or 0)
+        except ValueError:
+            _days = 7
+        _absent = [r for r in keep if str(r.get("_y2_office_id") or "").strip() == office_tag
+                   and not r.get("ירד מפרסום")]
+        _st = stale7_office_rows(_absent, list(raw_rows), _time.time(), _days)
+        for r in _st:
+            _d = str(r.get("_y2_ingested") or r.get("_y2_first_seen") or "").split(" ")[0] \
+                 or stamp or _il_today().strftime("%d/%m/%Y")
+            r["ירד מפרסום"] = _d
+            r["סטטוס"] = "ירד מפרסום"
+            r["_y2_auto_delist"] = _d
+            r.pop("_y2_delist_pending", None)
+        if _st:
+            print(f"props merge {office_tag}: stale {_days}d → delisted {len(_st)}: "
+                  + ",".join(str(r.get('מספר מודעה') or '') for r in _st[:20]), flush=True)
+    except Exception:
+        pass   # הכלל לעולם לא מפיל את הקליטה
     ok, n = replace_properties(keep + list(raw_rows))
     return ok, n, new_rows
 
