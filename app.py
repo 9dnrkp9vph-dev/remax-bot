@@ -3915,7 +3915,18 @@ def _display_name_for(name, phone):
                 cands.extend(str(r[0] or "").strip() for r in (_contacts_rows() or []) if len(r) > 1 and _last9(r[1]) == l9)
             except Exception:
                 pass
-        real = next((x for x in cands if re.search(r"[\u0590-\u05FF]", x)), "") or next((x for x in cands if x), "")
+        real = next((x for x in cands if re.search(r"[\u0590-\u05FF]", x)), "")
+        if not real:   # [04/11 'eyal-shmul' \u05D1\u05DB\u05E8\u05D8\u05D9\u05E1 \u05D4\u05D7\u05D9\u05E4\u05D5\u05E9\u05D9\u05DD] \u05D1\u05DC\u05D9 \u05E9\u05DD \u05E2\u05D1\u05E8\u05D9 \u05DC\u05E4\u05D9 \u05D4\u05D8\u05DC\u05E4\u05D5\u05DF \u2014 \u05DC\u05E4\u05D9 \u05D4\u05DE\u05D9\u05D9\u05DC \u05D1\u05D8\u05D1\u05DC\u05EA \u05D4\u05E6\u05D5\u05D5\u05EA
+            key = re.sub(r"[^a-z0-9]", "", nm.lower())
+            try:
+                for r in (_contacts_rows() or []):
+                    loc = re.sub(r"[^a-z0-9]", "", str(r[4] if len(r) > 4 else "").lower().split("@")[0])
+                    if key and loc == key and re.search(r"[\u0590-\u05FF]", str(r[0] or "")):
+                        real = str(r[0]).strip()
+                        break
+            except Exception:
+                pass
+        real = real or next((x for x in cands if x), "")
         return real or nm
     if nm not in _GENERIC_NAMES:
         return nm
