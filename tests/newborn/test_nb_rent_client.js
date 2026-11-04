@@ -130,7 +130,7 @@ const tick = () => new Promise(r => setTimeout(r, 5));
     openSheet: h => { sheet = h; }, POST: (u, d) => { posts.push([u, d]); return Promise.resolve({ok: true}); },
     closeSheet: () => {}, toast: () => {}, boot: () => {}, _pickedNames: () => [],
   };
-  const code2 = ['var SEL_ROLE = "agent";', fn(js2, 'openMember'), fn(js2, 'saveMember'), 'return {openMember, saveMember};'].join('\n');
+  const code2 = ['var SEL_ROLE = "agent";', 'var DLR = {names: [], coords: []};', fn(js2, 'dlrKey'), fn(js2, 'dlrHas'), fn(js2, 'dlrIsAuto'), fn(js2, 'openMember'), fn(js2, 'saveMember'), 'return {openMember, saveMember};'].join('\n');
   const A2 = new Function(...Object.keys(env2), code2)(...Object.values(env2));
   A2.openMember(0);
   ck(sheet.indexOf('השכרות בנכס נולד') >= 0 && sheet.indexOf('id="tgRent"') >= 0, 'toggle in member sheet');

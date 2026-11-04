@@ -3111,6 +3111,8 @@ function oipLoad(){ GET('/v2/api/admin/office_ips').then(function(j){ if (j && j
 // [DIALER-USERS 03/11] חייגן חכם — מי רואה: מתאמות תמיד, ועוד כל מי שבעל המשרד מסמן
 var DLR = {names: [], coords: []}, DLR_ALL = false;
 function dlrKey(s){ return String(s || '').replace(/\s+/g, ' ').trim(); }
+function dlrHas(nm){ var k = dlrKey(nm); return (DLR.names || []).some(function(x){ return dlrKey(x) === k; }); }
+function dlrIsAuto(p){ var k = dlrKey(p.name); return p.role === 'coordinator' || (DLR.coords || []).some(function(x){ return dlrKey(x) === k; }); }
 function dlrLoad(){ GET('/v2/api/dialer/users').then(function(j){ if (j && j.ok){ DLR = j; dlrRender(); } }).catch(function(){}); }
 function dlrRender(){
   var box = el('dlrList'); if (!box) return;
@@ -3629,6 +3631,13 @@ function openMember(i){
     (isDev ? '' :
       '<div class="swRow"><div><div class="lb">השהיה</div><div class="sb">מושהה לא רואה נתונים ולא נכנס</div></div>' +
       '<div class="tg' + (p.suspended ? ' on' : '') + '" id="tgSusp" onclick="this.classList.toggle(\'on\')"></div></div>') +
+    (isDev ? '' : (function(){   // 04/11 (אייל): מתג 'חייגן' — אותה רשימה של כרטיס 'חייגן חכם — מי רואה'
+      var auto = dlrIsAuto(p), on = auto || dlrHas(p.name);
+      return '<div class="swRow"><div><div class="lb">חייגן</div><div class="sb">' +
+        (auto ? 'מתאמת · תמיד רואה' : 'רואה את החייגן החכם') + '</div></div>' +
+        '<div class="tg' + (on ? ' on' : '') + '" id="tgDlr"' +
+        (auto ? ' aria-disabled="true" style="opacity:.55;cursor:default"' : ' onclick="this.classList.toggle(\'on\')"') + '></div></div>';
+    })()) +
     '<button class="btn btn-blue" onclick="saveMember(' + i + ')">שמירה</button>' +
     (isDev ? '' :
       '<button class="btn btn-sec" onclick="loginAs(' + i + ')">' +
@@ -3672,6 +3681,14 @@ function saveMember(i){
     if (vpNow !== null && vpNow !== (p.vphone || '')) upd.vphone = vpNow;
     if (Object.keys(upd).length > 1)
       jobs.push(POST('/api/dev/agent_update', upd));
+    if (el('tgDlr') && !dlrIsAuto(p)){   // 04/11: מתג 'חייגן'
+      var dlrNow = el('tgDlr').classList.contains('on');
+      if (dlrNow !== dlrHas(p.name)){
+        var dn = (DLR.names || []).filter(function(x){ return dlrKey(x) !== dlrKey(p.name); });
+        if (dlrNow) dn.push(p.name);
+        jobs.push(POST('/v2/api/dialer/users', {names: dn}).then(function(j){ if (j && j.ok) DLR.names = j.names; return j; }));
+      }
+    }
   }
   if (el('coordAgents') && SEL_ROLE === 'coordinator'){
     var names = _pickedNames('coordAgents');
