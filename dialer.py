@@ -479,7 +479,12 @@ def register(app, G):
             except Exception:
                 office = ((cfg.get("v2_office") or {}).get("name") or "").strip()
             agents_all = team + [n for n in sorted(roster) if canon(n) not in {canon(t) for t in team}]
-            return jsonify({"ok": True, "allowed": True, "me": name, "office": office,
+            try:   # 04/11 (אייל): 'חיוג רגיל בנכס נולד' דלוק (ברירת המחדל) → גם כאן חיוג מהטלפון, בלי מסקיו
+                _ag = G["_c2c_agent_entry"](s)
+                plain = not (isinstance(_ag, dict) and _ag.get("newbornPlainDial") is False)
+            except Exception:
+                plain = True
+            return jsonify({"ok": True, "allowed": True, "me": name, "office": office, "plainDial": plain,
                             "stats": {"calls": int(day.get("calls") or 0), "meetings": _meetings_today(cfg, me9, now),
                                       "goal": GOAL_DEFAULT},
                             "items": ready[:40], "more": max(0, len(ready) - 40),
@@ -854,7 +859,8 @@ function dial(){
   POST('/v2/api/dialer/dial', {key: l.key, addr: l.address}).catch(function(){});
   POST('/api/newborn/contact', {key: l.key, addr: l.address}).catch(function(){});   // 'מי פנה' — סוכנים יראו שכבר פנו
   D.stats.calls++;
-  if (typeof c2cDial === 'function') c2cDial(l.tel); else location.href = 'tel:' + l.tel;
+  /* 04/11 (אייל): 'חיוג רגיל בנכס נולד' בכרטיס החבר → חייגן הטלפון גם כאן, בלי מסקיו */
+  if (D.plainDial !== false || typeof c2cDial !== 'function') location.href = 'tel:' + l.tel; else c2cDial(l.tel);
   MODE = 'call'; SECS = 0; render();
 }
 function tick(){ stopT(); TIMER = setInterval(function(){ SECS++; var t = el('tm'); if (t) t.textContent = String(Math.floor(SECS / 60)).padStart(2, '0') + ':' + String(SECS % 60).padStart(2, '0'); }, 1000); }
