@@ -10,7 +10,7 @@ import social_video as V
 from _fakes import ROW, make_G
 NOW = time.time()
 def iso(t): return SP._dt.datetime.fromtimestamp(t, SP._dt.timezone.utc).isoformat()
-ENV = {"SOCIAL_MODE": "publish", "APP_BASE_URL": "https://app"}
+ENV = {"SOCIAL_MODE": "publish", "APP_BASE_URL": "https://app", "SOCIAL_VIDEO_REVIEW_AGENT": "1"}
 import tempfile
 V._STORE = V.VidStore(tempfile.mkdtemp())
 open(V._STORE.path("TOK"), "wb").write(b"mp4")
