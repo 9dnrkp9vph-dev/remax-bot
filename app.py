@@ -3891,6 +3891,7 @@ def _name_for_phone(last9):
             or _config_agent_phones().get(last9) or "")
 
 _GENERIC_NAMES = ("מנהל", "סוכן", "")
+_DN_UNRESOLVED_LOGGED = set()
 def _display_name_for(name, phone):
     """[USAGE 30/09] שם לתצוגה ביומנים. מי שמוגדר 'מנהל' בניהול מקבל בכניסה את השם הגנרי 'מנהל'
     (_login_name — במכוון, צפייה כמשרד), ולכן ביומן השימוש 5 טלפונים שונים התמזגו לשורה אחת
@@ -3927,6 +3928,17 @@ def _display_name_for(name, phone):
             except Exception:
                 pass
         real = real or next((x for x in cands if x), "")
+        if not re.search(r"[\u0590-\u05FF]", real or nm) and nm not in _DN_UNRESOLVED_LOGGED:
+            # 04/11 אבחון: באוויר 'eyal-shmul' לא מתורגם למרות שבבדיקה מקומית כן — שורה אחת לשם בכל עלייה
+            _DN_UNRESOLVED_LOGGED.add(nm)
+            try:
+                _rows = _contacts_rows() or []
+                _emails = sum(1 for r in _rows if len(r) > 4 and "@" in str(r[4]))
+                _err = ""
+            except Exception as _e:
+                _rows, _emails, _err = [], 0, repr(_e)[:120]
+            log.warning(f"display name unresolved: {nm!r} phone={l9!r} cands={cands!r} contacts={len(_rows)} "
+                        f"emails={_emails} src={_contacts_source()!r} err={_err}")
         return real or nm
     if nm not in _GENERIC_NAMES:
         return nm
