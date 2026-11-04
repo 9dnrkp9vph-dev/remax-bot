@@ -940,7 +940,7 @@ html:not(.pwa) body:has(nav) main{ overflow:visible; overscroll-behavior:auto; }
   nav .it:has(.home){color:#fff !important;font-weight:800}
   nav .home{width:36px;height:36px;border-radius:12px}
   nav .badge{position:static;top:auto;right:auto;order:9;margin-inline-start:auto;align-self:center;
-      font-size:10.5px;padding:2px 9px;line-height:1.4;flex-shrink:0}
+      font-size:12px;padding:2px 9px;line-height:1.4;flex-shrink:0}
   /* הבית: הבריף כבאנר רוחבי, סטטיסטיקות בשורה, גריד שתי עמודות (§13) */
   body:has(nav) main:has(.briefBar){display:grid;grid-template-columns:1fr 1fr;gap:13px;
       align-items:start;max-width:1000px}
