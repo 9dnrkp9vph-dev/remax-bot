@@ -28,10 +28,16 @@ def tour_theme(n_prev):
     return THEMES[int(n_prev or 0) % len(THEMES)]
 
 
-def tour_photo_box(w, h, wm, aspect=1.5):
-    """אזור 3:2 הגדול ביותר בתמונה שלא נוגע בתיבת סימן המים (שברים 0-1) → (x0,y0,x1,y1) או None.
-    בלי סימן → כל התמונה בחיתוך מרכזי ל-3:2. סימן שאי אפשר לחתוך החוצה בלי להשאיר פחות מ-55% מהרוחב → None."""
+BOTTOM_BAND = 0.12   # [04/11] סימני יד2/RE/MAX יושבים בפינות התחתונות וClaude מפספס אותם — הרצועה התחתונה תמיד נחתכת
+
+
+def tour_photo_box(w, h, wm, aspect=1.5, band=BOTTOM_BAND):
+    """אזור 3:2 הגדול ביותר בתמונה, בלי הרצועה התחתונה (band), שלא נוגע בתיבת סימן המים (שברים 0-1)
+    → (x0,y0,x1,y1) או None. סימן שאי אפשר לחתוך החוצה בלי להשאיר פחות מ-55% מהרוחב → None."""
+    H = h * (1 - band)
+
     def fit(x0, y0, x1, y1):
+        x0, y0, x1, y1 = max(0, x0), max(0, y0), min(w, x1), min(H, y1)
         bw, bh = x1 - x0, y1 - y0
         if bw <= 0 or bh <= 0:
             return None
@@ -41,14 +47,13 @@ def tour_photo_box(w, h, wm, aspect=1.5):
             cw, ch = bw, bw / aspect
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
         return (int(round(cx - cw / 2)), int(round(cy - ch / 2)), int(round(cx + cw / 2)), int(round(cy + ch / 2)))
-    if not wm:
-        return fit(0, 0, w, h)
+    if not wm or wm[1] * h >= H:          # אין סימן, או שהוא כולו ברצועה שנחתכת ממילא
+        return fit(0, 0, w, H)
     a, b, c, d = wm[0] * w, wm[1] * h, wm[2] * w, wm[3] * h
     pad = 0.02 * max(w, h)
-    cands = [fit(0, 0, max(0, a - pad), h), fit(min(w, c + pad), 0, w, h),
-             fit(0, 0, w, max(0, b - pad)), fit(0, min(h, d + pad), w, h)]
+    cands = [fit(0, 0, a - pad, H), fit(c + pad, 0, w, H), fit(0, 0, w, b - pad), fit(0, d + pad, w, H)]
     best = max((x for x in cands if x), key=lambda r: (r[2] - r[0]) * (r[3] - r[1]), default=None)
-    if not best or (best[2] - best[0]) < 0.55 * min(w, h * aspect):
+    if not best or (best[2] - best[0]) < 0.55 * min(w, H * aspect):
         return None
     return best
 
@@ -74,8 +79,9 @@ def tour_plan(texts, order, captions, feats):
         if k == 0:
             shots.append({"i": i, "title": cap or o.get("title") or "", "sub": o.get("place") or ""})
             continue
-        if not cap and pool:
-            cap = pool.pop(0)
+        if not cap and pool:              # [04/11] בלי כיתוב — רשימת מאפיינים ("מעלית · חניה"), לא מילה שנראית כשם החדר
+            cap = " · ".join(pool[:2])
+            del pool[:2]
         sub = spec if k == 1 else ""
         shots.append({"i": i, "title": cap, "sub": sub})
     return shots
@@ -100,10 +106,11 @@ def tour_duration(n_shots):
 # ── בחירת תמונות + כיתובים (Claude vision) ───────────────────────────────────────
 _TOUR_PROMPT = """These are photos of one apartment for sale (numbered from 0). Plan a short vertical "apartment tour" reel.
 Return ONLY a JSON object, no prose:
-{"order": [<up to 7 indexes in tour order: the single most impressive shot first (view / bright living room / facade),
-            then living room, kitchen, dining, balcony, master bedroom, bathroom; different rooms, no near-duplicates>],
- "captions": {"<index>": "<2-4 Hebrew words naming what is shown, using ONLY facts from the description when describing
-              quality (e.g. 'מטבח משודרג' only if the description says so; otherwise just 'המטבח')>"},
+{"shots": [<up to 7 objects in tour order: the single most impressive shot first (view / bright living room / facade),
+            then living room, kitchen, dining, balcony, master bedroom, bathroom; different rooms, no near-duplicates>
+           {"i": <photo number>, "caption": "<2-4 Hebrew words naming the room/thing visible IN THAT PHOTO (look at it
+            again before writing), using ONLY facts from the description when describing quality (e.g. 'מטבח משודרג'
+            only if the description says so; otherwise just 'המטבח')>"}],
  "wm": {"<index>": [x0, y0, x1, y1] or null},
  "skip": [<indexes with people, floor plans, maps, text-only images or 'photos coming soon' placeholders>]}
 "wm" = box of any "Yad2" / "יד2" watermark: semi-transparent white or grey text or logo that can appear ANYWHERE
@@ -145,21 +152,20 @@ def tour_pick(http, api_key, images, desc, model):
             return fb
         m_ = min(n, 10)
         skip = [i for i in (j.get("skip") or []) if isinstance(i, int) and 0 <= i < m_]
-        order = []
-        for i in j.get("order") or []:
+        order, caps = [], {}
+        if isinstance(j.get("shots"), list):      # [04/11] כיתוב צמוד לתמונה — בלי בלבול מספור בין order ל-captions
+            pairs = [(x.get("i"), x.get("caption")) for x in j["shots"] if isinstance(x, dict)]
+        else:
+            cd = j.get("captions") if isinstance(j.get("captions"), dict) else {}
+            pairs = [(i, cd.get(str(i), cd.get(i))) for i in j.get("order") or []]
+        for i, v in pairs:
             if isinstance(i, int) and 0 <= i < m_ and i not in skip and i not in order:
                 order.append(i)
+                c = _he_ok(v, 4)
+                if c:
+                    caps[i] = c
         if len(order) < 2:
             return fb
-        caps = {}
-        for k, v in (j.get("captions") or {}).items() if isinstance(j.get("captions"), dict) else ():
-            try:
-                i = int(k)
-            except (TypeError, ValueError):
-                continue
-            c = _he_ok(v, 4)
-            if c and 0 <= i < m_:
-                caps[i] = c
         wm = {}
         has = isinstance(j.get("wm"), dict)   # Claude ענה על סימנים — מה שלא ברשימה נקי; לא ענה → ברירת מחדל
         raw = j.get("wm") if has else {}

@@ -19,7 +19,9 @@ ck([T.tour_theme(k) for k in range(4)] == ["dark", "cream", "split", "dark"], "r
 ck(T.tour_theme(None) == "dark", "none")
 
 # ── חיתוך סימן מים החוצה ──
-ck(T.tour_photo_box(1440, 960, None) == (0, 0, 1440, 960), "no wm → full 3:2")
+ck(T.tour_photo_box(1440, 960, None) == (86, 0, 1354, 845), T.tour_photo_box(1440, 960, None))   # רצועה תחתונה 12% תמיד נחתכת
+ck(T.tour_photo_box(720, 480, (0.0, 0.92, 0.12, 0.99)) == T.tour_photo_box(720, 480, None), "yad2 bottom-left (קובי 04/11) — in band")
+b = T.tour_photo_box(720, 480, None); ck(b[3] <= 480 * 0.88 and b[0] > 0 and b[2] < 720, b)   # גם RE/MAX בפינה הימנית-תחתונה בחוץ
 b = T.tour_photo_box(1440, 960, (0.02, 0.02, 0.18, 0.14))      # פינה שמאלית-עליונה
 ck(b and (b[0] >= 0.18 * 1440 or b[1] >= 0.14 * 960), b)
 ck(abs((b[2] - b[0]) / (b[3] - b[1]) - 1.5) < 0.02, b)
@@ -31,8 +33,8 @@ ck(T.tour_photo_box(1440, 960, (0.3, 0.3, 0.7, 0.7)) is None, "centre wm → ski
 TX = V.vid_texts(ROW, ["מעלית"], "", "דנה כהן", "072-555-0101", "")
 sh = T.tour_plan(TX, [4, 1, 2, 0], {4: "נוף פתוח לים", 2: "המטבח"}, ["מעלית", "ממ\"ד"])
 ck(sh[0] == {"i": 4, "title": "נוף פתוח לים", "sub": TX["open"]["place"]}, sh[0])
-ck(sh[1]["title"] == "מעלית" and sh[1]["sub"] == TX["s2"]["main"], sh[1])     # בלי כיתוב → מאפיין מהמודעה
-ck(sh[2]["title"] == "המטבח" and sh[3]["title"] == "ממ\"ד", sh)
+ck(sh[1]["title"] == "מעלית · ממ\"ד" and sh[1]["sub"] == TX["s2"]["main"], sh[1])   # בלי כיתוב → רשימת מאפיינים
+ck(sh[2]["title"] == "המטבח" and sh[3]["title"] == "", sh)
 ck(len(T.tour_plan(TX, list(range(12)), {}, [])) == T.MAX_SHOTS, "max shots")
 ck(T.tour_plan(TX, [0, 1], {}, [])[0]["title"] == TX["open"]["title"], "fallback title")
 ck(T.tour_duration(7) == 15.25, "duration")
@@ -54,6 +56,10 @@ p = T.tour_pick(Http("```json\n" + ans + "\n```"), "k", IMGS, "נוף פתוח �
 ck(p["order"] == [3, 0, 1], p)                         # 5 בדילוג, 9 מחוץ לטווח
 ck(p["captions"] == {3: "נוף פתוח לים"}, p)            # טלפון ולא-עברית נזרקים
 ck(p["wm"][1] == (0.3, 0.3, 0.7, 0.7) and p["wm"][0] is None and p["wm"][2] is None, p["wm"])
+# [04/11] פורמט חדש: כיתוב צמוד לתמונה
+p3 = T.tour_pick(Http(json.dumps({"shots": [{"i": 2, "caption": "המטבח"}, {"i": 0, "caption": "הסלון"}, {"i": 4}, {"i": 5, "caption": "x"}],
+                                  "wm": {}, "skip": [5]})), "k", IMGS, "", "m")
+ck(p3["order"] == [2, 0, 4] and p3["captions"] == {2: "המטבח", 0: "הסלון"}, p3)
 p2 = T.tour_pick(Http(json.dumps({"order": [1, 0]})), "k", IMGS, "", "m")
 ck(p2["wm"][0] == (0.02, 0.02, 0.18, 0.14), "no wm answer → default corner")
 ck(T.tour_pick(Http("not json"), "k", IMGS, "", "m")["order"] == list(range(6)), "fallback")
@@ -62,7 +68,7 @@ ck(T.tour_pick(None, "", IMGS, "", "m")["captions"] == {}, "no key")
 # ── ניקוי: תמונה עם סימן במרכז מדלגים עליה ומשלימים מהשאר ──
 cl = T.tour_slides(IMGS, p)
 ck([i for _, i in cl] == [3, 0, 2, 4], [i for _, i in cl])   # 1 נפסלה (סימן במרכז), 5 בדילוג
-ck(Image.open(io.BytesIO(cl[0][0])).size == (1440, 960), "clean photo uncropped")
+ck(Image.open(io.BytesIO(cl[0][0])).size == (1268, 845), "clean photo: only the bottom band + 3:2")
 
 # ── יצירה: סגנון סיור כברירת מחדל, בלי fal, עיצוב לפי ההיסטוריה ──
 ck(V.vid_style({}) == "tour" and V.vid_style({"SOCIAL_VIDEO_STYLE": "classic"}) == "classic", "style")
