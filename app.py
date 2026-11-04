@@ -13289,6 +13289,130 @@ def _ai_digest_tick(now):
     _config_mutate(_mark)
     return True
 
+# ── [SEARCH-QA 04/11 אייל] בקרת חיפושים — כל יום ראשון: חיפושי השבוע רצים שוב ונבדקים, מייל לבעל המשרד (search_qa.py) ──
+_SEARCH_QA = {"state": "", "started": 0, "secs": None, "msg": "", "report": None, "subject": "", "html": "", "text": ""}
+_SEARCH_QA_LOCK = _threading.Lock()
+
+def _search_qa_one(q):
+    """חיפוש אחד דרך אותו מנוע של אפי והאתר → (parsed, matches, note). כשל = פירוק ריק."""
+    parsed = _parse_props_query(q) or {}
+    matches = search_listings_in_sheet(parsed) if parsed else []
+    note = search_area_note(parsed, matches) if parsed else ""
+    return parsed, matches, note
+
+def _search_qa_build(days=7):
+    """→ (נושא, html, טקסט, דוח). קורא את היומן, מריץ כל ניסוח פעם אחת (4 במקביל) + הבדיקה הקבועה."""
+    import search_qa as _sq, supabase_db as _sbdb, datetime as _dt
+    from concurrent.futures import ThreadPoolExecutor
+    acts = _sbdb.fetch_activity_actions(time.time() - days * 86400, (_sq.ACT_EFFIE, _sq.ACT_SITE))
+    acts = [a for a in acts if a.get("action") in (_sq.ACT_EFFIE, _sq.ACT_SITE)]   # הסינון בשרת לפי קידומת
+    items = _sq.collect(acts)[:int(os.environ.get("SEARCH_QA_MAX", "150") or 150)]
+    queries = list(dict.fromkeys([it["q"] for it in items] + _sq.REGRESSION))
+    feat = lambda r, col, f: _row_feature_state(r, col, f)
+
+    def _run(q):
+        try:
+            p, m, n = _search_qa_one(q)
+            return q, len(m), _sq.check_search(q, p, m, n, feature_state=feat)
+        except Exception as e:
+            log.warning(f"search qa '{q[:40]}': {e}")
+            return q, 0, [{"code": "parse_fail", "info": type(e).__name__}]
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        res = {q: (c, iss) for q, c, iss in ex.map(_run, queries)}
+    results = [dict(it, count=res[it["q"]][0], issues=res[it["q"]][1]) for it in items if it["q"] in res]
+    regression = [_sq.regression_result(q, res.get(q, (0, []))[1]) for q in _sq.REGRESSION]
+    rep = _sq.build_report(results, regression)
+    end = _dt.datetime.now(_rep_tz()).date()
+    rng = "%s–%s" % ((end - _dt.timedelta(days=days - 1)).strftime("%d/%m"), end.strftime("%d/%m/%Y"))
+    office = (((_load_config() or {}).get("v2_office") or {}).get("name") or "").strip()
+    subj, html, text = _sq.render(rep, office, rng)
+    return subj, html, text, rep
+
+def _search_qa_run(send=False, to=None, days=7):
+    """בנייה (ושליחה) ברקע; פעם אחת בכל רגע. → (נשלח?, הודעה)."""
+    if not _SEARCH_QA_LOCK.acquire(blocking=False):
+        return False, "כבר רץ"
+    t0 = time.time()
+    _SEARCH_QA.update({"state": "running", "started": t0, "msg": ""})
+    ok, msg = False, ""
+    try:
+        subj, html, text, rep = _search_qa_build(days)
+        _SEARCH_QA.update({"report": rep, "subject": subj, "html": html, "text": text})
+        if send:
+            ok, msg = _report_send_email(subj, html, text, to=to or ",".join(_crm_owner_emails()))
+            try:
+                _log_activity("אפי", "system", "", "בקרת חיפושים — " + ("נשלח" if ok else "נכשל"),
+                              "%d חיפושים · %d בעיות" % (rep["total"], len(rep["groups"])))
+            except Exception:
+                pass
+        else:
+            ok, msg = True, "נבנה"
+        log.info(f"search qa: {msg} (searches={rep['total']} groups={len(rep['groups'])} {round(time.time() - t0)}s)")
+    except Exception as e:
+        ok, msg = False, f"{type(e).__name__}: {str(e)[:120]}"
+        log.error(f"search qa failed: {e}", exc_info=True)
+    finally:
+        _SEARCH_QA.update({"state": "done", "secs": round(time.time() - t0, 1), "msg": msg})
+        _SEARCH_QA_LOCK.release()
+    return ok, msg
+
+def _search_qa_tick(now):
+    """יום ראשון מ-SEARCH_QA_HOUR (08:00, אחרי הסיכום השבועי) — פעם אחת; רץ ב-thread נפרד (כמה דקות של קריאות AI)
+    כדי לא לעכב את שאר הדוחות. כשל → ניסיון חוזר כל 15 דק', עד 8. כיבוי: SEARCH_QA=0."""
+    if (os.environ.get("SEARCH_QA", "1") or "1") == "0" or _SEARCH_QA["state"] == "running":
+        return False
+    import search_qa as _sq
+    key = now.date().isoformat()
+    rec = ((_load_config() or {}).get("v2_search_qa") or {}).get(key)
+    if not _sq.due(now, rec, hour=int(os.environ.get("SEARCH_QA_HOUR", "8") or 8)):
+        return False
+
+    def _go(_k=key):
+        ok, msg = _search_qa_run(send=True)
+        def _mark(cfg, _ok=ok, _msg=msg):
+            d = cfg.get("v2_search_qa") or {}
+            prev = d.get(_k) or {}
+            d[_k] = {"ts": time.time(), "ok": _ok, "tries": int(prev.get("tries") or 0) + 1, "msg": str(_msg)[:120]}
+            for kk in sorted(d)[:-8]: d.pop(kk, None)
+            cfg["v2_search_qa"] = d
+            return True
+        _config_mutate(_mark)
+    _threading.Thread(target=_go, daemon=True, name="search-qa").start()
+    return True
+
+def _search_qa_auth():
+    """דוחות (מפתח/מנהל) או מפתח הקריאה של ה-CRM (GET בלבד)."""
+    import hmac as _hm
+    if _report_auth_ok():
+        return True
+    ak = (os.environ.get("CRM_AGENT_KEY") or "").strip()
+    hk = (request.headers.get("X-CRM-Key") or "").strip()
+    return bool(request.method == "GET" and ak and hk and _hm.compare_digest(hk.encode("utf-8"), ak.encode("utf-8")))
+
+@app.route("/api/search-qa", methods=["GET"])
+def api_search_qa():
+    """הדוח האחרון (?fmt=json); ?run=1 מריץ מחדש ברקע (בלי מייל); ?days=N."""
+    if not _search_qa_auth():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    if request.args.get("run") == "1":
+        days = max(1, min(30, int(request.args.get("days", "7") or 7)))
+        _threading.Thread(target=_search_qa_run, kwargs={"days": days}, daemon=True, name="search-qa-manual").start()
+        return jsonify({"ok": True, "queued": True})
+    st = {k: _SEARCH_QA.get(k) for k in ("state", "started", "secs", "msg")}
+    if (request.args.get("fmt", "") or "").lower() == "json" or not _SEARCH_QA.get("html"):
+        return jsonify({"ok": True, **st, "subject": _SEARCH_QA.get("subject"), "report": _SEARCH_QA.get("report")})
+    return Response("<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>"
+                    + _SEARCH_QA["subject"] + "</title>" + _SEARCH_QA["html"], mimetype="text/html")
+
+@app.route("/api/search-qa/send", methods=["POST"])
+def api_search_qa_send():
+    """הרצה ושליחה עכשיו לבעל המשרד (או ?to=)."""
+    if not _report_auth_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    to = str(request.args.get("to", "") or "").strip() or None
+    _threading.Thread(target=_search_qa_run, kwargs={"send": True, "to": to}, daemon=True, name="search-qa-send").start()
+    return jsonify({"ok": True, "queued": True})
+
 def _day_wa_build_and_send(now, cfg=None):
     """[DAY-WA 01/11] בונה את דוח הערב של היום (מהבוקר עד now) ושולח לוואטסאפ של בעל המשרד → (נשלח?, הטקסט).
     משותף ל-21:00 ולכפתור 'שלח דוח ערב עכשיו' בניהול."""
@@ -13403,6 +13527,10 @@ def _report_daily_loop_body(_dt):
                 _weekly_tick(now)   # [WEEKLY 09/10] יום ראשון — הסיכום השבועי (אחרי היומי)
             except Exception as _we:
                 log.warning(f"weekly report tick: {_we}")
+            try:
+                _search_qa_tick(now)   # [SEARCH-QA 04/11] יום ראשון 08:00 — בקרת חיפושים לבעל המשרד
+            except Exception as _qe:
+                log.warning(f"search qa tick: {_qe}")
             try:
                 _ai_digest_tick(now)   # [AI-DIGEST 29/10] 11:00 — מייל השינויים בטאב AI
             except Exception as _ae:
