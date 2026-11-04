@@ -24,5 +24,10 @@ check(D("dingabay01", "") == "הודיה צרויה", "מייל עם תו נסת
 check(D("john-doe", "") == "john-doe", "אין התאמה — נשאר כמו שהוא")
 check(D("shmul", "") == "shmul", "רק חלק מהשם — לא מנחשים")
 check(D("נדב רייזר", "") == "נדב רייזר", "שם בעברית לא נוגעים")
+# [04/11 באוויר] פעימות של מנהל נשמרות בשם הגנרי 'מנהל' — לפי הטלפון חוזר שם הכניסה מ-Google
+app._name_for_phone = lambda p: {"505709865": "eyal-shmul"}.get(p, "")
+check(D("מנהל", "505709865") == "אייל שמול", "שם גנרי → שם כניסה באנגלית → לפי המייל")
+app._name_for_phone = lambda p: {"505709865": "נוי רבן"}.get(p, "")
+check(D("מנהל", "505709865") == "נוי רבן", "שם גנרי → שם בעברית כמו קודם")
 print("\nRESULT:", "ALL GREEN" if not fails else "%d FAILED: %s" % (len(fails), fails))
 sys.exit(1 if fails else 0)

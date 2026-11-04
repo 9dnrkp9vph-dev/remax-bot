@@ -3952,6 +3952,10 @@ def _display_name_for(name, phone):
     except Exception:
         real = ""
     if real and real not in _GENERIC_NAMES:
+        # [04/11 באוויר] פעימות של מנהל נשמרות בשם 'מנהל', ולפי הטלפון חוזר ראשון שם הכניסה מ-Google
+        # ('eyal-shmul') — שם בלי עברית עובר לתרגום של הענף למעלה (שם עברי לפי הטלפון / לפי המייל)
+        if not re.search(r"[֐-׿]", real):
+            return _display_name_for(real, l9)
         return _full_team_name(real)
     return (nm or "משתמש") + " · " + l9[-4:]
 
@@ -13600,6 +13604,78 @@ def _calls_thread_kick():
             _calls_ensure_thread()
     except Exception as e:
         log.warning(f"calls WA thread kick: {e}")
+
+# ── [04/11 אבחון זיכרון] השרת נהרג על חוסר זיכרון (2GB) — 04/11 11:48 ו-02/11 16:28; בשעות עבודה
+# הזיכרון עולה ~300MB לחצי שעה. כל 10 דק' שורת לוג אחת: זיכרון התהליך + מה תופס מקום במטמון.
+import sys as _sys_mem
+def _approx_size(obj, budget=200000):
+    """גודל משוער (בתים) של אובייקט ומה שבתוכו — עם תקרת אובייקטים, כדי לא לתקוע את השרת."""
+    seen, stack, total, n = set(), [obj], 0, 0
+    while stack and n < budget:
+        o = stack.pop()
+        if id(o) in seen:
+            continue
+        seen.add(id(o)); n += 1
+        try: total += _sys_mem.getsizeof(o)
+        except Exception: continue
+        if isinstance(o, dict):
+            stack.extend(o.keys()); stack.extend(o.values())
+        elif isinstance(o, (list, tuple, set, frozenset)):
+            stack.extend(o)
+    return total, n >= budget
+
+def _mem_report():
+    try:
+        rss = 0
+        with open("/proc/self/status") as f:
+            for ln in f:
+                if ln.startswith("VmRSS:"):
+                    rss = int(ln.split()[1]) // 1024
+    except Exception:
+        import resource as _res
+        rss = _res.getrusage(_res.RUSAGE_SELF).ru_maxrss // 1024
+    with _TTL_LOCK:
+        items = list(_TTL_CACHE.items())
+    sizes = []
+    for k, (ts, v) in items:
+        sz, cut = _approx_size(v)
+        sizes.append((sz, str(k)[:40], int(time.time() - ts), cut))
+    sizes.sort(reverse=True)
+    groups = {}
+    for sz, k, age, cut in sizes:
+        g = re.split(r"[:|]", k, 1)[0]
+        c, s = groups.get(g, (0, 0)); groups[g] = (c + 1, s + sz)
+    top = ", ".join(f"{k}={sz // 1048576}MB/{age // 60}m{'+' if cut else ''}" for sz, k, age, cut in sizes[:8])
+    grp = ", ".join(f"{g}×{c}={s // 1048576}MB" for g, (c, s) in sorted(groups.items(), key=lambda x: -x[1][1])[:8])
+    tot = sum(s for s, *_ in sizes) // 1048576
+    log.warning(f"mem: rss={rss}MB cache_keys={len(items)} cache≈{tot}MB threads={_threading.active_count()} "
+                f"activity={len(globals().get('_activity') or [])} | top: {top} | groups: {grp}")
+
+_MEM_THREAD = [None, 0]
+_MEM_LOCK = _threading.Lock()
+def _mem_loop():
+    while True:
+        try: _mem_report()
+        except Exception as e: log.warning(f"mem report: {e}")
+        time.sleep(600)
+
+@app.before_request
+def _mem_thread_kick():
+    try:
+        th = _MEM_THREAD[0]
+        if th is not None and th.is_alive() and _MEM_THREAD[1] == os.getpid():
+            return
+        if os.environ.get("MEM_REPORT", "1") == "0":
+            return
+        with _MEM_LOCK:
+            th = _MEM_THREAD[0]
+            if th is not None and th.is_alive() and _MEM_THREAD[1] == os.getpid():
+                return
+            _MEM_THREAD[0] = _threading.Thread(target=_mem_loop, daemon=True, name="mem-report")
+            _MEM_THREAD[1] = os.getpid()
+            _MEM_THREAD[0].start()
+    except Exception as e:
+        log.warning(f"mem thread kick: {e}")
 
 # ── אֶפִי (/v2) — מודול נפרד; כשל כאן לא מפיל את האפליקציה הרצה ─────────────────
 try:
