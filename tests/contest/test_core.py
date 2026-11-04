@@ -133,7 +133,8 @@ def test_score_basic():
             sig("נדב רייזר", "בגין 1", "12/10/2026 10:00")]
     r = c.score(c.NOV_2026, led, sigs, [], canon, NOW)
     x = row(r, "נדב רייזר")
-    ck((x["meetings"], x["gius"], x["pd"], x["points"]) == (2, 1, 1, 40), x)
+    ck((x["meetings"], x["gius"], x["points"]) == (2, 1, 40), x)
+    ck("pd" not in x and x["power_pts"] == 0 and r["power_today"] is False and r["power_days"] == [])
     ck(r["days_left"] == 11 and r["pts"] == {"gius": 30, "meeting": 5})
     ck(c.score(c.NOV_2026, led, sigs, [], canon, T(2026, 12, 5))["days_left"] == 0)
 
@@ -184,7 +185,7 @@ def test_unknown_and_missing():
     ck(coord(r, "נויה")["meetings"] == 0 and coord(r, "נויה")["points"] == 0)
     r = c.score(c.NOV_2026, {"1": {"agent": "נדב רייזר", "by": "נדב רייזר", "at": T(2026, 11, 3), "when": None}}, None, [], canon, NOW)
     x = row(r, "נדב רייזר")
-    ck(x["gius"] is None and x["pd"] is None and x.get("partial") is True and x["points"] == 5)
+    ck(x["gius"] is None and x.get("partial") is True and x["points"] == 5)
     ck(r.get("partial") is True and r["leader"] is None, "board partial + no leader when sigs fail")
     ck("partial" not in c.score(c.NOV_2026, {}, [], [], canon, NOW))
 
@@ -211,6 +212,73 @@ def test_ledger_dupes_and_generic_agent():
     old["manual:9"] = dict(old["manual:0"])
     L2 = c.ledger_update(old, nb1, c.NOV_2026, NOW, disp)
     ck(sum(1 for r in L2.values() if r["agent"] == "נחמי זקס") == 1, L2)
+
+def test_power_day_scoring():
+    # [POWER-DAY 04/11] גיוס 60 לפי יום החתימה, פגישה 10 לפי יום הקביעה; תיקון ידני לא מוכפל
+    PD = "2026-11-10"
+    led = {"a": {"agent": "נדב רייזר", "by": "נדב רייזר", "at": T(2026, 11, 10, 11), "when": T(2026, 11, 18)},  # נקבעה ב-PD
+           "b": {"agent": "נדב רייזר", "by": "נדב רייזר", "at": T(2026, 11, 8), "when": T(2026, 11, 10)},       # מתקיימת ב-PD, נקבעה קודם
+           "c": {"agent": "רויטל גל", "by": "נוי רבן", "at": T(2026, 11, 10, 15), "when": None}}               # מתאמת ב-PD (אחרי 03/11)
+    sigs = [sig("נדב רייזר", "הרצל 5", "10/11/2026 10:00"), sig("נדב רייזר", "ויצמן 3", "09/11/2026 10:00"),
+            sig("נדב רייזר", "הרצל 5", "12/11/2026 10:00")]   # אותו נכס שוב — הראשונה (ב-PD) קובעת
+    adj = [{"id": "1", "group": "קבוצה א'", "kind": "row", "label": "נדב רייזר", "pts": 7, "reason": "", "by": "", "at": 0}]
+    r = c.score(c.NOV_2026, led, sigs, adj, canon, NOW, [PD])
+    x = row(r, "נדב רייזר")
+    ck((x["gius"], x["meetings"]) == (2, 2), x)
+    ck(x["points"] == 60 + 30 + 10 + 5 + 7, x)
+    ck((x["power_gius"], x["power_meetings"], x["power_pts"]) == (1, 1, 70), x)
+    y = coord(r, "נוי רבן")
+    ck(y["points"] == 10 and y["power_pts"] == 10 and y["power_meetings"] == 1, y)
+    ck(row(r, "רויטל גל")["points"] == 0)
+    ck(r["groups"][0]["total"] == 112, r["groups"][0]["total"])   # בלי המתאמת
+    ck(r["power_today"] is False and r["power_days"] == [PD] and r["power_mult"] == 2)
+    # ביום עצמו
+    r2 = c.score(c.NOV_2026, led, sigs, [], canon, T(2026, 11, 10, 18), [PD])
+    ck(r2["power_today"] is True)
+    # יום עתידי — לא נספר ולא נחשף
+    r3 = c.score(c.NOV_2026, led, sigs, [], canon, T(2026, 11, 9, 18), [PD])
+    ck(r3["power_today"] is False and r3["power_days"] == [] and row(r3, "נדב רייזר")["power_pts"] == 0)
+    # בלי power — כמו קודם
+    ck(row(c.score(c.NOV_2026, led, sigs, [], canon, NOW), "נדב רייזר")["points"] == 30 + 30 + 5 + 5)
+    # חתימות נכשלו — פגישות עדיין מוכפלות, גיוס לא ידוע
+    r4 = c.score(c.NOV_2026, led, None, [], canon, NOW, [PD])
+    ck(row(r4, "נדב רייזר")["points"] == 15 and row(r4, "נדב רייזר")["gius"] is None)
+
+
+def test_power_days_cfg():
+    cfg = {"v2_contest_power": {"2026-11": ["2026-11-12", "bad", "2026-11-05", "2026-11-12"]}}
+    ck(c.power_days(cfg, "2026-11") == ["2026-11-05", "2026-11-12"])
+    ck(c.power_days({}, "2026-11") == [] and c.power_days(None, "x") == [])
+    ck(c.il_day(T(2026, 11, 10, 23)) == "2026-11-10" and c.il_day(T(2026, 11, 11, 0)) == "2026-11-11")
+
+
+def test_power_message_and_recipients():
+    t = c.power_text(c.NOV_2026)
+    ck("\n" not in t and "בתחרות נובמבר" in t and "60 נקודות" in t and "פגישה 10" in t, t)
+    names = c.power_recipients(c.NOV_2026, ["אייל שמול", "אודי שמול", "מתן ביטון", "נדב רייזר"], canon)
+    ck(names.count("נדב רייזר") == 1 and "נוי רבן" in names and "אוצר בן חמו" in names, names)
+    ck(names[-3:] == ["אייל שמול", "אודי שמול", "מתן ביטון"], names[-3:])
+    ck("בינימין אביטן" in names and "בן קדוש" in names and "בן ובנימין" not in names)
+    ck(len(names) == 23 + 4 + 3, len(names))
+
+
+def test_power_due_and_pending():
+    IL = _IL
+    day = "2026-11-10"
+    at = lambda h, m=0: dt.datetime(2026, 11, 10, h, m, tzinfo=IL)
+    ck(c.power_due(at(8, 59), [day], False) is None)
+    ck(c.power_due(at(9, 0), [day], False) == day)
+    ck(c.power_due(at(19, 59), [day], False) == day and c.power_due(at(20, 0), [day], False) is None)
+    ck(c.power_due(at(10), [day], True) is None)          # שבת / השתקה
+    ck(c.power_due(at(10), ["2026-11-11"], False) is None)
+    now = at(10).timestamp()
+    rec = {"א": {"r": "sent", "ts": now - 10, "tries": 1}, "ב": {"r": "fail", "ts": now - 60, "tries": 1},
+           "ג": {"r": "fail", "ts": now - 1000, "tries": 1}, "ד": {"r": "no_phone", "ts": 0, "tries": 1},
+           "ה": {"r": "fail", "ts": 0, "tries": 8}}
+    ck(c.power_pending(["א", "ב", "ג", "ד", "ה", "ו"], rec, now, canon) == ["ג", "ו"])
+    s = c.power_sent_summary({"v2_contest_power_sent": {"2026-11": {day: rec}}}, "2026-11")
+    ck(s[day] == {"sent": 1, "fail": 3, "no_phone": 1}, s)
+
 
 for k, f in list(globals().items()):
     if k.startswith("test_"): f()

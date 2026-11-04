@@ -147,18 +147,48 @@ def ledger_update(ledger, nb, contest, now, display):
     return new
 
 
-def listing_anchors(names, bounds, sigs, canon):
+def listing_anchor_times(names, bounds, sigs, canon):
+    """עוגן-כתובת → זמן החתימה הראשונה בתקופה (נכס שנחתם פעמיים — הראשונה קובעת). None = החתימות לא נטענו."""
     if _bad(sigs):
         return None
     keys = {canon(n) for n in names}
-    seen = set()
+    seen = {}
     for g in sigs or []:
         if g.get("type") != "בלעדיות" or not g.get("signed") or "בדיקה בדיקה" in str(g.get("address") or ""):
             continue
         ts = parse_ts(g.get("ts"))
         if ts is not None and bounds[0] <= ts < bounds[1] and canon(g.get("agent")) in keys:
-            seen.add(_anchor(g.get("address")))
+            a = _anchor(g.get("address"))
+            if a not in seen or ts < seen[a]:
+                seen[a] = ts
     return seen
+
+
+def listing_anchors(names, bounds, sigs, canon):
+    t = listing_anchor_times(names, bounds, sigs, canon)
+    return None if t is None else set(t)
+
+
+# [POWER-DAY 04/11, אייל] יום שהמנהל קובע — הניקוד בתחרות כפול (גיוס 60, פגישה 10). גיוס לפי יום החתימה,
+# פגישה לפי יום הקביעה (כמו הספירה הרגילה). תיקונים ידניים לא מוכפלים. התאריך מוסתר עד היום עצמו.
+POWER_MULT = 2
+
+
+def il_day(ts):
+    return _dt.datetime.fromtimestamp(ts, _IL).date().isoformat()
+
+
+def power_days(cfg, cid):
+    """רשימת ה-Power Days של התחרות (תאריכי ISO, ממוינים) — v2_contest_power[cid] בקונפיג."""
+    v = ((cfg or {}).get("v2_contest_power") or {}) if isinstance(cfg, dict) else {}
+    lst = v.get(cid) if isinstance(v, dict) else None
+    out = []
+    for d in lst or []:
+        try:
+            out.append(_d(d).isoformat())
+        except Exception:
+            pass
+    return sorted(set(out))
 
 
 def _adj_sum(adjs, group, kind, label, canon):
@@ -173,13 +203,13 @@ def _adj_sum(adjs, group, kind, label, canon):
 BOOKER_ONLY_FROM = _dt.datetime(2026, 11, 3, 14, 35, tzinfo=_IL).timestamp()
 
 
-def score(contest, ledger, sigs, adjustments, canon, now):
+def score(contest, ledger, sigs, adjustments, canon, now, power=None):
     pts = contest["pts"]
     s, e = _d(contest["start"]), _d(contest["end"])
     cb = (day_bounds(s)[0], day_bounds(e)[1])
-    ps, pe = prev_month(s)
-    pb = (day_bounds(ps)[0], day_bounds(pe)[1])
     today = _dt.datetime.fromtimestamp(now, _IL).date()
+    pw = {d for d in (power or ()) if d <= today.isoformat()}   # יום עתידי לא נספר ולא נחשף
+    mul = lambda ts: POWER_MULT if ts is not None and il_day(ts) in pw else 1
     rows_l = list((ledger or {}).values())
     # [03/11 אייל] מ-03/11 14:35 פגישה נספרת רק למי שתיאם: מתאמת — למתאמת, סוכן — לסוכן; בלי מתאם ידוע — לסוכן.
     # פגישות שנקבעו לפני כן — לפי הכלל הקודם (לסוכן, ומתאמת שקבעה לסוכן — גם לה), כי אייל יישר אותן ידנית.
@@ -194,14 +224,20 @@ def score(contest, ledger, sigs, adjustments, canon, now):
         rows = []
         for r in g["rows"]:
             mem = {canon(m) for m in r["members"]}
-            meetings = sum(1 for x in rows_l if mem_of(x) in mem)
-            a = listing_anchors(r["members"], cb, sigs, canon)
-            p = listing_anchors(r["members"], pb, sigs, canon)
+            mine = [x for x in rows_l if mem_of(x) in mem]
+            meetings = len(mine)
+            m_pts = sum(mul(x.get("at")) * pts["meeting"] for x in mine)
+            a = listing_anchor_times(r["members"], cb, sigs, canon)
             adj = _adj_sum(adjustments, g, "row", r["label"], canon)
             gius = None if a is None else len(a)
+            g_pts = sum(mul(t) * pts["gius"] for t in (a or {}).values())
+            pw_g = sum(1 for t in (a or {}).values() if mul(t) > 1)
+            pw_m = sum(1 for x in mine if mul(x.get("at")) > 1)
             o = {"label": r["label"], "members": list(r["members"]), "meetings": meetings, "gius": gius,
-                 "adj": adj, "points": (gius or 0) * pts["gius"] + meetings * pts["meeting"] + adj,
-                 "pd": None if p is None else len(p)}
+                 "adj": adj, "points": g_pts + m_pts + adj,
+                 "power_gius": pw_g, "power_meetings": pw_m,
+                 "power_pts": sum(mul(t) * pts["gius"] for t in (a or {}).values() if mul(t) > 1) +
+                 pw_m * POWER_MULT * pts["meeting"]}
             if a is None:
                 o["partial"] = True
             rows.append(o)
@@ -211,15 +247,19 @@ def score(contest, ledger, sigs, adjustments, canon, now):
         coords = []
         for n in g.get("coords") or []:
             k = canon(n)
-            m = sum(1 for x in rows_l if coord_of(x, k))
+            cm = [x for x in rows_l if coord_of(x, k)]
             adj = _adj_sum(adjustments, g, "coord", n, canon)
-            coords.append({"name": n, "meetings": m, "adj": adj, "points": m * pts["meeting"] + adj})
+            pw_m = sum(1 for x in cm if mul(x.get("at")) > 1)
+            coords.append({"name": n, "meetings": len(cm), "adj": adj,
+                           "points": sum(mul(x.get("at")) * pts["meeting"] for x in cm) + adj,
+                           "power_meetings": pw_m, "power_pts": pw_m * POWER_MULT * pts["meeting"]})
         total = sum(o["points"] for o in rows)
         totals.append(total)
         out_groups.append({"name": g["name"], "total": total, "rows": rows, "coords": coords})
     out = {"id": contest["id"], "name": contest["name"], "start": contest["start"], "end": contest["end"],
            "days_left": max(0, (e - today).days + 1), "pts": dict(pts), "groups": out_groups,
-           "leader": None if totals[0] == totals[1] else (0 if totals[0] > totals[1] else 1)}
+           "leader": None if totals[0] == totals[1] else (0 if totals[0] > totals[1] else 1),
+           "power_today": today.isoformat() in pw, "power_days": sorted(pw), "power_mult": POWER_MULT}
     if _bad(sigs):   # [FIX2] בלי חתימות הסכומים חסרים — אין מובילה, והתצוגה מראה 'לא זמין'
         out["partial"] = True
         out["leader"] = None
@@ -230,6 +270,7 @@ def score(contest, ledger, sigs, adjustments, canon, now):
 import copy as _copy
 import hmac as _hmac
 import os as _os
+import threading as _threading
 import time as _time
 import uuid as _uuid
 
@@ -238,6 +279,128 @@ import goals as _goals
 
 def _now():
     return _time.time()
+
+
+# ── [POWER-DAY 04/11] הודעת וואטסאפ ב-09:00 למשתתפים, למתאמות ולבעלי המשרד ───────────────
+POWER_HOUR, POWER_END_HOUR = 9, 20          # שולחים רק בין 09:00 ל-20:00 (יום שנקבע אחרי 09:00 — מיד עם השמירה)
+POWER_RETRY_SEC, POWER_MAX_TRIES = 900, 8
+POWER_EXTRA_DEFAULT = "אייל שמול,אודי שמול,מתן ביטון"
+
+
+def power_text(ct):
+    """שורה אחת — מחוץ לחלון 24 השעות ההודעה עוברת בתבנית, ופרמטר תבנית לא מקבל ירידות שורה."""
+    p = ct.get("pts") or {}
+    g, m = int(p.get("gius") or 0) * POWER_MULT, int(p.get("meeting") or 0) * POWER_MULT
+    nm = str(ct.get("name") or "התחרות").strip()
+    return ("היום POWER DAY ב%s! כל גיוס בלעדיות שווה היום %d נקודות וכל פגישה %d — פי שניים. "
+            "יום אחד יכול להפוך את הטבלה. מי לוקח אותו?") % (nm, g, m)
+
+
+def power_recipients(ct, extras, canon):
+    """כל המשתתפים בשתי הקבוצות + המתאמות + בעלי המשרד; כל אדם פעם אחת."""
+    out, seen = [], set()
+    names = [m for g in ct.get("groups") or [] for r in g.get("rows") or [] for m in r.get("members") or []]
+    names += [n for g in ct.get("groups") or [] for n in g.get("coords") or []]
+    names += list(extras or [])
+    for n in names:
+        n = str(n or "").strip()
+        k = canon(n)
+        if n and k and k not in seen:
+            seen.add(k)
+            out.append(n)
+    return out
+
+
+def power_due(now_il, days, blocked):
+    """היום, אם הוא Power Day ועכשיו בין 09:00 ל-20:00 ולא שבת/חג/השתקה. אחרת None."""
+    d = now_il.date().isoformat()
+    if blocked or d not in (days or ()) or not (POWER_HOUR <= now_il.hour < POWER_END_HOUR):
+        return None
+    return d
+
+
+def power_pending(names, rec, now, canon):
+    out = []
+    for n in names:
+        x = (rec or {}).get(canon(n)) or {}
+        if x.get("r") in ("sent", "no_phone") or int(x.get("tries") or 0) >= POWER_MAX_TRIES:
+            continue
+        if x and now - float(x.get("ts") or 0) < POWER_RETRY_SEC:
+            continue
+        out.append(n)
+    return out
+
+
+def power_sent_summary(cfg, cid):
+    st = (((cfg or {}).get("v2_contest_power_sent") or {}).get(cid)) or {}
+    out = {}
+    for d, rec in st.items():
+        if isinstance(rec, dict):
+            c = {"sent": 0, "fail": 0, "no_phone": 0}
+            for x in rec.values():
+                r = (x or {}).get("r")
+                if r in c:
+                    c[r] += 1
+            out[d] = c
+    return out
+
+
+def power_run(G, now, canon):
+    """סבב אחד: אם היום Power Day והגיעה השעה — שולח למי שטרם קיבל. מחזיר כמה נשלחו."""
+    if (_os.environ.get("CONTEST_POWER_WA", "1") or "1").strip() == "0" or not G["_d360_on"]():
+        return 0
+    now_il = _dt.datetime.fromtimestamp(now, _IL)
+    try:
+        blocked = bool(G["_quiet_mode"]()) or bool(G["_switch_off"]("wa_official_off"))
+    except Exception:
+        blocked = True
+    cfg = G["_load_config"]() or {}
+    ct, mode = pick(cfg, now_il.date())
+    if not ct or mode != "live":
+        return 0
+    cid = ct["id"]
+    day = power_due(now_il, power_days(cfg, cid), blocked)
+    if not day:
+        return 0
+    rec = _copy.deepcopy(((((cfg.get("v2_contest_power_sent") or {}).get(cid)) or {}).get(day)) or {})
+    raw = (_os.environ.get("CONTEST_POWER_EXTRA") or POWER_EXTRA_DEFAULT)
+    names = power_recipients(ct, [x.strip() for x in raw.split(",") if x.strip()], canon)
+    todo = power_pending(names, rec, now, canon)
+    if not todo:
+        return 0
+    ag_ph = G["fetch_agents_phones"]() or {}
+    try:
+        vph = G["_agent_vphones9"]() or set()
+    except Exception:
+        vph = set()
+    text = power_text(ct)
+    n_sent = 0
+    for n in todo:
+        wa = _goals._weekly_phone(G, n, ag_ph, vph)
+        if not wa:
+            res = "no_phone"
+        else:
+            try:
+                res = "sent" if G["send_text"](wa, text) else "fail"
+            except Exception:
+                res = "fail"
+        x = rec.get(canon(n)) or {}
+        rec[canon(n)] = {"n": n, "r": res, "ts": now, "tries": int(x.get("tries") or 0) + 1}
+        n_sent += res == "sent"
+        G["_log_activity"]("אפי", "system", "", "תחרות — הודעת Power Day " +
+                           {"sent": "נשלחה", "fail": "נכשלה", "no_phone": "אין טלפון"}[res], n[:60])
+
+    def _mut(c, _cid=cid, _d=day, _v=rec):
+        m = c.get("v2_contest_power_sent") if isinstance(c.get("v2_contest_power_sent"), dict) else {}
+        per = m.get(_cid) if isinstance(m.get(_cid), dict) else {}
+        per[_d] = _v
+        m[_cid] = per
+        c["v2_contest_power_sent"] = m
+    try:
+        G["_config_mutate"](_mut)
+    except Exception:
+        pass
+    return n_sent
 
 
 _LAST_GOOD = {}   # [FIX2] הלוח התקין האחרון לכל תחרות — כשהחתימות נופלות מציגים אותו (stale) ולא סכומים חסרים
@@ -348,11 +511,11 @@ def register(app, G):
                 lg[lid] = new
                 c["v2_contest_ledger"] = lg
             G["_config_mutate"](fn)
-        sigs = _goals.g_safe(G, lambda: _goals.g_sigs(G, prev_month(_d(ct["start"]))[0]))
+        sigs = _goals.g_safe(G, lambda: _goals.g_sigs(G, _d(ct["start"])))   # [POWER-DAY] בלי P.D. — אין צורך בחודש הקודם
         if isinstance(sigs, Exception):
             sigs = None
         adj = ((cfg.get("v2_contest_adj") or {}).get(lid)) or []
-        b = score(ct, new, sigs, adj, canon, now)
+        b = score(ct, new, sigs, adj, canon, now, power_days(cfg, lid))
         if b.get("partial"):
             last = _LAST_GOOD.get(lid)
             if last:
@@ -403,6 +566,9 @@ def register(app, G):
                "can_edit": edit, "adjustments": adjs, "def": dfn}
         if edit:
             out["unmatched"] = _unmatched(ct or dfn) or []
+            if ct:   # [POWER-DAY] כל הימים (גם עתידיים) — רק לעורכים; השאר רואים רק את מה שכבר הגיע (בלוח)
+                out["power_all"] = power_days(cfg, ct["id"])
+                out["power_sent"] = power_sent_summary(cfg, ct["id"])
         return jsonify(out)
 
     def _mgr():
@@ -511,6 +677,70 @@ def register(app, G):
         return jsonify({"ok": True, "id": a["id"]})
 
 
+    _pw = {"t": None, "pid": None}
+    _pw_lock = _threading.Lock()
+
+    def _pw_tick():
+        try:
+            power_run(G, _now(), canon)
+        except Exception as e:
+            lg = G.get("log")
+            if lg:
+                try:
+                    lg.error("contest power day: %s" % e)
+                except Exception:
+                    pass
+
+    def _pw_loop():
+        _time.sleep(60)
+        while True:
+            _pw_tick()
+            _time.sleep(120)
+
+    @app.before_request
+    def _contest_power_kick():   # הלולאה נולדת בתוך תהליך ההגשה (הלקח מ-15/09: thread מזמן הייבוא מת ב-fork)
+        if _pw["t"] is not None and _pw["t"].is_alive() and _pw["pid"] == _os.getpid():
+            return
+        with _pw_lock:
+            if _pw["t"] is not None and _pw["t"].is_alive() and _pw["pid"] == _os.getpid():
+                return
+            _pw["t"] = _threading.Thread(target=_pw_loop, daemon=True, name="contest-power")
+            _pw["t"].start()
+            _pw["pid"] = _os.getpid()
+
+    @app.route("/v2/api/contest/power", methods=["POST"])
+    def contest_power():
+        s = _mgr()
+        if not s:
+            return jsonify({"ok": False, "error": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        cid = str(b.get("contest") or "")
+        cfg = G["_load_config"]() or {}
+        ct = next((x for x in contests(cfg) if x.get("id") == cid), None)
+        if not ct:
+            return jsonify({"ok": False, "error": "התחרות לא נמצאה"}), 400
+        try:
+            day = _d(b.get("date"))
+        except Exception:
+            return jsonify({"ok": False, "error": "תאריך לא תקין"}), 400
+        if not (_d(ct["start"]) <= day <= _d(ct["end"])):
+            return jsonify({"ok": False, "error": "התאריך מחוץ לתאריכי התחרות"}), 400
+        on, d = bool(b.get("on", True)), day.isoformat()
+
+        def fn(c):
+            m = c.get("v2_contest_power") if isinstance(c.get("v2_contest_power"), dict) else {}
+            lst = set(power_days(c, cid))
+            (lst.add(d) if on else lst.discard(d))
+            m[cid] = sorted(lst)
+            c["v2_contest_power"] = m
+        G["_config_mutate"](fn)
+        _clear(cid)
+        _log(s, "תחרות — Power Day " + ("נקבע" if on else "בוטל"), d)
+        if on and day == _today():   # נקבע להיום — ההודעה יוצאת מיד (אם כבר 09:00 ועד 20:00)
+            _threading.Thread(target=_pw_tick, daemon=True, name="contest-power-now").start()
+        return jsonify({"ok": True, "power_all": power_days(G["_load_config"]() or {}, cid)})
+
+
 # ── UI: הכרטיס המשותף (סטורי / טלוויזיה / מסך) ───────────────────────────────
 # מוזרק ב-<!--CONTEST_KIT--> (המסך /v2/contest ב-effie_v2; בהמשך גם הבית והטלוויזיה).
 V2_CONTEST_KIT = r"""<style>
@@ -588,6 +818,19 @@ V2_CONTEST_KIT = r"""<style>
   .ck-col .cct{font-size:clamp(14px,1.8vh,19px);font-weight:700;color:#E4C56B;margin-top:8px;padding-top:6px;border-top:2px solid rgba(228,197,107,.35)}
   .ck-col .cc .cr{flex:none;min-height:clamp(30px,4.6vh,52px)}
   .ck.tv .ck-track{height:14px;margin-top:clamp(10px,1.6vh,20px);flex:none}
+  /* [POWER-DAY 04/11] יום ניקוד כפול — באנר זהב */
+  .ck-pow{margin-top:14px;border-radius:18px;padding:12px 14px;background:linear-gradient(135deg,#E4C56B,#C29435);color:#231700;
+      text-align:center;box-shadow:0 6px 20px rgba(194,148,53,.35)}
+  .ck-pow b{display:block;font-size:22px;font-weight:900;letter-spacing:.02em}
+  .ck-pow span{font-size:14px;font-weight:700}
+  .ck.tv .ck-pow{margin-top:clamp(8px,1.2vh,14px);padding:clamp(8px,1.2vh,14px) 22px;display:flex;align-items:center;
+      justify-content:center;gap:26px;flex:none}
+  .ck.tv .ck-pow b{display:inline;font-size:clamp(28px,3.8vh,44px)}
+  .ck.tv .ck-pow span{font-size:clamp(18px,2.4vh,28px)}
+  .ck-pow-strip{margin:14px 46px 0;border-radius:18px;padding:10px 22px;background:linear-gradient(135deg,#E4C56B,#C29435);color:#231700;
+      display:flex;align-items:center;justify-content:center;gap:24px;font-family:'Heebo',sans-serif;box-shadow:0 6px 24px rgba(194,148,53,.4)}
+  .ck-pow-strip b{font-size:34px;font-weight:900;letter-spacing:.02em}
+  .ck-pow-strip span{font-size:22px;font-weight:700}
 </style>
 <script>
 var CONTEST_MONTHS = ['בינואר','בפברואר','במרץ','באפריל','במאי','ביוני','ביולי','באוגוסט','בספטמבר','באוקטובר','בנובמבר','בדצמבר'];
@@ -600,6 +843,24 @@ function cEsc(s){
 function cEnc(s){ return encodeURIComponent(String(s == null ? '' : s)).replace(/'/g, '%27'); }
 function cNum(v){ return (typeof v === 'number' && isFinite(v)) ? v : null; }
 function cShow(v){ var x = cNum(v); return x == null ? '—' : String(x); }
+/* [POWER-DAY 04/11] יום ניקוד כפול — מוצג רק ביום עצמו (השרת לא חושף ימים עתידיים) */
+function contestPowerToday(b){ return !!(b && b.power_today); }
+function contestPowerPts(b){
+  var p = (b && b.pts) || {}, m = cNum(b && b.power_mult) || 2;
+  return {g: (cNum(p.gius) || 0) * m, m: (cNum(p.meeting) || 0) * m};
+}
+function contestPowerBanner(b){
+  if (!contestPowerToday(b)) return '';
+  var x = contestPowerPts(b);
+  return '<div class="ck-pow"><b>היום POWER DAY</b><span>ניקוד כפול · גיוס ' + x.g + ' · פגישה ' + x.m + '</span></div>';
+}
+function contestPowerStrip(j){
+  var b = j && j.board;
+  if (!contestPowerToday(b)) return '';
+  var x = contestPowerPts(b);
+  return '<div class="ck-pow-strip"><b>היום POWER DAY</b><span>ניקוד כפול בתחרות · גיוס ' + x.g + ' · פגישה ' + x.m + '</span></div>';
+}
+function contestHasPower(b){ return !!(b && b.power_days && b.power_days.length); }
 function contestToday(){
   try{ return new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date()); }
   catch(e){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
@@ -630,7 +891,7 @@ function contestRange(a, b){
 function contestRules(p){
   p = p || {};
   return '<b>גיוס בבלעדיות = ' + cShow(p.gius) + '</b> (רק אחרי שנחתם) · <b>פגישה = ' + cShow(p.meeting) +
-    '</b> (לפי יום הקביעה) · <bdi dir="ltr">P.D.</bdi> = גיוסים בחודש הקודם';
+    '</b> (לפי יום הקביעה) · <b>Power Day</b> = ניקוד כפול, ביום שהמנהל קובע';
 }
 function contestDays(n){
   n = cNum(n);
@@ -651,8 +912,8 @@ function contestMine(j){
 function contestNudge(j){
   var m = contestMine(j);
   if (!m || m.kind !== 'row') return '';
-  var r = m.r, gi = cNum(r.gius), pd = cNum(r.pd);
-  if (gi != null && pd != null && gi > pd) return 'כבר עקפת את החודש הקודם';
+  var r = m.r, b = j && j.board;
+  if (contestPowerToday(b)){ var x = contestPowerPts(b); return 'היום כל גיוס שווה ' + x.g + ' נקודות וכל פגישה ' + x.m; }
   if (r.rank === 1) return 'אתה מוביל בקבוצה';
   var up = null;
   (m.g.rows || []).forEach(function(x){ if (x.points > r.points && (up == null || x.points < up)) up = x.points; });
@@ -663,13 +924,14 @@ function contestMeHtml(j){
   if (!m) return '';
   var r = m.r, chips;
   if (m.kind === 'coord'){
-    chips = '<div class="ck-chip"><b>' + cShow(r.meetings) + '</b><span>פגישות</span></div>';
+    chips = '<div class="ck-chip"><b>' + cShow(r.meetings) + '</b><span>פגישות</span></div>' +
+      (contestHasPower(j.board) ? '<div class="ck-chip g"><b>' + cShow(r.power_pts) + '</b><span>ב-Power Day</span></div>' : '');
     return '<div class="ck-me"><div class="t">הניקוד שלך</div><div class="big">' + cShow(r.points) +
       ' <small>נק\' · מתאמת</small></div><div class="ck-chips">' + chips + '</div></div>';
   }
   chips = '<div class="ck-chip g"><b>' + cShow(r.gius) + '</b><span>גיוסים</span></div>' +
     '<div class="ck-chip"><b>' + cShow(r.meetings) + '</b><span>פגישות</span></div>' +
-    '<div class="ck-chip"><b>' + cShow(r.pd) + '</b><span><bdi dir="ltr">P.D.</bdi></span></div>';
+    (contestHasPower(j.board) ? '<div class="ck-chip g"><b>' + cShow(r.power_pts) + '</b><span>ב-Power Day</span></div>' : '');
   var nd = contestNudge(j);
   return '<div class="ck-me"><div class="t">הניקוד שלך</div><div class="big">' + cShow(r.points) +
     ' <small>נק\' · מקום ' + cShow(r.rank) + ' בקבוצה</small></div><div class="ck-chips">' + chips + '</div>' +
@@ -711,6 +973,7 @@ function contestTvHtml(j){
     cEsc(win ? contestRange(b.start, b.end) : contestDays(b.days_left)) + '</span></div>' +
     '<div class="ck-tvh"><div class="ck-trophy">' + CONTEST_TROPHY + '</div><div><div class="ck-h">' + head + '</div>' +
     '<div class="ck-sub">' + (win ? 'התחרות הסתיימה' : pt ? 'החתימות לא נטענו — הניקוד יתעדכן בקרוב' : (gap ? 'פער של ' + gap + ' נקודות' : 'תיקו')) + '</div></div></div>' +
+    (win ? '' : contestPowerBanner(b)) +
     '<div class="ck-cols">' + cols + '</div>' +
     '<div class="ck-track"><i class="' + (ld === 0 ? 'lead' : '') + '" style="width:' + pa + '%"></i>' +
     '<i class="' + (ld === 1 ? 'lead' : '') + '" style="width:' + (100 - pa) + '%"></i></div></div>';
@@ -737,6 +1000,7 @@ function contestCardHtml(j, opts){
     '<div class="ck-trophy">' + CONTEST_TROPHY + '</div>' +
     '<div class="ck-h">' + head + '</div>' +
     '<div class="ck-sub">גיוס בבלעדיות ' + cShow(p.gius) + ' נק\' · פגישה ' + cShow(p.meeting) + ' נק\'</div>' +
+    contestPowerBanner(b) +
     contestTeamsHtml(j) +
     '<div class="ck-track"><i class="' + (ld === 0 ? 'lead' : '') + '" style="width:' + pa + '%"></i>' +
     '<i class="' + (ld === 1 ? 'lead' : '') + '" style="width:' + (100 - pa) + '%"></i></div>' +
@@ -782,28 +1046,29 @@ function contestEditCell(j, gi, kind, label){
 function contestTableHtml(j, gi, opts){
   var g = j && j.board && j.board.groups && j.board.groups[gi];
   if (!g) return '';
-  var me = j.me, ed = !!(j && j.can_edit);
+  var me = j.me, ed = !!(j && j.can_edit), hp = contestHasPower(j.board);
   var rows = (g.rows || []).map(function(r){
     var mine = me && me.kind === 'row' && me.group === gi && me.label === r.label;
     return '<tr class="' + (mine ? 'me' : '') + (r.rank === 1 && r.points > 0 ? ' top1' : '') + '">' +
       '<td class="pos">' + cShow(r.rank) + '</td><td class="n">' + cEsc(r.label) + '</td>' +
       '<td>' + cShow(r.meetings) + '</td><td>' + cShow(r.gius) + '</td>' +
       contestPtsCell(j, gi, 'row', r.label, r.points, cNum(r.adj) || 0) +
-      '<td class="pd">' + cShow(r.pd) + '</td>' + contestEditCell(j, gi, 'row', r.label) + '</tr>';
+      (hp ? '<td class="pd">' + cShow(r.power_pts) + '</td>' : '') + contestEditCell(j, gi, 'row', r.label) + '</tr>';
   }).join('');
-  return '<table><tr><th></th><th>סוכן</th><th>פגישות</th><th>גיוסים</th><th>ניקוד</th><th><bdi dir="ltr">P.D.</bdi></th>' +
+  return '<table><tr><th></th><th>סוכן</th><th>פגישות</th><th>גיוסים</th><th>ניקוד</th>' + (hp ? '<th>Power Day</th>' : '') +
     (ed ? '<th></th>' : '') + '</tr>' + rows + '</table>';
 }
 function contestCoordsHtml(j, gi){
   var g = j && j.board && j.board.groups && j.board.groups[gi];
   if (!g || !(g.coords || []).length) return '';
-  var me = j.me, ed = !!(j && j.can_edit);
+  var me = j.me, ed = !!(j && j.can_edit), hp = contestHasPower(j.board);
   var rows = g.coords.map(function(c){
     var mine = me && me.kind === 'coord' && me.group === gi && me.label === c.name;
     return '<tr class="' + (mine ? 'me' : '') + '"><td class="n">' + cEsc(c.name) + '</td><td>' + cShow(c.meetings) + '</td>' +
-      contestPtsCell(j, gi, 'coord', c.name, c.points, cNum(c.adj) || 0) + contestEditCell(j, gi, 'coord', c.name) + '</tr>';
+      contestPtsCell(j, gi, 'coord', c.name, c.points, cNum(c.adj) || 0) +
+      (hp ? '<td class="pd">' + cShow(c.power_pts) + '</td>' : '') + contestEditCell(j, gi, 'coord', c.name) + '</tr>';
   }).join('');
-  return '<table><tr><th>מתאמת</th><th>פגישות</th><th>ניקוד</th>' + (ed ? '<th></th>' : '') + '</tr>' + rows + '</table>';
+  return '<table><tr><th>מתאמת</th><th>פגישות</th><th>ניקוד</th>' + (hp ? '<th>Power Day</th>' : '') + (ed ? '<th></th>' : '') + '</tr>' + rows + '</table>';
 }
 </script>"""
 
@@ -934,10 +1199,11 @@ function render(){
     '<div class="hero"><div class="top"><button class="back" onclick="location.href=\'/v2/home\'" aria-label="חזרה">' + BACK_SVG + '</button>' +
       '<span>' + cEsc(j.mode === 'winner' ? 'התחרות הסתיימה' : contestDays(b.days_left)) + '</span></div>' +
       '<h2>' + cEsc(b.name) + '</h2><div class="sub">קבוצה מול קבוצה · ' + cEsc(contestRange(b.start, b.end)) + '</div>' +
-      '<div class="mini-vs">' + mini + '</div></div>' +
+      '<div class="mini-vs">' + mini + '</div>' + (j.mode === 'winner' ? '' : contestPowerBanner(b)) + '</div>' +
     '<div class="rules">' + contestRules(b.pts) + '</div>' +
     (j.can_edit ? '<div class="adm"><button class="btn sec" onclick="editOpen()">עריכת התחרות</button>' +
-      '<button class="btn sec" onclick="copyOpen()">תחרות חדשה (העתק)</button></div>' : '') +
+      '<button class="btn sec" onclick="copyOpen()">תחרות חדשה (העתק)</button>' +
+      (j.mode === 'live' ? '<button class="btn sec" onclick="powerOpen()">Power Day</button>' : '') + '</div>' : '') +
     '<div class="seg">' + seg + '</div>' +
     um + '<div class="card"><h3>' + cEsc(g.name) + ' <span>' + (contestPartial(b) ? 'לא זמין' : cShow(g.total) + ' נק\'') + '</span></h3>' + contestTableHtml(j, SEL, {}) + '</div>' +
     (co ? '<div class="card"><h3>המתאמות של ' + cEsc(g.name) + '</h3><p class="s">פגישות שהן תיאמו — נספרות להן בלבד, לא בסך הקבוצה</p>' + co + '</div>' : '') +
@@ -993,6 +1259,47 @@ function adjDel(id){
     if (r && r.ok){ sheetClose(); toast('התיקון נמחק'); load(0); }
     else toast((r && r.error && r.error !== 'forbidden') ? r.error : 'לא נמחק — נסה שוב');
   }).catch(function(){ toast('לא נמחק — נסה שוב'); });
+}
+/* ── [POWER-DAY 04/11] ימי ניקוד כפול — מנהל שאינו מתאמת ── */
+var POW_WD = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+function powerLabel(d){
+  var x = String(d).split('-'), dt = new Date(+x[0], +x[1] - 1, +x[2]);
+  return 'יום ' + POW_WD[dt.getDay()] + ' ' + (+x[2]) + '/' + (+x[1]);
+}
+function powerOpen(){
+  var b = CJ && CJ.board;
+  if (!b) return;
+  var today = contestToday(), sent = CJ.power_sent || {};
+  var items = (CJ.power_all || []).map(function(d){
+    var st = d === today ? 'היום' : d < today ? 'עבר' : 'עתידי · מוסתר מכולם עד הבוקר', sm = sent[d];
+    var msg = sm ? ' · הודעה נשלחה ל-' + sm.sent + (sm.fail ? ' · ' + sm.fail + ' נכשלו' : '') + (sm.no_phone ? ' · ' + sm.no_phone + ' בלי טלפון' : '') : '';
+    return '<div class="adjl"><div class="r"><b>' + cEsc(powerLabel(d)) + '</b><small>' + cEsc(st + msg) + '</small></div>' +
+      '<button class="trash" onclick="powerSet(\'' + cEnc(d) + '\', false)" aria-label="ביטול ה-Power Day">' + TRASH_SVG + '</button></div>';
+  }).join('');
+  var x = contestPowerPts(b);
+  sheetShow('<div class="st">Power Day · ניקוד כפול</div>' +
+    '<div class="ss">ביום שתבחר כל גיוס שווה ' + x.g + ' נקודות וכל פגישה ' + x.m + '. התאריך מוסתר מכולם עד היום עצמו. ' +
+    'ב-09:00 יוצאת הודעת וואטסאפ לכל המשתתפים, למתאמות, לאייל, לאודי ולמתן ביטון (יום שנקבע אחרי 09:00 — מיד). יום שכבר עבר — הניקוד מתעדכן, בלי הודעה.</div>' +
+    (items || '<div class="ss">עדיין לא נקבע Power Day</div>') +
+    '<label class="fl">תאריך<input id="pDate" type="date" min="' + cEsc(b.start) + '" max="' + cEsc(b.end) + '" value="' + cEsc(today) + '"></label>' +
+    '<button class="btn blue" id="pSave" onclick="powerAdd()">קביעת Power Day</button><div class="err" id="shErr"></div>' +
+    '<button class="btn sec" onclick="sheetClose()">סגירה</button>');
+}
+function powerAdd(){
+  var d = el('pDate').value;
+  if (!d){ shErr('בחר תאריך'); return; }
+  if (d === contestToday() && !confirm('לקבוע את היום כ-Power Day? ההודעה בוואטסאפ תצא עכשיו לכל המשתתפים.')) return;
+  powerSet(encodeURIComponent(d), true);
+}
+function powerSet(enc, on){
+  var d = decodeURIComponent(enc);
+  if (!on && !confirm('לבטל את ה-Power Day של ' + powerLabel(d) + '? הניקוד הכפול של היום הזה יחזור לרגיל.')) return;
+  var btn = el('pSave'); if (btn) btn.disabled = true;
+  POST('/v2/api/contest/power', {contest: CJ.board.id, date: d, on: on}).then(function(r){
+    if (btn) btn.disabled = false;
+    if (r && r.ok){ CJ.power_all = r.power_all || []; toast(on ? 'ה-Power Day נקבע' : 'ה-Power Day בוטל'); powerOpen(); load(0); }
+    else shErr((r && r.error && r.error !== 'forbidden') ? r.error : r && r.error === 'forbidden' ? 'אין הרשאה' : 'לא נשמר — נסה שוב');
+  }).catch(function(){ if (btn) btn.disabled = false; shErr('לא נשמר — נסה שוב'); });
 }
 /* ── עריכת התחרות ── */
 function rowHtml(gi, label, members){

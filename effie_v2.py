@@ -11331,6 +11331,7 @@ V2_TV_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
       <img src="/assets/logo" alt="" onerror="this.style.display='none'">
     </div>
   </header>
+  <div id="pow"></div>
   <div class="bars" id="bars"></div>
   <main><div class="card" id="card"></div></main>
   <button class="tvNav tvPrev" onclick="goto(-1)" aria-label="הקודם">›</button>
@@ -11483,6 +11484,8 @@ function render(i){
   if (i >= pl.length){ i = 0; IDX = 0; }
   setBars(pl, i);
   var it = pl[i];
+  // [POWER-DAY 04/11] פס זהב מתחת לכותרת לאורך כל היום, בכל כרטיס (בכרטיס התחרות עצמו — הבאנר שבתוכו)
+  try{ el('pow').innerHTML = (it.t !== 'contest' && typeof contestPowerStrip === 'function') ? contestPowerStrip(C) : ''; }catch(e){}
   c.classList[it.t === 'contest' ? 'add' : 'remove']('wide');
   if (it.t === 'contest'){
     c.innerHTML = contestCardHtml(C, {tv: true});

@@ -257,6 +257,60 @@ def test_can_edit_latest_contest():   # [FIX-m4]
     assert c.get("/v2/api/contest").get_json()["can_edit"] is False   # נוי מתאמת בתחרות האחרונה
 
 
+def test_power_day_route_and_hiding():   # [POWER-DAY 04/11]
+    for sess in (REV, COORD_MGR):
+        c, _ = make(sess)
+        assert c.post("/v2/api/contest/power", json={"contest": "2026-11", "date": "2026-11-15"}).status_code == 403
+    c, st = make(MGR)
+    assert c.post("/v2/api/contest/power", json={"contest": "2026-11", "date": "2026-12-02"}).status_code == 400
+    assert c.post("/v2/api/contest/power", json={"contest": "2026-11", "date": "x"}).status_code == 400
+    r = c.post("/v2/api/contest/power", json={"contest": "2026-11", "date": "2026-11-15"}).get_json()
+    assert r["ok"] and r["power_all"] == ["2026-11-15"], r
+    assert any(l[3] == "תחרות — Power Day נקבע" for l in st["logs"])
+    j = c.get("/v2/api/contest").get_json()
+    assert j["power_all"] == ["2026-11-15"] and j["board"]["power_days"] == [] and j["board"]["power_today"] is False
+    # סוכן לא רואה יום עתידי
+    c2, st2 = make(REV, cfg_extra={"v2_contest_power": {"2026-11": ["2026-11-15"]}})
+    j2 = c2.get("/v2/api/contest").get_json()
+    assert "power_all" not in j2 and j2["board"]["power_days"] == [] and pts(j2, "רויטל גל") == 5
+    # היום — ניקוד כפול לפגישה שנקבעה היום
+    c3, st3 = make(REV, cfg_extra={"v2_contest_power": {"2026-11": ["2026-11-10"]}})
+    j3 = c3.get("/v2/api/contest").get_json()
+    assert j3["board"]["power_today"] is True and pts(j3, "רויטל גל") == 10, j3["board"]["power_days"]
+    # ביטול
+    r = c.post("/v2/api/contest/power", json={"contest": "2026-11", "date": "2026-11-15", "on": False}).get_json()
+    assert r["ok"] and r["power_all"] == []
+
+
+def test_power_run_sends_once():
+    sent = []
+    cfg = {"v2_contest_power": {"2026-11": ["2026-11-10"]}}
+    phones = {"נדב רייזר": "0501111111", "נוי רבן": "0502222222", "אייל שמול": "0505709865", "אור צוקרמן": "0529999999"}
+    G = AutoG(_d360_on=lambda: True, _quiet_mode=lambda: False, _switch_off=lambda n: False,
+              _load_config=lambda: cfg, fetch_agents_phones=lambda: phones, _agent_vphones9=lambda: {"529999999"},
+              _wa_phone=lambda p: "972" + str(p)[1:], _last9=lambda p: "".join(ch for ch in str(p) if ch.isdigit())[-9:],
+              send_text=lambda to, t: sent.append((to, t)) or True, _log_activity=lambda *a: None,
+              _canon_key=_key, _canon_agent_name=lambda n: n,
+              _config_mutate=lambda fn: (True, fn(cfg)))
+    os.environ.pop("CONTEST_POWER_WA", None); os.environ.pop("CONTEST_POWER_EXTRA", None)
+    n = contest.power_run(G, NOW, _key)
+    tos = sorted(t for t, _ in sent)
+    assert n == 3 and tos == ["972501111111", "972502222222", "972505709865"], (n, tos)   # הנייד של אור = וירטואלי → לא
+    assert all("POWER DAY" in t and "\n" not in t for _, t in sent)
+    rec = cfg["v2_contest_power_sent"]["2026-11"]["2026-11-10"]
+    assert rec[_key("נדב רייזר")]["r"] == "sent" and rec[_key("אור צוקרמן")]["r"] == "no_phone"
+    assert contest.power_run(G, NOW + 60, _key) == 0 and len(sent) == 3        # פעם אחת
+    early = dt.datetime(2026, 11, 10, 8, 30, tzinfo=IL).timestamp()
+    cfg2 = {"v2_contest_power": {"2026-11": ["2026-11-10"]}}
+    G2 = AutoG(dict(G, _load_config=lambda: cfg2))
+    assert contest.power_run(G2, early, _key) == 0                              # לפני 09:00
+    G3 = AutoG(dict(G, _load_config=lambda: cfg2, _quiet_mode=lambda: True))
+    assert contest.power_run(G3, NOW, _key) == 0                                # שבת / השתקה
+    os.environ["CONTEST_POWER_WA"] = "0"
+    assert contest.power_run(AutoG(dict(G, _load_config=lambda: cfg2)), NOW, _key) == 0
+    os.environ.pop("CONTEST_POWER_WA", None)
+
+
 if __name__ == "__main__":
     n = 0
     for k, v in sorted(globals().items()):

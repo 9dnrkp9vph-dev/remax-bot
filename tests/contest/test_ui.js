@@ -66,7 +66,7 @@ ck(K.contestGapGius(55, 30) === 2, 'gap gius 55/30');
 ck(K.contestGapGius(10, 0) === 0, 'gap gius no pts');
 
 // השורה המעודדת
-ck(K.contestNudge(J()).includes('עקפת'), 'gius 2 > pd 1 → עקפת');
+ck(!K.contestNudge(J()).includes('עקפת'), '[POWER-DAY] בלי השוואה לחודש הקודם');
 const j1 = J({me: {group: 0, kind: 'row', label: 'רויטל גל'}}); j1.board.groups[0].rows[0].gius = 2;
 ck(K.contestNudge(j1).includes('מוביל'), 'rank 1 → מוביל');
 const j3 = J({me: {group: 0, kind: 'row', label: 'אירנה אוברוב'}});
@@ -111,6 +111,7 @@ const adjs = [{id: 'a', group: 1, kind: 'row', label: 'אור צוקרמן', pts
               {id: 'b', group: 0, kind: 'row', label: 'אור צוקרמן', pts: 9, reason: 'x'}];
 ck(K.contestAdjFor(adjs, 1, 'row', 'אור צוקרמן').length === 1, 'adj filter by group/kind/label');
 ck(K.contestRules({gius: 30, meeting: 5}).includes('= 30') && K.contestRules({gius: 30, meeting: 5}).includes('= 5'), 'rules line');
+ck(K.contestRules({gius: 30, meeting: 5}).includes('Power Day') && !K.contestRules({gius: 30, meeting: 5}).includes('P.D.'), 'rules: Power Day, no P.D.');
 ck(K.contestRange('2026-11-01', '2026-11-30') === '1–30 בנובמבר', 'range: ' + K.contestRange('2026-11-01', '2026-11-30'));
 ck(K.contestSplit(' א , ב,, ג ').join('|') === 'א|ב|ג', 'split');
 
@@ -149,4 +150,25 @@ ph = pageWorld(J({can_edit: true, unmatched: ['נויה', 'פלוני']}));
 ck(ph.includes('שמות שלא נמצאו באפי') && ph.includes('נויה') && ph.includes('פלוני'), 'unmatched notice for editors');
 ck(!pageWorld(J({can_edit: false, unmatched: ['נויה']})).includes('שמות שלא נמצאו'), 'no notice for non-editors');
 ck(!pageWorld(J({can_edit: true, unmatched: []})).includes('שמות שלא נמצאו'), 'no notice when empty');
+
+// ── [POWER-DAY 04/11] ──
+const jpw = J(); jpw.board.power_today = true; jpw.board.power_days = ['2026-11-05']; jpw.board.power_mult = 2;
+jpw.board.groups[0].rows[1].power_pts = 70; jpw.board.groups[0].coords[0].power_pts = 20;
+h = K.contestCardHtml(jpw, {story: true});
+ck(h.includes('היום POWER DAY') && h.includes('גיוס 60') && h.includes('פגישה 10'), 'story banner on power day');
+ck(!K.contestCardHtml(J(), {story: true}).includes('POWER DAY'), 'no banner on normal day');
+h = K.contestCardHtml(jpw, {tv: true});
+ck(h.includes('היום POWER DAY') && h.includes('ck-pow'), 'tv card banner');
+ck(K.contestPowerStrip(jpw).includes('ck-pow-strip') && K.contestPowerStrip(J()) === '', 'tv strip only on power day');
+ck(K.contestNudge(jpw).includes('60') && K.contestNudge(jpw).includes('10'), 'nudge on power day: ' + K.contestNudge(jpw));
+t = K.contestTableHtml(jpw, 0, {});
+ck(t.includes('>Power Day<') && t.includes('>70<'), 'table power column');
+ck(!K.contestTableHtml(J(), 0, {}).includes('Power Day'), 'no column before any power day');
+ck(K.contestCoordsHtml(jpw, 0).includes('>20<'), 'coords power column');
+const jpast = J(); jpast.board.power_days = ['2026-11-02']; jpast.board.power_today = false;
+ck(!K.contestCardHtml(jpast, {story: true}).includes('POWER DAY') && K.contestTableHtml(jpast, 0, {}).includes('Power Day'), 'past day: column yes, banner no');
+h = K.contestCardHtml(jpw, {});
+ck(h.includes('ב-Power Day'), 'me chip power');
+ck(!K.contestCardHtml(J(), {}).includes('ב-Power Day') && !K.contestCardHtml(J(), {}).includes('P.D.'), 'no P.D. chip');
+ck(!K.contestWinnerHtml(Object.assign({}, jpw, {mode: 'winner'}), {}).includes('POWER DAY'), 'winner: no banner');
 console.log(n + ' passed');
