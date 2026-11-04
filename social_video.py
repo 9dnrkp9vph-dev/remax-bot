@@ -6,9 +6,13 @@
 SOCIAL_MODE: רק 'publish' שולח וואטסאפ אישור וכותב ל-Meta (social_publish.soc_mode).
 """
 from __future__ import annotations
+import logging
 import re
 
 import social_publish as SP
+
+# [04/11] תוצאות יצירה/פרסום נכתבות ללוג של Render — כך אפשר לאבחן בלי כניסה לאפליקציה
+_log = logging.getLogger("social_video")
 
 DAILY_CAP = 3
 MONTH_AI_CAP = 100
@@ -1018,12 +1022,15 @@ def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
             upd["status"] = "preview"
             G["_sbdb"].video_update(vid, upd)
         res.update(ok=True, status=upd["status"], ai=ai)
+        _log.info("social-video create key=%s vid=%s status=%s recipients=%s%s", key, vid, upd["status"],
+                  len(upd.get("recipients") or []), (" error: " + upd["error"]) if upd.get("error") else "")
         G["_log_activity"](name, role, by_phone or "", "סרטון לרשתות — נוצר" + ("" if ai else " (ללא AI)"), key)
     except Exception as e:
         msg = SP._scrub(str(e), secrets_)[:600]
         G["_sbdb"].video_update(vid, dict(upd, status="failed", error=msg))
         store.remove(tok)
         res.update(status="failed", reason=msg)
+        _log.warning("social-video create key=%s vid=%s status=failed reason=%s", key, vid, msg)
         G["_log_activity"](name, role, by_phone or "", "סרטון לרשתות — נכשל", key)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1077,6 +1084,7 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
     def stop(reason, **f):   # יציאה מוקדמת — לא משאירים את השורה תקועה ב'אושר'
         res["reason"] = reason
         G["_sbdb"].video_update(vid, dict({"status": "failed", "error": reason}, **f))
+        _log.warning("social-video publish key=%s vid=%s status=failed reason=%s", rec.get("property_key"), vid, reason)
         return res
     if not store.exists(tok):
         return stop("הסרטון לא זמין — צור מחדש")
@@ -1146,6 +1154,9 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
     G["_sbdb"].video_update(vid, upd)
     res["ok"] = bool(oks)
     res["reason"] = " · ".join(errs)
+    _log.info("social-video publish key=%s vid=%s status=%s %s%s", rec.get("property_key"), vid, upd["status"],
+              " ".join("%s=%s" % (c, merged.get(c + "_status") or "-") for c in active),
+              (" errors: " + upd["error"]) if errs else "")
     name = rec.get("decided_by") or "אפי"
     G["_log_activity"](name, "system", "", "סרטון לרשתות — " + ("פורסם" if upd["status"] == "published" else "פורסם חלקית"),
                        "%s %d/%d" % (rec.get("property_key"), len(oks), len(active)))
