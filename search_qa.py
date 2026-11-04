@@ -119,9 +119,15 @@ def collect(acts):
     for seq in by_phone.values():
         seq.sort()
         for (t1, q1), (t2, q2) in zip(seq, seq[1:]):
-            if q1 != q2 and 0 < t2 - t1 <= REQUERY_SEC and not out[q1].get("requery"):
+            if q1 != q2 and 0 < t2 - t1 <= REQUERY_SEC and not out[q1].get("requery") and not _refines(q1, q2):
                 out[q1]["requery"] = q2
     return sorted(out.values(), key=lambda x: (-x["n"], -x["ts"]))
+
+
+def _refines(q1, q2):
+    """הניסוח השני מוסיף לראשון (כל המילים של הראשון נשארו) — חידוד רגיל, לא סימן שהתוצאות לא עזרו."""
+    w1, w2 = set(q1.split()), set(q2.split())
+    return bool(w1) and w1 <= w2
 
 
 def _area_txt(parsed):
@@ -211,7 +217,8 @@ def check_search(q, parsed, matches, note="", feature_state=None):
 
     want = str(parsed.get("property_type") or "").strip()
     if want and want != "דירה" and top:
-        bad = [r for r in top if not _type_ok(want, r.get("סוג נכס"))]
+        typed = [w for g in _TYPE_GROUPS for w in g if len(w) > 2 and w in t]
+        bad = [r for r in top if not _type_ok(want, r.get("סוג נכס")) and not any(_type_ok(w, r.get("סוג נכס")) for w in typed)]
         if len(bad) * 2 > len(top):
             add("type", "ביקשו %s, %d מתוך %d %s" % (want, len(bad), len(top), bad[0].get("סוג נכס") or "אחר"))
 
@@ -235,21 +242,23 @@ def check_search(q, parsed, matches, note="", feature_state=None):
     known = " ".join(str(x) for x in (parsed.get("city"), parsed.get("cities"), parsed.get("neighborhood"),
                                       parsed.get("neighborhoods"), parsed.get("street")) if x)
     for word, key in _CITY_WORDS:
-        if re.search(r"(?:^|[\s,])(?:[בולה]|מ)?" + re.escape(word) + r"(?=$|[\s,.])", t) and key not in known:
-            if key == "חיים" and "חיים" in known:
-                continue
-            missed.append(word)
-            break
+        m = re.search(r"(?:^|[\s,])(?:[בולה]|מ)?(?:קרי?י?ת\s+)?" + re.escape(word) + r"(?=$|[\s,.])", t)
+        if not m or key in known:
+            continue
+        if re.search(r"(?:^|\s)(?:לא|בלי|חוץ\s+מ)\s*$", t[:m.start() + 1]):   # 'לא קריית אתא' — שלילה, לא בקשה
+            continue
+        missed.append(word)
+        break
     if missed:
-        add("missed", " · ".join(missed))
+        add("missed", " · ".join(missed) + ((" · הבנתי: " + str(parsed.get("summary_he"))) if parsed.get("summary_he") else ""))
 
     if note:
-        m = re.match(r"אין לנו כרגע נכס (?:ברחוב |ב)(.+?)(?:\s*·|$)", str(note))
-        area = (m.group(1).strip() if m else str(note)[:60])
-        if "ברחוב" in str(note)[:20]:
-            area = "רחוב " + area
+        # האזור מהפירוק עצמו (לא מניתוח ההודעה — 'ברק 60' נקרא בטעות 'רק')
+        st = re.sub(r"\s*\d+\s*$", "", str(parsed.get("street") or "")).strip()
+        nbs_n = [str(n).strip() for n in ([parsed.get("neighborhood")] + list(parsed.get("neighborhoods") or [])) if n and str(n).strip()]
+        area = ("רחוב " + st) if st else (" / ".join(nbs_n[:2]) or str(note)[:60])
         city = parsed.get("city") or ", ".join(parsed.get("cities") or [])
-        add("no_inventory", area, area=(area + (", " + city if city and city not in area else "")))
+        add("no_inventory", area, area=area, city=str(city or ""))
     return iss
 
 
@@ -295,6 +304,8 @@ def build_report(results, regression=None):
                 g["examples"].append({"q": r["q"], "src": src, "info": i.get("info", ""), "n": n})
             if c in ("zero", "no_inventory") and i.get("area"):
                 d = demand.setdefault(i["area"], {"area": i["area"], "count": 0, "examples": []})
+                if i.get("city") and i["city"] not in d["area"]:   # 'עופרה חזה' עם עיר ובלי = שורה אחת
+                    d["area"] = i["area"] + ", " + i["city"]
                 d["count"] += n
                 if len(d["examples"]) < 2:
                     d["examples"].append(r["q"])

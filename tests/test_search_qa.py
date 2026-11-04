@@ -41,6 +41,10 @@ check("אותו טקסט פעמיים = שורה אחת עם מונה 2", qs.get
 check("מקור: אפי / אתר", qs["4 חדרים באפק"]["src"] == {"אפי"} and qs["דירה בקרית ים"]["src"] == {"אתר"})
 check("חיפוש חוזר תוך 5 דק' (אותו טלפון, טקסט אחר) — מסומן על הראשון",
       qs["4 חדרים באפק"].get("requery") == "4 חדרים בנאות אפק עד 2 מיליון", qs["4 חדרים באפק"])
+items2 = {it["q"]: it for it in sa.collect([
+    {"ts": 1, "phone": "1", "action": "חיפוש נכסים", "detail": "גבעת הרקפות"},
+    {"ts": 60, "phone": "1", "action": "חיפוש נכסים", "detail": "גבעת הרקפות 4 מליון"}])}
+check("חידוד (הוסיפו מילים) — לא חיפוש חוזר", not items2["גבעת הרקפות"].get("requery"))
 check("השני לא מסומן כחוזר", not qs["4 חדרים בנאות אפק עד 2 מיליון"].get("requery"))
 check("באתר אין זהות — אין סימון חוזר", not qs["דירה בקרית ים"].get("requery"))
 
@@ -84,6 +88,15 @@ check("סוג נכס אחר", "type" in codes("פנטהאוז", {"property_type"
 check("קבוצת קוטג' — דו משפחתי לחיפוש קוטג' תקין",
       "type" not in codes("קוטג'", {"property_type": "קוטג'"}, M(row(typ="דו משפחתי"), row(typ="קוטג'"), row(typ="בית פרטי"))))
 
+check("נכתב קוטג' וה-AI הבין דירת גן — קוטג'ים תקינים",
+      "type" not in codes("קוטג' בקרית ביאליק", {"property_type": "דירת גן"}, M(row(typ="בית פרטי/ קוטג'"), row(typ="בית פרטי/ קוטג'"), row(typ="דירת גן"))))
+check("נכתב דירת גן ויצאו דו משפחתיים — כן בעיה",
+      "type" in codes("דירת גן בקרית ים", {"property_type": "דירת גן"}, M(row(typ="דו משפחתי"), row(typ="דו משפחתי"), row(typ="דירת גן"))))
+check("'לא קריית אתא' — לא מילה שפוספסה", "missed" not in codes("דירה בקריות לא קריית אתא, 4 או 5 חדרים עד 1500000",
+      {"cities": ["קרית ביאליק"], "rooms_min": 4, "rooms_max": 5, "budget_max": 1500000}, M(row(rooms="4"), row(rooms="4"), row(rooms="5"))))
+_ni = [i for i in sa.check_search("ברק 60", {"street": "ברק 60", "city": "קרית ים"}, M(row(), row(), row()),
+                                  "אין לנו כרגע נכס ברחוב ברק · הנה נכסים בקרית ים", feature_state=feat) if i["code"] == "no_inventory"]
+check("'ברק 60' — האזור מהפירוק: רחוב ברק", _ni and _ni[0]["area"] == "רחוב ברק", _ni)
 check("'ללא מעלית' ותוצאה עם מעלית", "must_not" in codes("ללא מעלית", {"must_not": ["מעלית"]},
                                                        M(row(_feat_מעלית=True), row(), row())))
 check("'עם מעלית' ותוצאה שידוע שאין", "must_have" in codes("עם מעלית", {"must_have": ["מעלית"]},
