@@ -36,6 +36,8 @@ ck(sh[2]["title"] == "המטבח" and sh[3]["title"] == "ממ\"ד", sh)
 ck(len(T.tour_plan(TX, list(range(12)), {}, [])) == T.MAX_SHOTS, "max shots")
 ck(T.tour_plan(TX, [0, 1], {}, [])[0]["title"] == TX["open"]["title"], "fallback title")
 ck(T.tour_duration(7) == 15.25, "duration")
+ck(T.tour_phone("0529125049") == "052-912-5049" and T.tour_phone("+972-52-9125049") == "052-912-5049", "phone fmt")
+ck(T.tour_phone("046000800") == "04-600-0800" and T.tour_phone("072-555-0101") == "072-555-0101", "phone fmt 2")
 
 # ── Claude: סדר, כיתובים, סימנים ──
 class R:
@@ -80,6 +82,7 @@ r = V.vid_create_one(G, "tok1", "manual", "505709865", http=SF.ImgHttp(), now=ti
 rec = sb.videos[-1]
 ck(r["ok"] and rec["status"] == "preview" and not FAL and rec["ai"] is False and rec["ai_cost_usd"] == 0, (r, rec))
 ck(rec["texts"]["tour"]["theme"] == "dark" and CALLS[-1]["n"] >= 2, (rec["texts"].get("tour"), CALLS))
+ck(rec["texts"]["end"]["phone"] == "072-555-0101", rec["texts"]["end"])   # [04/11] אייל: בסוף — הטלפון הווירטואלי של הסוכן
 ck(V._summary(rec).endswith(rec["texts"]["open"]["price"]) and "AI" not in V._summary(rec), V._summary(rec))
 sb.videos[-1]["property_key"] = "other"
 sb.videos[-1]["created_at"] = "2020-01-01T00:00:00+00:00"

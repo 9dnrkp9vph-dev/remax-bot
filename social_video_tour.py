@@ -81,6 +81,18 @@ def tour_plan(texts, order, captions, feats):
     return shots
 
 
+def tour_phone(p):
+    """0529125049 / +972-52-9125049 → 052-912-5049 (קווי: 04-600-0800); אחרת כמו שהוא."""
+    d = re.sub(r"\D", "", str(p or ""))
+    if d.startswith("972"):
+        d = "0" + d[3:]
+    if len(d) == 10 and d.startswith("0"):
+        return "%s-%s-%s" % (d[:3], d[3:6], d[6:])
+    if len(d) == 9 and d.startswith("0"):
+        return "%s-%s-%s" % (d[:2], d[2:5], d[5:])
+    return str(p or "").strip()
+
+
 def tour_duration(n_shots):
     return round(n_shots * SHOT + END, 2)
 
@@ -362,7 +374,7 @@ class _Painter:
             b = int(255 * _ease((t - 0.35) / 0.5))
             import math
             size = int(50 * (1 + 0.03 * math.sin(t * 6)))
-            self._pill(lay, W // 2, cy + 700, (e.get("cta") or "חייגו") + "  " + e["phone"], size,
+            self._pill(lay, W // 2, cy + 700, (e.get("cta") or "חייגו") + "  " + tour_phone(e["phone"]), size,
                        WHITE + (b,), GREEN + (b,), padx=46)
         fr.alpha_composite(lay)
         return fr.convert("RGB")
