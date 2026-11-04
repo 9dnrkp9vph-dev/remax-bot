@@ -8201,20 +8201,33 @@ def _usage_periods(now):
     day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week = day - _dtp.timedelta(days=(day.weekday() + 1) % 7)
     month = day.replace(day=1)
-    year = max(day.replace(month=1, day=1), day - _dtp.timedelta(days=USAGE_RETENTION_DAYS))
-    pings = _sbdb.fetch_pings_today(year.isoformat()) if (_sbdb is not None and _sbdb.enabled()) else []
+    keep = day - _dtp.timedelta(days=USAGE_RETENTION_DAYS)
+    year = max(day.replace(month=1, day=1), keep)
+    pings = _sbdb.fetch_pings_today(keep.isoformat()) if (_sbdb is not None and _sbdb.enabled()) else []
     out, tot = {}, {}
     for k, t in (("day", day), ("week", week), ("month", month), ("year", year)):
         rows = _usage_rows(t, pings=pings)
-        out[k] = rows[:10]
-        # [22/10 אייל: 'סה"כ של כל המשתמשים'] — כל מי שהשתמש בתקופה, לא רק 10 המובילים
+        # [04/11 אייל: 'שגם אם מישהו נכנס לדקה יופיע'] — כל המשתמשים, לא רק 10 המובילים
+        out[k] = rows
+        # [22/10 אייל: 'סה"כ של כל המשתמשים'] — כל מי שהשתמש בתקופה
         tot[k] = {"users": len(rows), "min": sum(int(r.get("min") or 0) for r in rows)}
     out["totals"] = tot
     out["year_from"] = year.date().isoformat()
+    # [04/11 אייל: 'גרף לפי שימוש כללי במערכת לפי שבועות והיסטוריה של חודשיים אחורה'] — שבועות מיום ראשון,
+    # מהראשון שנכנס כולו לתקופת השמירה (60 יום) ועד השבוע הנוכחי (חלקי)
+    ws = keep + _dtp.timedelta(days=(6 - keep.weekday()) % 7)
+    weeks = []
+    while ws <= day:
+        we = ws + _dtp.timedelta(days=7)
+        rows = _usage_rows(ws, we, pings=pings, places=False)
+        weeks.append({"from": ws.date().isoformat(), "users": len(rows),
+                      "min": sum(int(r.get("min") or 0) for r in rows), "partial": we > now})
+        ws = we
+    out["weeks"] = weeks
     return out
 
 
-def _usage_rows(t_from, t_to=None, no_weekend=False, pings=None):
+def _usage_rows(t_from, t_to=None, no_weekend=False, pings=None, places=True):
     """[USAGE-REPORT 05/10] זמן-פעיל אמיתי לכל סוכן מפעימות usage_pings, בטווח [t_from, t_to) (datetime עם
     אזור זמן). פער > 90ש' = סשן חדש; פעימה בודדת ≈ 45ש'. משותף ל-/v2/api/usage_today ולדוח היומי."""
     if not (_sbdb is not None and _sbdb.enabled()):
@@ -8222,7 +8235,7 @@ def _usage_rows(t_from, t_to=None, no_weekend=False, pings=None):
     tz = t_from.tzinfo
     if pings is None:
         pings = _sbdb.fetch_pings_today(t_from.isoformat())
-    _places = _usage_places(t_from)
+    _places = _usage_places(t_from) if places else None
     import datetime as _dt2
     by = {}
     for p in pings:

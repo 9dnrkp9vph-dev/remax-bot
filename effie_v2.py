@@ -13387,7 +13387,7 @@ h2{font-size:16px;font-weight:700;margin:0 0 12px}
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:12px 0 16px}
 .kpi .l{font-size:14px;color:var(--mut);font-weight:500}.kpi .v{font-size:34px;font-weight:800;line-height:1.15;margin:4px 0}.kpi .x{font-size:13px;color:var(--mut)}
 .row{display:grid;gap:16px;margin-bottom:16px}.r2{grid-template-columns:2fr 1fr}.r3{grid-template-columns:1fr 1fr 1fr}
-.row>*,.kpis>*,.health>*{min-width:0}.chart{position:relative;height:260px;width:100%}.chart canvas{max-width:100%}
+.row>*,.kpis>*,.health>*{min-width:0}.chart{position:relative;height:260px;width:100%}.chart canvas{max-width:100%}.ulist{max-height:360px;overflow-y:auto}
 .bar{height:12px;border-radius:8px;background:#F4EEDD;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--gold)}
 .bar.hot i{background:var(--red)}
 .big{font-size:30px;font-weight:800}.mut{color:var(--mut);font-size:13px}
@@ -13534,7 +13534,8 @@ function render(){
   '<h2 style="margin-top:16px">חיפושי AI באפי היום</h2><table><tr><td>חיפוש נכסים</td><td>'+n(e.props)+'</td></tr><tr><td>חיפוש נכס נולד</td><td>'+n(e.newborn)+'</td></tr><tr><td>חיפוש קונה AI</td><td>'+n(e.buyers_ai)+'</td></tr><tr><td>שאל את אפי</td><td>'+n(e.ask)+'</td></tr></table></div></div>'+
   '<div class="row r3"><div class="card"><h2>AI באתר לפי שעה (היום)</h2><div class="chart"><canvas id="c2"></canvas></div></div>'+
   '<div class="card"><h2>AI — אתר מול אפי, 7 ימים</h2><div class="chart"><canvas id="c3"></canvas></div></div>'+
-  '<div class="card"><h2>'+uT+'</h2><table>'+us+'</table></div></div>'+
+  '<div class="card"><h2>'+uT+'</h2><div class="ulist"><table>'+us+'</table></div></div></div>'+
+  '<div class="card"><h2>שימוש באפי לפי שבוע · חודשיים אחרונים</h2><div class="chart"><canvas id="c5"></canvas></div><div class="mut" id="t5"></div></div>'+
   '<div class="row r2"><div class="card"><h2>וואטסאפ — 7 ימים</h2><div class="chart"><canvas id="c4"></canvas></div></div>'+
   '<div class="card"><h2>וואטסאפ היום</h2><div class="big">'+n(wt)+' <span class="mut">נפתחו מהטלפון של הסוכנים</span></div>'+
   '<table>'+(wr||'<tr><td class="mut" colspan="2">עוד לא נפתח וואטסאפ היום</td></tr>')+'</table>'+
@@ -13562,6 +13563,12 @@ function charts(){
   datasets:[{data:hrs.map(function(h){return D.ai.site.hours[h]||0;}),backgroundColor:'#C29435',borderRadius:4}]}});
  CH.c3=new Chart(document.getElementById('c3'),{type:'bar',options:base,data:{labels:D.ai.days7.map(dd),datasets:[
   {label:'אתר',data:D.ai.site_7d,backgroundColor:'#C29435',borderRadius:4},{label:'אפי',data:D.ai.effie_7d,backgroundColor:'#1E3A5F',borderRadius:4}]}});
+ var UW=D.usage_weeks||[];   /* [04/11 אייל] שימוש כללי לפי שבוע — שעות (עמודות) ומשתמשים (קו) */
+ if(UW.length&&document.getElementById('c5'))CH.c5=new Chart(document.getElementById('c5'),{type:'bar',options:Object.assign({},base,{scales:{
+  y:{beginAtZero:true,position:'right',title:{display:true,text:'שעות'}},y1:{beginAtZero:true,position:'left',grid:{drawOnChartArea:false},ticks:{precision:0},title:{display:true,text:'משתמשים'}}}}),
+  data:{labels:UW.map(function(w){return dd(w.from)+(w.partial?' (עד היום)':'');}),datasets:[
+  {type:'bar',label:'שעות באפי',data:UW.map(function(w){return Math.round(w.min/6)/10;}),backgroundColor:'#1E3A5F',borderRadius:4,yAxisID:'y'},
+  {type:'line',label:'משתמשים',data:UW.map(function(w){return w.users;}),borderColor:'#C29435',backgroundColor:'#C29435',tension:.3,yAxisID:'y1'}]}});
  if(D.wa)CH.c4=new Chart(document.getElementById('c4'),{type:'bar',options:base,data:{labels:D.ai.days7.map(dd),datasets:[
   {label:'מהטלפון של הסוכנים',data:D.wa.agents_7d,backgroundColor:'#157A43',borderRadius:4},{label:'מהמספר הרשמי',data:D.wa.official_7d,backgroundColor:'#1E3A5F',borderRadius:4}]}});
 }
@@ -15602,8 +15609,8 @@ def crm_dashboard_data(src, now, quiet, today_iso):
     t0 = _dx.datetime.fromisoformat(today_iso).replace(tzinfo=il).timestamp()
     usage = [{"name": r.get("name", ""), "min": r.get("min", 0)} for r in (get("usage", t0, default=[]) or [])][:10]
     ub = get("usage_periods", default={}) or {}
-    usage_by = {k: [{"name": r.get("name", ""), "min": r.get("min", 0)} for r in (ub.get(k) or [])][:10]
-                for k in ("day", "week", "month", "year") if k in ub}
+    usage_by = {k: [{"name": r.get("name", ""), "min": r.get("min", 0)} for r in (ub.get(k) or [])]
+                for k in ("day", "week", "month", "year") if k in ub}   # [04/11 אייל] כל המשתמשים
     if usage_by:
         usage_by["year_from"] = ub.get("year_from", "")
         usage_by["totals"] = ub.get("totals") or {}
@@ -15619,7 +15626,7 @@ def crm_dashboard_data(src, now, quiet, today_iso):
                              bounds, hp)
     todo = crm_todo(calls, get("sig_recs", sigs, default=[]) or [], aact, newborn, get("nb_contacts", default={}) or {}, now, hp)
     return {"ok": True, "built_at": now, "health": health, "periods": periods, "series": series, "ai": ai,
-            "usage_today": usage, "usage_by": usage_by, "scans": scans, "wa": wa,
+            "usage_today": usage, "usage_by": usage_by, "usage_weeks": ub.get("weeks") or [], "scans": scans, "wa": wa,
             "agents": {k: v[:40] for k, v in agents.items()}, "todo": todo, "wa_official": crm_wa_official(aact, bounds), "story": crm_story_stats(aact, bounds),
             "site_contacts": crm_site_contacts(get("site_contacts", bounds["year"], default=[]) or [], bounds),
             "listings": get("agent_listings", default=None), "searches": get("searches", default=None),
