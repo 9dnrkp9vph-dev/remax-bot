@@ -14,7 +14,7 @@ S._DB = S.SoldDB(os.path.join(tempfile.mkdtemp(), "s.json"))
 SESS = {"t": None}
 G, st, sb = make_G(); G["_web_auth"] = lambda: SESS["t"]
 RUNS, PUBS = [], []
-S.sold_create = lambda G_, kind, ref, side, by: RUNS.append((kind, ref, side, by))
+S.sold_create = lambda G_, kind, ref, side, by, details=None: RUNS.append((kind, ref, side, by, details))
 S.sold_publish = lambda G_, sid: PUBS.append(sid)
 V._spawn = lambda fn: fn()
 app = Flask(__name__); S.register(app, G); c = app.test_client()
@@ -25,8 +25,11 @@ for path, meth in (("/v2/api/social/sold", "post"), ("/v2/api/social/sold/publis
     SESS["t"] = None; ck(getattr(c, meth)(path, json={"key": "tok1"}).status_code == 401, path)
     SESS["t"] = AG; ck(getattr(c, meth)(path, json={"key": "tok1"}).status_code == 403, path)
 SESS["t"] = DEV
-ck(c.post("/v2/api/social/sold", json={"key": "L:tok1", "side": "both"}).json["ok"] and RUNS[-1] == ("prop", "tok1", "both", "505709865"), RUNS)
-ck(c.post("/v2/api/social/sold", json={"deal": "d1"}).json["ok"] and RUNS[-1] == ("deal", "d1", "buyer", "505709865"), RUNS)
+ck(c.post("/v2/api/social/sold", json={"key": "L:tok1", "side": "both"}).json["ok"] and RUNS[-1] == ("prop", "tok1", "both", "505709865", None), RUNS)
+ck(c.post("/v2/api/social/sold", json={"deal": "d1"}).json["ok"] and RUNS[-1] == ("deal", "d1", "buyer", "505709865", None), RUNS)
+DET = {"addr": "ציזלינג 36", "agents": ["רויטל"]}
+ck(c.post("/v2/api/social/sold", json={"deal": "d1", "details": DET}).json["ok"] and RUNS[-1][4] == DET, RUNS)
+ck(c.post("/v2/api/social/sold", json={"deal": "d1", "details": "junk"}).json["ok"] and RUNS[-1][4] is None, RUNS)
 ck(c.post("/v2/api/social/sold", json={}).status_code == 400, "nothing")
 
 r1 = S._DB.insert({"ref": "p:tok1", "status": "ready", "video_token": "T1", "ts": time.time()})

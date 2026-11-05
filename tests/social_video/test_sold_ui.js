@@ -58,7 +58,21 @@ vm.runInContext(between(djs, 'var SOLD = {dev', '};') + '\n' + between(djs, 'var
 const it = {id: 'd1', deal: true, side1: 'קונה', side2: 'מוכר', agents: ['רויטל', 'צדוק']};
 ck(D.soldRow(it) === '', 'deals non-dev → nothing');
 D.SOLD.dev = true;
-h = D.soldRow(it); ck(h.includes("soldCreate('d1')") && h.includes('סטורי SOLD — עסקת קונה'), h);
+h = D.soldRow(it); ck(h.includes("soldOpen('d1')") && h.includes('סטורי SOLD — עסקת קונה'), h);
+// [05/11] טופס: כתובת ונתונים בהקלדה + בחירת סוכנים (צוות)
+vm.runInContext(fn(djs, 'soldBuyers') + '\n' + fn(djs, 'soldOpen') + '\n' + fn(djs, 'soldF') + '\n' + fn(djs, 'soldAg') + '\n' +
+  fn(djs, 'soldForm') + '\nvar ITEMS = []; var RENDERS = 0; function render(){ RENDERS++; }', D);
+D.ITEMS.push(Object.assign({}, it, {notes: 'ציזלינג 36', sale_price: '1250000', agents: ["רפי דה פיצ'וטו", 'צדוק']}));
+D.soldOpen('d1');
+const F = D.SOLD.f.d1;
+ck(F.addr === 'ציזלינג 36' && F.price === (1250000).toLocaleString() && JSON.stringify(F.agents) === JSON.stringify(["רפי דה פיצ'וטו"]), JSON.stringify(F));
+h = D.soldRow(D.ITEMS[0]);
+ck(h.includes('כתובת מלאה') && h.includes('value="ציזלינג 36"') && h.includes('מאפיינים') && h.includes("soldCreate('d1')") && !h.includes("soldOpen('d1')"), h);
+ck(h.includes("soldAg('d1',0,false)") && h.includes("soldAg('d1',1,true)") && !h.includes("פיצ'וטו',"), 'agent buttons by index');
+D.soldAg('d1', 1, true); ck(JSON.stringify(D.SOLD.f.d1.agents) === JSON.stringify(["רפי דה פיצ'וטו", 'צדוק']), 'team');
+D.soldAg('d1', 0, false); ck(JSON.stringify(D.SOLD.f.d1.agents) === JSON.stringify(['צדוק']), 'remove');
+D.soldF('d1', 'rooms', '4'); ck(D.SOLD.f.d1.rooms === '4', 'typed');
+D.SOLD.form.d1 = false;
 ck(D.soldRow(Object.assign({}, it, {deal: false})) === '', 'open process → nothing');
 ck(D.soldRow(Object.assign({}, it, {side1: 'מוכר', side2: ''})) === '', 'seller-only deal → nothing');
 ck(D.soldRow(Object.assign({}, it, {side1: '', side2: ''})) !== '', 'no sides → shown');

@@ -8566,7 +8566,7 @@ function dealCard(it, i){
 }
 /* [SOLD 05/11] סטורי "עוד משפחה מצאה בית" לעסקה סגורה שייצגנו בה קונה (social_sold.py) — סטורי בלבד,
    אינסטגרם + פייסבוק. לחיצה → מוכן תוך כחצי דקה → צפייה → "פרסם לסטורי". */
-var SOLD = {dev: false, mode: 'preview', items: {}, asked: {}, busy: {}, poll: {}};
+var SOLD = {dev: false, mode: 'preview', items: {}, asked: {}, busy: {}, poll: {}, form: {}, f: {}};
 var SOLD_ST = {rendering: 'בהכנה', ready: 'מוכן לפרסום', publishing: 'מתפרסם', published: 'פורסם בסטורי',
   partial: 'פורסם חלקית', failed: 'נכשל'};
 function soldOk(it){
@@ -8596,8 +8596,62 @@ function soldRow(it){
   if (L && (L.status === 'ready' || L.status === 'partial'))
     h += '<div style="margin-top:8px"><button onclick="soldPublish(\'' + esc(L.id) + '\',\'' + esc(k) + '\')" style="' + css +
       'background:#2E6BD6;color:#fff;border:none">' + (L.status === 'partial' ? 'נסה שוב את מה שנכשל' : 'פרסם לסטורי באינסטגרם ובפייסבוק') + test + '</button></div>';
-  return h + '<div style="margin-top:8px"><button onclick="soldCreate(\'' + esc(k) + '\')" style="' + css +
+  if (SOLD.form[k]) return h + soldForm(it);
+  return h + '<div style="margin-top:8px"><button onclick="soldOpen(\'' + esc(k) + '\')" style="' + css +
     (L ? 'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">צור סטורי קונה מחדש' : 'background:#C29435;color:#231700;border:none">סטורי SOLD — עסקת קונה') + '</button></div>';
+}
+/* [05/11 אייל] "גם בקונה שיהיה כתובת מלאה ונתונים בהקלדה ידנית" + בחירת סוכני הצוות שיופיעו בסטורי */
+function soldBuyers(it){
+  var ags = (it.agents || []).filter(Boolean), sides = [it.side1 || '', it.side2 || ''];
+  var buy = ags.filter(function(a, i){ return i < 2 && sides[i].indexOf('קונה') >= 0; });
+  return (buy.length ? buy : ags).slice(0, 2);
+}
+function soldOpen(k){
+  var it = (ITEMS || []).filter(function(x){ return String(x.id) === String(k); })[0] || {};
+  var digits = String(it.sale_price || it.price || '').replace(/[^0-9]/g, '');
+  SOLD.f[k] = SOLD.f[k] || {addr: it.notes || '', city: '', rooms: '', size: '', floor: '',
+    price: digits ? Number(digits).toLocaleString() : '', feats: '', agents: soldBuyers(it)};
+  SOLD.form[k] = true; render();
+}
+function soldF(k, name, v){ (SOLD.f[k] = SOLD.f[k] || {})[name] = v; }
+function soldAg(k, idx, on){   // לפי מיקום — שם עם גרש (דה פיצ'וטו) לא שובר את ה-onclick
+  var it = (ITEMS || []).filter(function(x){ return String(x.id) === String(k); })[0] || {};
+  var name = ((it.agents || []).filter(Boolean))[idx];
+  if (!name) return;
+  var f = SOLD.f[k] || (SOLD.f[k] = {agents: []}), a = (f.agents || []).filter(function(x){ return x !== name; });
+  if (on) a.push(name);
+  f.agents = a.slice(-2);   // עד 2 סוכנים בסטורי
+  render();
+}
+function soldForm(it){
+  var k = String(it.id), f = SOLD.f[k] || {};
+  var inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;border-radius:11px;padding:0 12px;' +
+    'font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F';
+  var fld = function(name, label, ph, mode){
+    return '<label style="display:block;flex:1;min-width:0"><div class="sb" style="margin:6px 0 3px">' + esc(label) + '</div>' +
+      '<input value="' + esc(f[name] || '') + '" placeholder="' + esc(ph) + '"' + (mode ? ' inputmode="' + mode + '"' : '') +
+      ' oninput="soldF(\'' + esc(k) + '\',\'' + name + '\',this.value)" style="' + inp + '"></label>';
+  };
+  var ags = (it.agents || []).filter(Boolean), chosen = f.agents || [];
+  var agRow = ags.length > 1 ? '<div class="sb" style="margin:8px 0 3px">מי מופיע בסטורי (עד 2)</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    ags.map(function(a, i){
+      var on = chosen.indexOf(a) >= 0;
+      return '<button onclick="soldAg(\'' + esc(k) + '\',' + i + ',' + (on ? 'false' : 'true') + ')" style="min-height:40px;padding:0 14px;border-radius:999px;' +
+        'font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
+        (on ? 'background:#1E3A5F;color:#fff;border:1.5px solid #1E3A5F">✓ ' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">') + esc(a) + '</button>';
+    }).join('') + '</div>' : '';
+  return '<div style="margin-top:10px;padding:12px;border-radius:14px;background:#F6EEDB">' +
+    '<div style="font-size:13.5px;font-weight:800;color:#7A5E1C">פרטי הנכס בסטורי</div>' +
+    fld('addr', 'כתובת מלאה', 'ציזלינג 36') +
+    '<div style="display:flex;gap:8px">' + fld('city', 'עיר', 'קרית ים') + fld('rooms', 'חדרים', '4', 'decimal') + '</div>' +
+    '<div style="display:flex;gap:8px">' + fld('size', 'מ"ר', '105', 'numeric') + fld('floor', 'קומה', '3') + '</div>' +
+    fld('price', 'מחיר', '1,250,000', 'numeric') +
+    fld('feats', 'מאפיינים (מופרדים בפסיק)', 'מעלית, חניה, מרפסת') + agRow +
+    '<div style="display:flex;gap:8px;margin-top:10px">' +
+    '<button onclick="soldCreate(\'' + esc(k) + '\')" style="flex:2;min-height:44px;border-radius:11px;border:none;background:#C29435;color:#231700;' +
+    'font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">צור סטורי</button>' +
+    '<button onclick="SOLD.form[\'' + esc(k) + '\']=false;render()" style="flex:1;min-height:44px;border-radius:11px;border:1.5px solid #DCD6C8;' +
+    'background:#fff;color:#5B6472;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">ביטול</button></div></div>';
 }
 function soldLoad(list){
   if (!SOLD.dev) return;
@@ -8631,8 +8685,10 @@ function soldWatch(k, n){
 }
 function soldCreate(k){
   if (SOLD.busy[k]) return;
-  SOLD.busy[k] = 1; delete SOLD.items['d:' + k]; render();
-  POST('/v2/api/social/sold', {deal: k}).then(function(j){
+  var f = SOLD.f[k] || {};
+  SOLD.busy[k] = 1; SOLD.form[k] = false; delete SOLD.items['d:' + k]; render();
+  POST('/v2/api/social/sold', {deal: k, details: {addr: f.addr || '', city: f.city || '', rooms: f.rooms || '', size: f.size || '',
+    floor: f.floor || '', price: f.price || '', feats: f.feats || '', agents: f.agents || []}}).then(function(j){
     if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה — לא נשלח'); return; }
     toast('מכין סטורי — כחצי דקה'); soldWatch(k, 0);
   }).catch(function(){ delete SOLD.busy[k]; render(); toast('שגיאה — לא נשלח'); });

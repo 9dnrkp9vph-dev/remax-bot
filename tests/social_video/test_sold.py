@@ -28,11 +28,22 @@ ck(S.sold_city("ההגנה 50 ק. מוצקין") == "קרית מוצקין" and 
 ck(S.sold_city("נעמי שמר 10") == "", "no city")
 ck(S.sold_texts_deal({"notes": "דליה 9 קרית ים"})["line"] == "דירה בקרית ים", "buyer line")
 ck(S.sold_texts_deal({"notes": "דליה 9"})["line"] == "רימקס פמילי · הקריות", "buyer line fallback")
+# [05/11 אייל] עסקת קונה: כתובת מלאה ונתונים בהקלדה ידנית
+dt = S.sold_texts_deal({"notes": "ציזלינג 36"}, {"addr": " ציזלינג 36 ", "city": "קרית ים", "rooms": "4", "size": "105",
+                                              "floor": "3", "price": "1,250,000", "feats": "מעלית, חניה ,מרפסת, מחסן"})
+ck(dt["addr"] == "ציזלינג 36" and dt["place"] == "4 חדרים · קרית ים" and dt["spec"] == '105 מ"ר · קומה 3', dt)
+ck(dt["feats"] == "מעלית · חניה · מרפסת" and dt["price"] == "1,250,000 ₪", dt)
+dt = S.sold_texts_deal({"notes": "דליה 9 קרית ים", "sale_price": "990000"}, {})
+ck(dt["addr"] == "דליה 9 קרית ים" and dt["place"] == "קרית ים" and dt["price"] == "990,000 ₪" and dt["spec"] == "", dt)
+ck(S.sold_texts_deal({"notes": "x" * 200}, {"addr": "y" * 200})["addr"] == "y" * 60, "clipped")
+ck(S.sold_texts_deal({"notes": ""}, {"price": "abc"})["price"] == "", "bad price")
 D = {"id": "d1", "deal": True, "agents": ["רויטל", "צדוק"], "side1": "קונה", "side2": "מוכר", "notes": "ציזלינג 36"}
 ck(S.sold_agents_for_deal(D) == ["רויטל"], "buyer side only")
 ck(S.sold_agents_for_deal(dict(D, side1="", side2="")) == ["רויטל", "צדוק"], "no sides → all")
 ck(S.sold_agents_for_deal(dict(D, side1="מוכר וקונה")) == ["רויטל"], "both on one")
 ck(S.sold_deal_ok(D) and not S.sold_deal_ok(dict(D, deal=False)), "closed only")
+ck(S.sold_agents_for_deal(D, ["צדוק", "רויטל", "זר"]) == ["צדוק", "רויטל"], "picked team, strangers dropped")
+ck(S.sold_agents_for_deal(D, ["זר"]) == ["רויטל"], "nothing valid → default")
 ck(not S.sold_deal_ok(dict(D, side1="מוכר", side2="")), "seller-only deal → no buyer story")
 
 # ── מוזיקה: 3 הקטעים מ-Sound Collection של Meta (אייל בחר 05/11), כל סטורי הקטע הבא ──
@@ -105,6 +116,9 @@ ck(p["status"] == "published" and [c[0] for c in FG.calls] == ["ig_STORIES"], FG
 # עסקת קונה: בלי תמונה, רק סוכן הקונה
 r = S.sold_create(G, "deal", "d1", "buyer", "", http=HTTP, env=env, store=store, db=db)
 ck(r["ok"] and COMP[-1][0] == "buyer" and not COMP[-1][1] and [a["name"] for a in COMP[-1][3]] == ["רויטל"], COMP[-1])
+r = S.sold_create(G, "deal", "d1", "buyer", "", http=HTTP, env=env, store=store, db=db,
+                  details={"addr": "ציזלינג 36", "price": "1250000", "agents": ["רויטל", "צדוק"]})
+ck(r["ok"] and COMP[-1][2]["addr"] == "ציזלינג 36" and [a["name"] for a in COMP[-1][3]] == ["רויטל", "צדוק"], COMP[-1])
 ck(not S.sold_create(G, "deal", "d2", "buyer", "", http=HTTP, env=env, store=store, db=db)["ok"], "open deal blocked")
 ck(not S.sold_create(G, "prop", "nope", "seller", "", http=HTTP, env=env, store=store, db=db)["ok"], "no prop")
 ck(S.sold_create(G, "prop", "tok1", "buyer", "", http=HTTP, env=env, store=store, db=db)["reason"] == "צד לא תקין", "bad side")

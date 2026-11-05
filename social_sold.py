@@ -41,9 +41,13 @@ def sold_city(text):
     return next((c for c in CITIES if c in t), "")
 
 
-def sold_agents_for_deal(deal):
-    """הסוכנים שייצגו את הקונה בעסקה (side1/side2 מכילים 'קונה'); אף צד לא מסומן → כל הסוכנים."""
+def sold_agents_for_deal(deal, picked=None):
+    """הסוכנים שייצגו את הקונה בעסקה (side1/side2 מכילים 'קונה'); אף צד לא מסומן → כל הסוכנים.
+    picked = מי שסומן בטופס (צוות) — רק סוכנים מהעסקה עצמה, בסדר שנבחר."""
     ags = [str(a).strip() for a in (deal.get("agents") or []) if str(a).strip()]
+    chosen = [a for a in (str(x).strip() for x in (picked or [])) if a in ags]
+    if chosen:
+        return list(dict.fromkeys(chosen))[:2]
     sides = [str(deal.get("side1") or ""), str(deal.get("side2") or "")]
     buy = [a for k, a in enumerate(ags) if k < 2 and "קונה" in sides[k]]
     return (buy or ags)[:2]
@@ -73,9 +77,27 @@ def sold_texts_property(row, side, feats=None):
             "price": vt["open"]["price"], "tag": SIDE_LINE[side], "slogan": SLOGAN}
 
 
-def sold_texts_deal(deal):
-    city = sold_city(deal.get("notes"))
-    return {"kind": "buyer", "line": ("דירה ב" + city) if city else "רימקס פמילי · הקריות", "slogan": SLOGAN}
+def _clip(s, n=60):
+    return re.sub(r"\s+", " ", str(s or "")).strip()[:n]
+
+
+def sold_texts_deal(deal, details=None):
+    """[05/11 אייל] עסקת קונה: כתובת מלאה ונתונים שהוקלדו בטופס (ברירת מחדל — הכתובת והמחיר מהעסקה)."""
+    d = details or {}
+    notes = deal.get("notes")
+    addr = _clip(d.get("addr")) or _clip(notes)
+    city = _clip(d.get("city"), 30) or sold_city(notes)
+    rooms = re.sub(r"[^\d.]", "", str(d.get("rooms") or ""))[:4]
+    size = re.sub(r"\D", "", str(d.get("size") or ""))[:4]
+    floor = _clip(d.get("floor"), 10)
+    pr = re.sub(r"\D", "", str(d.get("price") or "")) or \
+        ("" if d.get("price") else re.sub(r"\D", "", str(deal.get("sale_price") or deal.get("price") or "")))
+    feats = [_clip(f, 20) for f in re.split(r"[,·،]", str(d.get("feats") or "")) if _clip(f, 20)][:3]
+    return {"kind": "buyer", "addr": addr,
+            "place": " · ".join(x for x in ((rooms + " חדרים") if rooms else "", city) if x),
+            "spec": " · ".join(x for x in ((size + ' מ"ר') if size else "", ("קומה " + floor) if floor else "") if x),
+            "feats": " · ".join(feats), "price": (SP._price(pr) + " ₪") if pr and int(pr) > 0 else "",
+            "line": ("דירה ב" + city) if city else "רימקס פמילי · הקריות", "slogan": SLOGAN}
 
 
 def sold_phone(p):
@@ -340,7 +362,9 @@ class _Sprites:
         bg = self.bg.convert("RGBA")
         bg.alpha_composite(glow.filter(ImageFilter.GaussianBlur(120)))
         self.bgb = bg
-        self.key = self._key(290)
+        # [05/11 אייל] עם כתובת ונתונים (הוקלדו בטופס) — מפתח קטן יותר ופרטי הנכס מתחת לכותרת
+        self.full = bool((self.texts or {}).get("addr"))
+        self.key = self._key(200 if self.full else 290)
         rnd = random.Random(7)
         self.conf = []
         for _ in range(64):
@@ -351,10 +375,17 @@ class _Sprites:
                               "ph": rnd.uniform(0, 6.28), "rot": rnd.uniform(-200, 200), "a0": rnd.uniform(0, 360)})
         tx = self.texts
         self.sold = self._text_sprite("S  O  L  D", 60, 800, GOLD)
-        self.h1 = self._text_sprite("עוד משפחה", 120, 900, WHITE)
-        self.h2 = self._text_sprite("מצאה בית!", 120, 900, WHITE)
+        hs = 100 if self.full else 120
+        self.h1 = self._text_sprite("עוד משפחה", hs, 900, WHITE)
+        self.h2 = self._text_sprite("מצאה בית!", hs, 900, WHITE)
         self.line = self._text_sprite(tx.get("line") or "", 50, 500, MUTE)
-        self.slogan = self._text_sprite(tx.get("slogan") or "", 44, 700, GOLD)
+        self.slogan = self._text_sprite(tx.get("slogan") or "", 38 if self.full else 44, 700, GOLD)
+        if self.full:
+            self.addr = self._text_sprite(tx["addr"], 72, 800, GOLD)
+            self.place = self._text_sprite(tx["place"], 46, 600, WHITE) if tx.get("place") else None
+            det = " · ".join(x for x in (tx.get("spec"), tx.get("feats")) if x)
+            self.det = self._text_sprite(det, 40, 500, MUTE) if det else None
+            self.price = self._pill_sprite(tx["price"], 52, NAVY0, GOLD, 96) if tx.get("price") else None
 
     def _key(self, size):
         """מפתח זהב מצויר (ראש עגול + להב עם שיניים)."""
@@ -376,14 +407,14 @@ class _Sprites:
         fr = self.bgb.copy()
         for c in self.conf:   # קונפטי נופל לאורך כל הסרטון
             y = (c["y0"] + c["v"] * t + 900) % 1960 - 900   # חוזר מלמעלה — קונפטי לאורך כל הסרטון
-            if not -60 < y < 940:
+            if not -60 < y < (640 if self.full else 940):
                 continue
             x = c["x"] + c["sw"] * math.sin(c["ph"] + t * 2.2)
             p = c["im"].rotate(c["a0"] + c["rot"] * t, expand=True, resample=Image.BILINEAR)
             fr.alpha_composite(p, (int(x), int(y)))
         if self.logo:
             fr.alpha_composite(_fade(self.logo, _ease(t / 0.5)), ((W - self.logo.width) // 2, 110))
-        cx, cy, R = W // 2, 590, 220
+        cx, cy, R = (W // 2, 470, 150) if self.full else (W // 2, 590, 220)
         a = _back((t - 0.2) / 0.6)
         if a > 0:
             ring = self._layer(2 * R + 20, 2 * R + 20)
@@ -400,8 +431,19 @@ class _Sprites:
 
         def up(sp, yc, t0, d=0.5):
             b = _ease((t - t0) / d)
-            if b > 0:
+            if b > 0 and sp is not None:
                 fr.alpha_composite(_fade(sp, b), (0, int(yc - sp.height / 2 + (1 - b) * 46)))
+        if self.full:
+            up(self.sold, 690, 0.8)
+            up(self.h1, 780, 1.0)
+            up(self.h2, 885, 1.15)
+            up(self.addr, 990, 1.35)
+            up(self.place, 1060, 1.5)
+            up(self.det, 1115, 1.6)
+            up(self.price, 1200, 1.75)
+            up(self.slogan, 1285, 1.9)
+            self._agent_in(fr, t, 2.2, self._agent_cy())
+            return fr.convert("RGB")
         up(self.sold, 880, 0.8)
         up(self.h1, 985, 1.0)
         up(self.h2, 1110, 1.2)
@@ -573,7 +615,7 @@ def _deal(G, did):
         return None
 
 
-def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=None, db=None):
+def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=None, db=None, details=None):
     """ref_kind = 'prop' (מספר מודעה, side seller/both) או 'deal' (מזהה עסקה, side buyer).
     → {'ok','id','status','reason'}. מרנדר ושומר — הפרסום בלחיצה נפרדת (sold_publish)."""
     import time as _t
@@ -604,8 +646,9 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
         if not deal or not sold_deal_ok(deal):
             res["reason"] = "העסקה לא נמצאה או לא נסגרה"
             return res
-        names, texts, kind, key, side, row = sold_agents_for_deal(deal), sold_texts_deal(deal), "buyer", \
-            "d:" + str(ref), "buyer", None
+        d = details if isinstance(details, dict) else {}
+        names, texts, kind, key, side, row = sold_agents_for_deal(deal, d.get("agents")), sold_texts_deal(deal, d), \
+            "buyer", "d:" + str(ref), "buyer", None
     else:
         res["reason"] = "סוג לא תקין"
         return res
@@ -752,7 +795,8 @@ def register(app, G):
         if not ref:
             return jsonify({"ok": False, "error": "חסר נכס/עסקה"}), 400
         by = s.get("phone", "")
-        V._spawn(lambda: sold_create(G, kind, ref, side, by))
+        det = j.get("details") if isinstance(j.get("details"), dict) else None
+        V._spawn(lambda: sold_create(G, kind, ref, side, by, details=det))
         return jsonify({"ok": True, "queued": True})
 
     @app.route("/v2/api/social/sold/publish", methods=["POST"])
