@@ -9901,6 +9901,21 @@ def _is_famexcl(addr, city, fam_idx, price=None, floor=None, rooms=None, sqm=Non
     return None
 
 _NB_RESULT_VER = [0]   # מעלים בכל שינוי (סטטוס/הערה/פנייה) כדי לבטל את מטמון התוצאה לכל הסקופים
+# [05/11 זיכרון] התוצאות הישנות נשארו בזיכרון לתמיד (≈5MB כל אחת, 154 בבוקר = 510MB → OOM ב-2GB):
+# העלאת גרסה מוחקת את כל ה-nbres, ושמירה גוזמת תוצאות שעברו את חלון המטמון (90ש׳ לכל היותר).
+_NB_RES_MAX_AGE = 300
+def _nb_drop_results(older_than=None):
+    now = time.time()
+    with _TTL_LOCK:
+        for k in [k for k, e in _TTL_CACHE.items() if k.startswith("nbres:")
+                  and (older_than is None or now - e[0] > older_than)]:
+            _TTL_CACHE.pop(k, None)
+def _nb_result_bump():
+    _NB_RESULT_VER[0] += 1
+    _nb_drop_results()
+def _nb_cache_put(key, val):
+    _nb_drop_results(_NB_RES_MAX_AGE)
+    _cache_put(key, val)
 _NB_BUCKETS = [(0, 30), (30, 60), (60, 90), (90, 120), (120, 150), (150, 180), (180, 10**9)]   # דליי ותק לפי חודשים — חייב להתאים ל-NB_AGE_BUCKETS בפרונט
 
 @app.route("/api/newborn", methods=["GET", "POST"])
@@ -9995,7 +10010,7 @@ def api_newborn():
         _res["etag"] = format(_zl.crc32(_json.dumps(
             [out, bucket_counts], ensure_ascii=False, sort_keys=True).encode("utf-8")) & 0xffffffff, "08x")
         if rows:   # אין לקבע במטמון תוצאה שנבנתה מקריאה ריקה/כושלת
-            _cache_put(_nbkey, _res)
+            _nb_cache_put(_nbkey, _res)
         if _etag_in and _etag_in == _res["etag"]:
             return jsonify({"ok": True, "unchanged": True, "etag": _etag_in})
         return jsonify(_res)
@@ -10083,7 +10098,7 @@ def api_newborn_contact():
         except Exception:
             pass
         _cache_clear("newborn_contacts")
-    _NB_RESULT_VER[0] += 1
+    _nb_result_bump()
     return jsonify({"ok": True})
 
 @app.route("/api/newborn/status", methods=["POST"])
@@ -10167,7 +10182,7 @@ def api_newborn_status():
     _stale = [e for e in _old_cal if (e.get("email", ""), e.get("id", "")) not in _keep]
     if _stale:
         _threading.Thread(target=_cal_drop, args=(_stale,), daemon=True).start()
-    _NB_RESULT_VER[0] += 1
+    _nb_result_bump()
     # יומן פעילות: מי עשה = המתאם בפועל (המשתמש), לא סוכן היעד; היעד נכנס לפירוט
     _tgt = (" · לסוכן " + nm) if _canon_key(nm) != _canon_key(s.get("name", "")) else ""
     _log_activity(s.get("name", ""), s["role"], s.get("phone", ""), "סטטוס נכס נולד",
@@ -10195,7 +10210,7 @@ def api_newborn_note():
         m[key] = lst
         cfg["nbNotes"] = m
     _config_mutate(_mut)
-    _NB_RESULT_VER[0] += 1
+    _nb_result_bump()
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                   "הערה נכס נולד", (addr or key) + " · " + text[:60])
     return jsonify({"ok": True, "notes": _nb_notes_for(key, _last9(s.get("phone", "")), (s["role"] == "admin" or _is_dev(s.get("phone", ""))))})
@@ -10224,7 +10239,7 @@ def api_newborn_note_delete():
     _config_mutate(_mut)
     if not _found[0]:
         return jsonify({"ok": True, "notes": []})
-    _NB_RESULT_VER[0] += 1
+    _nb_result_bump()
     return jsonify({"ok": True, "notes": _nb_notes_for(key, my9, is_mgr)})
 
 @app.route("/api/newborn/meetings", methods=["GET"])
@@ -10307,7 +10322,7 @@ def api_newborn_status_delete():
             mm.pop(skey, None)
             cfg["nbStatus"] = mm
     _config_mutate(_mut)
-    _NB_RESULT_VER[0] += 1
+    _nb_result_bump()
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
     return jsonify({"ok": True})
 
@@ -10370,7 +10385,7 @@ def api_newborn_status_edit():
         mm[skey] = rec
         cfg["nbStatus"] = mm
     _config_mutate(_mut)
-    _NB_RESULT_VER[0] += 1
+    _nb_result_bump()
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עריכת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
     return jsonify({"ok": True, "calendar": bool(rec.get("cal"))})
 
@@ -10415,7 +10430,7 @@ def api_newborn_status_done():
         if done: r["cal"] = []
         cfg["nbStatus"] = mm
     _config_mutate(_mut)
-    _NB_RESULT_VER[0] += 1
+    _nb_result_bump()
     _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""),
                   ("סימון בוצע" if done else "החזרה מבוצע") + " · פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
     return jsonify({"ok": True, "done": done})

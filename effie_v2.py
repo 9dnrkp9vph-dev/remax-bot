@@ -19948,7 +19948,7 @@ def register(app, G):
             # רעננות: גרסת נכס-נולד + מטמון השת"פ — שהמסכים יראו את החדש מיד
             try:
                 if out["nbN"] or (out["delistedN"] and stream == "private"):
-                    G["_NB_RESULT_VER"][0] += 1
+                    (G.get("_nb_result_bump") or (lambda: G["_NB_RESULT_VER"].__setitem__(0, G["_NB_RESULT_VER"][0] + 1)))()   # [05/11] גם מנקה nbres ישנים
                     G["_cache_clear"]("newborn_rows")
                 if out["shtafN"] or (out["delistedN"] and stream == "agency"):
                     G["_external_excl_cache"]["ts"] = 0
