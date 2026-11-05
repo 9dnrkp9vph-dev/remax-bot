@@ -75,5 +75,10 @@ src = open(os.path.join(ROOT, "effie_v2.py"), encoding="utf-8").read()
 m = re.search(r"function matchQuery\(b\)\{.*?\n\}", src, re.S)
 check("'מה מחפש' לא נחתך ב-160 תווים", m and ".slice(0, 160)" not in m.group(0), m and m.group(0)[-160:])
 
+m2 = re.search(r"function matchProps\(i\)\{.*?\n\}", src, re.S)
+check("חלון ההתאמות שומר את סדר המנוע (משרד ונכס נולד לא ממוינים מחדש לפי האחוז)",
+      m2 and m2.group(0).count(".sort(bySc)") == 1, m2 and m2.group(0)[-400:])
+check("רענון נכס נולד בחלון — בלי מיון מחדש", "MG.nb = _nbGroup(j.results || []);" in src)
+
 print("\n%d failed" % fails)
 sys.exit(1 if fails else 0)

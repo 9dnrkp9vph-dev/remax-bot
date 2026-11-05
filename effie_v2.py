@@ -5022,9 +5022,11 @@ function matchProps(i){
     GET('/api/my/properties').catch(function(){ return {}; })
   ]).then(function(rs){
     var bySc = function(a, c){ return (c.score || 0) - (a.score || 0); };
-    renderMatches(b, ((rs[0] && rs[0].results) || []).sort(bySc),
+    // [SEARCH-ST 05/11] המשרד ונכס נולד — בסדר שהמנוע קבע (רחוב שביקשו → שכונה → תקציב); מיון לפי האחוז (שנחתך ב-100)
+    // ביטל את הסדר. שת"פ — מנוע אחר, נשאר לפי ציון.
+    renderMatches(b, (rs[0] && rs[0].results) || [],
                      ((rs[1] && rs[1].results) || []).sort(bySc),
-                     ((rs[2] && rs[2].results) || []).sort(bySc),
+                     (rs[2] && rs[2].results) || [],
                      (rs[3] && rs[3].results) || []);
   });
 }
@@ -5554,8 +5556,7 @@ function nbKitRefresh(){
   if (!MQ_CUR) return;
   POST('/api/search/newborn', {q: MQ_CUR}).then(function(j){
     if (!(j && j.ok) || !MG) return;
-    var bySc = function(a, c){ return (c.score || 0) - (a.score || 0); };
-    MG.nb = _nbGroup((j.results || []).sort(bySc));
+    MG.nb = _nbGroup(j.results || []);   // [SEARCH-ST 05/11] בסדר של המנוע
     if (_MATCH_OPEN && !_SUB_FROM_MATCH && el('mRes')){ renderMatchTabs(); renderMatchTab(); }
     _nmFetchMissing();   // [BPAGE-NMFULL] קבוצת נכס נולד חדשה — שליפה חוזרת של ההתאמות החדשות החסרות
   }).catch(function(){});
