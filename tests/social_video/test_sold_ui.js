@@ -34,7 +34,22 @@ ck(h.includes('סטורי SOLD — נמכר') && h.includes("soldToggle('tok1')"
 P.MODE = 'office'; ck(P.soldRow(p) === '', 'office tab → nothing'); P.MODE = 'mine';
 P.DEAL = 'rent'; ck(P.soldRow(p) === '', 'rentals → nothing'); P.DEAL = '';
 P.SOLD.open.tok1 = true; h = P.soldRow(p);
-ck(h.includes("soldCreate('tok1','seller')") && h.includes("soldCreate('tok1','both')") && h.includes('ביטול'), h);
+ck(h.includes("soldCreate('tok1','seller')") && h.includes("soldBoth('tok1')") && h.includes('ביטול'), h);
+// [05/11 אייל] המוכר וגם הקונה → בוחרים מי הביא את הקונה → סרטון משולב
+vm.runInContext(fn(pjs, 'soldToggle') + '\n' + fn(pjs, 'soldBoth') + '\n' + fn(pjs, 'soldBA') + '\n' + fn(pjs, 'soldCreate') +
+  '\nvar RENDERS = 0; function render(){ RENDERS++; } var GETS = [], POSTS = [];' +
+  'function GET(u){ GETS.push(u); return {then: function(f){ f({ok: true, agents: [{name: "אלי שמול"}, {name: "יהודית שמול"}]}); return {catch: function(){}}; }}; }' +
+  'function POST(u, b){ POSTS.push([u, b]); return {then: function(){ return {catch: function(){}}; }}; } function toast(){}', P);
+ck(h.includes("soldBoth('tok1')") && !h.includes("soldCreate('tok1','both')"), 'both opens picker first');
+P.soldBoth('tok1'); h = P.soldRow(p);
+ck(h.includes('מי הביא את הקונה') && h.includes('<option value="אלי שמול">') && h.includes("soldBA('tok1',1,this.value)") && h.includes("soldCreate('tok1','both')"), h);
+ck(P.GETS.length === 1, 'agents loaded once'); P.soldBoth('tok1'); ck(P.GETS.length === 1, 'cached');
+P.soldBA('tok1', 0, ' אלי שמול '); P.soldBA('tok1', 1, '');
+P.soldCreate('tok1', 'both');
+ck(JSON.stringify(P.POSTS[0][1]) === JSON.stringify({key: 'tok1', side: 'both', details: {buyer_agents: ['אלי שמול']}}), JSON.stringify(P.POSTS[0]));
+delete P.SOLD.busy.tok1; P.soldCreate('tok1', 'seller');
+ck(JSON.stringify(P.POSTS[1][1]) === JSON.stringify({key: 'tok1', side: 'seller'}), JSON.stringify(P.POSTS[1]));
+delete P.SOLD.busy.tok1;
 P.SOLD.open.tok1 = false;
 P.SOLD.items['p:tok1'] = {id: 's1', status: 'rendering', token: 'T1'};
 h = P.soldRow(p); ck(h.includes('מכין סטורי') && h.includes('disabled') && !h.includes('צפייה'), h);
@@ -61,7 +76,8 @@ D.SOLD.dev = true;
 h = D.soldRow(it); ck(h.includes("soldOpen('d1')") && h.includes('סטורי SOLD — עסקת קונה'), h);
 // [05/11] טופס: כתובת ונתונים בהקלדה + בחירת סוכנים (צוות)
 vm.runInContext(fn(djs, 'soldBuyers') + '\n' + fn(djs, 'soldOpen') + '\n' + fn(djs, 'soldF') + '\n' + fn(djs, 'soldAg') + '\n' +
-  fn(djs, 'soldForm') + '\nvar ITEMS = []; var RENDERS = 0; function render(){ RENDERS++; }', D);
+  fn(djs, 'soldForm') + '\n' + fn(djs, 'soldSellers') + '\n' + fn(djs, 'soldS') +
+  '\nvar ITEMS = []; var AGENTS = []; var RENDERS = 0; function render(){ RENDERS++; }', D);
 D.ITEMS.push(Object.assign({}, it, {notes: 'ציזלינג 36', sale_price: '1250000', agents: ["רפי דה פיצ'וטו", 'צדוק']}));
 D.soldOpen('d1');
 const F = D.SOLD.f.d1;
@@ -72,6 +88,16 @@ ck(h.includes("soldAg('d1',0,false)") && h.includes("soldAg('d1',1,true)") && !h
 D.soldAg('d1', 1, true); ck(JSON.stringify(D.SOLD.f.d1.agents) === JSON.stringify(["רפי דה פיצ'וטו", 'צדוק']), 'team');
 D.soldAg('d1', 0, false); ck(JSON.stringify(D.SOLD.f.d1.agents) === JSON.stringify(['צדוק']), 'remove');
 D.soldF('d1', 'rooms', '4'); ck(D.SOLD.f.d1.rooms === '4', 'typed');
+// [05/11 אייל] גם צד המוכר שלנו → סרטון משולב
+vm.runInContext(fn(djs, 'soldCreate') +
+  "\nAGENTS = ['בן כהן', \"רפי דה פיצ'וטו\"]; var POSTS = []; function POST(u, b){ POSTS.push([u, b]); return {then: function(){ return {catch: function(){}}; }}; } function toast(){}", D);
+h = D.soldRow(D.ITEMS[0]);
+ck(h.includes('מי הביא את המוכר') && h.includes('<option value="בן כהן">') && h.includes('&#39;') && h.includes("soldS('d1',1,this.value)"), h);
+D.soldS('d1', 0, 'בן כהן'); D.soldS('d1', 1, ' בנימין לוי ');
+D.soldCreate('d1');
+const B = D.POSTS[0][1].details;
+ck(JSON.stringify(B.seller_agents) === JSON.stringify(['בן כהן', 'בנימין לוי']) && B.addr === 'ציזלינג 36' && D.POSTS[0][1].deal === 'd1', JSON.stringify(D.POSTS[0]));
+delete D.SOLD.busy.d1;
 D.SOLD.form.d1 = false;
 ck(D.soldRow(Object.assign({}, it, {deal: false})) === '', 'open process → nothing');
 ck(D.soldRow(Object.assign({}, it, {side1: 'מוכר', side2: ''})) === '', 'seller-only deal → nothing');

@@ -100,6 +100,53 @@ def sold_texts_deal(deal, details=None):
             "line": ("דירה ב" + city) if city else "רימקס פמילי · הקריות", "slogan": SLOGAN}
 
 
+def sold_names(x):
+    """רשימת סוכני צוות מהטופס — ניקוי, בלי כפילויות, עד 2."""
+    if not isinstance(x, (list, tuple)):
+        return []
+    out = [n for n in (_clip(v, 40) for v in x if v) if n]
+    return list(dict.fromkeys(out))[:2]
+
+
+DUR_BOTH = 14.0
+
+
+def sold_duration(kind):
+    return DUR_BOTH if kind == "both" else DUR
+
+
+def sold_texts_both(seller):
+    """[05/11 אייל] שני הצדדים שלנו — סרטון משולב: חלק המוכר (בלי סלוגן), חלק הקונה, וסיום שיתוף פעולה."""
+    sl = dict(seller, tag=SIDE_LINE["seller"], slogan="")
+    return {"kind": "both", "seller": sl,
+            "buyer": {"kind": "buyer", "line": "ייצגנו גם את הקונה", "slogan": ""},
+            "addr": seller.get("addr") or "", "price": seller.get("price") or "",
+            "title": "שיתוף פעולה", "title2": "בפמילי", "sub": SIDE_LINE["both"], "slogan": SLOGAN}
+
+
+def _addr_tokens(s):
+    return re.sub(r"[^\w\s]", " ", SP._norm(s)).split()
+
+
+def sold_row_by_addr(G, addr):
+    """נכס של המשרד לפי כתובת שהוקלדה בעסקה (רחוב + מספר בית) → השורה, או None."""
+    want = _addr_tokens(addr)
+    if not want:
+        return None
+    try:
+        rows = SP.soc_office_rows(G)
+    except Exception:
+        return None
+    for r in rows:
+        num = SP._norm(r.get("מספר בית"))
+        st = _addr_tokens(r.get("כתובת"))
+        if num and num not in st:
+            st.append(num)
+        if len(st) >= 2 and want[:len(st)] == st:
+            return r
+    return None
+
+
 def sold_phone(p):
     import social_video_tour as T
     return T.tour_phone(p) if p else ""
@@ -128,14 +175,15 @@ def _fade(im, a):
 
 
 class _Sprites:
-    def __init__(self, kind, photo, texts, agents, logo_path):
+    def __init__(self, kind, photo, texts, agents, logo_path, label=None, dur=DUR):
         import social_video as V
         from PIL import Image, ImageDraw, ImageFilter
         self.V, self.Image, self.ImageDraw, self.ImageFilter = V, Image, ImageDraw, ImageFilter
-        self.kind, self.texts = kind, texts
+        self.kind, self.texts, self.dur = kind, texts, dur
         self.bg = self._grad()
         self.logo = self._logo(logo_path)
         self.agents = self._agents(agents)
+        self.label = self._text_sprite(label, 46, 800, GOLD) if label and self.agents is not None else None
         if kind == "buyer":
             self._buyer_prep()
         else:
@@ -267,11 +315,19 @@ class _Sprites:
         import io
         Image, ImageDraw = self.Image, self.ImageDraw
         self.PH = 860   # [05/11] תמונה קצרה יותר — מקום לפרטי הנכס ולכרטיס סוכן גדול
-        src = Image.open(io.BytesIO(photo)).convert("RGB")
-        # [04/11 קובי] סימני מים בפינות (יד2 / RE/MAX) — חותכים שוליים מכל צד, רצועה תחתונה רחבה יותר
-        src = src.crop((int(src.width * .08), int(src.height * .1), int(src.width * .92), int(src.height * .86)))
-        import social_video_tour as T
-        self.photo = T._cover(src, int(W * 1.16), int(self.PH * 1.16))
+        self.photo = None
+        if photo:
+            src = Image.open(io.BytesIO(photo)).convert("RGB")
+            # [04/11 קובי] סימני מים בפינות (יד2 / RE/MAX) — חותכים שוליים מכל צד, רצועה תחתונה רחבה יותר
+            src = src.crop((int(src.width * .08), int(src.height * .1), int(src.width * .92), int(src.height * .86)))
+            import social_video_tour as T
+            self.photo = T._cover(src, int(W * 1.16), int(self.PH * 1.16))
+        else:   # עסקה בלי נכס של המשרד — בית זהב בטבעת במקום תמונה
+            glow = self._layer(W, H)
+            ImageDraw.Draw(glow).ellipse((W // 2 - 340, 160, W // 2 + 340, 840), fill=GOLD + (55,))
+            self.bgb = self.bg.convert("RGBA")
+            self.bgb.alpha_composite(glow.filter(self.ImageFilter.GaussianBlur(110)))
+            self.house = self._house(215)
         fade = self._layer(W, 420)
         dd = ImageDraw.Draw(fade)
         for y in range(420):
@@ -291,6 +347,20 @@ class _Sprites:
         self.price = self._pill_sprite(tx["price"], 56, NAVY0, GOLD, 104) if tx.get("price") else None
         self.slogan = self._text_sprite(tx.get("slogan") or "", 38, 700, GOLD)
 
+    def _house(self, R):
+        """אייקון בית זהב בתוך טבעת (לחלק המוכר כשאין תמונה)."""
+        S = 2 * R + 20
+        im = self._layer(S * 2, S * 2)
+        d = self.ImageDraw.Draw(im)
+        c = S
+        d.ellipse((20, 20, 2 * S - 20, 2 * S - 20), outline=GOLD, width=12)
+        d.ellipse((60, 60, 2 * S - 60, 2 * S - 60), fill=(255, 255, 255, 22))
+        u = S * 0.42
+        d.polygon([(c - u, c - u * .05), (c, c - u * .95), (c + u, c - u * .05)], fill=GOLD)
+        d.rectangle((c - u * .72, c - u * .1, c + u * .72, c + u * .8), fill=GOLD)
+        d.rectangle((c - u * .18, c + u * .25, c + u * .18, c + u * .8), fill=NAVY0 + (255,))
+        return im.resize((S, S), self.Image.LANCZOS)
+
     def _ribbon(self):
         V, Image, ImageDraw, ImageFilter = self.V, self.Image, self.ImageDraw, self.ImageFilter
         band = self._layer(W + 600, 170)
@@ -308,14 +378,20 @@ class _Sprites:
 
     def seller(self, t):
         Image = self.Image
-        fr = self.bg.convert("RGBA")
-        z = 1.16 - 0.10 * _ease(t / DUR)   # התקרבות איטית לאורך כל הסרטון
-        pw, ph = int(W * z), int(self.PH * z)
-        im = self.photo.resize((pw, ph), Image.BILINEAR)
-        ox, oy = (pw - W) // 2, (ph - self.PH) // 2
-        fr.paste(im.crop((ox, oy, ox + W, oy + self.PH)), (0, 0))
-        fr.alpha_composite(self.fade, (0, self.PH - 420))
-        fr.alpha_composite(self.top, (0, 0))
+        if self.photo is not None:
+            fr = self.bg.convert("RGBA")
+            z = 1.16 - 0.10 * _ease(t / self.dur)   # התקרבות איטית לאורך כל הסרטון
+            pw, ph = int(W * z), int(self.PH * z)
+            im = self.photo.resize((pw, ph), Image.BILINEAR)
+            ox, oy = (pw - W) // 2, (ph - self.PH) // 2
+            fr.paste(im.crop((ox, oy, ox + W, oy + self.PH)), (0, 0))
+            fr.alpha_composite(self.fade, (0, self.PH - 420))
+            fr.alpha_composite(self.top, (0, 0))
+        else:
+            fr = self.bgb.copy()
+            s = max(0.05, _back((t - 0.1) / 0.6))
+            hs = self.house if s >= 1 else self.house.resize((max(1, int(self.house.width * s)),) * 2, Image.BILINEAR)
+            fr.alpha_composite(hs, ((W - hs.width) // 2, 430 - hs.height // 2))
         if self.logo:
             fr.alpha_composite(_fade(self.logo, _ease(t / 0.5)), ((W - self.logo.width) // 2, 70))
         # חותמת SOLD: נכנסת גדולה ונוחתת עם קפיצה
@@ -326,7 +402,8 @@ class _Sprites:
             if abs(s - 1.0) > 0.003:
                 rb = rb.resize((max(1, int(rb.width * s)), max(1, int(rb.height * s))), Image.BILINEAR)
             rb = _fade(rb, min(1.0, a * 2.2))
-            fr.alpha_composite(rb, ((W - rb.width) // 2, 520 - rb.height // 2))
+            ry = 520 if self.photo is not None else 650   # בלי תמונה — החותמת מתחת לבית ולא עליו
+            fr.alpha_composite(rb, ((W - rb.width) // 2, ry - rb.height // 2))
         y = self.PH - 40
 
         def up(sp, yc, t0, d=0.5):
@@ -352,7 +429,10 @@ class _Sprites:
         b = _ease((t - t0) / 0.6)
         if b > 0:
             A = self.agents
-            fr.alpha_composite(_fade(A, b), (0, int(cy - A.height / 2 + (1 - b) * 140)))
+            y = int(cy - A.height / 2 + (1 - b) * 140)
+            fr.alpha_composite(_fade(A, b), (0, y))
+            if self.label is not None:   # "הביאו את המוכר" / "הביאו את הקונה" מעל הכרטיסים
+                fr.alpha_composite(_fade(self.label, b), (0, y + 50 - self.label.height - 4))
 
     # קונה
     def _buyer_prep(self):
@@ -402,16 +482,19 @@ class _Sprites:
             d.line((px, py, px + S * .1, py - S * .1), fill=GOLD, width=w)
         return im.resize((size, size), self.Image.LANCZOS)
 
+    def confetti(self, fr, t, ymax):
+        for c in self.conf:   # קונפטי נופל לאורך כל הסרטון
+            y = (c["y0"] + c["v"] * t + 900) % 1960 - 900   # חוזר מלמעלה — קונפטי לאורך כל הסרטון
+            if not -60 < y < ymax:
+                continue
+            x = c["x"] + c["sw"] * math.sin(c["ph"] + t * 2.2)
+            p = c["im"].rotate(c["a0"] + c["rot"] * t, expand=True, resample=self.Image.BILINEAR)
+            fr.alpha_composite(p, (int(x), int(y)))
+
     def buyer(self, t):
         Image, ImageDraw = self.Image, self.ImageDraw
         fr = self.bgb.copy()
-        for c in self.conf:   # קונפטי נופל לאורך כל הסרטון
-            y = (c["y0"] + c["v"] * t + 900) % 1960 - 900   # חוזר מלמעלה — קונפטי לאורך כל הסרטון
-            if not -60 < y < (640 if self.full else 940):
-                continue
-            x = c["x"] + c["sw"] * math.sin(c["ph"] + t * 2.2)
-            p = c["im"].rotate(c["a0"] + c["rot"] * t, expand=True, resample=Image.BILINEAR)
-            fr.alpha_composite(p, (int(x), int(y)))
+        self.confetti(fr, t, 640 if self.full else 940)
         if self.logo:
             fr.alpha_composite(_fade(self.logo, _ease(t / 0.5)), ((W - self.logo.width) // 2, 110))
         cx, cy, R = (W // 2, 470, 150) if self.full else (W // 2, 590, 220)
@@ -456,31 +539,107 @@ class _Sprites:
         return self.buyer(t) if self.kind == "buyer" else self.seller(t)
 
 
+class _Combo:
+    """[05/11 אייל] "הדגשה של השיתוף פעולה בפמילי" — מוכר (0–6ש') → קונה (6–11ש') → סיום עם כל הסוכנים (11–14ש')."""
+    T_BUY, T_FIN, XF = 5.6, 10.6, 0.5
+
+    def __init__(self, photo, texts, agents, logo_path):
+        ags = agents if isinstance(agents, dict) else {}
+        self.sel = _Sprites("seller", photo, texts["seller"], ags.get("seller"), logo_path, "הביאו את המוכר",
+                            dur=self.T_BUY + self.XF)
+        self.buy = _Sprites("buyer", None, texts["buyer"], ags.get("buyer"), logo_path, "הביאו את הקונה")
+        self.Image = self.sel.Image
+        self._finale_prep(texts, ags)
+
+    def _finale_prep(self, tx, ags):
+        B, V, ImageDraw = self.buy, self.buy.V, self.buy.ImageDraw
+        self.title = B._text_sprite(tx.get("title") or "", 130, 900, WHITE)
+        self.title2 = B._text_sprite(tx.get("title2") or "", 130, 900, GOLD)
+        self.sub = B._text_sprite(tx.get("sub") or "", 50, 600, MUTE)
+        self.addr = B._text_sprite(tx.get("addr") or "", 76, 800, WHITE) if tx.get("addr") else None
+        self.price = B._pill_sprite(tx["price"], 56, NAVY0, GOLD, 104) if tx.get("price") else None
+        self.slogan = B._text_sprite(tx.get("slogan") or "", 46, 700, GOLD)
+        groups = [("צד המוכר", [a for a in (ags.get("seller") or []) if a.get("name")][:2]),
+                  ("צד הקונה", [a for a in (ags.get("buyer") or []) if a.get("name")][:2])]
+        groups = [g for g in groups if g[1]]
+        cw, av, gap = 246, 224, 50
+        L = B._layer(W, 420)
+        d = ImageDraw.Draw(L)
+        total = sum(cw * len(g[1]) for g in groups) + gap * (len(groups) - 1)
+        x = (W + total) // 2   # מימין לשמאל: המוכר מימין
+        for gi, (lab, people) in enumerate(groups):
+            gw = cw * len(people)
+            d.text((x - gw / 2, 28), V._rtl(lab), font=V._font(46, 800), fill=GOLD, anchor="mm")
+            for k, a in enumerate(people):
+                cx = int(x - cw * k - cw / 2)
+                L.alpha_composite(B._avatar(a["name"], av, a.get("photo")), (cx - av // 2, 70))
+                d.text((cx, 340), V._rtl(a["name"]), font=V._fit(d, a["name"], 44, 800, cw - 12), fill=WHITE, anchor="mm")
+            x -= gw
+            if gi < len(groups) - 1:
+                d.rounded_rectangle((x - gap / 2 - 3, 120, x - gap / 2 + 3, 250), 3, fill=GOLD + (200,))
+                x -= gap
+        self.team = L
+
+    def finale(self, t):
+        B = self.buy
+        fr = B.bgb.copy()
+        B.confetti(fr, t + 6, 620)
+        if B.logo:
+            fr.alpha_composite(B.logo, ((W - B.logo.width) // 2, 110))
+
+        def up(sp, yc, t0, d=0.5):
+            b = _ease((t - t0) / d)
+            if b > 0 and sp is not None:
+                fr.alpha_composite(_fade(sp, b), (0, int(yc - sp.height / 2 + (1 - b) * 46)))
+        up(self.title, 470, 0.15)
+        up(self.title2, 610, 0.3)
+        up(self.sub, 740, 0.5)
+        up(self.team, 1060, 0.75, 0.6)
+        up(self.addr, 1400, 1.2)
+        up(self.price, 1515, 1.35)
+        up(self.slogan, 1650, 1.5)
+        return fr.convert("RGB")
+
+    def frame(self, t):
+        if t < self.T_BUY:
+            return self.sel.seller(t)
+        if t < self.T_BUY + self.XF:
+            return self.Image.blend(self.sel.seller(t), self.buy.buyer(t - self.T_BUY), (t - self.T_BUY) / self.XF)
+        if t < self.T_FIN:
+            return self.buy.buyer(t - self.T_BUY)
+        if t < self.T_FIN + self.XF:
+            return self.Image.blend(self.buy.buyer(t - self.T_BUY), self.finale(t - self.T_FIN), (t - self.T_FIN) / self.XF)
+        return self.finale(t - self.T_FIN)
+
+
 def sold_compose(kind, photo, texts, agents, music_path, out_path, logo_path, popen=None):
-    """→ {'ok','duration','cover','error'} (אותו חוזה של social_video.vid_compose). kind = 'seller' / 'buyer'."""
+    """→ {'ok','duration','cover','error'} (אותו חוזה של social_video.vid_compose).
+    kind = 'seller' / 'buyer' (8ש'), או 'both' (14ש' — agents = {'seller': [...], 'buyer': [...]}, photo אופציונלי)."""
     import subprocess, time
     import social_video as V
     ff = V.vid_ffmpeg()
     if not ff:
         return {"ok": False, "error": "אין ffmpeg"}
-    if kind != "buyer" and not photo:
+    if kind == "seller" and not photo:
         return {"ok": False, "error": "אין תמונה לנכס"}
     popen = popen or subprocess.Popen
     try:
-        P = _Sprites(kind, photo, texts, agents, logo_path)
-        ain = ["-i", music_path] if music_path else ["-f", "lavfi", "-t", "%.2f" % DUR, "-i",
-                                                      "anullsrc=r=48000:cl=stereo"]
+        dur = sold_duration(kind)
+        P = _Combo(photo, texts, agents, logo_path) if kind == "both" else _Sprites(kind, photo, texts, agents, logo_path)
+        # קטע קצר מהסרטון (12ש' מול 14ש') — חוזר מההתחלה
+        ain = ["-stream_loop", "-1", "-i", music_path] if music_path else \
+            ["-f", "lavfi", "-t", "%.2f" % dur, "-i", "anullsrc=r=48000:cl=stereo"]
         cmd = [ff, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "%dx%d" % (W, H),
                "-r", str(FPS), "-i", "-"] + ain + [
                "-filter_complex", "[1:a]atrim=0:%.2f,asetpts=PTS-STARTPTS,volume=0.85,afade=in:d=0.1,"
-               "afade=out:st=%.2f:d=1.0,aresample=48000[a]" % (DUR, DUR - 1.0),
-               "-map", "0:v", "-map", "[a]", "-t", "%.2f" % DUR,
+               "afade=out:st=%.2f:d=1.0,aresample=48000[a]" % (dur, dur - 1.0),
+               "-map", "0:v", "-map", "[a]", "-t", "%.2f" % dur,
                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-g", "60",
                "-c:a", "aac", "-ar", "48000", "-b:a", "128k", "-movflags", "+faststart", "-threads", "1", out_path]
         proc = popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         t0, cover = time.time(), None
         try:
-            for f in range(int(DUR * FPS)):
+            for f in range(int(dur * FPS)):
                 if time.time() - t0 > V.RENDER_TIMEOUT_S:
                     proc.kill()
                     return {"ok": False, "error": "timeout"}
@@ -496,7 +655,7 @@ def sold_compose(kind, photo, texts, agents, music_path, out_path, logo_path, po
             return {"ok": False, "error": "ffmpeg: %s" % (err or b"")[-300:].decode("utf-8", "replace")}
         cp = out_path.rsplit(".", 1)[0] + "-cover.jpg"
         (cover or P.frame(4.0)).save(cp, quality=88)
-        return {"ok": True, "duration": DUR, "cover": cp}
+        return {"ok": True, "duration": dur, "cover": cp}
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
 
@@ -641,6 +800,9 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
         except Exception:
             feats = []
         texts, kind, key = sold_texts_property(row, side, feats), "seller", "p:" + SP._key(ref)
+        buyers = sold_names((details or {}).get("buyer_agents")) if isinstance(details, dict) else []
+        if side == "both" and buyers:   # [05/11 אייל] צד הקונה נבחר → סרטון משולב
+            names, texts, kind = {"seller": names, "buyer": buyers}, sold_texts_both(texts), "both"
     elif ref_kind == "deal":
         deal = _deal(G, ref)
         if not deal or not sold_deal_ok(deal):
@@ -649,6 +811,18 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
         d = details if isinstance(details, dict) else {}
         names, texts, kind, key, side, row = sold_agents_for_deal(deal, d.get("agents")), sold_texts_deal(deal, d), \
             "buyer", "d:" + str(ref), "buyer", None
+        sellers = sold_names(d.get("seller_agents"))
+        if sellers:   # [05/11 אייל] גם צד המוכר שלנו → סרטון משולב; נכס של המשרד באותה כתובת → התמונה שלו
+            row = sold_row_by_addr(G, texts.get("addr"))
+            st = dict(texts)
+            if row:
+                try:
+                    rf = [f for f in (G["_row_feats"](row) or []) if f]
+                except Exception:
+                    rf = []
+                pt = sold_texts_property(row, "seller", rf)
+                st.update({k: pt[k] for k in ("place", "spec", "feats", "price") if not st.get(k) and pt.get(k)})
+            names, texts, kind, side = {"seller": sellers, "buyer": names}, sold_texts_both(st), "both", "both"
     else:
         res["reason"] = "סוג לא תקין"
         return res
@@ -657,32 +831,40 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
             _t.time() - (last.get("ts") or 0) < _STALE_S:
         res["reason"] = "כבר בהכנה"
         return res
-    seen, agents = set(), []
-    for n in names:
-        if n and n not in seen:
-            seen.add(n)
-            agents.append(_agent(G, n))
+    def _team(ns):
+        seen, out = set(), []
+        for n in ns:
+            if n and n not in seen:
+                seen.add(n)
+                out.append(_agent(G, n))
+        return out
+    if kind == "both":
+        agents = {"seller": _team(names["seller"]), "buyer": _team(names["buyer"])}
+        flat = [a["name"] for a in agents["seller"] + agents["buyer"]]
+    else:
+        agents = _team(names)
+        flat = [a["name"] for a in agents]
     tok = store.new_token()
     rec = db.insert({"ref": key, "kind": kind, "side": side, "status": "rendering", "video_token": tok,
                      "by_phone": str(by_phone or ""), "ts": _t.time(), "mode": SP.soc_mode(env)})
     res["id"] = rec["id"]
     try:
         photo = None
-        if kind == "seller":
+        if row is not None and kind != "buyer":
             if http is None:
                 import requests as http
             for src in SP.soc_images(row)[:3]:
                 photo = SP.soc_fetch_jpeg(http, src, False)
                 if photo:
                     break
-            if not photo:
+            if not photo and kind == "seller":
                 raise RuntimeError("התמונה של הנכס לא ירדה")
         with V._render_lock():
             out = sold_compose(kind, photo, texts, agents, sold_music(env, len(db.all())), store.path(tok),
                                V._logo_path())
         if not out.get("ok"):
             raise RuntimeError(out.get("error") or "רינדור נכשל")
-        db.update(rec["id"], {"status": "ready", "ts": _t.time(), "agents": [a["name"] for a in agents]})
+        db.update(rec["id"], {"status": "ready", "ts": _t.time(), "agents": flat})
         res.update(ok=True, status="ready")
         _log.info("sold-story create ref=%s id=%s status=ready", key, rec["id"])
     except Exception as e:

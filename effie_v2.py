@@ -7377,7 +7377,7 @@ function vidResend(id){
 }
 /* [SOLD 05/11] סטורי SOLD לנכס שנמכר — "הנכסים שלי", למפתח בלבד (social_sold.py).
    לחיצה → בוחרים מי ייצגנו → הסרטון מוכן תוך כחצי דקה → צפייה → "פרסם לסטורי" (אינסטגרם + פייסבוק). */
-var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}};
+var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}, both: {}, ba: {}, ag: null};
 var SOLD_ST = {rendering: 'בהכנה', ready: 'מוכן לפרסום', publishing: 'מתפרסם', published: 'פורסם בסטורי',
   partial: 'פורסם חלקית', failed: 'נכשל'};
 function soldRow(p){
@@ -7405,10 +7405,25 @@ function soldRow(p){
     h += '<div style="margin-top:8px"><button onclick="soldPublish(\'' + esc(L.id) + '\',\'' + esc(k) + '\')" style="' + css +
          'background:#2E6BD6;color:#fff;border:none">' + (L.status === 'partial' ? 'נסה שוב את מה שנכשל' : 'פרסם לסטורי באינסטגרם ובפייסבוק') +
          test + '</button></div>';
+  if (SOLD.open[k] && SOLD.both[k]){   // [05/11 אייל] שני הצדדים שלנו — סרטון משולב: מוכר ואז קונה
+    var ba = SOLD.ba[k] || ['', ''], inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;' +
+      'border-radius:11px;padding:0 12px;font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F;margin-top:6px';
+    return h + '<div style="margin-top:8px;padding:12px;border-radius:14px;background:#F6EEDB">' +
+      '<div style="font-size:13.5px;font-weight:800;color:#7A5E1C">מי הביא את הקונה? (עד 2)</div>' +
+      '<div class="sb" style="margin-top:2px">הסרטון יתחלק לשניים — קודם המוכר ואחר כך הקונה. ריק = סטורי רגיל.</div>' +
+      [0, 1].map(function(i){
+        return '<input list="soldAgDL" autocomplete="off" value="' + esc(ba[i] || '') + '" placeholder="סוכן ' + (i + 1) + '"' +
+          ' oninput="soldBA(\'' + esc(k) + '\',' + i + ',this.value)" style="' + inp + '">';
+      }).join('') +
+      '<datalist id="soldAgDL">' + (SOLD.ag || []).map(function(a){ return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+      '<button onclick="soldCreate(\'' + esc(k) + '\',\'both\')" style="' + css + 'flex:2;background:#C29435;color:#231700;border:none">צור סטורי</button>' +
+      '<button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css + 'flex:1;background:#fff;color:#5B6472;border:1.5px solid #DCD6C8">ביטול</button></div></div>';
+  }
   if (SOLD.open[k])
     return h + '<div style="display:flex;gap:8px;margin-top:8px">' +
       '<button onclick="soldCreate(\'' + esc(k) + '\',\'seller\')" style="' + css + 'background:#C29435;color:#231700;border:none">ייצגנו את המוכר</button>' +
-      '<button onclick="soldCreate(\'' + esc(k) + '\',\'both\')" style="' + css + 'background:#C29435;color:#231700;border:none">המוכר וגם הקונה</button></div>' +
+      '<button onclick="soldBoth(\'' + esc(k) + '\')" style="' + css + 'background:#C29435;color:#231700;border:none">המוכר וגם הקונה</button></div>' +
       '<div style="margin-top:6px"><button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css +
       'min-height:40px;background:#fff;color:#5B6472;border:1.5px solid #DCD6C8">ביטול</button></div>';
   return h + '<div style="margin-top:8px"><button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css +
@@ -7427,7 +7442,16 @@ function soldLoad(list){
     render();
   }).catch(function(){});
 }
-function soldToggle(k){ SOLD.open[k] = !SOLD.open[k]; render(); }
+function soldToggle(k){ SOLD.open[k] = !SOLD.open[k]; SOLD.both[k] = false; render(); }
+function soldBoth(k){
+  SOLD.both[k] = true; render();
+  if (SOLD.ag) return;
+  SOLD.ag = [];
+  GET('/api/agents').then(function(j){   // רשימת המשרד הקנונית — להשלמה אוטומטית
+    SOLD.ag = ((j && j.agents) || []).map(function(a){ return a.name; }).filter(Boolean); render();
+  }).catch(function(){});
+}
+function soldBA(k, i, v){ (SOLD.ba[k] = SOLD.ba[k] || ['', ''])[i] = v; }
 function soldWatch(k, n){   // מתעדכן עד שהרינדור/הפרסום מסתיים (עד ~3 דק')
   clearTimeout(SOLD.poll[k]);
   if (n > 36) { delete SOLD.busy[k]; render(); return; }
@@ -7450,7 +7474,10 @@ function soldCreate(k, side){
   if (SOLD.busy[k]) return;
   SOLD.busy[k] = 1; SOLD.open[k] = false;
   delete SOLD.items['p:' + k]; render();
-  POST('/v2/api/social/sold', {key: k, side: side}).then(function(j){
+  var body = {key: k, side: side};
+  if (side === 'both') body.details = {buyer_agents: (SOLD.ba[k] || []).map(function(x){ return String(x || '').trim(); }).filter(Boolean)};
+  SOLD.both[k] = false;
+  POST('/v2/api/social/sold', body).then(function(j){
     if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה — לא נשלח'); return; }
     toast('מכין סטורי SOLD — כחצי דקה'); soldWatch(k, 0);
   }).catch(function(){ delete SOLD.busy[k]; render(); toast('שגיאה — לא נשלח'); });
@@ -8646,13 +8673,26 @@ function soldForm(it){
     '<div style="display:flex;gap:8px">' + fld('city', 'עיר', 'קרית ים') + fld('rooms', 'חדרים', '4', 'decimal') + '</div>' +
     '<div style="display:flex;gap:8px">' + fld('size', 'מ"ר', '105', 'numeric') + fld('floor', 'קומה', '3') + '</div>' +
     fld('price', 'מחיר', '1,250,000', 'numeric') +
-    fld('feats', 'מאפיינים (מופרדים בפסיק)', 'מעלית, חניה, מרפסת') + agRow +
+    fld('feats', 'מאפיינים (מופרדים בפסיק)', 'מעלית, חניה, מרפסת') + agRow + soldSellers(k, f) +
     '<div style="display:flex;gap:8px;margin-top:10px">' +
     '<button onclick="soldCreate(\'' + esc(k) + '\')" style="flex:2;min-height:44px;border-radius:11px;border:none;background:#C29435;color:#231700;' +
     'font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">צור סטורי</button>' +
     '<button onclick="SOLD.form[\'' + esc(k) + '\']=false;render()" style="flex:1;min-height:44px;border-radius:11px;border:1.5px solid #DCD6C8;' +
     'background:#fff;color:#5B6472;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">ביטול</button></div></div>';
 }
+/* [05/11 אייל] "אלי ויהודית הביאו קונה ובן ובנימין הביאו מוכר" — גם צד המוכר שלנו → סרטון אחד משולב */
+function soldSellers(k, f){
+  var ss = f.sellers || ['', ''], inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;border-radius:11px;' +
+    'padding:0 12px;font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F;margin-top:6px';
+  return '<div class="sb" style="margin:10px 0 0;font-weight:800;color:#7A5E1C">גם צד המוכר שלנו? מי הביא את המוכר (עד 2)</div>' +
+    '<div class="sb" style="margin-top:2px">הסרטון יתחלק לשניים — קודם המוכר ואחר כך הקונה. ריק = סטורי קונה רגיל.</div>' +
+    [0, 1].map(function(i){
+      return '<input list="soldDL" autocomplete="off" value="' + esc(ss[i] || '') + '" placeholder="סוכן ' + (i + 1) + '"' +
+        ' oninput="soldS(\'' + esc(k) + '\',' + i + ',this.value)" style="' + inp + '">';
+    }).join('') +
+    '<datalist id="soldDL">' + (AGENTS || []).map(function(a){ return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>';
+}
+function soldS(k, i, v){ var f = SOLD.f[k] || (SOLD.f[k] = {}); (f.sellers = f.sellers || ['', ''])[i] = v; }
 function soldLoad(list){
   if (!SOLD.dev) return;
   var ids = (list || []).filter(soldOk).slice(0, 60).map(function(it){ return String(it.id); })
@@ -8688,7 +8728,8 @@ function soldCreate(k){
   var f = SOLD.f[k] || {};
   SOLD.busy[k] = 1; SOLD.form[k] = false; delete SOLD.items['d:' + k]; render();
   POST('/v2/api/social/sold', {deal: k, details: {addr: f.addr || '', city: f.city || '', rooms: f.rooms || '', size: f.size || '',
-    floor: f.floor || '', price: f.price || '', feats: f.feats || '', agents: f.agents || []}}).then(function(j){
+    floor: f.floor || '', price: f.price || '', feats: f.feats || '', agents: f.agents || [],
+    seller_agents: (f.sellers || []).map(function(x){ return String(x || '').trim(); }).filter(Boolean)}}).then(function(j){
     if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה — לא נשלח'); return; }
     toast('מכין סטורי — כחצי דקה'); soldWatch(k, 0);
   }).catch(function(){ delete SOLD.busy[k]; render(); toast('שגיאה — לא נשלח'); });

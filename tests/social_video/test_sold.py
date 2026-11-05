@@ -46,6 +46,17 @@ ck(S.sold_agents_for_deal(D, ["צדוק", "רויטל", "זר"]) == ["צדוק",
 ck(S.sold_agents_for_deal(D, ["זר"]) == ["רויטל"], "nothing valid → default")
 ck(not S.sold_deal_ok(dict(D, side1="מוכר", side2="")), "seller-only deal → no buyer story")
 
+# [05/11 אייל] שני הצדדים שלנו — סרטון אחד משולב: מוכר → קונה → שיתוף פעולה
+ck(S.sold_names([" רויטל ", "צדוק", "רויטל", "", "זר", None]) == ["רויטל", "צדוק"], "team names")
+ck(S.sold_names("junk") == [], "bad names")
+bt = S.sold_texts_both(S.sold_texts_property(ROW, "both"))
+ck(bt["seller"]["tag"] == "נמכר בהצלחה" and bt["buyer"]["kind"] == "buyer" and "addr" not in bt["buyer"], bt)
+ck(bt["addr"] == "אהוד מנור 13" and bt["title"] == "שיתוף פעולה" and bt["title2"] == "בפמילי", bt)
+ck(S.sold_duration("both") == 14.0 and S.sold_duration("seller") == 8.0 and S.sold_duration("buyer") == 8.0, "durations")
+GR = make_G(rows=[ROW])[0]
+ck(S.sold_row_by_addr(GR, "אהוד מנור 13") is not None and S.sold_row_by_addr(GR, " אהוד  מנור 13, קרית ביאליק") is not None, "addr match")
+ck(S.sold_row_by_addr(GR, "אהוד מנור 15") is None and S.sold_row_by_addr(GR, "") is None, "no addr match")
+
 # ── מוזיקה: 3 הקטעים מ-Sound Collection של Meta (אייל בחר 05/11), כל סטורי הקטע הבא ──
 ms = [os.path.basename(S.sold_music({}, k)) for k in range(4)]
 ck(ms == ["meta-boogie-monster-bash.mp3", "meta-poltergeist-polka.mp3", "meta-wacky-sax.mp3", "meta-boogie-monster-bash.mp3"], ms)
@@ -65,6 +76,14 @@ for kind, photo, tx, ags in (
     pr = subprocess.run([V.vid_ffmpeg(), "-i", out], capture_output=True, text=True).stderr
     ck("1080x1920" in pr and "Audio" in pr and "00:00:08" in pr, pr[-400:])
 ck(not S.sold_compose("seller", None, {}, [], None, "/tmp/x.mp4", logo)["ok"], "seller needs photo")
+TEAMS = {"seller": [{"name": "בן כהן", "phone": "072-555-0101"}, {"name": "בנימין לוי", "phone": "052-123-4567"}],
+         "buyer": [{"name": "אלי שמול", "phone": "072-555-0202"}, {"name": "יהודית שמול", "phone": "052-765-4321"}]}
+for photo in (jpg(), None):   # בלי תמונה (עסקה בלי נכס של המשרד) → אייקון בית
+    out = os.path.join(tempfile.mkdtemp(), "b.mp4")
+    r = S.sold_compose("both", photo, bt, TEAMS, S.sold_music({}, 2), out, logo)   # wacky-sax 12ש' → חוזר בלופ
+    ck(r["ok"] and r["duration"] == 14.0, r)
+    pr = subprocess.run([V.vid_ffmpeg(), "-i", out], capture_output=True, text=True).stderr
+    ck("1080x1920" in pr and "Audio" in pr and "00:00:14" in pr, pr[-400:])
 
 # ── יצירה + פרסום (Graph מזויף) ──
 class FG:
@@ -119,6 +138,25 @@ ck(r["ok"] and COMP[-1][0] == "buyer" and not COMP[-1][1] and [a["name"] for a i
 r = S.sold_create(G, "deal", "d1", "buyer", "", http=HTTP, env=env, store=store, db=db,
                   details={"addr": "ציזלינג 36", "price": "1250000", "agents": ["רויטל", "צדוק"]})
 ck(r["ok"] and COMP[-1][2]["addr"] == "ציזלינג 36" and [a["name"] for a in COMP[-1][3]] == ["רויטל", "צדוק"], COMP[-1])
+# משולב מ"הנכסים שלי": צד המוכר מהנכס, צד הקונה נבחר
+r = S.sold_create(G, "prop", "tok1", "both", "", http=HTTP, env=env, store=store, db=db,
+                  details={"buyer_agents": ["אלי שמול", "יהודית שמול"]})
+kind, has_photo, tx, ags = COMP[-1]
+ck(r["ok"] and kind == "both" and has_photo and tx["seller"]["tag"] == "נמכר בהצלחה", COMP[-1])
+ck([a["name"] for a in ags["seller"]] == ["דנה כהן", "יוסי לוי"] and [a["name"] for a in ags["buyer"]] == ["אלי שמול", "יהודית שמול"], ags)
+ck(db.get(r["id"])["kind"] == "both" and db.get(r["id"])["agents"] == ["דנה כהן", "יוסי לוי", "אלי שמול", "יהודית שמול"], db.get(r["id"]))
+r = S.sold_create(G, "prop", "tok1", "both", "", http=HTTP, env=env, store=store, db=db, details={"buyer_agents": []})
+ck(r["ok"] and COMP[-1][0] == "seller" and COMP[-1][2]["tag"].startswith("ייצגנו"), "no buyer team → regular 8s story")
+# משולב מעסקה: צד הקונה מהעסקה, צד המוכר נבחר; כתובת של נכס המשרד → התמונה שלו
+r = S.sold_create(G, "deal", "d1", "buyer", "", http=HTTP, env=env, store=store, db=db,
+                  details={"addr": "אהוד מנור 13", "agents": ["רויטל"], "seller_agents": ["בן כהן", "בנימין לוי"]})
+kind, has_photo, tx, ags = COMP[-1]
+ck(r["ok"] and kind == "both" and has_photo and tx["addr"] == "אהוד מנור 13", COMP[-1])
+ck([a["name"] for a in ags["buyer"]] == ["רויטל"] and [a["name"] for a in ags["seller"]] == ["בן כהן", "בנימין לוי"], ags)
+ck(db.get(r["id"])["ref"] == "d:d1" and db.get(r["id"])["side"] == "both", db.get(r["id"]))
+r = S.sold_create(G, "deal", "d1", "buyer", "", http=HTTP, env=env, store=store, db=db,
+                  details={"addr": "ציזלינג 36", "seller_agents": ["בן כהן"]})
+ck(r["ok"] and COMP[-1][0] == "both" and not COMP[-1][1] and COMP[-1][2]["addr"] == "ציזלינג 36", "no office prop → no photo")
 ck(not S.sold_create(G, "deal", "d2", "buyer", "", http=HTTP, env=env, store=store, db=db)["ok"], "open deal blocked")
 ck(not S.sold_create(G, "prop", "nope", "seller", "", http=HTTP, env=env, store=store, db=db)["ok"], "no prop")
 ck(S.sold_create(G, "prop", "tok1", "buyer", "", http=HTTP, env=env, store=store, db=db)["reason"] == "צד לא תקין", "bad side")

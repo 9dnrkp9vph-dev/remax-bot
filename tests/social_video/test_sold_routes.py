@@ -30,6 +30,8 @@ ck(c.post("/v2/api/social/sold", json={"deal": "d1"}).json["ok"] and RUNS[-1] ==
 DET = {"addr": "ציזלינג 36", "agents": ["רויטל"]}
 ck(c.post("/v2/api/social/sold", json={"deal": "d1", "details": DET}).json["ok"] and RUNS[-1][4] == DET, RUNS)
 ck(c.post("/v2/api/social/sold", json={"deal": "d1", "details": "junk"}).json["ok"] and RUNS[-1][4] is None, RUNS)
+BA = {"buyer_agents": ["אלי שמול", "יהודית שמול"]}   # [05/11] סרטון משולב
+ck(c.post("/v2/api/social/sold", json={"key": "tok1", "side": "both", "details": BA}).json["ok"] and RUNS[-1] == ("prop", "tok1", "both", "505709865", BA), RUNS)
 ck(c.post("/v2/api/social/sold", json={}).status_code == 400, "nothing")
 
 r1 = S._DB.insert({"ref": "p:tok1", "status": "ready", "video_token": "T1", "ts": time.time()})
