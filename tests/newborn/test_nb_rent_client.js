@@ -37,6 +37,8 @@ const env = {localStorage, el, GET, esc: s => String(s == null ? '' : s), nbCard
 const code = ['var ROWS = [], BUCKETS = [], TOTAL = 0, AGE = -1, MEETS = [];',
   js.match(/var BUCKET_RANGES = [^\n]*/)[0], "var NB_ETAG = '';", 'var NB_FULL = false;', 'var NB_SHOWN = 40;',
   js.match(/var DEAL = [^\n]*/)[0], js.match(/try\{ RENT_OK = [^\n]*/)[0],
+  js.match(/var NBF_LIST = [^\n]*/)[0], js.match(/var NBF_EMPTY = [^\n]*/)[0], "var NBF = 'all';",
+  fn(js, 'nbfKeys'), fn(js, 'nbfLabel'),
   fn(js, '_dealQs'), fn(js, '_setRentOk'), fn(js, 'setNbDeal'), fn(js, '_nbApply'), fn(js, '_nbFull'), fn(js, 'load'), fn(js, 'render'),
   'return {setNbDeal, load, render, st: () => ({DEAL, RENT_OK, ROWS, NB_FULL})};'].join('\n');
 const T = new Function(...Object.keys(env), code)(...Object.values(env));

@@ -6442,6 +6442,16 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .age .n{font-size:12px;font-weight:600;color:#6E7683}
   .age.on{background:#C29435;border-color:#C29435;box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .age.on .t,.age.on .n{color:#231700}
+  .nbf{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+  .nbf::-webkit-scrollbar{display:none}
+  .nbf div{display:flex;align-items:center;gap:6px;flex-shrink:0;min-height:40px;padding:0 13px;border-radius:999px;
+      background:#fff;border:1.5px solid #E9E4D8;font-size:13px;font-weight:700;color:#1E3A5F;cursor:pointer}
+  .nbf div b{font-size:12px;font-weight:700;background:#F2EFE7;color:#5B6472;border-radius:999px;padding:1px 7px}
+  .nbf div.on{background:#1E3A5F;border-color:#1E3A5F;color:#fff}
+  .nbf div.on b{background:#2C4C77;color:#fff}
+  .nbf div.dr{color:#157A43;border-color:#B9E0C8;background:#E6F4EC}
+  .nbf div.dr.on{background:#157A43;border-color:#157A43;color:#fff}
+  .nbf div.dr.on b{background:#fff;color:#157A43}
   .srch{display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;
       border-radius:13px;padding:0 14px}
   .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
@@ -6518,6 +6528,7 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
         <svg width="12" height="12" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="2" fill="none" stroke="#2E6BD6" stroke-width="1.6"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" stroke="#2E6BD6" stroke-width="1.6" stroke-linecap="round"/></svg>
         <span id="meetN">פגישות ופולו-אפ</span>
       </button>
+      <div class="nbf" id="nbf"></div>
       <div class="ageHead"><span class="l">ותק בפרסום · גלול לצדדים</span><span class="r" id="ageSum"></span></div>
       <div class="ages" id="ages"></div>
       <div class="srch">
@@ -6703,11 +6714,22 @@ function render(){
       '<span class="t">' + label + '</span><span class="n">' + (BUCKETS[i] || 0) + '</span></div>';
   });
   el('ages').innerHTML = ah;
-  el('ageSum').textContent = AGE < 0 ? 'כל הנכסים · ' + TOTAL.toLocaleString()
+  // [NB-F 06/11] תגיות: ירידות מחיר (ברירת מחדל) · חדשים מהיום · הכל · ירד מפרסום
+  var fc = {drops: 0, new: 0, all: 0, gone: 0};
+  ROWS.forEach(function(r){ var k = nbfKeys(r); for (var x in k) if (k[x]) fc[x]++; });
+  var fh = '';
+  NBF_LIST.forEach(function(f){
+    fh += '<div class="' + (f[0] === 'drops' ? 'dr' : '') + (NBF === f[0] ? ' on' : '') + '" onclick="setNbF(\'' + f[0] + '\')">' +
+      esc(f[1]) + '<b>' + fc[f[0]].toLocaleString() + '</b></div>';
+  });
+  el('nbf').innerHTML = fh;
+  el('ageSum').textContent = NBF !== 'all' ? nbfLabel(NBF) + ' · ' + fc[NBF].toLocaleString()
+    : AGE < 0 ? 'כל הנכסים · ' + fc.all.toLocaleString()
     : ((AGE < 6 ? 'חודש ' + (AGE + 1) : '7+') + ' · ' + (BUCKETS[AGE] || 0) + ' נכסים');
   // רשימה
   var q = el('q').value.trim().toLowerCase();
   var src = ROWS.filter(function(r){
+    if (!q && !nbfKeys(r)[NBF]) return false;   // חיפוש — בכל הנכסים, בלי קשר לתגית
     if (AGE >= 0){
       var rg = BUCKET_RANGES[AGE];
       if (!(r.ageDays >= rg[0] && r.ageDays < rg[1])) return false;
@@ -6716,10 +6738,23 @@ function render(){
         .toLowerCase().indexOf(q) < 0) return false;
     return true;
   });
+  if (NBF === 'drops' && !q)   // הירידה האחרונה למעלה, בלי קשר לחודש הפרסום
+    src = src.map(function(r, i){ return [r, i]; })
+      .sort(function(a, b){ return ((b[0].priceDropAt || 0) - (a[0].priceDropAt || 0)) || (a[1] - b[1]); })
+      .map(function(x){ return x[0]; });
   var h = '';
   src.slice(0, NB_SHOWN).forEach(function(r, i){
     try{ h += nbCard(r, i); }catch(e){}   // שורה בעייתית לא מפילה את המסך
   });
+  if (!h && !q && NBF !== 'all'){
+    el('list').innerHTML =
+      '<div class="card empty"><div class="ic"><svg width="30" height="27" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg></div>' +
+      '<div class="t">' + esc(NBF_EMPTY[NBF] || 'אין נכסים להצגה') + '</div>' +
+      '<div class="s">' + (NB_FULL ? 'אפשר לראות את כל הנכסים בתגית "הכל"' : 'טוען את כל הנכסים…') + '</div>' +
+      '<button class="more" style="max-width:220px" onclick="setNbF(\'all\')">לכל הנכסים</button></div>';
+    el('list')._src = src;
+    return;
+  }
   if (src.length > NB_SHOWN)
     h += '<button class="more" onclick="nbMore()">הצג עוד ' + Math.min(40, src.length - NB_SHOWN) +
          ' · מוצגים ' + NB_SHOWN + ' מתוך ' + src.length + '</button>';
@@ -6731,7 +6766,17 @@ function render(){
 }
 var NB_SHOWN = 40;   // כמה כרטיסים מוצגים; "הצג עוד" מגדיל. מתאפס בשינוי ותק/חיפוש.
 function nbMore(){ NB_SHOWN += 40; render(); }
-function setAge(i){ AGE = (AGE === i) ? -1 : i; NB_SHOWN = 40; render(); }
+function setAge(i){ AGE = (AGE === i) ? -1 : i; if (AGE >= 0) NBF = 'all'; NB_SHOWN = 40; render(); }
+// [NB-F 06/11] תגית = כל הנכסים מסוגה, בלי קשר לחודש; בחירת חודש מעבירה ל'הכל'
+var NBF = 'drops';
+var NBF_LIST = [['drops', '↓ ירידות מחיר'], ['new', 'חדשים מהיום'], ['all', 'הכל'], ['gone', 'ירד מפרסום']];
+var NBF_EMPTY = {drops: 'אין ירידות מחיר ב-7 הימים האחרונים', new: 'עוד לא נכנסו נכסים חדשים היום', gone: 'אין נכסים שירדו מפרסום'};
+function nbfKeys(r){
+  var gone = !!r.delisted;
+  return {drops: !gone && !!r.priceDropped, new: !gone && r.ageDays === 0, all: !gone, gone: gone};
+}
+function nbfLabel(f){ for (var i = 0; i < NBF_LIST.length; i++) if (NBF_LIST[i][0] === f) return NBF_LIST[i][1].replace('↓ ', ''); return ''; }
+function setNbF(f){ NBF = f; if (f !== 'all') AGE = -1; NB_SHOWN = 40; render(); window.scrollTo(0, 0); }
 function nbKitRows(){ return el('list')._src || []; }   // [NB-KIT 30/09] הכרטיסים מצביעים לרשימה המוצגת
 function nbKitRefresh(){ load(); }
 function openMeetings(){

@@ -9392,6 +9392,19 @@ def _price_dropped_map():
     except Exception:
         return {}
 
+def _price_drop_ts_map():
+    """{key: זמן הירידה (epoch)} לאותם נכסים — לסדר 'ירידות מחיר' מהאחרונה (נכס נולד, אייל 06/11)."""
+    try:
+        now = time.time()
+        out = {}
+        for k, v in (_load_config().get("v2_price_drops") or {}).items():
+            ts = v.get("ts") if isinstance(v, dict) else v
+            if (now - (ts or 0)) < 7 * 86400:
+                out[k] = int(ts or 0)
+        return out
+    except Exception:
+        return {}
+
 def _mark_listing_removed(lid):
     lid = str(lid or "").strip()
     if not lid:
@@ -9996,6 +10009,7 @@ def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
         "famexclAgent": (_famv or ""),
         "priceDropped": dropped,   # 24/09: תג ירידת מחיר בנכס נולד
         "priceOld": ctx["pd_map"].get(_nb_price_key(r), "") if dropped else "",
+        "priceDropAt": (ctx.get("pd_ts") or {}).get(_nb_price_key(r), 0) if dropped else 0,   # 06/11: סדר בתגית 'ירידות מחיר'
     }
 
 def _famexcl_addr_list():
@@ -10177,7 +10191,7 @@ def api_newborn():
         # 24/09 (אייל): חדשים (עד יומיים) → ירידות מחיר → השאר → ירד מפרסום; בתוך כל קבוצה מהחדש לישן
         _cand.sort(key=lambda c: _tier_new_drop_rest(c[1] <= 2, c[6], c[7]))
         _ctx = {"contacts": contacts, "statuses": nbstatuses, "fam_list": fam_list, "pd_map": _pd_map,
-                "eff_name": eff_name, "phone9": _last9(s.get("phone", "")),
+                "pd_ts": _price_drop_ts_map(), "eff_name": eff_name, "phone9": _last9(s.get("phone", "")),
                 "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", "")))}
         for (r, ad, city, _addr, _owner, lister, _dropped, _dl) in (_cand[:_lim] if _lim else _cand):
             out.append(_nb_row_out(r, ad, city, _addr, _owner, lister, _dropped, _ctx))   # [NB-SEARCH 30/09] בונה משותף
