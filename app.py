@@ -5470,6 +5470,24 @@ def api_gcal_test():
                             start_iso=None, end_iso=None)
     return jsonify({"ok": bool(eid), "eventId": eid, "email": email})
 
+def _loginas_primary_phone(phones, cfg, gauth_email):
+    """[LOGINAS-PHONE 05/11] כניסה כסוכן: הטלפון שהסוכן באמת נכנס איתו — לא אחד שרירותי מתוך set.
+    (רועי עמור: האזור האישי בכניסה כסוכן הראה 'Google לא מחובר' ונוסח ברירת מחדל, כי הסשן קיבל
+    את הטלפון הווירטואלי.) סדר: טלפון עם חשבון Google מקושר → טלפון עם הגדרות אישיות → הקבוע הראשון."""
+    ps = sorted(p for p in (phones or ()) if p)
+    if not ps:
+        return ""
+    for p in ps:
+        if gauth_email(p):
+            return p
+    mine = set()
+    for k in ("v2_nb_wa_texts", "v2_licenses"):
+        mine |= set((cfg or {}).get(k) or {})
+    for p in ps:
+        if _last9(p) in mine:
+            return p
+    return ps[0]
+
 @app.route("/api/admin/loginas", methods=["POST"])
 def api_admin_loginas():
     """כניסת בדיקה: מנהל מקבל סשן סוכן אמיתי (role=agent) — לא התחזות."""
@@ -5480,7 +5498,10 @@ def api_admin_loginas():
     if not name:
         return jsonify({"ok": False, "reason": "no_name"}), 400
     phones = _phones_for_name(name)
-    phone = next(iter(phones)) if phones else ""
+    try:
+        phone = _loginas_primary_phone(phones, _load_config(), _gauth_email_for_phone)
+    except Exception:
+        phone = sorted(phones)[0] if phones else ""
     # פתרון התפקיד והסקופ של הנבדק — כדי שהטאבים *וגם הנתונים* יוצגו בדיוק כמו בכניסה אמיתית שלו
     _scope, drole = _resolve_roles(_last9(phone)) if phone else ("agent", "agent")
     # 04/10 (אייל: "שמי שמוגדר מנהל יוכל להתחזות לסוכן"): מנהל שאינו בעל המשרד נכנס רק כסוכן/מתאמת —
