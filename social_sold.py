@@ -192,38 +192,39 @@ class _Sprites:
             return None
         if len(agents) == 1:
             a = agents[0]
-            bw, bh = 880, 220
+            # [05/11 אייל] "תן יותר מקום לסוכנים" — כרטיס גדול: תמונה 250, שם 76, טלפון 52
+            bw, bh = 960, 300
             card = self._layer(bw, bh)
             d = ImageDraw.Draw(card)
-            d.rounded_rectangle((0, 0, bw - 1, bh - 1), 40, fill=WHITE)
-            card.alpha_composite(self._avatar(a["name"], 172, a.get("photo")), (bw - 196, 24))
-            rx = bw - 230
-            d.text((rx, 64), V._rtl(a["name"]), font=V._fit(d, a["name"], 58, 800, rx - 30), fill=NAVY, anchor="rm")
-            d.text((rx, 120), V._rtl("רימקס פמילי"), font=V._font(34, 500), fill=GRAY, anchor="rm")
+            d.rounded_rectangle((0, 0, bw - 1, bh - 1), 44, fill=WHITE)
+            card.alpha_composite(self._avatar(a["name"], 250, a.get("photo")), (bw - 275, 25))
+            rx = bw - 305
+            d.text((rx, 82), V._rtl(a["name"]), font=V._fit(d, a["name"], 76, 800, rx - 30), fill=NAVY, anchor="rm")
+            d.text((rx, 150), V._rtl("רימקס פמילי"), font=V._font(40, 500), fill=GRAY, anchor="rm")
             if a.get("phone"):
-                f = V._font(42, 800)
+                f = V._font(52, 800)
                 tw = d.textlength(a["phone"], font=f)
-                d.rounded_rectangle((rx - tw - 60, 148, rx, 202), 27, fill=GREEN)
-                d.text((rx - 30 - tw / 2, 175), a["phone"], font=f, fill=WHITE, anchor="mm")
+                d.rounded_rectangle((rx - tw - 70, 196, rx, 266), 35, fill=GREEN)
+                d.text((rx - 35 - tw / 2, 231), a["phone"], font=f, fill=WHITE, anchor="mm")
             cards = [card]
         else:
-            bw, bh = 470, 360
+            bw, bh = 500, 470
             cards = []
             for a in agents:
                 card = self._layer(bw, bh)
                 d = ImageDraw.Draw(card)
-                d.rounded_rectangle((0, 0, bw - 1, bh - 1), 40, fill=WHITE)
-                card.alpha_composite(self._avatar(a["name"], 150, a.get("photo")), (bw // 2 - 75, 22))
-                d.text((bw // 2, 200), V._rtl(a["name"]), font=V._fit(d, a["name"], 52, 800, bw - 40), fill=NAVY,
+                d.rounded_rectangle((0, 0, bw - 1, bh - 1), 44, fill=WHITE)
+                card.alpha_composite(self._avatar(a["name"], 220, a.get("photo")), (bw // 2 - 110, 24))
+                d.text((bw // 2, 296), V._rtl(a["name"]), font=V._fit(d, a["name"], 62, 800, bw - 40), fill=NAVY,
                        anchor="mm")
                 if a.get("phone"):
-                    f = V._font(38, 800)
+                    f = V._font(46, 800)
                     tw = d.textlength(a["phone"], font=f)
-                    d.rounded_rectangle((bw / 2 - tw / 2 - 28, 256, bw / 2 + tw / 2 + 28, 310), 27, fill=GREEN)
-                    d.text((bw // 2, 283), a["phone"], font=f, fill=WHITE, anchor="mm")
+                    d.rounded_rectangle((bw / 2 - tw / 2 - 32, 352, bw / 2 + tw / 2 + 32, 418), 33, fill=GREEN)
+                    d.text((bw // 2, 385), a["phone"], font=f, fill=WHITE, anchor="mm")
                 cards.append(card)
         sh = [self._shadowed(c, 40) for c in cards]
-        gap = 24 - 100   # הצל מוסיף 50 מכל צד
+        gap = 20 - 100   # הצל מוסיף 50 מכל צד
         tw = sum(s.width for s in sh) + gap * (len(sh) - 1)
         L = self._layer(W, max(s.height for s in sh))
         x = (W - tw) // 2
@@ -236,7 +237,7 @@ class _Sprites:
     def _seller_prep(self, photo):
         import io
         Image, ImageDraw = self.Image, self.ImageDraw
-        self.PH = 1080
+        self.PH = 960   # [05/11] תמונה קצרה יותר — יותר מקום לכרטיס הסוכן
         src = Image.open(io.BytesIO(photo)).convert("RGB")
         # [04/11 קובי] סימני מים בפינות (יד2 / RE/MAX) — חותכים שוליים מכל צד, רצועה תחתונה רחבה יותר
         src = src.crop((int(src.width * .08), int(src.height * .1), int(src.width * .92), int(src.height * .86)))
@@ -301,15 +302,19 @@ class _Sprites:
             if b > 0 and sp is not None:
                 fr.alpha_composite(_fade(sp, b), (0, int(yc - sp.height / 2 + (1 - b) * 46)))
         up(self.tag, y, 1.05)
-        up(self.addr, y + 130, 1.25)
-        up(self.city, y + 225, 1.45)
+        up(self.addr, y + 125, 1.25)
+        up(self.city, y + 215, 1.45)
         b = _ease((t - 1.65) / 0.5)
         if b > 0:
             w = int(140 * b)
-            self.ImageDraw.Draw(fr).line((W // 2 - w // 2, y + 290, W // 2 + w // 2, y + 290), fill=GOLD, width=4)
-        up(self.slogan, y + 345, 1.8)
-        self._agent_in(fr, t, 2.2, H - 250)
+            self.ImageDraw.Draw(fr).line((W // 2 - w // 2, y + 272, W // 2 + w // 2, y + 272), fill=GOLD, width=4)
+        up(self.slogan, y + 322, 1.8)
+        self._agent_in(fr, t, 2.2, self._agent_cy())
         return fr.convert("RGB")
+
+    def _agent_cy(self):
+        """מרכז כרטיס הסוכן: אחד — נמוך; צוות (כרטיסים גבוהים) — מעט גבוה יותר."""
+        return H - 250 if self.agents is None or self.agents.height < 500 else H - 300
 
     def _agent_in(self, fr, t, t0, cy):
         if self.agents is None:
@@ -323,11 +328,11 @@ class _Sprites:
     def _buyer_prep(self):
         Image, ImageDraw, ImageFilter = self.Image, self.ImageDraw, self.ImageFilter
         glow = self._layer(W, H)
-        ImageDraw.Draw(glow).ellipse((W // 2 - 360, 320, W // 2 + 360, 1040), fill=GOLD + (60,))
+        ImageDraw.Draw(glow).ellipse((W // 2 - 360, 250, W // 2 + 360, 950), fill=GOLD + (60,))
         bg = self.bg.convert("RGBA")
         bg.alpha_composite(glow.filter(ImageFilter.GaussianBlur(120)))
         self.bgb = bg
-        self.key = self._key(300)
+        self.key = self._key(290)
         rnd = random.Random(7)
         self.conf = []
         for _ in range(64):
@@ -363,14 +368,14 @@ class _Sprites:
         fr = self.bgb.copy()
         for c in self.conf:   # קונפטי נופל לאורך כל הסרטון
             y = (c["y0"] + c["v"] * t + 900) % 1960 - 900   # חוזר מלמעלה — קונפטי לאורך כל הסרטון
-            if not -60 < y < 1000:
+            if not -60 < y < 940:
                 continue
             x = c["x"] + c["sw"] * math.sin(c["ph"] + t * 2.2)
             p = c["im"].rotate(c["a0"] + c["rot"] * t, expand=True, resample=Image.BILINEAR)
             fr.alpha_composite(p, (int(x), int(y)))
         if self.logo:
             fr.alpha_composite(_fade(self.logo, _ease(t / 0.5)), ((W - self.logo.width) // 2, 110))
-        cx, cy, R = W // 2, 640, 230
+        cx, cy, R = W // 2, 590, 220
         a = _back((t - 0.2) / 0.6)
         if a > 0:
             ring = self._layer(2 * R + 20, 2 * R + 20)
@@ -389,12 +394,12 @@ class _Sprites:
             b = _ease((t - t0) / d)
             if b > 0:
                 fr.alpha_composite(_fade(sp, b), (0, int(yc - sp.height / 2 + (1 - b) * 46)))
-        up(self.sold, 940, 0.8)
-        up(self.h1, 1050, 1.0)
-        up(self.h2, 1180, 1.2)
-        up(self.line, 1290, 1.5)
-        up(self.slogan, 1365, 1.7)
-        self._agent_in(fr, t, 2.1, H - 250 if self.agents is not None and self.agents.height < 400 else H - 230)
+        up(self.sold, 880, 0.8)
+        up(self.h1, 985, 1.0)
+        up(self.h2, 1110, 1.2)
+        up(self.line, 1215, 1.5)
+        up(self.slogan, 1285, 1.7)
+        self._agent_in(fr, t, 2.1, self._agent_cy())
         return fr.convert("RGB")
 
     def frame(self, t):
