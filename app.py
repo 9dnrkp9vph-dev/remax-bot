@@ -9516,6 +9516,14 @@ def _nb_notes_for(key, me9="", is_mgr=False):
     out.sort(key=lambda x: x.get("ts", 0))
     return out
 
+def _nb_owner_notes(row):
+    """[OWNER-NOTE 05/11] הערות בעל הנכס = טקסט המודעה בלי שורת הפרטים ('דירה · 4 חד' · 110 מ"ר.').
+    אייל: 'שכל הערות פגישה מנכס נולד יכנסו אוטו לתוך הערה באפי'. בלי שורה — ''."""
+    dsc = str((row or {}).get("תיאור נכס", "") or "").strip()
+    m = re.match(r"^([^.\n]*·[^.\n]*)(?:\.\s*|\n|$)(.*)$", dsc, re.S)
+    return (m.group(2).strip() if m else dsc)[:1000]
+
+
 def _nb_cal_text(rec, row):
     """[20/10 אייל: 'שהפגישות ליומן מאפי יגיעו כמו מנדלן וואן'] → (כותרת, תיאור, מיקום).
     כותרת 'פגישה עם בעל נכס - <שם>'; המיקום = כתובת מלאה (נפתחת במפות); בתיאור: שורת הנכס
@@ -9541,7 +9549,7 @@ def _nb_cal_text(rec, row):
     lines = [kind + ": " + first + ((" " + price) if price else "")]
     if rec.get("ophone"):
         lines.append("טלפון: " + str(rec["ophone"]))
-    if rec.get("note"):
+    if rec.get("note") and str(rec["note"]).strip() != notes[:1000].strip():
         lines.append("הערה: " + str(rec["note"]))
     if notes:
         lines += ["", "הערות בעל הנכס:", notes]
@@ -10187,6 +10195,11 @@ def api_newborn_status():
            "owner": owner_name, "price": price, "ophone": owner_phone,
            "note": str(d.get("note", "") or "")[:1000], "tag": _tag,
            "date": (date if status in ("meeting", "followup") else ""), "cal": []}
+    if status in ("meeting", "followup") and not rec["note"].strip() and not key.startswith("manual:"):
+        try:
+            rec["note"] = _nb_owner_notes(_nb_cal_row(key))
+        except Exception:
+            pass
     # אירוע יומן לפגישה/פולואפ (שומרים מזהי אירוע למחיקה/עריכה עתידית)
     cal_ok = False
     if status in ("meeting", "followup") and date:
@@ -10298,6 +10311,7 @@ def api_newborn_meetings():
     elif s["role"] != "admin":
         allowed = {_canon_key(s.get("name", ""))}
     _inc_done = request.args.get("done") == "1"   # מסך היומן מבקש גם 'בוצע'; הבית לא
+    _nb_rows = None   # נבנה רק אם יש פגישה מנכס נולד בלי הערה
     out = []
     for k, st in (_nb_statuses() or {}).items():
         if st.get("status") not in ("meeting", "followup"):
@@ -10316,6 +10330,17 @@ def api_newborn_meetings():
                     "done": bool(st.get("done")),   # 'בוצע' (אחרי לחיצת וי)
                     "addr": st.get("addr", ""), "skey": k,
                     "ophone": _oph, "wa": _wa, "owner": st.get("owner", ""), "note": st.get("note", "")})
+        _pk = str(st.get("pkey", "") or "")
+        if not str(out[-1]["note"] or "").strip() and _pk and not _pk.startswith("manual:"):
+            # פגישה ישנה בלי הערה — הערות בעל הנכס מהמודעה (תצוגה; נשמרות בעריכה הבאה)
+            if _nb_rows is None:
+                _nb_rows = {}
+                try:
+                    for _r in list(fetch_newborn() or []) + list(fetch_newborn_rent() or []):
+                        _nb_rows.setdefault(_nb_key(_r), _r)
+                except Exception:
+                    pass
+            out[-1]["note"] = _nb_owner_notes(_nb_rows.get(_pk))
     out.sort(key=lambda x: str(x.get("date", "")))
     return _etag_wrap({"ok": True, "results": out})
 
