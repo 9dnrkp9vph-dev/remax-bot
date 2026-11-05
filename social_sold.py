@@ -430,7 +430,7 @@ def sold_compose(kind, photo, texts, agents, music_path, out_path, logo_path, po
                                                       "anullsrc=r=48000:cl=stereo"]
         cmd = [ff, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "%dx%d" % (W, H),
                "-r", str(FPS), "-i", "-"] + ain + [
-               "-filter_complex", "[1:a]atrim=0:%.2f,asetpts=PTS-STARTPTS,volume=0.5,afade=in:d=0.3,"
+               "-filter_complex", "[1:a]atrim=0:%.2f,asetpts=PTS-STARTPTS,volume=0.85,afade=in:d=0.1,"
                "afade=out:st=%.2f:d=1.0,aresample=48000[a]" % (DUR, DUR - 1.0),
                "-map", "0:v", "-map", "[a]", "-t", "%.2f" % DUR,
                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-g", "60",
@@ -459,19 +459,21 @@ def sold_compose(kind, photo, texts, agents, music_path, out_path, logo_path, po
         return {"ok": False, "error": str(e)[:300]}
 
 
-def sold_music(env=None):
-    """הקטע הקצבי (SOLD_MUSIC ב-Render = שם קובץ מ-assets/music); ברירת מחדל Rising Forest."""
+def sold_music(env=None, n=0):
+    """[05/11 אייל] הקטעים מ-Sound Collection של Meta (assets/music/sold) — כל סטורי (n = מספר הסטורי) הקטע הבא.
+    SOLD_MUSIC ב-Render = שם קובץ מהתיקייה הזו → תמיד אותו קטע. תיקייה ריקה → מוזיקת סרטוני הנכסים."""
     import social_video as V
-    d = V._music_dir()
-    name = str(SP._env(env).get("SOLD_MUSIC") or "mixkit-rising-forest.mp3").strip()
-    p = os.path.join(d, os.path.basename(name))
-    if os.path.exists(p):
-        return p
+    d = os.path.join(V._music_dir(), "sold")
     try:
-        fs = sorted(f for f in os.listdir(d) if f.endswith(".mp3"))
+        fs = sorted(f for f in os.listdir(d) if f.lower().endswith((".mp3", ".m4a")))
     except OSError:
         fs = []
-    return os.path.join(d, fs[-1]) if fs else None
+    pin = os.path.basename(str(SP._env(env).get("SOLD_MUSIC") or "").strip())
+    if pin in fs:
+        return os.path.join(d, pin)
+    if fs:
+        return os.path.join(d, fs[int(n or 0) % len(fs)])
+    return V.vid_music("sold")
 
 
 # ── רשומות (JSON בדיסק הקבוע) ─────────────────────────────────────────────────────
@@ -633,7 +635,8 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
             if not photo:
                 raise RuntimeError("התמונה של הנכס לא ירדה")
         with V._render_lock():
-            out = sold_compose(kind, photo, texts, agents, sold_music(env), store.path(tok), V._logo_path())
+            out = sold_compose(kind, photo, texts, agents, sold_music(env, len(db.all())), store.path(tok),
+                               V._logo_path())
         if not out.get("ok"):
             raise RuntimeError(out.get("error") or "רינדור נכשל")
         db.update(rec["id"], {"status": "ready", "ts": _t.time(), "agents": [a["name"] for a in agents]})

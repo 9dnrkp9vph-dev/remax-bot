@@ -35,6 +35,13 @@ ck(S.sold_agents_for_deal(dict(D, side1="מוכר וקונה")) == ["רויטל"
 ck(S.sold_deal_ok(D) and not S.sold_deal_ok(dict(D, deal=False)), "closed only")
 ck(not S.sold_deal_ok(dict(D, side1="מוכר", side2="")), "seller-only deal → no buyer story")
 
+# ── מוזיקה: 3 הקטעים מ-Sound Collection של Meta (אייל בחר 05/11), כל סטורי הקטע הבא ──
+ms = [os.path.basename(S.sold_music({}, k)) for k in range(4)]
+ck(ms == ["meta-boogie-monster-bash.mp3", "meta-poltergeist-polka.mp3", "meta-wacky-sax.mp3", "meta-boogie-monster-bash.mp3"], ms)
+ck(os.path.basename(S.sold_music({"SOLD_MUSIC": "meta-wacky-sax.mp3"}, 0)) == "meta-wacky-sax.mp3", "env pin")
+ck(os.path.basename(S.sold_music({"SOLD_MUSIC": "nope.mp3"}, 1)) == "meta-poltergeist-polka.mp3", "bad env → rotation")
+ck("/sold/" not in str(V.vid_music("tok1")), "property videos keep their own tracks")
+
 # ── רינדור אמיתי (ffmpeg): מוכר עם צוות, קונה ──
 logo = V._logo_path()
 for kind, photo, tx, ags in (
