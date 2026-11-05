@@ -2386,6 +2386,77 @@ def parse_price(s: str) -> int:
         return int(digits) if digits else 0
     except ValueError:
         return 0
+# [SEARCH-NB 05/11 אייל: 'נווה גנים לא בראש' → 'כן תבנה את שניהם'] נכס בלי שכונה ביד2 — השכונה מהרחוב:
+# מפת הרחובות המאושרת (tools/street_nb_osm.json — OSM + נכסי המשרד, 12/10) ועדויות נכסי המשרד עצמם (2+ באותו רחוב,
+# גוברות). בזמן החישוב בלבד — לא נכתב לטבלה. מטמון 10 דק'.
+_NB_GUESS = {"ts": 0.0, "idx": None}
+
+def _nb_street_key(s):
+    s = str(s or "").replace("\xa0", " ").replace("קריית", "קרית")
+    s = re.sub(r"[\d\"'׳״,.\-()]", " ", s)
+    s = re.sub(r"(^|\s)(רחוב|רח|שדרות|שד)(?=\s|$)", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+def _nb_guess_index():
+    import json as _js
+    if _NB_GUESS["idx"] is not None and time.time() - _NB_GUESS["ts"] < 600:
+        return _NB_GUESS["idx"]
+    idx = {}
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "street_nb_osm.json")
+        for city, m in ((_js.load(open(path, encoding="utf-8")) or {}).get("streets") or {}).items():
+            c = normalize_city(city)
+            for st, lab in (m or {}).items():
+                k = _nb_street_key(st)
+                if len(k) >= 2 and lab:
+                    idx.setdefault(c, {})[k] = str(lab).strip()
+    except Exception as e:
+        log.warning(f"nb guess: osm map: {e}")
+    try:
+        votes = {}
+        for r in fetch_sheet_rows() or []:
+            nb = str(r.get("שכונה", "") or "").strip()
+            k = _nb_street_key(r.get("כתובת", ""))
+            if nb and len(k) >= 2:
+                vv = votes.setdefault((normalize_city(r.get("עיר / ישוב", "") or ""), k), {})
+                vv[nb] = vv.get(nb, 0) + 1
+        for (c, k), vv in votes.items():
+            top = max(vv.items(), key=lambda kv: kv[1])
+            if top[1] >= 2:
+                idx.setdefault(c, {})[k] = top[0]
+    except Exception as e:
+        log.warning(f"nb guess: office rows: {e}")
+    _NB_GUESS.update({"ts": time.time(), "idx": idx})
+    return idx
+
+def _row_nb_guess(row):
+    """השכונה המשוערת לנכס שאין לו שכונה רשומה ('' = יש שכונה רשומה, או רחוב לא מוכר)."""
+    if str(row.get("שכונה", "") or "").strip():
+        return ""
+    k = _nb_street_key(row.get("כתובת", ""))
+    if len(k) < 2:
+        return ""
+    try:
+        return (_nb_guess_index().get(normalize_city(row.get("עיר / ישוב", "") or "")) or {}).get(k, "")
+    except Exception:
+        return ""
+
+def _search_nb_tier(query):
+    """[SEARCH-NB 05/11] חיפוש שכונה → row → 0 בשכונה המבוקשת / 1 בלי שכונה ידועה / 2 שכונה אחרת. בלי שכונה בחיפוש → None."""
+    q = query or {}
+    qn = q.get("neighborhoods") if isinstance(q.get("neighborhoods"), list) else []
+    qn = [str(n).strip() for n in (qn or [q.get("neighborhood")]) if n and str(n).strip()]
+    if not qn:
+        return None
+
+    def tier(row):
+        rn = str(row.get("שכונה", "") or "").strip() or _row_nb_guess(row)
+        addr = str(row.get("כתובת", "") or "")
+        if any((rn and (n in rn or (len(rn) >= 2 and rn in n))) or n in addr for n in qn):
+            return 0
+        return 1 if not rn else 2
+    return tier
+
 def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
     score = 0
     deal_type = (row.get("סוג עסקה", "") or "").strip()
@@ -2451,7 +2522,7 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
         # שכונה תואמת +30, אין-נתון-שכונה +6, שכונת-חיפה אחרת → כלל ה-±10% הקיים
         q_neighs = [implied_neigh]
     if q_neighs:
-        r_neigh = (row.get("שכונה", "") or "").strip()
+        r_neigh = (row.get("שכונה", "") or "").strip() or _row_nb_guess(row)   # [SEARCH-NB 05/11] שכונה מהרחוב
         r_addr_n = (row.get("כתובת", "") or "").strip()
         hit_nb = False
         for qn in q_neighs:
@@ -2833,6 +2904,7 @@ def _search_rank_tier(query):
     מחזיר פונקציה row → tuple למיון (קטן = קודם)."""
     q = query or {}
     garden = (q.get("property_type") or "").strip() == "דירת גן" and not re.search(_HOUSE_TYPED_RE, str(q.get("_qtext") or ""))
+    nbt = _search_nb_tier(q)   # [SEARCH-NB 05/11] השכונה המבוקשת → בלי שכונה → שכונה אחרת
     bmax = q.get("budget_max")
 
     def tier(row):
@@ -2845,6 +2917,8 @@ def _search_rank_tier(query):
             except ValueError:
                 g0 = False
             t += (0 if (g0 or (any(w in pt for w in _GARDEN_ROW_WORDS) and not re.search(_HOUSE_TYPED_RE, pt))) else 1,)
+        if nbt:
+            t += (nbt(row),)
         if bmax:
             p = parse_price(row.get("מחיר", ""))
             t += (1 if (p and p > bmax) else 0,)
@@ -8826,7 +8900,7 @@ def api_search_properties():
             d = {
                 "type": (row.get("סוג נכס", "") or "").strip(),
                 "city": (row.get("עיר / ישוב", "") or "").strip(),
-                "neighborhood": (row.get("שכונה", "") or "").strip(),
+                "neighborhood": (row.get("שכונה", "") or "").strip() or _row_nb_guess(row),   # [SEARCH-NB] מהרחוב
                 "address": (f"{row.get('כתובת','')} {row.get('מספר בית','')}").strip(),
                 "rooms": (row.get("חדרים", "") or "").strip(),
                 "size": (row.get('מ"ר', "") or row.get("מ״ר", "") or "").strip(),

@@ -15856,9 +15856,16 @@ def budget_window_ok(price, budget):
     return budget * 0.7 <= price <= budget * 1.2
 
 
+_BP_NB_TIER = None   # [SEARCH-NB 05/11] app._search_nb_tier — נקבע ב-register
+
 def bpage_new_matches(query, src_rows, sent, since_ep, budget, score_fn, cap=30):
-    """התאמות חזקות (60+, תקציב עד 20% מעל / 30% מתחת — כמו בחלון ההתאמות) שעוד לא בדף ונראו לראשונה אחרי since_ep."""
+    """התאמות חזקות (60+, תקציב עד 20% מעל / 30% מתחת — כמו בחלון ההתאמות) שעוד לא בדף ונראו לראשונה אחרי since_ep.
+    [SEARCH-NB 05/11] חיפוש שכונה: נכס משכונה אחרת לא מוצמד כ'התאמה חדשה'; השכונה המבוקשת קודם."""
     out = []
+    try:
+        ntf = _BP_NB_TIER(query or {}) if _BP_NB_TIER else None
+    except Exception:
+        ntf = None
     for src, rows in (src_rows or {}).items():
         for k, r in (rows or {}).items():
             if not k or k in sent or (r.get("_ep") or 0) <= since_ep:
@@ -15873,8 +15880,18 @@ def bpage_new_matches(query, src_rows, sent, since_ep, budget, score_fn, cap=30)
             except Exception:
                 continue
             if sc >= 60:
-                out.append({"source": src, "key": k, "score": min(100, sc)})
-    out.sort(key=lambda o: -o["score"])
+                t = 0
+                if ntf:
+                    try:
+                        t = ntf(r)
+                    except Exception:
+                        t = 1
+                    if t == 2:
+                        continue
+                out.append({"source": src, "key": k, "score": min(100, sc), "_t": t})
+    out.sort(key=lambda o: (o["_t"], -o["score"]))
+    for o in out:
+        o.pop("_t", None)
     return out[:cap]
 
 
@@ -16333,6 +16350,8 @@ def register(app, G):
     גישה לעזרי האימות/קונפיג בלי לשכפל לוגיקה ובלי לגעת בקוד הקיים."""
     from flask import request, jsonify, Response
 
+    global _BP_NB_TIER
+    _BP_NB_TIER   = G.get("_search_nb_tier")   # [SEARCH-NB 05/11] התאמות חדשות לפי השכונה המבוקשת
     _last9        = G["_last9"]
     _web_auth     = G["_web_auth"]
     _is_dev       = G["_is_dev"]

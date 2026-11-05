@@ -31,7 +31,7 @@ def load(*names):
             n.targets[0].id if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) else None)
         if key in need:
             order.append(n)
-    g = {"re": re, "log": logging.getLogger("t")}
+    g = {"re": re, "os": os, "time": __import__("time"), "logging": logging, "log": logging.getLogger("t"), "__file__": os.path.join(ROOT, "app.py")}
     exec(compile(ast.Module(body=order, type_ignores=[]), "app_extract", "exec"), g)
     return g
 
