@@ -57,13 +57,20 @@ def sold_deal_ok(deal):
     return not sides or "קונה" in sides
 
 
-def sold_texts_property(row, side):
+def sold_texts_property(row, side, feats=None):
+    """[05/11 אייל] כמו בפוסט של הנכס: כתובת מלאה, חדרים + שכונה + עיר, מ"ר · קומה, מחיר, עד 3 מאפיינים."""
+    import social_video as V
     addr, num = SP._norm(row.get("כתובת")), SP._norm(row.get("מספר בית"))
     if num and not re.search(r"\b%s\b" % re.escape(num), addr):   # בגיליון הרחוב ומספר הבית בעמודות נפרדות
         addr = (addr + " " + num).strip()
-    city = SP._norm(row.get("עיר / ישוב"))
-    return {"kind": "seller", "addr": addr or city, "city": city if addr else "", "tag": SIDE_LINE[side],
-            "slogan": SLOGAN}
+    vt = V.vid_texts(row, feats or [], "", "", "", "")
+    rooms = V._pos(SP._num(row.get("חדרים")))
+    place = vt["open"]["place"]
+    if rooms and rooms != "0":
+        place = " · ".join(x for x in (rooms + " חדרים", place) if x)
+    return {"kind": "seller", "addr": addr or SP._norm(row.get("עיר / ישוב")), "place": place,
+            "spec": vt["s2"]["main"], "feats": " · ".join([f for f in (feats or []) if f][:3]),
+            "price": vt["open"]["price"], "tag": SIDE_LINE[side], "slogan": SLOGAN}
 
 
 def sold_texts_deal(deal):
@@ -237,7 +244,7 @@ class _Sprites:
     def _seller_prep(self, photo):
         import io
         Image, ImageDraw = self.Image, self.ImageDraw
-        self.PH = 960   # [05/11] תמונה קצרה יותר — יותר מקום לכרטיס הסוכן
+        self.PH = 860   # [05/11] תמונה קצרה יותר — מקום לפרטי הנכס ולכרטיס סוכן גדול
         src = Image.open(io.BytesIO(photo)).convert("RGB")
         # [04/11 קובי] סימני מים בפינות (יד2 / RE/MAX) — חותכים שוליים מכל צד, רצועה תחתונה רחבה יותר
         src = src.crop((int(src.width * .08), int(src.height * .1), int(src.width * .92), int(src.height * .86)))
@@ -256,8 +263,11 @@ class _Sprites:
         tx = self.texts
         self.tag = self._pill_sprite(tx.get("tag") or "", 40, (35, 23, 0), GOLD, 84)
         self.addr = self._text_sprite(tx.get("addr") or "", 92, 800, WHITE)
-        self.city = self._text_sprite(tx.get("city") or "", 50, 500, MUTE) if tx.get("city") else None
-        self.slogan = self._text_sprite(tx.get("slogan") or "", 44, 700, GOLD)
+        self.place = self._text_sprite(tx["place"], 48, 600, WHITE) if tx.get("place") else None
+        det = " · ".join(x for x in (tx.get("spec"), tx.get("feats")) if x)
+        self.det = self._text_sprite(det, 40, 500, MUTE) if det else None
+        self.price = self._pill_sprite(tx["price"], 56, NAVY0, GOLD, 104) if tx.get("price") else None
+        self.slogan = self._text_sprite(tx.get("slogan") or "", 38, 700, GOLD)
 
     def _ribbon(self):
         V, Image, ImageDraw, ImageFilter = self.V, self.Image, self.ImageDraw, self.ImageFilter
@@ -301,14 +311,12 @@ class _Sprites:
             b = _ease((t - t0) / d)
             if b > 0 and sp is not None:
                 fr.alpha_composite(_fade(sp, b), (0, int(yc - sp.height / 2 + (1 - b) * 46)))
-        up(self.tag, y, 1.05)
-        up(self.addr, y + 125, 1.25)
-        up(self.city, y + 215, 1.45)
-        b = _ease((t - 1.65) / 0.5)
-        if b > 0:
-            w = int(140 * b)
-            self.ImageDraw.Draw(fr).line((W // 2 - w // 2, y + 272, W // 2 + w // 2, y + 272), fill=GOLD, width=4)
-        up(self.slogan, y + 322, 1.8)
+        up(self.tag, y, 1.0)
+        up(self.addr, y + 118, 1.2)
+        up(self.place, y + 205, 1.4)
+        up(self.det, y + 265, 1.55)
+        up(self.price, y + 360, 1.7)
+        up(self.slogan, y + 455, 1.9)
         self._agent_in(fr, t, 2.2, self._agent_cy())
         return fr.convert("RGB")
 
@@ -584,7 +592,11 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
             res["reason"] = "הנכס לא נמצא"
             return res
         names = [str(row.get(c) or "").strip() for c in ("סוכן 1", "סוכן 2")]
-        texts, kind, key = sold_texts_property(row, side), "seller", "p:" + SP._key(ref)
+        try:
+            feats = [f for f in (G["_row_feats"](row) or []) if f]
+        except Exception:
+            feats = []
+        texts, kind, key = sold_texts_property(row, side, feats), "seller", "p:" + SP._key(ref)
     elif ref_kind == "deal":
         deal = _deal(G, ref)
         if not deal or not sold_deal_ok(deal):

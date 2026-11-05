@@ -15,8 +15,13 @@ def jpg(color=(120, 150, 180), size=(1200, 800)):
     b = io.BytesIO(); Image.new("RGB", size, color).save(b, "JPEG"); return b.getvalue()
 
 # ── טקסטים ──
-t = S.sold_texts_property(ROW, "seller")
-ck(t["addr"] == "אהוד מנור 13" and t["city"] == "קרית ביאליק" and t["tag"] == "נמכר בהצלחה", t)
+t = S.sold_texts_property(ROW, "seller", ["מעלית", "ממ\"ד", "מרפסת", "חניה"])
+ck(t["addr"] == "אהוד מנור 13" and t["tag"] == "נמכר בהצלחה", t)
+# [05/11 אייל] כמו בפוסט: חדרים + שכונה + עיר, מ"ר · קומה, מחיר, ועד 3 מאפיינים
+ck(t["place"] == "4 חדרים · נאות אפק, קרית ביאליק" and t["price"] == "1,890,000 ₪", t)
+ck(t["spec"] == '110 מ"ר · קומה 3' and t["feats"] == 'מעלית · ממ"ד · מרפסת', t)
+t0 = S.sold_texts_property(dict(ROW, **{"מחיר": "0", "חדרים": "", 'מ"ר': "", "קומה": ""}), "seller", [])
+ck(t0["price"] == "" and t0["place"] == "נאות אפק, קרית ביאליק" and t0["spec"] == "" and t0["feats"] == "", t0)
 ck(S.sold_texts_property(dict(ROW, **{"כתובת": "אהוד מנור 13"}), "both")["addr"] == "אהוד מנור 13", "no double number")
 ck(S.sold_texts_property(ROW, "both")["tag"] == "ייצגנו את המוכר וגם את הקונה", "both")
 ck(S.sold_city("ההגנה 50 ק. מוצקין") == "קרית מוצקין" and S.sold_city("דליה 9, קריית אתא") == "קרית אתא", "city")
