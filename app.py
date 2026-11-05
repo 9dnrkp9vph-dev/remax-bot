@@ -2823,6 +2823,34 @@ def search_area_note(query, matches):
             return "אין לנו כרגע נכס ב" + " / ".join(str(n).strip() for n in nbs[:2]) + tail
     return ""
 
+_GARDEN_ROW_WORDS = ("גן", "גינה", "קרקע")
+_HOUSE_TYPED_RE = r"קוטג|בית\s+פרטי|דו[\s-]*משפח|וילה"
+
+def _search_rank_tier(query):
+    """[SEARCH-QA 05/11 אייל: 'תתקן את 1 ו-2'] שכבות קשיחות לפני הציון (בקרת החיפושים מצאה 67 חיפושים עם יקר-לפני-זול):
+    (1) 'דירת גן' — דירת גן / קומת קרקע לפני קוטג' ודו משפחתי (ה-AI ממפה את כולם ל'דירת גן'), אלא אם הוקלד קוטג'/בית;
+    (2) 'עד X' — בתוך התקציב (או בלי מחיר) לפני מעליו; בונוס שכונה/חדרים כבר לא מקפיץ נכס יקר מעל זול.
+    מחזיר פונקציה row → tuple למיון (קטן = קודם)."""
+    q = query or {}
+    garden = (q.get("property_type") or "").strip() == "דירת גן" and not re.search(_HOUSE_TYPED_RE, str(q.get("_qtext") or ""))
+    bmax = q.get("budget_max")
+
+    def tier(row):
+        t = ()
+        if garden:
+            pt = str(row.get("סוג נכס", "") or "")
+            fl = str(row.get("קומה", "") or "").strip()
+            try:
+                g0 = fl != "" and int(float(fl)) == 0
+            except ValueError:
+                g0 = False
+            t += (0 if (g0 or (any(w in pt for w in _GARDEN_ROW_WORDS) and not re.search(_HOUSE_TYPED_RE, pt))) else 1,)
+        if bmax:
+            p = parse_price(row.get("מחיר", ""))
+            t += (1 if (p and p > bmax) else 0,)
+        return t
+    return tier
+
 def search_listings_in_sheet(query: dict, rows=None, cap=None) -> list:
     # [NB-SEARCH 30/09] rows/cap אופציונליים — אותו סולם flex משמש גם לנכס נולד (rows=שורות ממופות)
     if rows is None:
@@ -2848,13 +2876,14 @@ def search_listings_in_sheet(query: dict, rows=None, cap=None) -> list:
             query = dict(query, street=_h)
     _has_nb = bool((query.get("neighborhoods")) or (query.get("neighborhood") or "").strip())
     cap = cap or (40 if _has_nb else 25)   # תקרת תוצאות
+    _tier = _search_rank_tier(query)
     for flex in [0, 1, 2]:
         scored = []
         for row in rows:
             s = score_match(row, query, flex_level=flex)
             if s > 0:
                 scored.append((s, row, flex))
-        scored.sort(key=lambda x: -x[0])
+        scored.sort(key=lambda x: _tier(x[1]) + (-x[0],))
         if len(scored) >= 3 or flex == 2:
             return [(s, r, f) for (s, r, f) in scored[:cap]]
     return []
