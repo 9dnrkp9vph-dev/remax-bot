@@ -6442,9 +6442,8 @@ V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="u
   .age .n{font-size:12px;font-weight:600;color:#6E7683}
   .age.on{background:#C29435;border-color:#C29435;box-shadow:0 4px 12px rgba(194,148,53,.25)}
   .age.on .t,.age.on .n{color:#231700}
-  .nbf{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
-  .nbf::-webkit-scrollbar{display:none}
-  .nbf div{display:flex;align-items:center;gap:6px;flex-shrink:0;min-height:40px;padding:0 13px;border-radius:999px;
+  .nbf{display:flex;flex-wrap:wrap;gap:6px}
+  .nbf div{display:flex;align-items:center;gap:6px;flex-shrink:0;min-height:40px;padding:0 12px;border-radius:999px;
       background:#fff;border:1.5px solid #E9E4D8;font-size:13px;font-weight:700;color:#1E3A5F;cursor:pointer}
   .nbf div b{font-size:12px;font-weight:700;background:#F2EFE7;color:#5B6472;border-radius:999px;padding:1px 7px}
   .nbf div.on{background:#1E3A5F;border-color:#1E3A5F;color:#fff}
