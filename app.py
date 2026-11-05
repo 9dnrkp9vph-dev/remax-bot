@@ -4891,6 +4891,23 @@ def _gauth_email_for_phone(phone):
             best, key = em, k
     return best
 
+def _gauth_email_for_phones(phones):
+    """[CAL-PHONES 05/11] חשבון Google של הסוכן מתוך *כל* הטלפונים שלו (נויה → רועי עמור: פגישה
+    שמתאמת קבעה לא נכנסה ליומן, כי נבדק טלפון אחד שרירותי והחשבון מקושר לטלפון אחר).
+    אותו סדר עדיפות כמו _gauth_email_for_phone: חשבון עם טוקן יומן קודם, ואז האחרון שקושר."""
+    want = {_last9(p) for p in (phones or ()) if _last9(p)}
+    if not want:
+        return ""
+    best, key = "", None
+    for em, rec in _gauth_all().items():
+        rec = rec or {}
+        if _last9(rec.get("phone", "")) not in want:
+            continue
+        k = (1 if rec.get("refresh_token") else 0, int(rec.get("ts") or 0))
+        if key is None or k > key:
+            best, key = em, k
+    return best
+
 def _gauth_link(email, phone, refresh_token=None, name=""):
     """מקשר אימייל-גוגל ↔ טלפון-סוכן ושומר refresh_token לשימוש ביומן. בדיסק הקבוע."""
     email = (email or "").strip().lower()
@@ -9556,7 +9573,7 @@ def _nb_cal_create(rec, date, organizer_email):
             end_iso = None
     nm = rec.get("agent", "")
     _ps = list(_phones_for_name(nm))
-    _agent_g = _gauth_email_for_phone(_ps[0]) if _ps else ""
+    _agent_g = _gauth_email_for_phones(_ps)
     _agent_mail = _agent_g or _agent_email_for(nm, _ps[0] if _ps else "")
     targets = []
     if organizer_email: targets.append(organizer_email)
