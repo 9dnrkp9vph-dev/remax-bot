@@ -4977,7 +4977,8 @@ function saveBuyer(){
 function matchQuery(b){
   // הדרישות: "מה מחפש" של הקונה, ואם ריק — סיכום השיחה; התקציב מצטרף תמיד
   var base = (b.search || '').trim() || (b.summary || '').trim().slice(0, 90);
-  return {q: [base, b.budget ? 'עד ' + b.budget : ''].filter(Boolean).join(' ').slice(0, 160),
+  // [SEARCH-ST 05/11] בלי חיתוך ב-160 — רחוב/שכונה שנוספו בסוף 'מה מחפש' נחתכו ולא הגיעו לחיפוש
+  return {q: [base, b.budget ? 'עד ' + b.budget : ''].filter(Boolean).join(' ').slice(0, 600),
           hasNeeds: !!base};
 }
 function _matchShell(){

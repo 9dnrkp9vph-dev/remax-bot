@@ -2441,6 +2441,32 @@ def _row_nb_guess(row):
     except Exception:
         return ""
 
+_ST_WORD = r"ו?ב?(?:רחוב|רח['׳]|שדרות|שד['׳])"
+_ST_PHRASE_RE = re.compile(r"(?:^|[\s,;])" + _ST_WORD + r"\s+(.+?)(?=$|[\n,;.]|\s+" + _ST_WORD + r"\s|\s+ו?ב?שכונ|\s+עד\s)", re.M)
+
+def _query_streets(query):
+    """[SEARCH-ST 05/11 אייל: 'אם אני מוסיף שכונה או רחוב בסוף — שיחפש ויטפס לראש הרשימה'] כל הרחובות שביקשו:
+    הרחוב שה-AI זיהה + כל 'ברחוב X' / 'בשדרות X' בטקסט ('…וברחוב החשמונאים\nוברחוב לוי אשכול'). בלי כפילות."""
+    q = query or {}
+    if "_qstreets" in q:
+        return q["_qstreets"]
+    out, seen = [], set()
+    for st in [q.get("street")] + _ST_PHRASE_RE.findall(str(q.get("_qtext") or "")):
+        st = re.sub(r"\s+ו$", "", re.sub(r"\s+", " ", str(st or "")).strip(" -")).strip()   # 'ויצמן' נשאר עם ו'
+        k = _street_norm(st)
+        if len(k) >= 2 and k not in seen:
+            seen.add(k)
+            out.append(st)
+    try:
+        q["_qstreets"] = out   # אותו query לכל השורות בחיפוש — מחשבים פעם אחת
+    except Exception:
+        pass
+    return out
+
+def _row_on_query_street(row, query):
+    r = str(row.get("כתובת", "") or "")
+    return bool(r) and any(_street_match(st, r) for st in _query_streets(query))
+
 def _search_nb_tier(query):
     """[SEARCH-NB 05/11] חיפוש שכונה → row → 0 בשכונה המבוקשת / 1 בלי שכונה ידועה / 2 שכונה אחרת. בלי שכונה בחיפוש → None."""
     q = query or {}
@@ -2450,6 +2476,8 @@ def _search_nb_tier(query):
         return None
 
     def tier(row):
+        if _row_on_query_street(row, q):   # רחוב שביקשו — כמו השכונה המבוקשת, גם בשכונה אחרת
+            return 0
         rn = str(row.get("שכונה", "") or "").strip() or _row_nb_guess(row)
         addr = str(row.get("כתובת", "") or "")
         if any((rn and (n in rn or (len(rn) >= 2 and rn in n))) or n in addr for n in qn):
@@ -2524,8 +2552,8 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
     if q_neighs:
         r_neigh = (row.get("שכונה", "") or "").strip() or _row_nb_guess(row)   # [SEARCH-NB 05/11] שכונה מהרחוב
         r_addr_n = (row.get("כתובת", "") or "").strip()
-        hit_nb = False
-        for qn in q_neighs:
+        hit_nb = _row_on_query_street(row, query)   # [SEARCH-ST 05/11] רחוב שביקשו — לא נפסל בגלל שכונה
+        for qn in ([] if hit_nb else q_neighs):
             # התאמה גם אם השכונה מופיעה רק בכתובת (עמודת "שכונה" לרוב ריקה)
             if (r_neigh and (qn in r_neigh or (len(r_neigh) >= 2 and r_neigh in qn))) or (qn in r_addr_n):
                 hit_nb = True; break
@@ -2548,9 +2576,8 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             if not (_bm2 and _pr2 and abs(_pr2 - _bm2) / _bm2 <= 0.10):
                 return 0
             score -= 6   # נכנס, אבל תמיד אחרי נכסי השכונה המבוקשת
-    q_street = (query.get("street") or "").strip()
     r_street = (row.get("כתובת", "") or "").strip()
-    if q_street and r_street:
+    for q_street in (_query_streets(query) if r_street else []):   # [SEARCH-ST 05/11] כל הרחובות שביקשו
         # [SEARCH-AUDIT 22/10] בלי מספר בית / 'רחוב' / ה' הידיעה ('בגין 12' ↔ 'מנחם בגין'); רחוב שנמצא — ראשון
         if _street_match(q_street, r_street):
             score += 60
@@ -2558,6 +2585,7 @@ def score_match(row: dict, query: dict, flex_level: int = 0) -> int:
             _rh = str(row.get("מספר בית", "") or "").strip() or "".join(re.findall(r"\d+", r_street)[:1])
             if _qn and _rh == _qn.group():
                 score += 10
+            break
     q_bmax = query.get("budget_max")
     q_bmin = query.get("budget_min")
     r_price = parse_price(row.get("מחיר", ""))
@@ -2907,8 +2935,10 @@ def _search_rank_tier(query):
     nbt = _search_nb_tier(q)   # [SEARCH-NB 05/11] השכונה המבוקשת → בלי שכונה → שכונה אחרת
     bmax = q.get("budget_max")
 
+    streets = _query_streets(q)
+
     def tier(row):
-        t = ()
+        t = (0 if _row_on_query_street(row, q) else 1,) if streets else ()   # [SEARCH-ST] רחוב שביקשו — ראשון
         if garden:
             pt = str(row.get("סוג נכס", "") or "")
             fl = str(row.get("קומה", "") or "").strip()
