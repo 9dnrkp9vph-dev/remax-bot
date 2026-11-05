@@ -14074,6 +14074,13 @@ try:
 except Exception as _sv_err:
     log.error(f"social_video init failed (app unaffected): {_sv_err}")
 
+# ── סטורי SOLD (נכס שנמכר / עסקת קונה) — סטורי בלבד באינסטגרם ובפייסבוק (אייל 05/11) ──
+try:
+    import social_sold as _social_sold
+    _social_sold.register(app, globals())
+except Exception as _ss_err:
+    log.error(f"social_sold init failed (app unaffected): {_ss_err}")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # WARMUP — חימום ה-caches הכבדים בעליית התהליך (deploy/restart מרוקן הכל)
 # 05/08: המשתמש הראשון אחרי deploy ספג בנייה קרה — /api/report נמדד 78ש' (מול
