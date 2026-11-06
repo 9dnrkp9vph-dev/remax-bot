@@ -4824,6 +4824,12 @@ def _login_where():
         return ""
 
 def _log_activity(name, role, phone, action, detail=""):
+    try:   # [HOME-BUNDLE 06/11] חימום-מקדים של מסך הבית — לא פעולה של משתמש, לא נרשם
+        from flask import has_request_context as _hrc, g as _fg
+        if _hrc() and getattr(_fg, "effie_warm", False):
+            return
+    except Exception:
+        pass
     if not detail and str(action or "").startswith("כניסה"):
         detail = _login_where()
     entry = {
@@ -14070,6 +14076,13 @@ try:
     _dialer.register(app, globals())
 except Exception as _dialer_err:
     log.error(f"dialer init failed (app unaffected): {_dialer_err}")
+
+# ── מסך הבית: בקשה אחת + חימום-מקדים למשתמשים הפעילים (אייל 06/11) — מודול נפרד ──
+try:
+    import home_bundle as _home_bundle
+    _home_bundle.register(app, globals())
+except Exception as _hb_err:
+    log.error(f"home_bundle init failed (app unaffected): {_hb_err}")
 
 # ── פרסום נכסים בעמוד הפייסבוק ובאינסטגרם (אייל 31/10) — מודול נפרד ──
 try:

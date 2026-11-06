@@ -2152,18 +2152,17 @@ function _homeNbBadge(){
 }
 function loadData(){
   var ldFailed = false, meetsOk = false;
-  function step(url, apply){
-    return GET(url).then(function(j){
-      if (!j || j.ok === false){ ldFailed = true; return; }   // שגיאה — משאירים את המספר הקיים
-      apply(j);
-      M.ready = true;
-      renderDash();
-      homeSnapSave();
-      if (STORY.open && STORY.i > CO) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי (לא כרטיס התחרות והיעדים — הם נטענים לבד)
-    }).catch(function(){ ldFailed = true; });
-  }
-  return Promise.all([
-    step('/api/report?period=week', function(rep){
+  /* [HOME-BUNDLE 06/11] (אייל: "כן תבנה את 1 ו-2"): בקשה אחת /v2/api/home/bundle במקום 9 —
+     השרת מריץ את אותם ראוטים ומחזיר רק מה שהבית צריך. חלק שחסר בתשובה (או שהבקשה כולה
+     נכשלה) — נטען לבד בדיוק כמו קודם. hard = כשל מסמן ניסיון חוזר; soft = מונה/תפריט בלבד. */
+  var P = {
+    meets: ['/api/newborn/meetings', 1, function(j){
+      // אותו סינון של מסך היומן — לדוח יש סקופ אחר למתאמת (כל המשרד) והבריף היה מציג יותר מדי
+      meetsOk = true;
+      M.meets = j.results || [];
+      _homeMeetCounts();
+    }],
+    report: ['/api/report?period=week', 1, function(rep){
       var sm = rep.summary || {};
       M.calls = (sm.calls || {}).total || 0;
       M.sigs = (sm.sigs || {}).total || 0;
@@ -2173,8 +2172,8 @@ function loadData(){
       M.listings = rep.listings || 0;
       // המקור המועדף לפגישות הוא מסך היומן; הדוח רק גיבוי כשהיומן לא הגיע
       if (!meetsOk && rep.meetings){ M.meets = rep.meetings; _homeMeetCounts(); }
-    }),
-    step('/api/my/buyers', function(j){
+    }],
+    buyers: ['/api/my/buyers', 1, function(j){
       var buyers = j.results || [];
       M.buyersTot = buyers.length;
       M.buyersUn = buyers.filter(function(b){ return !(b.agent || '').trim(); }).length;
@@ -2182,9 +2181,9 @@ function loadData(){
         var d = parseDMY(b.date);
         return d && dayDiff(d) > -7;
       }).length;
-    }),
-    step('/api/my/properties', function(j){ M.props = j.count || 0; }),
-    step('/api/signatures', function(j){
+    }],
+    props: ['/api/my/properties', 1, function(j){ M.props = j.count || 0; }],
+    sigs: ['/api/signatures', 1, function(j){
       // גיוסים ב-7 הימים האחרונים — כל החתמת בעל נכס (בלעדיות או מוכר), בלי כפילויות
       var wk7 = Math.floor(Date.now() / 1000) - 7 * 86400;
       var seen = {};
@@ -2196,15 +2195,50 @@ function loadData(){
         seen[k] = 1;
         return true;
       }).map(function(g){ return {address: g.address || '', client: g.client || '', type: g.type || '', ts: g.ts || 0}; });
-    }),
-    step('/api/newborn/meetings', function(j){
-      // אותו סינון של מסך היומן — לדוח יש סקופ אחר למתאמת (כל המשרד) והבריף היה מציג יותר מדי
-      meetsOk = true;
-      M.meets = j.results || [];
-      _homeMeetCounts();
-    }),
-    step('/v2/api/sign/drafts', function(j){ M.drafts = j.drafts || []; })   // טיוטות החתמה → "דורש טיפול"
-  ]).then(function(){
+    }],
+    drafts: ['/v2/api/sign/drafts', 1, function(j){ M.drafts = j.drafts || []; }],   // טיוטות החתמה → "דורש טיפול"
+    deals: ['/api/deals', 0, function(d){
+      var n = ((d && d.items) || []).filter(function(x){ return !x.deal; }).length;
+      var b = el('dealsBadge');
+      if (b && n > 0){ b.textContent = n; b.style.display = 'flex'; }
+    }],
+    // [PERF-NB 30/09] הבית צריך רק את המונה ואת החדשים של היום (הם ראשונים בסדר) — לא 2MB
+    nb: ['/api/newborn?limit=120', 0, function(nb){
+      M.nb = (nb && (nb.total || (nb.results || []).length)) || 0;
+      // נולדו ביממה האחרונה (ageDays=0) — לכרטיס הסיום של הבריף, כולל כתובות
+      M.nbNew = ((nb && nb.results) || []).filter(function(r){ return r.ageDays === 0; })
+        .map(function(r){ return {a: r.address || '', c: r.city || ''}; });
+      _homeNbBadge();
+      if (STORY.open && STORY.i === CO + 3) renderCard(CO + 3);
+    }],
+    dialer: ['/v2/api/dialer/access', 0, function(a){ if (a && a.allowed) el('menuDialer').style.display = 'flex'; }]   // [DIALER 03/11]
+  };
+  var ORDER = ['meets', 'report', 'buyers', 'props', 'sigs', 'drafts', 'deals', 'nb', 'dialer'];
+  function apply(k, j){
+    var p = P[k];
+    if (!j || j.ok === false){ if (p[1]) ldFailed = true; return; }   // שגיאה — משאירים את המספר הקיים
+    try{ p[2](j); }catch(e){ if (p[1]) ldFailed = true; return; }
+    if (!p[1]) return;
+    M.ready = true;
+  }
+  function paint(){
+    renderDash();
+    homeSnapSave();
+    if (STORY.open && STORY.i > CO) renderCard(STORY.i);   // רענון המספרים בכרטיס הנוכחי (לא כרטיס התחרות והיעדים — הם נטענים לבד)
+  }
+  function step(k){
+    return GET(P[k][0]).then(function(j){ apply(k, j); paint(); })
+      .catch(function(){ if (P[k][1]) ldFailed = true; });
+  }
+  return GET('/v2/api/home/bundle').then(function(bd){
+    var parts = (bd && bd.ok && bd.parts) || {};
+    var miss = [];
+    ORDER.forEach(function(k){ if (parts[k]) apply(k, parts[k]); else miss.push(k); });
+    if (miss.length < ORDER.length) paint();
+    return Promise.all(miss.map(step));
+  }, function(){
+    return Promise.all(ORDER.map(step));   // השרת עוד לא מכיר את הבקשה המאוחדת / כשל — כמו קודם
+  }).then(function(){
     if (ldFailed && LD_TRY < 3){ LD_TRY++; setTimeout(loadData, 6000); }
     else if (!ldFailed){
       LD_TRY = 0; LD_TS = Date.now();
@@ -2587,7 +2621,6 @@ el('story').addEventListener('touchmove', function(e){
     if (j.role === 'admin' && !j.dev && !_inImp) el('menuLoginAs').style.display = 'flex';   // [LOGINAS-MGR] בעל המשרד — מהניהול
     if (['accountant','manager','developer'].indexOf(j.drole) >= 0) el('menuInvoices').style.display = 'flex';
     if (j.drole === 'manager' || j.dev) el('menuSite').style.display = 'flex';   // [SITE 13/10] ניהול האתר — מנהל/מפתח בלבד
-    GET('/v2/api/dialer/access').then(function(a){ if (a && a.allowed) el('menuDialer').style.display = 'flex'; }).catch(function(){});   // [DIALER 03/11] מתאמות בלבד
     hotMineLoad();   // [GOALS 28/10] אחרי שהתפקיד ידוע
     var impTok = null;
     try{ impTok = localStorage.getItem('fbTokAdmin'); }catch(e){}
@@ -2601,23 +2634,7 @@ el('story').addEventListener('touchmove', function(e){
       try{ sessionStorage.setItem('v2BriefSess', '1'); localStorage.setItem(seenKey(), todayStr()); }catch(e){}
       openStory();   // הסטורי הוא מסך הפתיחה
     } else el('briefCta').textContent = 'צפה שוב';
-    loadData();
-    GET('/api/deals').then(function(d){
-      var n = ((d && d.items) || []).filter(function(x){ return !x.deal; }).length;
-      var b = el('dealsBadge');
-      if (b && n > 0){ b.textContent = n; b.style.display = 'flex'; }
-    }).catch(function(){});
-    // [PERF-NB 30/09] הבית צריך רק את המונה ואת החדשים של היום (הם ראשונים בסדר) — לא 2MB
-    GET('/api/newborn?limit=120').then(function(nb){
-      M.nb = (nb && (nb.total || (nb.results || []).length)) || 0;
-      // נולדו ביממה האחרונה (ageDays=0) — לכרטיס הסיום של הבריף, כולל כתובות
-      M.nbNew = ((nb && nb.results) || []).filter(function(r){ return r.ageDays === 0; })
-        .map(function(r){ return {a: r.address || '', c: r.city || ''}; });
-      _homeNbBadge();
-      renderDash();
-      homeSnapSave();
-      if (STORY.open && STORY.i === CO + 3) renderCard(CO + 3);
-    }).catch(function(){});
+    loadData();   // [HOME-BUNDLE 06/11] כולל עסקאות פתוחות, נכס נולד והחייגן
   }).catch(function(){ location.replace('/v2'); });
   fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
     document.title = o.name || 'בית';
