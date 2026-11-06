@@ -1753,6 +1753,69 @@ def link_click(code):
         pass
 
 
+# ── [PRESENTATION-KIT 06/11] תיק פרזנטציה לבעל נכס — presentation_kits ──
+def kit_insert(rec):
+    return _sv_post("presentation_kits", rec)
+
+
+def kit_update(kid, fields):
+    try:
+        body = dict(fields or {}, updated_at=_dt.datetime.now(_dt.timezone.utc).isoformat())
+        r = requests.patch(SUPABASE_URL + "/rest/v1/presentation_kits", headers=_headers(),
+                           params={"id": "eq." + str(kid), "office_id": "eq." + SB_OFFICE_ID},
+                           json=body, timeout=_TIMEOUT)
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def kit_claim(kid, frm, to, fields):
+    """מעבר מצב אטומי (frm→to) — True רק אם השורה עוד הייתה ב-frm (ההחלטה הראשונה קובעת)."""
+    try:
+        body = dict(fields or {}, status=to, updated_at=_dt.datetime.now(_dt.timezone.utc).isoformat())
+        r = requests.patch(SUPABASE_URL + "/rest/v1/presentation_kits",
+                           headers={**_headers(), "Prefer": "return=representation"},
+                           params={"id": "eq." + str(kid), "office_id": "eq." + SB_OFFICE_ID,
+                                   "status": "eq." + str(frm)},
+                           json=body, timeout=_TIMEOUT)
+        r.raise_for_status()
+        return len(r.json() or []) == 1
+    except Exception:
+        return False
+
+
+def _kit_one(params):
+    try:
+        r = requests.get(SUPABASE_URL + "/rest/v1/presentation_kits", headers=_headers(),
+                         params=dict({"select": "*", "office_id": "eq." + SB_OFFICE_ID}, **params),
+                         timeout=_TIMEOUT)
+        r.raise_for_status()
+        out = r.json() or []
+        return out[0] if out else None
+    except Exception:
+        return None
+
+
+def kit_get(kid):
+    return _kit_one({"id": "eq." + str(kid)})
+
+
+def kit_by_token(col, tok):
+    if col not in ("review_token", "view_token") or not tok:
+        return None
+    return _kit_one({col: "eq." + str(tok)})
+
+
+def kit_list(agent_phone=None, days=90):
+    """תיקי המשרד מ-days הימים האחרונים, החדש קודם; agent_phone (last9) מסנן לסוכן, None = כל המשרד."""
+    since = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=int(days))).isoformat()
+    extra = {"created_at": "gte." + since, "order": "created_at.desc"}
+    if agent_phone:
+        extra["agent_phone"] = "eq." + str(agent_phone)
+    return _get_all("presentation_kits", "*", extra)
+
+
 # ── [DEALS-HISTORY 12/10] היסטוריית עסקאות ──────────────────────────────────────
 _DH_COLS = ("id,src_key,branch,year,src_sheet,src_row,src_serial,deal_date,city,street,side,agent,"
             "client_name,client_phone,other_broker,deal_amount,commission_gross,commission_net,discount,"
