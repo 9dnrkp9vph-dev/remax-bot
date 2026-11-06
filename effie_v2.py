@@ -7425,7 +7425,8 @@ var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}, both: {}, ba: {}
 var SOLD_ST = {rendering: 'בהכנה', ready: 'מוכן לפרסום', publishing: 'מתפרסם', published: 'פורסם בסטורי',
   partial: 'פורסם חלקית', failed: 'נכשל'};
 function soldRow(p){
-  if (!SOC.dev || MODE !== 'mine' || DEAL) return '';
+  // [06/11 אייל] גם בטאב המשרד — למנהל אין נכסים ב"שלי"
+  if (!SOC.dev || (MODE !== 'mine' && MODE !== 'office') || DEAL) return '';
   var k = String((p && p.id) || ''); if (!k) return '';
   var L = SOLD.items['p:' + k], h = '';
   var css = 'width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;';
@@ -7475,7 +7476,7 @@ function soldRow(p){
     '</button></div>';
 }
 function soldLoad(list){
-  if (!SOC.dev || MODE !== 'mine' || DEAL) return;
+  if (!SOC.dev || (MODE !== 'mine' && MODE !== 'office') || DEAL) return;
   var keys = (list || []).slice(0, 40).map(function(p){ return String((p && p.id) || ''); })
     .filter(function(k){ return k && !SOLD.asked[k]; });
   if (!keys.length) return;
@@ -7694,7 +7695,7 @@ function render(){
   el('list')._src = src;
   socLoad(src);   // [SOCIAL 31/10] מצב הפרסום ברשתות — קריאה אחת לרשימה המוצגת
   vidLoad(src);   // [SOCIAL-VIDEO 02/11] מצב הסרטון לכל נכס
-  soldLoad(src);  // [SOLD 05/11] סטורי SOLD — רק ב"הנכסים שלי"
+  soldLoad(src);  // [SOLD] סטורי SOLD — "שלי" ו"המשרד"
 }
 function propDate(p){
   // תאריך כניסת הנכס — משרד: "תאריך יצירה"; שת"פ: received_at (ISO). תצוגה: DD/MM/YYYY + זמן יחסי.
