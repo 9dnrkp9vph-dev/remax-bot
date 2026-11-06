@@ -60,6 +60,20 @@ ck(r.json["ok"] is False and "לא נשלח" in r.json["error"], r.json)
 ck(c.post("/v2/api/social/video/resend", json={"id": "v9"}).json["ok"] is False, "resend only pending")
 V.vid_send_review = _orig_send
 sb.videos.remove(sb.video_get("v8"))
+# [06/11] אייל: "פרסם עכשיו" — סרטון שאושר ונדחה (שבת/לילה) עולה מיד, בלי לחכות
+sb.videos.append({"id": "v7", "property_key": "tok1", "status": "approved", "video_token": "AbC123",
+                  "publish_at": "2026-11-07T06:00:00+00:00",
+                  "created_at": SP._dt.datetime.now(SP._dt.timezone.utc).isoformat()})
+SESS["t"] = AG; ck(c.post("/v2/api/social/video/now", json={"id": "v7"}).status_code == 403, "now dev only")
+SESS["t"] = DEV
+ck(c.get("/v2/api/social/videos?keys=tok1").json["items"]["tok1"]["last"]["publish_at"] == "2026-11-07T06:00:00+00:00", "list shows publish_at")
+del PUBS[:]
+r = c.post("/v2/api/social/video/now", json={"id": "v7"})
+ck(r.json["ok"] and PUBS == [("v7", None)] and sb.video_get("v7")["status"] == "publishing"
+   and not sb.video_get("v7").get("publish_at"), (r.json, PUBS, sb.video_get("v7")))
+ck(c.post("/v2/api/social/video/now", json={"id": "v7"}).json["ok"] is False and len(PUBS) == 1, "twice")
+ck(c.post("/v2/api/social/video/now", json={"id": "v9"}).json["ok"] is False, "only approved")
+sb.videos.remove(sb.video_get("v7"))
 h = c.get("/v2/api/social/video/health").json
 ck(h["ok"] and "fal" in h and "month_cost" in h and h["month_cap"] == V.MONTH_AI_CAP, h)
 
