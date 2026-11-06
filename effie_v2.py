@@ -7371,7 +7371,8 @@ function vidRow(p){
   if (L){
     var chs = ['ig_story', 'ig_reel', 'fb_story', 'fb_reel'].filter(function(c){ return L[c + '_status'] !== 'off'; });
     var oks = chs.filter(function(c){ return L[c + '_status'] === 'ok'; }).length;
-    var line = 'סרטון: ' + (VID_ST[L.status] || L.status) + ' ' + socWhen(L.created_at);
+    var held = L.status === 'approved' && L.publish_at;   // [06/11] אושר בשבת/בלילה — מחכה
+    var line = 'סרטון: ' + (held ? 'אושר — ממתין (שבת/לילה)' : (VID_ST[L.status] || L.status)) + ' ' + socWhen(L.created_at);
     if (L.status === 'published' || L.status === 'partial') line += ' · ' + oks + '/' + chs.length;
     h += '<div style="font-size:12px;color:#5B6472;font-weight:700;margin-top:8px">' + esc(line);
     if (L.video_token && (L.status === 'preview' || L.status === 'pending'))
@@ -7387,6 +7388,9 @@ function vidRow(p){
   if (L && L.status === 'partial')
     h += '<div style="margin-top:8px"><button onclick="vidRetry(\'' + esc(L.id) + '\')" style="' + css +
          'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">נסה שוב את מה שנכשל</button></div>';
+  if (L && L.status === 'approved' && L.publish_at && !VID.busy['n:' + L.id])
+    h += '<div style="margin-top:8px"><button onclick="vidNow(\'' + esc(L.id) + '\')" style="' + css +
+         'background:#2E6BD6;color:#fff;border:none">פרסם עכשיו</button></div>';
   if (L && L.status === 'pending' && !VID.busy['s:' + L.id])
     h += '<div style="margin-top:8px"><button onclick="vidResend(\'' + esc(L.id) + '\')" style="' + css +
          'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">שלח שוב לאישור בוואטסאפ</button></div>';
@@ -7427,6 +7431,13 @@ function vidRetry(id){
     toast(j && j.ok ? 'מנסה שוב' : ((j && j.error) || 'שגיאה'));
     setTimeout(function(){ delete VID.busy['r:' + id]; }, 180000);
   }).catch(function(){ delete VID.busy['r:' + id]; toast('שגיאה'); });
+}
+function vidNow(id){
+  if (VID.busy['n:' + id]) return;   // לחיצה כפולה לא מפרסמת פעמיים
+  VID.busy['n:' + id] = 1; render();
+  POST('/v2/api/social/video/now', {id: id}).then(function(j){
+    toast(j && j.ok ? 'עולה עכשיו לרשתות' : ((j && j.error) || 'שגיאה'));
+  }).catch(function(){ delete VID.busy['n:' + id]; render(); toast('שגיאה'); });
 }
 function vidResend(id){
   if (VID.busy['s:' + id]) return;
