@@ -7419,6 +7419,121 @@ function vidResend(id){
     setTimeout(function(){ delete VID.busy['s:' + id]; render(); }, 20000);
   }).catch(function(){ delete VID.busy['s:' + id]; render(); toast('שגיאה'); });
 }
+/* [SOLD 05/11] סטורי SOLD לנכס שנמכר — "הנכסים שלי", למפתח בלבד (social_sold.py).
+   לחיצה → בוחרים מי ייצגנו → הסרטון מוכן תוך כחצי דקה → צפייה → "פרסם לסטורי" (אינסטגרם + פייסבוק). */
+var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}, both: {}, ba: {}, ag: null};
+var SOLD_ST = {rendering: 'בהכנה', ready: 'מוכן לפרסום', publishing: 'מתפרסם', published: 'פורסם בסטורי',
+  partial: 'פורסם חלקית', failed: 'נכשל'};
+function soldRow(p){
+  if (!SOC.dev || MODE !== 'mine' || DEAL) return '';
+  var k = String((p && p.id) || ''); if (!k) return '';
+  var L = SOLD.items['p:' + k], h = '';
+  var css = 'width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;';
+  var test = SOC.mode === 'publish' ? '' : ' (מצב בדיקה)';
+  if (L){
+    var ok = function(s){ return s === 'ok' ? '✓' : s === 'failed' ? 'נכשל' : '—'; };
+    var line = 'סטורי SOLD: ' + (SOLD_ST[L.status] || L.status);
+    if (L.status === 'published' || L.status === 'partial') line += ' · אינסטגרם ' + ok(L.ig) + ' · פייסבוק ' + ok(L.fb);
+    h += '<div style="font-size:12px;color:#5B6472;font-weight:700;margin-top:8px">' + esc(line);
+    if (L.token && L.status !== 'failed' && L.status !== 'rendering')
+      h += ' · <a href="/v2/social/vid/' + esc(L.token) + '.mp4" target="_blank" rel="noopener" style="color:#2E6BD6;font-weight:800">צפייה</a>';
+    h += '</div>';
+    if (L.error && (L.status === 'failed' || L.status === 'partial'))
+      h += '<div style="font-size:12px;color:#7A5E1C;font-weight:700;margin-top:4px">' + esc(String(L.error).slice(0, 200)) + '</div>';
+  }
+  if (SOLD.busy[k] || (L && (L.status === 'rendering' || L.status === 'publishing')))
+    return h + '<div style="margin-top:8px"><button disabled style="' + css +
+      'cursor:default;background:#F2EFE7;color:#5B6472;border:1.5px solid #DCD6C8">' +
+      (L && L.status === 'publishing' ? 'מתפרסם…' : 'מכין סטורי… (כחצי דקה)') + '</button></div>';
+  if (L && (L.status === 'ready' || L.status === 'partial'))
+    h += '<div style="margin-top:8px"><button onclick="soldPublish(\'' + esc(L.id) + '\',\'' + esc(k) + '\')" style="' + css +
+         'background:#2E6BD6;color:#fff;border:none">' + (L.status === 'partial' ? 'נסה שוב את מה שנכשל' : 'פרסם לסטורי באינסטגרם ובפייסבוק') +
+         test + '</button></div>';
+  if (SOLD.open[k] && SOLD.both[k]){   // [05/11 אייל] שני הצדדים שלנו — סרטון משולב: מוכר ואז קונה
+    var ba = SOLD.ba[k] || ['', ''], inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;' +
+      'border-radius:11px;padding:0 12px;font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F;margin-top:6px';
+    return h + '<div style="margin-top:8px;padding:12px;border-radius:14px;background:#F6EEDB">' +
+      '<div style="font-size:13.5px;font-weight:800;color:#7A5E1C">מי הביא את הקונה? (עד 2)</div>' +
+      '<div class="sb" style="margin-top:2px">הסרטון יתחלק לשניים — קודם המוכר ואחר כך הקונה. ריק = סטורי רגיל.</div>' +
+      [0, 1].map(function(i){
+        return '<input list="soldAgDL" autocomplete="off" value="' + esc(ba[i] || '') + '" placeholder="סוכן ' + (i + 1) + '"' +
+          ' oninput="soldBA(\'' + esc(k) + '\',' + i + ',this.value)" style="' + inp + '">';
+      }).join('') +
+      '<datalist id="soldAgDL">' + (SOLD.ag || []).map(function(a){ return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+      '<button onclick="soldCreate(\'' + esc(k) + '\',\'both\')" style="' + css + 'flex:2;background:#C29435;color:#231700;border:none">צור סטורי</button>' +
+      '<button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css + 'flex:1;background:#fff;color:#5B6472;border:1.5px solid #DCD6C8">ביטול</button></div></div>';
+  }
+  if (SOLD.open[k])
+    return h + '<div style="display:flex;gap:8px;margin-top:8px">' +
+      '<button onclick="soldCreate(\'' + esc(k) + '\',\'seller\')" style="' + css + 'background:#C29435;color:#231700;border:none">ייצגנו את המוכר</button>' +
+      '<button onclick="soldBoth(\'' + esc(k) + '\')" style="' + css + 'background:#C29435;color:#231700;border:none">המוכר וגם הקונה</button></div>' +
+      '<div style="margin-top:6px"><button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css +
+      'min-height:40px;background:#fff;color:#5B6472;border:1.5px solid #DCD6C8">ביטול</button></div>';
+  return h + '<div style="margin-top:8px"><button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css +
+    (L ? 'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">צור סטורי SOLD מחדש' : 'background:#C29435;color:#231700;border:none">סטורי SOLD — נמכר') +
+    '</button></div>';
+}
+function soldLoad(list){
+  if (!SOC.dev || MODE !== 'mine' || DEAL) return;
+  var keys = (list || []).slice(0, 40).map(function(p){ return String((p && p.id) || ''); })
+    .filter(function(k){ return k && !SOLD.asked[k]; });
+  if (!keys.length) return;
+  keys.forEach(function(k){ SOLD.asked[k] = 1; });
+  GET('/v2/api/social/sold/list?keys=' + encodeURIComponent(keys.join(','))).then(function(j){
+    if (!j || !j.ok) return;
+    Object.keys(j.items || {}).forEach(function(r){ SOLD.items[r] = j.items[r]; });
+    render();
+  }).catch(function(){});
+}
+function soldToggle(k){ SOLD.open[k] = !SOLD.open[k]; SOLD.both[k] = false; render(); }
+function soldBoth(k){
+  SOLD.both[k] = true; render();
+  if (SOLD.ag) return;
+  SOLD.ag = [];
+  GET('/api/agents').then(function(j){   // רשימת המשרד הקנונית — להשלמה אוטומטית
+    SOLD.ag = ((j && j.agents) || []).map(function(a){ return a.name; }).filter(Boolean); render();
+  }).catch(function(){});
+}
+function soldBA(k, i, v){ (SOLD.ba[k] = SOLD.ba[k] || ['', ''])[i] = v; }
+function soldWatch(k, n){   // מתעדכן עד שהרינדור/הפרסום מסתיים (עד ~3 דק')
+  clearTimeout(SOLD.poll[k]);
+  if (n > 36) { delete SOLD.busy[k]; render(); return; }
+  SOLD.poll[k] = setTimeout(function(){
+    GET('/v2/api/social/sold/list?keys=' + encodeURIComponent(k)).then(function(j){
+      var L = j && j.ok && j.items && j.items['p:' + k];
+      if (L) SOLD.items['p:' + k] = L;
+      var going = !L || L.status === 'rendering' || L.status === 'publishing';
+      if (!going) {
+        delete SOLD.busy[k]; render();
+        toast(L.status === 'ready' ? 'הסטורי מוכן — צפה ופרסם' : L.status === 'published' ? 'פורסם בסטורי באינסטגרם ובפייסבוק'
+          : L.status === 'partial' ? 'פורסם חלקית' : 'נכשל');
+        return;
+      }
+      render(); soldWatch(k, n + 1);
+    }).catch(function(){ soldWatch(k, n + 1); });
+  }, 5000);
+}
+function soldCreate(k, side){
+  if (SOLD.busy[k]) return;
+  SOLD.busy[k] = 1; SOLD.open[k] = false;
+  delete SOLD.items['p:' + k]; render();
+  var body = {key: k, side: side};
+  if (side === 'both') body.details = {buyer_agents: (SOLD.ba[k] || []).map(function(x){ return String(x || '').trim(); }).filter(Boolean)};
+  SOLD.both[k] = false;
+  POST('/v2/api/social/sold', body).then(function(j){
+    if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה — לא נשלח'); return; }
+    toast('מכין סטורי SOLD — כחצי דקה'); soldWatch(k, 0);
+  }).catch(function(){ delete SOLD.busy[k]; render(); toast('שגיאה — לא נשלח'); });
+}
+function soldPublish(id, k){
+  if (SOLD.busy[k]) return;
+  SOLD.busy[k] = 1; render();
+  POST('/v2/api/social/sold/publish', {id: id}).then(function(j){
+    if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה'); return; }
+    toast('מפרסם לסטורי — עד כמה דקות'); soldWatch(k, 0);
+  }).catch(function(){ delete SOLD.busy[k]; render(); toast('שגיאה'); });
+}
 var SITE = {hidden: {}, on: false, can: false, fh: {}};
 function loadSite(){
   GET('/v2/api/site/state').then(function(j){
@@ -7579,6 +7694,7 @@ function render(){
   el('list')._src = src;
   socLoad(src);   // [SOCIAL 31/10] מצב הפרסום ברשתות — קריאה אחת לרשימה המוצגת
   vidLoad(src);   // [SOCIAL-VIDEO 02/11] מצב הסרטון לכל נכס
+  soldLoad(src);  // [SOLD 05/11] סטורי SOLD — רק ב"הנכסים שלי"
 }
 function propDate(p){
   // תאריך כניסת הנכס — משרד: "תאריך יצירה"; שת"פ: received_at (ISO). תצוגה: DD/MM/YYYY + זמן יחסי.
@@ -7674,7 +7790,7 @@ function propCard(p, i){
     (p.score != null ? '<div style="font-size:12px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' +
     (propDate(p) ? '<div style="font-size:12px;color:#6B7280;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
-    acts + shareRow(p, i) + hotRow + fhRow + siteRow + socRow(p) + vidRow(p) + '</div>';
+    acts + shareRow(p, i) + hotRow + fhRow + siteRow + socRow(p) + vidRow(p) + soldRow(p) + '</div>';
 }
 /* [SHARE 01/11] שליחת נכס ללקוח עם תמונות (אייל): לחיצה ראשונה מכינה את התמונות, השנייה פותחת את חלון השיתוף
    (חלון השיתוף חייב לחיצה טרייה — הורדת 10 תמונות לוקחת כמה שניות). בלי שם סוכן / מספר בית / קישורים. */
@@ -8491,6 +8607,7 @@ function render(){
     '<div class="s">כל תהליך מכירה שתפתח יופיע כאן, ומ"נמכר" הוא הופך לעסקה</div>' +
     '<button class="btnMain" style="max-width:220px;flex:none;padding:13px 26px" onclick="openForm(null,false)">+ תהליך חדש</button></div>';
   el('list')._src = src;
+  soldLoad(src.slice(0, 60));   // [SOLD 05/11]
 }
 function dealCard(it, i){
   var agentsLine = (it.agents || []).map(function(a, k){
@@ -8516,7 +8633,158 @@ function dealCard(it, i){
   return '<div class="deal' + (it.deal ? ' closed' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(it.notes || '') + '</div>' +
     '<div class="sb">' + esc(agentsLine) + (it.lawyers ? ' · עו"ד ' + esc(it.lawyers) : '') + '</div></div>' +
-    chip + '</div>' + pr + com + acts + '</div>';
+    chip + '</div>' + pr + com + acts + soldRow(it) + '</div>';
+}
+/* [SOLD 05/11] סטורי "עוד משפחה מצאה בית" לעסקה סגורה שייצגנו בה קונה (social_sold.py) — סטורי בלבד,
+   אינסטגרם + פייסבוק. לחיצה → מוכן תוך כחצי דקה → צפייה → "פרסם לסטורי". */
+var SOLD = {dev: false, mode: 'preview', items: {}, asked: {}, busy: {}, poll: {}, form: {}, f: {}};
+var SOLD_ST = {rendering: 'בהכנה', ready: 'מוכן לפרסום', publishing: 'מתפרסם', published: 'פורסם בסטורי',
+  partial: 'פורסם חלקית', failed: 'נכשל'};
+function soldOk(it){
+  if (!it || !it.deal || !it.id) return false;
+  var s = ((it.side1 || '') + ' ' + (it.side2 || '')).trim();
+  return !s || s.indexOf('קונה') >= 0;
+}
+function soldRow(it){
+  if (!SOLD.dev || !soldOk(it)) return '';
+  var k = String(it.id), L = SOLD.items['d:' + k], h = '';
+  var css = 'width:100%;min-height:44px;border-radius:11px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;';
+  var test = SOLD.mode === 'publish' ? '' : ' (מצב בדיקה)';
+  if (L){
+    var ok = function(s){ return s === 'ok' ? '✓' : s === 'failed' ? 'נכשל' : '—'; };
+    var line = 'סטורי קונה: ' + (SOLD_ST[L.status] || L.status);
+    if (L.status === 'published' || L.status === 'partial') line += ' · אינסטגרם ' + ok(L.ig) + ' · פייסבוק ' + ok(L.fb);
+    h += '<div class="sb" style="margin-top:8px">' + esc(line);
+    if (L.token && L.status !== 'failed' && L.status !== 'rendering')
+      h += ' · <a href="/v2/social/vid/' + esc(L.token) + '.mp4" target="_blank" rel="noopener" style="color:#2E6BD6;font-weight:800">צפייה</a>';
+    h += '</div>';
+    if (L.error && (L.status === 'failed' || L.status === 'partial'))
+      h += '<div class="sb" style="color:#7A5E1C">' + esc(String(L.error).slice(0, 200)) + '</div>';
+  }
+  if (SOLD.busy[k] || (L && (L.status === 'rendering' || L.status === 'publishing')))
+    return h + '<div style="margin-top:8px"><button disabled style="' + css + 'cursor:default;background:#F2EFE7;color:#5B6472;border:1.5px solid #DCD6C8">' +
+      (L && L.status === 'publishing' ? 'מתפרסם…' : 'מכין סטורי… (כחצי דקה)') + '</button></div>';
+  if (L && (L.status === 'ready' || L.status === 'partial'))
+    h += '<div style="margin-top:8px"><button onclick="soldPublish(\'' + esc(L.id) + '\',\'' + esc(k) + '\')" style="' + css +
+      'background:#2E6BD6;color:#fff;border:none">' + (L.status === 'partial' ? 'נסה שוב את מה שנכשל' : 'פרסם לסטורי באינסטגרם ובפייסבוק') + test + '</button></div>';
+  if (SOLD.form[k]) return h + soldForm(it);
+  return h + '<div style="margin-top:8px"><button onclick="soldOpen(\'' + esc(k) + '\')" style="' + css +
+    (L ? 'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">צור סטורי קונה מחדש' : 'background:#C29435;color:#231700;border:none">סטורי SOLD — עסקת קונה') + '</button></div>';
+}
+/* [05/11 אייל] "גם בקונה שיהיה כתובת מלאה ונתונים בהקלדה ידנית" + בחירת סוכני הצוות שיופיעו בסטורי */
+function soldBuyers(it){
+  var ags = (it.agents || []).filter(Boolean), sides = [it.side1 || '', it.side2 || ''];
+  var buy = ags.filter(function(a, i){ return i < 2 && sides[i].indexOf('קונה') >= 0; });
+  return (buy.length ? buy : ags).slice(0, 2);
+}
+function soldOpen(k){
+  var it = (ITEMS || []).filter(function(x){ return String(x.id) === String(k); })[0] || {};
+  var digits = String(it.sale_price || it.price || '').replace(/[^0-9]/g, '');
+  SOLD.f[k] = SOLD.f[k] || {addr: it.notes || '', city: '', rooms: '', size: '', floor: '',
+    price: digits ? Number(digits).toLocaleString() : '', feats: '', agents: soldBuyers(it)};
+  SOLD.form[k] = true; render();
+}
+function soldF(k, name, v){ (SOLD.f[k] = SOLD.f[k] || {})[name] = v; }
+function soldAg(k, idx, on){   // לפי מיקום — שם עם גרש (דה פיצ'וטו) לא שובר את ה-onclick
+  var it = (ITEMS || []).filter(function(x){ return String(x.id) === String(k); })[0] || {};
+  var name = ((it.agents || []).filter(Boolean))[idx];
+  if (!name) return;
+  var f = SOLD.f[k] || (SOLD.f[k] = {agents: []}), a = (f.agents || []).filter(function(x){ return x !== name; });
+  if (on) a.push(name);
+  f.agents = a.slice(-2);   // עד 2 סוכנים בסטורי
+  render();
+}
+function soldForm(it){
+  var k = String(it.id), f = SOLD.f[k] || {};
+  var inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;border-radius:11px;padding:0 12px;' +
+    'font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F';
+  var fld = function(name, label, ph, mode){
+    return '<label style="display:block;flex:1;min-width:0"><div class="sb" style="margin:6px 0 3px">' + esc(label) + '</div>' +
+      '<input value="' + esc(f[name] || '') + '" placeholder="' + esc(ph) + '"' + (mode ? ' inputmode="' + mode + '"' : '') +
+      ' oninput="soldF(\'' + esc(k) + '\',\'' + name + '\',this.value)" style="' + inp + '"></label>';
+  };
+  var ags = (it.agents || []).filter(Boolean), chosen = f.agents || [];
+  var agRow = ags.length > 1 ? '<div class="sb" style="margin:8px 0 3px">מי מופיע בסטורי (עד 2)</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    ags.map(function(a, i){
+      var on = chosen.indexOf(a) >= 0;
+      return '<button onclick="soldAg(\'' + esc(k) + '\',' + i + ',' + (on ? 'false' : 'true') + ')" style="min-height:40px;padding:0 14px;border-radius:999px;' +
+        'font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
+        (on ? 'background:#1E3A5F;color:#fff;border:1.5px solid #1E3A5F">✓ ' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">') + esc(a) + '</button>';
+    }).join('') + '</div>' : '';
+  return '<div style="margin-top:10px;padding:12px;border-radius:14px;background:#F6EEDB">' +
+    '<div style="font-size:13.5px;font-weight:800;color:#7A5E1C">פרטי הנכס בסטורי</div>' +
+    fld('addr', 'כתובת מלאה', 'ציזלינג 36') +
+    '<div style="display:flex;gap:8px">' + fld('city', 'עיר', 'קרית ים') + fld('rooms', 'חדרים', '4', 'decimal') + '</div>' +
+    '<div style="display:flex;gap:8px">' + fld('size', 'מ"ר', '105', 'numeric') + fld('floor', 'קומה', '3') + '</div>' +
+    fld('price', 'מחיר', '1,250,000', 'numeric') +
+    fld('feats', 'מאפיינים (מופרדים בפסיק)', 'מעלית, חניה, מרפסת') + agRow + soldSellers(k, f) +
+    '<div style="display:flex;gap:8px;margin-top:10px">' +
+    '<button onclick="soldCreate(\'' + esc(k) + '\')" style="flex:2;min-height:44px;border-radius:11px;border:none;background:#C29435;color:#231700;' +
+    'font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">צור סטורי</button>' +
+    '<button onclick="SOLD.form[\'' + esc(k) + '\']=false;render()" style="flex:1;min-height:44px;border-radius:11px;border:1.5px solid #DCD6C8;' +
+    'background:#fff;color:#5B6472;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">ביטול</button></div></div>';
+}
+/* [05/11 אייל] "אלי ויהודית הביאו קונה ובן ובנימין הביאו מוכר" — גם צד המוכר שלנו → סרטון אחד משולב */
+function soldSellers(k, f){
+  var ss = f.sellers || ['', ''], inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;border-radius:11px;' +
+    'padding:0 12px;font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F;margin-top:6px';
+  return '<div class="sb" style="margin:10px 0 0;font-weight:800;color:#7A5E1C">גם צד המוכר שלנו? מי הביא את המוכר (עד 2)</div>' +
+    '<div class="sb" style="margin-top:2px">הסרטון יתחלק לשניים — קודם המוכר ואחר כך הקונה. ריק = סטורי קונה רגיל.</div>' +
+    [0, 1].map(function(i){
+      return '<input list="soldDL" autocomplete="off" value="' + esc(ss[i] || '') + '" placeholder="סוכן ' + (i + 1) + '"' +
+        ' oninput="soldS(\'' + esc(k) + '\',' + i + ',this.value)" style="' + inp + '">';
+    }).join('') +
+    '<datalist id="soldDL">' + (AGENTS || []).map(function(a){ return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>';
+}
+function soldS(k, i, v){ var f = SOLD.f[k] || (SOLD.f[k] = {}); (f.sellers = f.sellers || ['', ''])[i] = v; }
+function soldLoad(list){
+  if (!SOLD.dev) return;
+  var ids = (list || []).filter(soldOk).slice(0, 60).map(function(it){ return String(it.id); })
+    .filter(function(k){ return !SOLD.asked[k]; });
+  if (!ids.length) return;
+  ids.forEach(function(k){ SOLD.asked[k] = 1; });
+  GET('/v2/api/social/sold/list?deals=' + encodeURIComponent(ids.join(','))).then(function(j){
+    if (!j || !j.ok) return;
+    SOLD.mode = j.mode || SOLD.mode;
+    Object.keys(j.items || {}).forEach(function(r){ SOLD.items[r] = j.items[r]; });
+    render();
+  }).catch(function(){});
+}
+function soldWatch(k, n){
+  clearTimeout(SOLD.poll[k]);
+  if (n > 36){ delete SOLD.busy[k]; render(); return; }
+  SOLD.poll[k] = setTimeout(function(){
+    GET('/v2/api/social/sold/list?deals=' + encodeURIComponent(k)).then(function(j){
+      var L = j && j.ok && j.items && j.items['d:' + k];
+      if (L) SOLD.items['d:' + k] = L;
+      if (L && L.status !== 'rendering' && L.status !== 'publishing'){
+        delete SOLD.busy[k]; render();
+        toast(L.status === 'ready' ? 'הסטורי מוכן — צפה ופרסם' : L.status === 'published' ? 'פורסם בסטורי באינסטגרם ובפייסבוק'
+          : L.status === 'partial' ? 'פורסם חלקית' : 'נכשל');
+        return;
+      }
+      render(); soldWatch(k, n + 1);
+    }).catch(function(){ soldWatch(k, n + 1); });
+  }, 5000);
+}
+function soldCreate(k){
+  if (SOLD.busy[k]) return;
+  var f = SOLD.f[k] || {};
+  SOLD.busy[k] = 1; SOLD.form[k] = false; delete SOLD.items['d:' + k]; render();
+  POST('/v2/api/social/sold', {deal: k, details: {addr: f.addr || '', city: f.city || '', rooms: f.rooms || '', size: f.size || '',
+    floor: f.floor || '', price: f.price || '', feats: f.feats || '', agents: f.agents || [],
+    seller_agents: (f.sellers || []).map(function(x){ return String(x || '').trim(); }).filter(Boolean)}}).then(function(j){
+    if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה — לא נשלח'); return; }
+    toast('מכין סטורי — כחצי דקה'); soldWatch(k, 0);
+  }).catch(function(){ delete SOLD.busy[k]; render(); toast('שגיאה — לא נשלח'); });
+}
+function soldPublish(id, k){
+  if (SOLD.busy[k]) return;
+  SOLD.busy[k] = 1; render();
+  POST('/v2/api/social/sold/publish', {id: id}).then(function(j){
+    if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה'); return; }
+    toast('מפרסם לסטורי — עד כמה דקות'); soldWatch(k, 0);
+  }).catch(function(){ delete SOLD.busy[k]; render(); toast('שגיאה'); });
 }
 function trashBtn(i){
   return '<button class="trash" onclick="delDeal(' + i + ')" aria-label="מחיקה">' +
@@ -8743,6 +9011,8 @@ render = function(){
     if (!j.ok){ location.replace('/v2'); return; }
     MY = j.name || '';
     el('avatarTx').textContent = (MY || ' ').trim()[0] || '';
+    SOLD.dev = j.drole === 'developer';   // [SOLD 05/11] סטורי עסקת קונה — למפתח בלבד בשלב זה
+    if (SOLD.dev) render();
   }).catch(function(){ location.replace('/v2'); });
   fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
     document.title = 'תהליכים ועסקאות · ' + (o.name || '');
