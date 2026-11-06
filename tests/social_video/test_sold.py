@@ -57,6 +57,14 @@ GR = make_G(rows=[ROW])[0]
 ck(S.sold_row_by_addr(GR, "אהוד מנור 13") is not None and S.sold_row_by_addr(GR, " אהוד  מנור 13, קרית ביאליק") is not None, "addr match")
 ck(S.sold_row_by_addr(GR, "אהוד מנור 15") is None and S.sold_row_by_addr(GR, "") is None, "no addr match")
 
+# [06/11 אייל] "אלי שמול מוגדר צוות ולא רואים גם את יהודית" — צוות של שניים בהגדרות → שניהם בסטורי
+TG = make_G(cfg={"teams": [["אלי שמול", "יהודית שמול"], ["א", "ב", "ג"]]})[0]
+ck(S.sold_with_team(TG, ["אלי שמול"]) == ["אלי שמול", "יהודית שמול"], "team of two added")
+ck(S.sold_with_team(TG, ["יהודית  שמול"]) == ["יהודית  שמול", "אלי שמול"], "canon match")
+ck(S.sold_with_team(TG, ["א"]) == ["א"], "big sharing team → not added")
+ck(S.sold_with_team(TG, ["אלי שמול", "רויטל"]) == ["אלי שמול", "רויטל"], "already two")
+ck(S.sold_with_team(TG, ["זר"]) == ["זר"] and S.sold_with_team({}, ["אלי שמול"]) == ["אלי שמול"], "no team / no cfg")
+
 # ── מוזיקה: 3 הקטעים מ-Sound Collection של Meta (אייל בחר 05/11), כל סטורי הקטע הבא ──
 ms = [os.path.basename(S.sold_music({}, k)) for k in range(4)]
 ck(ms == ["meta-boogie-monster-bash.mp3", "meta-poltergeist-polka.mp3", "meta-wacky-sax.mp3", "meta-boogie-monster-bash.mp3"], ms)
@@ -138,6 +146,13 @@ ck(r["ok"] and COMP[-1][0] == "buyer" and not COMP[-1][1] and [a["name"] for a i
 r = S.sold_create(G, "deal", "d1", "buyer", "", http=HTTP, env=env, store=store, db=db,
                   details={"addr": "ציזלינג 36", "price": "1250000", "agents": ["רויטל", "צדוק"]})
 ck(r["ok"] and COMP[-1][2]["addr"] == "ציזלינג 36" and [a["name"] for a in COMP[-1][3]] == ["רויטל", "צדוק"], COMP[-1])
+# צוות מההגדרות נכנס אוטומטית לסטורי של נכס עם סוכן אחד
+GT, _, _ = make_G(rows=[dict(ROW, **{"סוכן 1": "אלי שמול", "סוכן 2": ""})], cfg={"teams": [["אלי שמול", "יהודית שמול"]]})
+r = S.sold_create(GT, "prop", "tok1", "seller", "", http=HTTP, env=env, store=store, db=db)
+ck(r["ok"] and [a["name"] for a in COMP[-1][3]] == ["אלי שמול", "יהודית שמול"], COMP[-1][3])
+GT["_deals_load"] = lambda: [dict(D, agents=["אלי שמול"], side1="קונה", side2="")]
+r = S.sold_create(GT, "deal", "d1", "buyer", "", http=HTTP, env=env, store=store, db=db, details={"agents": ["אלי שמול"]})
+ck(r["ok"] and [a["name"] for a in COMP[-1][3]] == ["אלי שמול", "יהודית שמול"], COMP[-1][3])
 # משולב מ"הנכסים שלי": צד המוכר מהנכס, צד הקונה נבחר
 r = S.sold_create(G, "prop", "tok1", "both", "", http=HTTP, env=env, store=store, db=db,
                   details={"buyer_agents": ["אלי שמול", "יהודית שמול"]})
