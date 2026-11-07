@@ -27,6 +27,10 @@ def test_street_only():
     assert K.street_only("עוזי חיטמן") == "עוזי חיטמן"
     assert K.street_only("הנוטר מס' 18/3") == "הנוטר"
     assert K.street_only("") == ""
+    assert K.street_only("הנוטר 12 א") == "הנוטר"
+    assert K.street_only("הנוטר 18, קרית ביאליק") == "הנוטר"
+    assert K.street_only("הנוטר, קרית ביאליק") == "הנוטר"
+    assert K.street_only("שדרות ההסתדרות הציונית העולמית 7 ב, חיפה") == "שדרות ההסתדרות הציונית העולמית"
 
 
 def test_eff_status():
