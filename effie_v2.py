@@ -1683,6 +1683,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="8" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="4" fill="none" stroke="#1E3A5F" stroke-width="1.7"/><circle cx="11" cy="11" r="1.2" fill="#1E3A5F"/></svg>
       היעדים שלי להיום</a>
+    <a id="menuCma" href="/v2/cma" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      ניתוח שוק</a>
     <a id="menuDialer" href="/v2/dialer" style="display:none;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z"/></svg>
@@ -2805,6 +2809,16 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       </div>
     </div>
 
+    <!-- [CMA 06/11] עסקאות ממדלן — אייל מעלה פעם בחודש טבלה לכל שכונה -->
+    <div class="card" id="mktCard">
+      <div class="cardTitle">עסקאות ממדלן</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">מורידים מ-proExpert את טבלת העסקאות של שכונה ("להורדת הטבלה") ומעלים כאן, עם שם השכונה כמו שהוא במדלן. כפילויות נזרקות לבד. משמש לניתוח השוק ולעמוד "כמה שווה הנכס שלך" בתיק.</div>
+      <input id="mktNb" placeholder="שם השכונה במדלן" style="margin-top:10px;width:100%;min-height:44px;border:1.5px solid #E6E1D6;border-radius:12px;padding:0 10px;font-size:16px;font-family:inherit">
+      <input id="mktFile" type="file" accept=".xlsx" style="margin-top:8px;width:100%;font-size:14px">
+      <button onclick="mktUpload()" style="margin-top:10px;width:100%;min-height:44px;border:0;border-radius:12px;background:#2E6BD6;color:#fff;font-size:14px;font-weight:800;font-family:inherit">העלה</button>
+      <div id="mktList" style="margin-top:10px"></div>
+    </div>
+
     <!-- [DIALER-USERS 03/11] חייגן חכם — מי רואה (אייל: "לכל מי שאבחר ולא רק למתאמות") -->
     <div class="card" id="dlrCard">
       <div class="cardTitle">חייגן חכם — מי רואה</div>
@@ -3054,7 +3068,7 @@ function boot(){
         UNMATCHED = unmMerge(rs[1] || {});
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
-        render(); loadSnaps(); repLoad(); oipLoad(); dlrLoad();
+        render(); loadSnaps(); repLoad(); oipLoad(); dlrLoad(); mktLoad();
       });
   }).catch(function(){ location.replace('/v2'); });
 }
@@ -3130,6 +3144,30 @@ var DLR = {names: [], coords: []}, DLR_ALL = false;
 function dlrKey(s){ return String(s || '').replace(/\s+/g, ' ').trim(); }
 function dlrHas(nm){ var k = dlrKey(nm); return (DLR.names || []).some(function(x){ return dlrKey(x) === k; }); }
 function dlrIsAuto(p){ var k = dlrKey(p.name); return p.role === 'coordinator' || (DLR.coords || []).some(function(x){ return dlrKey(x) === k; }); }
+function mktLoad(){ GET('/v2/api/cma/files').then(function(j){ if (j && j.ok) mktRender(j); }).catch(function(){}); }
+function mktRender(j){
+  var box = el('mktList'); if (!box) return;
+  var stale = {}; (j.stale || []).forEach(function(n){ stale[n] = 1; });
+  box.innerHTML = (j.files || []).length ? (j.files || []).map(function(f){
+    var d = String(f.last_upload || '').slice(0, 10).split('-').reverse().join('/');
+    return '<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #F1EDE3;font-size:13px">' +
+      '<span>' + esc(f.nb) + ' · ' + f.n + ' עסקאות</span><span style="color:' + (stale[f.nb] ? '#7A5E1C;font-weight:800' : '#6B7280') + '">' +
+      (stale[f.nb] ? 'לעדכן · ' : '') + d + '</span></div>';
+  }).join('') : '<div style="font-size:12.5px;color:#6B7280">עוד לא הועלו שכונות</div>';
+}
+function mktUpload(){
+  var nb = (el('mktNb').value || '').trim(), f = el('mktFile').files && el('mktFile').files[0];
+  if (!nb){ toast('צריך שם שכונה'); return; }
+  if (!f){ toast('צריך לבחור קובץ'); return; }
+  var rd = new FileReader();
+  rd.onload = function(){
+    POST('/v2/api/cma/upload', {name: f.name, data: rd.result, nb: nb}).then(function(j){
+      if (j && j.ok){ toast('נקלטו ' + j.stats.n + ' עסקאות · ' + j.stats.dups + ' כפילויות'); el('mktFile').value = ''; mktLoad(); }
+      else toast({headers: 'הקובץ לא נראה כמו טבלת עסקאות של מדלן', nb: 'צריך שם שכונה', no_file: 'הקובץ ריק'}[j && j.reason] || 'ההעלאה נכשלה');
+    });
+  };
+  rd.readAsDataURL(f);
+}
 function dlrLoad(){ GET('/v2/api/dialer/users').then(function(j){ if (j && j.ok){ DLR = j; dlrRender(); } }).catch(function(){}); }
 function dlrRender(){
   var box = el('dlrList'); if (!box) return;
@@ -16918,6 +16956,15 @@ def register(app, G):
             return _page('<!DOCTYPE html><html dir="rtl" lang="he"><body style="font-family:Heebo,sans-serif;padding:40px;text-align:center">'
                          'החייגן לא זמין כרגע</body></html>')
         return _page(_dialer.V2_DIALER_HTML)
+
+    @app.route("/v2/cma", methods=["GET"])   # [CMA 06/11] ניתוח שוק — מסך לסוכן
+    def v2_cma():
+        try:
+            import cma as _cma
+        except Exception:
+            return _page('<!DOCTYPE html><html dir="rtl" lang="he"><body style="font-family:Heebo,sans-serif;padding:40px;text-align:center">'
+                         'ניתוח השוק לא זמין כרגע</body></html>')
+        return _page(_cma.V2_CMA_HTML)
 
     @app.route("/v2/effie", methods=["GET"])
     def v2_effie():

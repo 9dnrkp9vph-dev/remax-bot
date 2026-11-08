@@ -146,3 +146,9 @@ def test_city_spellings_match():
 def test_ptype_garden_not_mixed():
     r = cma.cma_compute(dict(SUBJ, ptype="דירת גן"), BEGIN5, [], TODAY)
     assert r is None
+
+
+def test_extra_beyond_seven_marked_not_dropped():
+    comps = cma.cma_compute(SUBJ, BEGIN5, [], TODAY)["comps"]
+    far = [c for c in comps if c["house"] == 36]
+    assert far and all(not c["used"] and c.get("extra") and c["reason"] == "" for c in far)

@@ -383,6 +383,8 @@ def cma_compute(subject, deals, listings, today):
         return None
     for c in chosen:
         c["used"] = True
+    for c in rows:   # מעבר ל-7 הקרובות — לא נפסלו, פשוט לא נדרשו
+        c["extra"] = (not c["used"] and not c["reason"])
     if sqm:
         q1, q3 = _quart([c["ppm"] for c in chosen])
         rng, prng, basis = [_round10k(q1 * sqm), _round10k(q3 * sqm)], [int(round(q1)), int(round(q3))], "sqm"
@@ -419,3 +421,268 @@ def cma_compute(subject, deals, listings, today):
             "ppm_median": int(round(_median(pp) / 100.0)) * 100 if pp else 0,
             "competing": len(comp_l), "range": rng, "ppm_range": prng, "basis": basis, "n_used": len(chosen),
             "comps": rows[:SHOW_COMPS], "listings": comp_l, "data_as_of": up[-1] if up else ""}
+
+
+# ── משימה 3: cma_block (הוק התיק), ראוטים ומסך "ניתוח שוק" ──
+STALE_DAYS = 45
+
+
+def _today_il():
+    try:
+        from zoneinfo import ZoneInfo
+        return _dt.datetime.now(ZoneInfo("Asia/Jerusalem")).date()
+    except Exception:
+        return _dt.date.today()
+
+
+def _known_streets(G, dh):
+    known = set()
+    for r in dh or []:
+        st = _split_street_house(r.get("street"))[0]
+        if st:
+            known.add(st)
+    try:
+        rows, _l = G["_office_rows_for"]("")
+        for r in rows or []:
+            st = _split_street_house(r.get("כתובת"))[0]
+            if st:
+                known.add(st)
+    except Exception:
+        pass
+    try:
+        for r in G["fetch_newborn"]() or []:
+            st = _split_street_house(r.get("רחוב1") or r.get("רחוב"))[0]
+            if st:
+                known.add(st)
+    except Exception:
+        pass
+    return known
+
+
+def _listings(G):
+    """מודעות פעילות (משרד/שת"פ/נכס נולד) באותו מבנה של מודול הנכסים ב-CRM."""
+    import effie_v2
+    office = []
+    try:
+        rows, lbl = G["_office_rows_for"]("")
+        office = [dict(r, **{"סוג עסקה": lbl}) if lbl and not r.get("סוג עסקה") else r for r in rows or []]
+    except Exception:
+        pass
+    f = lambda k, d=None: G.get(k) or d
+    h = {"nb_ep": f("_newborn_created_epoch", lambda r: 0), "nb_pkey": f("_nb_price_key", lambda r: ""),
+         "nb_office": f("_nb_as_office_row", lambda r: {}),
+         "excl_ep": lambda r: (f("_excl_epoch", lambda x: 0))(r.get("first_seen") or r.get("received_at") or ""),
+         "excl_pkey": f("_excl_price_key", lambda r: ""), "prop_ep": f("_prop_epoch", lambda r: 0),
+         "prop_pkey": f("_prop_price_key", lambda r: ""), "agent_name": lambda n: n or ""}
+    recs = effie_v2.crm_props_records(G["fetch_newborn"]() or [], G["fetch_external_exclusives"]() or [], office,
+                                      {}, 0, h)
+    return [r for r in recs if not r.get("delisted") and "שכ" not in str(r.get("deal") or "")
+            and "מסחר" not in str(r.get("deal") or "")]
+
+
+def _inputs(G):
+    today = _today_il()
+    since = today.replace(year=today.year - YEARS - 1).isoformat()
+    sb = G["_sbdb"]
+    market = sb.market_all(since) or []
+    dh = []
+    try:
+        dh = G["_deal_history_linked"]() or []
+    except Exception:
+        dh = []
+    known = _known_streets(G, dh) | {r.get("street") for r in market if r.get("street")}
+    deals = link_ours(market, ours_rows(dh, known))
+    try:
+        listings = _listings(G)
+    except Exception:
+        listings = []
+    return deals, listings, known
+
+
+def _cached_inputs(G):
+    swr = G.get("_swr")
+    return swr("cma:in", 600, lambda: _inputs(G)) if swr else _inputs(G)
+
+
+def cma_block(G, listing):
+    """הוק תיק הפרזנטציה: פרטי הנכס → נתוני עמוד ה-CMA (cma_compute), או None. כשל → None + אזהרה בלוג."""
+    try:
+        subj = subject_from_listing(listing or {})
+        if not subj:
+            return None
+        deals, listings, known = _cached_inputs(G)
+        subj["street"] = canon_street(subj["street"], known)
+        return cma_compute(subj, deals, listings, _today_il())
+    except Exception as e:
+        lg = G.get("log")
+        if lg:
+            lg.warning(f"cma_block: {e}")
+        return None
+
+
+def register(app, G):
+    from flask import jsonify, request
+
+    def _owner(s):
+        return bool(s) and (s.get("dev") or bool(G["_is_dev"](s.get("phone", ""))))
+
+    def _act(s, action, detail):
+        try:
+            G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), action, detail)
+        except Exception:
+            pass
+
+    @app.route("/v2/api/cma/upload", methods=["POST"])
+    def cma_upload():
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "reason": "auth"}), 401
+        if not _owner(s):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        import base64
+        b = request.get_json(silent=True) or {}
+        nb = _norm(b.get("nb"))[:60]
+        if not nb:
+            return jsonify({"ok": False, "reason": "nb"})
+        try:
+            raw = base64.b64decode(str(b.get("data") or "").split(",")[-1] or b"")
+        except Exception:
+            raw = b""
+        if not raw:
+            return jsonify({"ok": False, "reason": "no_file"})
+        try:
+            import effie_v2
+            table = effie_v2.ibs_parse_table(str(b.get("name") or "t.xlsx"), raw)
+        except Exception:
+            return jsonify({"ok": False, "reason": "headers"})
+        try:
+            dh = G["_deal_history_linked"]() or []
+        except Exception:
+            dh = []
+        try:
+            rows, st = madlan_rows(table, nb, str(b.get("name") or ""), _known_streets(G, dh))
+        except ValueError:
+            return jsonify({"ok": False, "reason": "headers"})
+        G["_sbdb"].market_upsert(rows)
+        _act(s, "עסקאות ממדלן — העלאה", "%s · %d עסקאות" % (nb, st["n"]))
+        return jsonify({"ok": True, "stats": st})
+
+    @app.route("/v2/api/cma/files", methods=["GET"])
+    def cma_files():
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "reason": "auth"}), 401
+        if not _owner(s):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        files = G["_sbdb"].market_files() or []
+        lim = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=STALE_DAYS)).isoformat()
+        return jsonify({"ok": True, "files": files,
+                        "stale": [f["nb"] for f in files if str(f.get("last_upload") or "") < lim]})
+
+    @app.route("/v2/api/cma/view", methods=["GET"])
+    def cma_view():
+        s = G["_web_auth"]()
+        if not s:
+            return jsonify({"ok": False, "reason": "auth"}), 401
+        a = request.args
+        res = cma_block(G, {"street": a.get("street", ""), "house": a.get("house", ""), "city": a.get("city", ""),
+                            "rooms": a.get("rooms", ""), "sqm": a.get("sqm", ""), "ptype": a.get("ptype", "")})
+        return jsonify({"ok": True, "cma": res, "reason": "" if res else "few"})
+
+
+V2_CMA_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ניתוח שוק</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#F2EFE7;--navy:#1E3A5F;--navy0:#0E1D33;--navy2:#2C4C77;--blue:#2E6BD6;--gold:#C29435;--gold2:#E4C56B;
+  --goldtxt:#7A5E1C;--ink:#14192B;--mut:#5B6472;--mut2:#6B7280;--line:#E6E1D6;--shadow:0 6px 20px rgba(30,58,95,.06)}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:'Heebo',sans-serif;background:var(--cream);color:var(--ink);min-height:100dvh}
+button,input,select{font-family:inherit;font-size:16px}
+.hero{background:linear-gradient(160deg,var(--navy0),var(--navy2));color:#fff;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 18px;border-radius:0 0 26px 26px}
+.top{display:flex;align-items:center;gap:10px}
+.back{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;color:#fff;text-decoration:none;font-size:20px}
+h1{font-size:21px;font-weight:800}.sub{font-size:12.5px;opacity:.8}
+.wrap{max-width:720px;margin:0 auto;padding:14px 16px 40px}
+.card{background:#fff;border-radius:22px;box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+.f{display:grid;grid-template-columns:2fr 1fr;gap:8px}.f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
+label{font-size:12px;color:var(--mut);display:block;margin-bottom:3px}
+input,select{width:100%;min-height:44px;border:1.5px solid var(--line);border-radius:12px;padding:0 10px;background:#fff}
+.go{margin-top:12px;width:100%;min-height:48px;border:0;border-radius:14px;background:var(--blue);color:#fff;font-weight:800}
+.kick{font-size:12px;color:var(--goldtxt);font-weight:700}
+.big{font-size:30px;font-weight:800;color:var(--navy)}.lbl{font-size:12.5px;color:var(--mut)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rng{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#231700;border-radius:20px;padding:16px;text-align:center;margin-bottom:12px}
+.rng .big{color:#231700;font-size:clamp(20px,6.4vw,30px);white-space:nowrap}
+.cr{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:9px 0;border-bottom:1px solid #F1EDE3;font-size:13.5px}
+.cr:last-child{border:0}.cr b{font-variant-numeric:tabular-nums}.cr .m{grid-column:1/-1;font-size:12px;color:var(--mut2)}
+.cr.ex{color:#6B7280}.cr.out{color:#A7ADB7}.cr.out .a,.cr.out b{text-decoration:line-through}
+.chip{font-size:11px;font-weight:700;border-radius:8px;padding:1px 7px;margin-inline-start:5px}
+.ours{background:#FBF4E2;color:var(--goldtxt)}.why{background:#F1F1F1;color:var(--mut2)}
+.empty{text-align:center;padding:26px 10px}.dot{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold2));margin:0 auto 10px;display:grid;place-items:center;color:#231700;font-size:24px;font-weight:800}
+.h{font-size:14px;font-weight:800;color:var(--navy);margin-bottom:4px}
+</style></head><body>
+<div class="hero"><div class="top"><a class="back" href="/v2/home" aria-label="חזרה">&#8250;</a>
+<div><h1>ניתוח שוק</h1><div class="sub">טווח מחיר מעסקאות אמיתיות ב-3 השנים האחרונות</div></div></div></div>
+<div class="wrap">
+<div class="card" id="form">
+ <div class="f"><div><label for="st">רחוב</label><input id="st" autocomplete="off"></div>
+  <div><label for="hs">מספר בית</label><input id="hs" inputmode="numeric"></div></div>
+ <div style="margin-top:8px"><label for="ct">עיר</label><input id="ct" value="קרית מוצקין"></div>
+ <div class="f3"><div><label for="rm">חדרים</label><input id="rm" inputmode="decimal"></div>
+  <div><label for="sq">מ"ר (רשות)</label><input id="sq" inputmode="numeric"></div>
+  <div><label for="pt">סוג</label><select id="pt"><option>דירה</option><option>דירת גן</option><option>פנטהאוז</option><option>דופלקס</option><option>קוטג'</option></select></div></div>
+ <button class="go" onclick="run()">חשב</button>
+</div>
+<div id="res"></div>
+</div>
+<script>
+var TOK = null; try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+function el(i){ return document.getElementById(i); }
+// CMA-FN-START
+function cmaEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function cmaFmt(n){ if (n == null || n === '') return ''; return String(Math.round(Number(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function cmaDate(iso){ var p = String(iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; }
+function cmaRow(c){
+  var addr = cmaEsc(c.street) + (c.house != null ? ' ' + cmaEsc(c.house) : '');
+  var meta = [cmaDate(c.date), c.rooms != null ? cmaEsc(c.rooms) + ' חד׳' : '', c.sqm ? cmaEsc(c.sqm) + ' מ"ר' : '',
+              c.floor !== '' && c.floor != null ? 'קומה ' + cmaEsc(c.floor) : '', c.ppm ? cmaFmt(c.ppm) + ' ₪ למ"ר' : ''].filter(Boolean).join(' · ');
+  return '<div class="cr' + (c.used ? '' : (c.extra ? ' ex' : ' out')) + '"><span class="a">' + addr +
+    (c.ours ? '<span class="chip ours">עסקה שלנו</span>' : '') +
+    (!c.used && c.reason ? '<span class="chip why">' + cmaEsc(c.reason) + '</span>' : '') +
+    '</span><b>' + cmaFmt(c.price) + '</b><span class="m">' + meta + '</span></div>';
+}
+function cmaResult(j){
+  var m = j && j.cma;
+  if (!m) return '<div class="card empty"><div class="dot">?</div><div class="h">אין מספיק עסקאות דומות</div>' +
+    '<div class="lbl">נסה בלי מ"ר, או בדוק שהשכונה הועלתה בכרטיס "עסקאות ממדלן" בניהול.</div></div>';
+  var where = m.level === 'street' ? 'ב' + cmaEsc(m.subject.street) : 'בשכונה';
+  var h = '<div class="rng"><div class="lbl" style="color:#231700">טווח מומלץ</div><div class="big">' +
+    cmaFmt(m.range[0]) + ' – ' + cmaFmt(m.range[1]) + ' ₪</div><div class="lbl" style="color:#231700">' +
+    (m.basis === 'sqm' ? cmaFmt(m.ppm_range[0]) + '–' + cmaFmt(m.ppm_range[1]) + ' ₪ למ"ר · ' : 'בלי שטח — לפי מחיר עסקאות בלבד · ') +
+    'מבוסס על ' + m.n_used + ' עסקאות</div></div>';
+  h += '<div class="card"><div class="kick">מה בעל הנכס רואה בתיק</div><div class="grid2" style="margin-top:8px">' +
+    '<div><div class="big">' + m.street_count + '</div><div class="lbl">דירות ' + cmaEsc(m.subject.rooms) + ' חדרים נמכרו ' + where + ' מאז ' + m.since_year + '</div></div>' +
+    '<div><div class="big">' + cmaFmt(m.ppm_median) + '</div><div class="lbl">מחיר ממוצע למ"ר</div></div>' +
+    '<div><div class="big">' + m.competing + '</div><div class="lbl">דירות דומות מתחרות עכשיו</div></div></div></div>';
+  h += '<div class="card"><div class="h">העסקאות — לפי הקרבה לבית</div>' + (m.comps || []).map(cmaRow).join('') + '</div>';
+  if ((m.listings || []).length) h += '<div class="card"><div class="h">מתחרות עכשיו</div>' + m.listings.map(function(x){
+    return '<div class="cr"><span class="a">' + cmaEsc(x.street) + (x.house != null ? ' ' + cmaEsc(x.house) : '') + ' · ' + cmaEsc(x.source) +
+      '</span><b>' + cmaFmt(x.price) + '</b><span class="m">' + [x.rooms != null ? cmaEsc(x.rooms) + ' חד׳' : '', x.sqm ? cmaEsc(x.sqm) + ' מ"ר' : ''].filter(Boolean).join(' · ') + '</span></div>';
+  }).join('') + '</div>';
+  if (m.data_as_of) h += '<div class="lbl" style="text-align:center">נתוני עסקאות מעודכנים ל-' + cmaDate(m.data_as_of) + '</div>';
+  return h;
+}
+// CMA-FN-END
+function run(){
+  var q = ['street=' + encodeURIComponent(el('st').value.trim()), 'house=' + encodeURIComponent(el('hs').value.trim()),
+           'city=' + encodeURIComponent(el('ct').value.trim()), 'rooms=' + encodeURIComponent(el('rm').value.trim()),
+           'sqm=' + encodeURIComponent(el('sq').value.trim()), 'ptype=' + encodeURIComponent(el('pt').value)].join('&');
+  el('res').innerHTML = '<div class="card lbl">מחשב…</div>';
+  fetch('/v2/api/cma/view?' + q, {headers: {'X-Auth-Token': TOK}}).then(function(r){
+    if (r.status === 401){ location.replace('/v2'); return null; } return r.json();
+  }).then(function(j){ if (j) el('res').innerHTML = cmaResult(j); })
+    .catch(function(){ el('res').innerHTML = '<div class="card lbl">שגיאת רשת — נסה שוב</div>'; });
+}
+</script></body></html>'''
