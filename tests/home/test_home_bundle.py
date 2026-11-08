@@ -192,3 +192,45 @@ def test_app_log_activity_skips_warm():
         ns["_log_activity"]("n", "agent", "1", "הנכסים שלי")
     ns["_log_activity"]("n", "agent", "1", "בלי בקשה")   # מחוץ לבקשה — כרגיל
     assert [e["action"] for e in ns["_activity"]] == ["הנכסים שלי", "בלי בקשה"]
+
+
+def test_round_skips_stuck_user_and_continues(monkeypatch, caplog):
+    """[HOME-WARM-TIMEOUT] משתמש שנתקע לא עוצר את הסבב; אחרי 3 תקועים לא מתחילים סבב חדש."""
+    monkeypatch.setattr(hb, "WARM_USER_TIMEOUT", 0.3)
+    monkeypatch.setattr(hb, "WARM_GAP", 0)
+    release = __import__("threading").Event()
+    warmed = []
+
+    def sess(ph):
+        if ph.startswith("5"):        # 'תקועים'
+            release.wait(5)
+            return None
+        warmed.append(ph)
+        return None                    # בלי סשן — _warm_one חוזר מיד
+
+    app = Flask("t4")
+    G = {"log": logging.getLogger("t"), "_web_sessions": {}, "_last9": lambda x: str(x)[-9:],
+         "_web_auth": lambda: None, "_session_from_phone": sess, "_is_suspended": lambda ph: False}
+    api = hb.register(app, G)
+    now = time.time()
+    api["seen"].update({"511111111": now, "422222222": now - 1, "433333333": now - 2})
+    caplog.set_level(logging.INFO, logger="t")
+    api["round"](3600, "recent")
+    assert warmed == ["422222222", "433333333"]          # התקוע דולג, השאר חוממו
+    assert api["stuck"]["n"] == 1
+    assert "stuck" in caplog.text and "start 3 users" in caplog.text
+    # שלושה תקועים → הסבב הבא לא מתחיל בכלל
+    api["seen"].clear()
+    api["seen"].update({"511111112": now, "511111113": now})
+    api["round"](3600, "recent")
+    assert api["stuck"]["n"] == 3
+    warmed.clear()
+    api["seen"]["444444444"] = now
+    api["round"](3600, "recent")
+    assert warmed == [] and "still stuck" in caplog.text
+    # כשהתקועים משתחררים — המונה יורד והסבב חוזר לעבוד
+    release.set()
+    time.sleep(0.3)
+    assert api["stuck"]["n"] == 0
+    api["round"](3600, "recent")
+    assert "444444444" in warmed
