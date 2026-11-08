@@ -180,7 +180,7 @@ def register(app, G):
                     if not may_pick(s, ragent):
                         return jsonify({"ok": False, "reason": "forbidden"})
                     agent_name, agent_phone = ragent, phone_of(ragent)
-            elif not is_admin(s) and kc.phone9(rec.get("by_phone") or rec.get("created_by_phone")) != kc.phone9(s.get("phone")):
+            elif not is_admin(s) and (not kc.phone9(s.get("phone")) or kc.phone9(rec.get("by_phone") or rec.get("created_by_phone")) != kc.phone9(s.get("phone"))):
                 return jsonify({"ok": False, "reason": "forbidden"})   # פגישה בלי סוכן — רק מי שקבע אותה
             pkey = str(rec.get("pkey") or "")
             lr = _nb_src(nb_row(pkey)) if nb_row(pkey) else {}
