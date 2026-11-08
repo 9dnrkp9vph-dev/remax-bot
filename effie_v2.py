@@ -1495,7 +1495,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;
       padding:4px 2px;min-width:0}
   .stat > span{display:flex;justify-content:center;width:100%}
-  .stat svg{width:58%;max-width:64px;height:auto;display:block}
+  .stat svg{width:68%;max-width:84px;height:auto;display:block}
   .stat .l{font-size:12px;font-weight:800;color:#E4C56B;line-height:1.15;margin-top:3px}
   .stat .t{font-size:12px;color:#C9D0DA;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap}
   @media(min-width:600px){.stat{aspect-ratio:auto;padding:12px 4px}}   /* מסך רחב: לא ריבועים ענקיים */
@@ -2263,14 +2263,14 @@ document.addEventListener('visibilitychange', function(){
 /* [HOME-TILES 08/11] העיגולים — אותו סגנון של היעדים בסטורי (gRing). גיוס/קונים = השבוע מול היעד השבועי
    (סוכן — שלו; מתאמת — הצוות; מנהל — המשרד). בלי יעד מוגדר → יעד 1 (אייל). ירידות מחיר — עיגול מלא + המספר. */
 function homeRingSvg(n, frac){
-  var C = 182.2, full = (frac == null);
-  var arc = full ? '<circle cx="37" cy="37" r="29" fill="none" stroke="#E4C56B" stroke-width="8"/>'
-    : '<circle cx="37" cy="37" r="29" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="8"/>' +
-      (frac > 0 ? '<circle cx="37" cy="37" r="29" fill="none" stroke="#E4C56B" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + C +
+  var C = 194.8, full = (frac == null);
+  var arc = full ? '<circle cx="37" cy="37" r="31" fill="none" stroke="#E4C56B" stroke-width="7"/>'
+    : '<circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="7"/>' +
+      (frac > 0 ? '<circle cx="37" cy="37" r="31" fill="none" stroke="#E4C56B" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + C +
         '" stroke-dashoffset="' + (C * (1 - Math.min(1, frac))).toFixed(1) + '" transform="rotate(-90 37 37)"/>' : '');
   return '<svg viewBox="0 0 74 74" aria-hidden="true">' + arc +
-    '<text x="37" y="44" text-anchor="middle" fill="#fff" font-family="Heebo" font-weight="800" font-size="' +
-    (String(n).length > 3 ? 16 : 21) + '">' + n + '</text></svg>';
+    '<text x="37" y="37" dy=".35em" text-anchor="middle" fill="#fff" font-family="Heebo" font-weight="800" font-size="' +
+    (String(n).length > 3 ? 20 : String(n).length > 2 ? 24 : 30) + '">' + n + '</text></svg>';
 }
 function homeGoalWeek(k){
   var j = GJ; if (!j) return null;

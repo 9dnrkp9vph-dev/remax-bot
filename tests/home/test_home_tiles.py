@@ -59,7 +59,7 @@ console.log(JSON.stringify(out));
 o = json.loads(node_run(js))
 assert o["loading"]["l"]["txt"] == "—" and o["loading"]["nb"]["txt"] == "—", o
 assert o["agent"]["l"]["txt"] == "1" and o["agent"]["lt"] == "/ 3", o
-assert abs(o["agent"]["l"]["off"] - 182.2 * (1 - 1/3)) < 0.2, o
+assert abs(o["agent"]["l"]["off"] - 194.8 * (1 - 1/3)) < 0.2, o
 assert o["agent"]["bt"] == "/ 1" and o["agent"]["b"]["off"] == 0.0, o     # בלי יעד → יעד 1 (4/1 = עיגול מלא)
 assert o["agent"]["nb"]["txt"] == "14" and o["agent"]["nb"]["full"] and o["agent"]["of"]["txt"] == "3", o
 assert "1 מתוך 3" in o["agent"]["aria"], o
