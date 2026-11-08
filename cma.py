@@ -504,8 +504,25 @@ def _cached_inputs(G):
     return swr("cma:in", 600, lambda: _inputs(G)) if swr else _inputs(G)
 
 
+def strip_addresses(res):
+    """הגרסה שנשמרת בצילום התיק (ב-DB): בלי שם רחוב ובלי מספרי בית — לא של הנכס ולא של העסקאות
+    (בקשת צ'אט התיק 08/11). נשארים הטווח, המספרים והשורות בלי כתובת."""
+    if not res:
+        return res
+    out = {k: v for k, v in res.items() if k not in ("subject", "comps", "listings")}
+    out["subject"] = {k: v for k, v in (res.get("subject") or {}).items() if k not in ("street", "house")}
+    out["comps"] = [{k: v for k, v in c.items() if k not in ("street", "house")} for c in res.get("comps") or []]
+    out["listings"] = [{k: v for k, v in x.items() if k not in ("street", "house")} for x in res.get("listings") or []]
+    return out
+
+
 def cma_block(G, listing):
-    """הוק תיק הפרזנטציה: פרטי הנכס → נתוני עמוד ה-CMA (cma_compute), או None. כשל → None + אזהרה בלוג."""
+    """הוק תיק הפרזנטציה: פרטי הנכס → נתוני עמוד ה-CMA בלי כתובות (strip_addresses), או None."""
+    return strip_addresses(cma_full(G, listing))
+
+
+def cma_full(G, listing):
+    """פרטי הנכס → cma_compute המלא (עם כתובות — לתצוגה לסוכן בלבד), או None. כשל → None + אזהרה בלוג."""
     try:
         subj = subject_from_listing(listing or {})
         if not subj:
@@ -585,7 +602,7 @@ def register(app, G):
         if not s:
             return jsonify({"ok": False, "reason": "auth"}), 401
         a = request.args
-        res = cma_block(G, {"street": a.get("street", ""), "house": a.get("house", ""), "city": a.get("city", ""),
+        res = cma_full(G, {"street": a.get("street", ""), "house": a.get("house", ""), "city": a.get("city", ""),
                             "rooms": a.get("rooms", ""), "sqm": a.get("sqm", ""), "ptype": a.get("ptype", "")})
         return jsonify({"ok": True, "cma": res, "reason": "" if res else "few"})
 

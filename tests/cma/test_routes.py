@@ -140,6 +140,19 @@ def main():
 
     listing = {"רחוב": "מנחם בגין 12", "עיר / ישוב": "קרית מוצקין", "חדרים": "5", "sqm": "107", "ptype": "דירה"}
     ck(cma.cma_block(G, listing)["range"] == [1620000, 1910000], "cma_block → same range")
+    blk = cma.cma_block(G, dict(listing, listing_key="nb:x"))
+    def keys(o):
+        if isinstance(o, dict):
+            return set(o) | set().union(*[keys(v) for v in o.values()])
+        if isinstance(o, list):
+            return set().union(*[keys(v) for v in o]) if o else set()
+        return set()
+    ck("מנחם בגין" not in repr(blk) and not ({"street", "house"} & keys(blk)),
+       "cma_block (stored in the kit snapshot) has no street or house number")
+    ck(blk["street_count"] >= 1 and blk["n_used"] == 7 and blk["comps"][0]["price"],
+       "cma_block keeps counts, range and street-free rows")
+    j = c.get(q, headers={"X-Auth-Token": "t-agent"}).get_json()
+    ck(j["cma"]["comps"][0].get("house") is not None, "agent view keeps house numbers")
     sb.raise_all = True
     ck(cma.cma_block(G, listing) is None, "cma_block when market_all raises → None")
 
