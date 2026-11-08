@@ -287,7 +287,68 @@ def test_settings():
             G["_config_mutate"] = good
 
 
+def test_review_fixes():
+    """Fix round 1: הרשאות לפי drole, פגישה בלי סוכן, סוכן לא ידוע, מתאמת על תיקי הצוות, נרמול שם בפגישה."""
+    with patched():
+        MANX = {"source": "manual", "owner": "רינה לוי", "phone": "0544448065", "street": "שדרות ירושלים 5",
+                "city": "קרית ים", "rooms": "3", "price": "1200000"}
+        # 1 — הנה"ח / מזכירה (role=admin) הם סוכנים רגילים
+        SESS["t"] = DEV
+        r = c.post("/v2/api/kit/create", json=dict(MANX, agent="רון לוי"))
+        kron = sb.kit_get(r.json["id"])
+        ck(kron["agent_name"] == "רון לוי", kron)
+        sb.kit_update(kron["id"], {"status": "rejected"})
+        for dr, ph in (("accountant", "506666666"), ("secretary", "507777777")):
+            S = {"name": "חגית " + dr, "role": "admin", "drole": dr, "phone": ph}
+            SESS["t"] = S
+            r = c.post("/v2/api/kit/create", json=dict(MANX, agent="רון לוי"))
+            kk = sb.kit_get(r.json["id"])
+            ck(r.json["ok"] and kk["agent_name"] == S["name"] and kk["agent_phone"] == ph, (dr, kk))
+            ids = [x["id"] for x in c.get("/v2/api/kit/mine?all=1").json["kits"]]
+            ck(kron["id"] not in ids and kk["id"] in ids, (dr, ids))
+            ck(c.post("/v2/api/kit/resend", json={"id": kron["id"]}).json["ok"] is False, dr + " resend")
+            sb.kit_update(kk["id"], {"status": "approved"})
+            sb.kit_update(kron["id"], {"status": "approved"})
+            ck(c.post("/v2/api/kit/sent", json={"id": kron["id"]}).json["ok"] is False, dr + " sent other")
+            ck(c.post("/v2/api/kit/sent", json={"id": kk["id"]}).json["ok"] is True, dr + " sent own")
+            sb.kit_update(kron["id"], {"status": "rejected"})
+            ck(c.post("/v2/api/kit/settings", json={}).status_code == 403, dr + " settings")
+        # 2 — פגישה בלי סוכן: רק מי שקבע אותה
+        CFG["nbStatus"]["::id:77"] = dict(CFG["nbStatus"]["דנה כהן::id:77"], agent="", by_phone="501111111")
+        SESS["t"] = {"name": "רון לוי", "role": "agent", "drole": "agent", "phone": "502222222"}
+        ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "::id:77"}).json.get("reason") == "forbidden", "no-agent meet other")
+        SESS["t"] = AG
+        r = c.post("/v2/api/kit/create", json={"source": "meet", "skey": "::id:77"})
+        ck(r.json["ok"] and sb.kit_get(r.json["id"])["agent_name"] == "דנה כהן", r.json)
+        # 3 — מנהל עם סוכן לא ידוע: בלי שורה
+        SESS["t"] = DEV
+        before = len(sb.kits)
+        r = c.post("/v2/api/kit/create", json=dict(MANX, agent="יוסי לא קיים"))
+        ck(r.json["ok"] is False and r.json["reason"] == "agent" and len(sb.kits) == before, r.json)
+        # 4 — מתאמת: שליחה חוזרת/נשלח על תיק של סוכן מהצוות (שהמנהל יצר) ועל תיק שהיא יצרה
+        SESS["t"] = CO
+        r = c.post("/v2/api/kit/create", json=dict(MANX, agent="רון לוי"))
+        kc_ = sb.kit_get(r.json["id"])
+        ck(kc_["agent_name"] == "רון לוי" and kc_["created_by_phone"] == "503333333", kc_)
+        sb.kit_update(kc_["id"], {"status": "rejected"})
+        ck(c.post("/v2/api/kit/resend", json={"id": kc_["id"]}).json["ok"], "coord resend own-created")
+        ck(c.post("/v2/api/kit/resend", json={"id": kron["id"]}).json["ok"], "coord resend team")
+        sb.kit_update(kron["id"], {"status": "approved"})
+        ck(c.post("/v2/api/kit/sent", json={"id": kron["id"]}).json["ok"], "coord sent team")
+        kd = next(r for r in sb.kits if r["agent_name"] == "דנה כהן" and r.get("created_by_phone") == "501111111")
+        sb.kit_update(kd["id"], {"status": "rejected"})
+        ck(c.post("/v2/api/kit/resend", json={"id": kd["id"]}).json["ok"] is False, "coord not outside team")
+        # 5 — שם הסוכן בפגישה מנורמל
+        CFG["nbStatus"]["x::id:77"] = dict(CFG["nbStatus"]["דנה כהן::id:77"], agent="  דנה   כהן ")
+        SESS["t"] = DEV
+        r = c.post("/v2/api/kit/create", json={"source": "meet", "skey": "x::id:77"})
+        kn = sb.kit_get(r.json["id"])
+        ck(r.json["ok"] and kn["agent_name"] == "דנה כהן" and kn["agent_phone"] == "501111111", kn)
+        SESS["t"] = AG   # הסוכנת עצמה — אותה השוואה בשני הצדדים
+        ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "x::id:77"}).json["ok"], "self meet spaced")
+
+
 if __name__ == "__main__":
-    for _f in (test_binding, test_unauth, test_create_nb, test_manual_and_agent_choice, test_meet, test_mine, test_resend, test_sent, test_settings):
+    for _f in (test_binding, test_unauth, test_create_nb, test_manual_and_agent_choice, test_meet, test_mine, test_resend, test_sent, test_settings, test_review_fixes):
         _f()
     print("OK", n)

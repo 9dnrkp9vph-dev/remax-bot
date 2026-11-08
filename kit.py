@@ -75,7 +75,8 @@ def register(app, G):
         return bool(s) and bool(s.get("dev") or G["_is_dev"](s.get("phone", "")))
 
     def is_admin(s):
-        return bool(s) and (s.get("role") == "admin" or is_owner(s))
+        """מנהל/מפתח/בעל המשרד בלבד (כמו dialer.py) — הנה"ח ומזכירה (role=admin) הם כאן סוכנים רגילים."""
+        return bool(s) and (s.get("drole") in ("manager", "developer") or is_owner(s))
 
     def norm(x):
         try:
@@ -141,7 +142,12 @@ def register(app, G):
         _spawn(run)
 
     def can_touch(s, rec):
-        return bool(rec) and (is_admin(s) or kc.phone9(rec.get("agent_phone")) == kc.phone9(s.get("phone")))
+        """הסוכן של התיק, מי שיצר אותו, מתאמת על סוכן מהצוות שלה, או מנהל."""
+        if not rec:
+            return False
+        me9 = kc.phone9(s.get("phone"))
+        return bool(is_admin(s) or (me9 and me9 in (kc.phone9(rec.get("agent_phone")), kc.phone9(rec.get("created_by_phone"))))
+                    or (rec.get("agent_name") and may_pick(s, rec.get("agent_name"))))
 
     # ── יצירה ────────────────────────────────────────────────────────────
     @app.route("/v2/api/kit/create", methods=["POST"])
@@ -168,10 +174,14 @@ def register(app, G):
             rec = ((G["_load_config"]() or {}).get("nbStatus") or {}).get(skey)
             if not isinstance(rec, dict):
                 return jsonify({"ok": False, "reason": "not_found"})
-            if rec.get("agent") and canon(rec.get("agent")) != canon(me):
-                if not may_pick(s, rec["agent"]):
-                    return jsonify({"ok": False, "reason": "forbidden"})
-                agent_name, agent_phone = rec["agent"], phone_of(rec["agent"])
+            ragent = norm(rec.get("agent"))
+            if ragent:
+                if canon(ragent) != canon(norm(me)):
+                    if not may_pick(s, ragent):
+                        return jsonify({"ok": False, "reason": "forbidden"})
+                    agent_name, agent_phone = ragent, phone_of(ragent)
+            elif not is_admin(s) and kc.phone9(rec.get("by_phone") or rec.get("created_by_phone")) != kc.phone9(s.get("phone")):
+                return jsonify({"ok": False, "reason": "forbidden"})   # פגישה בלי סוכן — רק מי שקבע אותה
             pkey = str(rec.get("pkey") or "")
             lr = _nb_src(nb_row(pkey)) if nb_row(pkey) else {}
             src = {"owner": _s(rec.get("owner")), "phone": kc.phone9(rec.get("ophone")),
@@ -195,9 +205,12 @@ def register(app, G):
         else:
             return jsonify({"ok": False, "reason": "source"})
         want = _s(j.get("agent"))
-        if want and canon(want) != canon(agent_name):
+        if want and canon(norm(want)) != canon(norm(agent_name)):
             if may_pick(s, want):
-                agent_name, agent_phone = norm(want), phone_of(norm(want))
+                ph = phone_of(norm(want))
+                if not ph:
+                    return jsonify({"ok": False, "reason": "agent"})   # סוכן לא מוכר — בלי תיק
+                agent_name, agent_phone = norm(want), ph
             elif source != "meet":   # סוכן/מתאמת שבחרו סוכן מחוץ להרשאה — חוזרים לסוכן של הסשן
                 agent_name, agent_phone = me, kc.phone9(s.get("phone"))
         src.update(agent_name=agent_name, agent_phone=agent_phone)
