@@ -14088,6 +14088,13 @@ try:
 except Exception as _sv_err:
     log.error(f"social_video init failed (app unaffected): {_sv_err}")
 
+# ── תיק פרזנטציה לבעל נכס (אייל 06/11) — מודול נפרד ──
+try:
+    import kit as _kit
+    _kit.register(app, globals())
+except Exception as _kit_err:
+    log.warning(f"kit init failed (app unaffected): {_kit_err}")
+
 # ── סטורי SOLD (נכס שנמכר / עסקת קונה) — סטורי בלבד באינסטגרם ובפייסבוק (אייל 05/11) ──
 try:
     import social_sold as _social_sold
