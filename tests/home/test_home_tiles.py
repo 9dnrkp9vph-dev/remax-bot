@@ -78,3 +78,10 @@ assert json.loads(node_run(js)) == [3, 1]
 assert "if (DROPS_TODAY){ MODE = 'office'" in pr
 assert "tab=excl" in CONSTS["V2_SIGS_HTML"] and "tab=active" in CONSTS["V2_BUYERS_HTML"]
 print("ok")
+
+# 5) הבקשה המאוחדת לא זורקת את הספירות (באג שנמצא חי 08/11 — הריבועים הציגו '—')
+import sys; sys.path.insert(0, ROOT)
+import home_bundle as _HB
+assert _HB.trim_part("nb", {"ok": True, "total": 5, "results": [], "dropsToday": {"nb": 3, "office": 1}})["dropsToday"] == {"nb": 3, "office": 1}
+assert ".stat > span{display:flex" in HOME   # העיגול לפי רוחב הריבוע (במחשב היה זעיר)
+print("ok bundle")

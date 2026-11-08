@@ -1494,6 +1494,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .stat{aspect-ratio:1/1;background:#1E3A5F;border-radius:18px;box-shadow:0 6px 20px rgba(30,58,95,.12);
       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;
       padding:4px 2px;min-width:0}
+  .stat > span{display:flex;justify-content:center;width:100%}
   .stat svg{width:58%;max-width:64px;height:auto;display:block}
   .stat .l{font-size:12px;font-weight:800;color:#E4C56B;line-height:1.15;margin-top:3px}
   .stat .t{font-size:12px;color:#C9D0DA;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap}

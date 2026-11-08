@@ -81,6 +81,7 @@ def trim_part(key, j):
     if key == "nb":
         res = [r for r in (j.get("results") or []) if isinstance(r, dict)]
         return {"ok": True, "total": j.get("total") or len(res),
+                "dropsToday": j.get("dropsToday") or {"nb": 0, "office": 0},   # [HOME-TILES 08/11]
                 "results": [{"ageDays": r.get("ageDays"), "address": r.get("address", ""),
                              "city": r.get("city", "")} for r in res if r.get("ageDays") == 0]}
     if key == "dialer":
