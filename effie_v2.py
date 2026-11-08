@@ -1489,11 +1489,14 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto}
   .greet .g{font-size:24px;font-weight:800}
   .greet .d{font-size:13.5px;color:#6B7280}
-  .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  .stat{background:#fff;border-radius:18px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:13px 8px;
-      display:flex;flex-direction:column;align-items:center;gap:2px}
-  .stat .n{font-size:25px;font-weight:800;font-variant-numeric:tabular-nums}
-  .stat .l{font-size:12px;font-weight:600;color:#6B7280}
+  /* [HOME-TILES 08/11] אייל: ארבעה ריבועים בסגנון היעדים בסטורי — גיוס · קונים · ירידות מחיר (נכס נולד / המשרד) */
+  .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .stat{aspect-ratio:1/1;background:#1E3A5F;border-radius:18px;box-shadow:0 6px 20px rgba(30,58,95,.12);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;
+      padding:4px 2px;min-width:0}
+  .stat svg{width:58%;max-width:64px;height:auto;display:block}
+  .stat .l{font-size:12px;font-weight:800;color:#E4C56B;line-height:1.15;margin-top:3px}
+  .stat .t{font-size:12px;color:#C9D0DA;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap}
   .briefBar{background:linear-gradient(120deg,#0E1D33,#1E3A5F 70%,#2C4C77);border-radius:20px;padding:14px 16px;
       display:flex;align-items:center;gap:12px;box-shadow:0 8px 20px rgba(30,58,95,.25);cursor:pointer}
   .briefBar .ic{width:40px;height:40px;border-radius:13px;background:rgba(228,197,107,.15);
@@ -1750,9 +1753,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="greet"><div class="g" id="greetTx">&nbsp;</div><div class="d" id="dateTx">&nbsp;</div></div>
 
     <div class="stats">
-      <div class="stat"><div class="n" style="color:#1E3A5F" id="stCalls">—</div><div class="l">שיחות השבוע</div></div>
-      <div class="stat"><div class="n" style="color:#1FAF5E" id="stSigs">—</div><div class="l">גויסו השבוע</div></div>
-      <div class="stat"><div class="n" style="color:#7A5E1C" id="stBuyers">—</div><div class="l">קונים חדשים</div></div>
+      <div class="stat" role="link" id="stLst" onclick="location.href='/v2/sigs?tab=excl'"><span id="stLstR"></span><div class="l">גיוס</div><div class="t" id="stLstT">&nbsp;</div></div>
+      <div class="stat" role="link" id="stBuy" onclick="location.href='/v2/buyers?tab=active'"><span id="stBuyR"></span><div class="l">קונים</div><div class="t" id="stBuyT">&nbsp;</div></div>
+      <div class="stat" role="link" id="stNbd" onclick="location.href='/v2/newborn'"><span id="stNbdR"></span><div class="l">ירידות</div><div class="t">נכס נולד</div></div>
+      <div class="stat" role="link" id="stOfd" onclick="location.href='/v2/props?drops=today'"><span id="stOfdR"></span><div class="l">ירידות</div><div class="t">המשרד</div></div>
     </div>
 
     <div class="briefBar" onclick="openStory(true)">
@@ -2113,7 +2117,8 @@ var LD_TRY = 0, LD_TS = 0;
    בין משתמשים/התחזות), (2) כל קריאה מעדכנת את החלק שלה ברגע שהיא מגיעה,
    (3) קריאה שנכשלה לא מאפסת את המספר הקיים — רק מסמנת ניסיון חוזר. */
 var HOME_SNAP_KEYS = ['role', 'calls', 'sigs', 'sigSample', 'excl', 'repLabel', 'listings', 'meets',
-                      'drafts', 'exclWeek', 'buyersTot', 'buyersUn', 'buyersNew', 'props', 'nb', 'nbNew'];
+                      'drafts', 'exclWeek', 'buyersTot', 'buyersUn', 'buyersNew', 'props', 'nb', 'nbNew',
+                      'dropsNb', 'dropsOffice'];
 function _homeTk(){ return String(TOK || '').slice(-16); }
 function homeSnapSave(){
   try{
@@ -2205,6 +2210,7 @@ function loadData(){
     // [PERF-NB 30/09] הבית צריך רק את המונה ואת החדשים של היום (הם ראשונים בסדר) — לא 2MB
     nb: ['/api/newborn?limit=120', 0, function(nb){
       M.nb = (nb && (nb.total || (nb.results || []).length)) || 0;
+      if (nb && nb.dropsToday){ M.dropsNb = nb.dropsToday.nb || 0; M.dropsOffice = nb.dropsToday.office || 0; }
       // נולדו ביממה האחרונה (ageDays=0) — לכרטיס הסיום של הבריף, כולל כתובות
       M.nbNew = ((nb && nb.results) || []).filter(function(r){ return r.ageDays === 0; })
         .map(function(r){ return {a: r.address || '', c: r.city || ''}; });
@@ -2252,10 +2258,42 @@ document.addEventListener('visibilitychange', function(){
   if (document.visibilityState === 'visible' && Date.now() - LD_TS > 90000) loadData();
 });
 
+/* [HOME-TILES 08/11] העיגולים — אותו סגנון של היעדים בסטורי (gRing). גיוס/קונים = השבוע מול היעד השבועי
+   (סוכן — שלו; מתאמת — הצוות; מנהל — המשרד). בלי יעד מוגדר → יעד 1 (אייל). ירידות מחיר — עיגול מלא + המספר. */
+function homeRingSvg(n, frac){
+  var C = 182.2, full = (frac == null);
+  var arc = full ? '<circle cx="37" cy="37" r="29" fill="none" stroke="#E4C56B" stroke-width="8"/>'
+    : '<circle cx="37" cy="37" r="29" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="8"/>' +
+      (frac > 0 ? '<circle cx="37" cy="37" r="29" fill="none" stroke="#E4C56B" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + C +
+        '" stroke-dashoffset="' + (C * (1 - Math.min(1, frac))).toFixed(1) + '" transform="rotate(-90 37 37)"/>' : '');
+  return '<svg viewBox="0 0 74 74" aria-hidden="true">' + arc +
+    '<text x="37" y="44" text-anchor="middle" fill="#fff" font-family="Heebo" font-weight="800" font-size="' +
+    (String(n).length > 3 ? 16 : 21) + '">' + n + '</text></svg>';
+}
+function homeGoalWeek(k){
+  var j = GJ; if (!j) return null;
+  var p = j.view === 'agent' ? (j.me && j.me.week) : (j.total && j.total.week);
+  if (!p || !p.counts) return null;
+  var c = Number(p.counts[k]); if (!isFinite(c)) return null;
+  var t = Number((p.targets || {})[k]); if (!isFinite(t) || t < 1) t = 1;
+  return {c: c, t: t};
+}
+function homeTiles(){
+  if (!el('stLstR')) return;
+  [['listings', 'stLst', 'גיוס'], ['buyers', 'stBuy', 'קונים חדשים']].forEach(function(x){
+    var g = homeGoalWeek(x[0]);
+    el(x[1] + 'R').innerHTML = homeRingSvg(g ? g.c : '—', g ? g.c / g.t : 0);
+    el(x[1] + 'T').textContent = g ? '/ ' + g.t : '\u00a0';
+    el(x[1]).setAttribute('aria-label', x[2] + ' השבוע' + (g ? ': ' + g.c + ' מתוך ' + g.t : ''));
+  });
+  var nd = (M.dropsNb == null) ? '—' : M.dropsNb, od = (M.dropsOffice == null) ? '—' : M.dropsOffice;
+  el('stNbdR').innerHTML = homeRingSvg(nd, null);
+  el('stOfdR').innerHTML = homeRingSvg(od, null);
+  el('stNbd').setAttribute('aria-label', 'ירידות מחיר היום בנכס נולד: ' + nd);
+  el('stOfd').setAttribute('aria-label', 'ירידות מחיר היום בנכסי המשרד: ' + od);
+}
 function renderDash(){
-  el('stCalls').textContent = M.calls;
-  el('stSigs').textContent = (M.exclWeek || []).length;   // גויס בשבוע האחרון (החתמות בעלי נכס)
-  el('stBuyers').textContent = M.buyersNew || M.buyersTot;
+  homeTiles();
   var open = M.meetLate + M.meetToday;
   el('dateTx').textContent = 'יום ' + HDAYS[new Date().getDay()] + ', ' + new Date().getDate() +
       ' ב' + HMON[new Date().getMonth()] + (open ? ' · ' + open + ' משימות פתוחות' : '');
@@ -2341,6 +2379,7 @@ function goalsMiniRender(){
   var j = (GJ === undefined) ? null : GJ;
   el('goalsMiniT').textContent = j ? goalsMiniTitle(j) : 'היעדים שלי להיום';
   el('goalsMiniC').innerHTML = goalsChipsHtml(j);
+  try{ homeTiles(); }catch(e){}
 }
 function goalsLoad(tries){
   GET('/v2/api/goals/today').then(function(j){
@@ -5651,6 +5690,7 @@ function saveSt(){
     }
   }catch(e){}
   if (/[?&]tab=bpage\b/.test(location.search)){ FILTER = 'bpage'; el('q').value = ''; _restY = 0; }   // [AI-MATCH 08/10] מאריח "התאמות AI" בבית
+  if (/[?&]tab=active\b/.test(location.search)){ FILTER = 'active'; el('q').value = ''; _restY = 0; }   // [HOME-TILES 08/11] ריבוע "קונים" בבית
   // 19/10: חזרה לדף מזיכרון הדפדפן (כפתור 'אחורה') — גם אז בלי החיפוש הקודם
   window.addEventListener('pageshow', function(ev){
     if (ev.persisted && el('q') && el('q').value){ try{ aiClear(); }catch(e){} }
@@ -6115,6 +6155,7 @@ function saveSt(){
       FILTER = s.f || FILTER; _restY = s.y || 0;
     }
   }catch(e){}
+  if (/[?&]tab=excl\b/.test(location.search)){ FILTER = 'excl'; _restY = 0; }   // [HOME-TILES 08/11] ריבוע "גיוס" בבית
   var sg = document.querySelector('#filters .sg[data-f="' + FILTER + '"]');
   if (sg){ var cs = sg.parentNode.children;
     for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
@@ -7247,6 +7288,13 @@ function fmtPrice(p){
 }
 
 var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''}, UPD = {office:'', shtaf:''};
+var DROPS_TODAY = /[?&]drops=today\b/.test(location.search);   // [HOME-TILES 08/11] ירידות מחיר היום בנכסי המשרד
+function dropsTodayOff(){ DROPS_TODAY = false; try{ history.replaceState(null, '', '/v2/props'); }catch(e){} render(); }
+function dropsTodayList(list){
+  var mid = new Date(); mid.setHours(0, 0, 0, 0); mid = mid.getTime() / 1000;
+  return (list || []).filter(function(p){ return !p.delisted && (p.priceDropAt || 0) >= mid; })
+    .sort(function(a, b){ return (b.priceDropAt || 0) - (a.priceDropAt || 0); });
+}
 var DEAL = '';   // [DEALS 13/10] '' = מכירה · 'rent' · 'commercial' (המשרד שלנו + שלי בלבד)
 var NBRES = [], NB_SUM = '', NB_RENT = false;   // [NB-SEARCH 30/09] טאב נכס נולד (רק כשיש חיפוש)
 function _applyNb(j){ NBRES = (j && j.results) || []; NB_SUM = (j && j.summary) || ''; NB_RENT = !!(j && j.rent); }
@@ -7702,7 +7750,9 @@ function render(){
   if (el('dealSegs')) el('dealSegs').style.display = (MODE === 'office' || MODE === 'mine') ? 'flex' : 'none';
   var _dealTxt = DEAL === 'rent' ? 'להשכרה' : DEAL === 'commercial' ? 'מסחריים' : '';
   var src, h = '';
-  if (MODE === 'office') src = OFFICE;
+  var _drops = (MODE === 'office' && DROPS_TODAY && !DEAL && !q);
+  if (_drops) src = dropsTodayList(OFFICE);
+  else if (MODE === 'office') src = OFFICE;
   else if (MODE === 'shtaf') src = shtafShown;
   else src = mineShown;
   if (el('qSpin')) el('qSpin').style.display = 'none';
@@ -7716,6 +7766,13 @@ function render(){
   src.slice(0, 40).forEach(function(p, i){ h += propCard(p, i); });
   if (src.length > 40) h += '<div class="more">מוצגים 40 מתוך ' + src.length + ' — חדד את החיפוש</div>';
   var _ob = orphanBanner(); if (_ob) h = _ob + h;   // 24/09: סימון נכס-חם יתום — באנר עם "הסר"
+  if (_drops){
+    el('sumLine').textContent = 'ירידות מחיר היום · נכסי המשרד · ' + src.length;
+    h = '<div class="card" style="display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:10px">' +
+      '<div style="flex:1;font-weight:800;color:#1E3A5F">ירידות מחיר היום · ' + src.length + '</div>' +
+      '<button onclick="dropsTodayOff()" style="min-height:44px;padding:0 14px;border-radius:12px;border:1.5px solid #E2DED3;background:#fff;font:inherit;font-weight:700;color:#1E3A5F;cursor:pointer">כל הנכסים</button></div>' +
+      (h || '<div class="card empty"><div class="t">אין ירידות מחיר היום בנכסי המשרד</div><div class="s">ירידות מחיר מתגלות בכל סריקה של יד2. הנכסים שירדו ב-7 הימים האחרונים מסומנים בתג בכרטיס.</div></div>');
+  }
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#C29435" stroke-width="1.4" stroke-linejoin="round"/></svg></div>' +
     '<div class="t">' + (_dealTxt && MODE !== 'shtaf' ? 'אין ' + (MODE === 'mine' ? 'לך ' : '') + 'נכסים ' + _dealTxt + ' כרגע' : (MODE === 'mine' ? 'אין לך נכסים פעילים' : 'לא נמצאו נכסים')) + '</div>' +
@@ -8067,11 +8124,12 @@ function saveSt(){
     var s = JSON.parse(localStorage.getItem('v2st:props') || 'null');
     if (s){
       MODE = s.m || MODE; el('q').value = s.q || ''; _restY = s.y || 0;
-      var sg = document.querySelector('#modes .sg[data-m="' + MODE + '"]');
-      if (sg){ var cs = sg.parentNode.children;
-        for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
     }
   }catch(e){}
+  if (DROPS_TODAY){ MODE = 'office'; el('q').value = ''; _restY = 0; }   // [HOME-TILES 08/11] מהריבוע בבית
+  var sg = document.querySelector('#modes .sg[data-m="' + MODE + '"]');
+  if (sg){ var cs = sg.parentNode.children;
+    for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
 })();
 var _renderBase = render;
 render = function(){

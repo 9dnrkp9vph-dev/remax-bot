@@ -8929,6 +8929,7 @@ def api_search_properties():
         _scan_price_changes()
         _pc_map = _price_changed_map()   # נכסים שהמחיר שלהם השתנה ב-7 ימים — תג לכולם
         _pd_map = _price_dropped_map()   # ירידת מחיר — תג נפרד (אייל 09/09)
+        _pd_ts = _price_drop_ts_map()
         phones = fetch_agents_phones()
 
         def _row_out(row, score=None):
@@ -8945,6 +8946,7 @@ def api_search_properties():
                 "priceChanged": _prop_price_key(row) in _pc_map,   # תג "עדכון מחיר" (לכולם)
                 "priceDropped": _prop_price_key(row) in _pd_map,
                 "priceOld": _pd_map.get(_prop_price_key(row), ""),
+                "priceDropAt": _pd_ts.get(_prop_price_key(row), 0),   # [HOME-TILES 08/11] 'ירידות מחיר היום'
                 "date": (row.get("תאריך יצירה", "") or row.get("_y2_first_seen", "") or "").strip(),
                 "isNew": _prop_is_new(row),
                 "agent": _canon_agent_name(ag),
@@ -9410,6 +9412,38 @@ def _price_drop_ts_map():
         return out
     except Exception:
         return {}
+
+def _il_midnight_epoch(now=None):
+    """[HOME-TILES 08/11] תחילת היום בשעון ישראל (epoch) — 'ירידות מחיר היום'."""
+    from datetime import datetime as _d
+    from zoneinfo import ZoneInfo
+    t = _d.fromtimestamp(now if now is not None else time.time(), ZoneInfo("Asia/Jerusalem"))
+    return int(t.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+
+def drops_today_count(rows, key_fn, ts_map, midnight):
+    """כמה מהשורות ירדו במחיר מחצות (ישראל). שורה שירדה מפרסום לא נספרת."""
+    n = 0
+    for r in rows or []:
+        if str(r.get("ירד מפרסום", "") or r.get("delisted_at", "") or "").strip():
+            continue
+        k = key_fn(r)
+        if k and int(ts_map.get(k, 0) or 0) >= midnight:
+            n += 1
+    return n
+
+def _office_drops_today():
+    """[HOME-TILES 08/11] ירידות מחיר היום בנכסי המשרד (מכירה, פעילים) — לכל המשרד (אייל: לריבוע בבית)."""
+    c = _cache_get("office_drops_today", 60)
+    if c is not None:
+        return c
+    try:
+        rows = [r for r in fetch_sheet_rows() if (r.get("סטטוס", "") or "").strip() in ("", "פעילה")]
+        n = drops_today_count(rows, _prop_price_key, _price_drop_ts_map(), _il_midnight_epoch())
+    except Exception as e:
+        log.warning(f"office drops today: {e}")
+        return 0
+    _cache_put("office_drops_today", n)
+    return n
 
 def _mark_listing_removed(lid):
     lid = str(lid or "").strip()
@@ -10161,6 +10195,9 @@ def api_newborn():
         rows.sort(key=_newborn_created_epoch, reverse=True)
         _scan_price_changes()                 # 24/09: ירידות מחיר גם בנכס נולד
         _pd_map = _price_dropped_map()
+        _pd_ts = _price_drop_ts_map()
+        _mid = _il_midnight_epoch()
+        _nb_drops_today = 0   # [HOME-TILES 08/11] ריבוע 'ירידות מחיר · נכס נולד' בבית
         out = []
         _cand = []
         bucket_counts = [0] * len(_NB_BUCKETS)
@@ -10187,6 +10224,8 @@ def api_newborn():
                 if _lo <= ad < _hi:
                     bucket_counts[_bi] += 1
                     break
+            if not _nb(r.get("delisted_at", "")) and int(_pd_ts.get(_nb_price_key(r), 0) or 0) >= _mid:
+                _nb_drops_today += 1
             if min_days is not None and max_days is not None and not (min_days <= ad < max_days):
                 continue   # לא בדלי הוותק שנבחר
             if len(_cand) >= 5000:   # תקרת בטיחות גבוהה; כל הנכסים חוזרים בטעינה אחת לסינון חודשים בצד הלקוח
@@ -10197,17 +10236,18 @@ def api_newborn():
         # 24/09 (אייל): חדשים (עד יומיים) → ירידות מחיר → השאר → ירד מפרסום; בתוך כל קבוצה מהחדש לישן
         _cand.sort(key=lambda c: _tier_new_drop_rest(c[1] <= 2, c[6], c[7]))
         _ctx = {"contacts": contacts, "statuses": nbstatuses, "fam_list": fam_list, "pd_map": _pd_map,
-                "pd_ts": _price_drop_ts_map(), "eff_name": eff_name, "phone9": _last9(s.get("phone", "")),
+                "pd_ts": _pd_ts, "eff_name": eff_name, "phone9": _last9(s.get("phone", "")),
                 "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", "")))}
         for (r, ad, city, _addr, _owner, lister, _dropped, _dl) in (_cand[:_lim] if _lim else _cand):
             out.append(_nb_row_out(r, ad, city, _addr, _owner, lister, _dropped, _ctx))   # [NB-SEARCH 30/09] בונה משותף
         _res = {"ok": True, "count": len(_cand), "rentAllowed": _rent_ok, "deal": _deal,
                 "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts),
-                "partial": bool(_lim and len(_cand) > len(out))}
+                "partial": bool(_lim and len(_cand) > len(out)),
+                "dropsToday": {"nb": _nb_drops_today, "office": _office_drops_today() if not _deal else 0}}
         # [PERF-3] טביעת-אצבע לתוצאה — מחושבת פעם אחת בבנייה (לא פר-בקשה)
         import zlib as _zl
         _res["etag"] = format(_zl.crc32(_json.dumps(
-            [out, bucket_counts], ensure_ascii=False, sort_keys=True).encode("utf-8")) & 0xffffffff, "08x")
+            [out, bucket_counts, _res["dropsToday"]], ensure_ascii=False, sort_keys=True).encode("utf-8")) & 0xffffffff, "08x")
         if rows:   # אין לקבע במטמון תוצאה שנבנתה מקריאה ריקה/כושלת
             _nb_cache_put(_nbkey, _res)
         if _etag_in and _etag_in == _res["etag"]:
