@@ -167,3 +167,19 @@ def test_claims_defaults():
     assert s["g_url"] == "https://g.page/x" and s["coop"] == d["coop"]
     assert s["rank"] == d["rank"]       # ערך ריק לא דורס את ברירת המחדל
     assert K.kit_settings({}) == d
+
+
+def test_cma_gets_full_street_listing_does_not(monkeypatch):
+    import types, json
+    mod = types.ModuleType("cma")
+    seen = {}
+    mod.cma_block = lambda G, listing: seen.update(listing) or {"title": "x"}
+    monkeypatch.setitem(sys.modules, "cma", mod)
+    s = K.build_snapshot(make_G(), dict(SRC, street="מנחם בגין 12", nb_key="nb:77"))
+    assert "רחוב" not in s["listing"] and "12" not in json.dumps(s["listing"], ensure_ascii=False)
+    assert seen["רחוב"] == "מנחם בגין 12" and seen["listing_key"] == "nb:77"
+    assert s["street"] == "מנחם בגין"
+    s2 = K.build_snapshot(make_G(), dict(SRC, pkey="p1"))
+    assert seen["listing_key"] == "p1"
+    K.build_snapshot(make_G(), SRC)
+    assert seen["listing_key"] == ""

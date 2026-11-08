@@ -24,7 +24,12 @@ def street_only(street):
     """שם הרחוב בלי מספר בית (אותו כלל כמו social_publish.soc_scrub_house).
     גם '12 א' (רווח לפני האות), וכתובת עם ', עיר' — נשאר רק הרחוב (העיר מוצגת בנפרד)."""
     t = str(street or "").split(",")[0].strip()
-    t = re.sub(r"\s*(?:מס['׳]?\s*)?\d+\s?[א-ת]?(?:/\d+)?\s*$", "", t)
+    t = re.sub(r"^\d+\S*\s*", "", t)                      # מספר בתחילת הכתובת ('18 הנוטר')
+    m = re.search(r"\d", t)
+    if m:                                                    # הכל מהמספר הראשון והלאה (12 א׳ / 12-14 / דירה 4 / קומה 3)
+        t = t[:m.start()]
+    t = re.sub(r"(?:\s|^)מס['׳\.]?\s*$", "", t)              # 'מס'' שנשאר לפני המספר
+    t = re.sub(r"[\s\-–/\\.,'׳\"״]+$", "", t)
     return re.sub(r"\s{2,}", " ", t).strip()
 
 
@@ -361,6 +366,9 @@ def build_snapshot(G, src):
     listing = {"עיר / ישוב": city, "שכונה": "", "חדרים": rooms, "מחיר": price,
                "סוג נכס": str(s.get("ptype") or "").strip() or "דירה",
                "sqm": str(s.get("sqm") or "").strip(), "ptype": str(s.get("ptype") or "").strip() or "דירה"}
+    # לניתוח השוק בלבד: הכתובת המלאה ומפתח המודעה — לא נשמרים בצילום (בלי מספר בית בתיק)
+    cma_in = dict(listing, **{"רחוב": str(s.get("street") or "").strip(),
+                              "listing_key": str(s.get("listing_key") or s.get("nb_key") or s.get("pkey") or "")})
     agent = agent_block(G, s.get("agent_name"), s.get("agent_phone"))
     agent["phone"] = _fmt_phone(s.get("agent_phone"))
     try:
@@ -377,6 +385,6 @@ def build_snapshot(G, src):
         "street": street_only(s.get("street")), "city": city, "rooms": rooms, "price": price,
         "meet_at": str(s.get("meet_at") or "").strip(),
         "agent": agent, "office": office_numbers(G), "buyers": buyers, "claims": kit_settings(cfg),
-        "listing": listing, "cma": _cma_block(G, listing),
+        "listing": listing, "cma": _cma_block(G, cma_in),
         "made_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
     }

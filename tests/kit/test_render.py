@@ -71,6 +71,9 @@ def test_empty_agent_and_city_mode():
     imgs = R.render_pages(snap)
     assert len(imgs) == 6
     imgs[1].save(os.path.join(OUT, "kit_p2_empty.png"))
+    # בלי שם ובלי תמונה — אין עיגול ריק באזור התמונה
+    cols = {c for _, c in imgs[1].getcolors(1 << 20)}
+    assert (0xD9, 0xD3, 0xC4) not in cols and R.GOLD not in cols
     imgs[4].save(os.path.join(OUT, "kit_p5_city.png"))
 
 

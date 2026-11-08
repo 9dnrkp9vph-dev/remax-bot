@@ -352,10 +352,12 @@ def _p_agent(snap, n):
     inner = width - 2 * 50
     r = 144
     y += 20
-    _avatar(im, d, ag.get("photo"), ag.get("name"), W - PAD - r, y + r, r, GOLD, 11, (0xD9, 0xD3, 0xC4))
-    tx = W - PAD - 2 * r - 44
     name = (ag.get("name") or "").strip()
     lic = (ag.get("license") or "").strip()
+    has_head = bool(name or ag.get("photo"))
+    if has_head:   # בלי תמונה ובלי שם — בלי עיגול ריק
+        _avatar(im, d, ag.get("photo"), name, W - PAD - r, y + r, r, GOLD, 11, (0xD9, 0xD3, 0xC4))
+    tx = W - PAD - 2 * r - 44
     fn, nls = _block(d, name, 900, 83, tx - PAD, 2, 48)
     nlh = int(fn.size * 1.15)
     nh = len(nls) * nlh + (66 if lic else 0)
@@ -364,7 +366,7 @@ def _p_agent(snap, n):
         ny = _lines(d, nls, fn, tx, ny, NAVY, nlh)
     if lic:
         _line_r(d, "רישיון תיווך מס׳ " + lic, _fit(d, "רישיון תיווך מס׳ " + lic, 500, 43, tx - PAD), tx, ny + 8, MUTED2)
-    y += 2 * r + 40
+    y += (2 * r + 40) if (has_head or lic) else 0
     bottom = H - 150
     bio = (ag.get("bio") or "").strip()
     rev = ag.get("review") or None
