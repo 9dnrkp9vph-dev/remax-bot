@@ -38,12 +38,13 @@ for href in ("/v2/sigs?tab=excl", "/v2/buyers?tab=active", "/v2/newborn", "/v2/p
 assert "repeat(4,minmax(0,1fr))" in HOME and "aspect-ratio:1/1" in HOME
 
 # 3) ההתנהגות — הפונקציות האמיתיות
-fn = re.search(r"(function homeRingSvg\(.*?\n\}\nfunction homeGoalWeek\(.*?\n\}\nfunction homeTiles\(\)\{.*?\n\})\n", HOME, re.S)
+fn = re.search(r"(function homeRingSvg\(.*?\n\}\nfunction homeGoalWeek\(.*?\n\}\nvar _tilesDirty = false;\nfunction homeTiles\(\)\{.*?\n\})\n", HOME, re.S)
 assert fn, "tiles functions not found"
 js = r"""
 var store = {};
 function el(id){ if (!store[id]) store[id] = {innerHTML:'', textContent:'', attrs:{}, setAttribute:function(k,v){this.attrs[k]=v;}}; return store[id]; }
-var M = {}, GJ;
+var M = {}, GJ, SAVES = 0;
+function homeSnapSave(){ SAVES++; }
 %s
 function ring(id){ var h = store[id].innerHTML; var m = h.match(/stroke-dashoffset="([\d.]+)"/); return {txt: (h.match(/>([^<]*)<\/text>/)||[])[1], off: m ? +m[1] : null, full: h.indexOf('rgba(255,255,255,.2)') < 0}; }
 var out = {};
@@ -54,6 +55,8 @@ out.agent = {l: ring('stLstR'), lt: store.stLstT.textContent, b: ring('stBuyR'),
              nb: ring('stNbdR'), of: ring('stOfdR'), aria: store.stLst.attrs['aria-label']};
 GJ = {view:'office', total:{week:{counts:{listings:23, buyers:51}, targets:{listings:40, buyers:60}}}};
 homeTiles(); out.office = {l: ring('stLstR'), lt: store.stLstT.textContent, bt: store.stBuyT.textContent};
+var s1 = SAVES; homeTiles(); out.nochange = SAVES - s1;          // אין שינוי → לא שומרים שוב
+GJ = undefined; homeTiles(); out.remember = {l: ring('stLstR'), lt: store.stLstT.textContent};   // היעדים עוד לא נטענו → האחרון
 console.log(JSON.stringify(out));
 """ % fn.group(1)
 o = json.loads(node_run(js))
@@ -63,6 +66,7 @@ assert abs(o["agent"]["l"]["off"] - 194.8 * (1 - 1/3)) < 0.2, o
 assert o["agent"]["bt"] == "/ 1" and o["agent"]["b"]["off"] == 0.0, o     # בלי יעד → יעד 1 (4/1 = עיגול מלא)
 assert o["agent"]["nb"]["txt"] == "14" and o["agent"]["nb"]["full"] and o["agent"]["of"]["txt"] == "3", o
 assert "1 מתוך 3" in o["agent"]["aria"], o
+assert o["nochange"] == 0 and o["remember"]["l"]["txt"] == "23" and o["remember"]["lt"] == "/ 40", o
 assert o["office"]["l"]["txt"] == "23" and o["office"]["lt"] == "/ 40" and o["office"]["bt"] == "/ 60", o
 
 # 4) מסך הנכסים: ירידות מחיר היום — רק מהיום, בלי מודעות שירדו מפרסום, האחרונה למעלה

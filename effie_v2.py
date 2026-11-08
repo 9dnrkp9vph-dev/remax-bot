@@ -2120,7 +2120,7 @@ var LD_TRY = 0, LD_TS = 0;
    (3) קריאה שנכשלה לא מאפסת את המספר הקיים — רק מסמנת ניסיון חוזר. */
 var HOME_SNAP_KEYS = ['role', 'calls', 'sigs', 'sigSample', 'excl', 'repLabel', 'listings', 'meets',
                       'drafts', 'exclWeek', 'buyersTot', 'buyersUn', 'buyersNew', 'props', 'nb', 'nbNew',
-                      'dropsNb', 'dropsOffice'];
+                      'dropsNb', 'dropsOffice', 'goalLst', 'goalBuy'];
 function _homeTk(){ return String(TOK || '').slice(-16); }
 function homeSnapSave(){
   try{
@@ -2280,10 +2280,16 @@ function homeGoalWeek(k){
   var t = Number((p.targets || {})[k]); if (!isFinite(t) || t < 1) t = 1;
   return {c: c, t: t};
 }
+var _tilesDirty = false;
 function homeTiles(){
   if (!el('stLstR')) return;
-  [['listings', 'stLst', 'גיוס'], ['buyers', 'stBuy', 'קונים חדשים']].forEach(function(x){
+  _tilesDirty = false;
+  /* [08/11 אייל: "שיזכור את המספר האחרון ואם יש שינוי שיתעדכן"] — היעדים נשמרים גם בעותק של הבית
+     (העותק של היעדים תקף רק לאותו יום); עד שהטרי מגיע מוצג האחרון */
+  [['listings', 'stLst', 'גיוס', 'goalLst'], ['buyers', 'stBuy', 'קונים חדשים', 'goalBuy']].forEach(function(x){
     var g = homeGoalWeek(x[0]);
+    if (g){ if (!M[x[3]] || M[x[3]].c !== g.c || M[x[3]].t !== g.t){ M[x[3]] = g; _tilesDirty = true; } }
+    else g = M[x[3]] || null;
     el(x[1] + 'R').innerHTML = homeRingSvg(g ? g.c : '—', g ? g.c / g.t : 0);
     el(x[1] + 'T').textContent = g ? '/ ' + g.t : '\u00a0';
     el(x[1]).setAttribute('aria-label', x[2] + ' השבוע' + (g ? ': ' + g.c + ' מתוך ' + g.t : ''));
@@ -2293,6 +2299,7 @@ function homeTiles(){
   el('stOfdR').innerHTML = homeRingSvg(od, null);
   el('stNbd').setAttribute('aria-label', 'ירידות מחיר היום בנכס נולד: ' + nd);
   el('stOfd').setAttribute('aria-label', 'ירידות מחיר היום בנכסי המשרד: ' + od);
+  if (_tilesDirty){ try{ homeSnapSave(); }catch(e){} }
 }
 function renderDash(){
   homeTiles();
