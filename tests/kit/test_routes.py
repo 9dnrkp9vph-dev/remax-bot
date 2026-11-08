@@ -1,5 +1,5 @@
 # tests/kit/test_routes.py — ראוטים של תיק הפרזנטציה לסוכן + הגדרות בעל המשרד (בלי רשת)
-import os, sys, datetime as dt, threading
+import os, sys, contextlib, datetime as dt, threading
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 n = 0
 def ck(c, m):
@@ -52,7 +52,9 @@ G = {"_web_auth": lambda: SESS["t"], "_sbdb": sb, "_load_config": lambda: CFG,
                                          "505709865": "אייל שמול"}.get(p, nm),
      "_phones_for_name": lambda nm: {"רון לוי": ["0502222222"], "דנה כהן": ["0501111111"]}.get(nm, []),
      "_is_dev": lambda p: str(p)[-9:] == "505709865", "_last9": lambda p: "".join(c for c in str(p) if c.isdigit())[-9:],
-     "_canon_key": lambda s: " ".join(str(s or "").split())}
+     "_canon_key": lambda s: " ".join(str(s or "").split()),
+     "_norm_name": lambda s: " ".join(str(s or "").split()),
+     "_coordinators_all": lambda: {"503333333": {"name": "נוי רבן", "agents": {"502222222"}, "names": {"רון לוי"}}}}
 
 
 def fake_snap(G_, src):
@@ -60,151 +62,232 @@ def fake_snap(G_, src):
     return {"owner": src.get("owner"), "owner_first": (src.get("owner") or "").split(" ")[0],
             "street": KC.street_only(src.get("street")), "city": src.get("city"), "agent": {"name": src.get("agent_name")},
             "office": {"office": "רימקס פמילי"}, "meet_at": src.get("meet_at") or ""}
-_REAL_BUILD = KC.build_snapshot
-KC.build_snapshot = fake_snap   # מוחזר בסוף (pytest מייבא את הקובץ לפני test_snapshot)
-K.send_review = lambda G_, rec, base: (st["reviews"].append(rec["id"]), True)[1]
-K._spawn = lambda fn: fn()
+
+@contextlib.contextmanager
+def patched():
+    """מחליף את build_snapshot / send_review / _spawn רק בתוך בדיקה — סדר הייבוא של pytest לא משנה."""
+    saved = (KC.build_snapshot, K.send_review, K._spawn)
+    KC.build_snapshot = fake_snap
+    K.send_review = lambda G_, rec, base: (st["reviews"].append(rec["id"]), True)[1]
+    K._spawn = lambda fn: fn()
+    try:
+        yield
+    finally:
+        KC.build_snapshot, K.send_review, K._spawn = saved
+
+
+k1 = k2 = k3 = k4 = MAN = None
 
 app = Flask(__name__); K.register(app, G); c = app.test_client()
 AG = {"name": "דנה כהן", "role": "agent", "drole": "agent", "phone": "501111111"}
 CO = {"name": "מנהל", "role": "coordinator", "drole": "coordinator", "phone": "503333333"}
 DEV = {"name": "מנהל", "role": "admin", "drole": "developer", "phone": "505709865", "dev": True}
 
-# ── route binding (לקח 16f7d7f) ──
-VF = app.view_functions
-for ep, fn in (("kit_api_create", "kit_api_create"), ("kit_api_mine", "kit_api_mine"), ("kit_api_resend", "kit_api_resend"),
-               ("kit_api_sent", "kit_api_sent"), ("kit_api_settings", "kit_api_settings")):
-    ck(ep in VF and VF[ep].__name__ == fn, ep)
-RULES = {r.rule: r.endpoint for r in app.url_map.iter_rules()}
-ck(RULES.get("/v2/api/kit/create") == "kit_api_create" and RULES.get("/v2/api/kit/mine") == "kit_api_mine"
-   and RULES.get("/v2/api/kit/resend") == "kit_api_resend" and RULES.get("/v2/api/kit/sent") == "kit_api_sent"
-   and RULES.get("/v2/api/kit/settings") == "kit_api_settings", RULES)
 
-# ── 401 ──
-SESS["t"] = None
-for path, meth in (("/v2/api/kit/create", "post"), ("/v2/api/kit/mine", "get"), ("/v2/api/kit/resend", "post"),
-                   ("/v2/api/kit/sent", "post"), ("/v2/api/kit/settings", "get"), ("/v2/api/kit/settings", "post")):
-    ck(getattr(c, meth)(path, json={}).status_code == 401, path)
+def test_binding():
+    # ── route binding (לקח 16f7d7f) ──
+    global k1, k2, k3, k4, MAN
+    with patched():
+        VF = app.view_functions
+        for ep, fn in (("kit_api_create", "kit_api_create"), ("kit_api_mine", "kit_api_mine"), ("kit_api_resend", "kit_api_resend"),
+                       ("kit_api_sent", "kit_api_sent"), ("kit_api_settings", "kit_api_settings")):
+            ck(ep in VF and VF[ep].__name__ == fn, ep)
+        RULES = {r.rule: r.endpoint for r in app.url_map.iter_rules()}
+        ck(RULES.get("/v2/api/kit/create") == "kit_api_create" and RULES.get("/v2/api/kit/mine") == "kit_api_mine"
+           and RULES.get("/v2/api/kit/resend") == "kit_api_resend" and RULES.get("/v2/api/kit/sent") == "kit_api_sent"
+           and RULES.get("/v2/api/kit/settings") == "kit_api_settings", RULES)
 
-# ── create nb ──
-SESS["t"] = AG
-r = c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77", "meet_at": "2026-11-11T17:00"})
-j = r.json
-ck(j["ok"] and j["status"] == "pending" and j["id"] == "k1", j)
-ck(len(sb.kits) == 1 and st["reviews"] == ["k1"], (sb.kits, st["reviews"]))
-k1 = sb.kits[0]
-ck(k1["agent_name"] == "דנה כהן" and k1["agent_phone"] == "501111111" and k1["owner_phone"] == "544448065"
-   and k1["owner_name"] == "משה כהן" and k1["source"] == "nb" and k1["listing_key"] == "id:77", k1)
-ck(k1["review_token"] and k1["view_token"] and k1["review_token"] != k1["view_token"] and k1["sent_review_at"], k1)
-ck("544448065" not in str(k1["snapshot"]) and "12" not in str(k1["snapshot"].get("street")), k1["snapshot"])
-s0 = st["src"][-1]
-ck(s0["sqm"] == "110" and s0["ptype"] == "דירה" and s0["listing_key"] == "id:77" and s0["street"] == "הנוטר 12"
-   and s0["rooms"] == "4" and s0["price"] == "1890000" and s0["meet_at"] == "2026-11-11T17:00", s0)
-ck(len(st["acts"]) == 1 and st["acts"][0][3] == "תיק פרזנטציה — נשלח לאישור" and st["acts"][0][4] == "משה כהן · הנוטר", st["acts"])
 
-# nb missing owner / phone / key
-NB2 = dict(NB, **{"מזהה": "78", "שם בעל הנכס": ""}); NB3 = dict(NB, **{"מזהה": "79", "טלפון בעל הנכס-": "05"})
-G["fetch_newborn"] = lambda: [NB, NB2, NB3]
-ck(c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:78"}).json["reason"] == "owner", "owner")
-ck(c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:79"}).json["reason"] == "phone", "phone")
-ck(c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:nope"}).json["reason"] == "not_found", "nf")
-ck(c.post("/v2/api/kit/create", json={"source": "zzz"}).json["reason"] == "source", "source")
 
-# ── manual ──
-MAN = {"source": "manual", "owner": "רינה לוי", "phone": "+972544448065", "street": "שדרות ירושלים 5",
-       "city": "קרית ים", "rooms": "3"}
-r = c.post("/v2/api/kit/create", json=MAN)
-ck(r.json["ok"] is False and r.json["reason"] == "price", r.json)
-ck(c.post("/v2/api/kit/create", json=dict(MAN, price="1200000", phone="1234")).json["reason"] == "phone", "manual phone")
-r = c.post("/v2/api/kit/create", json=dict(MAN, price="1200000", sqm="80", agent="רון לוי"))
-ck(r.json["ok"], r.json)
-k2 = sb.kit_get(r.json["id"])
-ck(k2["agent_name"] == "דנה כהן" and k2["agent_phone"] == "501111111", k2)   # סוכן לא בוחר סוכן אחר
-ck(st["src"][-1]["ptype"] == "דירה" and st["src"][-1]["sqm"] == "80" and st["src"][-1]["listing_key"] == "", st["src"][-1])
+def test_unauth():
+    # ── 401 ──
+    global k1, k2, k3, k4, MAN
+    with patched():
+        SESS["t"] = None
+        for path, meth in (("/v2/api/kit/create", "post"), ("/v2/api/kit/mine", "get"), ("/v2/api/kit/resend", "post"),
+                           ("/v2/api/kit/sent", "post"), ("/v2/api/kit/settings", "get"), ("/v2/api/kit/settings", "post")):
+            ck(getattr(c, meth)(path, json={}).status_code == 401, path)
 
-# coordinator may pick another agent
-SESS["t"] = CO
-r = c.post("/v2/api/kit/create", json=dict(MAN, price="1200000", agent="רון לוי"))
-k3 = sb.kit_get(r.json["id"])
-ck(r.json["ok"] and k3["agent_name"] == "רון לוי" and k3["agent_phone"] == "502222222"
-   and k3["created_by"] == "נוי רבן" and k3["created_by_phone"] == "503333333", k3)
 
-# ── meet ──
-SESS["t"] = AG
-r = c.post("/v2/api/kit/create", json={"source": "meet", "skey": "דנה כהן::id:77"})
-k4 = sb.kit_get(r.json["id"])
-ck(r.json["ok"] and k4["source"] == "meet" and k4["listing_key"] == "id:77" and k4["owner_phone"] == "544448065", k4)
-ck(st["src"][-1]["meet_at"] == "2026-11-11T17:00" and st["src"][-1]["city"] == "קרית ביאליק"
-   and st["src"][-1]["rooms"] == "4" and st["src"][-1]["sqm"] == "110", st["src"][-1])
-ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "nope"}).json["reason"] == "not_found", "meet nf")
-SESS["t"] = {"name": "רון לוי", "role": "agent", "drole": "agent", "phone": "502222222"}
-ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "דנה כהן::id:77"}).json["reason"] == "forbidden", "meet other")
 
-# ── mine ──
-SESS["t"] = AG
-j = c.get("/v2/api/kit/mine").json
-ids = [x["id"] for x in j["kits"]]
-ck(j["ok"] and "k1" in ids and "k3" not in ids, ids)
-m1 = next(x for x in j["kits"] if x["id"] == "k1")
-ck(m1["status"] == "pending" and "wa" not in m1 and "url" not in m1 and "text" not in m1, m1)
-ck(m1["owner"] == "משה כהן" and m1["street"] == "הנוטר" and set(m1["views"]) == {"opens", "secs", "last"}, m1)
-ck("544448065" not in str(m1), m1)
-sb.kit_update("k1", {"status": "approved"})
-m1 = next(x for x in c.get("/v2/api/kit/mine").json["kits"] if x["id"] == "k1")
-ck(m1["status"] == "approved" and m1["wa"] == "972544448065" and m1["url"].endswith("/k/" + k1["view_token"]), m1)
-ck(m1["text"].endswith("\n" + m1["url"]) and m1["text"].startswith("שלום משה"), m1["text"])
-# expired by eff_status
-sb.kit_update("k2", {"sent_review_at": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=49)).isoformat()})
-m2 = next(x for x in c.get("/v2/api/kit/mine").json["kits"] if x["id"] == "k2")
-ck(m2["status"] == "expired" and "wa" not in m2, m2)
-# admin all
-SESS["t"] = DEV
-ids = [x["id"] for x in c.get("/v2/api/kit/mine?all=1").json["kits"]]
-ck("k1" in ids and "k3" in ids, ids)
-SESS["t"] = AG
-ids = [x["id"] for x in c.get("/v2/api/kit/mine?all=1").json["kits"]]
-ck("k3" not in ids, "agent ignores all")
+def test_create_nb():
+    # ── create nb ──
+    global k1, k2, k3, k4, MAN
+    with patched():
+        SESS["t"] = AG
+        r = c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77", "meet_at": "2026-11-11T17:00"})
+        j = r.json
+        ck(j["ok"] and j["status"] == "pending" and j["id"] == "k1", j)
+        ck(len(sb.kits) == 1 and st["reviews"] == ["k1"], (sb.kits, st["reviews"]))
+        k1 = sb.kits[0]
+        ck(k1["agent_name"] == "דנה כהן" and k1["agent_phone"] == "501111111" and k1["owner_phone"] == "544448065"
+           and k1["owner_name"] == "משה כהן" and k1["source"] == "nb" and k1["listing_key"] == "id:77", k1)
+        ck(k1["review_token"] and k1["view_token"] and k1["review_token"] != k1["view_token"] and k1["sent_review_at"], k1)
+        ck("544448065" not in str(k1["snapshot"]) and "12" not in str(k1["snapshot"].get("street")), k1["snapshot"])
+        s0 = st["src"][-1]
+        ck(s0["sqm"] == "110" and s0["ptype"] == "דירה" and s0["listing_key"] == "id:77" and s0["street"] == "הנוטר 12"
+           and s0["rooms"] == "4" and s0["price"] == "1890000" and s0["meet_at"] == "2026-11-11T17:00", s0)
+        ck(len(st["acts"]) == 1 and st["acts"][0][3] == "תיק פרזנטציה — נשלח לאישור" and st["acts"][0][4] == "משה כהן · הנוטר", st["acts"])
 
-# ── resend ──
-ck(c.post("/v2/api/kit/resend", json={"id": "k1"}).json["ok"] is False, "resend approved")
-sb.kit_update("k4", {"status": "rejected", "reject_reason": "חסר"})
-old = sb.kit_get("k4")
-nrev = len(st["reviews"])
-SESS["t"] = {"name": "רון לוי", "role": "agent", "drole": "agent", "phone": "502222222"}
-ck(c.post("/v2/api/kit/resend", json={"id": "k4"}).json["ok"] is False, "resend not owner")
-SESS["t"] = AG
-r = c.post("/v2/api/kit/resend", json={"id": "k4"})
-new = sb.kit_get("k4")
-ck(r.json["ok"] and new["status"] == "pending" and not new["reject_reason"]
-   and new["review_token"] != old["review_token"] and new["view_token"] != old["view_token"], (r.json, new))
-ck(len(st["reviews"]) == nrev + 1 and st["src"][-1]["owner"] == "משה כהן" and st["src"][-1]["phone"] == "544448065", st["src"][-1])
-# expired → resend allowed
-r = c.post("/v2/api/kit/resend", json={"id": "k2"})
-ck(r.json["ok"] and sb.kit_get("k2")["status"] == "pending", r.json)
+        # nb missing owner / phone / key
+        NB2 = dict(NB, **{"מזהה": "78", "שם בעל הנכס": ""}); NB3 = dict(NB, **{"מזהה": "79", "טלפון בעל הנכס-": "05"})
+        G["fetch_newborn"] = lambda: [NB, NB2, NB3]
+        ck(c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:78"}).json["reason"] == "owner", "owner")
+        ck(c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:79"}).json["reason"] == "phone", "phone")
+        ck(c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:nope"}).json["reason"] == "not_found", "nf")
+        ck(c.post("/v2/api/kit/create", json={"source": "zzz"}).json["reason"] == "source", "source")
 
-# ── sent ──
-ck(c.post("/v2/api/kit/sent", json={"id": "k4"}).json["ok"] is False, "sent on pending")
-r = c.post("/v2/api/kit/sent", json={"id": "k1"})
-ck(r.json["ok"] and sb.kit_get("k1")["status"] == "sent" and sb.kit_get("k1")["sent_at"], r.json)
-ck(st["acts"][-1][3] == "תיק פרזנטציה — נשלח לבעל הנכס", st["acts"][-1])
-m1 = next(x for x in c.get("/v2/api/kit/mine").json["kits"] if x["id"] == "k1")
-ck(m1["status"] == "sent" and m1["wa"] == "972544448065", m1)
 
-# ── settings ──
-SESS["t"] = AG
-ck(c.get("/v2/api/kit/settings").status_code == 403 and c.post("/v2/api/kit/settings", json={}).status_code == 403, "agent 403")
-SESS["t"] = DEV
-j = c.get("/v2/api/kit/settings").json
-ck(j["ok"] and j["settings"]["g_rating"] == "4.9", j)
-r = c.post("/v2/api/kit/settings", json={"coop": "  70 אחוז  ", "rank": "מקום 1", "g_rating": "4.8", "g_count": "120",
-                                          "g_url": " https://g.page/x "})
-ck(r.json["ok"] and CFG["v2_kit"] == {"coop": "70 אחוז", "rank": "מקום 1", "g_rating": "4.8", "g_count": "120",
-                                        "g_url": "https://g.page/x"}, (r.json, CFG.get("v2_kit")))
-ck(st["acts"][-1][3].startswith("תיק פרזנטציה — הגדרות"), st["acts"][-1])
-r = c.post("/v2/api/kit/settings", json={"g_url": "http://x"})
-ck(r.json["ok"] is False and CFG["v2_kit"]["g_url"] == "https://g.page/x", r.json)
-G["_config_mutate"] = lambda fn: (False, None)
-ck(c.post("/v2/api/kit/settings", json={"rank": "z"}).json["ok"] is False, "mutate fail")
 
-KC.build_snapshot = _REAL_BUILD
-print("OK", n)
+def test_manual_and_agent_choice():
+    # ── manual ──
+    global k1, k2, k3, k4, MAN
+    with patched():
+        MAN = {"source": "manual", "owner": "רינה לוי", "phone": "+972544448065", "street": "שדרות ירושלים 5",
+               "city": "קרית ים", "rooms": "3"}
+        r = c.post("/v2/api/kit/create", json=MAN)
+        ck(r.json["ok"] is False and r.json["reason"] == "price", r.json)
+        ck(c.post("/v2/api/kit/create", json=dict(MAN, price="1200000", phone="1234")).json["reason"] == "phone", "manual phone")
+        r = c.post("/v2/api/kit/create", json=dict(MAN, price="1200000", sqm="80", agent="רון לוי"))
+        ck(r.json["ok"], r.json)
+        k2 = sb.kit_get(r.json["id"])
+        ck(k2["agent_name"] == "דנה כהן" and k2["agent_phone"] == "501111111", k2)   # סוכן לא בוחר סוכן אחר
+        ck(st["src"][-1]["ptype"] == "דירה" and st["src"][-1]["sqm"] == "80" and st["src"][-1]["listing_key"] == "", st["src"][-1])
+
+        # coordinator may pick another agent
+        SESS["t"] = CO
+        r = c.post("/v2/api/kit/create", json=dict(MAN, price="1200000", agent="רון לוי"))
+        k3 = sb.kit_get(r.json["id"])
+        ck(r.json["ok"] and k3["agent_name"] == "רון לוי" and k3["agent_phone"] == "502222222"
+           and k3["created_by"] == "נוי רבן" and k3["created_by_phone"] == "503333333", k3)
+        # [R6] מתאמת — רק סוכן מהצוות שלה; סוכן מבחוץ → היא עצמה
+        r = c.post("/v2/api/kit/create", json=dict(MAN, price="1200000", agent="  רון   לוי "))
+        ck(r.json["ok"] and sb.kit_get(r.json["id"])["agent_name"] == "רון לוי", r.json)
+        r = c.post("/v2/api/kit/create", json=dict(MAN, price="1200000", agent="דנה כהן"))
+        kx = sb.kit_get(r.json["id"])
+        ck(r.json["ok"] and kx["agent_name"] == "נוי רבן" and kx["agent_phone"] == "503333333", kx)
+        # admin — כל סוכן
+        SESS["t"] = DEV
+        r = c.post("/v2/api/kit/create", json=dict(MAN, price="1200000", agent="דנה כהן"))
+        ck(r.json["ok"] and sb.kit_get(r.json["id"])["agent_name"] == "דנה כהן", r.json)
+
+
+
+def test_meet():
+    # ── meet ──
+    global k1, k2, k3, k4, MAN
+    with patched():
+        SESS["t"] = AG
+        r = c.post("/v2/api/kit/create", json={"source": "meet", "skey": "דנה כהן::id:77"})
+        k4 = sb.kit_get(r.json["id"])
+        ck(r.json["ok"] and k4["source"] == "meet" and k4["listing_key"] == "id:77" and k4["owner_phone"] == "544448065", k4)
+        ck(st["src"][-1]["meet_at"] == "2026-11-11T17:00" and st["src"][-1]["city"] == "קרית ביאליק"
+           and st["src"][-1]["rooms"] == "4" and st["src"][-1]["sqm"] == "110", st["src"][-1])
+        ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "nope"}).json["reason"] == "not_found", "meet nf")
+        SESS["t"] = CO   # הפגישה של דנה — לא בצוות של המתאמת
+        ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "דנה כהן::id:77"}).json["reason"] == "forbidden", "coord meet outside")
+        SESS["t"] = {"name": "רון לוי", "role": "agent", "drole": "agent", "phone": "502222222"}
+        ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "דנה כהן::id:77"}).json["reason"] == "forbidden", "meet other")
+
+
+
+def test_mine():
+    # ── mine ──
+    global k1, k2, k3, k4, MAN
+    with patched():
+        SESS["t"] = AG
+        j = c.get("/v2/api/kit/mine").json
+        ids = [x["id"] for x in j["kits"]]
+        ck(j["ok"] and "k1" in ids and "k3" not in ids, ids)
+        m1 = next(x for x in j["kits"] if x["id"] == "k1")
+        ck(m1["status"] == "pending" and "wa" not in m1 and "url" not in m1 and "text" not in m1, m1)
+        ck(m1["owner"] == "משה כהן" and m1["street"] == "הנוטר" and set(m1["views"]) == {"opens", "secs", "last"}, m1)
+        ck("544448065" not in str(m1), m1)
+        sb.kit_update("k1", {"status": "approved"})
+        m1 = next(x for x in c.get("/v2/api/kit/mine").json["kits"] if x["id"] == "k1")
+        ck(m1["status"] == "approved" and m1["wa"] == "972544448065" and m1["url"].endswith("/k/" + k1["view_token"]), m1)
+        ck(m1["text"].endswith("\n" + m1["url"]) and m1["text"].startswith("שלום משה"), m1["text"])
+        # expired by eff_status
+        sb.kit_update("k2", {"sent_review_at": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=49)).isoformat()})
+        m2 = next(x for x in c.get("/v2/api/kit/mine").json["kits"] if x["id"] == "k2")
+        ck(m2["status"] == "expired" and "wa" not in m2, m2)
+        # admin all
+        SESS["t"] = DEV
+        ids = [x["id"] for x in c.get("/v2/api/kit/mine?all=1").json["kits"]]
+        ck("k1" in ids and "k3" in ids, ids)
+        SESS["t"] = AG
+        ids = [x["id"] for x in c.get("/v2/api/kit/mine?all=1").json["kits"]]
+        ck("k3" not in ids, "agent ignores all")
+        # [R6] מתאמת עם all=1 — הצוות שלה (+ שלה), לא כל המשרד
+        SESS["t"] = CO
+        ks = c.get("/v2/api/kit/mine?all=1").json["kits"]
+        names = {x["agent"] for x in ks}
+        ck("k3" in [x["id"] for x in ks] and names <= {"רון לוי", "נוי רבן"} and "נוי רבן" in names, ks)
+        ck("k1" not in [x["id"] for x in c.get("/v2/api/kit/mine").json["kits"]], "coord mine own only")
+        SESS["t"] = AG
+
+
+
+def test_resend():
+    # ── resend ──
+    global k1, k2, k3, k4, MAN
+    with patched():
+        ck(c.post("/v2/api/kit/resend", json={"id": "k1"}).json["ok"] is False, "resend approved")
+        sb.kit_update(k4["id"], {"status": "rejected", "reject_reason": "חסר"})
+        old = sb.kit_get(k4["id"])
+        nrev = len(st["reviews"])
+        SESS["t"] = {"name": "רון לוי", "role": "agent", "drole": "agent", "phone": "502222222"}
+        ck(c.post("/v2/api/kit/resend", json={"id": k4["id"]}).json["ok"] is False, "resend not owner")
+        SESS["t"] = AG
+        r = c.post("/v2/api/kit/resend", json={"id": k4["id"]})
+        new = sb.kit_get(k4["id"])
+        ck(r.json["ok"] and new["status"] == "pending" and not new["reject_reason"]
+           and new["review_token"] != old["review_token"] and new["view_token"] != old["view_token"], (r.json, new))
+        ck(len(st["reviews"]) == nrev + 1 and st["src"][-1]["owner"] == "משה כהן" and st["src"][-1]["phone"] == "544448065", st["src"][-1])
+        # expired → resend allowed
+        r = c.post("/v2/api/kit/resend", json={"id": "k2"})
+        ck(r.json["ok"] and sb.kit_get("k2")["status"] == "pending", r.json)
+
+
+
+def test_sent():
+    # ── sent ──
+    global k1, k2, k3, k4, MAN
+    with patched():
+        ck(c.post("/v2/api/kit/sent", json={"id": k4["id"]}).json["ok"] is False, "sent on pending")
+        r = c.post("/v2/api/kit/sent", json={"id": "k1"})
+        ck(r.json["ok"] and sb.kit_get("k1")["status"] == "sent" and sb.kit_get("k1")["sent_at"], r.json)
+        ck(st["acts"][-1][3] == "תיק פרזנטציה — נשלח לבעל הנכס", st["acts"][-1])
+        m1 = next(x for x in c.get("/v2/api/kit/mine").json["kits"] if x["id"] == "k1")
+        ck(m1["status"] == "sent" and m1["wa"] == "972544448065", m1)
+
+
+
+def test_settings():
+    # ── settings ──
+    global k1, k2, k3, k4, MAN
+    with patched():
+        SESS["t"] = AG
+        ck(c.get("/v2/api/kit/settings").status_code == 403 and c.post("/v2/api/kit/settings", json={}).status_code == 403, "agent 403")
+        SESS["t"] = DEV
+        j = c.get("/v2/api/kit/settings").json
+        ck(j["ok"] and j["settings"]["g_rating"] == "4.9", j)
+        r = c.post("/v2/api/kit/settings", json={"coop": "  70 אחוז  ", "rank": "מקום 1", "g_rating": "4.8", "g_count": "120",
+                                                  "g_url": " https://g.page/x "})
+        ck(r.json["ok"] and CFG["v2_kit"] == {"coop": "70 אחוז", "rank": "מקום 1", "g_rating": "4.8", "g_count": "120",
+                                                "g_url": "https://g.page/x"}, (r.json, CFG.get("v2_kit")))
+        ck(st["acts"][-1][3].startswith("תיק פרזנטציה — הגדרות"), st["acts"][-1])
+        r = c.post("/v2/api/kit/settings", json={"g_url": "http://x"})
+        ck(r.json["ok"] is False and CFG["v2_kit"]["g_url"] == "https://g.page/x", r.json)
+        good = G["_config_mutate"]
+        G["_config_mutate"] = lambda fn: (False, None)
+        try:
+            ck(c.post("/v2/api/kit/settings", json={"rank": "z"}).json["ok"] is False, "mutate fail")
+        finally:
+            G["_config_mutate"] = good
+
+
+if __name__ == "__main__":
+    for _f in (test_binding, test_unauth, test_create_nb, test_manual_and_agent_choice, test_meet, test_mine, test_resend, test_sent, test_settings):
+        _f()
+    print("OK", n)

@@ -77,6 +77,29 @@ def register(app, G):
     def is_admin(s):
         return bool(s) and (s.get("role") == "admin" or is_owner(s))
 
+    def norm(x):
+        try:
+            return G["_norm_name"](x)
+        except Exception:
+            return _s(x)
+
+    def coord_team(s):
+        """מתאמת — שמות הסוכנים המשויכים אליה (מנורמלים); אחרת None."""
+        if not (s.get("role") == "coordinator" or s.get("drole") == "coordinator"):
+            return None
+        try:
+            rec = (G["_coordinators_all"]() or {}).get(G["_last9"](s.get("phone", ""))) or {}
+        except Exception:
+            rec = {}
+        return {norm(x) for x in (rec.get("names") or set()) if norm(x)}
+
+    def may_pick(s, name):
+        """מנהל/בעל המשרד — כל סוכן; מתאמת — רק סוכן מהצוות שלה; סוכן — אף אחד."""
+        if is_admin(s):
+            return True
+        team = coord_team(s)
+        return bool(team) and norm(name) in team
+
     def phone_of(name):
         try:
             for p in G["_phones_for_name"](name) or []:
@@ -145,11 +168,10 @@ def register(app, G):
             rec = ((G["_load_config"]() or {}).get("nbStatus") or {}).get(skey)
             if not isinstance(rec, dict):
                 return jsonify({"ok": False, "reason": "not_found"})
-            if s.get("role") in ("admin", "coordinator") or is_owner(s):
-                if rec.get("agent") and not j.get("agent"):
-                    agent_name, agent_phone = rec["agent"], phone_of(rec["agent"])
-            elif canon(rec.get("agent")) != canon(me):
-                return jsonify({"ok": False, "reason": "forbidden"})
+            if rec.get("agent") and canon(rec.get("agent")) != canon(me):
+                if not may_pick(s, rec["agent"]):
+                    return jsonify({"ok": False, "reason": "forbidden"})
+                agent_name, agent_phone = rec["agent"], phone_of(rec["agent"])
             pkey = str(rec.get("pkey") or "")
             lr = _nb_src(nb_row(pkey)) if nb_row(pkey) else {}
             src = {"owner": _s(rec.get("owner")), "phone": kc.phone9(rec.get("ophone")),
@@ -173,8 +195,11 @@ def register(app, G):
         else:
             return jsonify({"ok": False, "reason": "source"})
         want = _s(j.get("agent"))
-        if want and (s.get("role") in ("admin", "coordinator") or is_owner(s)):
-            agent_name, agent_phone = want, phone_of(want)
+        if want and canon(want) != canon(agent_name):
+            if may_pick(s, want):
+                agent_name, agent_phone = norm(want), phone_of(norm(want))
+            elif source != "meet":   # סוכן/מתאמת שבחרו סוכן מחוץ להרשאה — חוזרים לסוכן של הסשן
+                agent_name, agent_phone = me, kc.phone9(s.get("phone"))
         src.update(agent_name=agent_name, agent_phone=agent_phone)
         try:
             snap = kc.build_snapshot(G, src)
@@ -198,12 +223,17 @@ def register(app, G):
         s, err = auth()
         if err:
             return err
-        allp = is_admin(s) and request.args.get("all") == "1"
+        wide = request.args.get("all") == "1"
+        team = coord_team(s) if wide and not is_admin(s) else None
+        allp = wide and (is_admin(s) or team is not None)
+        me9 = kc.phone9(s.get("phone"))
         try:
-            rows = sb().kit_list(None if allp else kc.phone9(s.get("phone"))) or []
+            rows = sb().kit_list(None if allp else me9) or []
         except Exception as e:
             log.warning("kit_list failed: %s", e)
             rows = []
+        if team is not None:   # מתאמת — הצוות שלה והתיקים שלה, לא כל המשרד
+            rows = [r for r in rows if kc.phone9(r.get("agent_phone")) == me9 or norm(r.get("agent_name")) in team]
         now, base, out = _t.time(), _base(), []
         for r in rows:
             snap = r.get("snapshot") or {}
