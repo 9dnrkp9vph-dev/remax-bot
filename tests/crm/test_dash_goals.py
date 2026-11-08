@@ -51,7 +51,7 @@ src = {"nb": nb, "buyers": buyers, "bpages": [{"row": 1, "last_sent_at": dmy(WED
                                                  "reviews": 47, "listings": 31}
                                              for n in ("רון לוי", "דנה כהן", "מיכל בר")}}}}
 o = goals.build_periods(src, WED, canon)
-ck(set(o) == {"today", "yesterday", "week"}, o.keys())
+ck(set(o) == {"today", "yesterday", "week", "month"}, o.keys())
 T = o["today"]
 ck(T["day"] == WED.isoformat(), T["day"])
 names = [r["name"] for r in T["rows"]]
@@ -180,7 +180,7 @@ Gf = AutoG(log=None, _sbdb=SB(), _load_config=lambda: {"nbStatus": nb},
            web_fetch_raw=lambda *a: [], _usage_rows=lambda start: [{"name": "דנה כהן"}])
 import effie_v2  # noqa: E402  (crm_roster / crm_todo)
 gd = goals.dashboard_goals(Gf, at(WED, 15))
-ck(asked["p"] == (goals.ACT_REMIND, goals.ACT_NB_WA) and asked["t0"] == goals.day_bounds(dt.date(2026, 10, 18))[0], ("from last week's Sunday", asked))
+ck(asked["p"] == (goals.ACT_REMIND, goals.ACT_NB_WA) and asked["t0"] == goals.day_bounds(dt.date(2026, 9, 1))[0], ("from the 1st of last month (08/11 month tab)", asked))
 r0 = gd["today"]["rows"][0]
 ck(r0["name"] == "דנה כהן" and r0["counts"]["past_clients"] == 1 and r0["counts"]["meetings"] == 2, r0["counts"])
 ck(r0["counts"]["buyers"] is None and r0["seen_today"] is True, ("buyers down → —", r0))

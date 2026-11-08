@@ -13821,12 +13821,12 @@ function waKinds(){var wo=(D.wa_official||{})[P];if(!wo||!wo.kinds)return '';
  var ks=Object.keys(wo.kinds).sort(function(a,b){return wo.kinds[b]-wo.kinds[a];});
  if(!ks.length)return '';
  return '<div class="mut" style="margin-top:8px">לפי סוג · '+PL[P]+'</div><table>'+ks.map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+n(wo.kinds[k])+'</td></tr>';}).join('')+'</table>';}
-var GP='today',GPL={today:'היום',yesterday:'אתמול',week:'השבוע'},GKEYS=['listings','meetings','nb_wa','buyers','past_clients','reviews'];
+var GP='today',GPL={today:'היום',yesterday:'אתמול',week:'השבוע',month:'החודש'},GKEYS=['listings','meetings','nb_wa','buyers','past_clients','reviews'];
 var GDAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 function gNum(v){return v==null?'—':(+v).toLocaleString('he-IL');}
 function gCell(c,t){if(c==null)return '—';if(!t)return '<span class="gc full">'+gNum(c)+'/—</span>';var p=Math.min(100,Math.round(c*100/t));
  return '<span class="gc'+(c>=t?' full':(c?'':' zero'))+'">'+gNum(c)+'/'+gNum(t)+' <i><b style="width:'+p+'%"></b></i></span>';}
-function gVs(G,eq){var w=GP==='week'?'שבוע שעבר':GDAYS[new Date(G.day+'T12:00:00').getDay()]+' שעבר';return (eq?'כמו ב':'מול ')+w;}
+function gVs(G,eq){var w=GP==='month'?'החודש שעבר':GP==='week'?'שבוע שעבר':GDAYS[new Date(G.day+'T12:00:00').getDay()]+' שעבר';return (eq?'כמו ב':'מול ')+w;}
 function gTrend(tr,G){if(!tr)return '';var s=0,k=0;GKEYS.forEach(function(g){if(tr[g]!=null){s+=tr[g];k++;}});if(!k)return '';
  return '<span class="gtr'+(s>0?' up':'')+'">'+(s?(s>0?'↑'+s:'↓'+(-s))+' '+gVs(G,false):gVs(G,true))+'</span>';}
 function gRow(x,G,tot){var c=x.counts||{},t=x.targets||{},fu=c.followups,ina=!tot&&x.active===false,un=!tot&&!ina&&GP==='today'&&!x.seen_today;
@@ -13837,11 +13837,11 @@ function gRow(x,G,tot){var c=x.counts||{},t=x.targets||{},fu=c.followups,ina=!to
   '<td><b>'+(x.goals_n?gNum(x.met)+'/'+gNum(x.goals_n):'—')+'</b></td></tr>';}
 function goalsCard(){var A=D.goals;if(!A)return '';var G=A[GP]||{rows:[],total:{}},rows=G.rows||[];
  var seen=(A.today&&A.today.rows||[]).filter(function(r){return r.seen_today;}).length;
- var meta=GP==='week'?('א׳–'+GDAYS[new Date(G.to+'T12:00:00').getDay()]+' · '+gNum(G.workdays)+' ימי עבודה · היעד = היעד היומי × ימי העבודה (שישי חצי)')
+ var meta=GP==='month'?('1–'+(+G.to.split('-')[2])+' לחודש · '+gNum(G.workdays)+' ימי עבודה · היעד = לפי ימי העבודה שעברו בחודש'):GP==='week'?('א׳–'+GDAYS[new Date(G.to+'T12:00:00').getDay()]+' · '+gNum(G.workdays)+' ימי עבודה · היעד = היעד היומי × ימי העבודה (שישי חצי)')
    :(GP==='today'?(seen===1?'סוכן אחד נכנס היום':gNum(seen)+' סוכנים נכנסו היום'):G.day.split('-').reverse().join('/'));
  return '<div class="card"><div class="gh"><h2>יעדי היום · '+GPL[GP]+' <span class="mut" style="font-size:13px;font-weight:400">'+esc(meta)+'</span></h2>'+
-  '<div class="seg gseg" id="gseg">'+['today','yesterday','week'].map(function(k){return '<button data-g="'+k+'" class="'+(k===GP?'on':'')+'">'+GPL[k]+'</button>';}).join('')+'</div></div>'+
-  '<div class="tw"><table class="ag"><tr><th>סוכן</th><th>גיוס נכסים · השבוע</th><th>פגישות נכס נולד</th><th>פניות נכס נולד</th><th>קונים חדשים</th><th>דף קונה</th><th>לקוחות עבר</th><th>המלצות</th><th>פולו-אפ</th><th>שיחות פתוחות</th><th>עמידה</th></tr>'+
+  '<div class="seg gseg" id="gseg">'+['today','yesterday','week','month'].map(function(k){return '<button data-g="'+k+'" class="'+(k===GP?'on':'')+'">'+GPL[k]+'</button>';}).join('')+'</div></div>'+
+  '<div class="tw"><table class="ag"><tr><th>סוכן</th><th>גיוס נכסים · '+(GP==='month'?'החודש':'השבוע')+'</th><th>פגישות נכס נולד</th><th>פניות נכס נולד</th><th>קונים חדשים</th><th>דף קונה</th><th>לקוחות עבר</th><th>המלצות</th><th>פולו-אפ</th><th>שיחות פתוחות</th><th>עמידה</th></tr>'+
   gRow(G.total||{},G,true)+(rows.map(function(x){return gRow(x,G,false);}).join('')||'<tr><td class="mut" colspan="11">אין סוכנים להצגה</td></tr>')+'</table></div>'+
   '<div class="mut">עמידה = כמה משישת היעדים הושלמו במלואם. גיוס נכסים = הסכמי בלעדיות שנחתמו מתחילת השבוע, מול יעד שבועי. יעד המשרד = היעד החודשי שנקבע, לתקופה, ומתחלק בין הסוכנים הפעילים — לפחות 10 דקות באפי ב-10 הימים האחרונים, בלי מנהלים ומתאמות'+(G.total&&G.total.agents!=null?' ('+gNum(G.total.agents)+')':'')+'; היעד של כל סוכן מעוגל למעלה. מי שלא פעיל מוצג רק אם נספר לו משהו, בלי יעד. הקונים כוללים את מי שנכנס אוטומטית מהחתמה. המגמה = סכום היעדים מול אותה תקופה לפני שבוע. "—" = הנתון לא זמין כרגע. שיחות פתוחות = מצב נוכחי.</div></div>';}
 function siteCt(){var c=D.site_contacts;if(!c||!c.periods)return '';var P4=['day','week','month','year'],L={day:'היום',week:'השבוע',month:'החודש',year:'השנה'};
@@ -14586,7 +14586,7 @@ def crm_agent_listings(props, people, canon, hidden=None):
                 d["rent"] += 1
             if str(r.get("ad_id") or "") not in hid:
                 d["site"] += 1
-    out = sorted(rows.values(), key=lambda x: (x["name"] == "(לא משויך)", -x["total"], -x["excl"], x["name"]))
+    out = sorted(rows.values(), key=lambda x: (x["name"] == "(לא משויך)", x["name"]))   # 08/11 אייל: לפי א-ב
     return {"rows": out, "total": tot}
 
 

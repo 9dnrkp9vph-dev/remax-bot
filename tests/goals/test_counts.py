@@ -175,6 +175,25 @@ def test_weekly_target_not_scaled():
     assert p["week"]["rows"][0]["targets"]["listings"] == 7 and p["week"]["rows"][0]["targets"]["meetings"] == 11
     ok()
 
+def test_month_period():
+    """[08/11 אייל] 'החודש' ביעדים: מה-1 בחודש עד היום; היעד לפי ימי העבודה שעברו; גיוס — מתחילת החודש."""
+    day = datetime.date(2026, 10, 30)    # שישי; אוקטובר 2026 = 23.5 ימי עבודה, עד 30/10 כולל = 23.5
+    sigs = [{"agent": A, "address": "הרצל 5", "type": "בלעדיות", "signed": True, "ts": "02/10/2026 09:00"},
+            {"agent": A, "address": "בגין 3", "type": "בלעדיות", "signed": True, "ts": "29/10/2026 09:00"},
+            {"agent": A, "address": "ויצמן 1", "type": "בלעדיות", "signed": True, "ts": "30/09/2026 09:00"}]
+    s = src(roster=[A], cfg={"v2_goals": {"office": {"meetings": 47, "listings": 31}}}, seen=[], sigs=sigs)
+    p = g.build_periods(s, day, canon)
+    m = p["month"]
+    assert m["day"] == "2026-10-01" and m["to"] == "2026-10-30", m
+    assert m["workdays"] == 23.5, m["workdays"]
+    r = m["rows"][0]
+    assert r["targets"]["meetings"] == 47, r["targets"]
+    assert r["targets"]["listings"] == 30, r["targets"]        # 31 × 30/31 יום
+    assert r["counts"]["listings"] == 2, r["counts"]           # בלי 30/09
+    assert m["total"]["counts"]["listings"] == 2
+    assert p["week"]["rows"][0]["counts"]["listings"] == 1      # השבוע לא השתנה
+    ok()
+
 for name, fn in list(globals().items()):
     if name.startswith("test_"):
         fn()
