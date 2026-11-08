@@ -1497,6 +1497,7 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   .stat svg{width:58%;max-width:64px;height:auto;display:block}
   .stat .l{font-size:12px;font-weight:800;color:#E4C56B;line-height:1.15;margin-top:3px}
   .stat .t{font-size:12px;color:#C9D0DA;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap}
+  @media(min-width:600px){.stat{aspect-ratio:auto;padding:12px 4px}}   /* מסך רחב: לא ריבועים ענקיים */
   .briefBar{background:linear-gradient(120deg,#0E1D33,#1E3A5F 70%,#2C4C77);border-radius:20px;padding:14px 16px;
       display:flex;align-items:center;gap:12px;box-shadow:0 8px 20px rgba(30,58,95,.25);cursor:pointer}
   .briefBar .ic{width:40px;height:40px;border-radius:13px;background:rgba(228,197,107,.15);
