@@ -162,6 +162,15 @@ ck([a["name"] for a in ags["seller"]] == ["דנה כהן", "יוסי לוי"] an
 ck(db.get(r["id"])["kind"] == "both" and db.get(r["id"])["agents"] == ["דנה כהן", "יוסי לוי", "אלי שמול", "יהודית שמול"], db.get(r["id"]))
 r = S.sold_create(G, "prop", "tok1", "both", "", http=HTTP, env=env, store=store, db=db, details={"buyer_agents": []})
 ck(r["ok"] and COMP[-1][0] == "seller" and COMP[-1][2]["tag"].startswith("ייצגנו"), "no buyer team → regular 8s story")
+# [09/11 אייל] מחיר העסקה שונה מהמחיר במודעה → מוקלד בטופס וגובר (גם במשולב); ריק = המחיר מהמודעה
+r = S.sold_create(G, "prop", "tok1", "seller", "", http=HTTP, env=env, store=store, db=db, details={"price": "1,090,000"})
+ck(r["ok"] and COMP[-1][2]["price"] == SP._price("1090000") + " ₪", COMP[-1][2])
+listed = S.sold_texts_property(ROW, "seller")["price"]
+r = S.sold_create(G, "prop", "tok1", "seller", "", http=HTTP, env=env, store=store, db=db, details={"price": ""})
+ck(r["ok"] and COMP[-1][2]["price"] == listed, (COMP[-1][2], listed))
+r = S.sold_create(G, "prop", "tok1", "both", "", http=HTTP, env=env, store=store, db=db,
+                  details={"price": "1090000", "buyer_agents": ["אלי שמול"]})
+ck(r["ok"] and COMP[-1][0] == "both" and COMP[-1][2]["price"] == SP._price("1090000") + " ₪", COMP[-1][2])
 # משולב מעסקה: צד הקונה מהעסקה, צד המוכר נבחר; כתובת של נכס המשרד → התמונה שלו
 r = S.sold_create(G, "deal", "d1", "buyer", "", http=HTTP, env=env, store=store, db=db,
                   details={"addr": "אהוד מנור 13", "agents": ["רויטל"], "seller_agents": ["בן כהן", "בנימין לוי"]})

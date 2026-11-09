@@ -818,6 +818,9 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
         except Exception:
             feats = []
         texts, kind, key = sold_texts_property(row, side, feats), "seller", "p:" + SP._key(ref)
+        pr = re.sub(r"\D", "", str((details or {}).get("price") or "")) if isinstance(details, dict) else ""
+        if pr and int(pr) > 0:   # [09/11 אייל] מחיר העסקה (מהטופס) גובר על המחיר במודעה
+            texts["price"] = SP._price(pr) + " ₪"
         buyers = sold_names((details or {}).get("buyer_agents")) if isinstance(details, dict) else []
         if side == "both" and buyers:   # [05/11 אייל] צד הקונה נבחר → סרטון משולב
             names, texts, kind = {"seller": names, "buyer": buyers}, sold_texts_both(texts), "both"

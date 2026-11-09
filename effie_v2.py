@@ -7506,7 +7506,7 @@ function vidResend(id){
 }
 /* [SOLD 05/11] סטורי SOLD לנכס שנמכר — "הנכסים שלי", למפתח בלבד (social_sold.py).
    לחיצה → בוחרים מי ייצגנו → הסרטון מוכן תוך כחצי דקה → צפייה → "פרסם לסטורי" (אינסטגרם + פייסבוק). */
-var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}, both: {}, ba: {}, ag: null};
+var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}, both: {}, ba: {}, ag: null, pr: {}};
 var SOLD_ST = {rendering: 'בהכנה', ready: 'מוכן לפרסום', publishing: 'מתפרסם', published: 'פורסם בסטורי',
   partial: 'פורסם חלקית', failed: 'נכשל'};
 function soldRow(p){
@@ -7535,10 +7535,15 @@ function soldRow(p){
     h += '<div style="margin-top:8px"><button onclick="soldPublish(\'' + esc(L.id) + '\',\'' + esc(k) + '\')" style="' + css +
          'background:#2E6BD6;color:#fff;border:none">' + (L.status === 'partial' ? 'נסה שוב את מה שנכשל' : 'פרסם לסטורי באינסטגרם ובפייסבוק') +
          test + '</button></div>';
+  var inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;' +
+    'border-radius:11px;padding:0 12px;font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F;margin-top:6px';
+  // [09/11 אייל] מחיר העסקה שונה מהמחיר במודעה — ריק = המחיר מהמודעה
+  var prF = SOLD.open[k] ? '<div style="font-size:12.5px;font-weight:800;color:#5B6472;margin-top:8px">מחיר הסגירה (ריק = המחיר במודעה)</div>' +
+    '<input inputmode="numeric" autocomplete="off" value="' + esc(SOLD.pr[k] || '') + '" placeholder="' + esc((p && p.price) || '') + '"' +
+    ' oninput="soldPr(\'' + esc(k) + '\',this)" style="' + inp + '">' : '';
   if (SOLD.open[k] && SOLD.both[k]){   // [05/11 אייל] שני הצדדים שלנו — סרטון משולב: מוכר ואז קונה
-    var ba = SOLD.ba[k] || ['', ''], inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;' +
-      'border-radius:11px;padding:0 12px;font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F;margin-top:6px';
-    return h + '<div style="margin-top:8px;padding:12px;border-radius:14px;background:#F6EEDB">' +
+    var ba = SOLD.ba[k] || ['', ''];
+    return h + '<div style="margin-top:8px;padding:12px;border-radius:14px;background:#F6EEDB">' + prF +
       '<div style="font-size:13.5px;font-weight:800;color:#7A5E1C">מי הביא את הקונה? (עד 2)</div>' +
       '<div class="sb" style="margin-top:2px">הסרטון יתחלק לשניים — קודם המוכר ואחר כך הקונה. ריק = סטורי רגיל.</div>' +
       [0, 1].map(function(i){
@@ -7551,7 +7556,7 @@ function soldRow(p){
       '<button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css + 'flex:1;background:#fff;color:#5B6472;border:1.5px solid #DCD6C8">ביטול</button></div></div>';
   }
   if (SOLD.open[k])
-    return h + '<div style="display:flex;gap:8px;margin-top:8px">' +
+    return h + prF + '<div style="display:flex;gap:8px;margin-top:8px">' +
       '<button onclick="soldCreate(\'' + esc(k) + '\',\'seller\')" style="' + css + 'background:#C29435;color:#231700;border:none">ייצגנו את המוכר</button>' +
       '<button onclick="soldBoth(\'' + esc(k) + '\')" style="' + css + 'background:#C29435;color:#231700;border:none">המוכר וגם הקונה</button></div>' +
       '<div style="margin-top:6px"><button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css +
@@ -7582,6 +7587,10 @@ function soldBoth(k){
   }).catch(function(){});
 }
 function soldBA(k, i, v){ (SOLD.ba[k] = SOLD.ba[k] || ['', ''])[i] = v; }
+function soldPr(k, el){   // פסיקים תוך כדי הקלדה
+  var d = String(el.value || '').replace(/\D/g, '');
+  el.value = d ? Number(d).toLocaleString() : ''; SOLD.pr[k] = el.value;
+}
 function soldWatch(k, n){   // מתעדכן עד שהרינדור/הפרסום מסתיים (עד ~3 דק')
   clearTimeout(SOLD.poll[k]);
   if (n > 36) { delete SOLD.busy[k]; render(); return; }
@@ -7606,6 +7615,7 @@ function soldCreate(k, side){
   delete SOLD.items['p:' + k]; render();
   var body = {key: k, side: side};
   if (side === 'both') body.details = {buyer_agents: (SOLD.ba[k] || []).map(function(x){ return String(x || '').trim(); }).filter(Boolean)};
+  if (side === 'both' || SOLD.pr[k]) (body.details = body.details || {}).price = SOLD.pr[k] || '';
   SOLD.both[k] = false;
   POST('/v2/api/social/sold', body).then(function(j){
     if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה — לא נשלח'); return; }
