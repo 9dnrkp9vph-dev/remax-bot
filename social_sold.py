@@ -813,6 +813,9 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
             res["reason"] = "הנכס לא נמצא"
             return res
         names = sold_with_team(G, [str(row.get(c) or "").strip() for c in ("סוכן 1", "סוכן 2")])
+        s2 = _clip((details or {}).get("seller_agent2"), 40) if isinstance(details, dict) else ""
+        if s2 and names and s2 != names[0]:   # [09/11 אייל] סוכן שני שהצטרף לצד המוכר — מחליף את השני מהמודעה/הצוות
+            names = [names[0], s2]
         try:
             feats = [f for f in (G["_row_feats"](row) or []) if f]
         except Exception:

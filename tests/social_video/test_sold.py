@@ -153,6 +153,18 @@ ck(r["ok"] and [a["name"] for a in COMP[-1][3]] == ["אלי שמול", "יהוד
 GT["_deals_load"] = lambda: [dict(D, agents=["אלי שמול"], side1="קונה", side2="")]
 r = S.sold_create(GT, "deal", "d1", "buyer", "", http=HTTP, env=env, store=store, db=db, details={"agents": ["אלי שמול"]})
 ck(r["ok"] and [a["name"] for a in COMP[-1][3]] == ["אלי שמול", "יהודית שמול"], COMP[-1][3])
+# [09/11 אייל] לפעמים מצטרף סוכן שני לצד המוכר — נבחר בטופס, מחליף את הסוכן השני (מהמודעה/הצוות)
+r = S.sold_create(GT, "prop", "tok1", "seller", "", http=HTTP, env=env, store=store, db=db, details={"seller_agent2": "רפי דה פיצ'וטו"})
+ck(r["ok"] and [a["name"] for a in COMP[-1][3]] == ["אלי שמול", "רפי דה פיצ'וטו"], COMP[-1][3])
+r = S.sold_create(G, "prop", "tok1", "seller", "", http=HTTP, env=env, store=store, db=db, details={"seller_agent2": " רפי "})
+ck(r["ok"] and [a["name"] for a in COMP[-1][3]] == ["דנה כהן", "רפי"], COMP[-1][3])
+r = S.sold_create(G, "prop", "tok1", "seller", "", http=HTTP, env=env, store=store, db=db, details={"seller_agent2": "דנה כהן"})
+ck(r["ok"] and [a["name"] for a in COMP[-1][3]] == ["דנה כהן", "יוסי לוי"], "same as agent 1 → listing default")
+r = S.sold_create(G, "prop", "tok1", "seller", "", http=HTTP, env=env, store=store, db=db, details={"seller_agent2": ""})
+ck(r["ok"] and [a["name"] for a in COMP[-1][3]] == ["דנה כהן", "יוסי לוי"], "empty → listing default")
+r = S.sold_create(G, "prop", "tok1", "both", "", http=HTTP, env=env, store=store, db=db,
+                  details={"seller_agent2": "רפי", "buyer_agents": ["אלי שמול"]})
+ck(r["ok"] and [a["name"] for a in COMP[-1][3]["seller"]] == ["דנה כהן", "רפי"], COMP[-1][3])
 # משולב מ"הנכסים שלי": צד המוכר מהנכס, צד הקונה נבחר
 r = S.sold_create(G, "prop", "tok1", "both", "", http=HTTP, env=env, store=store, db=db,
                   details={"buyer_agents": ["אלי שמול", "יהודית שמול"]})
