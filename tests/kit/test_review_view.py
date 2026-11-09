@@ -153,7 +153,7 @@ def test_view_open():
     ck(r.headers["Cache-Control"] == "no-store" and "noindex" in r.headers["X-Robots-Tag"], r.headers)
     ck("לביקורות בגוגל" in h and "https://g.page/r/bialik" in h, "google")
     ck("wa.me/972501111111" in h and "wa.me/972544448065" not in h and "544448065" not in h, "wa agent")
-    ck("לעמוד של אוהד לוי באתר" in h and "לאתר המשרד" in h and "הורד כ-PDF" in h, "links")
+    ck("לעמוד של אוהד לוי באתר" in h and "לאתר הנכסים שלנו" in h and "הורד כ-PDF" in h, "links")
     ck("snapshot" not in h and "1,850,000" not in h and "משה" not in h, "no snapshot data")
     imgs = re.findall(r'<img[^>]*src="([^"]+)"', h)
     ck(imgs == ["/k/%s/p%d.jpg" % (v, i) for i in range(1, 7)] and "<a" not in "".join(re.findall(r"<a[^>]*><img", h)), imgs)

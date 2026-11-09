@@ -594,6 +594,13 @@ def _p_next(snap, n):
         _check(d, W - PAD - 44, y + 12, 44, GOLD2)
         ls = _wrap_logical(d, p, fp, width - 80)
         y = _lines(d, ls, fp, W - PAD - 76, y, WHITE, 72) + 30
+    host = _site_host()
+    if host:
+        shown = host if host.startswith("www.") else "www." + host
+        y += 20
+        d.rounded_rectangle((PAD, y, W - PAD, y + 170), radius=CARD_R, fill=INSET_NAVY)
+        _line_c(d, "כל הנכסים שלנו באתר", _font(700, 44), W / 2, y + 28, LIGHT)
+        _line_c(d, shown, _fit(d, shown, 900, 60, width - 80), W / 2, y + 88, GOLD2)
     name = (ag.get("name") or "").strip()
     phone = (ag.get("phone") or "").strip()
     y0 = H - 92 - 60 - (130 if (name or phone) else 0) - 160

@@ -626,7 +626,7 @@ def register(app, G):
         g = str(claims.get("g_url") or "")
         if g.startswith("https://"):
             links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לביקורות בגוגל</a>" % esc(g))
-        links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לאתר המשרד</a>" % esc(site_root()))
+        links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לאתר הנכסים שלנו</a>" % esc(site_root()))
         su = str(ag.get("site_url") or "")
         if su.startswith("https://") and agent:
             links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לעמוד של %s באתר</a>" % (esc(su), esc(agent)))
