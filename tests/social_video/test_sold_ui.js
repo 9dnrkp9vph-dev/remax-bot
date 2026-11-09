@@ -37,7 +37,7 @@ P.DEAL = 'rent'; ck(P.soldRow(p) === '', 'rentals → nothing'); P.DEAL = '';
 P.SOLD.open.tok1 = true; h = P.soldRow(p);
 ck(h.includes("soldCreate('tok1','seller')") && h.includes("soldBoth('tok1')") && h.includes('ביטול'), h);
 // [05/11 אייל] המוכר וגם הקונה → בוחרים מי הביא את הקונה → סרטון משולב
-vm.runInContext(fn(pjs, 'soldToggle') + '\n' + fn(pjs, 'soldBoth') + '\n' + fn(pjs, 'soldBA') + '\n' + fn(pjs, 'soldCreate') +
+vm.runInContext(fn(pjs, 'soldToggle') + '\n' + fn(pjs, 'soldBoth') + '\n' + fn(pjs, 'soldBA') + '\n' + fn(pjs, 'soldPr') + '\n' + fn(pjs, 'soldCreate') +
   '\nvar RENDERS = 0; function render(){ RENDERS++; } var GETS = [], POSTS = [];' +
   'function GET(u){ GETS.push(u); return {then: function(f){ f({ok: true, agents: [{name: "אלי שמול"}, {name: "יהודית שמול"}]}); return {catch: function(){}}; }}; }' +
   'function POST(u, b){ POSTS.push([u, b]); return {then: function(){ return {catch: function(){}}; }}; } function toast(){}', P);
@@ -47,9 +47,15 @@ ck(h.includes('מי הביא את הקונה') && h.includes('<option value="א�
 ck(P.GETS.length === 1, 'agents loaded once'); P.soldBoth('tok1'); ck(P.GETS.length === 1, 'cached');
 P.soldBA('tok1', 0, ' אלי שמול '); P.soldBA('tok1', 1, '');
 P.soldCreate('tok1', 'both');
-ck(JSON.stringify(P.POSTS[0][1]) === JSON.stringify({key: 'tok1', side: 'both', details: {buyer_agents: ['אלי שמול']}}), JSON.stringify(P.POSTS[0]));
+ck(JSON.stringify(P.POSTS[0][1]) === JSON.stringify({key: 'tok1', side: 'both', details: {buyer_agents: ['אלי שמול'], price: ''}}), JSON.stringify(P.POSTS[0]));
+// [09/11 אייל] מחיר הסגירה — שדה בטופס (ריק = המחיר מהמודעה), עם פסיקים
+delete P.SOLD.busy.tok1; P.SOLD.open.tok1 = true; h = P.soldRow(p);
+ck(h.includes('מחיר הסגירה') && h.includes("soldPr('tok1',this)") && h.includes('inputmode="numeric"'), h);
+P.soldBoth('tok1'); h = P.soldRow(p); ck(h.includes('מחיר הסגירה'), 'price also in both form');
+const el = {value: '1090000'}; P.soldPr('tok1', el);
+ck(el.value === (1090000).toLocaleString() && P.SOLD.pr.tok1 === el.value, el.value);
 delete P.SOLD.busy.tok1; P.soldCreate('tok1', 'seller');
-ck(JSON.stringify(P.POSTS[1][1]) === JSON.stringify({key: 'tok1', side: 'seller'}), JSON.stringify(P.POSTS[1]));
+ck(JSON.stringify(P.POSTS[1][1]) === JSON.stringify({key: 'tok1', side: 'seller', details: {price: (1090000).toLocaleString()}}), JSON.stringify(P.POSTS[1]));
 delete P.SOLD.busy.tok1;
 P.SOLD.open.tok1 = false;
 P.SOLD.items['p:tok1'] = {id: 's1', status: 'rendering', token: 'T1'};
