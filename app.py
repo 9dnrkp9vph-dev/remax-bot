@@ -7352,10 +7352,17 @@ def _send_client_signed_copy(phone, client, link, link2=""):
 def _parse_sign_header(header):
     """מפרק את מחרוזת הכותרת המובנית (תאריך/סוכן/לקוח/נכסים) לשדות לרינדור נקי בעמוד ההסכם."""
     import re as _re2
-    out = {"date": "", "agent": "", "client": "", "phone": "", "cid": "", "props": []}
+    out = {"date": "", "agent": "", "client": "", "phone": "", "cid": "", "props": [], "caddr": "", "email": ""}
     for ln in str(header or "").split("\n"):
         ln = ln.strip()
         if not ln:
+            continue
+        # [10/11 אייל — עיצוב חתימה טובה] שורות רשות מטופס ההחתמה; כותרות ישנות בלעדיהן
+        if ln.startswith("כתובת הלקוח:"):
+            out["caddr"] = ln[len("כתובת הלקוח:"):].strip()
+            continue
+        if ln.startswith("מייל הלקוח:"):
+            out["email"] = ln[len("מייל הלקוח:"):].strip()
             continue
         if ln.startswith("תאריך:"):
             m = _re2.search(r"תאריך:\s*([^·]+)", ln)
@@ -7382,6 +7389,36 @@ def _parse_sign_header(header):
             else:
                 out["props"].append({"addr": _re2.sub(r"^\d+\.\s*", "", ln), "price": ""})
     return out
+
+def _sign_price_label(docs):
+    """כותרת עמודת המחיר בטבלת הנכסים (עיצוב חתימה טובה, 10/11): לפי סוג ההסכם הראשון."""
+    d0 = (docs or [{}])[0] if docs else {}
+    dt = str(d0.get("deal_type", "")).upper()
+    tt = str(d0.get("title", ""))
+    if "/" in tt or "ו/או" in tt:            # קניה/שכירות · מכירה ו/או השכרה
+        return "מחיר מבוקש"
+    if "CLIENT_RENT" in dt or "OWNER_RENT" in dt or "שכירות" in tt or "השכרת" in tt:
+        return "מחיר שכירות מבוקש"
+    if "CLIENT" in dt or "קניי" in tt or "קניה" in tt:
+        return "מחיר קניה מבוקש"
+    if "OWNER" in dt or "מכירת" in tt or "בלעדיות" in tt:
+        return "מחיר מכירה מבוקש"
+    return "מחיר מבוקש"
+
+def _sign_split_notes(body):
+    """ההערות מטופס ההחתמה מודבקות לסוף גוף ההסכם ('\\n\\nהערות: …') → (גוף, הערות) לסקשן נפרד."""
+    b = str(body or "")
+    i = b.rfind("\n\nהערות: ")
+    if i < 0:
+        return b, ""
+    return b[:i].rstrip(), b[i + len("\n\nהערות: "):].strip()
+
+def _sign_fmt_when(iso):
+    """'2026-11-04T19:49:57+02:00' → '19:49 · 04/11/2026' (שעת החתימה מתחת לקו 'תאריך ושעה')."""
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})", str(iso or ""))
+    if not m:
+        return ""
+    return "%s:%s · %s/%s/%s" % (m.group(4), m.group(5), m.group(3), m.group(2), m.group(1))
 
 def _pick_avatar_phone(cands, local_has, db_phones):
     """תמונת הסוכן בדף ההסכם (אייל 18/10, רפי): קודם מספר עם קובץ בדיסק, אחר כך מספר עם
@@ -7428,9 +7465,22 @@ def public_sign_doc(token):
         docs = []
     signature = str(doc.get("signature", ""))
     status = str(doc.get("status", "signed"))
-    docs_html = "".join(
-        "<div class=doc><h2>%s</h2><div class=body>%s</div></div>" % (
-            _h.escape(str(d.get("title", ""))), _h.escape(str(d.get("body", "")))) for d in docs)
+    # [10/11 אייל — עיצוב חתימה טובה] כותרת ההסכם הראשון עולה לראש העמוד (h1); הערות → סקשן נפרד
+    _t0 = str((docs[0].get("title") if docs else "") or "")
+    _ref = ""
+    if " · להסכם מס' " in _t0:
+        _t0, _ref = _t0.split(" · להסכם מס' ", 1)
+    _notes = []
+    docs_html = ""
+    for _i, d in enumerate(docs):
+        _b, _nt = _sign_split_notes(d.get("body", ""))
+        if _nt and _nt not in _notes:
+            _notes.append(_nt)
+        docs_html += "<div class=doc>%s<div class=body>%s</div></div>" % (
+            ("<h2>%s</h2>" % _h.escape(str(d.get("title", "")))) if _i else "", _h.escape(_b))
+    if _notes:
+        docs_html += ("<div class=notes><h4>הערות ותוספות להסכם:</h4>" +
+                      "".join("<div class=nt>%s</div>" % _h.escape(x) for x in _notes) + "</div>")
     # הסכם המשך (בלעדיות): מוצג כ"חתימה ממתינה" מתחת להסכם המוכר, ונפתח אחרי חתימתו
     _next_tok = str((docs[0].get("next_token") if docs else "") or "")
     _next_title = str((docs[0].get("next_title") if docs else "") or "")
@@ -7448,7 +7498,13 @@ def public_sign_doc(token):
                       "<div style='width:10px;height:10px;border-radius:50%;background:var(--gold);flex:0 0 auto'></div>"
                       "<div><div style='font-weight:800;font-size:14px'>" + _h.escape(_next_title or "הסכם בלעדיות") + " · חתימה ממתינה</div>"
                       "<div style='font-size:12.5px;color:#67707e;font-weight:600'>ייפתח לחתימה מיד לאחר חתימת ההסכם הזה</div></div></div>")
-    sig_html = ("<div class=sig><div>חתימת הלקוח:</div><img src='" + signature + "' alt='חתימה'></div>") if signature else ""
+    _when = _sign_fmt_when(doc.get("signed_at", ""))
+    sig_html = (("<p class=terms><span class=cb>✓</span> הלקוח אישר את "
+                 "<a href='/sign-terms' target='_blank' rel='noopener'>תנאי השימוש ומדיניות הפרטיות</a> של מערכת החתימה</p>"
+                 "<div class=sigs><div><div class=sv><img src='" + _h.escape(signature, quote=True) + "' alt='חתימה'></div>"
+                 "<div class=ln>חתימה</div></div>"
+                 "<div><div class='sv dt'>" + _h.escape(_when) + "</div><div class=ln>תאריך ושעה</div></div></div>")
+                if signature else "")
     _head = ("<!DOCTYPE html><html dir=rtl lang=he><head><meta charset=utf-8>"
              "<meta name=viewport content='width=device-width,initial-scale=1'>"
              "<link href='https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&display=swap' rel='stylesheet'>"
@@ -7456,24 +7512,24 @@ def public_sign_doc(token):
              ":root{--ink:#15263b;--gold:#bb8a2c;--green:#1f8a4c;--muted:#8b93a1;--line:#efece6}"
              "*{box-sizing:border-box}"
              "body{font-family:'Heebo',Arial,sans-serif;background:#f6f5f2;color:var(--ink);margin:0;padding:22px 14px 40px;direction:rtl;letter-spacing:-.011em;-webkit-font-smoothing:antialiased}"
-             ".page{max-width:820px;margin:0 auto;background:#fff;padding:30px 32px 26px;border-radius:18px;box-shadow:0 1px 2px rgba(20,30,50,.04),0 14px 40px rgba(20,30,50,.07);border:1px solid var(--line)}"
-             ".logobar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:16px;margin-bottom:6px;position:relative;border-bottom:none}"
-             ".logobar:after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}"
-             ".logobar img{height:48px;width:auto;object-fit:contain;flex:0 0 auto}"
-             ".agentbox .an{font-size:17px;font-weight:800}"
-             ".agentbox .al{font-size:12.5px;color:var(--muted);font-weight:600;margin-top:2px}"
-             ".docnum{font-size:12px;font-weight:800;color:var(--gold);letter-spacing:.04em;margin:14px 0 4px}"
-             ".cline{font-size:13.5px;color:#46505f;font-weight:600;line-height:1.7;background:#faf8f4;border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin-bottom:14px}"
-             ".cline b{color:var(--ink)}"
-             ".ptt{font-size:13px;font-weight:800;color:#67707e;margin:0 2px 7px;display:flex;align-items:center;gap:7px}"
-             ".ptt:before{content:'';width:14px;height:2px;border-radius:2px;background:var(--gold)}"
-             ".ptable{width:100%;border-collapse:separate;border-spacing:0;margin-bottom:18px;border:1px solid var(--line);border-radius:12px;overflow:hidden}"
-             ".ptable th{background:#faf8f4;font-size:12.5px;color:#67707e;font-weight:800;padding:10px 13px;text-align:start;border-bottom:1px solid var(--line)}"
-             ".ptable td{padding:11px 13px;font-size:14px;font-weight:600;border-bottom:1px solid var(--line)}"
-             ".ptable tr:last-child td{border-bottom:none}"
+             ".page{max-width:820px;margin:0 auto;background:#fff;padding:34px 40px 28px;border-radius:4px;box-shadow:0 6px 20px rgba(30,58,95,.08);border:1px solid #e4e1da;color:#111}"
+             ".logobar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:14px;margin-bottom:6px;border-bottom:1.5px solid #d9d9d9}"
+             ""
+             ".logobar img{height:56px;width:auto;object-fit:contain;flex:0 0 auto;border:1px solid #eee;padding:5px;background:#fff}"
+             ".agentbox .an{font-size:17px;font-weight:800;color:#1E3A5F}"
+             ".agentbox .al{font-size:13.5px;color:#555;font-weight:500;margin-top:2px}"
+             ".doctitle{text-align:center;font-size:21px;font-weight:800;margin:22px 0 2px;line-height:1.35}.docnum{text-align:center;font-size:16px;font-weight:700;margin:0 0 4px}.docnum span{color:#C29435;font-size:26px;font-weight:800}.docref{text-align:center;font-size:13.5px;color:#444;margin-bottom:4px}"
+             ".cline{font-size:14.5px;color:#111;font-weight:500;line-height:2;text-align:center;margin:12px 0 16px}"
+             ".cline u{font-weight:600;text-decoration-color:#888;text-underline-offset:4px}.cline .cp{display:inline-block;margin:0 6px}"
+             ".ptt{font-size:15px;font-weight:700;color:#111;margin:0 0 7px}"
+             ""
+             ".ptable{width:100%;border-collapse:collapse;margin-bottom:20px}"
+             ".ptable th{background:#f0f0f0;font-size:14px;color:#111;font-weight:700;padding:9px 12px;text-align:start;border:1px solid #bbb}"
+             ".ptable td{padding:10px 12px;font-size:14.5px;font-weight:500;border:1px solid #bbb}"
+             ""
              ".doc{margin-bottom:18px}"
-             ".doc h2{font-size:19px;font-weight:800;margin:18px 0 10px;padding-inline-start:11px;border-inline-start:4px solid var(--gold);line-height:1.3}"
-             ".doc .body{font-size:14.5px;line-height:1.85;color:#33405a;white-space:pre-line}"
+             ".doc h2{font-size:18px;font-weight:800;margin:26px 0 10px;text-align:center;line-height:1.35}"
+             ".doc .body{font-size:14.5px;line-height:1.85;color:#111;white-space:pre-line;text-align:justify}.notes{margin:18px 0 6px}.notes h4{font-size:15px;font-weight:800;margin:0 0 6px}.notes .nt{white-space:pre-line;font-size:14.5px;line-height:1.9}.terms{font-size:14px;margin:20px 0 6px;color:#111}.terms a{color:#2E6BD6}.cb{display:inline-flex;width:16px;height:16px;border:1.5px solid #1E3A5F;align-items:center;justify-content:center;font-size:12px;margin-left:6px;color:#1E3A5F;vertical-align:-2px}.sigs{display:flex;gap:40px;margin-top:18px}.sigs>div{flex:1;text-align:center}.sv{height:84px;display:flex;align-items:flex-end;justify-content:center}.sv img{max-height:84px;max-width:100%}.sv.dt{font-size:15px;font-weight:600;padding-bottom:4px}.ln{border-top:1px solid #111;padding-top:5px;font-size:13.5px}"
              ".signbox{margin-top:22px;border-top:2px solid var(--line);padding-top:20px}"
              ".signlbl{font-weight:800;font-size:14px;margin-bottom:8px}"
              ".signinp{width:100%;box-sizing:border-box;padding:13px 14px;font-size:16px;font-weight:700;border:1.5px solid #e0e4e9;border-radius:12px;direction:ltr;text-align:center;letter-spacing:1px;background:#fbfcfd;font-family:inherit}"
@@ -7504,6 +7560,7 @@ def public_sign_doc(token):
              ".efoot{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:600}"
              ".efoot a{color:var(--muted)}"
              "#step2{display:none}"
+             "@media(max-width:520px){.page{padding:22px 16px 20px}.logobar img{height:40px}.doctitle{font-size:19px}.sigs{gap:16px}}"
              "@media print{.pb,.signbox,.stickybar,.efoot,.backlink{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:100%;border:none}}"
              "</style></head><body><div class=page>")
     _p = _parse_sign_header(header)
@@ -7516,12 +7573,16 @@ def public_sign_doc(token):
     for pr in _p["props"]:
         _prc = (_h.escape(pr["price"]) + " ₪") if pr.get("price") else "—"
         _rows += "<tr><td>" + _h.escape(pr["addr"]) + "</td><td>" + _prc + "</td></tr>"
-    _ptbl = ("<div class=ptt>פרטי הנכס</div><table class=ptable><tr><th>כתובת</th><th>מחיר מבוקש</th></tr>" + _rows + "</table>") if _p["props"] else ""
+    _ptbl = ("<div class=ptt>פרטי הנכס" + ("ים" if len(_p["props"]) > 1 else "") + ":</div><table class=ptable><tr><th>כתובת</th><th>" +
+             _sign_price_label(docs) + "</th></tr>" + _rows + "</table>") if _p["props"] else ""
     _cparts = []
-    if _p["client"]: _cparts.append("שם הלקוח: <b>" + _h.escape(_p["client"]) + "</b>")
-    if _cid_eff: _cparts.append("ת״ז: " + _h.escape(_cid_eff))
-    if _p["phone"]: _cparts.append("טל': " + _h.escape(_p["phone"]))
-    if _p["date"]: _cparts.append("תאריך: " + _h.escape(_p["date"]))
+    _U = lambda lbl, v: "<span class=cp>" + lbl + " <u>" + _h.escape(v) + "</u></span>"
+    if _p["client"]: _cparts.append(_U("שם הלקוח:", _p["client"]))
+    if _cid_eff: _cparts.append(_U("ת״ז:", _cid_eff))
+    if _p["caddr"]: _cparts.append(_U("מכתובת:", _p["caddr"]))
+    if _p["email"]: _cparts.append(_U("מייל:", _p["email"]))
+    if _p["phone"]: _cparts.append(_U("טלפון:", _p["phone"]))
+    if _p["date"]: _cparts.append(_U("תאריך:", _p["date"]))
     _ainfo = {}
     if _p["agent"]:
         try: _ainfo = fetch_agents_full().get(_norm_name(_p["agent"]), {})
@@ -7571,8 +7632,10 @@ def public_sign_doc(token):
               "<svg width='16' height='14' viewBox='0 0 118 106'><path d='M58 8L20 44l14 54h48l14-54z' fill='#E4C56B'/><path d='M20 44l-14 8 14 6z' fill='#1E3A5F'/><circle cx='40' cy='34' r='4.2' fill='#1E3A5F'/></svg>"
               "מופעל על ידי אפי · <a href='/sign-terms' target='_blank' rel='noopener'>תנאי שימוש ופרטיות</a></div>")
     meta_html = (_logobar +
-        "<div class=docnum>הסכם מס׳ " + _docnum + "</div>" +
-        (("<div class=cline>" + " · ".join(_cparts) + "</div>") if _cparts else "") +
+        (("<div class=doctitle>" + _h.escape(_t0) + "</div>") if _t0 else "") +
+        "<div class=docnum>מס׳ <span>" + _docnum + "</span></div>" +
+        (("<div class=docref>מצורף להסכם הזמנת שירותי תיווך מס׳ " + _h.escape(_ref) + "</div>") if _ref else "") +
+        (("<div class=cline>" + " &nbsp; ".join(_cparts) + "</div>") if _cparts else "") +
         _ptbl)
     if status == "pending":
         _greet = ("<div class=greet>שלום" + ((" " + _h.escape(_p["client"])) if _p["client"] else "") + ",</div>"

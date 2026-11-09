@@ -7,3 +7,6 @@ package-lock.json
 package.json
 v2_gauth.json
 apple_auth.json
+
+# יומן אבחון וואטסאפ — נוצר מקומית כשבדיקות מריצות את app.py (בשרת הוא בתיקיית MAP_CACHE_DIR)
+wa_diag.json

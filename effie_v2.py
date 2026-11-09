@@ -10498,6 +10498,8 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       <div class="fld"><span>תעודת זהות <span id="idReq" style="color:#C24040;display:none">*</span></span>
         <input id="cId" inputmode="numeric" oninput="checkId()">
         <div id="idMsg"></div></div>
+      <div class="fld"><span>כתובת הלקוח (לא חובה)</span><input id="cAddr" autocomplete="off"></div>
+      <div class="fld"><span>מייל (לא חובה)</span><input id="cMail" type="email" inputmode="email" autocomplete="off" dir="ltr"></div>
     </div>
 
     <div class="sec">
@@ -10849,6 +10851,9 @@ function submitSign(){
   if (BUSY) return;
   var cname = el('cName').value.trim(), cphone = el('cPhone').value.trim(), cid = el('cId').value.trim();
   var cnotes = el('cNotes') ? el('cNotes').value.trim() : '';
+  /* [10/11 אייל — עיצוב חתימה טובה] שורה אחת, בלי ירידות שורה (הכותרת מפורקת לפי שורות) */
+  var caddr = el('cAddr') ? el('cAddr').value.replace(/\s+/g, ' ').trim() : '';
+  var cmail = el('cMail') ? el('cMail').value.replace(/\s+/g, '').trim() : '';
   if (MODE === 'draft'){   // טיוטא: שומר את מצב הטופס כמו-שהוא — רק שם חובה
     if (!cname){ toast('שם הלקוח — חובה לטיוטא'); return; }
     var deals = DEALS_DEF.map(function(d){
@@ -10858,7 +10863,7 @@ function submitSign(){
     el('go').dataset.t = el('go').dataset.t || el('go').textContent;
     el('go').textContent = 'שומר טיוטא…';
     POST('/v2/api/sign/draft', {id: DRAFT_ID,
-      draft: {kind: KIND, client: cname, phone: cphone, cid: cid, notes: cnotes,
+      draft: {kind: KIND, client: cname, phone: cphone, cid: cid, notes: cnotes, caddr: caddr, cmail: cmail,
               props: PROPS, deals: deals}}).then(function(j){
       BUSY = false; el('go').disabled = false;
       el('go').textContent = el('go').dataset.t;
@@ -10925,7 +10930,8 @@ function submitSign(){
       : 'נכס: ' + (PROPS[0].addr || '—') + (PROPS[0].price ? ' · מחיר מבוקש: ' + PROPS[0].price + ' ₪' : '');
     var header = 'תאריך: ' + todayStr() + ' · המתווך/הסוכן: ' + AGENT + '\n' +
       'לקוח: ' + cname + (cphone ? " · טל' " + cphone : '') + (cid ? ' · ת״ז ' + cid : '') + '\n' +
-      propsLine;
+      propsLine +
+      (caddr ? '\nכתובת הלקוח: ' + caddr : '') + (cmail ? '\nמייל הלקוח: ' + cmail : '');
     var done = function(j, txt){
       BUSY = false; el('go').disabled = false;
       el('go').textContent = el('go').dataset.t || el('go').textContent;
@@ -11006,6 +11012,8 @@ function submitSign(){
       if (d.phone) el('cPhone').value = d.phone;
       if (d.cid) el('cId').value = d.cid;
       if (d.notes && el('cNotes')) el('cNotes').value = d.notes;
+      if (d.caddr && el('cAddr')) el('cAddr').value = d.caddr;
+      if (d.cmail && el('cMail')) el('cMail').value = d.cmail;
       if (d.props && d.props.length){
         PROPS = d.props.map(function(p){ return {addr: p.addr || '', price: p.price || ''}; });
         renderProps();
