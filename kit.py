@@ -16,9 +16,70 @@ SETTINGS_KEYS = ("coop", "rank", "g_rating", "g_count", "g_url")
 _SHOW_LINK = ("approved", "sent")
 
 
+TICK_SEC = 600
+_TOK_RE = re.compile(r"^[A-Za-z0-9_-]{2,64}$")
+_IMG_CACHE_MAX = 20
+_PING_GAP = 10
+
+
+def _approver9(G):
+    a = kc.phone9(os.environ.get("KIT_APPROVER"))
+    if a:
+        return a
+    try:
+        devs = sorted(G["DEV_PHONES"])
+    except Exception:
+        devs = []
+    return kc.phone9(devs[0]) if devs else ""
+
+
 def send_review(G, rec, base) -> bool:
-    """Implemented in Task 4."""
-    return False
+    """שולח לאייל (או KIT_APPROVER) בוואטסאפ קישור לאישור התיק. בשעות שקט/שבת — מסמן review_due לסבב הבא."""
+    sb = G["_sbdb"]
+    if G["_quiet_hours"]() or G["_shabbat_quiet_now"]():
+        sb.kit_update(rec["id"], {"review_due": True})
+        return False
+    to9 = _approver9(G)
+    if not to9:
+        return False
+    snap = rec.get("snapshot") or {}
+    place = ", ".join(x for x in (snap.get("street") or "", snap.get("city") or "") if x)
+    text = "תיק פרזנטציה חדש לאישור\n%s · %s · %s\nלצפייה ולאישור: %s/v2/kit/review/%s" % (
+        rec.get("agent_name") or "", rec.get("owner_name") or snap.get("owner") or "", place,
+        base, rec.get("review_token") or "")
+    ok = False
+    try:
+        ok = bool(G["send_text"]("972" + to9, text))
+    except Exception as e:
+        log.warning("kit send_review: send_text failed: %s", e)
+    if ok:
+        sb.kit_update(rec["id"], {"sent_review_at": _now_iso(), "review_due": False})
+    else:   # הסבב הבא ינסה שוב
+        sb.kit_update(rec["id"], {"review_due": True})
+    return ok
+
+
+def _kit_tick_once(G):
+    """סבב אחד: תיקים ממתינים (שלא פגו) שסומנו review_due — נשלחים לאישור."""
+    if G["_quiet_hours"]() or G["_shabbat_quiet_now"]():
+        return 0
+    now, base, sent = _t.time(), _base(), 0
+    for r in G["_sbdb"].kit_list(None) or []:
+        if r.get("review_due") and kc.eff_status(r, now) == "pending":
+            if send_review(G, r, base):
+                sent += 1
+    return sent
+
+
+def _kit_tick(G):
+    """לולאת הרקע (thread daemon): כל TICK_SEC שניות."""
+    _t.sleep(60)
+    while True:
+        try:
+            _kit_tick_once(G)
+        except Exception as e:
+            log.warning("kit tick failed: %s", e)
+        _t.sleep(TICK_SEC)
 
 
 def _spawn(fn):
@@ -350,3 +411,301 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "save"})
         log_act(s, "תיק פרזנטציה — הגדרות", ", ".join(sorted(vals)))
         return jsonify({"ok": True, "settings": kc.kit_settings(G["_load_config"]() or {})})
+
+    # ── [Task 4] אישור התיק + דף הצפייה של בעל הנכס ───────────────────────
+    # פרטיות: /k/* מחזיר רק תמונות, PDF, דף עם פס קישורים ו-204 — לעולם לא את הצילום (JSON) או שדה ממנו כנתון.
+    from flask import Response
+    import html as _html
+    import io as _io
+    from collections import OrderedDict
+    from urllib.parse import quote
+
+    imgs_cache, imgs_lock = OrderedDict(), threading.Lock()
+    pings, pings_lock = {}, threading.Lock()
+    thr = {"t": None, "pid": None}
+    thr_lock = threading.Lock()
+
+    @app.before_request
+    def _kit_kick():
+        if os.environ.get("KIT_TICK", "1") == "0":
+            return
+        t = thr["t"]
+        if t is not None and t.is_alive() and thr["pid"] == os.getpid():
+            return
+        with thr_lock:
+            t = thr["t"]
+            if t is not None and t.is_alive() and thr["pid"] == os.getpid():
+                return
+            thr["t"] = threading.Thread(target=_kit_tick, args=(G,), daemon=True, name="kit-review-tick")
+            thr["t"].start()
+            thr["pid"] = os.getpid()
+
+    def esc(v):
+        return _html.escape(str(v or ""), quote=True)
+
+    def office_name():
+        try:
+            return str(((G["_load_config"]() or {}).get("v2_office") or {}).get("name") or "").strip()
+        except Exception:
+            return ""
+
+    def resp(body, code=200, ctype="text/html; charset=utf-8", extra=None):
+        h = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow", "Content-Type": ctype}
+        h.update(extra or {})
+        return Response(body, status=code, headers=h)
+
+    def by_tok(col, tok):
+        if not _TOK_RE.match(str(tok or "")):
+            return None
+        try:
+            return sb().kit_by_token(col, tok)
+        except Exception as e:
+            log.warning("kit_by_token failed: %s", e)
+            return None
+
+    def jpegs(rec):
+        """עמודי התיק כ-JPEG (q85), במטמון לפי (id, זמן הצילום) — עד 20 תיקים. ping לא מבטל את המטמון."""
+        snap = rec.get("snapshot") or {}
+        key = (rec.get("id"), str(snap.get("made_at") or rec.get("updated_at") or ""))
+        with imgs_lock:
+            if key in imgs_cache:
+                imgs_cache.move_to_end(key)
+                return imgs_cache[key]
+            import kit_render as kr
+            out = []
+            for im in kr.render_pages(snap):
+                b = _io.BytesIO()
+                im.save(b, "JPEG", quality=85, optimize=True)
+                out.append(b.getvalue())
+            imgs_cache[key] = out
+            while len(imgs_cache) > _IMG_CACHE_MAX:
+                imgs_cache.popitem(last=False)
+            return out
+
+    def img_resp(rec, n):
+        try:
+            pages = jpegs(rec)
+        except Exception as e:
+            log.warning("kit render failed: %s", e)
+            return resp("", 500, "text/plain; charset=utf-8")
+        if not 1 <= n <= len(pages):
+            return resp("", 404, "text/plain; charset=utf-8")
+        return resp(pages[n - 1], 200, "image/jpeg")
+
+    def shell(title, body, script=""):
+        return ("<!doctype html><html lang=\"he\" dir=\"rtl\"><head><meta charset=\"utf-8\">"
+                "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                "<meta name=\"robots\" content=\"noindex,nofollow\"><title>%s</title>"
+                "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
+                "<link href=\"https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap\" rel=\"stylesheet\">"
+                "<style>%s</style></head><body>%s%s</body></html>") % (esc(title), _CSS, body,
+                                                                     ("<script>%s</script>" % script) if script else "")
+
+    def closed_page(code=410):
+        off = office_name()
+        body = ("<main class=\"closed\"><div class=\"card\"><div class=\"off\">%s</div>"
+                "<h1>התיק אינו זמין</h1><p>הקישור כבר לא פעיל. לפרטים אפשר לפנות לסוכן.</p></div></main>") % esc(off)
+        return resp(shell(off or "התיק אינו זמין", body), code)
+
+    # ── אישור (לאייל בלבד — מי שמחזיק את הקישור) ─────────────────────────
+    _STATUS_LINE = {"approved": "התיק אושר ומחכה לסוכן", "sent": "התיק אושר ונשלח לבעל הנכס",
+                    "rejected": "התיק נדחה", "expired": "פג תוקף האישור (48 שעות). הסוכן יכול לשלוח שוב."}
+
+    @app.route("/v2/kit/review/<tok>", methods=["GET"])
+    def kit_review_page(tok):
+        rec = by_tok("review_token", tok)
+        if not rec:
+            return resp(shell("לא נמצא", "<main class=\"closed\"><div class=\"card\"><h1>הקישור לא נמצא</h1></div></main>"), 404)
+        snap = rec.get("snapshot") or {}
+        st = kc.eff_status(rec, _t.time())
+        try:
+            npages = len(jpegs(rec))
+        except Exception as e:
+            log.warning("kit review render failed: %s", e)
+            npages = 0
+        place = ", ".join(x for x in (snap.get("street") or "", snap.get("city") or "") if x)
+        imgs = "".join("<img src=\"/v2/kit/review/%s/p%d.jpg\" alt=\"עמוד %d\" loading=\"lazy\">" % (esc(tok), i, i)
+                       for i in range(1, npages + 1))
+        if st == "pending":
+            act = ("<section id=\"act\" class=\"bar\"><label for=\"why\">סיבת דחייה (לא חובה)</label>"
+                   "<textarea id=\"why\" maxlength=\"300\" rows=\"3\"></textarea>"
+                   "<button class=\"btn pri\" onclick=\"go('approve')\">אשר ושלח לסוכן</button>"
+                   "<button class=\"btn sec\" onclick=\"go('reject')\">דחה</button>"
+                   "<div id=\"msg\" class=\"msg\" role=\"status\" aria-live=\"polite\"></div></section>")
+            script = ("function go(a){var bs=document.querySelectorAll('#act button');for(var i=0;i<bs.length;i++)bs[i].disabled=true;"
+                      "var m=document.getElementById('msg');m.textContent='שומר…';"
+                      "fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},"
+                      "body:JSON.stringify({action:a,reason:document.getElementById('why').value})})"
+                      ".then(function(r){return r.text();}).then(function(t){m.textContent=t;setTimeout(function(){location.reload();},1200);})"
+                      ".catch(function(){m.textContent='שגיאה — נסה שוב';for(var i=0;i<bs.length;i++)bs[i].disabled=false;});}")
+        else:
+            line = _STATUS_LINE.get(st, st)
+            if st == "rejected" and rec.get("reject_reason"):
+                line += " · " + str(rec.get("reject_reason"))
+            act = "<section class=\"bar\"><div class=\"status\">%s</div></section>" % esc(line)
+            script = ""
+        body = ("<main class=\"wrap\"><header class=\"head\"><div class=\"off\">%s</div><h1>תיק פרזנטציה לאישור</h1>"
+                "<p>%s · %s · %s</p></header>%s<div class=\"pages\">%s</div></main>") % (
+            esc(office_name()), esc(rec.get("agent_name")), esc(rec.get("owner_name") or snap.get("owner")), esc(place),
+            act, imgs)
+        return resp(shell("תיק פרזנטציה לאישור", body, script))
+
+    @app.route("/v2/kit/review/<tok>", methods=["POST"])
+    def kit_review_decide(tok):
+        rec = by_tok("review_token", tok)
+        if not rec:
+            return resp("לא נמצא", 404, "text/plain; charset=utf-8")
+        j = request.get_json(silent=True) or {}
+        action = str(j.get("action") or "")
+        s = G["_web_auth"]() if G.get("_web_auth") else None
+        if s:
+            who = real_name(s)
+            who9 = kc.phone9(s.get("phone"))
+        else:
+            who9 = _approver9(G)
+            try:
+                who = G["_display_name_for"]("", who9) or "מאשר"
+            except Exception:
+                who = "מאשר"
+        now = _t.time()
+        new, msg = kc.decide(rec, action, who, now)   # פג תוקף / כבר הוחלט — לפני כל כתיבה
+        if not new:
+            return resp(msg, 200, "text/plain; charset=utf-8")
+        reason = _s(j.get("reason"))[:300] if new == "rejected" else ""
+        fields = {"decided_by": who, "decided_at": _now_iso(), "reject_reason": reason or None}
+        if not sb().kit_claim(rec["id"], "pending", new, fields):
+            cur = sb().kit_get(rec["id"]) or {}
+            _, msg2 = kc.decide(cur, action, who, now)
+            if msg2 not in ("כבר אושר", "כבר נדחה", "פג תוקף"):
+                msg2 = "לא נשמר — נסה שוב"
+            return resp(msg2, 200, "text/plain; charset=utf-8")
+        snap = rec.get("snapshot") or {}
+        detail = "%s · %s · %s" % (rec.get("agent_name") or "", rec.get("owner_name") or "", snap.get("street") or "")
+        if reason:
+            detail += " · " + reason
+        try:
+            G["_log_activity"](who, "admin", who9, "תיק פרזנטציה — " + ("אושר" if new == "approved" else "נדחה"), detail)
+        except Exception:
+            pass
+        return resp(msg, 200, "text/plain; charset=utf-8")
+
+    @app.route("/v2/kit/review/<tok>/p<int:n>.jpg")
+    def kit_review_img(tok, n):
+        rec = by_tok("review_token", tok)
+        if not rec:
+            return resp("", 404, "text/plain; charset=utf-8")
+        return img_resp(rec, n)
+
+    # ── הצד של בעל הנכס ──────────────────────────────────────────────────
+    def open_kit(vtok):
+        rec = by_tok("view_token", vtok)
+        if rec and kc.eff_status(rec, _t.time()) in _SHOW_LINK:
+            return rec
+        return None
+
+    def json_str(v):
+        import json as _json
+        return _json.dumps(v)
+
+    def site_root():
+        return os.environ.get("SITE_PUBLIC_URL", "https://refamily.co.il").rstrip("/")
+
+    @app.route("/k/<vtok>")
+    def kit_view_page(vtok):
+        rec = open_kit(vtok)
+        if not rec:
+            return closed_page()
+        snap = rec.get("snapshot") or {}
+        ag = snap.get("agent") or {}
+        agent = rec.get("agent_name") or ag.get("name") or ""
+        claims = snap.get("claims") or {}
+        off = office_name()
+        imgs = "".join("<img src=\"/k/%s/p%d.jpg\" alt=\"עמוד %d\"%s>" % (esc(vtok), i, i, "" if i == 1 else " loading=\"lazy\"")
+                       for i in range(1, len(jpegs(rec)) + 1))
+        links = ["<a class=\"btn pri\" href=\"/k/%s.pdf\">הורד כ-PDF</a>" % esc(vtok)]
+        g = str(claims.get("g_url") or "")
+        if g.startswith("https://"):
+            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener\">לביקורות בגוגל</a>" % esc(g))
+        links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener\">לאתר המשרד</a>" % esc(site_root()))
+        su = str(ag.get("site_url") or "")
+        if su.startswith("https://") and agent:
+            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener\">לעמוד של %s באתר</a>" % (esc(su), esc(agent)))
+        wa = kc.wa972(rec.get("agent_phone"))
+        if wa:
+            links.append("<a class=\"btn wa\" href=\"https://wa.me/%s\" target=\"_blank\" rel=\"noopener\">וואטסאפ ל%s</a>" % (wa, esc(agent)))
+        body = "<main class=\"view\"><div class=\"pages\">%s</div><nav class=\"links\">%s</nav></main>" % (imgs, "".join(links))
+        ping = "/k/%s/ping" % vtok
+        script = ("(function(){var u=%s;function p(){if(document.visibilityState==='hidden')return;"
+                  "try{fetch(u,{method:'POST',keepalive:true});}catch(e){}}"
+                  "setTimeout(p,2000);setInterval(p,15000);})();") % json_str(ping)
+        return resp(shell("תיק אישי" + (" · " + off if off else ""), body, script))
+
+    @app.route("/k/<vtok>/p<int:n>.jpg")
+    def kit_view_img(vtok, n):
+        rec = open_kit(vtok)
+        if not rec:
+            return resp("", 410, "text/plain; charset=utf-8")
+        return img_resp(rec, n)
+
+    @app.route("/k/<vtok>.pdf")
+    def kit_view_pdf(vtok):
+        rec = open_kit(vtok)
+        if not rec:
+            return closed_page()
+        try:
+            from PIL import Image
+            import kit_render as kr
+            pdf = kr.render_pdf([Image.open(_io.BytesIO(b)).convert("RGB") for b in jpegs(rec)])
+        except Exception as e:
+            log.warning("kit pdf failed: %s", e)
+            return resp("", 500, "text/plain; charset=utf-8")
+        fn = quote(kc.file_name(rec.get("snapshot") or {}))
+        return resp(pdf, 200, "application/pdf", {"Content-Disposition": "attachment; filename*=UTF-8''" + fn})
+
+    @app.route("/k/<vtok>/ping", methods=["POST"])
+    def kit_view_ping(vtok):
+        rec = open_kit(vtok)
+        if not rec:
+            return resp("", 410, "text/plain; charset=utf-8")
+        now = _t.time()
+        with pings_lock:
+            if now - pings.get(vtok, 0) < _PING_GAP:
+                return resp("", 204, "text/plain; charset=utf-8")
+            pings[vtok] = now
+            if len(pings) > 2000:
+                for k in [k for k, v in pings.items() if now - v > 60]:
+                    pings.pop(k, None)
+        try:
+            sb().kit_update(rec["id"], {"views": kc.view_add(rec.get("views"), now)})
+        except Exception as e:
+            log.warning("kit ping failed: %s", e)
+        return resp("", 204, "text/plain; charset=utf-8")
+
+
+_CSS = (
+    ":root{--navy:#1E3A5F;--cream:#F2EFE7;--blue:#2E6BD6;--green:#157A43;--muted:#5B6472}"
+    "*{box-sizing:border-box}"
+    "body{margin:0;background:#F2EFE7;color:#1E3A5F;font-family:'Heebo',Arial,sans-serif;direction:rtl;"
+    "-webkit-font-smoothing:antialiased}"
+    ".pages img{display:block;width:100%;height:auto;margin:0 0 12px;border-radius:20px;"
+    "box-shadow:0 6px 20px rgba(30,58,95,.06);background:#fff}"
+    ".view,.wrap{max-width:560px;margin:0 auto;padding:16px 16px 40px}"
+    ".links,.bar{display:flex;flex-direction:column;gap:10px;margin:8px 0 20px}"
+    ".btn{display:flex;align-items:center;justify-content:center;min-height:48px;padding:10px 18px;border-radius:14px;"
+    "font:700 17px 'Heebo',Arial,sans-serif;text-decoration:none;cursor:pointer;border:1.5px solid transparent}"
+    ".btn.pri{background:#2E6BD6;color:#fff}"
+    ".btn.sec{background:#fff;color:#1E3A5F;border-color:#D5D9E0}"
+    ".btn.wa{background:#157A43;color:#fff}"
+    ".btn:disabled{opacity:.55}"
+    "textarea{width:100%;font:400 16px 'Heebo',Arial,sans-serif;padding:12px;border-radius:14px;border:1.5px solid #D5D9E0;"
+    "background:#fff;color:#1E3A5F;resize:vertical}"
+    "label{font-weight:500;color:#5B6472;font-size:15px}"
+    ".head{margin:8px 0 12px}.head h1{margin:2px 0;font-size:24px;font-weight:800}.head p{margin:0;color:#5B6472}"
+    ".off{font-weight:800;color:#1E3A5F;font-size:16px}"
+    ".status{background:#fff;border-radius:16px;padding:14px 16px;font-weight:700}"
+    ".msg{min-height:22px;font-weight:700;text-align:center}"
+    ".closed{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}"
+    ".closed .card{background:#fff;border-radius:22px;padding:32px 24px;text-align:center;max-width:420px;width:100%;"
+    "box-shadow:0 6px 20px rgba(30,58,95,.06)}"
+    ".closed h1{margin:10px 0 6px;font-size:24px;font-weight:800}.closed p{margin:0;color:#5B6472}"
+)
