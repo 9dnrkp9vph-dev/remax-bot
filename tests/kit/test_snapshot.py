@@ -89,7 +89,10 @@ def test_buyers_city_mode():
     stat = {"id:b3": "frozen"}
     b = K.buyers_block(make_G(buyers=buyers, stat=stat), LISTING)
     assert b["mode"] == "city"
-    assert b["n"] == 3 and b["lines"] == [] and b["city"] == "קרית ביאליק"
+    assert b["n"] == 3 and b["city"] == "קרית ביאליק"
+    # הפירוט לפי הנכס נשאר גם במצב עיר (אייל 09/11): 3 קונים פעילים בעיר, בקריות 5 חדרים ומעלה 2
+    labels = dict((l, k) for l, k in b["lines"])
+    assert labels["מחפשים בקרית ביאליק"] == 3 and labels["מחפשים 5 חדרים ומעלה"] == 2
 
 
 def test_agent_block_empty():
@@ -197,3 +200,4 @@ def test_buyers_office_fallback():
     buyers = [_buyer(0, "דירה 3 חדרים בחיפה"), _buyer(1, "קוטג' בנהריה")]
     b = K.buyers_block(make_G(buyers=buyers), LISTING)
     assert b["mode"] == "office" and b["n"] == 2
+    assert all(k > 0 for _, k in b["lines"]) and not any("ביאליק" in l for l, _ in b["lines"])

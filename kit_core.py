@@ -274,24 +274,32 @@ def buyers_block(G, listing):
                 matched.append((text, rb))
         except Exception:
             continue
+    core = re.sub(r"^קרית\s+", "", city) if city else ""     # 'ביאליק' בלי 'קרית' (09/11)
+
+    def in_city(text):
+        nt = _norm_city(text)
+        return bool(core) and (city in nt or core in nt)
+
+    def breakdown(pool):
+        """הפירוט לפי הנכס הזה (תקציב / חדרים / עיר) — מה שעושה את העמוד אישי (אייל 09/11)."""
+        out = []
+        floor = int(price_n // 100000 * 100000) if price_n else 0
+        if floor:
+            out.append(["תקציב של {:,} ומעלה".format(floor), sum(1 for _, rb in pool if rb and rb >= floor)])
+        if rooms:
+            def _ok(text):
+                br = _ev.bai_rooms(text)
+                return bool(br) and br[1] >= rooms
+            out.append(["מחפשים %s חדרים ומעלה" % _rooms_txt(rooms), sum(1 for t, _ in pool if _ok(t))])
+        if city:
+            out.append(["מחפשים ב" + city, sum(1 for t, _ in pool if in_city(t))])
+        return [l for l in out if l[1] > 0]
+
     if len(matched) < MIN_BUYERS:
-        core = re.sub(r"^קרית\s+", "", city) if city else ""     # 'ביאליק' בלי 'קרית' (09/11)
-        n = sum(1 for text, _ in active if core and (city in _norm_city(text) or core in _norm_city(text)))
-        if n:
-            return {"mode": "city", "n": n, "lines": [], "city": city}
-        return {"mode": "office", "n": len(active), "lines": [], "city": city}   # אין בעיר — כל הקונים הפעילים
-    lines = []
-    floor = int(price_n // 100000 * 100000) if price_n else 0
-    if floor:
-        lines.append(["תקציב של {:,} ומעלה".format(floor), sum(1 for _, rb in matched if rb and rb >= floor)])
-    if rooms:
-        def _ok(text):
-            br = _ev.bai_rooms(text)
-            return bool(br) and br[1] >= rooms
-        lines.append(["מחפשים %s חדרים ומעלה" % _rooms_txt(rooms), sum(1 for t, _ in matched if _ok(t))])
-    if city:
-        lines.append(["מחפשים ב" + city, sum(1 for t, _ in matched if city in _norm_city(t))])
-    return {"mode": "match", "n": len(matched), "lines": [l for l in lines if l[1] > 0], "city": city}
+        n = sum(1 for text, _ in active if in_city(text))
+        mode = "city" if n else "office"                       # אין בעיר — כל הקונים הפעילים
+        return {"mode": mode, "n": n or len(active), "lines": breakdown(active), "city": city}
+    return {"mode": "match", "n": len(matched), "lines": breakdown(matched), "city": city}
 
 
 def _settings_rows(G):

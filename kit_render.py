@@ -603,23 +603,7 @@ def _p_buyers(snap, n):
             y += 86
         _line_c(d, "והם יקבלו אותו ביום הראשון", _font(500, 43), W / 2, y + 10, MUTED2)
         y += 110
-        lines = [l for l in (b.get("lines") or []) if l and int(l[1] or 0) > 0]
-        if lines:
-            mx = max(int(l[1]) for l in lines) or 1
-            h = 60 + len(lines) * 150
-            _card(d, y, y + h)
-            yy = y + 44
-            bar_w = width - 100
-            for label, k in lines:
-                fl = _fit(d, label, 700, 44, bar_w - 160, 30)
-                vis = _clip(d, label, fl, bar_w - 160)
-                d.text((W - PAD - 50 - _tl(d, vis, fl), yy), vis, font=fl, fill=NAVY)
-                d.text((PAD + 50, yy), _fmt_n(k), font=_font(900, 46), fill=GOLD)
-                by = yy + 70
-                d.rounded_rectangle((PAD + 50, by, W - PAD - 50, by + 22), radius=11, fill=CREAM)
-                fw = max(22, int(bar_w * int(k) / mx))
-                d.rounded_rectangle((W - PAD - 50 - fw, by, W - PAD - 50, by + 22), radius=11, fill=NAVY)
-                yy += 150
+        _buyer_bars(d, b, y)
     else:
         if cnt:
             _line_c(d, _fmt_n(cnt), _font(900, 260), W / 2, y, GOLD)
@@ -634,9 +618,34 @@ def _p_buyers(snap, n):
         y = _lines(d, ls, f, W / 2, y, NAVY, 86, center=True)
         _line_c(d, "והם יקבלו אותו ביום הראשון", _font(500, 43), W / 2, y + 20, MUTED2)
         y += 120
-        _buyers_how(d, y)
+        end = _buyer_bars(d, b, y)
+        _buyers_how(d, (end + 36) if end else y)   # מתחת לפירוט, אם נשאר מקום
     _footer(d, snap, n, False)
     return im
+
+
+def _buyer_bars(d, b, y):
+    """כרטיס הפירוט: שורה לכל תנאי (תקציב / חדרים / עיר) עם מספר ופס. → y של סוף הכרטיס, או 0 אם אין פירוט."""
+    width = W - 2 * PAD
+    lines = [l for l in (b.get("lines") or []) if l and int(l[1] or 0) > 0]
+    if not lines:
+        return 0
+    mx = max(int(l[1]) for l in lines) or 1
+    h = 60 + len(lines) * 150
+    _card(d, y, y + h)
+    yy = y + 44
+    bar_w = width - 100
+    for label, k in lines:
+        fl = _fit(d, label, 700, 44, bar_w - 160, 30)
+        vis = _clip(d, label, fl, bar_w - 160)
+        d.text((W - PAD - 50 - _tl(d, vis, fl), yy), vis, font=fl, fill=NAVY)
+        d.text((PAD + 50, yy), _fmt_n(k), font=_font(900, 46), fill=GOLD)
+        by = yy + 70
+        d.rounded_rectangle((PAD + 50, by, W - PAD - 50, by + 22), radius=11, fill=CREAM)
+        fw = max(22, int(bar_w * int(k) / mx))
+        d.rounded_rectangle((W - PAD - 50 - fw, by, W - PAD - 50, by + 22), radius=11, fill=NAVY)
+        yy += 150
+    return y + h
 
 
 def _buyers_how(d, y):
