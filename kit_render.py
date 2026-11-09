@@ -624,13 +624,39 @@ def _p_buyers(snap, n):
         if cnt:
             _line_c(d, _fmt_n(cnt), _font(900, 260), W / 2, y, GOLD)
             y += 300
-            f, ls = _block(d, "קונים פעילים מחפשים עכשיו" + (" ב" + city if city else ""), 900, 68, width, 3)
+            if b.get("mode") == "office":
+                head = "קונים פעילים במשרד מחפשים עכשיו נכס"
+            else:
+                head = "קונים פעילים מחפשים עכשיו" + (" ב" + city if city else "")
+            f, ls = _block(d, head, 900, 68, width, 3)
         else:
             f, ls = _block(d, "הנכס שלך יגיע לכל הקונים הפעילים במשרד", 900, 68, width, 3)
         y = _lines(d, ls, f, W / 2, y, NAVY, 86, center=True)
         _line_c(d, "והם יקבלו אותו ביום הראשון", _font(500, 43), W / 2, y + 20, MUTED2)
+        y += 120
+        _buyers_how(d, y)
     _footer(d, snap, n, False)
     return im
+
+
+def _buyers_how(d, y):
+    """כרטיס 'ככה הקונים מקבלים את הנכס שלך' — כשאין פירוט קונים מתאימים, שהעמוד לא יישאר ריק."""
+    width = W - 2 * PAD
+    pts = [("דף קונה אישי", "כל קונה מתאים מקבל את הנכס בוואטסאפ, בדף משלו"),
+           ("כל הסוכנים יודעים", "הנכס עולה לכל סוכני המשרד ביום הראשון"),
+           ("נכס חם", "בסטורי ובמסך הטלוויזיה במשרד")]
+    h = 110 + len(pts) * 150
+    if y + h > H - 150:
+        return
+    _card(d, y, y + h)
+    _line_r(d, "ככה הקונים מקבלים את הנכס שלך", _font(800, 44), W - PAD - 50, y + 36, KICK)
+    yy = y + 120
+    for title, sub in pts:
+        _check(d, W - PAD - 50 - 40, yy + 8, 40, GOLD)
+        _line_r(d, title, _font(800, 46), W - PAD - 110, yy, NAVY)
+        fs = _fit(d, sub, 500, 38, width - 170, 28)
+        _line_r(d, sub, fs, W - PAD - 110, yy + 62, MUTED2)
+        yy += 150
 
 
 def _p_cma(snap, n):

@@ -183,3 +183,17 @@ def test_cma_gets_full_street_listing_does_not(monkeypatch):
     assert seen["listing_key"] == "p1"
     K.build_snapshot(make_G(), SRC)
     assert seen["listing_key"] == ""
+
+
+def test_buyers_city_short_name():
+    """קונה שכתב 'ביאליק' בלי 'קרית' נספר בעיר (09/11 — עמוד הקונים יצא ריק)."""
+    buyers = [_buyer(0, "דירה באפקה ביאליק"), _buyer(1, "3 חדרים בביאליק", budget="500,000")]
+    b = K.buyers_block(make_G(buyers=buyers), LISTING)
+    assert b["mode"] == "city" and b["n"] == 2
+
+
+def test_buyers_office_fallback():
+    """אין אף קונה בעיר — מציגים כמה קונים פעילים יש במשרד, לא עמוד ריק."""
+    buyers = [_buyer(0, "דירה 3 חדרים בחיפה"), _buyer(1, "קוטג' בנהריה")]
+    b = K.buyers_block(make_G(buyers=buyers), LISTING)
+    assert b["mode"] == "office" and b["n"] == 2

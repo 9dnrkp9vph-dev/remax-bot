@@ -275,8 +275,11 @@ def buyers_block(G, listing):
         except Exception:
             continue
     if len(matched) < MIN_BUYERS:
-        n = sum(1 for text, _ in active if city and city in _norm_city(text))
-        return {"mode": "city", "n": n, "lines": [], "city": city}
+        core = re.sub(r"^קרית\s+", "", city) if city else ""     # 'ביאליק' בלי 'קרית' (09/11)
+        n = sum(1 for text, _ in active if core and (city in _norm_city(text) or core in _norm_city(text)))
+        if n:
+            return {"mode": "city", "n": n, "lines": [], "city": city}
+        return {"mode": "office", "n": len(active), "lines": [], "city": city}   # אין בעיר — כל הקונים הפעילים
     lines = []
     floor = int(price_n // 100000 * 100000) if price_n else 0
     if floor:

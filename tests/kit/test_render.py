@@ -99,3 +99,11 @@ def test_margins_clean_with_long_text():
 def test_meet_line_date_only():
     assert R._meet_line("2026-11-11") == "נתראה ביום ד׳ 11/11"
     assert R._meet_line("2026-11-11T17:00") == "נתראה ביום ד׳ 11/11 · 17:00"
+
+
+def test_buyers_page_office_and_empty():
+    for b in ({"mode": "office", "n": 312, "lines": [], "city": "קרית ביאליק"},
+              {"mode": "city", "n": 0, "lines": [], "city": "קרית ביאליק"}):
+        im = R.render_pages(sample(buyers=b))[4]
+        # הכרטיס 'ככה הקונים מקבלים' ממלא את אמצע העמוד — יש שם פיקסלים לבנים
+        assert any(im.getpixel((540, y)) == (255, 255, 255) for y in range(700, 1300, 10))
