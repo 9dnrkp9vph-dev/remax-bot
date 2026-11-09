@@ -74,13 +74,18 @@ def decide(rec, action, who, now):
 
 def owner_message(snap):
     s = snap or {}
-    head = "שלום %s, כאן %s מ%s." % (s.get("owner_first") or "", s.get("agent") or "", s.get("office") or "")
+    ag, of = s.get("agent"), s.get("office")
+    ag = (ag.get("name") or "") if isinstance(ag, dict) else (ag or "")   # בצילום האמיתי — agent_block / office_numbers
+    of = (of.get("office") or "") if isinstance(of, dict) else (of or "")
+    head = "שלום %s, כאן %s מ%s." % (s.get("owner_first") or "", ag, of)
     meet = ""
-    m = str(s.get("meet_at") or "")
+    m = str(s.get("meet_at") or "").strip()
     if m:
         try:
             d = _dt.datetime.fromisoformat(m)
-            meet = " לקראת הפגישה שלנו ביום %s %s בשעה %s" % (_DAYS[d.weekday()], d.strftime("%d/%m"), d.strftime("%H:%M"))
+            meet = " לקראת הפגישה שלנו ביום %s %s" % (_DAYS[d.weekday()], d.strftime("%d/%m"))
+            if "T" in m or " " in m:   # שעה רק כשנקבעה
+                meet += " בשעה %s" % d.strftime("%H:%M")
         except Exception:
             meet = ""
     body = "הכנתי לך תיק אישי על הנכס שלך ב%s." % (s.get("street") or "")

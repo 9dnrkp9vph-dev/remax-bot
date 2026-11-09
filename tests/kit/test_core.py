@@ -107,3 +107,20 @@ def test_kit_settings_social_fallback():
     s = K.kit_settings(cfg)
     assert s["instagram"] == "https://instagram.com/x" and s["facebook"] == "https://facebook.com/y"
     assert K.kit_settings({"v2_office": {"facebook": "http://bad"}})["facebook"] == ""
+
+
+def test_owner_message_real_shape():
+    """צילום אמיתי: agent = agent_block (dict), office = office_numbers (dict)."""
+    s = {"owner_first": "משה", "street": "הנוטר", "meet_at": "2026-11-11T17:00",
+         "agent": {"name": "אוהד לוי", "first": "אוהד", "license": "", "bio": "", "review": None, "photo": None},
+         "office": {"years": 21, "deals": 4622, "agents": 56, "office": "רימקס פמילי"}}
+    t = K.owner_message(s)
+    assert "{" not in t and "'" not in t, t
+    assert t.startswith("שלום משה, כאן אוהד לוי מרימקס פמילי."), t
+
+
+def test_owner_message_date_only():
+    s = {"owner_first": "משה", "agent": "אוהד לוי", "office": "רימקס פמילי", "street": "הנוטר", "meet_at": "2026-11-11"}
+    t = K.owner_message(s)
+    assert "ביום ד׳ 11/11 הכנתי" in t and "בשעה" not in t and "00:00" not in t, t
+    assert "בשעה 17:00" in K.owner_message(dict(s, meet_at="2026-11-11T17:00"))

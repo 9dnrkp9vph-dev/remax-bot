@@ -357,7 +357,10 @@ def _meet_line(meet_at):
         t = _dt.datetime.fromisoformat(m)
     except ValueError:
         return ""
-    return "נתראה ביום %s %s · %s" % (_DAYS[t.weekday()], t.strftime("%d/%m"), t.strftime("%H:%M"))
+    out = "נתראה ביום %s %s" % (_DAYS[t.weekday()], t.strftime("%d/%m"))
+    if "T" in m or " " in m:   # שעה רק כשנקבעה
+        out += " · " + t.strftime("%H:%M")
+    return out
 
 
 def _agents_n(snap):

@@ -1770,15 +1770,17 @@ def kit_update(kid, fields):
         return False
 
 
-def kit_claim(kid, frm, to, fields):
-    """מעבר מצב אטומי (frm→to) — True רק אם השורה עוד הייתה ב-frm (ההחלטה הראשונה קובעת)."""
+def kit_claim(kid, frm, to, fields, match=None):
+    """מעבר מצב אטומי (frm→to) — True רק אם השורה עוד הייתה ב-frm (ההחלטה הראשונה קובעת).
+    match — מסננים נוספים (למשל review_token: קישור אישור ישן אחרי שליחה חוזרת לא מאשר)."""
     try:
         body = dict(fields or {}, status=to, updated_at=_dt.datetime.now(_dt.timezone.utc).isoformat())
+        params = {"id": "eq." + str(kid), "office_id": "eq." + SB_OFFICE_ID, "status": "eq." + str(frm)}
+        for k, v in (match or {}).items():
+            params[str(k)] = "eq." + str(v)
         r = requests.patch(SUPABASE_URL + "/rest/v1/presentation_kits",
                            headers={**_headers(), "Prefer": "return=representation"},
-                           params={"id": "eq." + str(kid), "office_id": "eq." + SB_OFFICE_ID,
-                                   "status": "eq." + str(frm)},
-                           json=body, timeout=_TIMEOUT)
+                           params=params, json=body, timeout=_TIMEOUT)
         r.raise_for_status()
         return len(r.json() or []) == 1
     except Exception:

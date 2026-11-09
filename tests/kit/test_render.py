@@ -94,3 +94,8 @@ def test_margins_clean_with_long_text():
         for x in list(range(0, R.PAD - 8)) + list(range(R.W - R.PAD + 8, R.W)):
             col = im.crop((x, 0, x + 1, R.H)).getcolors(4096)
             assert col and len(col) == 1 and col[0][1] == bg, x
+
+
+def test_meet_line_date_only():
+    assert R._meet_line("2026-11-11") == "נתראה ביום ד׳ 11/11"
+    assert R._meet_line("2026-11-11T17:00") == "נתראה ביום ד׳ 11/11 · 17:00"

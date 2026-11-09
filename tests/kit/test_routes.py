@@ -23,10 +23,10 @@ class SBK:
         for r in self.kits:
             if r["id"] == kid: r.update(f)
         return True
-    def kit_claim(self, kid, frm, to, f):
+    def kit_claim(self, kid, frm, to, f, match=None):
         with self._lk:
             for r in self.kits:
-                if r["id"] == kid and r.get("status") == frm:
+                if r["id"] == kid and r.get("status") == frm and all(r.get(k) == v for k, v in (match or {}).items()):
                     r.update(f, status=to); return True
             return False
     def kit_get(self, kid):
@@ -207,6 +207,7 @@ def test_mine():
         m1 = next(x for x in c.get("/v2/api/kit/mine").json["kits"] if x["id"] == "k1")
         ck(m1["status"] == "approved" and m1["wa"] == "972544448065" and m1["url"].endswith("/k/" + k1["view_token"]), m1)
         ck(m1["text"].endswith("\n" + m1["url"]) and m1["text"].startswith("שלום משה"), m1["text"])
+        ck("{" not in m1["text"] and "כאן דנה כהן מרימקס פמילי." in m1["text"], m1["text"])   # צילום בצורה האמיתית (dicts)
         # expired by eff_status
         sb.kit_update("k2", {"sent_review_at": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=49)).isoformat()})
         m2 = next(x for x in c.get("/v2/api/kit/mine").json["kits"] if x["id"] == "k2")
@@ -352,7 +353,27 @@ def test_review_fixes():
         ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "x::id:77"}).json["ok"], "self meet spaced")
 
 
+
+def test_meet_generic_agent():
+    """פגישה שנשמרה על שם כניסה גנרי ('מנהל') — הסוכן לפי הטלפון של מי שקבע, ואחרת הסוכן של הסשן."""
+    with patched():
+        base = dict(CFG["nbStatus"]["דנה כהן::id:77"], agent="מנהל")
+        CFG["nbStatus"]["g1::id:77"] = dict(base, by_phone="501111111")
+        CFG["nbStatus"]["g2::id:77"] = dict(base, by_phone="509999999")
+        SESS["t"] = DEV
+        r = c.post("/v2/api/kit/create", json={"source": "meet", "skey": "g1::id:77"})
+        k = sb.kit_get(r.json["id"])
+        ck(r.json["ok"] and k["agent_name"] == "דנה כהן" and k["agent_phone"] == "501111111", k)
+        r = c.post("/v2/api/kit/create", json={"source": "meet", "skey": "g2::id:77"})
+        k = sb.kit_get(r.json["id"])
+        ck(r.json["ok"] and k["agent_name"] == "אייל שמול" and k["agent_phone"] == "505709865", k)
+        SESS["t"] = AG
+        r = c.post("/v2/api/kit/create", json={"source": "meet", "skey": "g1::id:77"})
+        ck(r.json["ok"] and sb.kit_get(r.json["id"])["agent_name"] == "דנה כהן", r.json)
+        ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "g2::id:77"}).json.get("reason") == "forbidden", "g2 agent")
+
+
 if __name__ == "__main__":
-    for _f in (test_binding, test_unauth, test_create_nb, test_manual_and_agent_choice, test_meet, test_mine, test_resend, test_sent, test_settings, test_review_fixes):
+    for _f in (test_binding, test_unauth, test_create_nb, test_manual_and_agent_choice, test_meet, test_mine, test_resend, test_sent, test_settings, test_review_fixes, test_meet_generic_agent):
         _f()
     print("OK", n)

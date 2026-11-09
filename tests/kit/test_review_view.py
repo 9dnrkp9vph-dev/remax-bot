@@ -114,7 +114,7 @@ def test_review_page_and_decide():
     # הפסיד במרוץ: מישהו אחר החליט בין הקריאה ל-PATCH
     r4 = mk()
     real = sb.kit_claim
-    def lose(kid, frm, to, f):
+    def lose(kid, frm, to, f, match=None):
         sb.kit_update(kid, {"status": "rejected"}); return False
     sb.kit_claim = lose
     try:
@@ -198,7 +198,58 @@ def test_binding():
         ck(RULES.get(rule) == ep and app.view_functions[ep].__name__ == ep, (rule, RULES.get(rule)))
 
 
+
+def test_final_fixes():
+    # 5 — בלי מאשר: אזהרה + review_due
+    rec = mk()
+    saved = G["DEV_PHONES"]; G["DEV_PHONES"] = set(); st["sent"].clear()
+    try:
+        ck(K.send_review(G, rec, "https://x.test") is False and st["sent"] == [], st["sent"])
+        ck(sb.kit_get(rec["id"])["review_due"] is True, "no approver due")
+    finally:
+        G["DEV_PHONES"] = saved
+    # 3 — שליחה חוזרת שהחליפה טוקנים באמצע ההחלטה: הקישור הישן לא מאשר
+    r = mk()
+    old_tok = r["review_token"]
+    real_get = sb.kit_by_token
+    def rotate(col, tok):
+        got = real_get(col, tok)
+        if got:
+            sb.kit_update(got["id"], {"review_token": "rotated" + tok})
+        return got
+    sb.kit_by_token = rotate
+    try:
+        t = c.post("/v2/kit/review/" + old_tok, json={"action": "approve"}).get_data(as_text=True)
+    finally:
+        sb.kit_by_token = real_get
+    ck(sb.kit_get(r["id"])["status"] == "pending" and t != "אושר", t)
+    # kit_claim ב-Supabase שולח את המסנן הנוסף
+    import supabase_db as SDB
+    cap = {}
+    class Resp:
+        def raise_for_status(self): pass
+        def json(self): return [{}]
+    real_patch = SDB.requests.patch
+    SDB.requests.patch = lambda url, **kw: (cap.update(kw), Resp())[1]
+    try:
+        ck(SDB.kit_claim("k9", "pending", "approved", {}, {"review_token": "abc"}) is True, "claim")
+    finally:
+        SDB.requests.patch = real_patch
+    ck(cap["params"]["review_token"] == "eq.abc" and cap["params"]["status"] == "eq.pending", cap["params"])
+    # 4 — כשל רינדור בדף בעל הנכס: 503 ידידותי
+    import kit_render as KR
+    k = mk("approved", snapshot=dict(sample(), made_at="2026-11-09T00:00:01"))
+    real_rp = KR.render_pages
+    KR.render_pages = lambda snap: (_ for _ in ()).throw(RuntimeError("boom"))
+    try:
+        rr = c.get("/k/" + k["view_token"])
+    finally:
+        KR.render_pages = real_rp
+    h = rr.get_data(as_text=True)
+    ck(rr.status_code == 503 and "התיק אינו זמין" in h and "<img" not in h and rr.headers["Cache-Control"] == "no-store", rr.status_code)
+
+
 if __name__ == "__main__":
-    for _f in (test_send_review, test_review_page_and_decide, test_view_closed, test_view_open, test_binding):
+    for _f in (test_send_review, test_review_page_and_decide, test_view_closed, test_view_open, test_binding, test_final_fixes):
         _f()
     print("OK", n)

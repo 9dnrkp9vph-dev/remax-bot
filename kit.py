@@ -60,6 +60,8 @@ def send_review(G, rec, base) -> bool:
         return False
     to9 = _approver9(G)
     if not to9:
+        log.warning("kit: no approver configured")
+        sb.kit_update(rec["id"], {"review_due": True})
         return False
     snap = rec.get("snapshot") or {}
     place = ", ".join(x for x in (snap.get("street") or "", snap.get("city") or "") if x)
@@ -255,6 +257,14 @@ def register(app, G):
             if not isinstance(rec, dict):
                 return jsonify({"ok": False, "reason": "not_found"})
             ragent = norm(rec.get("agent"))
+            if ragent and canon(ragent) != canon(norm(me)) and not phone_of(ragent):
+                # שם כניסה גנרי ('מנהל') — הסוכן לפי הטלפון של מי שקבע; לא זוהה → פגישה בלי סוכן (הסוכן של הסשן)
+                alt = ""
+                try:
+                    alt = norm(G["_display_name_for"](ragent, kc.phone9(rec.get("by_phone") or rec.get("created_by_phone"))) or "")
+                except Exception:
+                    alt = ""
+                ragent = alt if alt and (canon(alt) == canon(norm(me)) or phone_of(alt)) else ""
             if ragent:
                 if canon(ragent) != canon(norm(me)):
                     if not may_pick(s, ragent):
@@ -593,10 +603,12 @@ def register(app, G):
             return resp(msg, 200, "text/plain; charset=utf-8")
         reason = _s(j.get("reason"))[:300] if new == "rejected" else ""
         fields = {"decided_by": who, "decided_at": _now_iso(), "reject_reason": reason or None}
-        if not sb().kit_claim(rec["id"], "pending", new, fields):
+        if not sb().kit_claim(rec["id"], "pending", new, fields, {"review_token": tok}):
             cur = sb().kit_get(rec["id"]) or {}
             _, msg2 = kc.decide(cur, action, who, now)
-            if msg2 not in ("כבר אושר", "כבר נדחה", "פג תוקף"):
+            if cur.get("review_token") != tok:
+                msg2 = "הקישור הזה כבר לא בתוקף — התיק נשלח שוב לאישור"
+            elif msg2 not in ("כבר אושר", "כבר נדחה", "פג תוקף"):
                 msg2 = "לא נשמר — נסה שוב"
             return resp(msg2, 200, "text/plain; charset=utf-8")
         snap = rec.get("snapshot") or {}
@@ -640,8 +652,13 @@ def register(app, G):
         agent = rec.get("agent_name") or ag.get("name") or ""
         claims = snap.get("claims") or {}
         off = office_name()
+        try:
+            npages = len(jpegs(rec))
+        except Exception as e:
+            log.warning("kit view render failed: %s", e)
+            return closed_page(503)
         imgs = "".join("<img src=\"/k/%s/p%d.jpg\" alt=\"עמוד %d\"%s>" % (esc(vtok), i, i, "" if i == 1 else " loading=\"lazy\"")
-                       for i in range(1, len(jpegs(rec)) + 1))
+                       for i in range(1, npages + 1))
         links = ["<a class=\"btn pri\" href=\"/k/%s.pdf\">הורד כ-PDF</a>" % esc(vtok)]
         g = str(claims.get("g_url") or "")
         if g.startswith("https://"):
