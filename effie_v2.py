@@ -7566,7 +7566,7 @@ function vidResend(id){
 }
 /* [SOLD 05/11] סטורי SOLD לנכס שנמכר — "הנכסים שלי", למפתח בלבד (social_sold.py).
    לחיצה → בוחרים מי ייצגנו → הסרטון מוכן תוך כחצי דקה → צפייה → "פרסם לסטורי" (אינסטגרם + פייסבוק). */
-var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}, both: {}, ba: {}, ag: null, pr: {}};
+var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}, both: {}, ba: {}, ag: null, pr: {}, s2: {}};
 var SOLD_ST = {rendering: 'בהכנה', ready: 'מוכן לפרסום', publishing: 'מתפרסם', published: 'פורסם בסטורי',
   partial: 'פורסם חלקית', failed: 'נכשל'};
 function soldRow(p){
@@ -7600,7 +7600,12 @@ function soldRow(p){
   // [09/11 אייל] מחיר העסקה שונה מהמחיר במודעה — ריק = המחיר מהמודעה
   var prF = SOLD.open[k] ? '<div style="font-size:12.5px;font-weight:800;color:#5B6472;margin-top:8px">מחיר הסגירה (ריק = המחיר במודעה)</div>' +
     '<input inputmode="numeric" autocomplete="off" value="' + esc(SOLD.pr[k] || '') + '" placeholder="' + esc((p && p.price) || '') + '"' +
-    ' oninput="soldPr(\'' + esc(k) + '\',this)" style="' + inp + '">' : '';
+    ' oninput="soldPr(\'' + esc(k) + '\',this)" style="' + inp + '">' +
+    // [09/11 אייל] לפעמים מצטרף סוכן שני לצד המוכר — ריק = הסוכנים מהמודעה
+    '<div style="font-size:12.5px;font-weight:800;color:#5B6472;margin-top:8px">סוכן שני מצד המוכר (ריק = לפי המודעה)</div>' +
+    '<input list="soldAgDL" autocomplete="off" value="' + esc(SOLD.s2[k] || '') + '" placeholder="שם הסוכן"' +
+    ' oninput="soldS2(\'' + esc(k) + '\',this.value)" style="' + inp + '">' +
+    '<datalist id="soldAgDL">' + (SOLD.ag || []).map(function(a){ return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>' : '';
   if (SOLD.open[k] && SOLD.both[k]){   // [05/11 אייל] שני הצדדים שלנו — סרטון משולב: מוכר ואז קונה
     var ba = SOLD.ba[k] || ['', ''];
     return h + '<div style="margin-top:8px;padding:12px;border-radius:14px;background:#F6EEDB">' + prF +
@@ -7610,7 +7615,6 @@ function soldRow(p){
         return '<input list="soldAgDL" autocomplete="off" value="' + esc(ba[i] || '') + '" placeholder="סוכן ' + (i + 1) + '"' +
           ' oninput="soldBA(\'' + esc(k) + '\',' + i + ',this.value)" style="' + inp + '">';
       }).join('') +
-      '<datalist id="soldAgDL">' + (SOLD.ag || []).map(function(a){ return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>' +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
       '<button onclick="soldCreate(\'' + esc(k) + '\',\'both\')" style="' + css + 'flex:2;background:#C29435;color:#231700;border:none">צור סטורי</button>' +
       '<button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css + 'flex:1;background:#fff;color:#5B6472;border:1.5px solid #DCD6C8">ביטול</button></div></div>';
@@ -7637,9 +7641,12 @@ function soldLoad(list){
     render();
   }).catch(function(){});
 }
-function soldToggle(k){ SOLD.open[k] = !SOLD.open[k]; SOLD.both[k] = false; render(); }
+function soldToggle(k){ SOLD.open[k] = !SOLD.open[k]; SOLD.both[k] = false; render(); if (SOLD.open[k]) soldAgLoad(); }
+function soldS2(k, v){ SOLD.s2[k] = String(v || ''); }
 function soldBoth(k){
-  SOLD.both[k] = true; render();
+  SOLD.both[k] = true; render(); soldAgLoad();
+}
+function soldAgLoad(){
   if (SOLD.ag) return;
   SOLD.ag = [];
   GET('/api/agents').then(function(j){   // רשימת המשרד הקנונית — להשלמה אוטומטית
@@ -7676,6 +7683,7 @@ function soldCreate(k, side){
   var body = {key: k, side: side};
   if (side === 'both') body.details = {buyer_agents: (SOLD.ba[k] || []).map(function(x){ return String(x || '').trim(); }).filter(Boolean)};
   if (side === 'both' || SOLD.pr[k]) (body.details = body.details || {}).price = SOLD.pr[k] || '';
+  var s2 = String(SOLD.s2[k] || '').trim(); if (s2) (body.details = body.details || {}).seller_agent2 = s2;
   SOLD.both[k] = false;
   POST('/v2/api/social/sold', body).then(function(j){
     if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה — לא נשלח'); return; }

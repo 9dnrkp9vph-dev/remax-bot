@@ -37,7 +37,7 @@ P.DEAL = 'rent'; ck(P.soldRow(p) === '', 'rentals → nothing'); P.DEAL = '';
 P.SOLD.open.tok1 = true; h = P.soldRow(p);
 ck(h.includes("soldCreate('tok1','seller')") && h.includes("soldBoth('tok1')") && h.includes('ביטול'), h);
 // [05/11 אייל] המוכר וגם הקונה → בוחרים מי הביא את הקונה → סרטון משולב
-vm.runInContext(fn(pjs, 'soldToggle') + '\n' + fn(pjs, 'soldBoth') + '\n' + fn(pjs, 'soldBA') + '\n' + fn(pjs, 'soldPr') + '\n' + fn(pjs, 'soldCreate') +
+vm.runInContext(fn(pjs, 'soldToggle') + '\n' + fn(pjs, 'soldBoth') + '\n' + fn(pjs, 'soldBA') + '\n' + fn(pjs, 'soldPr') + '\n' + fn(pjs, 'soldS2') + '\n' + fn(pjs, 'soldAgLoad') + '\n' + fn(pjs, 'soldCreate') +
   '\nvar RENDERS = 0; function render(){ RENDERS++; } var GETS = [], POSTS = [];' +
   'function GET(u){ GETS.push(u); return {then: function(f){ f({ok: true, agents: [{name: "אלי שמול"}, {name: "יהודית שמול"}]}); return {catch: function(){}}; }}; }' +
   'function POST(u, b){ POSTS.push([u, b]); return {then: function(){ return {catch: function(){}}; }}; } function toast(){}', P);
@@ -56,6 +56,16 @@ const el = {value: '1090000'}; P.soldPr('tok1', el);
 ck(el.value === (1090000).toLocaleString() && P.SOLD.pr.tok1 === el.value, el.value);
 delete P.SOLD.busy.tok1; P.soldCreate('tok1', 'seller');
 ck(JSON.stringify(P.POSTS[1][1]) === JSON.stringify({key: 'tok1', side: 'seller', details: {price: (1090000).toLocaleString()}}), JSON.stringify(P.POSTS[1]));
+// [09/11 אייל] סוכן שני מצד המוכר — בשני הטפסים, עם השלמה מרשימת המשרד; ריק = לפי המודעה
+delete P.SOLD.busy.tok1; P.SOLD.both.tok1 = false; P.SOLD.open.tok1 = true; h = P.soldRow(p);
+ck(h.includes('סוכן שני מצד המוכר') && h.includes("soldS2('tok1',this.value)") && h.includes('list="soldAgDL"') && h.includes('<datalist id="soldAgDL">'), h);
+P.soldBoth('tok1'); h = P.soldRow(p);
+ck(h.includes('סוכן שני מצד המוכר') && (h.match(/<datalist id="soldAgDL">/g) || []).length === 1, 'both form: field + one datalist');
+P.SOLD.pr.tok1 = ''; P.soldS2('tok1', " רפי דה פיצ'וטו "); P.soldCreate('tok1', 'seller');
+ck(JSON.stringify(P.POSTS[2][1]) === JSON.stringify({key: 'tok1', side: 'seller', details: {seller_agent2: "רפי דה פיצ'וטו"}}), JSON.stringify(P.POSTS[2]));
+delete P.SOLD.busy.tok1; P.SOLD.s2 = {};
+const g0 = P.GETS.length; P.SOLD.ag = null; P.SOLD.open.tok1 = false; P.soldToggle('tok1');
+ck(P.GETS.length === g0 + 1 && P.SOLD.ag.length === 2, 'opening the form loads agents');
 delete P.SOLD.busy.tok1;
 P.SOLD.open.tok1 = false;
 P.SOLD.items['p:tok1'] = {id: 's1', status: 'rendering', token: 'T1'};
