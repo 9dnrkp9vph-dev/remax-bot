@@ -1691,6 +1691,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>
       תחרות</a>
+    <a id="menuKits" href="/v2/kits" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><path d="M6 2.5h7.5L17.5 6.5v13H6z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 11h5.5M9 14.5h5.5" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
+      תיקי פרזנטציה</a>
     <a id="menuReviews" href="/v2/reviews" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M5 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6H5zM13 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6h-5z" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -2795,6 +2799,23 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div id="dlrList" style="margin-top:8px"></div>
     </div>
 
+    <!-- [KIT 09/11] תיק פרזנטציה — הטענות הקבועות שמופיעות בכל תיק (בעל המשרד בלבד; כל המסך כבר חסום למפתח) -->
+    <div class="card" id="kitCard">
+      <div class="cardTitle">תיק פרזנטציה — נתונים קבועים</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">מופיעים בכל תיק שנשלח לבעל נכס. &lt;office&gt; מוחלף בשם המשרד. שדה ריק חוזר לברירת המחדל. בלי קישור לגוגל — הקישור לא מוצג בתיק.</div>
+      <label class="fld" style="margin-top:8px"><span>שיתוף פעולה</span><input id="kitCoop" style="font-size:16px;min-height:44px"></label>
+      <label class="fld" style="margin-top:8px"><span>מקום ברשת</span><input id="kitRank" style="font-size:16px;min-height:44px"></label>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <label class="fld" style="flex:1;min-width:0"><span>דירוג בגוגל</span><input id="kitGRating" inputmode="decimal" style="font-size:16px;min-height:44px"></label>
+        <label class="fld" style="flex:1;min-width:0"><span>מספר ביקורות</span><input id="kitGCount" inputmode="numeric" style="font-size:16px;min-height:44px"></label>
+      </div>
+      <label class="fld" style="margin-top:8px"><span>קישור לפרופיל בגוגל</span><input id="kitGUrl" dir="ltr" type="url" placeholder="https://" style="font-size:16px;min-height:44px"></label>
+      <label class="fld" style="margin-top:8px"><span>אינסטגרם של המשרד</span><input id="kitIg" dir="ltr" type="url" placeholder="https://" style="font-size:16px;min-height:44px"></label>
+      <label class="fld" style="margin-top:8px"><span>פייסבוק של המשרד</span><input id="kitFb" dir="ltr" type="url" placeholder="https://" style="font-size:16px;min-height:44px"></label>
+      <div id="kitErr" style="font-size:12.5px;font-weight:700;color:#1E3A5F;margin-top:6px"></div>
+      <button onclick="kitSave()" style="margin-top:8px;width:100%;min-height:44px;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">שמירה</button>
+    </div>
+
     <!-- גיבוי/שחזור נכסי המשרד (אייל 11/09) -->
     <div class="card" id="snapCard">
       <div class="cardTitle">גיבוי נכסי המשרד</div>
@@ -3037,7 +3058,7 @@ function boot(){
         UNMATCHED = unmMerge(rs[1] || {});
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
-        render(); loadSnaps(); repLoad(); oipLoad(); dlrLoad();
+        render(); loadSnaps(); repLoad(); oipLoad(); dlrLoad(); kitLoad();
       });
   }).catch(function(){ location.replace('/v2'); });
 }
@@ -3145,6 +3166,30 @@ function dlrSave(){
     if (j && j.ok){ DLR.names = j.names; toast(j.names.length ? 'נשמר · ' + j.names.length + ' עם חייגן' : 'נשמר'); }
     else { toast('השמירה נכשלה'); dlrRender(); }
   }).catch(function(){ toast('שגיאה'); dlrRender(); });
+}
+// [KIT 09/11] תיק פרזנטציה — נתונים קבועים (GET/POST /v2/api/kit/settings, בעל המשרד בלבד)
+var KIT_F = {coop: 'kitCoop', rank: 'kitRank', g_rating: 'kitGRating', g_count: 'kitGCount', g_url: 'kitGUrl',
+             instagram: 'kitIg', facebook: 'kitFb'};
+var KIT_URL_ERR = {g_url: 'הקישור לגוגל חייב להתחיל ב-https://', instagram: 'הקישור לאינסטגרם חייב להתחיל ב-https://',
+                   facebook: 'הקישור לפייסבוק חייב להתחיל ב-https://'};
+function kitLoad(){
+  GET('/v2/api/kit/settings').then(function(j){
+    if (!j || !j.ok){ var c = el('kitCard'); if (c) c.style.display = 'none'; return; }
+    var st = j.settings || {};
+    Object.keys(KIT_F).forEach(function(k){ var i = el(KIT_F[k]); if (i) i.value = st[k] || ''; });
+  }).catch(function(){});
+}
+function kitSave(){
+  var d = {};
+  Object.keys(KIT_F).forEach(function(k){ d[k] = (el(KIT_F[k]).value || '').trim(); });
+  el('kitErr').textContent = '';
+  var bad = ['g_url', 'instagram', 'facebook'].filter(function(k){ return d[k] && d[k].indexOf('https://') !== 0; })[0];
+  if (bad){ el('kitErr').textContent = KIT_URL_ERR[bad]; return; }
+  POST('/v2/api/kit/settings', d).then(function(j){
+    if (j && j.ok){ toast('נשמר'); return; }
+    if (j && KIT_URL_ERR[j.reason]) el('kitErr').textContent = KIT_URL_ERR[j.reason];
+    else toast('השמירה נכשלה');
+  }).catch(function(){ toast('שגיאה'); });
 }
 function oipMine(){ if (OIP.my_ip) el('oipIp').value = OIP.my_ip; else toast('לא זוהתה כתובת'); }
 function oipSave(d, okMsg){
@@ -6165,6 +6210,7 @@ V2_NB_KIT = r"""<style>
   .nbk .stActs .s.red{color:#C24040}
   .nbk .stActs .s.on{background:#C29435;border-color:#C29435;color:#231700;box-shadow:0 3px 10px rgba(194,148,53,.25)}
   .nbk .stActs .s.red.on{background:#C24040;border-color:#C24040;color:#fff;box-shadow:0 3px 10px rgba(194,64,64,.25)}
+  .nbk .stActs .s.kit{grid-column:1/-1;min-height:44px;color:#7A5E1C;border-color:#E4C56B}   /* [KIT 09/11] תיק פרזנטציה */
   .nbk .stLine{display:flex;align-items:center;gap:6px;font-size:12px;color:#6B7280}
   .nbk .stLine i{width:6px;height:6px;border-radius:50%;background:#C29435;display:block;flex-shrink:0}
   .nbk .notes{font-size:12px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
@@ -6249,8 +6295,18 @@ function nbCard(r, i){
     '<button class="s' + (st && st.status === 'meeting' ? ' on' : '') + '" onclick="stDate(' + i + ',\'meeting\')">פגישה</button>' +
     '<button class="s' + (st && st.status === 'followup' ? ' on' : '') + '" onclick="stDate(' + i + ',\'followup\')">פולו-אפ</button>' +
     '<button class="s red' + (st && st.status === 'not_interested' ? ' on' : '') + '" onclick="stToggleNI(' + i + ')">לא מעוניין</button>' +
-    '<button class="s" onclick="noteSheet(' + i + ')">הערה</button></div>' +
+    '<button class="s" onclick="noteSheet(' + i + ')">הערה</button>' +
+    '<button class="s kit" onclick="kitFromNb(' + i + ')">תיק לפני פגישה</button></div>' +
     stLine + notes + '</div>';
+}
+// [KIT 09/11] תיק פרזנטציה לבעל הנכס — נשלח לאישור; הרשימה והשליחה במסך /v2/kits
+function kitFromNb(i){
+  var r = nbKitRows()[i]; if (!r) return;
+  POST('/v2/api/kit/create', {source: 'nb', key: r.key}).then(function(j){
+    if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); return; }
+    var why = j && j.reason;
+    toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני' : 'לא הצלחנו להכין את התיק');
+  }).catch(function(){ toast('שגיאה'); });
 }
 function nbDial(i){   // חיוג לבעל הנכס (10/09): רישום 'מי פנה' + click2call בפיילוט, אחרת tel:
   markContact(i);
@@ -11089,6 +11145,11 @@ function itemRow(m, i){
         '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 8a4 4 0 1 1 1.2 2.8M4 8V5M4 8h3" fill="none" stroke="#6B7280" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
       : '<button class="sq" style="background:#E7F7EE" onclick="doneMeet(' + i + ')" aria-label="בוצע">' +
         '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>') +
+    // [KIT 09/11] תיק פרזנטציה — רק לפגישה מנכס נולד (פגישה ידנית — תיק ידני במסך התיקים)
+    (String(m.skey || '').indexOf('manual:') !== 0
+      ? '<button class="sq" style="background:#F6EEDB" onclick="kitFromMeet(' + i + ')" aria-label="תיק לפני פגישה">' +
+        '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M4 1.5h5.5L12.5 4.5v10h-8.5z" fill="none" stroke="#7A5E1C" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 8h4M6.5 11h4" stroke="#7A5E1C" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
+      : '') +
     // [MEET-DEL 22/10] מחיקה — אייל: "כפתור מחק ושימחק גם את הפגישה מהיומן"
     '<button class="sq" style="background:#FBEDED" onclick="delMeet(' + i + ')" aria-label="מחיקה">' +
       '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9M6.7 7v4.5M9.3 7v4.5" fill="none" stroke="#C24040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
@@ -11314,6 +11375,15 @@ function delMeet(i){   // [MEET-DEL] מחיקה לצמיתות — השרת מו
     toast((m.status === 'meeting' ? 'הפגישה נמחקה' : 'הפולו-אפ נמחק') + ' · גם מהיומן'); load();
   });
 }
+function kitFromMeet(i){   // [KIT 09/11] תיק פרזנטציה מהפגישה — נשלח לאישור
+  var m = MEETS[i]; if (!m) return;
+  POST('/v2/api/kit/create', {source: 'meet', skey: m.skey || ''}).then(function(j){
+    if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); return; }
+    var why = j && j.reason;
+    toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
+      : why === 'forbidden' ? 'אין הרשאה' : 'לא הצלחנו להכין את התיק');
+  }).catch(function(){ toast('שגיאה'); });
+}
 function undoneMeet(i){   // החזרה מ'בוצע' לפעיל
   var m = MEETS[i]; if (!m) return;
   POST('/api/newborn/status/done', {skey: m.skey || '', done: false}).then(function(j){
@@ -11372,6 +11442,321 @@ function goDraft(di){
 })();
 </script></body></html>"""
 
+
+
+# [KIT 09/11] תיקי פרזנטציה — הרשימה של הסוכן, שליחה לבעל הנכס ותיק ידני
+V2_KITS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>תיקי פרזנטציה</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column;max-width:100vw}
+  header{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 6px}
+  header .av{width:42px;height:42px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:16px;font-weight:700}
+  header .lg{height:44px;max-width:150px;object-fit:contain}
+  header .bk{width:44px;height:44px;border-radius:14px;background:#fff;border:1px solid #E9E4D8;display:flex;
+      align-items:center;justify-content:center;cursor:pointer}
+  @media (min-width:700px){
+    header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+  }
+  main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto;padding-bottom:124px;-webkit-overflow-scrolling:touch}
+  .hd2{display:flex;align-items:center;gap:10px}
+  .hd2 .ic{width:36px;height:36px;border-radius:11px;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .hd2 h1{font-size:19px;font-weight:800}
+  .hd2 .cnt{font-size:12.5px;font-weight:700;color:#2E6BD6;background:#EAF0FA;padding:3px 10px;border-radius:999px}
+  .sub{font-size:12.5px;color:#6B7280;line-height:1.5}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
+  .sg{flex:1;text-align:center;padding:10px 0;font-size:13px;font-weight:700;color:#5B6472;border-radius:10px;cursor:pointer;min-height:40px}
+  .sg.on{color:#fff;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
+  .kc{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 15px;display:flex;flex-direction:column;gap:9px}
+  .kc .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .kc .tt{font-size:15px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
+  .kc .sb{font-size:12px;color:#6B7280;margin-top:2px}
+  .kc .vw{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#5B6472;background:#F7F5EE;
+      border-radius:11px;padding:8px 11px}
+  .kchip{display:inline-block;font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .kchip.rj{white-space:normal;max-width:55%;text-align:center;line-height:1.35}
+  .kbtn{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:13px;padding:0 14px;width:100%;
+      min-height:46px;font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
+  .kbtn.sec{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
+  .kbtn.pri{background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25)}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px;
+      background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .t{font-size:15px;font-weight:800}
+  .empty .s{font-size:12.5px;color:#6B7280;line-height:1.5;max-width:280px}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+      display:flex;justify-content:space-around;align-items:flex-end}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
+      font-weight:600;color:#6E7683;cursor:pointer;position:relative}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30;touch-action:none}
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
+      display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto;overflow-x:hidden;overscroll-behavior:contain}
+  #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
+  #sheet h3{font-size:19px;font-weight:800}
+  @media (min-width:700px){ #sheet{max-width:600px;margin-left:auto;margin-right:auto} }
+  .fld2{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+  .fld2 span{font-size:12px;font-weight:700;color:#5B6472}
+  .fld2 span i{font-style:normal;font-weight:600;color:#6B7280}
+  .fld2 input,.fld2 select{background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:11px 13px;min-height:47px;
+      font-size:16px;font-family:inherit;outline:none;color:#1E3A5F;width:100%;min-width:0;max-width:100%}
+  .fld2 input[type="date"],.fld2 input[type="time"]{-webkit-appearance:none;appearance:none;display:block;text-align:right}
+  .fld2.bad input,.fld2.bad select{border-color:#C29435;background:#FFFBF0}
+  .ferr{font-size:12.5px;font-weight:700;color:#7A5E1C;min-height:0}
+  .row2{display:flex;gap:8px}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:600;padding:10px 18px;border-radius:12px;opacity:0;transition:opacity .25s;
+      pointer-events:none;z-index:100;white-space:nowrap}
+</style></head><body>
+
+  <header>
+    <div class="bk" onclick="history.length > 1 ? history.back() : location.href='/v2/home'" aria-label="חזרה">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <img class="lg" src="/assets/logo" alt="" onerror="this.style.display='none'">
+    <div class="av" id="avatarTx"></div>
+  </header>
+
+  <main>
+    <div class="hd2">
+      <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 1.5h5.5L12.5 4.5v10h-8.5z" fill="none" stroke="#7A5E1C" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 8h4M6.5 11h4" stroke="#7A5E1C" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+      <h1>תיקי פרזנטציה</h1>
+      <div class="cnt" id="cnt">—</div>
+    </div>
+    <div class="sub">תיק אישי לבעל הנכס לפני פגישת הגיוס. כל תיק עובר אישור, ואחריו אפשר לשלוח אותו לבעל הנכס בוואטסאפ.</div>
+    <div class="segs" id="scope" style="display:none">
+      <div class="sg on" data-s="mine" onclick="setScope(this)">שלי</div>
+      <div class="sg" data-s="all" onclick="setScope(this)">כל המשרד</div>
+    </div>
+    <button class="kbtn pri" onclick="kitManual()">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>תיק חדש (ידני)</button>
+    <div id="list"><div class="sub" style="text-align:center;padding:24px 0">טוען…</div></div>
+  </main>
+
+  <nav>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+  </nav>
+
+  <div id="ovl" onclick="closeSheet()"></div>
+  <div id="sheet"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type':'application/json'},
+    body: JSON.stringify(d || {})}).then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(msg){
+  var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 2200);
+}
+function openSheet(html){
+  el('sheet').innerHTML = '<div class="grip"></div>' + html;
+  el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden';
+}
+function closeSheet(){
+  el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.documentElement.style.overflow = ''; document.body.style.overflow = '';
+}
+
+var KITS = [], SCOPE = 'mine', ME = {}, PICK = false, AGENTS = [];
+function kitPad(x){ return ('0' + x).slice(-2); }
+/* צ'יפ המצב — רק צבעי הפלטה: זהב-טקסט · כחול · ירוק · אפור; 'נדחה' נייבי על לבן עם מסגרת (אדום שמור למחיקה) */
+function kitStatusChip(k){
+  var st = (k && k.status) || '';
+  if (st === 'pending') return '<span class="kchip" style="background:#F6EEDB;color:#7A5E1C">בהכנה</span>';
+  if (st === 'approved') return '<span class="kchip" style="background:#EAF0FA;color:#2E6BD6">מוכן לשליחה</span>';
+  if (st === 'sent') return '<span class="kchip" style="background:#E7F7EE;color:#157A43">נשלח</span>';
+  if (st === 'expired') return '<span class="kchip" style="background:#F0EDE3;color:#6B7280">פג תוקף</span>';
+  if (st === 'rejected') return '<span class="kchip rj" style="background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">נדחה' +
+    (k.reject_reason ? ' · ' + esc(k.reject_reason) : '') + '</span>';
+  return '';
+}
+/* מעקב צפייה: last = שניות epoch מהשרת */
+function kitViews(v){
+  v = v || {};
+  var n = +v.opens || 0;
+  if (!n) return 'עוד לא נפתח';
+  var parts = [n === 1 ? 'נפתח פעם אחת' : 'נפתח ' + n + ' פעמים', Math.max(1, Math.round((+v.secs || 0) / 60)) + " דק'"];
+  var t = v.last;
+  if (t != null && t !== ''){
+    var d = (typeof t === 'number' || /^\d+(\.\d+)?$/.test(String(t))) ? new Date(+t < 1e12 ? +t * 1000 : +t) : new Date(t);
+    if (!isNaN(d)) parts.push('לאחרונה ' + kitPad(d.getDate()) + '/' + kitPad(d.getMonth() + 1) + ' ' +
+      kitPad(d.getHours()) + ':' + kitPad(d.getMinutes()));
+  }
+  return parts.join(' · ');
+}
+/* 'שלח לבעל הנכס' — רק לתיק שאושר או נשלח, ורק כשהשרת החזיר מספר וטקסט */
+function kitSendBtn(k, i){
+  if (!k || (k.status !== 'approved' && k.status !== 'sent') || !k.wa || !k.text) return '';
+  return '<button class="kbtn" style="background:#157A43;color:#fff" onclick="kitSend(' + i + ')">' +
+    '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+    'שלח לבעל הנכס</button>';
+}
+/* reason מהשרת (/v2/api/kit/create) → השדה בטופס הידני; '' = הודעה כללית */
+function kitManualErr(reason){
+  return {owner: 'kmOwner', phone: 'kmPhone', addr: 'kmStreet', street: 'kmStreet', city: 'kmCity', rooms: 'kmRooms',
+          price: 'kmPrice', agent: 'kmAgent', forbidden: 'kmAgent'}[reason] || '';
+}
+var KM_ERR = {owner: 'שם בעל הנכס — חובה', phone: 'טלפון לא תקין — לפחות 9 ספרות', addr: 'רחוב ומספר — חובה',
+  street: 'רחוב ומספר — חובה', city: 'עיר — חובה', rooms: 'חדרים — חובה', price: 'מחיר מבוקש — חובה',
+  agent: 'הסוכן לא מוכר במשרד', forbidden: 'אין הרשאה לפתוח תיק לסוכן הזה'};
+
+function kitCard(k, i){
+  var place = [k.street, k.city].filter(Boolean).join(', ');
+  var showViews = k.status === 'approved' || k.status === 'sent';
+  var created = '';
+  try{ var d = new Date(k.created_at); if (!isNaN(d)) created = 'נפתח ' + kitPad(d.getDate()) + '/' + kitPad(d.getMonth() + 1); }catch(e){}
+  return '<div class="kc">' +
+    '<div class="top"><div style="min-width:0"><div class="tt">' + esc([k.owner, place].filter(Boolean).join(' · ')) + '</div>' +
+    '<div class="sb">' + esc([SCOPE === 'all' ? k.agent : '', created].filter(Boolean).join(' · ')) + '</div></div>' +
+    kitStatusChip(k) + '</div>' +
+    (showViews ? '<div class="vw"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="#5B6472" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="none" stroke="#5B6472" stroke-width="1.4"/></svg>' +
+      esc(kitViews(k.views)) + '</div>' : '') +
+    (k.status === 'pending' ? '<div class="sb">ממתין לאישור — תקבל כאן כפתור שליחה ברגע שיאושר</div>' : '') +
+    kitSendBtn(k, i) +
+    (k.status === 'rejected' || k.status === 'expired'
+      ? '<button class="kbtn sec" onclick="kitResend(' + i + ')">שלח שוב לאישור</button>' : '') +
+    '</div>';
+}
+function render(){
+  el('cnt').textContent = KITS.length;
+  if (!KITS.length){
+    el('list').innerHTML = '<div class="empty"><div class="ic"><svg width="30" height="30" viewBox="0 0 16 16"><path d="M4 1.5h5.5L12.5 4.5v10h-8.5z" fill="none" stroke="#7A5E1C" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.5 8h4M6.5 11h4" stroke="#7A5E1C" stroke-width="1.3" stroke-linecap="round"/></svg></div>' +
+      '<div class="t">עוד אין תיקים</div><div class="s">פתח תיק מכרטיס בנכס נולד או ידנית</div>' +
+      '<button class="kbtn pri" onclick="kitManual()">תיק חדש (ידני)</button>' +
+      '<button class="kbtn sec" onclick="location.href=\'/v2/newborn\'">לנכס נולד</button></div>';
+    return;
+  }
+  el('list').innerHTML = '<div style="display:flex;flex-direction:column;gap:11px">' + KITS.map(kitCard).join('') + '</div>';
+}
+function load(){
+  return GET('/v2/api/kit/mine' + (SCOPE === 'all' ? '?all=1' : '')).then(function(j){
+    if (!j || !j.ok){ el('list').innerHTML = '<div class="empty"><div class="t">לא הצלחנו לטעון את התיקים</div>' +
+      '<button class="kbtn sec" onclick="load()">נסה שוב</button></div>'; return; }
+    KITS = j.kits || []; render();
+  }).catch(function(){ toast('שגיאת רשת'); });
+}
+function setScope(node){
+  SCOPE = node.getAttribute('data-s') === 'all' ? 'all' : 'mine';
+  var sgs = document.querySelectorAll('#scope .sg');
+  for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
+  load();
+}
+function kitSend(i){
+  var k = KITS[i]; if (!k) return;
+  window.open('https://wa.me/' + k.wa + '?text=' + encodeURIComponent(k.text), '_blank');
+  if (k.status !== 'approved') return;
+  POST('/v2/api/kit/sent', {id: k.id}).then(function(j){
+    if (j && j.ok){ toast('סומן כנשלח'); load(); }
+  }).catch(function(){});
+}
+function kitResend(i){
+  var k = KITS[i]; if (!k) return;
+  POST('/v2/api/kit/resend', {id: k.id}).then(function(j){
+    if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); load(); return; }
+    toast(j && j.reason === 'status' ? 'התיק כבר לא במצב הזה' : 'לא הצלחנו לשלוח שוב');
+  }).catch(function(){ toast('שגיאה'); });
+}
+
+/* ── תיק ידני ── */
+function kmPrice(inp){
+  var d = String(inp.value || '').replace(/[^0-9]/g, '');
+  inp.value = d.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function kmFld(id, label, attrs, opt){
+  return '<label class="fld2" id="' + id + 'F"><span>' + label + (opt ? ' <i>(רשות)</i>' : '') + '</span>' +
+    '<input id="' + id + '" ' + (attrs || '') + '><div class="ferr" id="' + id + 'Err"></div></label>';
+}
+function kitManual(){
+  var ag = PICK ? '<label class="fld2" id="kmAgentF"><span>הסוכן של התיק</span><select id="kmAgent">' +
+      '<option value="">עליי (' + esc(ME.name || '') + ')</option>' +
+      AGENTS.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
+      '</select><div class="ferr" id="kmAgentErr"></div></label>' : '';
+  openSheet('<h3>תיק חדש (ידני)</h3>' +
+    '<div class="sub">התיק נשלח לאישור לפני שאפשר לשלוח אותו לבעל הנכס.</div>' + ag +
+    kmFld('kmOwner', 'שם בעל הנכס', 'autocomplete="off"') +
+    kmFld('kmPhone', 'טלפון בעל הנכס', 'type="tel" inputmode="tel" dir="ltr" style="text-align:right"') +
+    kmFld('kmStreet', 'רחוב ומספר', 'autocomplete="off"') +
+    kmFld('kmCity', 'עיר', 'autocomplete="off"') +
+    '<div class="row2">' + kmFld('kmRooms', 'חדרים', 'inputmode="decimal"') +
+      kmFld('kmPrice', 'מחיר מבוקש', 'inputmode="numeric" oninput="kmPrice(this)"') + '</div>' +
+    '<div class="row2">' + kmFld('kmSqm', 'מ"ר', 'inputmode="numeric"', true) +
+      '<label class="fld2"><span>סוג נכס</span><select id="kmType">' +
+      ['דירה', 'דירת גן', 'פנטהאוז', "קוטג'", 'דו משפחתי'].map(function(t){ return '<option>' + esc(t) + '</option>'; }).join('') +
+      '</select></label></div>' +
+    '<div class="row2">' + kmFld('kmDate', 'מועד הפגישה', 'type="date"', true) + kmFld('kmTime', 'שעה', 'type="time"', true) + '</div>' +
+    '<button class="kbtn pri" id="kmGo" onclick="kitManualGo()">שלח לאישור</button>' +
+    '<button class="kbtn sec" onclick="closeSheet()">ביטול</button>');
+}
+function kmClear(){
+  ['kmOwner', 'kmPhone', 'kmStreet', 'kmCity', 'kmRooms', 'kmPrice', 'kmAgent'].forEach(function(id){
+    var f = el(id + 'F'), e = el(id + 'Err');
+    if (f) f.classList.remove('bad'); if (e) e.textContent = '';
+  });
+}
+function kmShowErr(reason){
+  var id = kitManualErr(reason);
+  if (!id || !el(id + 'F')) return false;
+  el(id + 'F').classList.add('bad');
+  el(id + 'Err').textContent = KM_ERR[reason] || '';
+  try{ el(id).focus(); }catch(e){}
+  return true;
+}
+function kitManualGo(){
+  kmClear();
+  var v = function(id){ return el(id) ? String(el(id).value || '').trim() : ''; };
+  var d = {source: 'manual', owner: v('kmOwner'), phone: v('kmPhone'), street: v('kmStreet'), city: v('kmCity'),
+           rooms: v('kmRooms'), price: v('kmPrice'), sqm: v('kmSqm'), ptype: v('kmType') || 'דירה',
+           meet_at: v('kmDate') ? v('kmDate') + (v('kmTime') ? 'T' + v('kmTime') : '') : ''};
+  if (PICK && v('kmAgent')) d.agent = v('kmAgent');
+  var miss = !d.owner ? 'owner' : d.phone.replace(/\D/g, '').length < 9 ? 'phone' : !d.street ? 'addr'
+    : !d.city ? 'city' : !d.rooms ? 'rooms' : !d.price ? 'price' : '';
+  if (miss){ kmShowErr(miss); return; }
+  var b = el('kmGo'); b.disabled = true; b.textContent = 'שולח…';
+  POST('/v2/api/kit/create', d).then(function(j){
+    b.disabled = false; b.textContent = 'שלח לאישור';
+    if (j && j.ok){ closeSheet(); toast('התיק בהכנה · ממתין לאישור'); load(); return; }
+    if (!kmShowErr(j && j.reason)) toast('לא הצלחנו להכין את התיק');
+  }).catch(function(){ b.disabled = false; b.textContent = 'שלח לאישור'; toast('שגיאת רשת'); });
+}
+
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    ME = j;
+    el('avatarTx').textContent = j.name ? j.name.trim()[0] : '';
+    if (j.dev || j.drole === 'manager' || j.drole === 'developer') el('scope').style.display = 'flex';
+    PICK = j.role === 'admin' || j.role === 'coordinator';
+    if (PICK) GET('/api/my/agents').then(function(d){
+      AGENTS = ((d && d.agents) || []).map(function(a){ return a.name; }).filter(function(a){ return a && a !== j.name; });
+    }).catch(function(){});
+    load();
+  }).catch(function(){ location.replace('/v2'); });
+  fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
+    document.title = 'תיקי פרזנטציה · ' + (o.name || '');
+  }).catch(function(){});
+})();
+</script></body></html>"""
 
 
 # ── חיבור משרד חדש (עתידי) — צ'קליסט המקורות המלא, עם סטטוס חי למשרד הנוכחי ─────
@@ -16878,6 +17263,10 @@ def register(app, G):
     @app.route("/v2/meets", methods=["GET"])
     def v2_meets():
         return _page(V2_MEETS_HTML)
+
+    @app.route("/v2/kits", methods=["GET"])
+    def v2_kits():
+        return _page(V2_KITS_HTML)
 
     @app.route("/v2/goals", methods=["GET"])   # [GOALS 28/10] היעדים שלי להיום
     def v2_goals():
