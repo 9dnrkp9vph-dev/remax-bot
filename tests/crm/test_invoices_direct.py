@@ -28,4 +28,12 @@ ck(j["ok"] and len(fs.inv) == 1 and len(fs.shadow) == 1, "no via → existing pa
 os.environ["INVOICES_DIRECT"] = "live"
 c.post("/v2/api/invoices/ingest?via=direct", json=body, headers=H)
 ck(len(fs.inv) == 2 and len(fs.shadow) == 1, "live → existing path")
+# [09/11] Make שולח ישירות (במקום פיירברי) — כטופס (Make מקודד בעצמו מרכאות/ירידות שורה), ?via=make → טבלה חיה
+os.environ.pop("INVOICES_DIRECT", None)
+logs = []; A._log_activity = lambda *a: logs.append(a)
+f2 = dict(body, name='אוקסנה רקוב"ז\nבדיקה', doc_num="25135")
+j = c.post("/v2/api/invoices/ingest?via=make", data=f2, headers=H).get_json()
+ck(j["ok"] and len(fs.inv) == 3 and fs.inv[-1]["doc_num"] == "25135" and fs.inv[-1]["client_name"].startswith("אוקסנה"), (j, fs.inv[-1:]))
+r = c.post("/v2/api/invoices/ingest?via=make", data={"phone": "050"}, headers=H)
+ck(r.status_code == 400, ("Make sees a missing name as an error", r.status_code))
 print("invoices_direct OK", n)

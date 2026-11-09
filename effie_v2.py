@@ -19276,9 +19276,11 @@ def register(app, G):
         if not _INGEST_KEY or not k or not _hmac.compare_digest(k, _INGEST_KEY):
             return jsonify({"ok": False, "reason": "forbidden"}), 403
         try:
-            row = inv_ingest_row(request.get_json(silent=True) or {})
+            # [09/11] Make שולח ישירות (במקום פיירברי) כטופס — ?via=make; פיירברי ממשיך ב-JSON
+            via = request.args.get("via", "")
+            row = inv_ingest_row(request.get_json(silent=True) or request.form.to_dict() or {})
             if not row:
-                return jsonify({"ok": False, "reason": "no_name"})
+                return jsonify({"ok": False, "reason": "no_name"}), (400 if via == "make" else 200)
             nm, amount, created = row["client_name"], row["amount"], row["created_at"]
             sb = G.get("_sbdb")
             if not (sb and sb.enabled()):
@@ -19290,8 +19292,11 @@ def register(app, G):
                 sb.shadow_upsert("invoices", row["row_hash"], created, row)
                 return jsonify({"ok": True, "mode": "shadow", "new": False, "wa": False})
             inserted = sb.insert_invoice_row(row)
-            _log_activity("Fireberry", "system", "", "חשבונית חדשה מפיירברי",
-                          (nm + " " + amount)[:60].strip())
+            if via == "make":
+                _log_activity("Make", "system", "", "חשבונית חדשה (Make)", (nm + " " + amount)[:60].strip())
+            else:
+                _log_activity("Fireberry", "system", "", "חשבונית חדשה מפיירברי",
+                              (nm + " " + amount)[:60].strip())
             wa_q = bool(inserted) and _inv_wa_send_async(row)
             return jsonify({"ok": True, "new": bool(inserted), "wa": wa_q})
         except Exception as e:
