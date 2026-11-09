@@ -6301,12 +6301,15 @@ function nbCard(r, i){
 }
 // [KIT 09/11] תיק פרזנטציה לבעל הנכס — נשלח לאישור; הרשימה והשליחה במסך /v2/kits
 function kitFromNb(i){
-  var r = nbKitRows()[i]; if (!r) return;
+  var r = nbKitRows()[i]; if (!r || kitFromNb._busy) return;   // עד שהשרת עונה — לא שולחים שוב
+  kitFromNb._busy = true;
   POST('/v2/api/kit/create', {source: 'nb', key: r.key}).then(function(j){
+    kitFromNb._busy = false;
     if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); return; }
     var why = j && j.reason;
-    toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני' : 'לא הצלחנו להכין את התיק');
-  }).catch(function(){ toast('שגיאה'); });
+    toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
+      : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה' : 'לא הצלחנו להכין את התיק');
+  }).catch(function(){ kitFromNb._busy = false; toast('שגיאה'); });
 }
 function nbDial(i){   // חיוג לבעל הנכס (10/09): רישום 'מי פנה' + click2call בפיילוט, אחרת tel:
   markContact(i);
@@ -11376,13 +11379,15 @@ function delMeet(i){   // [MEET-DEL] מחיקה לצמיתות — השרת מו
   });
 }
 function kitFromMeet(i){   // [KIT 09/11] תיק פרזנטציה מהפגישה — נשלח לאישור
-  var m = MEETS[i]; if (!m) return;
+  var m = MEETS[i]; if (!m || kitFromMeet._busy) return;   // עד שהשרת עונה — לא שולחים שוב
+  kitFromMeet._busy = true;
   POST('/v2/api/kit/create', {source: 'meet', skey: m.skey || ''}).then(function(j){
+    kitFromMeet._busy = false;
     if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); return; }
     var why = j && j.reason;
     toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
-      : why === 'forbidden' ? 'אין הרשאה' : 'לא הצלחנו להכין את התיק');
-  }).catch(function(){ toast('שגיאה'); });
+      : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה' : 'לא הצלחנו להכין את התיק');
+  }).catch(function(){ kitFromMeet._busy = false; toast('שגיאה'); });
 }
 function undoneMeet(i){   // החזרה מ'בוצע' לפעיל
   var m = MEETS[i]; if (!m) return;
@@ -11494,7 +11499,7 @@ V2_KITS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       font-weight:600;color:#6E7683;cursor:pointer;position:relative}
   #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30;touch-action:none}
   #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
-      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 96px;
       display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto;overflow-x:hidden;overscroll-behavior:contain}
   #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
   #sheet h3{font-size:19px;font-weight:800}
@@ -11625,7 +11630,7 @@ function kitCard(k, i){
   var place = [k.street, k.city].filter(Boolean).join(', ');
   var showViews = k.status === 'approved' || k.status === 'sent';
   var created = '';
-  try{ var d = new Date(k.created_at); if (!isNaN(d)) created = 'נפתח ' + kitPad(d.getDate()) + '/' + kitPad(d.getMonth() + 1); }catch(e){}
+  try{ var d = new Date(k.created_at); if (!isNaN(d)) created = 'הוכן ' + kitPad(d.getDate()) + '/' + kitPad(d.getMonth() + 1); }catch(e){}
   return '<div class="kc">' +
     '<div class="top"><div style="min-width:0"><div class="tt">' + esc([k.owner, place].filter(Boolean).join(' · ')) + '</div>' +
     '<div class="sb">' + esc([SCOPE === 'all' ? k.agent : '', created].filter(Boolean).join(' · ')) + '</div></div>' +
@@ -11663,12 +11668,15 @@ function setScope(node){
   load();
 }
 function kitSend(i){
-  var k = KITS[i]; if (!k) return;
+  var k = KITS[i]; if (!k || kitSend._busy) return;   // לחיצה כפולה — לא פותחים וואטסאפ פעמיים
+  kitSend._busy = true;
+  setTimeout(function(){ kitSend._busy = false; }, 1500);
   window.open('https://wa.me/' + k.wa + '?text=' + encodeURIComponent(k.text), '_blank');
   if (k.status !== 'approved') return;
+  var fail = function(){ toast('לא נשמר שהתיק נשלח — נסה שוב'); load(); };
   POST('/v2/api/kit/sent', {id: k.id}).then(function(j){
-    if (j && j.ok){ toast('סומן כנשלח'); load(); }
-  }).catch(function(){});
+    if (j && j.ok){ toast('סומן כנשלח'); load(); } else fail();
+  }).catch(fail);
 }
 function kitResend(i){
   var k = KITS[i]; if (!k) return;

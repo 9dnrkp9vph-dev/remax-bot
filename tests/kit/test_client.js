@@ -96,6 +96,24 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   send(0); await new Promise(r => setTimeout(r, 5));
   ck(opened[0][0] === 'https://wa.me/972544448065?text=' + encodeURIComponent('שלום רב') && opened[0][1] === '_blank', 'wa.me ' + opened[0]);
   ck(posts[0][0] === '/v2/api/kit/sent' && posts[0][1].id === 'k1', 'POST sent');
+  // לחיצה כפולה: וואטסאפ אחד ו-/sent אחד
+  async function sendRun(reply, taps){
+    const O = [], Pp = [], Ts = [], L = [];
+    const f = new Function('esc', 'window', 'POST', 'toast', 'load',
+      'var KITS = [{id:"k2",status:"approved",wa:"9725",text:"t"}];\n' + fn(kjs, 'kitSend') + '\nreturn kitSend;')(
+      esc, {open: u => O.push(u)}, (u, d) => { Pp.push(u); return reply(); }, m => Ts.push(m), () => L.push(1));
+    for (let t = 0; t < taps; t++) f(0);
+    await new Promise(r => setTimeout(r, 5));
+    return {O, Pp, Ts, L};
+  }
+  let sr = await sendRun(() => Promise.resolve({ok: true}), 2);
+  ck(sr.O.length === 1 && sr.Pp.length === 1, 'double tap guarded ' + sr.O.length + '/' + sr.Pp.length);
+  sr = await sendRun(() => Promise.resolve({ok: false, reason: 'status'}), 1);
+  ck(sr.Ts[0] === 'לא נשמר שהתיק נשלח — נסה שוב' && sr.L.length === 1, 'sent ok:false → toast + reload');
+  sr = await sendRun(() => Promise.reject(new Error('net')), 1);
+  ck(sr.Ts[0] === 'לא נשמר שהתיק נשלח — נסה שוב' && sr.L.length === 1, 'sent network fail → toast + reload');
+  ck(/created = 'הוכן ' \+/.test(kjs) && !/'נפתח ' \+ kitPad/.test(kjs), 'created prefix הוכן');
+  ck(/#sheet\{[^}]*padding:12px 18px (9\d|1\d\d)px/.test(KITS), 'sheet bottom padding >= 90');
 
   // ── כרטיס נכס נולד: כפתור + kitFromNb ─────────────────────────────────────
   ck(/<button class="s[^"]*" onclick="kitFromNb\(' \+ i \+ '\)">תיק לפני פגישה<\/button>/.test(NBKIT), 'nb button');
@@ -114,6 +132,21 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   ck(r.Ts[0] === 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני', 'nb owner');
   r = await nb({ok: false, reason: 'phone'});
   ck(r.Ts[0] === 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני', 'nb phone');
+  r = await nb({ok: false, reason: 'not_found'});
+  ck(r.Ts[0] === 'הנכס לא נמצא', 'nb not_found');
+  r = await nb({ok: false, reason: 'forbidden'});
+  ck(r.Ts[0] === 'אין הרשאה לנכס הזה', 'nb forbidden');
+  // בזמן שהבקשה בדרך — לחיצה נוספת לא שולחת שוב; אחרי התשובה אפשר שוב
+  {
+    const P = []; let res;
+    const f = new Function('POST', 'toast', 'nbKitRows', fn(nbjs, 'kitFromNb') + '\nreturn kitFromNb;')(
+      (u, d) => { P.push(u); return new Promise(x => { res = x; }); }, () => {}, () => [{key: 'k'}]);
+    f(0); f(0);
+    ck(P.length === 1, 'nb in-flight guard');
+    res({ok: true}); await new Promise(x => setTimeout(x, 5));
+    f(0);
+    ck(P.length === 2, 'nb guard released');
+  }
 
   // ── יומן: כפתור רק לפגישה שאינה ידנית, לפני המחיקה ───────────────────────
   const mjs = scripts(MEETS).join('\n');
@@ -128,6 +161,16 @@ ck(T.kitManualErr('db') === '', 'db → no field');
     (u, d) => { mP.push([u, d]); return Promise.resolve({ok: true}); }, () => {}, [{skey: 'nb:9'}]);
   fm(0); await new Promise(r2 => setTimeout(r2, 5));
   ck(mP[0][0] === '/v2/api/kit/create' && mP[0][1].source === 'meet' && mP[0][1].skey === 'nb:9', 'meet POST');
+  async function meet(reply){
+    const Ts = [];
+    const f = new Function('POST', 'toast', 'MEETS', fn(mjs, 'kitFromMeet') + '\nreturn kitFromMeet;')(
+      () => reply(), m => Ts.push(m), [{skey: 'nb:9'}]);
+    f(0); f(0); await new Promise(x => setTimeout(x, 5));
+    return Ts;
+  }
+  ck((await meet(() => Promise.resolve({ok: false, reason: 'not_found'})))[0] === 'הנכס לא נמצא', 'meet not_found');
+  let mt = await meet(() => Promise.resolve({ok: false, reason: 'forbidden'}));
+  ck(mt[0] === 'אין הרשאה לנכס הזה' && mt.length === 1, 'meet forbidden + guard');
 
   // ── תפריט, ניהול, ראוט ───────────────────────────────────────────────────
   ck(/<a id="menuKits" href="\/v2\/kits" style="display:flex/.test(HOME) && HOME.includes('תיקי פרזנטציה'), 'drawer item');
