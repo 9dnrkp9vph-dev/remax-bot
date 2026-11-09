@@ -340,7 +340,7 @@ def agent_block(G, name, phone9_, settings_rows=None):
     except Exception:
         revs = []
     own = next((r for r in revs if any(nk(a) == nk(name) for a in r.get("agents") or [])), None) if name else None
-    pick = own or (revs[0] if revs else None)
+    pick = own   # רק המלצה על הסוכן עצמו — לא המלצה של סוכן אחר מהמשרד (אייל 09/11: 'מזה ההמלצה של רועי?')
     if pick:
         review = {"text": str(pick.get("text") or "").strip(), "by": str(pick.get("by") or "").strip()}
     photo = None

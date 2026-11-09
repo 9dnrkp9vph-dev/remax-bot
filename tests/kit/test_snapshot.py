@@ -115,7 +115,7 @@ def test_agent_block_full():
     assert a["review"] == {"text": "דנה מעולה", "by": "רות"}
     assert a["site_url"] == ""        # העמוד מוסתר באתר
     a2 = K.agent_block(G, "מנהל ב", "504444444", settings_rows=rows)
-    assert a2["review"] == {"text": "משרד מעולה", "by": "יוסי"}   # המלצה על המשרד (החדשה)
+    assert a2["review"] is None   # אין המלצה עליו — לא מציגים המלצה של סוכן אחר (09/11)
 
 
 def test_license_fallback():
