@@ -495,7 +495,7 @@ def register(app, G):
     def shell(title, body, script=""):
         return ("<!doctype html><html lang=\"he\" dir=\"rtl\"><head><meta charset=\"utf-8\">"
                 "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-                "<meta name=\"robots\" content=\"noindex,nofollow\"><title>%s</title>"
+                "<meta name=\"robots\" content=\"noindex,nofollow\"><meta name=\"referrer\" content=\"no-referrer\"><title>%s</title>"
                 "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">"
                 "<link href=\"https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap\" rel=\"stylesheet\">"
                 "<style>%s</style></head><body>%s%s</body></html>") % (esc(title), _CSS, body,
@@ -625,14 +625,14 @@ def register(app, G):
         links = ["<a class=\"btn pri\" href=\"/k/%s.pdf\">הורד כ-PDF</a>" % esc(vtok)]
         g = str(claims.get("g_url") or "")
         if g.startswith("https://"):
-            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener\">לביקורות בגוגל</a>" % esc(g))
-        links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener\">לאתר המשרד</a>" % esc(site_root()))
+            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לביקורות בגוגל</a>" % esc(g))
+        links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לאתר המשרד</a>" % esc(site_root()))
         su = str(ag.get("site_url") or "")
         if su.startswith("https://") and agent:
-            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener\">לעמוד של %s באתר</a>" % (esc(su), esc(agent)))
+            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לעמוד של %s באתר</a>" % (esc(su), esc(agent)))
         wa = kc.wa972(rec.get("agent_phone"))
         if wa:
-            links.append("<a class=\"btn wa\" href=\"https://wa.me/%s\" target=\"_blank\" rel=\"noopener\">וואטסאפ ל%s</a>" % (wa, esc(agent)))
+            links.append("<a class=\"btn wa\" href=\"https://wa.me/%s\" target=\"_blank\" rel=\"noopener noreferrer\">וואטסאפ ל%s</a>" % (wa, esc(agent)))
         body = "<main class=\"view\"><div class=\"pages\">%s</div><nav class=\"links\">%s</nav></main>" % (imgs, "".join(links))
         ping = "/k/%s/ping" % vtok
         script = ("(function(){var u=%s;function p(){if(document.visibilityState==='hidden')return;"
