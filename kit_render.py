@@ -189,16 +189,29 @@ def _site_host():
     return re.sub(r"^https?://", "", u).rstrip("/")
 
 
-def _footer(d, snap, n, dark):
+def _footer(d, snap, n, dark, logo=True):
+    """לוגו המשרד + שם המשרד מודגש + האתר, ומספר העמוד משמאל."""
     col = FOOT_NAVY if dark else MUTED
     office = ((snap.get("office") or {}).get("office") or "").strip()
     f = _font(500, 40)
-    left = "%d" % n
-    label = (office + " · " if office else "") + _site_host()
-    y = H - 40 - 52
-    f2 = _fit(d, label, 500, 40, W - 2 * PAD - 80)
-    _line_r(d, label, f2, W - PAD, y, col)
-    d.text((PAD, y), left, font=f, fill=col)
+    lh = 84
+    y0 = H - 36 - lh
+    xr = W - PAD
+    if logo:
+        pw = _logo(d._image, _logo_path(), xr, y0, lh)
+        if pw:
+            xr -= pw + 24
+    name_col = WHITE if dark else NAVY
+    room = xr - PAD - 80
+    if office:
+        fo = _fit(d, office, 800, 40, room)
+        _line_r(d, office, fo, xr, y0 + 2, name_col)
+        fs = _fit(d, _site_host(), 500, 32, room)
+        _line_r(d, _site_host(), fs, xr, y0 + 48, col)
+    else:
+        fs = _fit(d, _site_host(), 500, 40, room)
+        _line_r(d, _site_host(), fs, xr, y0 + 20, col)
+    d.text((PAD, y0 + 20), "%d" % n, font=f, fill=col)
 
 
 def _kicker(d, text, dark, y=PAD):
@@ -302,10 +315,13 @@ def _fmt_n(v):
 def _p_cover(snap, n):
     im, d = _page(NAVY)
     ag = snap.get("agent") or {}
-    _logo(im, _logo_path(), W - PAD, PAD, 110)
-    d.text((PAD, PAD + 34), _rtl("תיק אישי"), font=_font(500, 40), fill=GOLD2)
+    _logo(im, _logo_path(), W - PAD, PAD, 200)
+    office = ((snap.get("office") or {}).get("office") or "").strip()
+    if office:
+        d.text((PAD, PAD + 40), _rtl(office), font=_fit(d, office, 800, 54, 420), fill=WHITE)
+    d.text((PAD, PAD + 118), _rtl("תיק אישי"), font=_font(500, 40), fill=GOLD2)
     width = W - 2 * PAD
-    y = 340
+    y = 380
     first = (snap.get("owner_first") or "").strip()
     if first:
         f, ls = _block(d, first + ",", 800, 52, width, 2)
@@ -339,7 +355,7 @@ def _p_cover(snap, n):
         y0 = H - 92 - 60 - 130
         d.rounded_rectangle((PAD, y0, W - PAD, y0 + 130), radius=CARD_R, fill=INSET_NAVY)
         _line_r(d, meet, _fit(d, meet, 700, 46, width - 80), W - PAD - 40, y0 + 38, WHITE)
-    _footer(d, snap, n, True)
+    _footer(d, snap, n, True, logo=False)
     return im
 
 
@@ -370,7 +386,7 @@ def _p_agent(snap, n):
     bottom = H - 150
     bio = (ag.get("bio") or "").strip()
     rev = ag.get("review") or None
-    stats = [(of.get("years"), "שנות ניסיון"), (of.get("deals"), "עסקאות"), (of.get("agents"), "סוכנים")]
+    stats = [(of.get("years"), "שנות ניסיון בקריות"), (of.get("deals"), "עסקאות"), (of.get("agents"), "סוכנים")]
     stats = [(v, l) for v, l in stats if isinstance(v, int) and v > 0]
     stats_h = 300 if stats else 0
     site = (ag.get("site_url") or "").strip()
@@ -398,7 +414,7 @@ def _p_agent(snap, n):
         for i, (v, l) in enumerate(stats):
             cx = W - PAD - cw * (i + 0.5)
             _line_c(d, _fmt_n(v), _font(900, 86), cx, y + 96, WHITE)
-            _line_c(d, l, _font(500, 40), cx, y + 200, WHITE)
+            _line_c(d, l, _fit(d, l, 500, 40, cw - 24), cx, y + 200, WHITE)
         y += 264 + 36
     if rev_h:
         _card(d, y, y + rev_h - 30)

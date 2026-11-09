@@ -57,7 +57,7 @@ def test_office_numbers():
              deal("2023-01-01", "שוכר"), deal("2015-12-31"), deal(FUTURE), deal("2022-02-02", missing="2026-01-01")]
     o = K.office_numbers(make_G(deals=deals))
     assert o["deals"] == 3
-    assert o["years"] == TODAY.year - 2016
+    assert o["years"] == TODAY.year - 2005
     assert o["agents"] == 2          # דנה ורון — בלי המתאמת והמנהל
     assert o["office"] == "רימקס פמילי"
 

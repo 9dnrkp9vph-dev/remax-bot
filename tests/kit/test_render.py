@@ -18,7 +18,7 @@ def sample(**kw):
                   "review": {"text": "אוהד ליווה אותנו במכירה מקצועית ונעימה, תוך חודשיים הדירה נמכרה. ממליצים בחום!",
                              "by": "משפחת לוי"},
                   "photo": None, "site_url": "https://refamily.co.il/צוות/אוהד-לוי", "phone": "0501111111"},
-        "office": {"years": 10, "deals": 4622, "agents": 56, "office": "רימקס פמילי"},
+        "office": {"years": 21, "deals": 4622, "agents": 56, "office": "רימקס פמילי"},
         "buyers": {"mode": "match", "n": 14, "city": "קרית ביאליק",
                    "lines": [["תקציב של 1,800,000 ומעלה", 11], ["מחפשים 5 חדרים ומעלה", 9], ["מחפשים בקרית ביאליק", 14]]},
         "claims": dict(K.KIT_DEFAULTS, g_url="https://g.page/r/bialik"),

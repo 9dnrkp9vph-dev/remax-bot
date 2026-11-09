@@ -168,6 +168,9 @@ def _date(v):
         return None
 
 
+OFFICE_SINCE = 2005      # 21 שנות ניסיון בקריות ב-2026 (אייל, 08/11)
+
+
 def office_numbers(G):
     """שנות ניסיון · עסקאות (צדדים, מכירה/קנייה, מאז 2016 — כלל side_counts של האתר) · סוכנים."""
     def build():
@@ -204,7 +207,7 @@ def office_numbers(G):
                     agents += 1
         except Exception as e:
             _log.warning("kit office_numbers: agents failed: %s", e)
-        return {"years": today.year - 2016, "deals": deals, "agents": agents, "office": _office_name(G)}
+        return {"years": today.year - OFFICE_SINCE, "deals": deals, "agents": agents, "office": _office_name(G)}
     return G["_swr"]("kit:office", 1800, build)
 
 
