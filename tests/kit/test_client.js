@@ -46,7 +46,7 @@ n++;
 // ── פונקציות טהורות במסך התיקים ─────────────────────────────────────────────
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const T = new Function('esc', [fn(kjs, 'kitPad'), fn(kjs, 'kitStatusChip'), fn(kjs, 'kitViews'), fn(kjs, 'kitSendBtn'),
-  fn(kjs, 'kitManualErr'), 'return {kitStatusChip, kitViews, kitSendBtn, kitManualErr};'].join('\n'))(esc);
+  fn(kjs, 'kitManualErr'), fn(kjs, 'kitTakenMsg'), 'return {kitStatusChip, kitViews, kitSendBtn, kitManualErr, kitTakenMsg};'].join('\n'))(esc);
 
 const chip = st => T.kitStatusChip(st);
 ck(chip({status: 'pending'}).includes('בהכנה'), 'pending → בהכנה');
@@ -59,6 +59,10 @@ ck(chip({status: 'rejected', reject_reason: '<b>'}).includes('&lt;b&gt;'), 'reas
 ck(chip({status: 'approved'}).includes('מוכן לשליחה') && chip({status: 'approved'}).includes('#2E6BD6'), 'approved blue');
 ck(chip({status: 'sent'}).includes('נשלח') && chip({status: 'sent'}).includes('#157A43'), 'sent green');
 ck(chip({status: 'expired'}).includes('פג תוקף') && chip({status: 'expired'}).includes('#6B7280'), 'expired grey');
+const tk = chip({status: 'taken', taken_by: 'דנה <כהן>'});
+ck(tk.includes('נשלח ע״י דנה &lt;כהן&gt;') && tk.includes('#6B7280'), 'taken chip grey: ' + tk);
+ck(T.kitSendBtn({status: 'taken', wa: '9725', text: 't'}, 0) === '', 'no send on taken');
+ck(T.kitTakenMsg('דנה כהן') === 'לבעל הנכס הזה כבר נשלח תיק ע״י דנה כהן', 'taken msg');
 
 const ts = new Date(2026, 10, 9, 14, 5).getTime() / 1000;
 const v = T.kitViews({opens: 2, secs: 150, last: ts});
@@ -99,9 +103,9 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   // לחיצה כפולה: וואטסאפ אחד ו-/sent אחד
   async function sendRun(reply, taps){
     const O = [], Pp = [], Ts = [], L = [];
-    const f = new Function('esc', 'window', 'POST', 'toast', 'load',
+    const f = new Function('esc', 'window', 'POST', 'toast', 'load', 'kitTakenMsg',
       'var KITS = [{id:"k2",status:"approved",wa:"9725",text:"t"}];\n' + fn(kjs, 'kitSend') + '\nreturn kitSend;')(
-      esc, {open: u => O.push(u)}, (u, d) => { Pp.push(u); return reply(); }, m => Ts.push(m), () => L.push(1));
+      esc, {open: u => O.push(u)}, (u, d) => { Pp.push(u); return reply(); }, m => Ts.push(m), () => L.push(1), T.kitTakenMsg);
     for (let t = 0; t < taps; t++) f(0);
     await new Promise(r => setTimeout(r, 5));
     return {O, Pp, Ts, L};
@@ -110,6 +114,8 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   ck(sr.O.length === 1 && sr.Pp.length === 1, 'double tap guarded ' + sr.O.length + '/' + sr.Pp.length);
   sr = await sendRun(() => Promise.resolve({ok: false, reason: 'status'}), 1);
   ck(sr.Ts[0] === 'לא נשמר שהתיק נשלח — נסה שוב' && sr.L.length === 1, 'sent ok:false → toast + reload');
+  sr = await sendRun(() => Promise.resolve({ok: false, reason: 'taken', by: 'רון לוי'}), 1);
+  ck(sr.Ts[0] === 'לבעל הנכס הזה כבר נשלח תיק ע״י רון לוי' && sr.L.length === 1, 'sent taken → toast + reload');
   sr = await sendRun(() => Promise.reject(new Error('net')), 1);
   ck(sr.Ts[0] === 'לא נשמר שהתיק נשלח — נסה שוב' && sr.L.length === 1, 'sent network fail → toast + reload');
   ck(/created = 'הוכן ' \+/.test(kjs) && !/'נפתח ' \+ kitPad/.test(kjs), 'created prefix הוכן');
@@ -134,6 +140,8 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   ck(r.Ts[0] === 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני', 'nb phone');
   r = await nb({ok: false, reason: 'not_found'});
   ck(r.Ts[0] === 'הנכס לא נמצא', 'nb not_found');
+  r = await nb({ok: false, reason: 'taken', by: 'רון לוי'});
+  ck(r.Ts[0] === 'לבעל הנכס הזה כבר נשלח תיק ע״י רון לוי', 'nb taken');
   r = await nb({ok: false, reason: 'forbidden'});
   ck(r.Ts[0] === 'אין הרשאה לנכס הזה', 'nb forbidden');
   // בזמן שהבקשה בדרך — לחיצה נוספת לא שולחת שוב; אחרי התשובה אפשר שוב
@@ -169,6 +177,7 @@ ck(T.kitManualErr('db') === '', 'db → no field');
     return Ts;
   }
   ck((await meet(() => Promise.resolve({ok: false, reason: 'not_found'})))[0] === 'הנכס לא נמצא', 'meet not_found');
+  ck((await meet(() => Promise.resolve({ok: false, reason: 'taken', by: 'רון לוי'})))[0] === 'לבעל הנכס הזה כבר נשלח תיק ע״י רון לוי', 'meet taken');
   let mt = await meet(() => Promise.resolve({ok: false, reason: 'forbidden'}));
   ck(mt[0] === 'אין הרשאה לנכס הזה' && mt.length === 1, 'meet forbidden + guard');
 
@@ -183,5 +192,13 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   ck(KITS.includes('תיקי פרזנטציה') && KITS.includes('עוד אין תיקים') && KITS.includes('פתח תיק מכרטיס בנכס נולד או ידנית'), 'kits copy');
   ck(!/[\u{1F300}-\u{1FAFF}]/u.test(KITS), 'no emoji');
   ck(!/אפי/.test(KITS), 'white-label');
+  {
+    const Ts = [], L = [];
+    const f = new Function('POST', 'toast', 'load', 'kitTakenMsg', 'var KITS = [{id:"k3"}];\n' + fn(kjs, 'kitResend') + '\nreturn kitResend;')(
+      () => Promise.resolve({ok: false, reason: 'taken', by: 'רון לוי'}), m => Ts.push(m), () => L.push(1), T.kitTakenMsg);
+    f(0); await new Promise(x => setTimeout(x, 5));
+    ck(Ts[0] === 'לבעל הנכס הזה כבר נשלח תיק ע״י רון לוי', 'resend taken');
+  }
+  ck(/j\.reason === 'taken'[^\n]*kitTakenMsg\(j\.by\)/.test(fn(kjs, 'kitManualGo')), 'manual create taken');
   console.log('ok kit client · ' + n + ' checks');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

@@ -1809,6 +1809,15 @@ def kit_by_token(col, tok):
     return _kit_one({col: "eq." + str(tok)})
 
 
+def kit_sent_for_phone(phone9):
+    """תיק שכבר נשלח לבעל הנכס הזה (owner_phone, 9 ספרות) במשרד — הראשון לפי sent_at; None אם אין."""
+    p = "".join(ch for ch in str(phone9 or "") if ch.isdigit())[-9:]
+    if len(p) < 9:
+        return None
+    return _kit_one({"select": "id,agent_name,sent_at", "owner_phone": "eq." + p, "status": "eq.sent",
+                     "order": "sent_at.asc.nullslast,id.asc", "limit": "1"})
+
+
 def kit_list(agent_phone=None, days=90):
     """תיקי המשרד מ-days הימים האחרונים, החדש קודם; agent_phone (last9) מסנן לסוכן, None = כל המשרד."""
     since = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=int(days))).isoformat()

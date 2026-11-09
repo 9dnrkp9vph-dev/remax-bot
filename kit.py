@@ -210,6 +210,21 @@ def register(app, G):
         except Exception:
             pass
 
+    def taken_by(phone, kid=None):
+        """תיק אחד לכל בעל נכס (אייל 09/11): תיק אחר שכבר נשלח לאותו טלפון — מי ששלח ראשון."""
+        p9 = kc.phone9(phone)
+        if not p9:
+            return None
+        try:
+            w = sb().kit_sent_for_phone(p9)
+        except Exception as e:
+            log.warning("kit_sent_for_phone failed: %s", e)
+            return None
+        return w if w and w.get("id") != kid else None
+
+    def taken_resp(w):
+        return jsonify({"ok": False, "reason": "taken", "by": (w or {}).get("agent_name") or ""})
+
     def fresh_tokens():
         return {"review_token": secrets.token_urlsafe(16), "view_token": secrets.token_urlsafe(16)}
 
@@ -304,6 +319,9 @@ def register(app, G):
             elif source != "meet":   # סוכן/מתאמת שבחרו סוכן מחוץ להרשאה — חוזרים לסוכן של הסשן
                 agent_name, agent_phone = me, kc.phone9(s.get("phone"))
         src.update(agent_name=agent_name, agent_phone=agent_phone)
+        w = taken_by(src["phone"])
+        if w:
+            return taken_resp(w)
         try:
             snap = kc.build_snapshot(G, src)
         except Exception as e:
@@ -337,15 +355,25 @@ def register(app, G):
             rows = []
         if team is not None:   # מתאמת — הצוות שלה והתיקים שלה, לא כל המשרד
             rows = [r for r in rows if kc.phone9(r.get("agent_phone")) == me9 or norm(r.get("agent_name")) in team]
-        now, base, out = _t.time(), _base(), []
+        now, base, out, tk = _t.time(), _base(), [], {}
         for r in rows:
             snap = r.get("snapshot") or {}
             v = r.get("views") or {}
             st = kc.eff_status(r, now)
+            w = None
+            if st == "approved":
+                p9 = kc.phone9(r.get("owner_phone"))
+                if p9 not in tk:
+                    tk[p9] = taken_by(p9)
+                w = tk[p9] if tk[p9] and tk[p9].get("id") != r.get("id") else None
+                if w:
+                    st = "taken"
             it = {"id": r.get("id"), "status": st, "owner": r.get("owner_name") or snap.get("owner") or "",
                   "street": snap.get("street") or "", "city": snap.get("city") or "",
                   "created_at": r.get("created_at"), "reject_reason": r.get("reject_reason") or "",
                   "views": {"opens": int(v.get("opens") or 0), "secs": int(v.get("secs") or 0), "last": v.get("last")}}
+            if w:
+                it["taken_by"] = w.get("agent_name") or ""
             if allp:
                 it["agent"] = r.get("agent_name") or ""
             if st in _SHOW_LINK and r.get("view_token"):
@@ -381,6 +409,9 @@ def register(app, G):
         st = kc.eff_status(rec, _t.time())
         if st not in ("rejected", "expired"):
             return jsonify({"ok": False, "reason": "status"})
+        w = taken_by(rec.get("owner_phone"), rec["id"])
+        if w:
+            return taken_resp(w)
         try:
             snap = kc.build_snapshot(G, src_from_rec(rec))
         except Exception as e:
@@ -407,8 +438,15 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "not_found"})
         if rec.get("status") != "approved":
             return jsonify({"ok": False, "reason": "status"})
+        w = taken_by(rec.get("owner_phone"), rec["id"])
+        if w:
+            return taken_resp(w)
         if not sb().kit_claim(rec["id"], "approved", "sent", {"sent_at": _now_iso()}):
             return jsonify({"ok": False, "reason": "status"})
+        w = taken_by(rec.get("owner_phone"), rec["id"])   # מרוץ: שני סוכנים שלחו יחד — המוקדם ב-sent_at נשאר
+        if w:
+            sb().kit_claim(rec["id"], "sent", "approved", {"sent_at": None})
+            return taken_resp(w)
         snap = rec.get("snapshot") or {}
         log_act(s, "תיק פרזנטציה — נשלח לבעל הנכס", "%s · %s" % (rec.get("owner_name") or "", snap.get("street") or ""))
         return jsonify({"ok": True, "id": rec["id"], "status": "sent"})

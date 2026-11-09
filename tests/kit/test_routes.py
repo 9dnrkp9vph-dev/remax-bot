@@ -29,6 +29,10 @@ class SBK:
                 if r["id"] == kid and r.get("status") == frm and all(r.get(k) == v for k, v in (match or {}).items()):
                     r.update(f, status=to); return True
             return False
+    def kit_sent_for_phone(self, phone9):
+        rs = sorted((r for r in self.kits if r.get("status") == "sent" and r.get("owner_phone") == phone9),
+                    key=lambda r: (str(r.get("sent_at") or ""), r["id"]))
+        return {k: rs[0].get(k) for k in ("id", "agent_name", "sent_at")} if rs else None
     def kit_get(self, kid):
         return next((dict(r) for r in self.kits if r["id"] == kid), None)
     def kit_list(self, agent_phone=None, days=90):
@@ -261,6 +265,7 @@ def test_sent():
         ck(st["acts"][-1][3] == "תיק פרזנטציה — נשלח לבעל הנכס", st["acts"][-1])
         m1 = next(x for x in c.get("/v2/api/kit/mine").json["kits"] if x["id"] == "k1")
         ck(m1["status"] == "sent" and m1["wa"] == "972544448065", m1)
+        sb.kit_update("k1", {"status": "approved"})   # הבדיקות הבאות פותחות עוד תיקים לאותו בעל נכס (כלל 'נשלח ראשון' — test_taken)
 
 
 
@@ -316,6 +321,7 @@ def test_review_fixes():
             sb.kit_update(kron["id"], {"status": "approved"})
             ck(c.post("/v2/api/kit/sent", json={"id": kron["id"]}).json["ok"] is False, dr + " sent other")
             ck(c.post("/v2/api/kit/sent", json={"id": kk["id"]}).json["ok"] is True, dr + " sent own")
+            sb.kit_update(kk["id"], {"status": "approved"})   # אותו בעל נכס בהמשך — לא נועלים אותו כאן
             sb.kit_update(kron["id"], {"status": "rejected"})
             ck(c.post("/v2/api/kit/settings", json={}).status_code == 403, dr + " settings")
         # 2 — פגישה בלי סוכן: רק מי שקבע אותה
@@ -340,6 +346,7 @@ def test_review_fixes():
         ck(c.post("/v2/api/kit/resend", json={"id": kron["id"]}).json["ok"], "coord resend team")
         sb.kit_update(kron["id"], {"status": "approved"})
         ck(c.post("/v2/api/kit/sent", json={"id": kron["id"]}).json["ok"], "coord sent team")
+        sb.kit_update(kron["id"], {"status": "approved"})
         kd = next(r for r in sb.kits if r["agent_name"] == "דנה כהן" and r.get("created_by_phone") == "501111111")
         sb.kit_update(kd["id"], {"status": "rejected"})
         ck(c.post("/v2/api/kit/resend", json={"id": kd["id"]}).json["ok"] is False, "coord not outside team")
@@ -373,7 +380,51 @@ def test_meet_generic_agent():
         ck(c.post("/v2/api/kit/create", json={"source": "meet", "skey": "g2::id:77"}).json.get("reason") == "forbidden", "g2 agent")
 
 
+
+def test_taken():
+    """תיק אחד לכל בעל נכס — מי ששולח ראשון."""
+    with patched():
+        MT = {"source": "manual", "owner": "יוסי בר", "phone": "052-123 4567", "street": "הגפן 3", "city": "קרית ים",
+              "rooms": "3", "price": "1500000"}
+        SESS["t"] = AG
+        a = sb.kit_get(c.post("/v2/api/kit/create", json=MT).json["id"])
+        SESS["t"] = DEV
+        b = sb.kit_get(c.post("/v2/api/kit/create", json=dict(MT, agent="רון לוי")).json["id"])   # כמה תיקים בהכנה — מותר
+        ck(a and b and a["owner_phone"] == b["owner_phone"] == "521234567", (a, b))
+        sb.kit_update(a["id"], {"status": "approved"}); sb.kit_update(b["id"], {"status": "approved"})
+        SESS["t"] = AG
+        ck(c.post("/v2/api/kit/sent", json={"id": a["id"]}).json["ok"], "first send wins")
+        SESS["t"] = DEV
+        mb = next(x for x in c.get("/v2/api/kit/mine?all=1").json["kits"] if x["id"] == b["id"])
+        ck(mb["status"] == "taken" and mb["taken_by"] == "דנה כהן" and not ({"wa", "url", "text"} & set(mb)), mb)
+        ma = next(x for x in c.get("/v2/api/kit/mine?all=1").json["kits"] if x["id"] == a["id"])
+        ck(ma["status"] == "sent" and ma.get("wa"), ma)
+        j = c.post("/v2/api/kit/sent", json={"id": b["id"]}).json
+        ck(j == {"ok": False, "reason": "taken", "by": "דנה כהן"} and sb.kit_get(b["id"])["status"] == "approved", j)
+        before = len(sb.kits)
+        j = c.post("/v2/api/kit/create", json=dict(MT, phone="+972521234567"))
+        ck(j.json == {"ok": False, "reason": "taken", "by": "דנה כהן"} and len(sb.kits) == before, j.json)
+        sb.kit_update(b["id"], {"status": "rejected"})
+        j = c.post("/v2/api/kit/resend", json={"id": b["id"]}).json
+        ck(j["reason"] == "taken" and sb.kit_get(b["id"])["status"] == "rejected", j)
+        # מרוץ: שניהם עברו את הבדיקה המוקדמת — המוקדם ב-sent_at נשאר, השני חוזר ל'מוכן לשליחה'
+        d = sb.kit_get(c.post("/v2/api/kit/create", json=dict(MT, phone="0529998887")).json["id"])
+        e = sb.kit_get(c.post("/v2/api/kit/create", json=dict(MT, phone="0529998887", agent="רון לוי")).json["id"])
+        sb.kit_update(d["id"], {"status": "sent", "sent_at": "2026-01-01T00:00:00+00:00"})
+        sb.kit_update(e["id"], {"status": "approved"})
+        real, calls = sb.kit_sent_for_phone, []
+        sb.kit_sent_for_phone = lambda p: (calls.append(p), None if len(calls) == 1 else real(p))[1]
+        try:
+            j = c.post("/v2/api/kit/sent", json={"id": e["id"]}).json
+        finally:
+            sb.kit_sent_for_phone = real
+        ek = sb.kit_get(e["id"])
+        ck(j["reason"] == "taken" and j["by"] == "אייל שמול" and ek["status"] == "approved" and not ek.get("sent_at"), (j, ek))
+        # בעל נכס אחר — לא מושפע
+        ck(c.post("/v2/api/kit/create", json=dict(MT, phone="0527776665")).json["ok"], "other owner")
+
+
 if __name__ == "__main__":
-    for _f in (test_binding, test_unauth, test_create_nb, test_manual_and_agent_choice, test_meet, test_mine, test_resend, test_sent, test_settings, test_review_fixes, test_meet_generic_agent):
+    for _f in (test_binding, test_unauth, test_create_nb, test_manual_and_agent_choice, test_meet, test_mine, test_resend, test_sent, test_settings, test_review_fixes, test_meet_generic_agent, test_taken):
         _f()
     print("OK", n)

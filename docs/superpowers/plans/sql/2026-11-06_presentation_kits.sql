@@ -27,4 +27,6 @@ create table if not exists presentation_kits (
 );
 create index if not exists presentation_kits_office_created on presentation_kits (office_id, created_at desc);
 create index if not exists presentation_kits_agent on presentation_kits (office_id, agent_phone);
+-- תיק אחד לכל בעל נכס (09/11): בדיקת 'כבר נשלח' לפי הטלפון
+create index if not exists presentation_kits_owner on presentation_kits (office_id, owner_phone);
 alter table presentation_kits enable row level security;   -- בלי policies: שרת בלבד (service_role)

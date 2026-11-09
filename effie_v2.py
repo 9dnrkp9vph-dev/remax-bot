@@ -6308,7 +6308,8 @@ function kitFromNb(i){
     if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); return; }
     var why = j && j.reason;
     toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
-      : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה' : 'לא הצלחנו להכין את התיק');
+      : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה'
+      : why === 'taken' ? 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (j.by || 'סוכן אחר') : 'לא הצלחנו להכין את התיק');
   }).catch(function(){ kitFromNb._busy = false; toast('שגיאה'); });
 }
 function nbDial(i){   // חיוג לבעל הנכס (10/09): רישום 'מי פנה' + click2call בפיילוט, אחרת tel:
@@ -11386,7 +11387,8 @@ function kitFromMeet(i){   // [KIT 09/11] תיק פרזנטציה מהפגישה
     if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); return; }
     var why = j && j.reason;
     toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
-      : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה' : 'לא הצלחנו להכין את התיק');
+      : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה'
+      : why === 'taken' ? 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (j.by || 'סוכן אחר') : 'לא הצלחנו להכין את התיק');
   }).catch(function(){ kitFromMeet._busy = false; toast('שגיאה'); });
 }
 function undoneMeet(i){   // החזרה מ'בוצע' לפעיל
@@ -11592,6 +11594,7 @@ function kitStatusChip(k){
   if (st === 'approved') return '<span class="kchip" style="background:#EAF0FA;color:#2E6BD6">מוכן לשליחה</span>';
   if (st === 'sent') return '<span class="kchip" style="background:#E7F7EE;color:#157A43">נשלח</span>';
   if (st === 'expired') return '<span class="kchip" style="background:#F0EDE3;color:#6B7280">פג תוקף</span>';
+  if (st === 'taken') return '<span class="kchip" style="background:#F0EDE3;color:#6B7280">נשלח ע״י ' + esc(k.taken_by || 'סוכן אחר') + '</span>';
   if (st === 'rejected') return '<span class="kchip rj" style="background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">נדחה' +
     (k.reject_reason ? ' · ' + esc(k.reject_reason) : '') + '</span>';
   return '';
@@ -11616,6 +11619,10 @@ function kitSendBtn(k, i){
   return '<button class="kbtn" style="background:#157A43;color:#fff" onclick="kitSend(' + i + ')">' +
     '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
     'שלח לבעל הנכס</button>';
+}
+/* תיק אחד לכל בעל נכס (09/11) — מי ששלח ראשון */
+function kitTakenMsg(by){
+  return 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (by || 'סוכן אחר');
 }
 /* reason מהשרת (/v2/api/kit/create) → השדה בטופס הידני; '' = הודעה כללית */
 function kitManualErr(reason){
@@ -11675,13 +11682,16 @@ function kitSend(i){
   if (k.status !== 'approved') return;
   var fail = function(){ toast('לא נשמר שהתיק נשלח — נסה שוב'); load(); };
   POST('/v2/api/kit/sent', {id: k.id}).then(function(j){
-    if (j && j.ok){ toast('סומן כנשלח'); load(); } else fail();
+    if (j && j.ok){ toast('סומן כנשלח'); load(); }
+    else if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); load(); }
+    else fail();
   }).catch(fail);
 }
 function kitResend(i){
   var k = KITS[i]; if (!k) return;
   POST('/v2/api/kit/resend', {id: k.id}).then(function(j){
     if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); load(); return; }
+    if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); load(); return; }
     toast(j && j.reason === 'status' ? 'התיק כבר לא במצב הזה' : 'לא הצלחנו לשלוח שוב');
   }).catch(function(){ toast('שגיאה'); });
 }
@@ -11744,6 +11754,7 @@ function kitManualGo(){
   POST('/v2/api/kit/create', d).then(function(j){
     b.disabled = false; b.textContent = 'שלח לאישור';
     if (j && j.ok){ closeSheet(); toast('התיק בהכנה · ממתין לאישור'); load(); return; }
+    if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); return; }
     if (!kmShowErr(j && j.reason)) toast('לא הצלחנו להכין את התיק');
   }).catch(function(){ b.disabled = false; b.textContent = 'שלח לאישור'; toast('שגיאת רשת'); });
 }
