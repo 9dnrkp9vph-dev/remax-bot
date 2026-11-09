@@ -12,6 +12,25 @@ import kit_core as kc
 
 log = logging.getLogger(__name__)
 
+# סמלי הרשתות לכפתורים בדף בעל הנכס (SVG בתוך הדף — בלי בקשות לאתרים חיצוניים)
+_IS = "<svg class=\"ic\" viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\">"
+_ICON = {
+    "instagram": _IS + "<defs><linearGradient id=\"igg\" x1=\"0\" y1=\"1\" x2=\"1\" y2=\"0\"><stop offset=\"0\" stop-color=\"#FEDA75\"/>"
+                 "<stop offset=\".35\" stop-color=\"#FA7E1E\"/><stop offset=\".6\" stop-color=\"#D62976\"/>"
+                 "<stop offset=\"1\" stop-color=\"#4F5BD5\"/></linearGradient></defs>"
+                 "<rect width=\"24\" height=\"24\" rx=\"6.5\" fill=\"url(#igg)\"/>"
+                 "<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"4\" fill=\"none\" stroke=\"#fff\" stroke-width=\"1.8\"/>"
+                 "<circle cx=\"12\" cy=\"12\" r=\"3.4\" fill=\"none\" stroke=\"#fff\" stroke-width=\"1.8\"/>"
+                 "<circle cx=\"16.4\" cy=\"7.6\" r=\"1.1\" fill=\"#fff\"/></svg>",
+    "facebook": _IS + "<circle cx=\"12\" cy=\"12\" r=\"12\" fill=\"#1877F2\"/>"
+                "<path d=\"M13.4 19.5v-6h2l.3-2.4h-2.3V9.6c0-.7.2-1.2 1.2-1.2h1.2V6.3a16 16 0 0 0-1.8-.1c-1.8 0-3 1.1-3 3.1v1.8H9v2.4h2v6z\" fill=\"#fff\"/></svg>",
+    "google": _IS + "<circle cx=\"12\" cy=\"12\" r=\"12\" fill=\"#fff\"/>"
+              "<path d=\"M19.6 12.2c0-.6 0-1.1-.2-1.6H12v3h4.3a3.7 3.7 0 0 1-1.6 2.4v2h2.6c1.5-1.4 2.3-3.4 2.3-5.8z\" fill=\"#4285F4\"/>"
+              "<path d=\"M12 20c2.2 0 4-.7 5.3-2l-2.6-2a4.8 4.8 0 0 1-7.2-2.5H4.8v2A8 8 0 0 0 12 20z\" fill=\"#34A853\"/>"
+              "<path d=\"M7.5 13.5a4.8 4.8 0 0 1 0-3v-2H4.8a8 8 0 0 0 0 7z\" fill=\"#FBBC05\"/>"
+              "<path d=\"M12 7.2c1.2 0 2.3.4 3.2 1.2l2.3-2.3A8 8 0 0 0 4.8 8.5l2.7 2A4.8 4.8 0 0 1 12 7.2z\" fill=\"#EA4335\"/></svg>",
+}
+
 SETTINGS_KEYS = ("coop", "rank", "g_rating", "g_count", "g_url", "instagram", "facebook")
 _SHOW_LINK = ("approved", "sent")
 
@@ -626,11 +645,11 @@ def register(app, G):
         links = ["<a class=\"btn pri\" href=\"/k/%s.pdf\">הורד כ-PDF</a>" % esc(vtok)]
         g = str(claims.get("g_url") or "")
         if g.startswith("https://"):
-            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">העסק שלנו בגוגל · ביקורות</a>" % esc(g))
+            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">%sהעסק שלנו בגוגל · ביקורות</a>" % (esc(g), _ICON["google"]))
         for k, lbl in (("instagram", "אינסטגרם"), ("facebook", "פייסבוק")):
             u = str(claims.get(k) or "")
             if u.startswith("https://"):
-                links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">%s</a>" % (esc(u), lbl))
+                links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">%s%s</a>" % (esc(u), _ICON[k], lbl))
         links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לאתר הנכסים שלנו</a>" % esc(site_root()))
         su = str(ag.get("site_url") or "")
         if su.startswith("https://") and agent:
@@ -698,6 +717,7 @@ _CSS = (
     ".links,.bar{display:flex;flex-direction:column;gap:10px;margin:8px 0 20px}"
     ".btn{display:flex;align-items:center;justify-content:center;min-height:48px;padding:10px 18px;border-radius:14px;"
     "font:700 17px 'Heebo',Arial,sans-serif;text-decoration:none;cursor:pointer;border:1.5px solid transparent}"
+    ".btn .ic{flex:none;margin-inline-end:10px}"
     ".btn.pri{background:#2E6BD6;color:#fff}"
     ".btn.sec{background:#fff;color:#1E3A5F;border-color:#D5D9E0}"
     ".btn.wa{background:#157A43;color:#fff}"

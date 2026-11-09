@@ -280,6 +280,69 @@ def _logo_path():
         return ""
 
 
+# ── סמלי הרשתות (מצוירים, בלי קבצים חיצוניים; צבעי המותג של כל רשת) ──────────────
+def _brand_icon(kind, s):
+    """→ תמונת RGBA בגודל s×s: instagram / facebook / google."""
+    from PIL import Image, ImageDraw
+    k = 4
+    S = s * k
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    if kind == "instagram":
+        stops = [(0xFE, 0xDA, 0x75), (0xFA, 0x7E, 0x1E), (0xD6, 0x29, 0x76), (0x96, 0x2F, 0xBF), (0x4F, 0x5B, 0xD5)]
+        ramp = []
+        for i in range(256):
+            u = i / 255 * (len(stops) - 1)
+            a0, b0 = stops[int(u)], stops[min(int(u) + 1, len(stops) - 1)]
+            f = u - int(u)
+            ramp.append(tuple(int(a0[j] + (b0[j] - a0[j]) * f) for j in range(3)) + (255,))
+        grad = Image.new("RGBA", (S, S))
+        grad.putdata([ramp[int(((x + (S - 1 - y)) / (2 * S - 2)) * 255)] for y in range(S) for x in range(S)])
+        mask = Image.new("L", (S, S), 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, S - 1, S - 1), radius=int(S * 0.28), fill=255)
+        im.paste(grad, (0, 0), mask)
+        w = max(2, int(S * 0.08))
+        m = int(S * 0.2)
+        d.rounded_rectangle((m, m, S - m, S - m), radius=int(S * 0.17), outline=(255, 255, 255, 255), width=w)
+        r = int(S * 0.15)
+        c = S // 2
+        d.ellipse((c - r, c - r, c + r, c + r), outline=(255, 255, 255, 255), width=w)
+        r2 = int(S * 0.045)
+        cx, cy = int(S * 0.69), int(S * 0.31)
+        d.ellipse((cx - r2, cy - r2, cx + r2, cy + r2), fill=(255, 255, 255, 255))
+    elif kind == "facebook":
+        d.ellipse((0, 0, S - 1, S - 1), fill=(0x18, 0x77, 0xF2, 255))
+        fnt = _font(900, int(S * 0.78))
+        bb = d.textbbox((0, 0), "f", font=fnt)
+        d.text((S * 0.55 - (bb[0] + bb[2]) / 2, S * 0.56 - (bb[1] + bb[3]) / 2), "f", font=fnt, fill=(255, 255, 255, 255))
+    else:  # google
+        d.ellipse((0, 0, S - 1, S - 1), fill=(255, 255, 255, 255))
+        m = int(S * 0.18)
+        w = int(S * 0.15)
+        box = (m, m, S - m, S - m)
+        # קשתות בכיוון השעון מ-0° (ימין): כחול למטה-ימין, ירוק למטה, צהוב שמאל-למטה, אדום למעלה
+        for a0, a1, col in ((0, 45, (0x42, 0x85, 0xF4)), (45, 135, (0x34, 0xA8, 0x53)),
+                            (135, 215, (0xFB, 0xBC, 0x05)), (215, 315, (0xEA, 0x43, 0x35))):
+            d.arc(box, a0, a1, fill=col + (255,), width=w)
+        c = S // 2
+        d.rectangle((c, c - w // 2, S - m, c + w // 2), fill=(0x42, 0x85, 0xF4, 255))
+    return im.resize((s, s), Image.LANCZOS)
+
+
+def _social_row(im, d, soc, y):
+    """שורת סמלים ממורכזת: [סמל] שם · [סמל] שם … (מימין לשמאל)."""
+    s, gap, sp = 58, 14, 46
+    f = _font(700, 40)
+    items = [(_brand_icon(k, s), _rtl(n), _tl(d, _rtl(n), f)) for k, n in soc]
+    total = sum(s + gap + tw for _, _, tw in items) + sp * (len(items) - 1)
+    x = W / 2 + total / 2
+    for ic, txt, tw in items:
+        im.paste(ic, (int(x - s), int(y)), ic)
+        x -= s + gap
+        d.text((x - tw, y + 4), txt, font=f, fill=WHITE)
+        x -= tw + sp
+
+
 def _check(d, x, y, s, col):
     """סימן וי בקווים (ל-Heebo אין גליף ✓)."""
     d.line([(x, y + s * 0.55), (x + s * 0.38, y + s * 0.9), (x + s, y + s * 0.12)], fill=col, width=max(4, int(s / 6)),
@@ -596,18 +659,17 @@ def _p_next(snap, n):
         y = _lines(d, ls, fp, W - PAD - 76, y, WHITE, 72) + 30
     host = _site_host()
     cl = snap.get("claims") or {}
-    soc = [n for k, n in (("instagram", "אינסטגרם"), ("facebook", "פייסבוק"), ("g_url", "גוגל"))
-           if str(cl.get(k) or "").startswith("https://")]
+    soc = [(k, n) for k, n in (("instagram", "אינסטגרם"), ("facebook", "פייסבוק"), ("google", "גוגל"))
+           if str(cl.get("g_url" if k == "google" else k) or "").startswith("https://")]
     if host:
         shown = host if host.startswith("www.") else "www." + host
         y += 20
-        ch = 170 + (74 if soc else 0)
+        ch = 170 + (96 if soc else 0)
         d.rounded_rectangle((PAD, y, W - PAD, y + ch), radius=CARD_R, fill=INSET_NAVY)
         _line_c(d, "כל הנכסים שלנו באתר", _font(700, 44), W / 2, y + 28, LIGHT)
         _line_c(d, shown, _fit(d, shown, 900, 60, width - 80), W / 2, y + 88, GOLD2)
         if soc:
-            t = "תמצאו אותנו גם ב" + " · ".join(soc)
-            _line_c(d, t, _fit(d, t, 500, 40, width - 80), W / 2, y + 178, LIGHT)
+            _social_row(im, d, soc, y + 172)
     name = (ag.get("name") or "").strip()
     phone = (ag.get("phone") or "").strip()
     y0 = H - 92 - 60 - (130 if (name or phone) else 0) - 160
