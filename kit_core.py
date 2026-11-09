@@ -132,6 +132,8 @@ KIT_DEFAULTS = {
     "g_rating": "4.9",
     "g_count": "118",
     "g_url": "",
+    "instagram": "",
+    "facebook": "",
 }
 
 
@@ -141,6 +143,10 @@ def kit_settings(cfg):
     for k, v in ((cfg or {}).get("v2_kit") or {}).items():
         if k in out and str(v or "").strip():
             out[k] = str(v).strip()
+    v2o = (cfg or {}).get("v2_office") or {}
+    for k in ("instagram", "facebook"):     # בלי ערך בכרטיס התיק — הקישור שהוגדר בפרטי המשרד
+        if not out[k] and str(v2o.get(k) or "").strip().startswith("https://"):
+            out[k] = str(v2o[k]).strip()
     return out
 
 

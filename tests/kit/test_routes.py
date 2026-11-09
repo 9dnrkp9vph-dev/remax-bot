@@ -279,6 +279,10 @@ def test_settings():
         ck(st["acts"][-1][3].startswith("תיק פרזנטציה — הגדרות"), st["acts"][-1])
         r = c.post("/v2/api/kit/settings", json={"g_url": "http://x"})
         ck(r.json["ok"] is False and CFG["v2_kit"]["g_url"] == "https://g.page/x", r.json)
+        r = c.post("/v2/api/kit/settings", json={"instagram": "https://instagram.com/remax", "facebook": "facebook.com/x"})
+        ck(r.json == {"ok": False, "reason": "facebook"} and "instagram" not in CFG["v2_kit"], r.json)
+        r = c.post("/v2/api/kit/settings", json={"instagram": "https://instagram.com/remax"})
+        ck(r.json["ok"] and CFG["v2_kit"]["instagram"] == "https://instagram.com/remax", r.json)
         good = G["_config_mutate"]
         G["_config_mutate"] = lambda fn: (False, None)
         try:

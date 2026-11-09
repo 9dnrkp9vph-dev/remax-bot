@@ -12,7 +12,7 @@ import kit_core as kc
 
 log = logging.getLogger(__name__)
 
-SETTINGS_KEYS = ("coop", "rank", "g_rating", "g_count", "g_url")
+SETTINGS_KEYS = ("coop", "rank", "g_rating", "g_count", "g_url", "instagram", "facebook")
 _SHOW_LINK = ("approved", "sent")
 
 
@@ -398,8 +398,9 @@ def register(app, G):
                             "defaults": dict(kc.KIT_DEFAULTS)})
         j = request.get_json(silent=True) or {}
         vals = {k: _s(j.get(k))[:300] for k in SETTINGS_KEYS if k in j}
-        if vals.get("g_url") and not vals["g_url"].startswith("https://"):
-            return jsonify({"ok": False, "reason": "g_url"})
+        for k in ("g_url", "instagram", "facebook"):
+            if vals.get(k) and not vals[k].startswith("https://"):
+                return jsonify({"ok": False, "reason": k})
 
         def fn(cfg):
             cur = dict(cfg.get("v2_kit") or {})
@@ -625,7 +626,11 @@ def register(app, G):
         links = ["<a class=\"btn pri\" href=\"/k/%s.pdf\">הורד כ-PDF</a>" % esc(vtok)]
         g = str(claims.get("g_url") or "")
         if g.startswith("https://"):
-            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לביקורות בגוגל</a>" % esc(g))
+            links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">העסק שלנו בגוגל · ביקורות</a>" % esc(g))
+        for k, lbl in (("instagram", "אינסטגרם"), ("facebook", "פייסבוק")):
+            u = str(claims.get(k) or "")
+            if u.startswith("https://"):
+                links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">%s</a>" % (esc(u), lbl))
         links.append("<a class=\"btn sec\" href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">לאתר הנכסים שלנו</a>" % esc(site_root()))
         su = str(ag.get("site_url") or "")
         if su.startswith("https://") and agent:

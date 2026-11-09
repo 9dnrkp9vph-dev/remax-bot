@@ -595,12 +595,19 @@ def _p_next(snap, n):
         ls = _wrap_logical(d, p, fp, width - 80)
         y = _lines(d, ls, fp, W - PAD - 76, y, WHITE, 72) + 30
     host = _site_host()
+    cl = snap.get("claims") or {}
+    soc = [n for k, n in (("instagram", "אינסטגרם"), ("facebook", "פייסבוק"), ("g_url", "גוגל"))
+           if str(cl.get(k) or "").startswith("https://")]
     if host:
         shown = host if host.startswith("www.") else "www." + host
         y += 20
-        d.rounded_rectangle((PAD, y, W - PAD, y + 170), radius=CARD_R, fill=INSET_NAVY)
+        ch = 170 + (74 if soc else 0)
+        d.rounded_rectangle((PAD, y, W - PAD, y + ch), radius=CARD_R, fill=INSET_NAVY)
         _line_c(d, "כל הנכסים שלנו באתר", _font(700, 44), W / 2, y + 28, LIGHT)
         _line_c(d, shown, _fit(d, shown, 900, 60, width - 80), W / 2, y + 88, GOLD2)
+        if soc:
+            t = "תמצאו אותנו גם ב" + " · ".join(soc)
+            _line_c(d, t, _fit(d, t, 500, 40, width - 80), W / 2, y + 178, LIGHT)
     name = (ag.get("name") or "").strip()
     phone = (ag.get("phone") or "").strip()
     y0 = H - 92 - 60 - (130 if (name or phone) else 0) - 160

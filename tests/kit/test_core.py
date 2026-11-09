@@ -100,3 +100,10 @@ def test_manual_validate():
     assert K.manual_validate(dict(f, phone="+972544448065")) is None
     assert K.manual_validate(dict(f, addr=" ")) == "addr"
     assert K.manual_validate(dict(f, rooms="")) == "rooms"
+
+
+def test_kit_settings_social_fallback():
+    cfg = {"v2_office": {"instagram": "https://instagram.com/x", "facebook": "http://bad"}, "v2_kit": {"facebook": "https://facebook.com/y"}}
+    s = K.kit_settings(cfg)
+    assert s["instagram"] == "https://instagram.com/x" and s["facebook"] == "https://facebook.com/y"
+    assert K.kit_settings({"v2_office": {"facebook": "http://bad"}})["facebook"] == ""

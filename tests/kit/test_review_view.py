@@ -151,7 +151,7 @@ def test_view_open():
     h = r.get_data(as_text=True)
     ck(r.status_code == 200 and h.count("<img") == 6 and ("/k/%s.pdf" % v) in h, h.count("<img"))
     ck(r.headers["Cache-Control"] == "no-store" and "noindex" in r.headers["X-Robots-Tag"], r.headers)
-    ck("לביקורות בגוגל" in h and "https://g.page/r/bialik" in h, "google")
+    ck("העסק שלנו בגוגל" in h and "https://g.page/r/bialik" in h, "google")
     ck("wa.me/972501111111" in h and "wa.me/972544448065" not in h and "544448065" not in h, "wa agent")
     ck("לעמוד של אוהד לוי באתר" in h and "לאתר הנכסים שלנו" in h and "הורד כ-PDF" in h, "links")
     ck("snapshot" not in h and "1,850,000" not in h and "משה" not in h, "no snapshot data")
@@ -161,7 +161,11 @@ def test_view_open():
     # בלי קישור לגוגל
     k2 = mk("sent", claims={"g_url": ""})
     h2 = c.get("/k/" + k2["view_token"]).get_data(as_text=True)
-    ck("לביקורות בגוגל" not in h2, "no google")
+    ck("העסק שלנו בגוגל" not in h2, "no google")
+    ck(">אינסטגרם<" not in h2 and ">פייסבוק<" not in h2, "no social by default")
+    k3 = mk("approved", claims={"instagram": "https://instagram.com/remaxfamily", "facebook": "http://bad"})
+    h3 = c.get("/k/" + k3["view_token"]).get_data(as_text=True)
+    ck("https://instagram.com/remaxfamily" in h3 and ">אינסטגרם<" in h3 and ">פייסבוק<" not in h3, "social links")
     # PDF
     p = c.get("/k/%s.pdf" % v)
     ck(p.status_code == 200 and p.data[:4] == b"%PDF" and p.mimetype == "application/pdf", p.status_code)
