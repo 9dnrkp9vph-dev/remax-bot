@@ -15230,6 +15230,7 @@ _CRM_Y2_BRANCH = {"5625538": "מוצקין", "5628636": "ביאליק", "8532791
 _CRM_AGENT_BRANCH = {"אלי שמול": "ביאליק", "יהודית שמול": "ביאליק"}
 
 
+_CRM_STALE = 6 * 3600   # [10/11] עותק ישן של מודול CRM עד 6 שעות מוגש מיד; בנייה חדשה ברקע
 CRM_MODULES = {
     "buyers": {
         "title": "קונים",
@@ -19393,6 +19394,7 @@ def register(app, G):
                 sb.call_upsert_direct(sk, riso, raw)
                 try:
                     G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
+                    G["_cache_clear"]("crmcalls")
                 except Exception:
                     pass
                 G["_log_activity"]("Make", "system", "", "שיחה חדשה (ישירות)",
@@ -19566,6 +19568,20 @@ def register(app, G):
     # [AI-DIGEST 29/10] app.py (_ai_digest_tick, 11:00) קורא את רשומות טאב ה-AI בלי לשכפל את הבנייה
     G["_crm_ai_rows"] = lambda: _crm_records("ai")
 
+    # [10/11 אייל: 'לוקח המון זמן להעלות, גם לדשבורד'] המודולים הכבדים והדשבורד נבנים ברקע ע"י ה-warmer
+    # (app._warm_once — מיד אחרי עלייה ואז כל 5 דק'), כך שמשתמש לא מחכה לבנייה קרה (נמדד 4-13ש' אחרי פריסה).
+    def _crm_warm():
+        for m in ("calls", "buyers", "signatures", "deals", "invoices", "props", "flows", "ai"):
+            try:
+                _crm_records(m)
+            except Exception as e:
+                if log: log.warning(f"crm warm {m}: {e}")
+        try:
+            G["_swr"]("crmdash", 900, _crm_dash_builder(), max_stale=_CRM_STALE)
+        except Exception as e:
+            if log: log.warning(f"crm warm dashboard: {e}")
+    G["_crm_warm"] = _crm_warm
+
     def _crm_read_err(e):
         return jsonify({"ok": False, "reason": "table_error", "detail": str(e)})
 
@@ -19580,11 +19596,14 @@ def register(app, G):
                 if log: log.warning(f"crm overrides read failed: {e}")
                 ov = {}
         if module == "calls":
-            try:
-                hidden = set(G["_fetch_hidden_calls"]() or set())
-            except Exception:
-                hidden = set()
-            return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden, uid=G.get("_call_uid"))
+            def _build_calls():
+                try:
+                    hidden = set(G["_fetch_hidden_calls"]() or set())
+                except Exception:
+                    hidden = set()
+                return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden, uid=G.get("_call_uid"))
+            swr = G.get("_swr")   # [10/11] בנייה קרה 8ש' — מטמון כמו שאר המודולים; עריכה מנקה (crmcalls)
+            return swr("crmcalls", 60, _build_calls, max_stale=_CRM_STALE) if swr else _build_calls()
         if module == "team":
             if not (sb and sb.enabled()):
                 return []
@@ -19624,7 +19643,7 @@ def register(app, G):
                 return crm_unify_agents(crm_buyer_records(G["_fetch_manual_buyers"]() or [], st, G["_excl_epoch"], pages, canon=_bcanon),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
-            return swr("crmbuyers", 60, _build_buyers) if swr else _build_buyers()
+            return swr("crmbuyers", 60, _build_buyers, max_stale=_CRM_STALE) if swr else _build_buyers()
         if module == "signatures":
             def _sig_doc_headers(toks):
                 """כותרות מסמכי החתימה (נשמרות לתמיד בזיכרון — כותרת של מסמך לא משתנה)."""
@@ -19643,7 +19662,7 @@ def register(app, G):
                 return crm_unify_agents(crm_sig_records(sigs, {"ep": G["_excl_epoch"], "label": G["_deal_label"]}),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
-            return swr("crmsigs", 120, _build_sigs) if swr else _build_sigs()
+            return swr("crmsigs", 120, _build_sigs, max_stale=_CRM_STALE) if swr else _build_sigs()
         if module == "deals":
             fn = G.get("_deal_history_linked")
             if not fn:
@@ -19673,7 +19692,7 @@ def register(app, G):
                     if log: log.warning(f"crm deals review marks: {e}")
                 return crm_unify_agents(recs, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
-            return swr("crmdeals", 120, _build_deals) if swr else _build_deals()
+            return swr("crmdeals", 120, _build_deals, max_stale=_CRM_STALE) if swr else _build_deals()
         if module == "meetings":
             return crm_unify_agents(crm_meeting_records(G["_nb_statuses"]() or {}),
                                     lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=("by",))
@@ -19703,7 +19722,7 @@ def register(app, G):
                 # [28/10 אייל: 'תאחד שמות'] כל סוכן פעם אחת ברשימת הסוכנים
                 return crm_unify_agents(recs, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
-            return swr("crmai", 120, _build_ai) if swr else _build_ai()
+            return swr("crmai", 120, _build_ai, max_stale=_CRM_STALE) if swr else _build_ai()
         if module == "invoices":
             def _build_inv():
                 try:
@@ -19726,7 +19745,7 @@ def register(app, G):
                 rows = crm_inv_records(sbi.invoices_all() or [], crm_inv_agent_index(buyers, sigs), sent, G["_excl_epoch"])
                 return crm_unify_agents(rows, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
-            return swr("crminv", 120, _build_inv) if swr else _build_inv()
+            return swr("crminv", 120, _build_inv, max_stale=_CRM_STALE) if swr else _build_inv()
         if module == "props":
             def _build_props():
                 import time as _tp
@@ -19751,7 +19770,7 @@ def register(app, G):
                 return crm_unify_agents(crm_props_records(G["fetch_newborn"]() or [], G["fetch_external_exclusives"]() or [], office, pd, _tp.time(), h),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
-            return swr("crmprops", 120, _build_props) if swr else _build_props()
+            return swr("crmprops", 120, _build_props, max_stale=_CRM_STALE) if swr else _build_props()
         if module in ("flows", "automations"):
             import time as _tf
             now = _tf.time()
@@ -19766,7 +19785,7 @@ def register(app, G):
                     if log: log.warning(f"crm activity filtered read failed — full read: {e}")
                 return G["_activity_fetch"](t0, today=False) or []
             swr = G.get("_swr")
-            act = swr("crmact30", 120, _build_act) if swr else _build_act()
+            act = swr("crmact30", 120, _build_act, max_stale=_CRM_STALE) if swr else _build_act()
             if module == "flows":
                 return crm_flow_records(act)
             return crm_automation_records(act, dict(os.environ), now)
@@ -19925,6 +19944,7 @@ def register(app, G):
             if not j or not j.get("ok"):
                 return jsonify({"ok": False, "reason": "fail"}), 502
             G["_cache_clear"]("hidden_calls")
+            G["_cache_clear"]("crmcalls")
             G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — מחיקת שיחה", key)
             return jsonify({"ok": True})
         if key and b.get("restore"):
@@ -19932,6 +19952,7 @@ def register(app, G):
             if not j or not j.get("ok"):
                 return jsonify({"ok": False, "reason": "fail"}), 502
             G["_cache_clear"]("hidden_calls")
+            G["_cache_clear"]("crmcalls")
             G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — שחזור שיחה", key)
             return jsonify({"ok": True})
         allowed = {f for f, _l in mod["editable"]}
@@ -19941,6 +19962,7 @@ def register(app, G):
         if key:
             sb.crm_override_upsert(module, key, fields, who)
             G["_cache_clear"]("crmov:" + module)
+            G["_cache_clear"]("crmcalls")
             G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — עריכת שיחה", key + " · " + ",".join(fields))
             return jsonify({"ok": True, "key": key})
         import uuid as _uu, datetime as _dn
@@ -19954,7 +19976,9 @@ def register(app, G):
         if fields.get("note"):
             sb.crm_override_upsert(module, nk, {"note": fields["note"]}, who)
             G["_cache_clear"]("crmov:" + module)
+            G["_cache_clear"]("crmcalls")
         G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
+        G["_cache_clear"]("crmcalls")
         G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — שיחה חדשה (ידנית)", nk)
         return jsonify({"ok": True, "key": nk})
 
@@ -20402,12 +20426,8 @@ def register(app, G):
     import threading as _thd0
     _CRM_DASH_BUSY = {"lock": _thd0.Lock(), "on": False}
 
-    @app.route("/v2/api/crm/dashboard", methods=["GET"])
-    def v2_api_crm_dashboard():
-        """[CRM-3] נתוני הדשבורד. מי שמותר לו 'לוח בקרה' בהיקף 'הכל'. נבנה דרך _swr (15 דק'); ?fresh=1 בונה עכשיו."""
-        s = _crm_guard("dashboard", need="all")
-        if not s:
-            return _crm_deny()
+    def _crm_dash_builder():
+        """[10/11] בונה הדשבורד מחוץ לבקשה — כדי שה-warmer יחמם אותו גם מיד אחרי פריסה."""
         import datetime as _dbd, time as _tbd
         from zoneinfo import ZoneInfo as _ZBD
         il = _ZBD("Asia/Jerusalem")
@@ -20512,6 +20532,16 @@ def register(app, G):
                 if saved is not None:
                     rl.clear(); rl.update(saved)
 
+        return build_keep_diag
+
+    @app.route("/v2/api/crm/dashboard", methods=["GET"])
+    def v2_api_crm_dashboard():
+        """[CRM-3] נתוני הדשבורד. מי שמותר לו 'לוח בקרה' בהיקף 'הכל'. נבנה דרך _swr (15 דק'); ?fresh=1 בונה עכשיו."""
+        s = _crm_guard("dashboard", need="all")
+        if not s:
+            return _crm_deny()
+        build_keep_diag = _crm_dash_builder()
+
         try:
             if request.args.get("fresh") == "1":
                 # רענן: בנייה אחת ברקע (לא בתוך הבקשה, לא במקביל); מחזירים מיד את מה שיש
@@ -20531,10 +20561,10 @@ def register(app, G):
                                 _CRM_DASH_BUSY["on"] = False
                     import threading as _thd
                     _thd.Thread(target=_bg, daemon=True, name="crmdash").start()
-                data = dict(G["_swr"]("crmdash", 900, build_keep_diag))
+                data = dict(G["_swr"]("crmdash", 900, build_keep_diag, max_stale=_CRM_STALE))
                 data["refreshing"] = True
                 return jsonify(data)
-            return jsonify(G["_swr"]("crmdash", 900, build_keep_diag))
+            return jsonify(G["_swr"]("crmdash", 900, build_keep_diag, max_stale=_CRM_STALE))
         except Exception as e:
             if log: log.error(f"crm dashboard error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
@@ -20618,6 +20648,7 @@ def register(app, G):
             n += 1
         try:
             G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
+            G["_cache_clear"]("crmcalls")
         except Exception:
             pass
         G["_log_activity"]("אפי", "system", "", "ניתוק פיירברי — שיחות מהצל", str(n))

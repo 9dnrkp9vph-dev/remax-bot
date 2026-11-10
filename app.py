@@ -11856,6 +11856,7 @@ def _props_fetch_raw():
             log.error(f"warmer props supabase: {_sbe}")
     return _fetch_sheet_rows_raw()
 
+_CRM_WARM_LAST = [0.0]
 def _warm_once():
     # המפתחות הכבדים — רענון-מקדים לפי דגל המקור (Supabase = שאילתה זולה; Sheets בקצב ה-TTL)
     _warm_key("raw:שיחות:01/01/2020:31/12/2099", _src_ttl(CALLS_SOURCE, 60, 90),
@@ -11871,6 +11872,14 @@ def _warm_once():
             _fn()
         except Exception:
             pass
+    # [10/11] מודולי ה-CRM והדשבורד (effie_v2._crm_warm) — מיד אחרי עלייה, ואז לכל היותר פעם ב-5 דק'
+    _cw = globals().get("_crm_warm")
+    if _cw and time.time() - _CRM_WARM_LAST[0] >= 300:
+        _CRM_WARM_LAST[0] = time.time()
+        try:
+            _cw()
+        except Exception as _e:
+            log.warning(f"crm warm failed: {_e}")
 
 _warmer_started = False
 def _start_warmer():
