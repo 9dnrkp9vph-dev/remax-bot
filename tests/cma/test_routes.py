@@ -122,6 +122,32 @@ def main():
     j = c.post("/v2/api/cma/upload", json=dict(body, data=""), headers={"X-Auth-Token": "t-owner"}).get_json()
     ck(j.get("reason") == "no_file", "empty file → no_file")
 
+    # שם רחוב הפוך בקובץ, כשהרחוב כבר שמור במאגר בשם הנכון → אותו מפתח, בלי שורה כפולה
+    app2, G2, sb2, _a2 = make()
+    c2 = app2.test_client()
+    r0 = dict(cma.madlan_rows([dict(zip(H, begin(10, d(300), 1800000, 102)))], "נ", "a", {"מנחם בגין"})[0][0],
+              uploaded_at="2026-01-01T00:00:00+00:00")
+    sb2.rows[r0["deal_key"]] = r0
+    c2.post("/v2/api/cma/upload", json=dict(body, data=xlsx([begin(10, d(300), 1800000, 102)])),
+            headers={"X-Auth-Token": "t-owner"})
+    ck(len(sb2.rows) == 1, "reversed street name matches a street already stored → no duplicate row")
+    # אותה עסקה בשני קבצים: בכתובת אמיתית ובשם פרויקט → נספרת פעם אחת
+    app3, G3, sb3, _a3 = make()
+    c3 = app3.test_client()
+    dd = [d(400), "בגין מנחם 37, קרית מוצקין", "1,620,000", "דירה", "5", "116", "12", "", "2000"]
+    pp = [d(399), "Dori Dream קרית מוצקין", "1,620,000", "דירה", "5", "116", "12", "", "2000"]
+    c3.post("/v2/api/cma/upload", json=dict(body, data=xlsx([dd])), headers={"X-Auth-Token": "t-owner"})
+    c3.post("/v2/api/cma/upload", json=dict(body, data=xlsx([pp])), headers={"X-Auth-Token": "t-owner"})
+    live = [r for r in cma._inputs(G3)[0] if r.get("price") == 1620000 and not r.get("bad")]
+    ck(len(live) == 1 and live[0]["house"] == 37, "same deal under address + project across two files → counted once")
+    # שמירה שנכשלת → הודעה ברורה, לא 500
+    app4, G4, sb4, _a4 = make()
+    def boom(rows):
+        raise RuntimeError("relation market_deals does not exist")
+    sb4.market_upsert = boom
+    r4 = app4.test_client().post("/v2/api/cma/upload", json=body, headers={"X-Auth-Token": "t-owner"})
+    ck(r4.status_code == 200 and r4.get_json().get("reason") == "save", "failed save → ok false, reason save")
+
     ck(c.get("/v2/api/cma/files", headers={"X-Auth-Token": "t-agent"}).status_code == 403, "files by agent → 403")
     j = c.get("/v2/api/cma/files", headers={"X-Auth-Token": "t-owner"}).get_json()
     ck(j.get("ok") and j["files"][0]["n"] == 7 and j["stale"] == [], "files lists the nb, not stale")

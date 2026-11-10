@@ -3232,8 +3232,9 @@ function mktUpload(){
   rd.onload = function(){
     POST('/v2/api/cma/upload', {name: f.name, data: rd.result, nb: nb}).then(function(j){
       if (j && j.ok){ toast('נקלטו ' + j.stats.n + ' עסקאות · ' + j.stats.dups + ' כפילויות'); el('mktFile').value = ''; mktLoad(); }
-      else toast({headers: 'הקובץ לא נראה כמו טבלת עסקאות של מדלן', nb: 'צריך שם שכונה', no_file: 'הקובץ ריק'}[j && j.reason] || 'ההעלאה נכשלה');
-    });
+      else toast({headers: 'הקובץ לא נראה כמו טבלת עסקאות של מדלן', nb: 'צריך שם שכונה', no_file: 'הקובץ ריק',
+                  save: 'השמירה נכשלה — נסה שוב'}[j && j.reason] || 'ההעלאה נכשלה');
+    }).catch(function(){ toast('ההעלאה נכשלה — בדוק חיבור ונסה שוב'); });
   };
   rd.readAsDataURL(f);
 }

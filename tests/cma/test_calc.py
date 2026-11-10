@@ -152,3 +152,16 @@ def test_extra_beyond_seven_marked_not_dropped():
     comps = cma.cma_compute(SUBJ, BEGIN5, [], TODAY)["comps"]
     far = [c for c in comps if c["house"] == 36]
     assert far and all(not c["used"] and c.get("extra") and c["reason"] == "" for c in far)
+
+
+def test_fallback_rooms_is_plus_minus_one():
+    deals = [m(h, "2025-06-01", 2000000, None, rooms=5.5) for h in (2, 4, 6, 8, 10)]
+    assert cma.cma_compute(dict(SUBJ, rooms=4, sqm=None), deals, [], TODAY) is None
+
+
+def test_market_all_orders_stably(monkeypatch):
+    import supabase_db
+    seen = {}
+    monkeypatch.setattr(supabase_db, "_get_all", lambda t, s, p=None: seen.update(p or {}) or [])
+    supabase_db.market_all("2023-01-01")
+    assert seen["order"] == "deal_date.desc,id.asc"

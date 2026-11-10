@@ -1897,7 +1897,7 @@ def market_upsert(rows):
 def market_all(since):
     """כל עסקאות השוק של המשרד מתאריך since (YYYY-MM-DD)."""
     return _get_all("market_deals", ",".join(_MKT_COLS) + ",uploaded_at",
-                    {"deal_date": "gte." + str(since), "order": "deal_date.desc"})
+                    {"deal_date": "gte." + str(since), "order": "deal_date.desc,id.asc"})
 
 
 def market_files():

@@ -378,7 +378,7 @@ def cma_compute(subject, deals, listings, today):
 
     rows, chosen = pick(0.5)
     if len(chosen) < MIN_COMPS:
-        rows, chosen = pick(1.5)
+        rows, chosen = pick(1.0)
     if len(chosen) < MIN_COMPS:
         return None
     for c in chosen:
@@ -491,6 +491,8 @@ def _inputs(G):
     except Exception:
         dh = []
     known = _known_streets(G, dh) | {r.get("street") for r in market if r.get("street")}
+    # אותה עסקה בקבצים שונים (כתובת בקובץ אחד, שם פרויקט באחר) — הניקוי חוזר על כל המאגר
+    market = mark_dup_projects([dict(r) for r in market])
     deals = link_ours(market, ours_rows(dh, known))
     try:
         listings = _listings(G)
@@ -576,11 +578,22 @@ def register(app, G):
             dh = G["_deal_history_linked"]() or []
         except Exception:
             dh = []
+        known = _known_streets(G, dh)
+        try:   # רחובות שכבר במאגר — כדי ש'בגין מנחם' בקובץ חדש יקבל את אותו שם ואותו מפתח
+            known |= {r.get("street") for r in G["_sbdb"].market_all("1900-01-01") or [] if r.get("street")}
+        except Exception:
+            pass
         try:
-            rows, st = madlan_rows(table, nb, str(b.get("name") or ""), _known_streets(G, dh))
+            rows, st = madlan_rows(table, nb, str(b.get("name") or ""), known)
         except ValueError:
             return jsonify({"ok": False, "reason": "headers"})
-        G["_sbdb"].market_upsert(rows)
+        try:
+            G["_sbdb"].market_upsert(rows)
+        except Exception as e:
+            lg = G.get("log")
+            if lg:
+                lg.error(f"cma upload save: {e}")
+            return jsonify({"ok": False, "reason": "save"})
         _act(s, "עסקאות ממדלן — העלאה", "%s · %d עסקאות" % (nb, st["n"]))
         return jsonify({"ok": True, "stats": st})
 
