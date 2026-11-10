@@ -120,3 +120,20 @@ def test_one_kit_per_property_owner_exempt():
     assert c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json["reason"] == "exists"
     SESS["t"] = DEV
     assert c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json["ok"]
+
+
+def test_early_bot_ask_before_build():
+    _reset(); SESS["t"] = AG; CMA_ON["v"] = True
+    calls, real = [], cma_bot.request_bot
+    cma_bot.request_bot = lambda G_, addr, by="", force=False: (calls.append((addr, len(SNAPS))), {"ok": True})[1]
+    try:
+        sb.market_street_count = lambda street, since: 1
+        c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"})
+        assert calls == [("הנוטר 12, קרית ביאליק", 0)]   # לפני שהצילום נבנה
+        _reset(); SESS["t"] = AG; CMA_ON["v"] = True; calls.clear()
+        sb.market_street_count = lambda street, since: 12
+        c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"})
+        assert calls == []
+    finally:
+        cma_bot.request_bot = real
+        del sb.market_street_count

@@ -367,9 +367,31 @@ def register(app, G):
         if rec:
             dispatch_review(rec)
 
+    def ask_bot_early(src):
+        """[10/11] אייל: 'שולח לבוט רק אחרי דקה וחצי' — בדיקה מהירה של מספר העסקאות ברחוב לפני כל הבנייה;
+        פחות מ-MIN_COMPS → הכתובת יוצאת לבוט מיד (בקשה חוזרת לאותה כתובת בשבוע — לא נשלחת שוב)."""
+        try:
+            import cma, cma_bot
+            subj = cma.subject_from_listing({"רחוב": src.get("street") or "", "חדרים": src.get("rooms") or "",
+                                             "עיר / ישוב": kc._norm_city(src.get("city"))})
+            if not subj:
+                return
+            today = _dt.date.today()
+            since = today.replace(year=today.year - cma.YEARS, day=min(today.day, 28)).isoformat()
+            fn = getattr(sb(), "market_street_count", None)
+            n = fn(subj["street"], since) if fn else None
+            if n is None or n >= cma.MIN_COMPS:
+                return
+            r = cma_bot.request_bot(G, cma.bot_address(subj), "תיק פרזנטציה")
+            log.info("kit: early bot ask %s (street deals=%s) -> %s", cma.bot_address(subj), n,
+                     {k: r.get(k) for k in ("ok", "reason", "reused")})
+        except Exception as e:
+            log.warning("kit early bot ask failed: %s", e)
+
     def build_bg(kid, src, s):
         """[10/11] הבנייה ברקע (הסוכן מקבל תשובה מיד). אין ניתוח שוק ונשלחה בקשה לבוט — מחכים לתשובה, ורק אז לאישור."""
         def run():
+            ask_bot_early(src)
             try:
                 snap = kc.build_snapshot(dict(G, _cma_bot_sync=True), src)   # הבקשה לבוט יוצאת לפני שבודקים אם לחכות
             except Exception as e:

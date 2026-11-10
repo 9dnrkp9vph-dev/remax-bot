@@ -1894,6 +1894,20 @@ def market_upsert(rows):
     return n
 
 
+def market_street_count(street, since):
+    """[10/11] כמה עסקאות שוק יש ברחוב מ-since (YYYY-MM-DD) — בדיקה מהירה לפני שמחליטים לשאול את בוט מדלן.
+    כשל → None (לא יודעים)."""
+    try:
+        r = requests.get(SUPABASE_URL + "/rest/v1/market_deals",
+                         headers={**_headers(), "Prefer": "count=exact"},
+                         params={"select": "id", "office_id": "eq." + SB_OFFICE_ID, "street": "eq." + str(street),
+                                 "deal_date": "gte." + str(since), "limit": "1"}, timeout=_TIMEOUT)
+        r.raise_for_status()
+        return int((r.headers.get("Content-Range", "") or "/0").split("/")[-1])
+    except Exception:
+        return None
+
+
 def market_all(since):
     """כל עסקאות השוק של המשרד מתאריך since (YYYY-MM-DD)."""
     return _get_all("market_deals", ",".join(_MKT_COLS) + ",uploaded_at",
