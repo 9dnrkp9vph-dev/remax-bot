@@ -14085,7 +14085,7 @@ function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getEleme
       '<div class="grid2">' + field('agent', 'סוכן', r.agent) + field('caller_phone', 'טלפון לקוח', r.caller_phone) +
       field('status', 'סטטוס (' + r.status_label + ')', r.status) + '<div class="f"><b>משך · טלפון סוכן</b>' + esc(r.duration || '—') + ' · <span class="ph">' + esc(r.agent_phone || '') + '</span></div>' +
       field('summary', 'סיכום חכם', r.summary, true) + field('note', 'הערה', r.note, true) + '</div>' +
-      (j.recording ? '<div class="box"><h3>הקלטה</h3><audio controls src="' + esc(j.recording) + '" style="width:100%"></audio></div>' : '') +
+      (j.recording ? '<div class="box"><h3>הקלטה</h3><audio id="recAud" controls preload="none" src="' + esc(j.recording.indexOf('/v2/') === 0 ? j.recording + '&token=' + encodeURIComponent(tok()) : j.recording) + '" style="width:100%"></audio></div>' : '') +
       (r.review ? '<div class="box gold"><h3>ביקורת קצרה</h3>' + esc(r.review) + '</div>' : '') +
       '<div class="box"><h3>תמלול מלא</h3>' + (j.transcript ? esc(j.transcript) : '<span class="mut">אין תמלול לשיחה הזו (נשמר רק לשיחות מ-19/10 והלאה).</span>') + '</div>' +
       '<div class="acts"><button class="tb pri" id="svBtn">שמירה</button>' +
@@ -14094,6 +14094,7 @@ function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getEleme
       (r.hidden ? '<button class="tb" id="rsBtn">שחזור</button>' :
         '<button class="del" id="dlBtn" aria-label="מחיקה"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 5h12M7 5V3h4v2M5 5l1 10h6l1-10" fill="none" stroke="#C24040" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>') + '</div>';
     b.innerHTML = h;
+    var ra = document.getElementById('recAud'); if (ra) ra.onerror = function(){ ra.parentNode.innerHTML = '<h3>הקלטה</h3><span class="mut">ההקלטה לא נמצאה במסקיו.</span>'; };
     document.getElementById('svBtn').onclick = function(){ save(r.key); };
     var d = document.getElementById('dlBtn'); if (d) d.onclick = function(){ if (confirm('למחוק את השיחה? (אפשר לשחזר מ"מחוקות")')) act({key:r.key, delete:true}, 'נמחקה'); };
     var s = document.getElementById('rsBtn'); if (s) s.onclick = function(){ act({key:r.key, restore:true}, 'שוחזרה'); };
@@ -20009,9 +20010,16 @@ def register(app, G):
         sb = G.get("_sbdb")
         if not (sb and sb.enabled()):
             return None
-        t = sb.transcript_get(rec["key"]) if rec["key"].startswith("mk:") else None
-        if t or not rec.get("date"):
-            return t
+        sk = _crm_call_sk(rec)
+        return sb.transcript_get(sk) if sk else None
+
+    def _crm_call_sk(rec):
+        """[REC 10/11] מפתח השיחה הישירה (mk:<uuid>) — לפי המפתח, אחרת השיחה התואמת בטבלת הצל."""
+        if rec["key"].startswith("mk:"):
+            return rec["key"]
+        sb = G.get("_sbdb")
+        if not (sb and sb.enabled()) or not rec.get("date"):
+            return None
         import datetime as _dtr
         if rec["date"] < 1792360800:          # 19/10/2026 — לפני הזרם הישיר אין תמלולים
             return None
@@ -20026,7 +20034,91 @@ def register(app, G):
             ts = crm_ts(r.get("received_at"))
             if ts is not None and abs(ts - rec["date"]) < best_d:
                 best, best_d = r, abs(ts - rec["date"])
-        return sb.transcript_get(best.get("_source_key")) if best else None
+        sk = str((best or {}).get("_source_key") or "")
+        return sk if sk.startswith("mk:") else None
+
+    # [REC 10/11 אייל: 'כן' — לשמוע את הקלטת השיחה] ההקלטה במסקיו דורשת טוקן, אז אפי מביאה אותה
+    # בעצמה לפי מזהה השיחה (אותה קריאה של מודול 32 בסנריו 'לוג שיחה מסקיו') ומגישה לנגן בכרטיס.
+    _REC_CACHE = {}
+    _REC_LOG = {}
+
+    def _maskyoo_rec_accounts():
+        out = []
+        for acct, env in (("zipper_993", "MASKYOO_TOKEN_ZIPPER"), ("bislani_763", "MASKYOO_TOKEN_BISLANI")):
+            t = (os.environ.get(env) or "").strip()
+            if t:
+                out.append((acct, t))
+        return out
+
+    def _looks_audio(ctype, data):
+        if not data or len(data) < 64:
+            return False
+        if (ctype or "").lower().startswith(("audio/", "application/octet-stream")):
+            return not data[:1] in (b"{", b"[", b"<")
+        return data[:4] in (b"RIFF", b"OggS", b"fLaC") or data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")
+
+    def _maskyoo_record(uuid):
+        """(bytes, content-type) או None. מנסה את שני החשבונות; זיכרון ל-15 אחרונות."""
+        if uuid in _REC_CACHE:
+            return _REC_CACHE[uuid]
+        for acct, tok in _maskyoo_rec_accounts():
+            try:
+                r = _requests.get("https://www.maskyoo.com/%s/api/" % acct,
+                                  params={"service": "get_record_by_call_uuid", "call_uuid": uuid, "format": "json"},
+                                  headers={"Authorization": "Bearer " + tok}, timeout=30)
+            except Exception as e:
+                if log: log.warning(f"maskyoo record {acct}: {e}")
+                continue
+            ct = (r.headers.get("Content-Type") or "").split(";")[0].strip()
+            if r.status_code == 200 and _looks_audio(ct, r.content):
+                if not ct.startswith("audio/"):
+                    ct = "audio/wav" if r.content[:4] == b"RIFF" else "audio/mpeg"
+                if len(_REC_CACHE) >= 15:
+                    _REC_CACHE.pop(next(iter(_REC_CACHE)))
+                _REC_CACHE[uuid] = (r.content, ct)
+                return _REC_CACHE[uuid]
+            if log: log.info(f"maskyoo record {acct}: no audio (HTTP {r.status_code}, {ct}, {len(r.content)}B)")
+        return None
+
+    @app.route("/v2/api/crm/calls/audio", methods=["GET"])
+    def v2_api_crm_call_audio():
+        s = _crm_guard("calls")
+        if not s:
+            return _crm_deny()
+        key = request.args.get("key", "")
+        try:
+            rec = next((r for r in _crm_scoped("calls", s) if r["key"] == key), None)
+        except _CrmReadError as e:
+            return _crm_read_err(e)
+        sk = _crm_call_sk(rec) if rec else None
+        if not sk:
+            return jsonify({"ok": False, "reason": "not_found"}), 404
+        got = _maskyoo_record(sk[3:])
+        if not got:
+            return jsonify({"ok": False, "reason": "no_recording"}), 404
+        data, ct = got
+        if time.time() - _REC_LOG.get(key, 0) > 600:          # שורה ביומן לכל היותר פעם ב-10 דק' לשיחה
+            _REC_LOG[key] = time.time()
+            try:
+                G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "CRM — האזנה להקלטה", key)
+            except Exception:
+                pass
+        from flask import Response as _Resp
+        n = len(data)
+        rng = _re.match(r"bytes=(\d*)-(\d*)", request.headers.get("Range", ""))
+        if rng and (rng.group(1) or rng.group(2)):
+            a = int(rng.group(1)) if rng.group(1) else max(0, n - int(rng.group(2)))
+            b = int(rng.group(2)) if (rng.group(1) and rng.group(2)) else n - 1
+            b = min(b, n - 1)
+            if a > b:
+                return _Resp(status=416, headers={"Content-Range": "bytes */%d" % n})
+            resp = _Resp(data[a:b + 1], 206, mimetype=ct)
+            resp.headers["Content-Range"] = "bytes %d-%d/%d" % (a, b, n)
+        else:
+            resp = _Resp(data, 200, mimetype=ct)
+        resp.headers["Accept-Ranges"] = "bytes"
+        resp.headers["Cache-Control"] = "private, max-age=3600"
+        return resp
 
     @app.route("/v2/api/crm/<module>/record", methods=["GET", "POST"])
     def v2_api_crm_record(module):
@@ -20071,8 +20163,15 @@ def register(app, G):
             except Exception as e:
                 if log: log.warning(f"crm transcript lookup failed: {e}")
                 t = {}
+            _rec_u = t.get("recording_url") or ""
+            if not _rec_u and _maskyoo_rec_accounts():
+                try:
+                    if _crm_call_sk(rec):
+                        _rec_u = "/v2/api/crm/calls/audio?key=" + _quote(rec["key"], safe="")
+                except Exception:
+                    pass
             return jsonify({"ok": True, "record": rec, "transcript": t.get("transcript") or "",
-                            "recording": t.get("recording_url") or ""})
+                            "recording": _rec_u})
         b = request.get_json(silent=True) or {}
         key = str(b.get("key") or "").strip()
         who = s.get("name", "")
