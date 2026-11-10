@@ -185,14 +185,29 @@ def _s(v):
     return re.sub(r"\s+", " ", str(v or "")).strip()
 
 
+def _desc_rooms(t):
+    """חדרים מתוך תיאור נכס נולד ("דירה · 4 חד' · 130 מ"ר") — בשורות יד2 אין שדה חדרים (10/11)."""
+    import re as _re
+    m = _re.search(r"(\d+(?:\.\d)?)\s*חד", str(t or ""))
+    return m.group(1) if m else ""
+
+
+def _desc_sqm(t):
+    import re as _re
+    m = _re.search(r"(\d{2,4})\s*(?:מ[\"״']ר|מטר)", str(t or ""))
+    return m.group(1) if m else ""
+
+
 def _nb_src(r):
-    """שורת נכס נולד → שדות התיק (טלפון בעל הנכס נשאר מחוץ לצילום)."""
+    """שורת נכס נולד → שדות התיק (טלפון בעל הנכס נשאר מחוץ לצילום).
+    חדרים ומ"ר: מהשדה אם יש, אחרת מהתיאור — בלעדיהם ניתוח השוק לא נבנה ולא נשלחת בקשה לבוט."""
     r = r or {}
+    desc = r.get("תיאור נכס") or r.get("description") or ""
     return {"owner": _s(r.get("שם בעל הנכס")),
             "phone": kc.phone9(r.get("טלפון בעל הנכס-") or r.get("טלפון בעל הנכס")),
             "street": _s(r.get("רחוב1") or r.get("רחוב")), "city": _s(r.get("עיר")),
-            "rooms": _s(r.get("חדרים")), "price": _s(r.get("מחיר")),
-            "sqm": _s(r.get('מ"ר') or r.get('גודל במ"ר')), "ptype": _s(r.get("סוג נכס"))}
+            "rooms": _s(r.get("חדרים")) or _desc_rooms(desc), "price": _s(r.get("מחיר")),
+            "sqm": _s(r.get('מ"ר') or r.get('גודל במ"ר')) or _desc_sqm(desc), "ptype": _s(r.get("סוג נכס"))}
 
 
 def register(app, G):
