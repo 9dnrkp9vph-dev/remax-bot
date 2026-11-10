@@ -101,8 +101,10 @@ def test_notify_agent():
         c.post("/v2/kit/review/" + p1["review_token"], json={"action": "approve"})
         ck([x for x in st["sent"] if x[1].endswith("open=" + p1["id"])], st["sent"])
         p2 = mk(); st["sent"].clear()
-        c.post("/v2/kit/review/" + p2["review_token"], json={"action": "reject", "reason": "x"})
-        ck(not [x for x in st["sent"] if "open=" in x[1]], st["sent"])
+        c.post("/v2/kit/review/" + p2["review_token"], json={"action": "reject", "reason": "המחיר לא נכון"})
+        rj = [x for x in st["sent"] if x[1].endswith("open=" + p2["id"])]
+        ck(rj and rj[0][0] == "972501111111", st["sent"])
+        ck(rj[0][1].startswith("תיק הפרזנטציה נדחה — משה כהן · הנוטר, קרית ביאליק\nסיבה: המחיר לא נכון\nלתיקון ושליחה מחדש לאישור: "), rj[0][1])
     finally:
         K._spawn = real
 

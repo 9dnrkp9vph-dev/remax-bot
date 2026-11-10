@@ -81,7 +81,7 @@ def send_review(G, rec, base) -> bool:
 
 
 def notify_agent(G, rec, base) -> bool:
-    """אחרי אישור: וואטסאפ לסוכן שהתיק מוכן, עם קישור למסך התיקים לשליחה לבעל הנכס (אייל 10/11).
+    """אחרי אישור או דחייה: וואטסאפ לסוכן — מוכן לשליחה / נדחה עם הסיבה — עם קישור למסך התיקים (אייל 10/11).
     בשעות שקט/שבת, או כשהשליחה נכשלה — review_due נשאר דלוק והסבב הבא שולח."""
     sb = G["_sbdb"]
     to9 = kc.phone9(rec.get("agent_phone"))
@@ -94,8 +94,13 @@ def notify_agent(G, rec, base) -> bool:
     snap = rec.get("snapshot") or {}
     place = ", ".join(x for x in (snap.get("street") or "", snap.get("city") or "") if x)
     who = " · ".join(x for x in (rec.get("owner_name") or snap.get("owner") or "", place) if x)
-    text = "תיק הפרזנטציה מוכן ואושר%s\nלשליחה לבעל הנכס: %s/v2/kits?open=%s" % (
-        (" — " + who) if who else "", base, rec.get("id") or "")
+    link = "%s/v2/kits?open=%s" % (base, rec.get("id") or "")
+    if rec.get("status") == "rejected":   # [10/11] גם בדחייה — עם הסיבה, ולשליחה מחדש
+        why = str(rec.get("reject_reason") or "").strip()
+        text = "תיק הפרזנטציה נדחה%s%s\nלתיקון ושליחה מחדש לאישור: %s" % (
+            (" — " + who) if who else "", ("\nסיבה: " + why) if why else "", link)
+    else:
+        text = "תיק הפרזנטציה מוכן ואושר%s\nלשליחה לבעל הנכס: %s" % ((" — " + who) if who else "", link)
     ok = False
     try:
         ok = bool(G["send_text"]("972" + to9, text))
@@ -116,7 +121,7 @@ def _kit_tick_once(G):
         st = kc.eff_status(r, now)
         if st == "pending" and send_review(G, r, base):
             sent += 1
-        elif st == "approved" and notify_agent(G, r, base):
+        elif st in ("approved", "rejected") and notify_agent(G, r, base):
             sent += 1
     return sent
 
@@ -686,8 +691,8 @@ def register(app, G):
             G["_log_activity"](who, "admin", who9, "תיק פרזנטציה — " + ("אושר" if new == "approved" else "נדחה"), detail)
         except Exception:
             pass
-        if new == "approved":
-            fresh = dict(rec, status="approved", **fields)
+        if new in ("approved", "rejected"):
+            fresh = dict(rec, status=new, **fields)
 
             def run():
                 try:
