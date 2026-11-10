@@ -7413,6 +7413,12 @@ def _sign_split_notes(body):
         return b, ""
     return b[:i].rstrip(), b[i + len("\n\nהערות: "):].strip()
 
+def _sign_mark_excl(body_html):
+    """[10/11 אייל] בהסכם בלעדיות — תקופת הבלעדיות מודגשת: 'מיום X ועד יום Y' (על טקסט שכבר עבר escape)."""
+    _d = r"(\d{1,2}[/.]\d{1,2}[/.]\d{2,4})"   # רק הזוג 'מיום X ועד יום Y' — לא 'מיום' של תאריך הסכם המוכר
+    return re.sub(r"מיום(\s+)" + _d + r"(\s+)ועד יום(\s+)" + _d,
+                  r"מיום\1<mark class=xd>\2</mark>\3ועד יום\4<mark class=xd>\5</mark>", str(body_html or ""))
+
 def _sign_fmt_when(iso):
     """'2026-11-04T19:49:57+02:00' → '19:49 · 04/11/2026' (שעת החתימה מתחת לקו 'תאריך ושעה')."""
     m = re.match(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})", str(iso or ""))
@@ -7476,8 +7482,11 @@ def public_sign_doc(token):
         _b, _nt = _sign_split_notes(d.get("body", ""))
         if _nt and _nt not in _notes:
             _notes.append(_nt)
+        _bh = _h.escape(_b)
+        if "EXCLUSIVE" in str(d.get("deal_type", "")).upper() or "בלעדיות" in str(d.get("title", "")):
+            _bh = _sign_mark_excl(_bh)
         docs_html += "<div class=doc>%s<div class=body>%s</div></div>" % (
-            ("<h2>%s</h2>" % _h.escape(str(d.get("title", "")))) if _i else "", _h.escape(_b))
+            ("<h2>%s</h2>" % _h.escape(str(d.get("title", "")))) if _i else "", _bh)
     if _notes:
         docs_html += ("<div class=notes><h4>הערות ותוספות להסכם:</h4>" +
                       "".join("<div class=nt>%s</div>" % _h.escape(x) for x in _notes) + "</div>")
@@ -7520,7 +7529,7 @@ def public_sign_doc(token):
              ".agentbox .al{font-size:13.5px;color:#555;font-weight:500;margin-top:2px}"
              ".doctitle{text-align:center;font-size:21px;font-weight:800;margin:22px 0 2px;line-height:1.35}.docnum{text-align:center;font-size:16px;font-weight:700;margin:0 0 4px}.docnum span{color:#C29435;font-size:26px;font-weight:800}.docref{text-align:center;font-size:13.5px;color:#444;margin-bottom:4px}"
              ".cline{font-size:14.5px;color:#111;font-weight:500;line-height:2;text-align:center;margin:12px 0 16px}"
-             ".cline u{font-weight:600;text-decoration-color:#888;text-underline-offset:4px}.cline .cp{display:inline-block;margin:0 6px}"
+             ".cline u{font-weight:600;text-decoration-color:#888;text-underline-offset:4px}.cline .cp{display:inline-block;margin:0 6px}mark.xd{background:#FBF1D6;color:#111;font-weight:800;text-decoration:underline;text-underline-offset:4px;padding:0 3px;border-radius:3px}"
              ".ptt{font-size:15px;font-weight:700;color:#111;margin:0 0 7px}"
              ""
              ".ptable{width:100%;border-collapse:collapse;margin-bottom:20px}"
@@ -7541,9 +7550,9 @@ def public_sign_doc(token):
              ".sig img{max-width:260px;height:auto}"
              ".pb{display:block;width:100%;max-width:820px;margin:18px auto 6px;padding:16px;background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;border:none;border-radius:14px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 8px 20px rgba(187,138,44,.28)}"
              ".agentrow{display:flex;align-items:center;gap:12px}"
-             ".avwrap{width:56px;height:56px;border-radius:50%;border:2.5px solid var(--gold);padding:2px;flex:0 0 auto;box-sizing:border-box}"
+             ".avwrap{width:84px;height:84px;border-radius:50%;border:2.5px solid var(--gold);padding:2px;flex:0 0 auto;box-sizing:border-box}"
              ".avin{position:relative;width:100%;height:100%;border-radius:50%;background:#15263b;display:flex;align-items:center;justify-content:center;overflow:hidden}"
-             ".avin span{color:#fff;font-size:21px;font-weight:800;line-height:1}"
+             ".avin span{color:#fff;font-size:30px;font-weight:800;line-height:1}"
              ".avin img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}"
              ".okcard{text-align:center;padding:14px 0 4px}"
              ".okcard .big{font-size:44px}"
@@ -7560,7 +7569,7 @@ def public_sign_doc(token):
              ".efoot{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:600}"
              ".efoot a{color:var(--muted)}"
              "#step2{display:none}"
-             "@media(max-width:520px){.page{padding:22px 16px 20px}.logobar img{height:40px}.doctitle{font-size:19px}.sigs{gap:16px}}"
+             "@media(max-width:520px){.page{padding:22px 16px 20px}.logobar img{height:40px}.avwrap{width:66px;height:66px}.doctitle{font-size:19px}.sigs{gap:16px}}"
              "@media print{.pb,.signbox,.stickybar,.efoot,.backlink{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:100%;border:none}}"
              "</style></head><body><div class=page>")
     _p = _parse_sign_header(header)

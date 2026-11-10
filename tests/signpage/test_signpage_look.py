@@ -57,3 +57,15 @@ p = A._parse_sign_header(HDR2)
 ck(p["caddr"] == "הנביאים 54 קרית אתא" and p["email"] == "karubis1509@gmail.com" and len(p["props"]) == 1 and p["props"][0]["price"] == "2,100,000", p)
 ck(A._sign_header_prices(HDR2) == [2100000])
 print("OK", n)
+# 6) [10/11 אייל] תקופת הבלעדיות מודגשת; בהסכם שאינו בלעדיות — לא
+DOCS["tokXDATES0000006"] = {"status": "signed", "header": HDR, "signature": "",
+    "docs": json.dumps([{"deal_type": "OWNER_EXCLUSIVE", "title": "הזמנת שירותי תיווך בבלעדיות", "body": "3. הלקוח מזמין… לתקופה מיום 08/11/2026 ועד יום 08/05/2027 (להלן)"}])}
+st, h = page("tokXDATES0000006")
+ck("מיום <mark class=xd>08/11/2026</mark> ועד יום <mark class=xd>08/05/2027</mark>" in h, h[h.find("לתקופה"):h.find("לתקופה")+200])
+DOCS["tokXDATES0000007"] = {"status": "signed", "header": HDR, "signature": "",
+    "docs": json.dumps([{"deal_type": "OWNER_SALE", "title": "הזמנת שירותי תיווך למכירת נכס מקרקעין", "body": "מיום 08/11/2026 ועד יום 08/05/2027"}])}
+st, h = page("tokXDATES0000007")
+ck("<mark" not in h)
+ck(A._sign_mark_excl("מיום ____ ועד יום ____") == "מיום ____ ועד יום ____")
+ck(A._sign_mark_excl("מספר 18701 מיום 08/11/2026.") == "מספר 18701 מיום 08/11/2026.", "תאריך הסכם המוכר לא מודגש")
+print("OK2", n)
