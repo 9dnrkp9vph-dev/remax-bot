@@ -205,6 +205,7 @@ def test_mine():
         ck(j["ok"] and "k1" in ids and "k3" not in ids, ids)
         m1 = next(x for x in j["kits"] if x["id"] == "k1")
         ck(m1["status"] == "pending" and "wa" not in m1 and "url" not in m1 and "text" not in m1, m1)
+        ck("review_url" not in m1, "agent has no review link")
         ck(m1["owner"] == "משה כהן" and m1["street"] == "הנוטר" and set(m1["views"]) == {"opens", "secs", "last"}, m1)
         ck("544448065" not in str(m1), m1)
         sb.kit_update("k1", {"status": "approved"})
@@ -220,6 +221,9 @@ def test_mine():
         SESS["t"] = DEV
         ids = [x["id"] for x in c.get("/v2/api/kit/mine?all=1").json["kits"]]
         ck("k1" in ids and "k3" in ids, ids)
+        pend = [x for x in c.get("/v2/api/kit/mine?all=1").json["kits"] if x["status"] == "pending"]
+        ck(pend and all(x.get("review_url", "").startswith("/v2/kit/review/") for x in pend), pend)
+        ck(all("review_url" not in x for x in c.get("/v2/api/kit/mine?all=1").json["kits"] if x["status"] != "pending"), "only pending")
         SESS["t"] = AG
         ids = [x["id"] for x in c.get("/v2/api/kit/mine?all=1").json["kits"]]
         ck("k3" not in ids, "agent ignores all")

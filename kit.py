@@ -422,6 +422,7 @@ def register(app, G):
         if team is not None:   # מתאמת — הצוות שלה והתיקים שלה, לא כל המשרד
             rows = [r for r in rows if kc.phone9(r.get("agent_phone")) == me9 or norm(r.get("agent_name")) in team]
         now, base, out, tk = _t.time(), _base(), [], {}
+        approver = is_owner(s) or (bool(me9) and me9 == _approver9(G))
         for r in rows:
             snap = r.get("snapshot") or {}
             v = r.get("views") or {}
@@ -447,6 +448,8 @@ def register(app, G):
                     pass
             if allp:
                 it["agent"] = r.get("agent_name") or ""
+            if st == "pending" and r.get("review_token") and approver:   # [10/11] אישור מהמסך — בלי לחכות לוואטסאפ (שעות שקט)
+                it["review_url"] = "/v2/kit/review/" + r["review_token"]
             if st in _SHOW_LINK and r.get("view_token"):
                 url = base + "/k/" + r["view_token"]
                 it.update(wa=kc.wa972(r.get("owner_phone")), url=url, text=kc.owner_message(snap) + "\n" + url)

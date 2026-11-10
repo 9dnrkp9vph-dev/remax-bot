@@ -11806,6 +11806,7 @@ function kitCard(k, i){
     (showViews ? '<div class="vw"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="#5B6472" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="none" stroke="#5B6472" stroke-width="1.4"/></svg>' +
       esc(kitViews(k.views)) + '</div>' : '') +
     (k.status === 'pending' ? '<div class="sb">ממתין לאישור — תקבל כאן כפתור שליחה ברגע שיאושר</div>' : '') +
+    (k.review_url ? '<button class="kbtn pri" onclick="location.href=\'' + esc(k.review_url) + '\'">לצפייה ולאישור</button>' : '') +
     kitSendBtn(k, i) +
     (k.status === 'rejected' || k.status === 'expired'
       ? '<button class="kbtn sec" onclick="kitResend(' + i + ')">שלח שוב לאישור</button>' : '') +
