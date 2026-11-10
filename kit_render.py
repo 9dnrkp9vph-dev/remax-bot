@@ -668,11 +668,66 @@ def _buyers_how(d, y):
         yy += 150
 
 
+FAKE_RANGE = "1,234,000 – 1,456,000 ₪"   # בדוי: הטווח האמיתי לא נכנס לתמונה ולא ל-PDF (מטושטש מעל)
+
+
 def _p_cma(snap, n):
+    """עמוד ניתוח השוק — 'טיזר' (מה שאייל בחר 06/11): מספרים מסוכמים, הטווח מטושטש עד הפגישה.
+    בלי שורות עסקה, בלי מספרי בית ובלי אזכור מקור הנתונים."""
+    from PIL import Image, ImageDraw, ImageFilter
     im, d = _page(CREAM)
-    title = str((snap.get("cma") or {}).get("title") or "ניתוח שוק")
-    f, ls = _block(d, title, 900, 86, W - 2 * PAD, 3)
-    _lines(d, ls, f, W - PAD, PAD + 60, NAVY, 100)
+    c = snap.get("cma") or {}
+    width = W - 2 * PAD
+    y = _kicker(d, "ניתוח שוק לנכס שלך", False)
+    first = (snap.get("owner_first") or "").strip()
+    head = (first + ", כמה שווה הדירה שלך?") if first else "כמה שווה הדירה שלך?"
+    f, ls = _block(d, head, 900, 92, width, 2)
+    y = _lines(d, ls, f, W - PAD, y + 10, NAVY, 110) + 6
+    street = (snap.get("street") or "").strip()
+    where = ("ב" + street) if (c.get("level") == "street" and street) else "בשכונה"
+    sub = "עסקאות אמיתיות %s שלך · 3 השנים האחרונות" % ("ברחוב" if where != "בשכונה" else "בשכונה")
+    _line_r(d, sub, _font(500, 44), W - PAD, y, MUTED2)
+    y += 100
+    rooms = str((c.get("subject") or {}).get("rooms") or snap.get("rooms") or "").strip()
+    _card(d, y, y + 250)
+    _line_r(d, _fmt_n(c.get("street_count")), _font(900, 110), W - PAD - 50, y + 30, NAVY)
+    lbl = "דירות %s חדרים נמכרו %s מאז %s" % (rooms, where, c.get("since_year") or "") if rooms else \
+        "דירות נמכרו %s מאז %s" % (where, c.get("since_year") or "")
+    _line_r(d, lbl, _fit(d, lbl, 500, 44, width - 100, 30), W - PAD - 50, y + 170, MUTED2)
+    y += 280
+    small = []
+    if c.get("ppm_median"):
+        small.append((_fmt_n(c.get("ppm_median")) + " ₪", "מחיר ממוצע למ\"ר " + ("ברחוב" if where != "בשכונה" else "בשכונה")))
+    if int(c.get("competing") or 0) > 0:
+        small.append((_fmt_n(c.get("competing")), "דירות דומות מתחרות בך עכשיו"))
+    if small:
+        gap = 30
+        sh = 270 if len(small) > 1 else 230
+        cw = (width - gap * (len(small) - 1)) / len(small)
+        for i, (big, sub) in enumerate(small):
+            xr = W - PAD - i * (cw + gap)
+            d.rounded_rectangle((xr - cw, y, xr, y + sh), radius=CARD_R, fill=WHITE)
+            _line_r(d, big, _fit(d, big, 900, 84, cw - 80, 40), xr - 40, y + 30, NAVY)
+            fl, ll = _block(d, sub, 500, 38, cw - 80, 2, 28)
+            _lines(d, ll, fl, xr - 40, y + 138, MUTED2, 48)
+        y += sh + 30
+    h = 360
+    _card(d, y, y + h)
+    _line_r(d, "הטווח שאני ממליץ לדירה שלך", _font(500, 42), W - PAD - 50, y + 34, MUTED2)
+    lay = Image.new("RGB", (width - 40, 150), WHITE)
+    ld = ImageDraw.Draw(lay)
+    fr = _fit(ld, FAKE_RANGE, 900, 100, width - 120, 50)
+    vis = _rtl(FAKE_RANGE)
+    ld.text(((width - 40 - _tl(ld, vis, fr)) / 2, 18), vis, font=fr, fill=NAVY)
+    im.paste(lay.filter(ImageFilter.GaussianBlur(radius=16)), (PAD + 20, y + 100))
+    d = ImageDraw.Draw(im)
+    ov = "אציג לך בפגישה, עם כל העסקאות"
+    _line_c(d, ov, _fit(d, ov, 800, 48, width - 100), W / 2, y + 272, KICK)
+    y += h + 30
+    meet = _meet_line(snap.get("meet_at"))
+    if meet and y + 140 < H - 160:
+        d.rounded_rectangle((PAD, y, W - PAD, y + 140), radius=CARD_R, fill=GOLD)
+        _line_c(d, meet, _fit(d, meet, 800, 54, width - 80), W / 2, y + 40, ONGOLD)
     _footer(d, snap, n, False)
     return im
 

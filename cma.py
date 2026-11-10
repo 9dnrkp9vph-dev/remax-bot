@@ -820,6 +820,14 @@ function run(){
   }).then(function(j){ if (j){ el('res').innerHTML = cmaResult(j) + botCard(); botShow(); } })
     .catch(function(){ el('res').innerHTML = '<div class="card lbl">שגיאת רשת — נסה שוב</div>'; });
 }
+// מתיק פרזנטציה: /v2/cma?street=&house=&city=&rooms=&sqm=&ptype= — ממלא ומחשב
+(function(){
+  try{
+    var q = new URLSearchParams(location.search), map = {street: 'st', house: 'hs', city: 'ct', rooms: 'rm', sqm: 'sq', ptype: 'pt'}, any = false;
+    Object.keys(map).forEach(function(k){ var v = q.get(k); if (v){ el(map[k]).value = v; any = true; } });
+    if (any && q.get('street')) setTimeout(run, 0);
+  }catch(e){}
+})();
 // ── בוט מדלן: בקשת עסקאות עדכניות לכתובת (אייל 10/11) ──
 var BOT = {rid: null, msg: '', busy: false, polls: 0, t: null};
 function botAddr(){

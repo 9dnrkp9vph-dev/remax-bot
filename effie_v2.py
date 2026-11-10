@@ -11809,6 +11809,7 @@ function kitCard(k, i){
     kitSendBtn(k, i) +
     (k.status === 'rejected' || k.status === 'expired'
       ? '<button class="kbtn sec" onclick="kitResend(' + i + ')">שלח שוב לאישור</button>' : '') +
+    (k.cma_q ? '<button class="kbtn sec" onclick="location.href=\'/v2/cma?' + esc(k.cma_q) + '\'">ניתוח שוק</button>' : '') +
     '</div>';
 }
 function render(){
