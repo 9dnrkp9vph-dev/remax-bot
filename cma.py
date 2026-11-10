@@ -148,6 +148,57 @@ def mark_dup_projects(rows):
     return rows
 
 
+NEAR_DUP_DAYS = 14          # אותה דירה, אותו מחיר/שטח/קומה, הפרש של עד שבועיים — אותה עסקה (נראה אצל הבוט: דולב 4, 6 ימים)
+
+
+def mark_near_dups(rows):
+    """אותה עסקה פעמיים בתאריכים קרובים (אותו רחוב, בית, מחיר, שטח וקומה) — המוקדמת נשארת, השאר bad='dup'."""
+    groups = {}
+    for r in rows:
+        if r.get("bad") or not r.get("street") or r.get("house") is None or not r.get("price") or not r.get("deal_date"):
+            continue
+        groups.setdefault((r["street"], r["house"], r["price"], r.get("sqm"), str(r.get("floor") or "")), []).append(r)
+    for g in groups.values():
+        g.sort(key=lambda r: r["deal_date"])
+        last = None
+        for r in g:
+            d = _dt.date.fromisoformat(r["deal_date"])
+            if last is not None and (d - last).days <= NEAR_DUP_DAYS:
+                r["bad"] = "dup"
+                continue
+            last = d
+    return rows
+
+
+def bot_table(deals):
+    """תשובת בוט מדלן ([{date, address, price, type, rooms, sqm, floor, ppm, year_built}]) → טבלה בכותרות של מדלן."""
+    out = []
+    for d in deals or []:
+        if not isinstance(d, dict):
+            continue
+        fl = d.get("floor")
+        out.append({"יום מכירה": d.get("date"), "כתובת": d.get("address"), "מחיר (₪)": d.get("price"),
+                    "סוג נכס": d.get("type") or "", "חדרים": d.get("rooms"), "שטח (מ״ר)": d.get("sqm"),
+                    "קומה": "" if fl is None else fl, "מחיר (₪) למ״ר": d.get("ppm"), "שנת בנייה": d.get("year_built")})
+    return out
+
+
+def bot_rows(deals, address, known, stored):
+    """תשובת הבוט לכתובת → (שורות ל-market_upsert, סטטיסטיקה), באותו ניקוי של קבצי מדלן.
+    השכונה: זו שכבר רשומה במאגר לאותו רחוב, אחרת שם העיר."""
+    empty = {"n": 0, "dups": 0, "bad": 0, "min_date": None, "max_date": None, "streets": 0}
+    table = bot_table(deals)
+    if not table:
+        return [], empty
+    a = parse_madlan_addr(address)
+    street = canon_street(a["street"], known) if a["street"] else ""
+    nb = subject_nb(street, a["city"], stored) if street else ""
+    try:
+        return madlan_rows(table, nb or a["city"] or "בוט מדלן", "bot:" + _norm(address)[:80], known)
+    except ValueError:
+        return [], empty
+
+
 def madlan_rows(table, nb, file_name, known):
     """טבלת מדלן ([{כותרת: ערך}], מ-ibs_parse_table) → (שורות ל-market_upsert, סטטיסטיקה).
     כותרת חסרה → ValueError('headers'). העמודות לפי הכותרת, לא לפי המיקום."""
@@ -182,6 +233,7 @@ def madlan_rows(table, nb, file_name, known):
         seen.add(r["deal_key"])
         rows.append(r)
     mark_dup_projects(rows)
+    mark_near_dups(rows)
     dates = sorted(r["deal_date"] for r in rows)
     st = {"n": len(rows), "dups": dups, "bad": sum(1 for r in rows if r["bad"]),
           "min_date": dates[0] if dates else None, "max_date": dates[-1] if dates else None,
@@ -492,7 +544,7 @@ def _inputs(G):
         dh = []
     known = _known_streets(G, dh) | {r.get("street") for r in market if r.get("street")}
     # אותה עסקה בקבצים שונים (כתובת בקובץ אחד, שם פרויקט באחר) — הניקוי חוזר על כל המאגר
-    market = mark_dup_projects([dict(r) for r in market])
+    market = mark_near_dups(mark_dup_projects([dict(r) for r in market]))
     deals = link_ours(market, ours_rows(dh, known))
     try:
         listings = _listings(G)
@@ -504,6 +556,29 @@ def _inputs(G):
 def _cached_inputs(G):
     swr = G.get("_swr")
     return swr("cma:in", 600, lambda: _inputs(G)) if swr else _inputs(G)
+
+
+def ingest_bot(G, address, deals):
+    """תשובת בוט מדלן → מאגר העסקאות (market_deals), ואיפוס המטמון כדי שהחישוב יראה אותה מיד."""
+    sb = G["_sbdb"]
+    stored = sb.market_all("1900-01-01") or []
+    try:
+        dh = G["_deal_history_linked"]() or []
+    except Exception:
+        dh = []
+    known = _known_streets(G, dh) | {r.get("street") for r in stored if r.get("street")}
+    rows, st = bot_rows(deals, address, known, stored)
+    if rows:
+        sb.market_upsert(rows)
+    clear_cache(G)
+    return st
+
+
+def clear_cache(G):
+    try:
+        G["_cache_clear"]("cma:in")
+    except Exception:
+        pass
 
 
 def strip_addresses(res):
@@ -594,6 +669,7 @@ def register(app, G):
             if lg:
                 lg.error(f"cma upload save: {e}")
             return jsonify({"ok": False, "reason": "save"})
+        clear_cache(G)
         _act(s, "עסקאות ממדלן — העלאה", "%s · %d עסקאות" % (nb, st["n"]))
         return jsonify({"ok": True, "stats": st})
 
