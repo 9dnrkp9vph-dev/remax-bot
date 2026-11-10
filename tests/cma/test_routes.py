@@ -179,8 +179,18 @@ def main():
        "cma_block keeps counts, range and street-free rows")
     j = c.get(q, headers={"X-Auth-Token": "t-agent"}).get_json()
     ck(j["cma"]["comps"][0].get("house") is not None, "agent view keeps house numbers")
+    import cma_bot
+    asked = []
+    orig = cma_bot.request_bot
+    cma_bot.request_bot = lambda G_, a, by="", force=False: asked.append((a, by)) or {"ok": True}
+    G["_cma_bot_sync"] = True
+    cma.cma_block(G, listing)
+    ck(asked == [], "enough deals → no request to the bot")
+    ck(cma.cma_block(G, dict(listing, חדרים="3")) is None and asked == [("מנחם בגין 12, קרית מוצקין", "תיק פרזנטציה")],
+       "too few deals in the kit → asks the bot for the address")
     sb.raise_all = True
     ck(cma.cma_block(G, listing) is None, "cma_block when market_all raises → None")
+    cma_bot.request_bot = orig
 
     vf = app.view_functions
     for ep, fn in (("/v2/api/cma/upload", "cma_upload"), ("/v2/api/cma/files", "cma_files"),

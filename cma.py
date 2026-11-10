@@ -594,8 +594,35 @@ def strip_addresses(res):
 
 
 def cma_block(G, listing):
-    """הוק תיק הפרזנטציה: פרטי הנכס → נתוני עמוד ה-CMA בלי כתובות (strip_addresses), או None."""
-    return strip_addresses(cma_full(G, listing))
+    """הוק תיק הפרזנטציה: פרטי הנכס → נתוני עמוד ה-CMA בלי כתובות (strip_addresses), או None.
+    אין מספיק עסקאות → מבקשים מבוט מדלן ברקע (פעם בשבוע לכתובת), כדי שבבנייה הבאה של התיק יהיה עמוד."""
+    res = cma_full(G, listing)
+    if res is None:
+        ask_bot_async(G, listing)
+    return strip_addresses(res)
+
+
+def ask_bot_async(G, listing):
+    subj = subject_from_listing(listing or {})
+    if not subj:
+        return False
+    addr = (subj["street"] + (" %d" % subj["house"] if subj.get("house") is not None else "")
+            + (", " + subj["city"] if subj.get("city") else ""))
+
+    def run():
+        try:
+            import cma_bot
+            cma_bot.request_bot(G, addr, "תיק פרזנטציה")
+        except Exception as e:
+            lg = G.get("log")
+            if lg:
+                lg.warning(f"cma ask bot: {e}")
+    if G.get("_cma_bot_sync"):
+        run()
+    else:
+        import threading
+        threading.Thread(target=run, daemon=True, name="cma-ask-bot").start()
+    return True
 
 
 def cma_full(G, listing):
@@ -716,6 +743,8 @@ h1{font-size:21px;font-weight:800}.sub{font-size:12.5px;opacity:.8}
 label{font-size:12px;color:var(--mut);display:block;margin-bottom:3px}
 input,select{width:100%;min-height:44px;border:1.5px solid var(--line);border-radius:12px;padding:0 10px;background:#fff}
 .go{margin-top:12px;width:100%;min-height:48px;border:0;border-radius:14px;background:var(--blue);color:#fff;font-weight:800}
+.sec{margin-top:10px;width:100%;min-height:44px;border:1.5px solid #D9DEE6;border-radius:14px;background:#fff;color:var(--navy,#1E3A5F);font-weight:700}
+.sec:disabled{opacity:.55}
 .kick{font-size:12px;color:var(--goldtxt);font-weight:700}
 .big{font-size:30px;font-weight:800;color:var(--navy)}.lbl{font-size:12.5px;color:var(--mut)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -788,7 +817,45 @@ function run(){
   el('res').innerHTML = '<div class="card lbl">מחשב…</div>';
   fetch('/v2/api/cma/view?' + q, {headers: {'X-Auth-Token': TOK}}).then(function(r){
     if (r.status === 401){ location.replace('/v2'); return null; } return r.json();
-  }).then(function(j){ if (j) el('res').innerHTML = cmaResult(j); })
+  }).then(function(j){ if (j){ el('res').innerHTML = cmaResult(j) + botCard(); botShow(); } })
     .catch(function(){ el('res').innerHTML = '<div class="card lbl">שגיאת רשת — נסה שוב</div>'; });
+}
+// ── בוט מדלן: בקשת עסקאות עדכניות לכתובת (אייל 10/11) ──
+var BOT = {rid: null, msg: '', busy: false, polls: 0, t: null};
+function botAddr(){
+  var a = (el('st').value.trim() + ' ' + el('hs').value.trim()).trim();
+  return a + (el('ct').value.trim() ? ', ' + el('ct').value.trim() : '');
+}
+function botCard(){
+  return '<div class="card" id="botCard"><div class="h">עסקאות עדכניות ממדלן</div>' +
+    '<div class="lbl" id="botMsg">אפשר לבקש מהבוט את כל העסקאות בכתובת ובסביבתה. התשובה מגיעה תוך כמה דקות.</div>' +
+    '<button class="sec" id="botBtn" onclick="botAsk()">בקש עסקאות עדכניות</button></div>';
+}
+function botShow(){
+  if (BOT.msg && el('botMsg')) el('botMsg').textContent = BOT.msg;
+  if (el('botBtn')) el('botBtn').disabled = BOT.busy;
+}
+function botAsk(){
+  if (!el('st').value.trim()){ BOT.msg = 'צריך רחוב'; botShow(); return; }
+  BOT.busy = true; BOT.msg = 'שולח לבוט…'; botShow();
+  fetch('/v2/api/cma/bot_request', {method: 'POST', headers: {'X-Auth-Token': TOK, 'Content-Type': 'application/json'},
+    body: JSON.stringify({address: botAddr()})}).then(function(r){ return r.json(); }).then(function(j){
+    if (j && j.ok){ BOT.rid = j.request_id; BOT.polls = 0;
+      BOT.msg = j.reused ? 'כבר ביקשנו את הכתובת הזאת השבוע — בודק אם התשובה הגיעה…' : 'ביקשתי. התשובה מגיעה בדרך כלל תוך כ-6 דקות — אפשר להישאר במסך.';
+      botShow(); botPoll(); }
+    else { BOT.busy = false; BOT.msg = {daily_cap: 'הגענו לתקרת הבקשות של היום — נסה מחר', no_bot_url: 'הבוט עוד לא מחובר',
+      no_address: 'צריך כתובת'}[j && j.reason] || 'הבוט לא ענה — נסה שוב בעוד כמה דקות'; botShow(); }
+  }).catch(function(){ BOT.busy = false; BOT.msg = 'שגיאת רשת — נסה שוב'; botShow(); });
+}
+function botPoll(){
+  clearTimeout(BOT.t);
+  fetch('/v2/api/cma/bot_status?id=' + encodeURIComponent(BOT.rid), {headers: {'X-Auth-Token': TOK}})
+    .then(function(r){ return r.json(); }).then(function(j){
+      if (j && j.done && j.saved){ BOT.busy = false;
+        BOT.msg = j.error ? 'התשובה הגיעה אבל לא נשמרה — נסה שוב' : 'הגיעו ' + j.n + ' עסקאות — החישוב עודכן';
+        run(); return; }
+      if (++BOT.polls >= 30){ BOT.busy = false; BOT.msg = 'הבוט עוד לא ענה — כנראה המחשב שלו כבוי. נסה שוב מאוחר יותר'; botShow(); return; }
+      BOT.t = setTimeout(botPoll, 30000);
+    }).catch(function(){ BOT.t = setTimeout(botPoll, 30000); });
 }
 </script></body></html>'''
