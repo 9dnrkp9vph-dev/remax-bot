@@ -71,9 +71,40 @@ def test_send_review():
     old = mk(h=50, review_due=True); done = mk("approved", review_due=True); due = mk(review_due=True)
     st["sent"].clear()
     K._kit_tick_once(G)
-    got = sorted(t.rsplit("/", 1)[1] for _, t in st["sent"])
+    got = sorted(t.rsplit("/", 1)[1] for _, t in st["sent"] if "/v2/kit/review/" in t)
     ck(got == sorted([rec["review_token"], due["review_token"]]), got)   # rec נשאר review_due מהכשל
     ck(not any(old["review_token"] in t or done["review_token"] in t for _, t in st["sent"]), "tick filter")
+
+
+def test_notify_agent():
+    """אחרי אישור — וואטסאפ לסוכן: התיק מוכן + קישור למסך התיקים (אייל 10/11)."""
+    rec = mk("approved")
+    st["sent"].clear(); st["quiet"] = True
+    ck(K.notify_agent(G, rec, "https://x.test") is False and st["sent"] == [], "quiet")
+    ck(sb.kit_get(rec["id"])["review_due"] is True, "due in quiet")
+    st["quiet"] = False
+    ck(K.notify_agent(G, rec, "https://x.test") is True, "sent")
+    to, txt = st["sent"][-1]
+    ck(to == "972501111111", to)
+    ck(txt.startswith("תיק הפרזנטציה מוכן ואושר — משה כהן · הנוטר, קרית ביאליק\n"), txt)
+    ck(txt.endswith("https://x.test/v2/kits?open=" + rec["id"]) and "544448065" not in txt, txt)
+    ck(sb.kit_get(rec["id"])["review_due"] is False, "cleared")
+    # הסבב שולח לסוכן תיק מאושר שמסומן review_due
+    later = mk("approved", review_due=True)
+    st["sent"].clear()
+    K._kit_tick_once(G)
+    ck(any(t.endswith("open=" + later["id"]) for _, t in st["sent"]), st["sent"])
+    # אישור בדף האישור → הודעה לסוכן; דחייה → בלי
+    real = K._spawn; K._spawn = lambda f: f()
+    try:
+        p1 = mk(); st["sent"].clear()
+        c.post("/v2/kit/review/" + p1["review_token"], json={"action": "approve"})
+        ck([x for x in st["sent"] if x[1].endswith("open=" + p1["id"])], st["sent"])
+        p2 = mk(); st["sent"].clear()
+        c.post("/v2/kit/review/" + p2["review_token"], json={"action": "reject", "reason": "x"})
+        ck(not [x for x in st["sent"] if "open=" in x[1]], st["sent"])
+    finally:
+        K._spawn = real
 
 
 def test_review_page_and_decide():
@@ -250,6 +281,6 @@ def test_final_fixes():
 
 
 if __name__ == "__main__":
-    for _f in (test_send_review, test_review_page_and_decide, test_view_closed, test_view_open, test_binding, test_final_fixes):
+    for _f in (test_send_review, test_notify_agent, test_review_page_and_decide, test_view_closed, test_view_open, test_binding, test_final_fixes):
         _f()
     print("OK", n)

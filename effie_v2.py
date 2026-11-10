@@ -11760,7 +11760,7 @@ function kitCard(k, i){
   var showViews = k.status === 'approved' || k.status === 'sent';
   var created = '';
   try{ var d = new Date(k.created_at); if (!isNaN(d)) created = 'הוכן ' + kitPad(d.getDate()) + '/' + kitPad(d.getMonth() + 1); }catch(e){}
-  return '<div class="kc">' +
+  return '<div class="kc" id="kit-' + esc(k.id) + '">' +
     '<div class="top"><div style="min-width:0"><div class="tt">' + esc([k.owner, place].filter(Boolean).join(' · ')) + '</div>' +
     '<div class="sb">' + esc([SCOPE === 'all' ? k.agent : '', created].filter(Boolean).join(' · ')) + '</div></div>' +
     kitStatusChip(k) + '</div>' +
@@ -11787,8 +11787,17 @@ function load(){
   return GET('/v2/api/kit/mine' + (SCOPE === 'all' ? '?all=1' : '')).then(function(j){
     if (!j || !j.ok){ el('list').innerHTML = '<div class="empty"><div class="t">לא הצלחנו לטעון את התיקים</div>' +
       '<button class="kbtn sec" onclick="load()">נסה שוב</button></div>'; return; }
-    KITS = j.kits || []; render();
+    KITS = j.kits || []; render(); kitOpenFromUrl();
   }).catch(function(){ toast('שגיאת רשת'); });
+}
+function kitOpenFromUrl(){   // [10/11] מהוואטסאפ 'התיק מוכן' — ?open=<id> מגלגל לתיק ומדגיש אותו, פעם אחת
+  if (kitOpenFromUrl._done) return;
+  var id = ''; try{ id = new URLSearchParams(location.search).get('open') || ''; }catch(e){}
+  if (!id) return;
+  var node = document.getElementById('kit-' + id); if (!node) return;
+  kitOpenFromUrl._done = true;
+  node.scrollIntoView({block: 'center', behavior: 'smooth'});
+  node.style.boxShadow = '0 0 0 3px #C29435'; setTimeout(function(){ node.style.boxShadow = ''; }, 2600);
 }
 function setScope(node){
   SCOPE = node.getAttribute('data-s') === 'all' ? 'all' : 'mine';

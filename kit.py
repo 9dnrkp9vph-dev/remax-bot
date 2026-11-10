@@ -80,15 +80,44 @@ def send_review(G, rec, base) -> bool:
     return ok
 
 
+def notify_agent(G, rec, base) -> bool:
+    """אחרי אישור: וואטסאפ לסוכן שהתיק מוכן, עם קישור למסך התיקים לשליחה לבעל הנכס (אייל 10/11).
+    בשעות שקט/שבת, או כשהשליחה נכשלה — review_due נשאר דלוק והסבב הבא שולח."""
+    sb = G["_sbdb"]
+    to9 = kc.phone9(rec.get("agent_phone"))
+    if not to9:
+        log.warning("kit notify_agent: no agent phone for %s", rec.get("id"))
+        return False
+    if G["_quiet_hours"]() or G["_shabbat_quiet_now"]():
+        sb.kit_update(rec["id"], {"review_due": True})
+        return False
+    snap = rec.get("snapshot") or {}
+    place = ", ".join(x for x in (snap.get("street") or "", snap.get("city") or "") if x)
+    who = " · ".join(x for x in (rec.get("owner_name") or snap.get("owner") or "", place) if x)
+    text = "תיק הפרזנטציה מוכן ואושר%s\nלשליחה לבעל הנכס: %s/v2/kits?open=%s" % (
+        (" — " + who) if who else "", base, rec.get("id") or "")
+    ok = False
+    try:
+        ok = bool(G["send_text"]("972" + to9, text))
+    except Exception as e:
+        log.warning("kit notify_agent: send_text failed: %s", e)
+    sb.kit_update(rec["id"], {"review_due": not ok})
+    return ok
+
+
 def _kit_tick_once(G):
-    """סבב אחד: תיקים ממתינים (שלא פגו) שסומנו review_due — נשלחים לאישור."""
+    """סבב אחד: ממתינים שסומנו review_due → לאישור; מאושרים שסומנו → הודעה לסוכן."""
     if G["_quiet_hours"]() or G["_shabbat_quiet_now"]():
         return 0
     now, base, sent = _t.time(), _base(), 0
     for r in G["_sbdb"].kit_list(None) or []:
-        if r.get("review_due") and kc.eff_status(r, now) == "pending":
-            if send_review(G, r, base):
-                sent += 1
+        if not r.get("review_due"):
+            continue
+        st = kc.eff_status(r, now)
+        if st == "pending" and send_review(G, r, base):
+            sent += 1
+        elif st == "approved" and notify_agent(G, r, base):
+            sent += 1
     return sent
 
 
@@ -657,6 +686,15 @@ def register(app, G):
             G["_log_activity"](who, "admin", who9, "תיק פרזנטציה — " + ("אושר" if new == "approved" else "נדחה"), detail)
         except Exception:
             pass
+        if new == "approved":
+            fresh = dict(rec, status="approved", **fields)
+
+            def run():
+                try:
+                    notify_agent(G, fresh, _base())   # מוחלף בבדיקות דרך kit.notify_agent
+                except Exception as e:
+                    log.warning("kit notify_agent failed: %s", e)
+            _spawn(run)
         return resp(msg, 200, "text/plain; charset=utf-8")
 
     @app.route("/v2/kit/review/<tok>/p<int:n>.jpg")
