@@ -14229,6 +14229,13 @@ try:
 except Exception as _dialer_err:
     log.error(f"dialer init failed (app unaffected): {_dialer_err}")
 
+# ── CMA: בוט מדלן חיצוני — שליחת כתובת וקבלת עסקאות (אייל 10/11, שלב בדיקה) — מודול נפרד ──
+try:
+    import cma_bot as _cma_bot
+    _cma_bot.register(app, globals())
+except Exception as _cmab_err:
+    log.error(f"cma_bot init failed (app unaffected): {_cmab_err}")
+
 # ── מסך הבית: בקשה אחת + חימום-מקדים למשתמשים הפעילים (אייל 06/11) — מודול נפרד ──
 try:
     import home_bundle as _home_bundle
