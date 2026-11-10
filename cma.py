@@ -608,13 +608,18 @@ def cma_block(G, listing):
     return strip_addresses(res)
 
 
+def bot_address(subj):
+    """הכתובת שנשלחת לבוט מדלן (רחוב מספר, עיר)."""
+    return (subj["street"] + (" %d" % subj["house"] if subj.get("house") is not None else "")
+            + (", " + subj["city"] if subj.get("city") else ""))
+
+
 def ask_bot_async(G, listing):
     subj = subject_from_listing(listing or {})
     if not subj:
         logging.getLogger("cma").info("cma: no subject (street/rooms missing) — bot not asked")
         return False
-    addr = (subj["street"] + (" %d" % subj["house"] if subj.get("house") is not None else "")
-            + (", " + subj["city"] if subj.get("city") else ""))
+    addr = bot_address(subj)
 
     def run():
         try:

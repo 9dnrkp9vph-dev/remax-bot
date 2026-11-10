@@ -134,6 +134,19 @@ def request_bot(G, address, by="", force=False):
     return out
 
 
+def kit_release(G, rid):
+    """[10/11] תיק שמחכה לעסקאות של הבקשה הזו — נבנה מחדש ונשלח לאישור (kit.py רושם את ההוק)."""
+    hook = G.get("_kit_cma_release")
+    if not hook or not rid:
+        return
+    try:
+        hook(rid=rid)
+    except Exception as e:
+        lg = G.get("log")
+        if lg:
+            lg.warning("cma kit release: %s", e)
+
+
 def _save_async(G, rid, address, deals):
     """העסקאות שחזרו → מאגר העסקאות של ה-CMA (ברקע — הבוט מקבל תשובה מיד)."""
     def run():
@@ -152,6 +165,7 @@ def _save_async(G, rid, address, deals):
             G["_config_mutate"](_m)
         except Exception:
             pass
+        kit_release(G, rid)
     if G.get("_cma_bot_sync"):        # בדיקות
         run()
         return
@@ -188,6 +202,11 @@ def register(app, G):
         G["_config_mutate"](lambda cfg: cfg.__setitem__(CFG, push(cfg.get(CFG), rec)))
         if rec["address"] and rec["deals"]:
             _save_async(G, rec["request_id"], rec["address"], rec["deals"])
+        elif G.get("_cma_bot_sync"):   # שגיאה / בלי עסקאות — התיק שמחכה יוצא לאישור בלי ניתוח השוק
+            kit_release(G, rec["request_id"])
+        else:
+            import threading
+            threading.Thread(target=kit_release, args=(G, rec["request_id"]), daemon=True).start()
         try:
             G["_log_activity"]("בוט מדלן", "system", "", "CMA — תוצאות מבוט מדלן",
                                ("%s · %d עסקאות" % (rec["address"], rec["n"]))[:60])

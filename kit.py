@@ -36,6 +36,7 @@ _SHOW_LINK = ("approved", "sent")
 
 
 TICK_SEC = 600
+CMA_WAIT_SEC = int(os.environ.get("KIT_CMA_WAIT_SEC", "900"))   # [10/11] כמה זמן תיק מחכה לעסקאות מבוט מדלן לפני שהוא יוצא לאישור בלעדיהן
 _TOK_RE = re.compile(r"^[A-Za-z0-9_-]{2,64}$")
 _IMG_CACHE_MAX = 20
 _PING_GAP = 10
@@ -143,7 +144,14 @@ def notify_agent(G, rec, base) -> bool:
 
 
 def _kit_tick_once(G):
-    """סבב אחד: ממתינים שסומנו review_due → לאישור; מאושרים שסומנו → הודעה לסוכן."""
+    """סבב אחד: ממתינים שסומנו review_due → לאישור; מאושרים שסומנו → הודעה לסוכן.
+    [10/11] תיק שמחכה לבוט מדלן יותר מ-CMA_WAIT_SEC — נבנה מחדש ויוצא לאישור גם בלי ניתוח השוק."""
+    rel = G.get("_kit_cma_release")
+    if rel:
+        try:
+            rel(older=CMA_WAIT_SEC)
+        except Exception as e:
+            log.warning("kit cma release (timeout) failed: %s", e)
     if G["_quiet_hours"]() or G["_shabbat_quiet_now"]():
         return 0
     now, base, sent = _t.time(), _base(), 0
@@ -319,6 +327,86 @@ def register(app, G):
                 log.warning("kit send_review failed: %s", e)
         _spawn(run)
 
+    def addr_taken(src):
+        """[10/11] תיק אחד לכל נכס (אייל): תיק קיים לאותה מודעה או לאותו בעל נכס — בכל מצב. רק בעל המשרד פותח נוסף."""
+        lk, p9 = src.get("listing_key") or "", kc.phone9(src.get("phone"))
+        try:
+            rows = sb().kit_list(None, days=365) or []
+        except Exception as e:
+            log.warning("kit addr_taken failed: %s", e)
+            return None
+        for r in rows:
+            if (lk and r.get("listing_key") == lk) or (p9 and kc.phone9(r.get("owner_phone")) == p9):
+                return r
+        return None
+
+    def cma_wait_for(src):
+        """בקשה לבוט מדלן שנשלחה לכתובת הזו ועוד לא נענתה (עד CMA_WAIT_SEC) → request_id; אחרת None."""
+        try:
+            import cma, cma_bot
+            subj = cma.subject_from_listing({"רחוב": src.get("street") or "", "חדרים": src.get("rooms") or "",
+                                             "עיר / ישוב": kc._norm_city(src.get("city"))})
+            if not subj:
+                return None
+            cfg = G["_load_config"]() or {}
+            now = _t.time()
+            rid, r = cma_bot.recent_request(cfg.get(cma_bot.REQ_CFG) or {}, cma.bot_address(subj), now)
+            if not rid or now - float(r.get("ts") or 0) > CMA_WAIT_SEC:
+                return None
+            if any(x.get("request_id") == rid for x in cfg.get(cma_bot.CFG) or []):
+                return None
+            return rid
+        except Exception as e:
+            log.warning("kit cma_wait_for failed: %s", e)
+            return None
+
+    def finish(kid, snap):
+        """הצילום מוכן → לאישור."""
+        sb().kit_update(kid, {"snapshot": snap, "sent_review_at": _now_iso(), "review_due": False})
+        rec = sb().kit_get(kid)
+        if rec:
+            dispatch_review(rec)
+
+    def build_bg(kid, src, s):
+        """[10/11] הבנייה ברקע (הסוכן מקבל תשובה מיד). אין ניתוח שוק ונשלחה בקשה לבוט — מחכים לתשובה, ורק אז לאישור."""
+        def run():
+            try:
+                snap = kc.build_snapshot(dict(G, _cma_bot_sync=True), src)   # הבקשה לבוט יוצאת לפני שבודקים אם לחכות
+            except Exception as e:
+                log.warning("kit build_snapshot failed: %s", e)
+                sb().kit_update(kid, {"status": "rejected", "reject_reason": "התיק לא נבנה — שלח שוב", "review_due": False})
+                return
+            rid = None if snap.get("cma") else cma_wait_for(src)
+            if rid:
+                snap["_cma_wait"] = {"rid": rid, "since": _t.time()}
+                sb().kit_update(kid, {"snapshot": snap, "review_due": False})
+                log_act(s, "תיק פרזנטציה — מחכה לניתוח שוק", "%s · %s" % (src.get("owner") or "", snap.get("street") or ""))
+                return
+            finish(kid, snap)
+        _spawn(run)
+
+    def cma_release(rid=None, older=None, kid=None):
+        """תיק שמחכה לבוט: התשובה הגיעה (rid), עבר הזמן (older שניות) או בקשה ישירה (kid) → בנייה מחדש ולאישור."""
+        now, n = _t.time(), 0
+        for r in sb().kit_list(None) or []:
+            w = (r.get("snapshot") or {}).get("_cma_wait")
+            if not w or kc.eff_status(r, now) != "pending":
+                continue
+            if not ((rid and w.get("rid") == rid) or (kid and r.get("id") == kid)
+                    or (older is not None and now - float(w.get("since") or 0) > older)):
+                continue
+            try:
+                snap = kc.build_snapshot(G, src_from_rec(r))
+            except Exception as e:
+                log.warning("kit rebuild after cma failed: %s", e)
+                snap = {k: v for k, v in (r.get("snapshot") or {}).items() if k != "_cma_wait"}
+            snap.pop("_cma_wait", None)
+            finish(r["id"], snap)
+            n += 1
+        return n
+
+    G["_kit_cma_release"] = cma_release
+
     def can_touch(s, rec):
         """הסוכן של התיק, מי שיצר אותו, מתאמת על סוכן מהצוות שלה, או מנהל."""
         if not rec:
@@ -403,20 +491,21 @@ def register(app, G):
         w = taken_by(src["phone"])
         if w:
             return taken_resp(w)
-        try:
-            snap = kc.build_snapshot(G, src)
-        except Exception as e:
-            log.warning("kit build_snapshot failed: %s", e)
-            return jsonify({"ok": False, "reason": "build"})
+        if not is_owner(s) and G.get("_kit_one_per_addr", True):
+            w = addr_taken(src)
+            if w:
+                return jsonify({"ok": False, "reason": "exists", "by": w.get("agent_name") or ""})
+        prov = {"owner": src["owner"], "owner_first": src["owner"].split(" ")[0], "street": kc.street_only(src["street"]),
+                "city": src.get("city") or "", "_building": True}
         row = dict(status="pending", agent_name=agent_name, agent_phone=agent_phone, created_by=me,
                    created_by_phone=kc.phone9(s.get("phone")), source=source, listing_key=src["listing_key"],
-                   owner_name=src["owner"], owner_phone=src["phone"], snapshot=snap,
+                   owner_name=src["owner"], owner_phone=src["phone"], snapshot=prov, review_due=False,
                    sent_review_at=_now_iso(), **fresh_tokens())
         rec = sb().kit_insert(row)
         if not rec:
             return jsonify({"ok": False, "reason": "db"})
-        dispatch_review(rec)
-        log_act(s, "תיק פרזנטציה — נשלח לאישור", "%s · %s" % (src["owner"], snap.get("street") or ""))
+        log_act(s, "תיק פרזנטציה — נשלח לבדיקה", "%s · %s" % (src["owner"], prov.get("street") or ""))
+        build_bg(rec["id"], src, s)
         return jsonify({"ok": True, "id": rec["id"], "status": "pending"})
 
     # ── הרשימה של הסוכן ──────────────────────────────────────────────────
@@ -463,7 +552,10 @@ def register(app, G):
                     pass
             if allp:
                 it["agent"] = r.get("agent_name") or ""
-            if st == "pending" and r.get("review_token") and approver:   # [10/11] אישור מהמסך — בלי לחכות לוואטסאפ (שעות שקט)
+            preparing = bool(snap.get("_building") or snap.get("_cma_wait"))
+            if preparing:
+                it["preparing"] = True
+            if st == "pending" and r.get("review_token") and approver and not preparing:   # [10/11] אישור מהמסך — בלי לחכות לוואטסאפ (שעות שקט)
                 it["review_url"] = "/v2/kit/review/" + r["review_token"]
             if st in _SHOW_LINK and r.get("view_token"):
                 url = base + "/k/" + r["view_token"]

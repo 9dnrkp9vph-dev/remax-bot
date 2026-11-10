@@ -48,7 +48,7 @@ CFG = {"v2_office": {"name": "רימקס פמילי"},
 st = {"acts": [], "reviews": [], "src": []}
 sb = SBK()
 SESS = {"t": None}
-G = {"_web_auth": lambda: SESS["t"], "_sbdb": sb, "_load_config": lambda: CFG,
+G = {"_web_auth": lambda: SESS["t"], "_sbdb": sb, "_load_config": lambda: CFG, "_kit_one_per_addr": False,
      "_config_mutate": lambda fn: (True, fn(CFG)),
      "fetch_newborn": lambda: [NB], "_nb_key": lambda r: "id:" + str(r.get("מזהה") or ""),
      "_log_activity": lambda *a: st["acts"].append(a),
@@ -131,7 +131,7 @@ def test_create_nb():
         s0 = st["src"][-1]
         ck(s0["sqm"] == "110" and s0["ptype"] == "דירה" and s0["listing_key"] == "id:77" and s0["street"] == "הנוטר 12"
            and s0["rooms"] == "4" and s0["price"] == "1890000" and s0["meet_at"] == "2026-11-11T17:00", s0)
-        ck(len(st["acts"]) == 1 and st["acts"][0][3] == "תיק פרזנטציה — נשלח לאישור" and st["acts"][0][4] == "משה כהן · הנוטר", st["acts"])
+        ck(len(st["acts"]) == 1 and st["acts"][0][3] == "תיק פרזנטציה — נשלח לבדיקה" and st["acts"][0][4] == "משה כהן · הנוטר", st["acts"])
 
         # nb missing owner / phone / key
         NB2 = dict(NB, **{"מזהה": "78", "שם בעל הנכס": ""}); NB3 = dict(NB, **{"מזהה": "79", "טלפון בעל הנכס-": "05"})
