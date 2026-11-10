@@ -19571,15 +19571,15 @@ def register(app, G):
     # [10/11 אייל: 'לוקח המון זמן להעלות, גם לדשבורד'] המודולים הכבדים והדשבורד נבנים ברקע ע"י ה-warmer
     # (app._warm_once — מיד אחרי עלייה ואז כל 5 דק'), כך שמשתמש לא מחכה לבנייה קרה (נמדד 4-13ש' אחרי פריסה).
     def _crm_warm():
+        try:   # לוח הבקרה ראשון — הכי נפתח
+            G["_swr"]("crmdash", 900, _crm_dash_builder(), max_stale=_CRM_STALE)
+        except Exception as e:
+            if log: log.warning(f"crm warm dashboard: {e}")
         for m in ("calls", "buyers", "signatures", "deals", "invoices", "props", "flows", "ai"):
             try:
                 _crm_records(m)
             except Exception as e:
                 if log: log.warning(f"crm warm {m}: {e}")
-        try:
-            G["_swr"]("crmdash", 900, _crm_dash_builder(), max_stale=_CRM_STALE)
-        except Exception as e:
-            if log: log.warning(f"crm warm dashboard: {e}")
     G["_crm_warm"] = _crm_warm
 
     def _crm_read_err(e):

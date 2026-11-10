@@ -2110,6 +2110,7 @@ def _cache_clear(key):
 # טרי → מוחזר. פג אבל לא ישן מדי → מוחזר מיד + בנייה חדשה ב-thread רקע (לכל היותר אחת לכל מפתח).
 # אין עותק בכלל (או ישן מ-max_stale) → בנייה רגילה בתוך הבקשה, כמו קודם.
 _SWR_BUSY = set()
+_SWR_COLD = {}
 _SWR_LOCK = _threading.Lock()
 def _swr(key, ttl, build, max_stale=1800):
     with _TTL_LOCK:
@@ -2139,10 +2140,19 @@ def _swr(key, ttl, build, max_stale=1800):
                 with _SWR_LOCK:
                     _SWR_BUSY.discard(key)
         return e[1]
-    v = build()
-    if v is not None:
-        _cache_put(key, v)
-    return v
+    # [10/11] בנייה קרה: פעם אחת לכל מפתח — מי שמגיע באמצע מחכה לתוצאה (אחרי פריסה ה-warmer ובקשות
+    # בנו את אותו דבר במקביל על מעבד אחד ולוח הבקרה נתקע 60ש'+)
+    with _SWR_LOCK:
+        lk = _SWR_COLD.setdefault(key, _threading.RLock())
+    with lk:
+        with _TTL_LOCK:
+            e = _TTL_CACHE.get(key)
+        if e and (time.time() - e[0]) < max_stale:
+            return e[1]
+        v = build()
+        if v is not None:
+            _cache_put(key, v)
+        return v
 
 # [DEALS 13/10] אייל: "למה הוא לא סורק במשרד שלנו גם נכסים להשכרה ונכסים מסחריים?" — מ-v13.45 הסורק
 # מביא גם השכרה ומסחרי מסניפי Family. fetch_sheet_rows נשאר מכירה בלבד (כל הצרכנים הקיימים);
