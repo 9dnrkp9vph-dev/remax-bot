@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 import datetime as _dt
+import logging
 import re
 
 MADLAN_HEADERS = ("יום מכירה", "כתובת", "מחיר (₪)", "סוג נכס", "חדרים", "שטח (מ״ר)", "קומה", "מחיר (₪) למ״ר", "שנת בנייה")
@@ -610,6 +611,7 @@ def cma_block(G, listing):
 def ask_bot_async(G, listing):
     subj = subject_from_listing(listing or {})
     if not subj:
+        logging.getLogger("cma").info("cma: no subject (street/rooms missing) — bot not asked")
         return False
     addr = (subj["street"] + (" %d" % subj["house"] if subj.get("house") is not None else "")
             + (", " + subj["city"] if subj.get("city") else ""))
@@ -617,9 +619,10 @@ def ask_bot_async(G, listing):
     def run():
         try:
             import cma_bot
-            cma_bot.request_bot(G, addr, "תיק פרזנטציה")
+            r = cma_bot.request_bot(G, addr, "תיק פרזנטציה")
+            logging.getLogger("cma").info("cma ask bot: %s -> %s", addr, {k: r.get(k) for k in ("ok", "reason", "reused", "status")})
         except Exception as e:
-            lg = G.get("log")
+            lg = G.get("log") or logging.getLogger("cma")
             if lg:
                 lg.warning(f"cma ask bot: {e}")
     if G.get("_cma_bot_sync"):
@@ -640,7 +643,7 @@ def cma_full(G, listing):
         subj["street"] = canon_street(subj["street"], known)
         return cma_compute(subj, deals, listings, _today_il())
     except Exception as e:
-        lg = G.get("log")
+        lg = G.get("log") or logging.getLogger("cma")
         if lg:
             lg.warning(f"cma_block: {e}")
         return None
@@ -697,7 +700,7 @@ def register(app, G):
         try:
             G["_sbdb"].market_upsert(rows)
         except Exception as e:
-            lg = G.get("log")
+            lg = G.get("log") or logging.getLogger("cma")
             if lg:
                 lg.error(f"cma upload save: {e}")
             return jsonify({"ok": False, "reason": "save"})
