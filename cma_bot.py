@@ -14,6 +14,9 @@ import time
 KEEP = 20
 MAX_DEALS = 500
 CFG = "v2_cma_bot"
+REQ_CFG = "v2_cma_bot_req"     # בקשות שנשלחו לבוט: {request_id: {ts, address, akey, by, ok}}
+REQ_DEDUP_DAYS = 7             # אותה כתובת שוב תוך שבוע — לא שולחים שוב לבוט
+REQ_KEEP_DAYS = 30
 
 
 def _key():
@@ -59,6 +62,103 @@ def push(lst, rec):
     return lst[:KEEP]
 
 
+def addr_key(a):
+    return " ".join(str(a or "").replace("קריית", "קרית").replace(",", " ").split())
+
+
+def daily_cap():
+    try:
+        return int(os.environ.get("CMA_BOT_DAILY", "30"))
+    except ValueError:
+        return 30
+
+
+def recent_request(reqs, address, now):
+    """בקשה שנשלחה בהצלחה לאותה כתובת בשבוע האחרון → (request_id, רשומה), אחרת (None, None)."""
+    k = addr_key(address)
+    best = (None, None)
+    for rid, r in (reqs or {}).items():
+        if r.get("ok") and r.get("akey") == k and now - float(r.get("ts") or 0) <= REQ_DEDUP_DAYS * 86400:
+            if best[1] is None or r["ts"] > best[1]["ts"]:
+                best = (rid, r)
+    return best
+
+
+def sent_today(reqs, now):
+    return sum(1 for r in (reqs or {}).values() if now - float(r.get("ts") or 0) < 86400)
+
+
+def request_bot(G, address, by="", force=False):
+    """שולח כתובת לבוט (פעם בשבוע לכל כתובת, עד CMA_BOT_DAILY ביום). משמש את מסך ניתוח השוק ואת התיק.
+    מחזיר {ok, request_id, reused?, reason?, status?}."""
+    url = (os.environ.get("CMA_BOT_URL") or "").strip()
+    if not url:
+        return {"ok": False, "reason": "no_bot_url"}
+    addr = str(address or "").strip()[:200]
+    if not addr:
+        return {"ok": False, "reason": "no_address"}
+    now = time.time()
+    reqs = (G["_load_config"]().get(REQ_CFG) or {})
+    if not force:
+        rid, r = recent_request(reqs, addr, now)
+        if rid:
+            return {"ok": True, "request_id": rid, "reused": True}
+    if sent_today(reqs, now) >= daily_cap():
+        return {"ok": False, "reason": "daily_cap"}
+    rid = "cma-" + secrets.token_hex(6)
+    try:
+        import requests
+        r = requests.post(url, json={"request_id": rid, "address": addr}, headers=bot_headers(), timeout=20)
+        ok, code = r.status_code < 300, r.status_code
+    except Exception as e:
+        ok, code = False, str(e)[:120]
+    rec = {"ts": now, "address": addr, "akey": addr_key(addr), "by": str(by or "")[:40], "ok": ok}
+
+    def _m(cfg):
+        d = cfg.setdefault(REQ_CFG, {})
+        d[rid] = rec
+        for k in [k for k, v in d.items() if now - float((v or {}).get("ts") or 0) > REQ_KEEP_DAYS * 86400]:
+            d.pop(k, None)
+    try:
+        G["_config_mutate"](_m)
+    except Exception:
+        pass
+    try:
+        G["_log_activity"]("אפי", "system", "", "CMA — בקשה לבוט מדלן",
+                           ("%s · %s" % (addr, "נשלח" if ok else "נכשל"))[:60])
+    except Exception:
+        pass
+    out = {"ok": ok, "request_id": rid, "status": code}
+    if not ok:
+        out["reason"] = "bot_error"
+    return out
+
+
+def _save_async(G, rid, address, deals):
+    """העסקאות שחזרו → מאגר העסקאות של ה-CMA (ברקע — הבוט מקבל תשובה מיד)."""
+    def run():
+        try:
+            import cma
+            st = cma.ingest_bot(G, address, deals)
+            res = {"saved": st.get("n", 0), "bad": st.get("bad", 0)}
+        except Exception as e:
+            res = {"save_error": str(e)[:160]}
+        def _m(cfg):
+            for r in cfg.get(CFG) or []:
+                if r.get("request_id") == rid:
+                    r.update(res)
+                    break
+        try:
+            G["_config_mutate"](_m)
+        except Exception:
+            pass
+    if G.get("_cma_bot_sync"):        # בדיקות
+        run()
+        return
+    import threading
+    threading.Thread(target=run, daemon=True, name="cma-bot-save").start()
+
+
 def register(app, G):
     from flask import jsonify, request
 
@@ -83,7 +183,11 @@ def register(app, G):
             except Exception:
                 body = {}
         rec = ingest_record(body)
+        if not rec["address"]:   # הבוט לא החזיר כתובת — לפי הבקשה שלנו
+            rec["address"] = ((G["_load_config"]().get(REQ_CFG) or {}).get(rec["request_id"]) or {}).get("address", "")
         G["_config_mutate"](lambda cfg: cfg.__setitem__(CFG, push(cfg.get(CFG), rec)))
+        if rec["address"] and rec["deals"]:
+            _save_async(G, rec["request_id"], rec["address"], rec["deals"])
         try:
             G["_log_activity"]("בוט מדלן", "system", "", "CMA — תוצאות מבוט מדלן",
                                ("%s · %d עסקאות" % (rec["address"], rec["n"]))[:60])
@@ -103,24 +207,33 @@ def register(app, G):
 
     @app.route("/v2/api/cma/bot_request", methods=["POST"])
     def cma_bot_request():
-        if not _allowed():
-            return jsonify({"ok": False, "reason": "forbidden"}), 403
-        url = (os.environ.get("CMA_BOT_URL") or "").strip()
-        if not url:
-            return jsonify({"ok": False, "reason": "no_bot_url"})
-        addr = str((request.get_json(silent=True) or {}).get("address") or "").strip()[:200]
-        if not addr:
-            return jsonify({"ok": False, "reason": "no_address"})
-        rid = "cma-" + secrets.token_hex(6)
+        """בעל המשרד / המפתח — תמיד; כל משתמש מחובר — דרך מסך ניתוח השוק (עם התקרה היומית)."""
         try:
-            import requests
-            r = requests.post(url, json={"request_id": rid, "address": addr}, headers=bot_headers(), timeout=20)
-            ok, code = r.status_code < 300, r.status_code
-        except Exception as e:
-            ok, code = False, str(e)[:120]
-        try:
-            G["_log_activity"]("אפי", "system", "", "CMA — בקשה לבוט מדלן",
-                               ("%s · %s" % (addr, "נשלח" if ok else "נכשל"))[:60])
+            sess = G["_web_auth"]()
         except Exception:
-            pass
-        return jsonify({"ok": ok, "request_id": rid, "status": code})
+            sess = None
+        if not (key_ok(request.headers.get("X-CMA-Key", "")) or sess):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        force = bool(b.get("force")) and _allowed()
+        return jsonify(request_bot(G, b.get("address"), (sess or {}).get("name", "מפתח"), force=force))
+
+    @app.route("/v2/api/cma/bot_status", methods=["GET"])
+    def cma_bot_status():
+        """לכל משתמש מחובר: האם התשובה לבקשה הגיעה ונשמרה. בלי פרטי העסקאות."""
+        try:
+            sess = G["_web_auth"]()
+        except Exception:
+            sess = None
+        if not (sess or key_ok(request.headers.get("X-CMA-Key", ""))):
+            return jsonify({"ok": False, "reason": "auth"}), 401
+        rid = (request.args.get("id") or "").strip()
+        cfg = G["_load_config"]()
+        req = (cfg.get(REQ_CFG) or {}).get(rid)
+        res = next((r for r in cfg.get(CFG) or [] if r.get("request_id") == rid), None)
+        if not req and not res:
+            return jsonify({"ok": False, "reason": "unknown"})
+        out = {"ok": True, "sent_at": (req or {}).get("ts"), "done": bool(res)}
+        if res:
+            out.update(n=res.get("n", 0), saved="saved" in res or "save_error" in res, error=bool(res.get("save_error")))
+        return jsonify(out)

@@ -14229,6 +14229,13 @@ try:
 except Exception as _dialer_err:
     log.error(f"dialer init failed (app unaffected): {_dialer_err}")
 
+# ── ניתוח שוק (CMA) — העלאת עסקאות ממדלן, טווח מחיר לתיק הפרזנטציה (אייל 06/11) — מודול נפרד ──
+try:
+    import cma as _cma
+    _cma.register(app, globals())
+except Exception as _cma_err:
+    log.error(f"cma init failed (app unaffected): {_cma_err}")
+
 # ── CMA: בוט מדלן חיצוני — שליחת כתובת וקבלת עסקאות (אייל 10/11, שלב בדיקה) — מודול נפרד ──
 try:
     import cma_bot as _cma_bot

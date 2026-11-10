@@ -52,6 +52,38 @@ def _approver9(G):
     return kc.phone9(devs[0]) if devs else ""
 
 
+def cma_query(src):
+    """פרטי התיק → פרמטרים למסך ניתוח השוק (/v2/cma?...)."""
+    from urllib.parse import urlencode
+    import re as _re
+    st = str(src.get("street") or "").strip()
+    m = _re.match(r"^(.*?)\s*(\d+)\s*$", st)
+    street, house = (m.group(1).strip(), m.group(2)) if m else (st, "")
+    q = {"street": street, "house": house, "city": src.get("city") or "", "rooms": src.get("rooms") or "",
+         "sqm": src.get("sqm") or "", "ptype": src.get("ptype") or ""}
+    return urlencode({k: v for k, v in q.items() if v})
+
+
+def cma_review_html(c):
+    """לאייל בלבד, בדף האישור: הטווח האמיתי של ה-CMA ועל מה הוא מבוסס (בעל הנכס רואה רק טווח מטושטש)."""
+    if not c or not c.get("range"):
+        return ""
+    from html import escape as e
+    fm = lambda v: "{:,}".format(int(v)) if v not in (None, "") else ""
+    head = "טווח ה-CMA: %s–%s ₪ · מבוסס על %s עסקאות" % (fm(c["range"][0]), fm(c["range"][1]), c.get("n_used") or 0)
+    rows = []
+    for x in [x for x in (c.get("comps") or []) if x.get("used")][:7]:
+        p = str(x.get("date") or "").split("-")
+        dd = "%s/%s/%s" % (p[2], p[1], p[0]) if len(p) == 3 else ""
+        bits = [dd, ("%s חד׳" % x["rooms"]) if x.get("rooms") is not None else "", ("%s מ\"ר" % x["sqm"]) if x.get("sqm") else "",
+                fm(x.get("price")) + " ₪" if x.get("price") else ""]
+        rows.append("<li>%s%s</li>" % (e(" · ".join(b for b in bits if b)), " · עסקה שלנו" if x.get("ours") else ""))
+    return ("<section class=\"bar\" style=\"margin-bottom:12px\"><div class=\"status\">%s</div>"
+            "<ul style=\"margin:8px 0 0;padding-inline-start:20px;font-size:15px;line-height:1.7\">%s</ul>"
+            "<div style=\"font-size:13px;color:#6B7280;margin-top:6px\">בעל הנכס רואה רק טווח מטושטש. רק אתה רואה את השורה הזאת.</div></section>") % (
+        e(head), "".join(rows))
+
+
 def send_review(G, rec, base) -> bool:
     """שולח לאייל (או KIT_APPROVER) בוואטסאפ קישור לאישור התיק. בשעות שקט/שבת — מסמן review_due לסבב הבא."""
     sb = G["_sbdb"]
@@ -408,6 +440,11 @@ def register(app, G):
                   "views": {"opens": int(v.get("opens") or 0), "secs": int(v.get("secs") or 0), "last": v.get("last")}}
             if w:
                 it["taken_by"] = w.get("agent_name") or ""
+            if snap.get("cma"):   # כפתור 'ניתוח שוק' — פותח את מסך הסוכן עם פרטי הנכס (חישוב חי, עם מספרי בית)
+                try:
+                    it["cma_q"] = cma_query(src_from_rec(r))
+                except Exception:
+                    pass
             if allp:
                 it["agent"] = r.get("agent_name") or ""
             if st in _SHOW_LINK and r.get("view_token"):
@@ -647,9 +684,9 @@ def register(app, G):
             act = "<section class=\"bar\"><div class=\"status\">%s</div></section>" % esc(line)
             script = ""
         body = ("<main class=\"wrap\"><header class=\"head\"><div class=\"off\">%s</div><h1>תיק פרזנטציה לאישור</h1>"
-                "<p>%s · %s · %s</p></header>%s<div class=\"pages\">%s</div></main>") % (
+                "<p>%s · %s · %s</p></header>%s%s<div class=\"pages\">%s</div></main>") % (
             esc(office_name()), esc(rec.get("agent_name")), esc(rec.get("owner_name") or snap.get("owner")), esc(place),
-            act, imgs)
+            cma_review_html(snap.get("cma")), act, imgs)
         return resp(shell("תיק פרזנטציה לאישור", body, script))
 
     @app.route("/v2/kit/review/<tok>", methods=["POST"])

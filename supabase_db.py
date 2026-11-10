@@ -1871,3 +1871,45 @@ def deal_history_set_missing(keys, ts):
         r.raise_for_status()
         n += len(part)
     return n
+
+
+# ── [CMA 06/11] עסקאות שוק מקבצי מדלן (אייל מעלה פעם בחודש לכל שכונה) — market_deals ──
+_MKT_COLS = ("deal_key", "source", "nb", "file_name", "deal_date", "city", "street", "house", "project",
+             "ptype", "rooms", "sqm", "floor", "price", "ppm", "year_built", "bad")
+
+
+def market_upsert(rows):
+    """הוספה בלבד: מפתח שכבר קיים לא משתנה (עסקה נשארת בשכונה של הקובץ הראשון). מחזיר כמה נשלחו."""
+    out = []
+    for r in rows or []:
+        out.append(dict({k: r.get(k) for k in _MKT_COLS}, office_id=SB_OFFICE_ID))
+    n = 0
+    for i in range(0, len(out), 200):
+        part = out[i:i + 200]
+        r = requests.post(SUPABASE_URL + "/rest/v1/market_deals",
+                          headers={**_headers(), "Prefer": "resolution=ignore-duplicates,return=minimal"},
+                          params={"on_conflict": "office_id,deal_key"}, json=part, timeout=max(_TIMEOUT, 60))
+        r.raise_for_status()
+        n += len(part)
+    return n
+
+
+def market_all(since):
+    """כל עסקאות השוק של המשרד מתאריך since (YYYY-MM-DD)."""
+    return _get_all("market_deals", ",".join(_MKT_COLS) + ",uploaded_at",
+                    {"deal_date": "gte." + str(since), "order": "deal_date.desc,id.asc"})
+
+
+def market_files():
+    """[{nb, last_upload, n, min_date, max_date}] — לכל שכונה שהועלתה."""
+    agg = {}
+    for r in market_all("1900-01-01") or []:
+        a = agg.setdefault(r.get("nb") or "", {"nb": r.get("nb") or "", "last_upload": "", "n": 0,
+                                              "min_date": None, "max_date": None})
+        a["n"] += 1
+        a["last_upload"] = max(a["last_upload"], str(r.get("uploaded_at") or ""))
+        d = r.get("deal_date")
+        if d:
+            a["min_date"] = d if not a["min_date"] or d < a["min_date"] else a["min_date"]
+            a["max_date"] = d if not a["max_date"] or d > a["max_date"] else a["max_date"]
+    return sorted(agg.values(), key=lambda a: a["nb"])
