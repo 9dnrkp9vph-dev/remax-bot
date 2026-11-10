@@ -721,13 +721,90 @@ def _p_cma(snap, n):
     ld.text(((width - 40 - _tl(ld, vis, fr)) / 2, 18), vis, font=fr, fill=NAVY)
     im.paste(lay.filter(ImageFilter.GaussianBlur(radius=16)), (PAD + 20, y + 100))
     d = ImageDraw.Draw(im)
-    ov = "אציג לך בפגישה, עם כל העסקאות"
+    ov = "את הטווח המדויק אציג לך בפגישה"
     _line_c(d, ov, _fit(d, ov, 800, 48, width - 100), W / 2, y + 272, KICK)
     y += h + 30
     meet = _meet_line(snap.get("meet_at"))
     if meet and y + 140 < H - 160:
         d.rounded_rectangle((PAD, y, W - PAD, y + 140), radius=CARD_R, fill=GOLD)
         _line_c(d, meet, _fit(d, meet, 800, 54, width - 80), W / 2, y + 40, ONGOLD)
+    _footer(d, snap, n, False)
+    return im
+
+
+def _deal_meta(c):
+    bits = []
+    if c.get("rooms") is not None:
+        bits.append("%s חד׳" % c["rooms"])
+    if c.get("sqm"):
+        bits.append("%s מ\"ר" % c["sqm"])
+    fl = str(c.get("floor") if c.get("floor") is not None else "").strip()
+    if fl:
+        bits.append("קרקע" if fl in ("0", "ק", "קרקע") else "קומה " + fl)
+    p = str(c.get("date") or "").split("-")
+    if len(p) == 3:
+        bits.append("%s/%s" % (p[1], p[0]))
+    return " · ".join(bits)
+
+
+def _p_cma_deals(snap, n):
+    """עמוד שני של ניתוח השוק (אייל 10/11): העסקאות שעליהן מבוסס הטווח, הכי קרוב לבית קודם, + מתחרות עכשיו.
+    בלי מקור הנתונים, בלי מספר הבית של הנכס ובלי מספרי בית של מודעות מתחרות."""
+    im, d = _page(CREAM)
+    c = snap.get("cma") or {}
+    width = W - 2 * PAD
+    y = _kicker(d, "העסקאות שמאחורי הניתוח", False)
+    f, ls = _block(d, "נמכרו לאחרונה, הכי קרוב אליך", 900, 80, width, 2)
+    y = _lines(d, ls, f, W - PAD, y + 10, NAVY, 96) + 30
+    deals = [x for x in (c.get("comps") or []) if x.get("used")][:8]
+    lst = [x for x in (c.get("listings") or []) if x.get("price")][:3]
+    room_y = H - 190
+    rh = 142
+    deals = deals[:max(0, int((room_y - y - 40) // rh))]          # קודם העסקאות
+    left = room_y - (y + (40 + rh * len(deals) + 30 if deals else 0))
+    lst = lst[:max(0, int((left - 90) // 110))]                      # מתחרות — רק כמה שנכנסות
+    if deals:
+        h = 40 + rh * len(deals)
+        _card(d, y, y + h)
+        yy = y + 30
+        for i, x in enumerate(deals):
+            addr = ("%s %s" % (x.get("street") or "", x.get("house") if x.get("house") is not None else "")).strip()
+            fp = _font(900, 50)
+            price = _fmt_n(x.get("price"))
+            pw = _tl(d, price, fp)
+            d.text((PAD + 44, yy + 4), price, font=fp, fill=NAVY)
+            ours = bool(x.get("ours"))
+            chip = "נמכר דרכנו"
+            fc = _font(700, 32)
+            cw = (_tl(d, _rtl(chip), fc) + 36) if ours else 0
+            fa = _fit(d, addr, 800, 46, width - 88 - pw - 40 - cw, 30)
+            vis = _clip(d, addr, fa, width - 88 - pw - 40 - cw)
+            ax = W - PAD - 44
+            d.text((ax - _tl(d, vis, fa), yy + 6), vis, font=fa, fill=NAVY)
+            if ours:
+                cx = ax - _tl(d, vis, fa) - 18
+                d.rounded_rectangle((cx - cw, yy + 10, cx, yy + 58), radius=24, fill=(0xFB, 0xF4, 0xE2))
+                d.text((cx - cw + 18, yy + 14), _rtl(chip), font=fc, fill=KICK)
+            meta = _deal_meta(x)
+            _line_r(d, meta, _fit(d, meta, 500, 38, width - 88, 26), ax, yy + 72, MUTED2)
+            if i < len(deals) - 1:
+                d.line((PAD + 44, yy + rh - 16, W - PAD - 44, yy + rh - 16), fill=(0xEE, 0xE9, 0xDD), width=3)
+            yy += rh
+        y += h + 30
+    if lst:
+        h = 90 + 110 * len(lst)
+        _card(d, y, y + h)
+        _line_r(d, "מתחרות בך עכשיו", _font(800, 44), W - PAD - 44, y + 30, KICK)
+        yy = y + 100
+        for x in lst:
+            where = "ברחוב שלך" if x.get("same_street") else "בסביבה"
+            meta = " · ".join(b for b in (("%s חד׳" % x["rooms"]) if x.get("rooms") is not None else "",
+                                           ("%s מ\"ר" % x["sqm"]) if x.get("sqm") else "", where) if b)
+            price = _fmt_n(x.get("price"))
+            fp = _font(800, 46)
+            d.text((PAD + 44, yy), price, font=fp, fill=NAVY)
+            _line_r(d, meta, _fit(d, meta, 500, 42, width - 88 - _tl(d, price, fp) - 40, 28), W - PAD - 44, yy + 4, NAVY)
+            yy += 110
     _footer(d, snap, n, False)
     return im
 
@@ -788,11 +865,13 @@ def _p_next(snap, n):
 
 
 def render_pages(snap):
-    """צילום → רשימת עמודים (RGB 1080×1920): כריכה, סוכן, הכוח שלנו, תוכנית, קונים, [ניתוח שוק], הצעד הבא."""
+    """צילום → רשימת עמודים (RGB 1080×1920): כריכה, סוכן, הכוח שלנו, תוכנית, קונים, [ניתוח שוק — עד 2], הצעד הבא."""
     s = snap or {}
     order = [_p_cover, _p_agent, _p_power, _p_plan, _p_buyers]
-    if s.get("cma"):
+    if s.get("cma"):   # ניתוח שוק — עד 2 עמודים (אייל 10/11): המספרים והטווח, ואז רשימת העסקאות
         order.append(_p_cma)
+        if any(x.get("used") for x in (s["cma"].get("comps") or [])):
+            order.append(_p_cma_deals)
     order.append(_p_next)
     return [fn(s, i + 1) for i, fn in enumerate(order)]
 

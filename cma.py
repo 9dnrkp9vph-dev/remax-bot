@@ -582,19 +582,24 @@ def clear_cache(G):
 
 
 def strip_addresses(res):
-    """הגרסה שנשמרת בצילום התיק (ב-DB): בלי שם רחוב ובלי מספרי בית — לא של הנכס ולא של העסקאות
-    (בקשת צ'אט התיק 08/11). נשארים הטווח, המספרים והשורות בלי כתובת."""
+    """הגרסה שנשמרת בצילום התיק (ב-DB) ומוצגת לבעל הנכס.
+    אייל 10/11: בעל הנכס רואה את רשימת העסקאות — לכן לעסקאות נשארים רחוב ומספר בית (כתובת ציבורית של עסקה,
+    בלי מספר דירה). מה שיוצא: מספר הבית של הנכס עצמו, ומספרי הבית של המודעות המתחרות (דירות של אנשים
+    שעוד מוכרים) — שם רק 'ברחוב שלך' או 'בשכונה'."""
     if not res:
         return res
     out = {k: v for k, v in res.items() if k not in ("subject", "comps", "listings")}
-    out["subject"] = {k: v for k, v in (res.get("subject") or {}).items() if k not in ("street", "house")}
-    out["comps"] = [{k: v for k, v in c.items() if k not in ("street", "house")} for c in res.get("comps") or []]
-    out["listings"] = [{k: v for k, v in x.items() if k not in ("street", "house")} for x in res.get("listings") or []]
+    subj = res.get("subject") or {}
+    out["subject"] = {k: v for k, v in subj.items() if k != "house"}
+    out["comps"] = [dict(c) for c in res.get("comps") or []]
+    out["listings"] = [dict({k: v for k, v in x.items() if k not in ("street", "house")},
+                            same_street=bool(x.get("street")) and x.get("street") == subj.get("street"))
+                       for x in res.get("listings") or []]
     return out
 
 
 def cma_block(G, listing):
-    """הוק תיק הפרזנטציה: פרטי הנכס → נתוני עמוד ה-CMA בלי כתובות (strip_addresses), או None.
+    """הוק תיק הפרזנטציה: פרטי הנכס → נתוני עמודי ה-CMA (strip_addresses), או None.
     אין מספיק עסקאות → מבקשים מבוט מדלן ברקע (פעם בשבוע לכתובת), כדי שבבנייה הבאה של התיק יהיה עמוד."""
     res = cma_full(G, listing)
     if res is None:

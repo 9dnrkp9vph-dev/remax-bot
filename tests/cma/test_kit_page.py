@@ -60,7 +60,36 @@ def test_pages_with_and_without_cma():
     s = RV.sample()
     s.pop("cma", None)
     assert len(KR.render_pages(s)) == 6
-    assert len(KR.render_pages(snap(block()))) == 7
+    assert len(KR.render_pages(snap(block()))) == 8          # ניתוח שוק — 2 עמודים
+    no_used = block(comps=[dict(x, used=False) for x in block()["comps"]])
+    assert len(KR.render_pages(snap(no_used))) == 7
+
+
+def deals_text(monkeypatch, s):
+    from PIL import ImageDraw
+    seen = []
+    orig = ImageDraw.ImageDraw.text
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", lambda self, xy, t, *a, **k: (seen.append(str(t)), orig(self, xy, t, *a, **k))[1])
+    im = KR._p_cma_deals(s, 7)
+    return im, seen
+
+
+def test_deals_page(monkeypatch):
+    c = block()
+    c["comps"][1]["ours"] = True
+    lo, hi = c["range"]
+    im, seen = deals_text(monkeypatch, snap(c))
+    text = " ".join(seen)
+    assert im.size == (1080, 1920)
+    used = [x for x in c["comps"] if x["used"]]
+    for x in used:
+        assert "{:,}".format(x["price"]) in text
+    assert any(KR._rtl("מנחם בגין 10") == t for t in seen)
+    assert KR._rtl("נמכר דרכנו") in seen
+    for bad in ("{:,}".format(lo), "{:,}".format(hi), "מדלן"):
+        assert bad not in text and KR._rtl(bad) not in text
+    assert not any(KR._rtl("מנחם בגין 12") == t for t in seen)
+    assert not any("29" in t for t in seen if "חד" in t or "ברחוב" in t[::-1])
 
 
 def test_review_shows_range_owner_view_does_not():
@@ -70,11 +99,10 @@ def test_review_shows_range_owner_view_does_not():
     RV.sb.kit_update(rec["id"], {"snapshot": snap(c)})
     h = RV.c.get("/v2/kit/review/" + rec["review_token"]).get_data(as_text=True)
     assert "{:,}".format(lo) in h and "{:,}".format(hi) in h and "מבוסס על 7 עסקאות" in h
-    assert "מנחם בגין 10" not in h
     v = RV.mk("approved")
     RV.sb.kit_update(v["id"], {"snapshot": snap(c)})
     hv = RV.c.get("/k/" + v["view_token"]).get_data(as_text=True)
-    assert "{:,}".format(lo) not in hv and "{:,}".format(hi) not in hv and hv.count("<img") == 7
+    assert "{:,}".format(lo) not in hv and "{:,}".format(hi) not in hv and hv.count("<img") == 8
 
 
 def test_review_without_cma_has_no_line():

@@ -173,10 +173,10 @@ def main():
         if isinstance(o, list):
             return set().union(*[keys(v) for v in o]) if o else set()
         return set()
-    ck("מנחם בגין" not in repr(blk) and not ({"street", "house"} & keys(blk)),
-       "cma_block (stored in the kit snapshot) has no street or house number")
-    ck(blk["street_count"] >= 1 and blk["n_used"] == 7 and blk["comps"][0]["price"],
-       "cma_block keeps counts, range and street-free rows")
+    ck("house" not in blk["subject"] and all("house" not in x and "street" not in x for x in blk["listings"]),
+       "cma_block (kit snapshot, shown to the owner): no house number of the property or of competing listings")
+    ck(blk["street_count"] >= 1 and blk["n_used"] == 7 and blk["comps"][0]["price"] and blk["comps"][0]["house"] is not None,
+       "cma_block keeps counts, range and the deals with their address (Eyal 10/11: the owner sees the deals)")
     j = c.get(q, headers={"X-Auth-Token": "t-agent"}).get_json()
     ck(j["cma"]["comps"][0].get("house") is not None, "agent view keeps house numbers")
     import cma_bot
