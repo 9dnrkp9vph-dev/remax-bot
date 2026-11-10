@@ -20045,7 +20045,9 @@ def register(app, G):
     def _maskyoo_rec_accounts():
         out = []
         for acct, env in (("zipper_993", "MASKYOO_TOKEN_ZIPPER"), ("bislani_763", "MASKYOO_TOKEN_BISLANI")):
-            t = (os.environ.get(env) or "").strip()
+            t = (os.environ.get(env) or "").strip().strip('"\'').strip()
+            if t.lower().startswith("bearer "):          # הודבק עם המילה Bearer
+                t = t[7:].strip()
             if t:
                 out.append((acct, t))
         return out
@@ -20077,7 +20079,8 @@ def register(app, G):
                     _REC_CACHE.pop(next(iter(_REC_CACHE)))
                 _REC_CACHE[uuid] = (r.content, ct)
                 return _REC_CACHE[uuid]
-            if log: log.info(f"maskyoo record {acct}: no audio (HTTP {r.status_code}, {ct}, {len(r.content)}B)")
+            if log: log.info(f"maskyoo record {acct}: no audio (HTTP {r.status_code}, {ct}, {len(r.content)}B) "
+                             f"token len={len(tok)} head={tok[:4]} body={r.content[:80]!r}")
         return None
 
     @app.route("/v2/api/crm/calls/audio", methods=["GET"])
