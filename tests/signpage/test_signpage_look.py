@@ -76,3 +76,10 @@ DOCS["tokFMT0000000008"] = {"status": "signed", "header": "לקוח: גל · ט�
 st, h = page("tokFMT0000000008")
 ck("2,090,000 ₪" in h and "2,390,000 ₪" in h and "טלפון: <u>052-3204372</u>" in h, h[h.find("cline"):h.find("cline")+400])
 print("OK3", n)
+# 8) [10/11] הפניה לסעיף לא נשברת + 'בוואטסאפ' בסעיף ההסכמה בכל הנוסחים
+k = A._sign_keep_refs("יחוייב בדמי תיווך כמסומן בסעיף 5.1 וגם 5.2.\n   5.5 במידה")
+ck(k == "יחוייב בדמי תיווך כמסומן בסעיף 5.1 וגם <bdi>5.2</bdi>.\n   5.5 במידה", repr(k))
+ck(A._sign_keep_refs("ת.ז 039627989, מ.ר 20039") == "ת.ז 039627989, מ.ר 20039")
+for t in ("buyer_both", "buyer_buy", "buyer_rent", "seller_both", "exclusive"):
+    ck("אפשרויות מימון בוואטסאפ ובכלל." in A._DEFAULT_CONTRACTS[t], t)
+print("OK4", n)
