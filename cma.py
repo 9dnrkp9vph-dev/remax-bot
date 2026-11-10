@@ -398,7 +398,7 @@ def cma_compute(subject, deals, listings, today):
     pk = ptype_key(subject.get("ptype"))
     nb = subject_nb(subject["street"], subject.get("city"), deals)
     ok = [r for r in deals or [] if not r.get("bad") and r.get("deal_date") and r["deal_date"] >= since_s
-          and r.get("rooms") is not None and r.get("ptype") and ptype_key(r["ptype"]) == pk and r.get("price")]
+          and r.get("rooms") is not None and ptype_key(r.get("ptype")) == pk and r.get("price")]  # בלי סוג (בוט מדלן) = דירה
     street = [r for r in ok if _same_street(r, subject)]
     nbrs = [r for r in ok if nb and r.get("nb") == nb and not _same_street(r, subject)]
     h = subject.get("house")
