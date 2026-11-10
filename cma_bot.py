@@ -2,7 +2,7 @@
 
 שלב בדיקה בלבד: כאן רק השליחה, הקבלה והשמירה של מה שחזר. החישוב (cma.py) לא מחובר עדיין.
 אימות: מפתח סודי ב-env CMA_BOT_KEY בכותרת X-CMA-Key (גם לבוט וגם לקריאת התוצאות),
-או סשן של בעל המשרד. כתובת הבוט: env CMA_BOT_URL.
+או סשן של בעל המשרד. כתובת הבוט: env CMA_BOT_URL, וההזדהות מולו: env CMA_BOT_AUTH.
 נשמר בקונפיג v2_cma_bot — 20 התשובות האחרונות, עד 500 עסקאות לתשובה.
 """
 import hmac
@@ -23,6 +23,15 @@ def _key():
 def key_ok(k):
     kk = _key()
     return bool(kk) and bool(k) and hmac.compare_digest(str(k), kk)
+
+
+def bot_headers():
+    """env CMA_BOT_AUTH = הערך של כותרת Authorization מפאנל ה-webhook של הבוט (למשל 'Bearer ...').
+    מקבל גם הדבקה של השורה כולה ('Authorization: Bearer ...')."""
+    v = (os.environ.get("CMA_BOT_AUTH") or "").strip().strip('"').strip("'")
+    if v.lower().startswith("authorization:"):
+        v = v.split(":", 1)[1].strip()
+    return {"Authorization": v} if v else {}
 
 
 def ingest_record(body, now=None):
@@ -105,7 +114,7 @@ def register(app, G):
         rid = "cma-" + secrets.token_hex(6)
         try:
             import requests
-            r = requests.post(url, json={"request_id": rid, "address": addr}, timeout=20)
+            r = requests.post(url, json={"request_id": rid, "address": addr}, headers=bot_headers(), timeout=20)
             ok, code = r.status_code < 300, r.status_code
         except Exception as e:
             ok, code = False, str(e)[:120]

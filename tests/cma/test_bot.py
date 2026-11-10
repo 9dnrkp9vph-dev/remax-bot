@@ -56,12 +56,18 @@ ck(c.post("/v2/api/cma/bot_request", json={"address": "a"}, headers=K).get_json(
 os.environ["CMA_BOT_URL"] = "https://bot.example/hook"
 sent = {}
 fake = types.ModuleType("requests")
-fake.post = lambda url, json=None, timeout=None: sent.update(url=url, json=json) or types.SimpleNamespace(status_code=200)
+fake.post = lambda url, json=None, headers=None, timeout=None: sent.update(url=url, json=json, headers=headers) or types.SimpleNamespace(status_code=200)
+os.environ["CMA_BOT_AUTH"] = "Authorization: Bearer tok123"
 sys.modules["requests"] = fake
 ck(c.post("/v2/api/cma/bot_request", json={"address": ""}, headers=K).get_json()["reason"] == "no_address", "empty address → reason")
 j = c.post("/v2/api/cma/bot_request", json={"address": "דולב 3, קרית ים"}, headers=K).get_json()
 ck(j["ok"] and sent["json"]["address"] == "דולב 3, קרית ים" and sent["json"]["request_id"] == j["request_id"],
    "request forwards address + request_id to the bot")
+ck(sent["headers"] == {"Authorization": "Bearer tok123"}, "pasted 'Authorization: ...' line → sent as the header")
+os.environ["CMA_BOT_AUTH"] = '"Bearer tok123"'
+ck(cma_bot.bot_headers() == {"Authorization": "Bearer tok123"}, "quotes stripped")
+os.environ.pop("CMA_BOT_AUTH")
+ck(cma_bot.bot_headers() == {}, "no auth env → no header")
 ck(c.post("/v2/api/cma/bot_request", json={"address": "a"}, headers={"X-Auth-Token": "t-agent"}).status_code == 403,
    "request by agent → 403")
 
