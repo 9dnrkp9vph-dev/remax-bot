@@ -246,6 +246,7 @@ def madlan_rows(table, nb, file_name, known):
 MAX_COMPS = 7               # עד 7 עסקאות דומות (4 נתנו טווח רחב מדי בבגין 12 — הדמיה 06/11)
 MIN_COMPS = 4               # פחות — אין טווח, ואין עמוד בתיק
 SIZE_TOL = 0.20             # שטח ±20%
+SIZE_TOL_WIDE = 0.30        # [11/11 אייל] אין 4 דומות ב-±20% → ±30%
 OUTLIER = 0.30              # מחיר למ"ר רחוק 30%+ מהחציון — חריג
 YEARS = 3
 SHOW_COMPS = 12
@@ -407,14 +408,14 @@ def cma_compute(subject, deals, listings, today):
     nbrs.sort(key=lambda r: r["deal_date"], reverse=True)
     sqm = subject.get("sqm")
 
-    def pick(tol):
+    def pick(tol, size_tol=SIZE_TOL):
         cands = [r for r in street + nbrs if _rooms_ok(r, subject["rooms"], tol)]
         rows = []
         for r in cands:
             c = {"street": r.get("street") or r.get("project") or "", "house": r.get("house"), "date": r["deal_date"],
                  "rooms": r.get("rooms"), "sqm": r.get("sqm"), "floor": r.get("floor") or "", "price": r["price"],
                  "ppm": r.get("ppm"), "ours": bool(r.get("ours")), "used": False, "reason": ""}
-            if sqm and (not r.get("sqm") or abs(r["sqm"] - sqm) > SIZE_TOL * sqm):
+            if sqm and (not r.get("sqm") or abs(r["sqm"] - sqm) > size_tol * sqm):
                 c["reason"] = "גדולה/קטנה מדי"
             rows.append(c)
         val = (lambda c: c["ppm"]) if sqm else (lambda c: c["price"])
@@ -432,6 +433,10 @@ def cma_compute(subject, deals, listings, today):
     rows, chosen = pick(0.5)
     if len(chosen) < MIN_COMPS:
         rows, chosen = pick(1.0)
+    for tol in (0.5, 1.0):   # [11/11] עדיין חסר — שטח ±30%
+        if len(chosen) >= MIN_COMPS or not sqm:
+            break
+        rows, chosen = pick(tol, SIZE_TOL_WIDE)
     if len(chosen) < MIN_COMPS:
         return None
     for c in chosen:
