@@ -42,7 +42,7 @@ ck(c.get("/v2/api/crm/marketing").status_code in (401, 403), "owner only")
 
 # הדף: קישורים + רינדור הטבלה (node)
 import effie_v2 as E
-ck('href="/v2/crm/marketing">שיווק</a>' in E._CRM_DASH_HTML, "link from dashboard")
+ck('marketing:' in E._CRM_NAV_HTML and 'id="crmNav"' in E._CRM_DASH_HTML, "link from dashboard (side nav, 10/11)")
 ck("""if (me.access) h += '<a class="mod" href="/v2/crm/marketing">שיווק</a>';""" in E._CRM_SCREEN_HTML, "link in CRM nav (owner)")
 js = re.search(r"<script>(.*)</script>", E._CRM_MKT_HTML, re.S).group(1)
 fn = re.search(r"function esc\(.*?\n(?=function segs)", js, re.S).group(0)
