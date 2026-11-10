@@ -7419,6 +7419,18 @@ def _sign_mark_excl(body_html):
     return re.sub(r"מיום(\s+)" + _d + r"(\s+)ועד יום(\s+)" + _d,
                   r"מיום\1<mark class=xd>\2</mark>\3ועד יום\4<mark class=xd>\5</mark>", str(body_html or ""))
 
+def _sign_fmt_price(v):
+    """תצוגה בלבד (10/11): '2090000' → '2,090,000'; כל דבר אחר — כמו שהוא."""
+    t = str(v or "").strip()
+    return "{:,}".format(int(t)) if t.isdigit() and len(t) >= 4 else t
+
+def _sign_fmt_phone(v):
+    """תצוגה בלבד (10/11): '+97252-320-4372' → '052-3204372'; מספר שאינו נייד ישראלי — כמו שהוא."""
+    d = re.sub(r"\D", "", str(v or ""))
+    if d.startswith("972") and len(d) == 12:
+        d = "0" + d[3:]
+    return (d[:3] + "-" + d[3:]) if (len(d) == 10 and d.startswith("05")) else str(v or "")
+
 def _sign_fmt_when(iso):
     """'2026-11-04T19:49:57+02:00' → '19:49 · 04/11/2026' (שעת החתימה מתחת לקו 'תאריך ושעה')."""
     m = re.match(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})", str(iso or ""))
@@ -7580,7 +7592,7 @@ def public_sign_doc(token):
         if _ev.isdigit() and len(_ev) >= 7: _cid_eff = _ev
     _rows = ""
     for pr in _p["props"]:
-        _prc = (_h.escape(pr["price"]) + " ₪") if pr.get("price") else "—"
+        _prc = (_h.escape(_sign_fmt_price(pr["price"])) + " ₪") if pr.get("price") else "—"
         _rows += "<tr><td>" + _h.escape(pr["addr"]) + "</td><td>" + _prc + "</td></tr>"
     _ptbl = ("<div class=ptt>פרטי הנכס" + ("ים" if len(_p["props"]) > 1 else "") + ":</div><table class=ptable><tr><th>כתובת</th><th>" +
              _sign_price_label(docs) + "</th></tr>" + _rows + "</table>") if _p["props"] else ""
@@ -7590,7 +7602,7 @@ def public_sign_doc(token):
     if _cid_eff: _cparts.append(_U("ת״ז:", _cid_eff))
     if _p["caddr"]: _cparts.append(_U("מכתובת:", _p["caddr"]))
     if _p["email"]: _cparts.append(_U("מייל:", _p["email"]))
-    if _p["phone"]: _cparts.append(_U("טלפון:", _p["phone"]))
+    if _p["phone"]: _cparts.append(_U("טלפון:", _sign_fmt_phone(_p["phone"])))
     if _p["date"]: _cparts.append(_U("תאריך:", _p["date"]))
     _ainfo = {}
     if _p["agent"]:
