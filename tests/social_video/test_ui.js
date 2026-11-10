@@ -50,6 +50,12 @@ ck(h.includes('3/4') && h.includes("vidRetry('v1')"), h);
 // [02/11] ערוץ כבוי (סטורי פייסבוק) לא נספר במכנה
 ctx.VID.items.tok1.last = {id: 'v1', status: 'published', created_at: new Date().toISOString(), ig_story_status: 'ok', ig_reel_status: 'ok', fb_story_status: 'off', fb_reel_status: 'ok'};
 h = ctx.vidRow(P); ck(h.includes('3/3') && !h.includes('/4'), h);
+// [06/11] אושר ונדחה (שבת/לילה) → "פרסם עכשיו" + מתי יעלה
+ctx.VID.items.tok1.last = {id: 'v1', status: 'approved', publish_at: '2026-11-07T06:00:00+00:00', created_at: new Date().toISOString()};
+h = ctx.vidRow(P);
+ck(h.includes("vidNow('v1')") && h.includes('פרסם עכשיו') && h.includes('אושר — ממתין') && h.includes('#2E6BD6'), h);
+ctx.VID.items.tok1.last = {id: 'v1', status: 'approved', created_at: new Date().toISOString()};
+ck(!ctx.vidRow(P).includes('vidNow'), 'approved without delay → no button');
 ctx.VID.busy.tok1 = 1; ck(ctx.vidRow(P).includes('disabled') && ctx.vidRow(P).includes('בהכנה'), 'busy'); delete ctx.VID.busy.tok1;
 ctx.MODE = 'shtaf'; ck(ctx.vidRow(P) === '', 'shtaf hidden'); ctx.MODE = 'mine';
 ctx.DEAL = 'commercial'; ck(ctx.vidRow(P) === '', 'commercial hidden'); ctx.DEAL = '';
@@ -62,6 +68,9 @@ ctx.toast = () => {}; ctx.render = () => {}; ctx.setTimeout = () => {};
 vm.runInContext(fn(pjs, 'vidCreate'), ctx);
 ctx.vidCreate('tok1'); ctx.vidCreate('tok1');
 ck(ctx.POSTS.length === 1 && ctx.POSTS[0][0] === '/v2/api/social/video', ctx.POSTS);
+vm.runInContext(fn(pjs, 'vidNow'), ctx);
+ctx.vidNow('v1'); ctx.vidNow('v1');
+ck(ctx.POSTS.filter(x => x[0] === '/v2/api/social/video/now').length === 1 && ctx.POSTS[ctx.POSTS.length - 1][1].id === 'v1', ctx.POSTS);
 ck(/socRow\(p\) \+ vidRow\(p\)/.test(PROPS) && /vidLoad\(src\)/.test(PROPS) && PROPS.includes('/v2/api/social/videos?keys='), 'wired in card');
 ck(DEV.includes('<h2>סרטונים לרשתות</h2>') && /loadVid\(\)/.test(DEV) && DEV.includes('/v2/api/social/video/health') && DEV.includes('<video'), 'dev card');
 console.log('video_ui OK', n);

@@ -2110,6 +2110,7 @@ def _cache_clear(key):
 # טרי → מוחזר. פג אבל לא ישן מדי → מוחזר מיד + בנייה חדשה ב-thread רקע (לכל היותר אחת לכל מפתח).
 # אין עותק בכלל (או ישן מ-max_stale) → בנייה רגילה בתוך הבקשה, כמו קודם.
 _SWR_BUSY = set()
+_SWR_COLD = {}
 _SWR_LOCK = _threading.Lock()
 def _swr(key, ttl, build, max_stale=1800):
     with _TTL_LOCK:
@@ -2139,10 +2140,19 @@ def _swr(key, ttl, build, max_stale=1800):
                 with _SWR_LOCK:
                     _SWR_BUSY.discard(key)
         return e[1]
-    v = build()
-    if v is not None:
-        _cache_put(key, v)
-    return v
+    # [10/11] בנייה קרה: פעם אחת לכל מפתח — מי שמגיע באמצע מחכה לתוצאה (אחרי פריסה ה-warmer ובקשות
+    # בנו את אותו דבר במקביל על מעבד אחד ולוח הבקרה נתקע 60ש'+)
+    with _SWR_LOCK:
+        lk = _SWR_COLD.setdefault(key, _threading.RLock())
+    with lk:
+        with _TTL_LOCK:
+            e = _TTL_CACHE.get(key)
+        if e and (time.time() - e[0]) < max_stale:
+            return e[1]
+        v = build()
+        if v is not None:
+            _cache_put(key, v)
+        return v
 
 # [DEALS 13/10] אייל: "למה הוא לא סורק במשרד שלנו גם נכסים להשכרה ונכסים מסחריים?" — מ-v13.45 הסורק
 # מביא גם השכרה ומסחרי מסניפי Family. fetch_sheet_rows נשאר מכירה בלבד (כל הצרכנים הקיימים);
@@ -6225,7 +6235,7 @@ _DEFAULT_CONTRACTS = {
 6. הלקוח מאשר כי עם מכירת הנכס ורכישתו על ידי הקונה המתווך יוכל להודיע לציבור כי הנכס נמכר.
 7. הלקוח מצהיר כי ידוע לו כי דמי התיווך ייגבו על ידי מנהל המשרד וכנגד חשבונית מס כחוק מטעם פמילי נדל"ן והשקעות בע"מ ו/או פמילי תיווך בע"מ.
 8. הלקוח מאשר שהומלץ לו על ידי המתווך להסתייע בשרותי עורך דין ו/או מומחים אחרים לפי העניין והצורך במהלך העסקה.
-9. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+9. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון בוואטסאפ ובכלל.""",
 "buyer_buy": _PARTIES + """
 1. הלקוח מזמין שרותי תיווך מקרקעין מהמתווך, כדי לקבל שירותי תיווך בקשר לנכסים המפורטים לעיל.
 2. הלקוח מאשר כי המתווך הציג בפניו את הנכסים המפורטים להלן, והוא מתחייב לדווח למתווך מיד על כל משא ומתן המתנהל עמו ו/או עם שולחו בקשר לאחד או יותר מהנכסים, וכן מיד עם חתימת הסכם מחייב ו/או עם התחייבות לביצוע העסקה, המוקדם מביניהם, ביחס לאחד או יותר מהנכסים להלן.
@@ -6240,7 +6250,7 @@ _DEFAULT_CONTRACTS = {
 6. הלקוח מאשר כי עם מכירת הנכס ורכישתו על ידי הקונה המתווך יוכל להודיע לציבור כי הנכס נמכר.
 7. הלקוח מצהיר כי ידוע לו כי דמי התיווך ייגבו על ידי מנהל המשרד וכנגד חשבונית מס כחוק מטעם פמילי נדל"ן והשקעות בע"מ ו/או פמילי תיווך בע"מ.
 8. הלקוח מאשר שהומלץ לו על ידי המתווך להסתייע בשרותי עורך דין ושמאי מוסמך ו/או מומחים אחרים טרם ביצוע העסקה.
-9. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+9. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון בוואטסאפ ובכלל.""",
 "buyer_rent": _PARTIES + """
 1. הלקוח מזמין שרותי תיווך מקרקעין מהמתווך, כדי לקבל שירותי תיווך בקשר לנכסים המפורטים לעיל.
 2. הלקוח מאשר כי המתווך הציג בפניו את הנכסים המפורטים להלן, והוא מתחייב לדווח למתווך מיד על כל משא ומתן המתנהל עמו ו/או עם שולחו בקשר לאחד או יותר מהנכסים, וכן מיד עם חתימת הסכם מחייב ו/או עם התחייבות לביצוע העסקה, המוקדם מביניהם, ביחס לאחד או יותר מהנכסים להלן.
@@ -6254,7 +6264,7 @@ _DEFAULT_CONTRACTS = {
 6. הלקוח מאשר כי עם מכירת הנכס ורכישתו על ידי הקונה המתווך יוכל להודיע לציבור כי הנכס נמכר.
 7. הלקוח מצהיר כי ידוע לו כי דמי התיווך ייגבו על ידי מנהל המשרד וכנגד חשבונית מס כחוק מטעם פמילי נדל"ן והשקעות בע"מ ו/או פמילי תיווך בע"מ.
 8. הלקוח מאשר שהומלץ לו על ידי המתווך להסתייע בשרותי עורך דין ו/או מומחים אחרים לפי העניין והצורך במהלך העסקה.
-9. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+9. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון בוואטסאפ ובכלל.""",
 "seller_both": _PARTIES + """
 הסכם והזמנה זו מתייחסים לנכס שפרטיו רשומים בנספח להלן וכן לכל עסקת מקרקעין אחרת שתתפתח בעסקה זו.
 1. הלקוח מצהיר כי הינו בעל הזכויות המלאות בנכס המקרקעין המתואר לעיל והמהווה חלק בלתי נפרד מהסכם זה (להלן "הנכס") או שהינו מורשה מטעם בעל/י הזכויות למוכרו ו/או להשכירו. הלקוח מצהיר כי הובהר לו כי פרטי הנכס יועמדו לידיעת קונים/שוכרים/מתווכים כדי לקדם את שיווק הנכס וכן שפרטי הנכס שמסר למתווך והרשומים בנספח הינם הפרטים המהותיים, הנכונים והמלאים.
@@ -6269,7 +6279,7 @@ _DEFAULT_CONTRACTS = {
 5. הלקוח מאשר כי עם מכירת הנכס המתווך יוכל להודיע לציבור כי הנכס נמכר.
 6. הלקוח מאשר שהומלץ לו על ידי המתווך להסתייע בשירותי עורך דין ו/או מומחים אחרים לפי העניין והצורך במהלך העסקה.
 7. הלקוח מצהיר כי ידוע לו כי דמי התיווך ייגבו על ידי מנהל המשרד וכנגד חשבונית מס כחוק מטעם פמילי נדל"ן והשקעות בע"מ ו/או פמילי תיווך בע"מ.
-8. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+8. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון בוואטסאפ ובכלל.""",
 "seller_sell": "",
 "exclusive": _PARTIES + """
 הסכם זה מהווה חלק בלתי נפרד מהסכם הזמנת שירותי תיווך מספר CON_REF_ID אשר נחתמה בין הצדדים ביום CON_REF_DATE
@@ -6284,7 +6294,7 @@ _DEFAULT_CONTRACTS = {
 8. המתווך ירכז את כל הפעולות לשיווקו של הנכס בתקופת הבלעדיות. הלקוח מתחייב כי בתקופה זו לא יבקש ו/או יקבל שירותי תיווך לשיווק הנכס מכל מתווך אחר וכי כל קשר ו/או משא ומתן בינו לבין מתווכים אחרים ו/או קונים ו/או שוכרים מיועדים יעשה אך ורק דרך המתווך ובאמצעותו. הלקוח מצהיר כי ידוע לו שהפרת סעיף זה עלולה לפגוע ביכולתו של המתווך, בחוסר תום לב, לשמש כגורם היעיל בעסקה, וכי במקרה של הפרה יהיה המתווך זכאי כפיצוי למלוא העמלה שהייתה מגיעה לו, בנוסף לכיסוי כל נזק אחר אשר נגרם לו כתוצאה מההפרה, בכפוף לסעיף 14 (ב) לחוק המתווכים.
 9. הלקוח יביא את עובדת התקשרותו בהסכם זה לידיעת הפונים אליו ישירות ובמיוחד לכל מתווך אחר ו/או קונה ו/או שוכר עמם היה קשור בעבר. כמו כן יביא לסיומה המיידי של כל התחייבות קיימת הסותרת התחייבויותיו עפ"י הסכם זה. המתווך מתחייב לפעול בשקידה, במסירות ובנאמנות ולשתף מתווכים ומשרדי תיווך אחרים במציאת קונים מעוניינים ולבנות ולבצע תכנית שיווקית ופרסומית לקידום שיווק הנכס. כל זאת בהתאם לשיקול דעתו המקצועית ובהתאם למפרט בטופס פעולות שיווקיות המצורף להזמנה זו.
 10. מובן וידוע ללקוח בזאת שהלקוח ממנה את המתווך להיות הגורם הפעיל והיחיד שיפעל לקידום מכירת ו/או השכרת הנכס.
-11. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון ובכלל.""",
+11. בחתימתי מטה הנני מאשר לחברת רימקס לעדכן אותי בנכסים מוצעים למכירה ועדכונים שוטפים על אופן השיווק אפשרויות מימון בוואטסאפ ובכלל.""",
 "shtaf": "",
 }
 
@@ -7352,10 +7362,17 @@ def _send_client_signed_copy(phone, client, link, link2=""):
 def _parse_sign_header(header):
     """מפרק את מחרוזת הכותרת המובנית (תאריך/סוכן/לקוח/נכסים) לשדות לרינדור נקי בעמוד ההסכם."""
     import re as _re2
-    out = {"date": "", "agent": "", "client": "", "phone": "", "cid": "", "props": []}
+    out = {"date": "", "agent": "", "client": "", "phone": "", "cid": "", "props": [], "caddr": "", "email": ""}
     for ln in str(header or "").split("\n"):
         ln = ln.strip()
         if not ln:
+            continue
+        # [10/11 אייל — עיצוב חתימה טובה] שורות רשות מטופס ההחתמה; כותרות ישנות בלעדיהן
+        if ln.startswith("כתובת הלקוח:"):
+            out["caddr"] = ln[len("כתובת הלקוח:"):].strip()
+            continue
+        if ln.startswith("מייל הלקוח:"):
+            out["email"] = ln[len("מייל הלקוח:"):].strip()
             continue
         if ln.startswith("תאריך:"):
             m = _re2.search(r"תאריך:\s*([^·]+)", ln)
@@ -7382,6 +7399,63 @@ def _parse_sign_header(header):
             else:
                 out["props"].append({"addr": _re2.sub(r"^\d+\.\s*", "", ln), "price": ""})
     return out
+
+def _sign_price_label(docs):
+    """כותרת עמודת המחיר בטבלת הנכסים (עיצוב חתימה טובה, 10/11): לפי סוג ההסכם הראשון."""
+    d0 = (docs or [{}])[0] if docs else {}
+    dt = str(d0.get("deal_type", "")).upper()
+    tt = str(d0.get("title", ""))
+    if "/" in tt or "ו/או" in tt:            # קניה/שכירות · מכירה ו/או השכרה
+        return "מחיר מבוקש"
+    if "CLIENT_RENT" in dt or "OWNER_RENT" in dt or "שכירות" in tt or "השכרת" in tt:
+        return "מחיר שכירות מבוקש"
+    if "CLIENT" in dt or "קניי" in tt or "קניה" in tt:
+        return "מחיר קניה מבוקש"
+    if "OWNER" in dt or "מכירת" in tt or "בלעדיות" in tt:
+        return "מחיר מכירה מבוקש"
+    return "מחיר מבוקש"
+
+def _sign_split_notes(body):
+    """ההערות מטופס ההחתמה מודבקות לסוף גוף ההסכם ('\\n\\nהערות: …') → (גוף, הערות) לסקשן נפרד."""
+    b = str(body or "")
+    i = b.rfind("\n\nהערות: ")
+    if i < 0:
+        return b, ""
+    return b[:i].rstrip(), b[i + len("\n\nהערות: "):].strip()
+
+def _sign_keep_refs(body_html):
+    """[10/11 אייל: 'תתקן את ה-5.2, נראה לא ברור'] הפניה לסעיף לא נשברת לשורה חדשה ולא נקראת הפוך:
+    'בסעיף 5.1 וגם 5.2.' — רווחים קשיחים בתוך ההפניה, והמספר בבידוד כיוון (bdi) כדי שהנקודה שאחריו לא תקפוץ."""
+    t = str(body_html or "")
+    t = re.sub(r"(סעיפים|סעיף)\s+(\d+(?:\.\d+)*)", "\\1\u00a0\\2", t)
+    t = re.sub(r"(\d+(?:\.\d+)+)\s+(וגם|ו-|או)\s+(\d+(?:\.\d+)+)", "\\1\u00a0\\2\u00a0\\3", t)
+    t = re.sub(r"(?<=[\s\u00a0])(\d+\.\d+)(?=[.,)])", r"<bdi>\1</bdi>", t)
+    return t
+
+def _sign_mark_excl(body_html):
+    """[10/11 אייל] בהסכם בלעדיות — תקופת הבלעדיות מודגשת: 'מיום X ועד יום Y' (על טקסט שכבר עבר escape)."""
+    _d = r"(\d{1,2}[/.]\d{1,2}[/.]\d{2,4})"   # רק הזוג 'מיום X ועד יום Y' — לא 'מיום' של תאריך הסכם המוכר
+    return re.sub(r"מיום(\s+)" + _d + r"(\s+)ועד יום(\s+)" + _d,
+                  r"מיום\1<mark class=xd>\2</mark>\3ועד יום\4<mark class=xd>\5</mark>", str(body_html or ""))
+
+def _sign_fmt_price(v):
+    """תצוגה בלבד (10/11): '2090000' → '2,090,000'; כל דבר אחר — כמו שהוא."""
+    t = str(v or "").strip()
+    return "{:,}".format(int(t)) if t.isdigit() and len(t) >= 4 else t
+
+def _sign_fmt_phone(v):
+    """תצוגה בלבד (10/11): '+97252-320-4372' → '052-3204372'; מספר שאינו נייד ישראלי — כמו שהוא."""
+    d = re.sub(r"\D", "", str(v or ""))
+    if d.startswith("972") and len(d) == 12:
+        d = "0" + d[3:]
+    return (d[:3] + "-" + d[3:]) if (len(d) == 10 and d.startswith("05")) else str(v or "")
+
+def _sign_fmt_when(iso):
+    """'2026-11-04T19:49:57+02:00' → '19:49 · 04/11/2026' (שעת החתימה מתחת לקו 'תאריך ושעה')."""
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})", str(iso or ""))
+    if not m:
+        return ""
+    return "%s:%s · %s/%s/%s" % (m.group(4), m.group(5), m.group(3), m.group(2), m.group(1))
 
 def _pick_avatar_phone(cands, local_has, db_phones):
     """תמונת הסוכן בדף ההסכם (אייל 18/10, רפי): קודם מספר עם קובץ בדיסק, אחר כך מספר עם
@@ -7428,9 +7502,25 @@ def public_sign_doc(token):
         docs = []
     signature = str(doc.get("signature", ""))
     status = str(doc.get("status", "signed"))
-    docs_html = "".join(
-        "<div class=doc><h2>%s</h2><div class=body>%s</div></div>" % (
-            _h.escape(str(d.get("title", ""))), _h.escape(str(d.get("body", "")))) for d in docs)
+    # [10/11 אייל — עיצוב חתימה טובה] כותרת ההסכם הראשון עולה לראש העמוד (h1); הערות → סקשן נפרד
+    _t0 = str((docs[0].get("title") if docs else "") or "")
+    _ref = ""
+    if " · להסכם מס' " in _t0:
+        _t0, _ref = _t0.split(" · להסכם מס' ", 1)
+    _notes = []
+    docs_html = ""
+    for _i, d in enumerate(docs):
+        _b, _nt = _sign_split_notes(d.get("body", ""))
+        if _nt and _nt not in _notes:
+            _notes.append(_nt)
+        _bh = _sign_keep_refs(_h.escape(_b))
+        if "EXCLUSIVE" in str(d.get("deal_type", "")).upper() or "בלעדיות" in str(d.get("title", "")):
+            _bh = _sign_mark_excl(_bh)
+        docs_html += "<div class=doc>%s<div class=body>%s</div></div>" % (
+            ("<h2>%s</h2>" % _h.escape(str(d.get("title", "")))) if _i else "", _bh)
+    if _notes:
+        docs_html += ("<div class=notes><h4>הערות ותוספות להסכם:</h4>" +
+                      "".join("<div class=nt>%s</div>" % _h.escape(x) for x in _notes) + "</div>")
     # הסכם המשך (בלעדיות): מוצג כ"חתימה ממתינה" מתחת להסכם המוכר, ונפתח אחרי חתימתו
     _next_tok = str((docs[0].get("next_token") if docs else "") or "")
     _next_title = str((docs[0].get("next_title") if docs else "") or "")
@@ -7448,7 +7538,13 @@ def public_sign_doc(token):
                       "<div style='width:10px;height:10px;border-radius:50%;background:var(--gold);flex:0 0 auto'></div>"
                       "<div><div style='font-weight:800;font-size:14px'>" + _h.escape(_next_title or "הסכם בלעדיות") + " · חתימה ממתינה</div>"
                       "<div style='font-size:12.5px;color:#67707e;font-weight:600'>ייפתח לחתימה מיד לאחר חתימת ההסכם הזה</div></div></div>")
-    sig_html = ("<div class=sig><div>חתימת הלקוח:</div><img src='" + signature + "' alt='חתימה'></div>") if signature else ""
+    _when = _sign_fmt_when(doc.get("signed_at", ""))
+    sig_html = (("<p class=terms><span class=cb>✓</span> הלקוח אישר את "
+                 "<a href='/sign-terms' target='_blank' rel='noopener'>תנאי השימוש ומדיניות הפרטיות</a> של מערכת החתימה</p>"
+                 "<div class=sigs><div><div class=sv><img src='" + _h.escape(signature, quote=True) + "' alt='חתימה'></div>"
+                 "<div class=ln>חתימה</div></div>"
+                 "<div><div class='sv dt'>" + _h.escape(_when) + "</div><div class=ln>תאריך ושעה</div></div></div>")
+                if signature else "")
     _head = ("<!DOCTYPE html><html dir=rtl lang=he><head><meta charset=utf-8>"
              "<meta name=viewport content='width=device-width,initial-scale=1'>"
              "<link href='https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&display=swap' rel='stylesheet'>"
@@ -7456,24 +7552,24 @@ def public_sign_doc(token):
              ":root{--ink:#15263b;--gold:#bb8a2c;--green:#1f8a4c;--muted:#8b93a1;--line:#efece6}"
              "*{box-sizing:border-box}"
              "body{font-family:'Heebo',Arial,sans-serif;background:#f6f5f2;color:var(--ink);margin:0;padding:22px 14px 40px;direction:rtl;letter-spacing:-.011em;-webkit-font-smoothing:antialiased}"
-             ".page{max-width:820px;margin:0 auto;background:#fff;padding:30px 32px 26px;border-radius:18px;box-shadow:0 1px 2px rgba(20,30,50,.04),0 14px 40px rgba(20,30,50,.07);border:1px solid var(--line)}"
-             ".logobar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:16px;margin-bottom:6px;position:relative;border-bottom:none}"
-             ".logobar:after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}"
-             ".logobar img{height:48px;width:auto;object-fit:contain;flex:0 0 auto}"
-             ".agentbox .an{font-size:17px;font-weight:800}"
-             ".agentbox .al{font-size:12.5px;color:var(--muted);font-weight:600;margin-top:2px}"
-             ".docnum{font-size:12px;font-weight:800;color:var(--gold);letter-spacing:.04em;margin:14px 0 4px}"
-             ".cline{font-size:13.5px;color:#46505f;font-weight:600;line-height:1.7;background:#faf8f4;border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin-bottom:14px}"
-             ".cline b{color:var(--ink)}"
-             ".ptt{font-size:13px;font-weight:800;color:#67707e;margin:0 2px 7px;display:flex;align-items:center;gap:7px}"
-             ".ptt:before{content:'';width:14px;height:2px;border-radius:2px;background:var(--gold)}"
-             ".ptable{width:100%;border-collapse:separate;border-spacing:0;margin-bottom:18px;border:1px solid var(--line);border-radius:12px;overflow:hidden}"
-             ".ptable th{background:#faf8f4;font-size:12.5px;color:#67707e;font-weight:800;padding:10px 13px;text-align:start;border-bottom:1px solid var(--line)}"
-             ".ptable td{padding:11px 13px;font-size:14px;font-weight:600;border-bottom:1px solid var(--line)}"
-             ".ptable tr:last-child td{border-bottom:none}"
+             ".page{max-width:820px;margin:0 auto;background:#fff;padding:34px 40px 28px;border-radius:4px;box-shadow:0 6px 20px rgba(30,58,95,.08);border:1px solid #e4e1da;color:#111}"
+             ".logobar{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding-bottom:14px;margin-bottom:6px;border-bottom:1.5px solid #d9d9d9}"
+             ""
+             ".logobar img{height:56px;width:auto;object-fit:contain;flex:0 0 auto;border:1px solid #eee;padding:5px;background:#fff}"
+             ".agentbox .an{font-size:17px;font-weight:800;color:#1E3A5F}"
+             ".agentbox .al{font-size:13.5px;color:#555;font-weight:500;margin-top:2px}"
+             ".doctitle{text-align:center;font-size:21px;font-weight:800;margin:22px 0 2px;line-height:1.35}.docnum{text-align:center;font-size:16px;font-weight:700;margin:0 0 4px}.docnum span{color:#C29435;font-size:26px;font-weight:800}.docref{text-align:center;font-size:13.5px;color:#444;margin-bottom:4px}"
+             ".cline{font-size:14.5px;color:#111;font-weight:500;line-height:2;text-align:center;margin:12px 0 16px}"
+             ".cline u{font-weight:600;text-decoration-color:#888;text-underline-offset:4px}.cline .cp{display:inline-block;margin:0 6px}mark.xd{background:#FBF1D6;color:#111;font-weight:800;text-decoration:underline;text-underline-offset:4px;padding:0 3px;border-radius:3px}"
+             ".ptt{font-size:15px;font-weight:700;color:#111;margin:0 0 7px}"
+             ""
+             ".ptable{width:100%;border-collapse:collapse;margin-bottom:20px}"
+             ".ptable th{background:#f0f0f0;font-size:14px;color:#111;font-weight:700;padding:9px 12px;text-align:start;border:1px solid #bbb}"
+             ".ptable td{padding:10px 12px;font-size:14.5px;font-weight:500;border:1px solid #bbb}"
+             ""
              ".doc{margin-bottom:18px}"
-             ".doc h2{font-size:19px;font-weight:800;margin:18px 0 10px;padding-inline-start:11px;border-inline-start:4px solid var(--gold);line-height:1.3}"
-             ".doc .body{font-size:14.5px;line-height:1.85;color:#33405a;white-space:pre-line}"
+             ".doc h2{font-size:18px;font-weight:800;margin:26px 0 10px;text-align:center;line-height:1.35}"
+             ".doc .body{font-size:14.5px;line-height:1.85;color:#111;white-space:pre-line;text-align:justify}.notes{margin:18px 0 6px}.notes h4{font-size:15px;font-weight:800;margin:0 0 6px}.notes .nt{white-space:pre-line;font-size:14.5px;line-height:1.9}.terms{font-size:14px;margin:20px 0 6px;color:#111}.terms a{color:#2E6BD6}.cb{display:inline-flex;width:16px;height:16px;border:1.5px solid #1E3A5F;align-items:center;justify-content:center;font-size:12px;margin-left:6px;color:#1E3A5F;vertical-align:-2px}.sigs{display:flex;gap:40px;margin-top:18px}.sigs>div{flex:1;text-align:center}.sv{height:84px;display:flex;align-items:flex-end;justify-content:center}.sv img{max-height:84px;max-width:100%}.sv.dt{font-size:15px;font-weight:600;padding-bottom:4px}.ln{border-top:1px solid #111;padding-top:5px;font-size:13.5px}"
              ".signbox{margin-top:22px;border-top:2px solid var(--line);padding-top:20px}"
              ".signlbl{font-weight:800;font-size:14px;margin-bottom:8px}"
              ".signinp{width:100%;box-sizing:border-box;padding:13px 14px;font-size:16px;font-weight:700;border:1.5px solid #e0e4e9;border-radius:12px;direction:ltr;text-align:center;letter-spacing:1px;background:#fbfcfd;font-family:inherit}"
@@ -7485,9 +7581,9 @@ def public_sign_doc(token):
              ".sig img{max-width:260px;height:auto}"
              ".pb{display:block;width:100%;max-width:820px;margin:18px auto 6px;padding:16px;background:linear-gradient(180deg,#d4a437,#c0901f);color:#231700;border:none;border-radius:14px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 8px 20px rgba(187,138,44,.28)}"
              ".agentrow{display:flex;align-items:center;gap:12px}"
-             ".avwrap{width:56px;height:56px;border-radius:50%;border:2.5px solid var(--gold);padding:2px;flex:0 0 auto;box-sizing:border-box}"
+             ".avwrap{width:84px;height:84px;border-radius:50%;border:2.5px solid var(--gold);padding:2px;flex:0 0 auto;box-sizing:border-box}"
              ".avin{position:relative;width:100%;height:100%;border-radius:50%;background:#15263b;display:flex;align-items:center;justify-content:center;overflow:hidden}"
-             ".avin span{color:#fff;font-size:21px;font-weight:800;line-height:1}"
+             ".avin span{color:#fff;font-size:30px;font-weight:800;line-height:1}"
              ".avin img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}"
              ".okcard{text-align:center;padding:14px 0 4px}"
              ".okcard .big{font-size:44px}"
@@ -7504,6 +7600,7 @@ def public_sign_doc(token):
              ".efoot{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:20px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);font-weight:600}"
              ".efoot a{color:var(--muted)}"
              "#step2{display:none}"
+             "@media(max-width:520px){.page{padding:22px 16px 20px}.logobar img{height:40px}.avwrap{width:66px;height:66px}.doctitle{font-size:19px}.sigs{gap:16px}}"
              "@media print{.pb,.signbox,.stickybar,.efoot,.backlink{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0;max-width:100%;border:none}}"
              "</style></head><body><div class=page>")
     _p = _parse_sign_header(header)
@@ -7514,14 +7611,18 @@ def public_sign_doc(token):
         if _ev.isdigit() and len(_ev) >= 7: _cid_eff = _ev
     _rows = ""
     for pr in _p["props"]:
-        _prc = (_h.escape(pr["price"]) + " ₪") if pr.get("price") else "—"
+        _prc = (_h.escape(_sign_fmt_price(pr["price"])) + " ₪") if pr.get("price") else "—"
         _rows += "<tr><td>" + _h.escape(pr["addr"]) + "</td><td>" + _prc + "</td></tr>"
-    _ptbl = ("<div class=ptt>פרטי הנכס</div><table class=ptable><tr><th>כתובת</th><th>מחיר מבוקש</th></tr>" + _rows + "</table>") if _p["props"] else ""
+    _ptbl = ("<div class=ptt>פרטי הנכס" + ("ים" if len(_p["props"]) > 1 else "") + ":</div><table class=ptable><tr><th>כתובת</th><th>" +
+             _sign_price_label(docs) + "</th></tr>" + _rows + "</table>") if _p["props"] else ""
     _cparts = []
-    if _p["client"]: _cparts.append("שם הלקוח: <b>" + _h.escape(_p["client"]) + "</b>")
-    if _cid_eff: _cparts.append("ת״ז: " + _h.escape(_cid_eff))
-    if _p["phone"]: _cparts.append("טל': " + _h.escape(_p["phone"]))
-    if _p["date"]: _cparts.append("תאריך: " + _h.escape(_p["date"]))
+    _U = lambda lbl, v: "<span class=cp>" + lbl + " <u>" + _h.escape(v) + "</u></span>"
+    if _p["client"]: _cparts.append(_U("שם הלקוח:", _p["client"]))
+    if _cid_eff: _cparts.append(_U("ת״ז:", _cid_eff))
+    if _p["caddr"]: _cparts.append(_U("מכתובת:", _p["caddr"]))
+    if _p["email"]: _cparts.append(_U("מייל:", _p["email"]))
+    if _p["phone"]: _cparts.append(_U("טלפון:", _sign_fmt_phone(_p["phone"])))
+    if _p["date"]: _cparts.append(_U("תאריך:", _p["date"]))
     _ainfo = {}
     if _p["agent"]:
         try: _ainfo = fetch_agents_full().get(_norm_name(_p["agent"]), {})
@@ -7571,8 +7672,10 @@ def public_sign_doc(token):
               "<svg width='16' height='14' viewBox='0 0 118 106'><path d='M58 8L20 44l14 54h48l14-54z' fill='#E4C56B'/><path d='M20 44l-14 8 14 6z' fill='#1E3A5F'/><circle cx='40' cy='34' r='4.2' fill='#1E3A5F'/></svg>"
               "מופעל על ידי אפי · <a href='/sign-terms' target='_blank' rel='noopener'>תנאי שימוש ופרטיות</a></div>")
     meta_html = (_logobar +
-        "<div class=docnum>הסכם מס׳ " + _docnum + "</div>" +
-        (("<div class=cline>" + " · ".join(_cparts) + "</div>") if _cparts else "") +
+        (("<div class=doctitle>" + _h.escape(_t0) + "</div>") if _t0 else "") +
+        "<div class=docnum>מס׳ <span>" + _docnum + "</span></div>" +
+        (("<div class=docref>מצורף להסכם הזמנת שירותי תיווך מס׳ " + _h.escape(_ref) + "</div>") if _ref else "") +
+        (("<div class=cline>" + " &nbsp; ".join(_cparts) + "</div>") if _cparts else "") +
         _ptbl)
     if status == "pending":
         _greet = ("<div class=greet>שלום" + ((" " + _h.escape(_p["client"])) if _p["client"] else "") + ",</div>"
@@ -8929,6 +9032,7 @@ def api_search_properties():
         _scan_price_changes()
         _pc_map = _price_changed_map()   # נכסים שהמחיר שלהם השתנה ב-7 ימים — תג לכולם
         _pd_map = _price_dropped_map()   # ירידת מחיר — תג נפרד (אייל 09/09)
+        _pd_ts = _price_drop_ts_map()
         phones = fetch_agents_phones()
 
         def _row_out(row, score=None):
@@ -8945,6 +9049,7 @@ def api_search_properties():
                 "priceChanged": _prop_price_key(row) in _pc_map,   # תג "עדכון מחיר" (לכולם)
                 "priceDropped": _prop_price_key(row) in _pd_map,
                 "priceOld": _pd_map.get(_prop_price_key(row), ""),
+                "priceDropAt": _pd_ts.get(_prop_price_key(row), 0),   # [HOME-TILES 08/11] 'ירידות מחיר היום'
                 "date": (row.get("תאריך יצירה", "") or row.get("_y2_first_seen", "") or "").strip(),
                 "isNew": _prop_is_new(row),
                 "agent": _canon_agent_name(ag),
@@ -9410,6 +9515,38 @@ def _price_drop_ts_map():
         return out
     except Exception:
         return {}
+
+def _il_midnight_epoch(now=None):
+    """[HOME-TILES 08/11] תחילת היום בשעון ישראל (epoch) — 'ירידות מחיר היום'."""
+    from datetime import datetime as _d
+    from zoneinfo import ZoneInfo
+    t = _d.fromtimestamp(now if now is not None else time.time(), ZoneInfo("Asia/Jerusalem"))
+    return int(t.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+
+def drops_today_count(rows, key_fn, ts_map, midnight):
+    """כמה מהשורות ירדו במחיר מחצות (ישראל). שורה שירדה מפרסום לא נספרת."""
+    n = 0
+    for r in rows or []:
+        if str(r.get("ירד מפרסום", "") or r.get("delisted_at", "") or "").strip():
+            continue
+        k = key_fn(r)
+        if k and int(ts_map.get(k, 0) or 0) >= midnight:
+            n += 1
+    return n
+
+def _office_drops_today():
+    """[HOME-TILES 08/11] ירידות מחיר היום בנכסי המשרד (מכירה, פעילים) — לכל המשרד (אייל: לריבוע בבית)."""
+    c = _cache_get("office_drops_today", 60)
+    if c is not None:
+        return c
+    try:
+        rows = [r for r in fetch_sheet_rows() if (r.get("סטטוס", "") or "").strip() in ("", "פעילה")]
+        n = drops_today_count(rows, _prop_price_key, _price_drop_ts_map(), _il_midnight_epoch())
+    except Exception as e:
+        log.warning(f"office drops today: {e}")
+        return 0
+    _cache_put("office_drops_today", n)
+    return n
 
 def _mark_listing_removed(lid):
     lid = str(lid or "").strip()
@@ -10161,6 +10298,9 @@ def api_newborn():
         rows.sort(key=_newborn_created_epoch, reverse=True)
         _scan_price_changes()                 # 24/09: ירידות מחיר גם בנכס נולד
         _pd_map = _price_dropped_map()
+        _pd_ts = _price_drop_ts_map()
+        _mid = _il_midnight_epoch()
+        _nb_drops_today = 0   # [HOME-TILES 08/11] ריבוע 'ירידות מחיר · נכס נולד' בבית
         out = []
         _cand = []
         bucket_counts = [0] * len(_NB_BUCKETS)
@@ -10187,6 +10327,8 @@ def api_newborn():
                 if _lo <= ad < _hi:
                     bucket_counts[_bi] += 1
                     break
+            if not _nb(r.get("delisted_at", "")) and int(_pd_ts.get(_nb_price_key(r), 0) or 0) >= _mid:
+                _nb_drops_today += 1
             if min_days is not None and max_days is not None and not (min_days <= ad < max_days):
                 continue   # לא בדלי הוותק שנבחר
             if len(_cand) >= 5000:   # תקרת בטיחות גבוהה; כל הנכסים חוזרים בטעינה אחת לסינון חודשים בצד הלקוח
@@ -10197,17 +10339,18 @@ def api_newborn():
         # 24/09 (אייל): חדשים (עד יומיים) → ירידות מחיר → השאר → ירד מפרסום; בתוך כל קבוצה מהחדש לישן
         _cand.sort(key=lambda c: _tier_new_drop_rest(c[1] <= 2, c[6], c[7]))
         _ctx = {"contacts": contacts, "statuses": nbstatuses, "fam_list": fam_list, "pd_map": _pd_map,
-                "pd_ts": _price_drop_ts_map(), "eff_name": eff_name, "phone9": _last9(s.get("phone", "")),
+                "pd_ts": _pd_ts, "eff_name": eff_name, "phone9": _last9(s.get("phone", "")),
                 "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", "")))}
         for (r, ad, city, _addr, _owner, lister, _dropped, _dl) in (_cand[:_lim] if _lim else _cand):
             out.append(_nb_row_out(r, ad, city, _addr, _owner, lister, _dropped, _ctx))   # [NB-SEARCH 30/09] בונה משותף
         _res = {"ok": True, "count": len(_cand), "rentAllowed": _rent_ok, "deal": _deal,
                 "results": out, "bucketCounts": bucket_counts, "total": sum(bucket_counts),
-                "partial": bool(_lim and len(_cand) > len(out))}
+                "partial": bool(_lim and len(_cand) > len(out)),
+                "dropsToday": {"nb": _nb_drops_today, "office": _office_drops_today() if not _deal else 0}}
         # [PERF-3] טביעת-אצבע לתוצאה — מחושבת פעם אחת בבנייה (לא פר-בקשה)
         import zlib as _zl
         _res["etag"] = format(_zl.crc32(_json.dumps(
-            [out, bucket_counts], ensure_ascii=False, sort_keys=True).encode("utf-8")) & 0xffffffff, "08x")
+            [out, bucket_counts, _res["dropsToday"]], ensure_ascii=False, sort_keys=True).encode("utf-8")) & 0xffffffff, "08x")
         if rows:   # אין לקבע במטמון תוצאה שנבנתה מקריאה ריקה/כושלת
             _nb_cache_put(_nbkey, _res)
         if _etag_in and _etag_in == _res["etag"]:
@@ -11723,6 +11866,7 @@ def _props_fetch_raw():
             log.error(f"warmer props supabase: {_sbe}")
     return _fetch_sheet_rows_raw()
 
+_CRM_WARM_LAST = [0.0]
 def _warm_once():
     # המפתחות הכבדים — רענון-מקדים לפי דגל המקור (Supabase = שאילתה זולה; Sheets בקצב ה-TTL)
     _warm_key("raw:שיחות:01/01/2020:31/12/2099", _src_ttl(CALLS_SOURCE, 60, 90),
@@ -11738,6 +11882,14 @@ def _warm_once():
             _fn()
         except Exception:
             pass
+    # [10/11] מודולי ה-CRM והדשבורד (effie_v2._crm_warm) — מיד אחרי עלייה, ואז לכל היותר פעם ב-5 דק'
+    _cw = globals().get("_crm_warm")
+    if _cw and time.time() - _CRM_WARM_LAST[0] >= 300:
+        _CRM_WARM_LAST[0] = time.time()
+        try:
+            _cw()
+        except Exception as _e:
+            log.warning(f"crm warm failed: {_e}")
 
 _warmer_started = False
 def _start_warmer():
@@ -14084,6 +14236,13 @@ try:
 except Exception as _cma_err:
     log.error(f"cma init failed (app unaffected): {_cma_err}")
 
+# ── CMA: בוט מדלן חיצוני — שליחת כתובת וקבלת עסקאות (אייל 10/11, שלב בדיקה) — מודול נפרד ──
+try:
+    import cma_bot as _cma_bot
+    _cma_bot.register(app, globals())
+except Exception as _cmab_err:
+    log.error(f"cma_bot init failed (app unaffected): {_cmab_err}")
+
 # ── מסך הבית: בקשה אחת + חימום-מקדים למשתמשים הפעילים (אייל 06/11) — מודול נפרד ──
 try:
     import home_bundle as _home_bundle
@@ -14107,6 +14266,13 @@ try:
     _social_video.register(app, globals())
 except Exception as _sv_err:
     log.error(f"social_video init failed (app unaffected): {_sv_err}")
+
+# ── תיק פרזנטציה לבעל נכס (אייל 06/11) — מודול נפרד ──
+try:
+    import kit as _kit
+    _kit.register(app, globals())
+except Exception as _kit_err:
+    log.warning(f"kit init failed (app unaffected): {_kit_err}")
 
 # ── סטורי SOLD (נכס שנמכר / עסקת קונה) — סטורי בלבד באינסטגרם ובפייסבוק (אייל 05/11) ──
 try:

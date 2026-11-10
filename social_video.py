@@ -1584,7 +1584,7 @@ def register(app, G):
             items[k] = {"last": {f: last.get(f) for f in ("id", "status", "created_at", "ai", "decided_by", "error",
                                                           "ig_story_status", "ig_reel_status", "fb_story_status",
                                                           "fb_reel_status", "ig_reel_permalink", "fb_reel_permalink",
-                                                          "video_token")} if last else None,
+                                                          "video_token", "publish_at")} if last else None,
                         "can": {"ok": ok, "reason": why}}
         return jsonify({"ok": True, "mode": SP.soc_mode(os.environ), "items": items})
 
@@ -1603,6 +1603,22 @@ def register(app, G):
         ch = [c for c in (j.get("channels") or []) if c in CHANNELS] or None
         vid = rec["id"]
         _spawn(lambda: vid_publish(G, vid, channels=ch))
+        return jsonify({"ok": True, "queued": True})
+
+    @app.route("/v2/api/social/video/now", methods=["POST"])
+    def vid_api_now():
+        """[06/11] אייל: סרטון שאושר ונדחה (שבת/לילה) — "פרסם עכשיו" מעלה מיד (פעולה יזומה של המפתח)."""
+        s, err = dev()
+        if err:
+            return err
+        j = request.get_json(silent=True) or {}
+        rec = G["_sbdb"].video_get(str(j.get("id") or ""))
+        if not rec or rec.get("status") != "approved":
+            return jsonify({"ok": False, "error": "הסרטון לא ממתין לפרסום"})
+        if not G["_sbdb"].video_claim(rec["id"], "approved", "publishing", {"publish_at": None}):
+            return jsonify({"ok": False, "error": "כבר בתהליך"})
+        vid = rec["id"]
+        _spawn(lambda: vid_publish(G, vid))
         return jsonify({"ok": True, "queued": True})
 
     @app.route("/v2/api/social/video/resend", methods=["POST"])

@@ -19,7 +19,7 @@ ck(by["רפי"] == {"name": "רפי", "excl": 1, "reg": 1, "total": 3, "rent": 1
 ck(by["דנה"]["total"] == 1 and by["דנה"]["excl"] == 1, by["דנה"])
 ck(by["אוצר"] == {"name": "אוצר", "excl": 0, "reg": 0, "total": 0, "rent": 0, "site": 0}, ("agent with no listings still listed", by["אוצר"]))
 ck(by["(לא משויך)"]["total"] == 1, ("listings without an agent", by.get("(לא משויך)")))
-ck([r["name"] for r in R["rows"]][:2] == ["רפי", "דנה"] and R["rows"][-1]["name"] == "(לא משויך)", ("most listings first, unassigned last", [r["name"] for r in R["rows"]]))
+ck([r["name"] for r in R["rows"]] == ["אוצר", "דנה", "רפי", "(לא משויך)"], ("A-Z order (Eyal 08/11), unassigned last", [r["name"] for r in R["rows"]]))
 ck(R["total"] == {"excl": 2, "reg": 2, "total": 5, "rent": 1, "site": 5}, R["total"])
 # 20/10: עמודת 'באתר' — מודעה שהוסתרה מהאתר לא נספרת
 P2 = [dict(P[0], ad_id="a1"), dict(P[1], ad_id="a2"), dict(P[4], ad_id="a3")]

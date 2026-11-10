@@ -108,6 +108,24 @@ def sold_names(x):
     return list(dict.fromkeys(out))[:2]
 
 
+def sold_with_team(G, names):
+    """[06/11 אייל] סוכן יחיד שמוגדר בצוות של שניים (צוותי שיתוף בניהול) → גם השותף מופיע בסטורי.
+    צוות שיתוף גדול יותר הוא לא "צוות מכירה" — לא מוסיפים ממנו."""
+    names = [n for n in (names or []) if n]
+    if len(names) != 1:
+        return names
+    try:
+        canon = G["_canon_key"]
+        teams = G["_load_config"]().get("teams") or []
+    except Exception:
+        return names
+    me = canon(names[0])
+    for grp in teams:
+        if isinstance(grp, list) and len(grp) == 2 and me in [canon(m) for m in grp]:
+            return names + [m for m in grp if canon(m) != me][:1]
+    return names
+
+
 DUR_BOTH = 14.0
 
 
@@ -794,12 +812,18 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
         if not row:
             res["reason"] = "הנכס לא נמצא"
             return res
-        names = [str(row.get(c) or "").strip() for c in ("סוכן 1", "סוכן 2")]
+        names = sold_with_team(G, [str(row.get(c) or "").strip() for c in ("סוכן 1", "סוכן 2")])
+        s2 = _clip((details or {}).get("seller_agent2"), 40) if isinstance(details, dict) else ""
+        if s2 and names and s2 != names[0]:   # [09/11 אייל] סוכן שני שהצטרף לצד המוכר — מחליף את השני מהמודעה/הצוות
+            names = [names[0], s2]
         try:
             feats = [f for f in (G["_row_feats"](row) or []) if f]
         except Exception:
             feats = []
         texts, kind, key = sold_texts_property(row, side, feats), "seller", "p:" + SP._key(ref)
+        pr = re.sub(r"\D", "", str((details or {}).get("price") or "")) if isinstance(details, dict) else ""
+        if pr and int(pr) > 0:   # [09/11 אייל] מחיר העסקה (מהטופס) גובר על המחיר במודעה
+            texts["price"] = SP._price(pr) + " ₪"
         buyers = sold_names((details or {}).get("buyer_agents")) if isinstance(details, dict) else []
         if side == "both" and buyers:   # [05/11 אייל] צד הקונה נבחר → סרטון משולב
             names, texts, kind = {"seller": names, "buyer": buyers}, sold_texts_both(texts), "both"
@@ -809,7 +833,10 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
             res["reason"] = "העסקה לא נמצאה או לא נסגרה"
             return res
         d = details if isinstance(details, dict) else {}
-        names, texts, kind, key, side, row = sold_agents_for_deal(deal, d.get("agents")), sold_texts_deal(deal, d), \
+        names = sold_agents_for_deal(deal, d.get("agents"))
+        if len([a for a in (deal.get("agents") or []) if str(a).strip()]) < 2:   # סוכן יחיד בעסקה — גם השותף בצוות
+            names = sold_with_team(G, names)
+        texts, kind, key, side, row = sold_texts_deal(deal, d), \
             "buyer", "d:" + str(ref), "buyer", None
         sellers = sold_names(d.get("seller_agents"))
         if sellers:   # [05/11 אייל] גם צד המוכר שלנו → סרטון משולב; נכס של המשרד באותה כתובת → התמונה שלו

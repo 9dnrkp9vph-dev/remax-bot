@@ -1489,11 +1489,16 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
   main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto}
   .greet .g{font-size:24px;font-weight:800}
   .greet .d{font-size:13.5px;color:#6B7280}
-  .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  .stat{background:#fff;border-radius:18px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:13px 8px;
-      display:flex;flex-direction:column;align-items:center;gap:2px}
-  .stat .n{font-size:25px;font-weight:800;font-variant-numeric:tabular-nums}
-  .stat .l{font-size:12px;font-weight:600;color:#6B7280}
+  /* [HOME-TILES 08/11] אייל: ארבעה ריבועים בסגנון היעדים בסטורי — גיוס · קונים · ירידות מחיר (נכס נולד / המשרד) */
+  .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .stat{aspect-ratio:1/1;background:#1E3A5F;border-radius:18px;box-shadow:0 6px 20px rgba(30,58,95,.12);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;
+      padding:4px 2px;min-width:0}
+  .stat > span{display:flex;justify-content:center;width:100%}
+  .stat svg{width:68%;max-width:84px;height:auto;display:block}
+  .stat .l{font-size:12px;font-weight:800;color:#E4C56B;line-height:1.15;margin-top:3px}
+  .stat .t{font-size:12px;color:#C9D0DA;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap}
+  @media(min-width:600px){.stat{aspect-ratio:auto;padding:12px 4px}}   /* מסך רחב: לא ריבועים ענקיים */
   .briefBar{background:linear-gradient(120deg,#0E1D33,#1E3A5F 70%,#2C4C77);border-radius:20px;padding:14px 16px;
       display:flex;align-items:center;gap:12px;box-shadow:0 8px 20px rgba(30,58,95,.25);cursor:pointer}
   .briefBar .ic{width:40px;height:40px;border-radius:13px;background:rgba(228,197,107,.15);
@@ -1695,6 +1700,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>
       תחרות</a>
+    <a id="menuKits" href="/v2/kits" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
+       text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
+      <svg width="18" height="18" viewBox="0 0 22 22"><path d="M6 2.5h7.5L17.5 6.5v13H6z" fill="none" stroke="#1E3A5F" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 11h5.5M9 14.5h5.5" stroke="#1E3A5F" stroke-width="1.7" stroke-linecap="round"/></svg>
+      תיקי פרזנטציה</a>
     <a id="menuReviews" href="/v2/reviews" style="display:flex;align-items:center;gap:11px;padding:12px 4px;
        text-decoration:none;color:#1E3A5F;font-size:14px;font-weight:700;min-height:44px">
       <svg width="18" height="18" viewBox="0 0 22 22"><path d="M5 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6H5zM13 10c0-3 2-5 5-5v2c-2 0-3 1-3 3h3v6h-5z" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -1754,9 +1763,10 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="greet"><div class="g" id="greetTx">&nbsp;</div><div class="d" id="dateTx">&nbsp;</div></div>
 
     <div class="stats">
-      <div class="stat"><div class="n" style="color:#1E3A5F" id="stCalls">—</div><div class="l">שיחות השבוע</div></div>
-      <div class="stat"><div class="n" style="color:#1FAF5E" id="stSigs">—</div><div class="l">גויסו השבוע</div></div>
-      <div class="stat"><div class="n" style="color:#7A5E1C" id="stBuyers">—</div><div class="l">קונים חדשים</div></div>
+      <div class="stat" role="link" id="stLst" onclick="location.href='/v2/sigs?tab=excl'"><span id="stLstR"></span><div class="l">גיוס</div><div class="t" id="stLstT">&nbsp;</div></div>
+      <div class="stat" role="link" id="stBuy" onclick="location.href='/v2/buyers?tab=active'"><span id="stBuyR"></span><div class="l">קונים</div><div class="t" id="stBuyT">&nbsp;</div></div>
+      <div class="stat" role="link" id="stNbd" onclick="location.href='/v2/newborn'"><span id="stNbdR"></span><div class="l">ירידות</div><div class="t">נכס נולד</div></div>
+      <div class="stat" role="link" id="stOfd" onclick="location.href='/v2/props?drops=today'"><span id="stOfdR"></span><div class="l">ירידות</div><div class="t">המשרד</div></div>
     </div>
 
     <div class="briefBar" onclick="openStory(true)">
@@ -2117,7 +2127,8 @@ var LD_TRY = 0, LD_TS = 0;
    בין משתמשים/התחזות), (2) כל קריאה מעדכנת את החלק שלה ברגע שהיא מגיעה,
    (3) קריאה שנכשלה לא מאפסת את המספר הקיים — רק מסמנת ניסיון חוזר. */
 var HOME_SNAP_KEYS = ['role', 'calls', 'sigs', 'sigSample', 'excl', 'repLabel', 'listings', 'meets',
-                      'drafts', 'exclWeek', 'buyersTot', 'buyersUn', 'buyersNew', 'props', 'nb', 'nbNew'];
+                      'drafts', 'exclWeek', 'buyersTot', 'buyersUn', 'buyersNew', 'props', 'nb', 'nbNew',
+                      'dropsNb', 'dropsOffice', 'goalLst', 'goalBuy'];
 function _homeTk(){ return String(TOK || '').slice(-16); }
 function homeSnapSave(){
   try{
@@ -2209,6 +2220,7 @@ function loadData(){
     // [PERF-NB 30/09] הבית צריך רק את המונה ואת החדשים של היום (הם ראשונים בסדר) — לא 2MB
     nb: ['/api/newborn?limit=120', 0, function(nb){
       M.nb = (nb && (nb.total || (nb.results || []).length)) || 0;
+      if (nb && nb.dropsToday){ M.dropsNb = nb.dropsToday.nb || 0; M.dropsOffice = nb.dropsToday.office || 0; }
       // נולדו ביממה האחרונה (ageDays=0) — לכרטיס הסיום של הבריף, כולל כתובות
       M.nbNew = ((nb && nb.results) || []).filter(function(r){ return r.ageDays === 0; })
         .map(function(r){ return {a: r.address || '', c: r.city || ''}; });
@@ -2256,10 +2268,49 @@ document.addEventListener('visibilitychange', function(){
   if (document.visibilityState === 'visible' && Date.now() - LD_TS > 90000) loadData();
 });
 
+/* [HOME-TILES 08/11] העיגולים — אותו סגנון של היעדים בסטורי (gRing). גיוס/קונים = השבוע מול היעד השבועי
+   (סוכן — שלו; מתאמת — הצוות; מנהל — המשרד). בלי יעד מוגדר → יעד 1 (אייל). ירידות מחיר — עיגול מלא + המספר. */
+function homeRingSvg(n, frac){
+  var C = 194.8, full = (frac == null);
+  var arc = full ? '<circle cx="37" cy="37" r="31" fill="none" stroke="#E4C56B" stroke-width="7"/>'
+    : '<circle cx="37" cy="37" r="31" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="7"/>' +
+      (frac > 0 ? '<circle cx="37" cy="37" r="31" fill="none" stroke="#E4C56B" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + C +
+        '" stroke-dashoffset="' + (C * (1 - Math.min(1, frac))).toFixed(1) + '" transform="rotate(-90 37 37)"/>' : '');
+  return '<svg viewBox="0 0 74 74" aria-hidden="true">' + arc +
+    '<text x="37" y="37" dy=".35em" text-anchor="middle" fill="#fff" font-family="Heebo" font-weight="800" font-size="' +
+    (String(n).length > 3 ? 20 : String(n).length > 2 ? 24 : 30) + '">' + n + '</text></svg>';
+}
+function homeGoalWeek(k){
+  var j = GJ; if (!j) return null;
+  var p = j.view === 'agent' ? (j.me && j.me.week) : (j.total && j.total.week);
+  if (!p || !p.counts) return null;
+  var c = Number(p.counts[k]); if (!isFinite(c)) return null;
+  var t = Number((p.targets || {})[k]); if (!isFinite(t) || t < 1) t = 1;
+  return {c: c, t: t};
+}
+var _tilesDirty = false;
+function homeTiles(){
+  if (!el('stLstR')) return;
+  _tilesDirty = false;
+  /* [08/11 אייל: "שיזכור את המספר האחרון ואם יש שינוי שיתעדכן"] — היעדים נשמרים גם בעותק של הבית
+     (העותק של היעדים תקף רק לאותו יום); עד שהטרי מגיע מוצג האחרון */
+  [['listings', 'stLst', 'גיוס', 'goalLst'], ['buyers', 'stBuy', 'קונים חדשים', 'goalBuy']].forEach(function(x){
+    var g = homeGoalWeek(x[0]);
+    if (g){ if (!M[x[3]] || M[x[3]].c !== g.c || M[x[3]].t !== g.t){ M[x[3]] = g; _tilesDirty = true; } }
+    else g = M[x[3]] || null;
+    el(x[1] + 'R').innerHTML = homeRingSvg(g ? g.c : '—', g ? g.c / g.t : 0);
+    el(x[1] + 'T').textContent = g ? '/ ' + g.t : '\u00a0';
+    el(x[1]).setAttribute('aria-label', x[2] + ' השבוע' + (g ? ': ' + g.c + ' מתוך ' + g.t : ''));
+  });
+  var nd = (M.dropsNb == null) ? '—' : M.dropsNb, od = (M.dropsOffice == null) ? '—' : M.dropsOffice;
+  el('stNbdR').innerHTML = homeRingSvg(nd, null);
+  el('stOfdR').innerHTML = homeRingSvg(od, null);
+  el('stNbd').setAttribute('aria-label', 'ירידות מחיר היום בנכס נולד: ' + nd);
+  el('stOfd').setAttribute('aria-label', 'ירידות מחיר היום בנכסי המשרד: ' + od);
+  if (_tilesDirty){ try{ homeSnapSave(); }catch(e){} }
+}
 function renderDash(){
-  el('stCalls').textContent = M.calls;
-  el('stSigs').textContent = (M.exclWeek || []).length;   // גויס בשבוע האחרון (החתמות בעלי נכס)
-  el('stBuyers').textContent = M.buyersNew || M.buyersTot;
+  homeTiles();
   var open = M.meetLate + M.meetToday;
   el('dateTx').textContent = 'יום ' + HDAYS[new Date().getDay()] + ', ' + new Date().getDate() +
       ' ב' + HMON[new Date().getMonth()] + (open ? ' · ' + open + ' משימות פתוחות' : '');
@@ -2345,6 +2396,7 @@ function goalsMiniRender(){
   var j = (GJ === undefined) ? null : GJ;
   el('goalsMiniT').textContent = j ? goalsMiniTitle(j) : 'היעדים שלי להיום';
   el('goalsMiniC').innerHTML = goalsChipsHtml(j);
+  try{ homeTiles(); }catch(e){}
 }
 function goalsLoad(tries){
   GET('/v2/api/goals/today').then(function(j){
@@ -2826,6 +2878,23 @@ V2_ADMIN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
       <div id="dlrList" style="margin-top:8px"></div>
     </div>
 
+    <!-- [KIT 09/11] תיק פרזנטציה — הטענות הקבועות שמופיעות בכל תיק (בעל המשרד בלבד; כל המסך כבר חסום למפתח) -->
+    <div class="card" id="kitCard">
+      <div class="cardTitle">תיק פרזנטציה — נתונים קבועים</div>
+      <div style="font-size:12px;color:#6B7280;line-height:1.5">מופיעים בכל תיק שנשלח לבעל נכס. &lt;office&gt; מוחלף בשם המשרד. שדה ריק חוזר לברירת המחדל. בלי קישור לגוגל — הקישור לא מוצג בתיק.</div>
+      <label class="fld" style="margin-top:8px"><span>שיתוף פעולה</span><input id="kitCoop" style="font-size:16px;min-height:44px"></label>
+      <label class="fld" style="margin-top:8px"><span>מקום ברשת</span><input id="kitRank" style="font-size:16px;min-height:44px"></label>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <label class="fld" style="flex:1;min-width:0"><span>דירוג בגוגל</span><input id="kitGRating" inputmode="decimal" style="font-size:16px;min-height:44px"></label>
+        <label class="fld" style="flex:1;min-width:0"><span>מספר ביקורות</span><input id="kitGCount" inputmode="numeric" style="font-size:16px;min-height:44px"></label>
+      </div>
+      <label class="fld" style="margin-top:8px"><span>קישור לפרופיל בגוגל</span><input id="kitGUrl" dir="ltr" type="url" placeholder="https://" style="font-size:16px;min-height:44px"></label>
+      <label class="fld" style="margin-top:8px"><span>אינסטגרם של המשרד</span><input id="kitIg" dir="ltr" type="url" placeholder="https://" style="font-size:16px;min-height:44px"></label>
+      <label class="fld" style="margin-top:8px"><span>פייסבוק של המשרד</span><input id="kitFb" dir="ltr" type="url" placeholder="https://" style="font-size:16px;min-height:44px"></label>
+      <div id="kitErr" style="font-size:12.5px;font-weight:700;color:#1E3A5F;margin-top:6px"></div>
+      <button onclick="kitSave()" style="margin-top:8px;width:100%;min-height:44px;border:none;border-radius:12px;background:#2E6BD6;color:#fff;font-size:13.5px;font-weight:800;font-family:inherit;cursor:pointer">שמירה</button>
+    </div>
+
     <!-- גיבוי/שחזור נכסי המשרד (אייל 11/09) -->
     <div class="card" id="snapCard">
       <div class="cardTitle">גיבוי נכסי המשרד</div>
@@ -3068,7 +3137,7 @@ function boot(){
         UNMATCHED = unmMerge(rs[1] || {});
         RMV = (rs[1] && rs[1].removed) || [];
         TEAMS = (rs[3] && rs[3].teams) || [];
-        render(); loadSnaps(); repLoad(); oipLoad(); dlrLoad(); mktLoad();
+        render(); loadSnaps(); repLoad(); oipLoad(); dlrLoad(); mktLoad(); kitLoad();
       });
   }).catch(function(){ location.replace('/v2'); });
 }
@@ -3200,6 +3269,30 @@ function dlrSave(){
     if (j && j.ok){ DLR.names = j.names; toast(j.names.length ? 'נשמר · ' + j.names.length + ' עם חייגן' : 'נשמר'); }
     else { toast('השמירה נכשלה'); dlrRender(); }
   }).catch(function(){ toast('שגיאה'); dlrRender(); });
+}
+// [KIT 09/11] תיק פרזנטציה — נתונים קבועים (GET/POST /v2/api/kit/settings, בעל המשרד בלבד)
+var KIT_F = {coop: 'kitCoop', rank: 'kitRank', g_rating: 'kitGRating', g_count: 'kitGCount', g_url: 'kitGUrl',
+             instagram: 'kitIg', facebook: 'kitFb'};
+var KIT_URL_ERR = {g_url: 'הקישור לגוגל חייב להתחיל ב-https://', instagram: 'הקישור לאינסטגרם חייב להתחיל ב-https://',
+                   facebook: 'הקישור לפייסבוק חייב להתחיל ב-https://'};
+function kitLoad(){
+  GET('/v2/api/kit/settings').then(function(j){
+    if (!j || !j.ok){ var c = el('kitCard'); if (c) c.style.display = 'none'; return; }
+    var st = j.settings || {};
+    Object.keys(KIT_F).forEach(function(k){ var i = el(KIT_F[k]); if (i) i.value = st[k] || ''; });
+  }).catch(function(){});
+}
+function kitSave(){
+  var d = {};
+  Object.keys(KIT_F).forEach(function(k){ d[k] = (el(KIT_F[k]).value || '').trim(); });
+  el('kitErr').textContent = '';
+  var bad = ['g_url', 'instagram', 'facebook'].filter(function(k){ return d[k] && d[k].indexOf('https://') !== 0; })[0];
+  if (bad){ el('kitErr').textContent = KIT_URL_ERR[bad]; return; }
+  POST('/v2/api/kit/settings', d).then(function(j){
+    if (j && j.ok){ toast('נשמר'); return; }
+    if (j && KIT_URL_ERR[j.reason]) el('kitErr').textContent = KIT_URL_ERR[j.reason];
+    else toast('השמירה נכשלה');
+  }).catch(function(){ toast('שגיאה'); });
 }
 function oipMine(){ if (OIP.my_ip) el('oipIp').value = OIP.my_ip; else toast('לא זוהתה כתובת'); }
 function oipSave(d, okMsg){
@@ -5689,6 +5782,7 @@ function saveSt(){
     }
   }catch(e){}
   if (/[?&]tab=bpage\b/.test(location.search)){ FILTER = 'bpage'; el('q').value = ''; _restY = 0; }   // [AI-MATCH 08/10] מאריח "התאמות AI" בבית
+  if (/[?&]tab=active\b/.test(location.search)){ FILTER = 'active'; el('q').value = ''; _restY = 0; }   // [HOME-TILES 08/11] ריבוע "קונים" בבית
   // 19/10: חזרה לדף מזיכרון הדפדפן (כפתור 'אחורה') — גם אז בלי החיפוש הקודם
   window.addEventListener('pageshow', function(ev){
     if (ev.persisted && el('q') && el('q').value){ try{ aiClear(); }catch(e){} }
@@ -6153,6 +6247,7 @@ function saveSt(){
       FILTER = s.f || FILTER; _restY = s.y || 0;
     }
   }catch(e){}
+  if (/[?&]tab=excl\b/.test(location.search)){ FILTER = 'excl'; _restY = 0; }   // [HOME-TILES 08/11] ריבוע "גיוס" בבית
   var sg = document.querySelector('#filters .sg[data-f="' + FILTER + '"]');
   if (sg){ var cs = sg.parentNode.children;
     for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
@@ -6220,6 +6315,7 @@ V2_NB_KIT = r"""<style>
   .nbk .stActs .s.red{color:#C24040}
   .nbk .stActs .s.on{background:#C29435;border-color:#C29435;color:#231700;box-shadow:0 3px 10px rgba(194,148,53,.25)}
   .nbk .stActs .s.red.on{background:#C24040;border-color:#C24040;color:#fff;box-shadow:0 3px 10px rgba(194,64,64,.25)}
+  .nbk .stActs .s.kit{grid-column:1/-1;min-height:44px;color:#7A5E1C;border-color:#E4C56B}   /* [KIT 09/11] תיק פרזנטציה */
   .nbk .stLine{display:flex;align-items:center;gap:6px;font-size:12px;color:#6B7280}
   .nbk .stLine i{width:6px;height:6px;border-radius:50%;background:#C29435;display:block;flex-shrink:0}
   .nbk .notes{font-size:12px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:7px 11px;line-height:1.5}
@@ -6304,8 +6400,22 @@ function nbCard(r, i){
     '<button class="s' + (st && st.status === 'meeting' ? ' on' : '') + '" onclick="stDate(' + i + ',\'meeting\')">פגישה</button>' +
     '<button class="s' + (st && st.status === 'followup' ? ' on' : '') + '" onclick="stDate(' + i + ',\'followup\')">פולו-אפ</button>' +
     '<button class="s red' + (st && st.status === 'not_interested' ? ' on' : '') + '" onclick="stToggleNI(' + i + ')">לא מעוניין</button>' +
-    '<button class="s" onclick="noteSheet(' + i + ')">הערה</button></div>' +
+    '<button class="s" onclick="noteSheet(' + i + ')">הערה</button>' +
+    '<button class="s kit" onclick="kitFromNb(' + i + ')">תיק לפני פגישה</button></div>' +
     stLine + notes + '</div>';
+}
+// [KIT 09/11] תיק פרזנטציה לבעל הנכס — נשלח לאישור; הרשימה והשליחה במסך /v2/kits
+function kitFromNb(i){
+  var r = nbKitRows()[i]; if (!r || kitFromNb._busy) return;   // עד שהשרת עונה — לא שולחים שוב
+  kitFromNb._busy = true;
+  POST('/v2/api/kit/create', {source: 'nb', key: r.key}).then(function(j){
+    kitFromNb._busy = false;
+    if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); return; }
+    var why = j && j.reason;
+    toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
+      : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה'
+      : why === 'taken' ? 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (j.by || 'סוכן אחר') : 'לא הצלחנו להכין את התיק');
+  }).catch(function(){ kitFromNb._busy = false; toast('שגיאה'); });
 }
 function nbDial(i){   // חיוג לבעל הנכס (10/09): רישום 'מי פנה' + click2call בפיילוט, אחרת tel:
   markContact(i);
@@ -7285,6 +7395,13 @@ function fmtPrice(p){
 }
 
 var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''}, UPD = {office:'', shtaf:''};
+var DROPS_TODAY = /[?&]drops=today\b/.test(location.search);   // [HOME-TILES 08/11] ירידות מחיר היום בנכסי המשרד
+function dropsTodayOff(){ DROPS_TODAY = false; try{ history.replaceState(null, '', '/v2/props'); }catch(e){} render(); }
+function dropsTodayList(list){
+  var mid = new Date(); mid.setHours(0, 0, 0, 0); mid = mid.getTime() / 1000;
+  return (list || []).filter(function(p){ return !p.delisted && (p.priceDropAt || 0) >= mid; })
+    .sort(function(a, b){ return (b.priceDropAt || 0) - (a.priceDropAt || 0); });
+}
 var DEAL = '';   // [DEALS 13/10] '' = מכירה · 'rent' · 'commercial' (המשרד שלנו + שלי בלבד)
 var NBRES = [], NB_SUM = '', NB_RENT = false;   // [NB-SEARCH 30/09] טאב נכס נולד (רק כשיש חיפוש)
 function _applyNb(j){ NBRES = (j && j.results) || []; NB_SUM = (j && j.summary) || ''; NB_RENT = !!(j && j.rent); }
@@ -7409,7 +7526,8 @@ function vidRow(p){
   if (L){
     var chs = ['ig_story', 'ig_reel', 'fb_story', 'fb_reel'].filter(function(c){ return L[c + '_status'] !== 'off'; });
     var oks = chs.filter(function(c){ return L[c + '_status'] === 'ok'; }).length;
-    var line = 'סרטון: ' + (VID_ST[L.status] || L.status) + ' ' + socWhen(L.created_at);
+    var held = L.status === 'approved' && L.publish_at;   // [06/11] אושר בשבת/בלילה — מחכה
+    var line = 'סרטון: ' + (held ? 'אושר — ממתין (שבת/לילה)' : (VID_ST[L.status] || L.status)) + ' ' + socWhen(L.created_at);
     if (L.status === 'published' || L.status === 'partial') line += ' · ' + oks + '/' + chs.length;
     h += '<div style="font-size:12px;color:#5B6472;font-weight:700;margin-top:8px">' + esc(line);
     if (L.video_token && (L.status === 'preview' || L.status === 'pending'))
@@ -7425,6 +7543,9 @@ function vidRow(p){
   if (L && L.status === 'partial')
     h += '<div style="margin-top:8px"><button onclick="vidRetry(\'' + esc(L.id) + '\')" style="' + css +
          'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">נסה שוב את מה שנכשל</button></div>';
+  if (L && L.status === 'approved' && L.publish_at && !VID.busy['n:' + L.id])
+    h += '<div style="margin-top:8px"><button onclick="vidNow(\'' + esc(L.id) + '\')" style="' + css +
+         'background:#2E6BD6;color:#fff;border:none">פרסם עכשיו</button></div>';
   if (L && L.status === 'pending' && !VID.busy['s:' + L.id])
     h += '<div style="margin-top:8px"><button onclick="vidResend(\'' + esc(L.id) + '\')" style="' + css +
          'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">שלח שוב לאישור בוואטסאפ</button></div>';
@@ -7466,6 +7587,13 @@ function vidRetry(id){
     setTimeout(function(){ delete VID.busy['r:' + id]; }, 180000);
   }).catch(function(){ delete VID.busy['r:' + id]; toast('שגיאה'); });
 }
+function vidNow(id){
+  if (VID.busy['n:' + id]) return;   // לחיצה כפולה לא מפרסמת פעמיים
+  VID.busy['n:' + id] = 1; render();
+  POST('/v2/api/social/video/now', {id: id}).then(function(j){
+    toast(j && j.ok ? 'עולה עכשיו לרשתות' : ((j && j.error) || 'שגיאה'));
+  }).catch(function(){ delete VID.busy['n:' + id]; render(); toast('שגיאה'); });
+}
 function vidResend(id){
   if (VID.busy['s:' + id]) return;
   VID.busy['s:' + id] = 1; render();
@@ -7476,7 +7604,7 @@ function vidResend(id){
 }
 /* [SOLD 05/11] סטורי SOLD לנכס שנמכר — "הנכסים שלי", למפתח בלבד (social_sold.py).
    לחיצה → בוחרים מי ייצגנו → הסרטון מוכן תוך כחצי דקה → צפייה → "פרסם לסטורי" (אינסטגרם + פייסבוק). */
-var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}, both: {}, ba: {}, ag: null};
+var SOLD = {items: {}, asked: {}, busy: {}, open: {}, poll: {}, both: {}, ba: {}, ag: null, pr: {}, s2: {}};
 var SOLD_ST = {rendering: 'בהכנה', ready: 'מוכן לפרסום', publishing: 'מתפרסם', published: 'פורסם בסטורי',
   partial: 'פורסם חלקית', failed: 'נכשל'};
 function soldRow(p){
@@ -7505,23 +7633,32 @@ function soldRow(p){
     h += '<div style="margin-top:8px"><button onclick="soldPublish(\'' + esc(L.id) + '\',\'' + esc(k) + '\')" style="' + css +
          'background:#2E6BD6;color:#fff;border:none">' + (L.status === 'partial' ? 'נסה שוב את מה שנכשל' : 'פרסם לסטורי באינסטגרם ובפייסבוק') +
          test + '</button></div>';
+  var inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;' +
+    'border-radius:11px;padding:0 12px;font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F;margin-top:6px';
+  // [09/11 אייל] מחיר העסקה שונה מהמחיר במודעה — ריק = המחיר מהמודעה
+  var prF = SOLD.open[k] ? '<div style="font-size:12.5px;font-weight:800;color:#5B6472;margin-top:8px">מחיר הסגירה (ריק = המחיר במודעה)</div>' +
+    '<input inputmode="numeric" autocomplete="off" value="' + esc(SOLD.pr[k] || '') + '" placeholder="' + esc((p && p.price) || '') + '"' +
+    ' oninput="soldPr(\'' + esc(k) + '\',this)" style="' + inp + '">' +
+    // [09/11 אייל] לפעמים מצטרף סוכן שני לצד המוכר — ריק = הסוכנים מהמודעה
+    '<div style="font-size:12.5px;font-weight:800;color:#5B6472;margin-top:8px">סוכן שני מצד המוכר (ריק = לפי המודעה)</div>' +
+    '<input list="soldAgDL" autocomplete="off" value="' + esc(SOLD.s2[k] || '') + '" placeholder="שם הסוכן"' +
+    ' oninput="soldS2(\'' + esc(k) + '\',this.value)" style="' + inp + '">' +
+    '<datalist id="soldAgDL">' + (SOLD.ag || []).map(function(a){ return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>' : '';
   if (SOLD.open[k] && SOLD.both[k]){   // [05/11 אייל] שני הצדדים שלנו — סרטון משולב: מוכר ואז קונה
-    var ba = SOLD.ba[k] || ['', ''], inp = 'width:100%;min-height:44px;box-sizing:border-box;border:1.5px solid #DCD6C8;' +
-      'border-radius:11px;padding:0 12px;font-size:16px;font-family:inherit;background:#fff;color:#1E3A5F;margin-top:6px';
-    return h + '<div style="margin-top:8px;padding:12px;border-radius:14px;background:#F6EEDB">' +
+    var ba = SOLD.ba[k] || ['', ''];
+    return h + '<div style="margin-top:8px;padding:12px;border-radius:14px;background:#F6EEDB">' + prF +
       '<div style="font-size:13.5px;font-weight:800;color:#7A5E1C">מי הביא את הקונה? (עד 2)</div>' +
       '<div class="sb" style="margin-top:2px">הסרטון יתחלק לשניים — קודם המוכר ואחר כך הקונה. ריק = סטורי רגיל.</div>' +
       [0, 1].map(function(i){
         return '<input list="soldAgDL" autocomplete="off" value="' + esc(ba[i] || '') + '" placeholder="סוכן ' + (i + 1) + '"' +
           ' oninput="soldBA(\'' + esc(k) + '\',' + i + ',this.value)" style="' + inp + '">';
       }).join('') +
-      '<datalist id="soldAgDL">' + (SOLD.ag || []).map(function(a){ return '<option value="' + esc(a) + '"></option>'; }).join('') + '</datalist>' +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
       '<button onclick="soldCreate(\'' + esc(k) + '\',\'both\')" style="' + css + 'flex:2;background:#C29435;color:#231700;border:none">צור סטורי</button>' +
       '<button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css + 'flex:1;background:#fff;color:#5B6472;border:1.5px solid #DCD6C8">ביטול</button></div></div>';
   }
   if (SOLD.open[k])
-    return h + '<div style="display:flex;gap:8px;margin-top:8px">' +
+    return h + prF + '<div style="display:flex;gap:8px;margin-top:8px">' +
       '<button onclick="soldCreate(\'' + esc(k) + '\',\'seller\')" style="' + css + 'background:#C29435;color:#231700;border:none">ייצגנו את המוכר</button>' +
       '<button onclick="soldBoth(\'' + esc(k) + '\')" style="' + css + 'background:#C29435;color:#231700;border:none">המוכר וגם הקונה</button></div>' +
       '<div style="margin-top:6px"><button onclick="soldToggle(\'' + esc(k) + '\')" style="' + css +
@@ -7542,9 +7679,12 @@ function soldLoad(list){
     render();
   }).catch(function(){});
 }
-function soldToggle(k){ SOLD.open[k] = !SOLD.open[k]; SOLD.both[k] = false; render(); }
+function soldToggle(k){ SOLD.open[k] = !SOLD.open[k]; SOLD.both[k] = false; render(); if (SOLD.open[k]) soldAgLoad(); }
+function soldS2(k, v){ SOLD.s2[k] = String(v || ''); }
 function soldBoth(k){
-  SOLD.both[k] = true; render();
+  SOLD.both[k] = true; render(); soldAgLoad();
+}
+function soldAgLoad(){
   if (SOLD.ag) return;
   SOLD.ag = [];
   GET('/api/agents').then(function(j){   // רשימת המשרד הקנונית — להשלמה אוטומטית
@@ -7552,6 +7692,10 @@ function soldBoth(k){
   }).catch(function(){});
 }
 function soldBA(k, i, v){ (SOLD.ba[k] = SOLD.ba[k] || ['', ''])[i] = v; }
+function soldPr(k, el){   // פסיקים תוך כדי הקלדה
+  var d = String(el.value || '').replace(/\D/g, '');
+  el.value = d ? Number(d).toLocaleString() : ''; SOLD.pr[k] = el.value;
+}
 function soldWatch(k, n){   // מתעדכן עד שהרינדור/הפרסום מסתיים (עד ~3 דק')
   clearTimeout(SOLD.poll[k]);
   if (n > 36) { delete SOLD.busy[k]; render(); return; }
@@ -7576,6 +7720,8 @@ function soldCreate(k, side){
   delete SOLD.items['p:' + k]; render();
   var body = {key: k, side: side};
   if (side === 'both') body.details = {buyer_agents: (SOLD.ba[k] || []).map(function(x){ return String(x || '').trim(); }).filter(Boolean)};
+  if (side === 'both' || SOLD.pr[k]) (body.details = body.details || {}).price = SOLD.pr[k] || '';
+  var s2 = String(SOLD.s2[k] || '').trim(); if (s2) (body.details = body.details || {}).seller_agent2 = s2;
   SOLD.both[k] = false;
   POST('/v2/api/social/sold', body).then(function(j){
     if (!j || !j.ok){ delete SOLD.busy[k]; render(); toast((j && j.error) || 'שגיאה — לא נשלח'); return; }
@@ -7729,7 +7875,9 @@ function render(){
   if (el('dealSegs')) el('dealSegs').style.display = (MODE === 'office' || MODE === 'mine') ? 'flex' : 'none';
   var _dealTxt = DEAL === 'rent' ? 'להשכרה' : DEAL === 'commercial' ? 'מסחריים' : '';
   var src, h = '';
-  if (MODE === 'office') src = OFFICE;
+  var _drops = (MODE === 'office' && DROPS_TODAY && !DEAL && !q);
+  if (_drops) src = dropsTodayList(OFFICE);
+  else if (MODE === 'office') src = OFFICE;
   else if (MODE === 'shtaf') src = shtafShown;
   else src = mineShown;
   if (el('qSpin')) el('qSpin').style.display = 'none';
@@ -7743,6 +7891,13 @@ function render(){
   src.slice(0, 40).forEach(function(p, i){ h += propCard(p, i); });
   if (src.length > 40) h += '<div class="more">מוצגים 40 מתוך ' + src.length + ' — חדד את החיפוש</div>';
   var _ob = orphanBanner(); if (_ob) h = _ob + h;   // 24/09: סימון נכס-חם יתום — באנר עם "הסר"
+  if (_drops){
+    el('sumLine').textContent = 'ירידות מחיר היום · נכסי המשרד · ' + src.length;
+    h = '<div class="card" style="display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:10px">' +
+      '<div style="flex:1;font-weight:800;color:#1E3A5F">ירידות מחיר היום · ' + src.length + '</div>' +
+      '<button onclick="dropsTodayOff()" style="min-height:44px;padding:0 14px;border-radius:12px;border:1.5px solid #E2DED3;background:#fff;font:inherit;font-weight:700;color:#1E3A5F;cursor:pointer">כל הנכסים</button></div>' +
+      (h || '<div class="card empty"><div class="t">אין ירידות מחיר היום בנכסי המשרד</div><div class="s">ירידות מחיר מתגלות בכל סריקה של יד2. הנכסים שירדו ב-7 הימים האחרונים מסומנים בתג בכרטיס.</div></div>');
+  }
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#C29435" stroke-width="1.4" stroke-linejoin="round"/></svg></div>' +
     '<div class="t">' + (_dealTxt && MODE !== 'shtaf' ? 'אין ' + (MODE === 'mine' ? 'לך ' : '') + 'נכסים ' + _dealTxt + ' כרגע' : (MODE === 'mine' ? 'אין לך נכסים פעילים' : 'לא נמצאו נכסים')) + '</div>' +
@@ -8094,11 +8249,12 @@ function saveSt(){
     var s = JSON.parse(localStorage.getItem('v2st:props') || 'null');
     if (s){
       MODE = s.m || MODE; el('q').value = s.q || ''; _restY = s.y || 0;
-      var sg = document.querySelector('#modes .sg[data-m="' + MODE + '"]');
-      if (sg){ var cs = sg.parentNode.children;
-        for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
     }
   }catch(e){}
+  if (DROPS_TODAY){ MODE = 'office'; el('q').value = ''; _restY = 0; }   // [HOME-TILES 08/11] מהריבוע בבית
+  var sg = document.querySelector('#modes .sg[data-m="' + MODE + '"]');
+  if (sg){ var cs = sg.parentNode.children;
+    for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', cs[i] === sg); }
 })();
 var _renderBase = render;
 render = function(){
@@ -10380,6 +10536,8 @@ V2_SIGN_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       <div class="fld"><span>תעודת זהות <span id="idReq" style="color:#C24040;display:none">*</span></span>
         <input id="cId" inputmode="numeric" oninput="checkId()">
         <div id="idMsg"></div></div>
+      <div class="fld"><span>כתובת הלקוח (לא חובה)</span><input id="cAddr" autocomplete="off"></div>
+      <div class="fld"><span>מייל (לא חובה)</span><input id="cMail" type="email" inputmode="email" autocomplete="off" dir="ltr"></div>
     </div>
 
     <div class="sec">
@@ -10731,6 +10889,9 @@ function submitSign(){
   if (BUSY) return;
   var cname = el('cName').value.trim(), cphone = el('cPhone').value.trim(), cid = el('cId').value.trim();
   var cnotes = el('cNotes') ? el('cNotes').value.trim() : '';
+  /* [10/11 אייל — עיצוב חתימה טובה] שורה אחת, בלי ירידות שורה (הכותרת מפורקת לפי שורות) */
+  var caddr = el('cAddr') ? el('cAddr').value.replace(/\s+/g, ' ').trim() : '';
+  var cmail = el('cMail') ? el('cMail').value.replace(/\s+/g, '').trim() : '';
   if (MODE === 'draft'){   // טיוטא: שומר את מצב הטופס כמו-שהוא — רק שם חובה
     if (!cname){ toast('שם הלקוח — חובה לטיוטא'); return; }
     var deals = DEALS_DEF.map(function(d){
@@ -10740,7 +10901,7 @@ function submitSign(){
     el('go').dataset.t = el('go').dataset.t || el('go').textContent;
     el('go').textContent = 'שומר טיוטא…';
     POST('/v2/api/sign/draft', {id: DRAFT_ID,
-      draft: {kind: KIND, client: cname, phone: cphone, cid: cid, notes: cnotes,
+      draft: {kind: KIND, client: cname, phone: cphone, cid: cid, notes: cnotes, caddr: caddr, cmail: cmail,
               props: PROPS, deals: deals}}).then(function(j){
       BUSY = false; el('go').disabled = false;
       el('go').textContent = el('go').dataset.t;
@@ -10807,7 +10968,8 @@ function submitSign(){
       : 'נכס: ' + (PROPS[0].addr || '—') + (PROPS[0].price ? ' · מחיר מבוקש: ' + PROPS[0].price + ' ₪' : '');
     var header = 'תאריך: ' + todayStr() + ' · המתווך/הסוכן: ' + AGENT + '\n' +
       'לקוח: ' + cname + (cphone ? " · טל' " + cphone : '') + (cid ? ' · ת״ז ' + cid : '') + '\n' +
-      propsLine;
+      propsLine +
+      (caddr ? '\nכתובת הלקוח: ' + caddr : '') + (cmail ? '\nמייל הלקוח: ' + cmail : '');
     var done = function(j, txt){
       BUSY = false; el('go').disabled = false;
       el('go').textContent = el('go').dataset.t || el('go').textContent;
@@ -10888,6 +11050,8 @@ function submitSign(){
       if (d.phone) el('cPhone').value = d.phone;
       if (d.cid) el('cId').value = d.cid;
       if (d.notes && el('cNotes')) el('cNotes').value = d.notes;
+      if (d.caddr && el('cAddr')) el('cAddr').value = d.caddr;
+      if (d.cmail && el('cMail')) el('cMail').value = d.cmail;
       if (d.props && d.props.length){
         PROPS = d.props.map(function(p){ return {addr: p.addr || '', price: p.price || ''}; });
         renderProps();
@@ -11145,6 +11309,11 @@ function itemRow(m, i){
         '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 8a4 4 0 1 1 1.2 2.8M4 8V5M4 8h3" fill="none" stroke="#6B7280" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
       : '<button class="sq" style="background:#E7F7EE" onclick="doneMeet(' + i + ')" aria-label="בוצע">' +
         '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M2.5 8.5l3.5 3.5 7-8" fill="none" stroke="#1FAF5E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>') +
+    // [KIT 09/11] תיק פרזנטציה — רק לפגישה מנכס נולד (פגישה ידנית — תיק ידני במסך התיקים)
+    (String(m.skey || '').indexOf('manual:') !== 0
+      ? '<button class="sq" style="background:#F6EEDB" onclick="kitFromMeet(' + i + ')" aria-label="תיק לפני פגישה">' +
+        '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M4 1.5h5.5L12.5 4.5v10h-8.5z" fill="none" stroke="#7A5E1C" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 8h4M6.5 11h4" stroke="#7A5E1C" stroke-width="1.5" stroke-linecap="round"/></svg></button>'
+      : '') +
     // [MEET-DEL 22/10] מחיקה — אייל: "כפתור מחק ושימחק גם את הפגישה מהיומן"
     '<button class="sq" style="background:#FBEDED" onclick="delMeet(' + i + ')" aria-label="מחיקה">' +
       '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9M6.7 7v4.5M9.3 7v4.5" fill="none" stroke="#C24040" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
@@ -11370,6 +11539,18 @@ function delMeet(i){   // [MEET-DEL] מחיקה לצמיתות — השרת מו
     toast((m.status === 'meeting' ? 'הפגישה נמחקה' : 'הפולו-אפ נמחק') + ' · גם מהיומן'); load();
   });
 }
+function kitFromMeet(i){   // [KIT 09/11] תיק פרזנטציה מהפגישה — נשלח לאישור
+  var m = MEETS[i]; if (!m || kitFromMeet._busy) return;   // עד שהשרת עונה — לא שולחים שוב
+  kitFromMeet._busy = true;
+  POST('/v2/api/kit/create', {source: 'meet', skey: m.skey || ''}).then(function(j){
+    kitFromMeet._busy = false;
+    if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); return; }
+    var why = j && j.reason;
+    toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
+      : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה'
+      : why === 'taken' ? 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (j.by || 'סוכן אחר') : 'לא הצלחנו להכין את התיק');
+  }).catch(function(){ kitFromMeet._busy = false; toast('שגיאה'); });
+}
 function undoneMeet(i){   // החזרה מ'בוצע' לפעיל
   var m = MEETS[i]; if (!m) return;
   POST('/api/newborn/status/done', {skey: m.skey || '', done: false}).then(function(j){
@@ -11428,6 +11609,342 @@ function goDraft(di){
 })();
 </script></body></html>"""
 
+
+
+# [KIT 09/11] תיקי פרזנטציה — הרשימה של הסוכן, שליחה לבעל הנכס ותיק ידני
+V2_KITS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>תיקי פרזנטציה</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;color:#1E3A5F;display:flex;flex-direction:column;max-width:100vw}
+  header{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 6px}
+  header .av{width:42px;height:42px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:16px;font-weight:700}
+  header .lg{height:44px;max-width:150px;object-fit:contain}
+  header .bk{width:44px;height:44px;border-radius:14px;background:#fff;border:1px solid #E9E4D8;display:flex;
+      align-items:center;justify-content:center;cursor:pointer}
+  @media (min-width:700px){
+    header,main,nav,#impBar{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+  }
+  main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:13px;overflow:auto;padding-bottom:124px;-webkit-overflow-scrolling:touch}
+  .hd2{display:flex;align-items:center;gap:10px}
+  .hd2 .ic{width:36px;height:36px;border-radius:11px;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .hd2 h1{font-size:19px;font-weight:800}
+  .hd2 .cnt{font-size:12.5px;font-weight:700;color:#2E6BD6;background:#EAF0FA;padding:3px 10px;border-radius:999px}
+  .sub{font-size:12.5px;color:#6B7280;line-height:1.5}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px}
+  .sg{flex:1;text-align:center;padding:10px 0;font-size:13px;font-weight:700;color:#5B6472;border-radius:10px;cursor:pointer;min-height:40px}
+  .sg.on{color:#fff;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
+  .kc{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:14px 15px;display:flex;flex-direction:column;gap:9px}
+  .kc .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .kc .tt{font-size:15px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
+  .kc .sb{font-size:12px;color:#6B7280;margin-top:2px}
+  .kc .vw{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#5B6472;background:#F7F5EE;
+      border-radius:11px;padding:8px 11px}
+  .kchip{display:inline-block;font-size:12px;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .kchip.rj{white-space:normal;max-width:55%;text-align:center;line-height:1.35}
+  .kbtn{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:13px;padding:0 14px;width:100%;
+      min-height:46px;font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
+  .kbtn.sec{background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
+  .kbtn.pri{background:#2E6BD6;color:#fff;box-shadow:0 4px 12px rgba(46,107,214,.25)}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px;
+      background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .t{font-size:15px;font-weight:800}
+  .empty .s{font-size:12.5px;color:#6B7280;line-height:1.5;max-width:280px}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+      display:flex;justify-content:space-around;align-items:flex-end}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
+      font-weight:600;color:#6E7683;cursor:pointer;position:relative}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30;touch-action:none}
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 96px;
+      display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto;overflow-x:hidden;overscroll-behavior:contain}
+  #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center}
+  #sheet h3{font-size:19px;font-weight:800}
+  @media (min-width:700px){ #sheet{max-width:600px;margin-left:auto;margin-right:auto} }
+  .fld2{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+  .fld2 span{font-size:12px;font-weight:700;color:#5B6472}
+  .fld2 span i{font-style:normal;font-weight:600;color:#6B7280}
+  .fld2 input,.fld2 select{background:#fff;border:1.5px solid #DCD6C8;border-radius:13px;padding:11px 13px;min-height:47px;
+      font-size:16px;font-family:inherit;outline:none;color:#1E3A5F;width:100%;min-width:0;max-width:100%}
+  .fld2 input[type="date"],.fld2 input[type="time"]{-webkit-appearance:none;appearance:none;display:block;text-align:right}
+  .fld2.bad input,.fld2.bad select{border-color:#C29435;background:#FFFBF0}
+  .ferr{font-size:12.5px;font-weight:700;color:#7A5E1C;min-height:0}
+  .row2{display:flex;gap:8px}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:600;padding:10px 18px;border-radius:12px;opacity:0;transition:opacity .25s;
+      pointer-events:none;z-index:100;white-space:nowrap}
+</style></head><body>
+
+  <header>
+    <div class="bk" onclick="history.length > 1 ? history.back() : location.href='/v2/home'" aria-label="חזרה">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" fill="none" stroke="#1E3A5F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <img class="lg" src="/assets/logo" alt="" onerror="this.style.display='none'">
+    <div class="av" id="avatarTx"></div>
+  </header>
+
+  <main>
+    <div class="hd2">
+      <div class="ic"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 1.5h5.5L12.5 4.5v10h-8.5z" fill="none" stroke="#7A5E1C" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 8h4M6.5 11h4" stroke="#7A5E1C" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+      <h1>תיקי פרזנטציה</h1>
+      <div class="cnt" id="cnt">—</div>
+    </div>
+    <div class="sub">תיק אישי לבעל הנכס לפני פגישת הגיוס. כל תיק עובר אישור, ואחריו אפשר לשלוח אותו לבעל הנכס בוואטסאפ.</div>
+    <div class="segs" id="scope" style="display:none">
+      <div class="sg on" data-s="mine" onclick="setScope(this)">שלי</div>
+      <div class="sg" data-s="all" onclick="setScope(this)">כל המשרד</div>
+    </div>
+    <button class="kbtn pri" onclick="kitManual()">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>תיק חדש (ידני)</button>
+    <div id="list"><div class="sub" style="text-align:center;padding:24px 0">טוען…</div></div>
+  </main>
+
+  <nav>
+    <div class="it" onclick="location.href='/v2/calls'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>שיחות</div>
+    <div class="it" onclick="location.href='/v2/buyers'"><svg width="21" height="21" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#6E7683" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linecap="round"/></svg>קונים</div>
+    <div class="it" onclick="location.href='/v2/home'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M3 10.5L11 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H4a1 1 0 0 1-1-1z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>בית</div>
+    <div class="it" onclick="location.href='/v2/sigs'"><svg width="21" height="21" viewBox="0 0 22 22"><path d="M14 3l4 4L8 17l-4.8 1L4 13z" fill="none" stroke="#6E7683" stroke-width="1.8" stroke-linejoin="round"/></svg>חתימות</div>
+    <div class="it" onclick="location.href='/v2/newborn'"><svg width="24" height="21" viewBox="0 0 118 106"><path d="M58 8L20 44l14 54h48l14-54z" fill="#E4C56B"/><path d="M58 8L20 44h38z" fill="#C29435"/><path d="M58 8l38 36H58z" fill="#EED9A0"/><path d="M58 44L34 98h24z" fill="#D8AC4E"/><path d="M20 44l-14 8 14 6z" fill="#1E3A5F"/><circle cx="40" cy="34" r="4.2" fill="#1E3A5F"/></svg>נכס נולד</div>
+  </nav>
+
+  <div id="ovl" onclick="closeSheet()"></div>
+  <div id="sheet"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+var TOK = null;
+try{ TOK = localStorage.getItem('fbTok'); }catch(e){}
+if (!TOK) location.replace('/v2');
+function GET(u){ return fetch(u, {headers:{'X-Auth-Token': TOK}}).then(function(r){ return r.json(); }); }
+function POST(u, d){
+  return fetch(u, {method:'POST', headers:{'X-Auth-Token': TOK, 'Content-Type':'application/json'},
+    body: JSON.stringify(d || {})}).then(function(r){ return r.json(); });
+}
+function el(id){ return document.getElementById(id); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function toast(msg){
+  var t = el('toast'); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.style.opacity = '0'; }, 2200);
+}
+function openSheet(html){
+  el('sheet').innerHTML = '<div class="grip"></div>' + html;
+  el('sheet').style.display = 'flex'; el('ovl').style.display = 'block';
+  document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden';
+}
+function closeSheet(){
+  el('sheet').style.display = 'none'; el('ovl').style.display = 'none';
+  document.documentElement.style.overflow = ''; document.body.style.overflow = '';
+}
+
+var KITS = [], SCOPE = 'mine', ME = {}, PICK = false, AGENTS = [];
+function kitPad(x){ return ('0' + x).slice(-2); }
+/* צ'יפ המצב — רק צבעי הפלטה: זהב-טקסט · כחול · ירוק · אפור; 'נדחה' נייבי על לבן עם מסגרת (אדום שמור למחיקה) */
+function kitStatusChip(k){
+  var st = (k && k.status) || '';
+  if (st === 'pending') return '<span class="kchip" style="background:#F6EEDB;color:#7A5E1C">בהכנה</span>';
+  if (st === 'approved') return '<span class="kchip" style="background:#EAF0FA;color:#2E6BD6">מוכן לשליחה</span>';
+  if (st === 'sent') return '<span class="kchip" style="background:#E7F7EE;color:#157A43">נשלח</span>';
+  if (st === 'expired') return '<span class="kchip" style="background:#F0EDE3;color:#6B7280">פג תוקף</span>';
+  if (st === 'taken') return '<span class="kchip" style="background:#F0EDE3;color:#6B7280">נשלח ע״י ' + esc(k.taken_by || 'סוכן אחר') + '</span>';
+  if (st === 'rejected') return '<span class="kchip rj" style="background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">נדחה' +
+    (k.reject_reason ? ' · ' + esc(k.reject_reason) : '') + '</span>';
+  return '';
+}
+/* מעקב צפייה: last = שניות epoch מהשרת */
+function kitViews(v){
+  v = v || {};
+  var n = +v.opens || 0;
+  if (!n) return 'עוד לא נפתח';
+  var parts = [n === 1 ? 'נפתח פעם אחת' : 'נפתח ' + n + ' פעמים', Math.max(1, Math.round((+v.secs || 0) / 60)) + " דק'"];
+  var t = v.last;
+  if (t != null && t !== ''){
+    var d = (typeof t === 'number' || /^\d+(\.\d+)?$/.test(String(t))) ? new Date(+t < 1e12 ? +t * 1000 : +t) : new Date(t);
+    if (!isNaN(d)) parts.push('לאחרונה ' + kitPad(d.getDate()) + '/' + kitPad(d.getMonth() + 1) + ' ' +
+      kitPad(d.getHours()) + ':' + kitPad(d.getMinutes()));
+  }
+  return parts.join(' · ');
+}
+/* 'שלח לבעל הנכס' — רק לתיק שאושר או נשלח, ורק כשהשרת החזיר מספר וטקסט */
+function kitSendBtn(k, i){
+  if (!k || (k.status !== 'approved' && k.status !== 'sent') || !k.wa || !k.text) return '';
+  return '<button class="kbtn" style="background:#157A43;color:#fff" onclick="kitSend(' + i + ')">' +
+    '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+    'שלח לבעל הנכס</button>';
+}
+/* תיק אחד לכל בעל נכס (09/11) — מי ששלח ראשון */
+function kitTakenMsg(by){
+  return 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (by || 'סוכן אחר');
+}
+/* reason מהשרת (/v2/api/kit/create) → השדה בטופס הידני; '' = הודעה כללית */
+function kitManualErr(reason){
+  return {owner: 'kmOwner', phone: 'kmPhone', addr: 'kmStreet', street: 'kmStreet', city: 'kmCity', rooms: 'kmRooms',
+          price: 'kmPrice', agent: 'kmAgent', forbidden: 'kmAgent'}[reason] || '';
+}
+var KM_ERR = {owner: 'שם בעל הנכס — חובה', phone: 'טלפון לא תקין — לפחות 9 ספרות', addr: 'רחוב ומספר — חובה',
+  street: 'רחוב ומספר — חובה', city: 'עיר — חובה', rooms: 'חדרים — חובה', price: 'מחיר מבוקש — חובה',
+  agent: 'הסוכן לא מוכר במשרד', forbidden: 'אין הרשאה לפתוח תיק לסוכן הזה'};
+
+function kitCard(k, i){
+  var place = [k.street, k.city].filter(Boolean).join(', ');
+  var showViews = k.status === 'approved' || k.status === 'sent';
+  var created = '';
+  try{ var d = new Date(k.created_at); if (!isNaN(d)) created = 'הוכן ' + kitPad(d.getDate()) + '/' + kitPad(d.getMonth() + 1); }catch(e){}
+  return '<div class="kc" id="kit-' + esc(k.id) + '">' +
+    '<div class="top"><div style="min-width:0"><div class="tt">' + esc([k.owner, place].filter(Boolean).join(' · ')) + '</div>' +
+    '<div class="sb">' + esc([SCOPE === 'all' ? k.agent : '', created].filter(Boolean).join(' · ')) + '</div></div>' +
+    kitStatusChip(k) + '</div>' +
+    (showViews ? '<div class="vw"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="#5B6472" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="none" stroke="#5B6472" stroke-width="1.4"/></svg>' +
+      esc(kitViews(k.views)) + '</div>' : '') +
+    (k.status === 'pending' ? '<div class="sb">ממתין לאישור — תקבל כאן כפתור שליחה ברגע שיאושר</div>' : '') +
+    kitSendBtn(k, i) +
+    (k.status === 'rejected' || k.status === 'expired'
+      ? '<button class="kbtn sec" onclick="kitResend(' + i + ')">שלח שוב לאישור</button>' : '') +
+    '</div>';
+}
+function render(){
+  el('cnt').textContent = KITS.length;
+  if (!KITS.length){
+    el('list').innerHTML = '<div class="empty"><div class="ic"><svg width="30" height="30" viewBox="0 0 16 16"><path d="M4 1.5h5.5L12.5 4.5v10h-8.5z" fill="none" stroke="#7A5E1C" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.5 8h4M6.5 11h4" stroke="#7A5E1C" stroke-width="1.3" stroke-linecap="round"/></svg></div>' +
+      '<div class="t">עוד אין תיקים</div><div class="s">פתח תיק מכרטיס בנכס נולד או ידנית</div>' +
+      '<button class="kbtn pri" onclick="kitManual()">תיק חדש (ידני)</button>' +
+      '<button class="kbtn sec" onclick="location.href=\'/v2/newborn\'">לנכס נולד</button></div>';
+    return;
+  }
+  el('list').innerHTML = '<div style="display:flex;flex-direction:column;gap:11px">' + KITS.map(kitCard).join('') + '</div>';
+}
+function load(){
+  return GET('/v2/api/kit/mine' + (SCOPE === 'all' ? '?all=1' : '')).then(function(j){
+    if (!j || !j.ok){ el('list').innerHTML = '<div class="empty"><div class="t">לא הצלחנו לטעון את התיקים</div>' +
+      '<button class="kbtn sec" onclick="load()">נסה שוב</button></div>'; return; }
+    KITS = j.kits || []; render(); kitOpenFromUrl();
+  }).catch(function(){ toast('שגיאת רשת'); });
+}
+function kitOpenFromUrl(){   // [10/11] מהוואטסאפ 'התיק מוכן' — ?open=<id> מגלגל לתיק ומדגיש אותו, פעם אחת
+  if (kitOpenFromUrl._done) return;
+  var id = ''; try{ id = new URLSearchParams(location.search).get('open') || ''; }catch(e){}
+  if (!id) return;
+  var node = document.getElementById('kit-' + id); if (!node) return;
+  kitOpenFromUrl._done = true;
+  node.scrollIntoView({block: 'center', behavior: 'smooth'});
+  node.style.boxShadow = '0 0 0 3px #C29435'; setTimeout(function(){ node.style.boxShadow = ''; }, 2600);
+}
+function setScope(node){
+  SCOPE = node.getAttribute('data-s') === 'all' ? 'all' : 'mine';
+  var sgs = document.querySelectorAll('#scope .sg');
+  for (var i = 0; i < sgs.length; i++) sgs[i].classList.toggle('on', sgs[i] === node);
+  load();
+}
+function kitSend(i){
+  var k = KITS[i]; if (!k || kitSend._busy) return;   // לחיצה כפולה — לא פותחים וואטסאפ פעמיים
+  kitSend._busy = true;
+  setTimeout(function(){ kitSend._busy = false; }, 1500);
+  window.open('https://wa.me/' + k.wa + '?text=' + encodeURIComponent(k.text), '_blank');
+  if (k.status !== 'approved') return;
+  var fail = function(){ toast('לא נשמר שהתיק נשלח — נסה שוב'); load(); };
+  POST('/v2/api/kit/sent', {id: k.id}).then(function(j){
+    if (j && j.ok){ toast('סומן כנשלח'); load(); }
+    else if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); load(); }
+    else fail();
+  }).catch(fail);
+}
+function kitResend(i){
+  var k = KITS[i]; if (!k) return;
+  POST('/v2/api/kit/resend', {id: k.id}).then(function(j){
+    if (j && j.ok){ toast('התיק בהכנה · ממתין לאישור'); load(); return; }
+    if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); load(); return; }
+    toast(j && j.reason === 'status' ? 'התיק כבר לא במצב הזה' : 'לא הצלחנו לשלוח שוב');
+  }).catch(function(){ toast('שגיאה'); });
+}
+
+/* ── תיק ידני ── */
+function kmPrice(inp){
+  var d = String(inp.value || '').replace(/[^0-9]/g, '');
+  inp.value = d.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function kmFld(id, label, attrs, opt){
+  return '<label class="fld2" id="' + id + 'F"><span>' + label + (opt ? ' <i>(רשות)</i>' : '') + '</span>' +
+    '<input id="' + id + '" ' + (attrs || '') + '><div class="ferr" id="' + id + 'Err"></div></label>';
+}
+function kitManual(){
+  var ag = PICK ? '<label class="fld2" id="kmAgentF"><span>הסוכן של התיק</span><select id="kmAgent">' +
+      '<option value="">עליי (' + esc(ME.name || '') + ')</option>' +
+      AGENTS.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
+      '</select><div class="ferr" id="kmAgentErr"></div></label>' : '';
+  openSheet('<h3>תיק חדש (ידני)</h3>' +
+    '<div class="sub">התיק נשלח לאישור לפני שאפשר לשלוח אותו לבעל הנכס.</div>' + ag +
+    kmFld('kmOwner', 'שם בעל הנכס', 'autocomplete="off"') +
+    kmFld('kmPhone', 'טלפון בעל הנכס', 'type="tel" inputmode="tel" dir="ltr" style="text-align:right"') +
+    kmFld('kmStreet', 'רחוב ומספר', 'autocomplete="off"') +
+    kmFld('kmCity', 'עיר', 'autocomplete="off"') +
+    '<div class="row2">' + kmFld('kmRooms', 'חדרים', 'inputmode="decimal"') +
+      kmFld('kmPrice', 'מחיר מבוקש', 'inputmode="numeric" oninput="kmPrice(this)"') + '</div>' +
+    '<div class="row2">' + kmFld('kmSqm', 'מ"ר', 'inputmode="numeric"', true) +
+      '<label class="fld2"><span>סוג נכס</span><select id="kmType">' +
+      ['דירה', 'דירת גן', 'פנטהאוז', "קוטג'", 'דו משפחתי'].map(function(t){ return '<option>' + esc(t) + '</option>'; }).join('') +
+      '</select></label></div>' +
+    '<div class="row2">' + kmFld('kmDate', 'מועד הפגישה', 'type="date"', true) + kmFld('kmTime', 'שעה', 'type="time"', true) + '</div>' +
+    '<button class="kbtn pri" id="kmGo" onclick="kitManualGo()">שלח לאישור</button>' +
+    '<button class="kbtn sec" onclick="closeSheet()">ביטול</button>');
+}
+function kmClear(){
+  ['kmOwner', 'kmPhone', 'kmStreet', 'kmCity', 'kmRooms', 'kmPrice', 'kmAgent'].forEach(function(id){
+    var f = el(id + 'F'), e = el(id + 'Err');
+    if (f) f.classList.remove('bad'); if (e) e.textContent = '';
+  });
+}
+function kmShowErr(reason){
+  var id = kitManualErr(reason);
+  if (!id || !el(id + 'F')) return false;
+  el(id + 'F').classList.add('bad');
+  el(id + 'Err').textContent = KM_ERR[reason] || '';
+  try{ el(id).focus(); }catch(e){}
+  return true;
+}
+function kitManualGo(){
+  kmClear();
+  var v = function(id){ return el(id) ? String(el(id).value || '').trim() : ''; };
+  var d = {source: 'manual', owner: v('kmOwner'), phone: v('kmPhone'), street: v('kmStreet'), city: v('kmCity'),
+           rooms: v('kmRooms'), price: v('kmPrice'), sqm: v('kmSqm'), ptype: v('kmType') || 'דירה',
+           meet_at: v('kmDate') ? v('kmDate') + (v('kmTime') ? 'T' + v('kmTime') : '') : ''};
+  if (PICK && v('kmAgent')) d.agent = v('kmAgent');
+  var miss = !d.owner ? 'owner' : d.phone.replace(/\D/g, '').length < 9 ? 'phone' : !d.street ? 'addr'
+    : !d.city ? 'city' : !d.rooms ? 'rooms' : !d.price ? 'price' : '';
+  if (miss){ kmShowErr(miss); return; }
+  var b = el('kmGo'); b.disabled = true; b.textContent = 'שולח…';
+  POST('/v2/api/kit/create', d).then(function(j){
+    b.disabled = false; b.textContent = 'שלח לאישור';
+    if (j && j.ok){ closeSheet(); toast('התיק בהכנה · ממתין לאישור'); load(); return; }
+    if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); return; }
+    if (!kmShowErr(j && j.reason)) toast('לא הצלחנו להכין את התיק');
+  }).catch(function(){ b.disabled = false; b.textContent = 'שלח לאישור'; toast('שגיאת רשת'); });
+}
+
+(function(){
+  GET('/api/auth/whoami').then(function(j){
+    if (!j.ok){ location.replace('/v2'); return; }
+    ME = j;
+    el('avatarTx').textContent = j.name ? j.name.trim()[0] : '';
+    if (j.dev || j.drole === 'manager' || j.drole === 'developer') el('scope').style.display = 'flex';
+    PICK = j.role === 'admin' || j.role === 'coordinator';
+    if (PICK) GET('/api/my/agents').then(function(d){
+      AGENTS = ((d && d.agents) || []).map(function(a){ return a.name; }).filter(function(a){ return a && a !== j.name; });
+    }).catch(function(){});
+    load();
+  }).catch(function(){ location.replace('/v2'); });
+  fetch('/v2/api/office').then(function(r){ return r.json(); }).then(function(o){
+    document.title = 'תיקי פרזנטציה · ' + (o.name || '');
+  }).catch(function(){});
+})();
+</script></body></html>"""
 
 
 # ── חיבור משרד חדש (עתידי) — צ'קליסט המקורות המלא, עם סטטוס חי למשרד הנוכחי ─────
@@ -13319,6 +13836,59 @@ def call_ingest_norm(b):
     return sk, day_il, raw, tr, rec
 
 
+# [10/11 אייל: 'כן, לבנות' — הדמיה docs/handoff/mockups/crm-upgrade-mockup.html] תפריט צד מקובץ לכל דפי ה-CRM.
+# המודולים לפי ההרשאה מגיעים מ-/v2/api/crm/nav; דף שלא מצא את התפריט ממשיך לעבוד (הקישורים הישנים נשארים מתחת).
+_CRM_NAV_HTML = r"""<style>
+#crmNav{position:fixed;top:0;right:0;bottom:0;width:216px;background:#0E1D33;color:#C9D3E2;padding:18px 12px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;z-index:50;font-family:Heebo,sans-serif}
+body.hasNav{padding-right:216px}
+#crmNav .nb{display:flex;align-items:center;gap:10px;color:#fff;font-weight:800;font-size:16px;padding:0 8px;text-decoration:none}
+#crmNav .nb img{width:30px;height:30px;border-radius:8px;background:#fff;object-fit:contain}
+#crmNav .ng{display:flex;flex-direction:column;gap:1px}
+#crmNav .ng h4{margin:0 8px 3px;font-size:12px;font-weight:600;color:#7F90A8}
+#crmNav a.ni{display:flex;align-items:center;min-height:38px;padding:0 10px;border-radius:10px;color:inherit;text-decoration:none;font-size:14.5px}
+#crmNav a.ni:hover{background:rgba(255,255,255,.07);color:#fff}
+#crmNav a.ni.on{background:#fff;color:#1E3A5F;font-weight:700}
+#crmNav .nw{margin-top:auto;font-size:13px;color:#7F90A8;padding:0 8px;display:flex;flex-direction:column;gap:4px}
+#crmNav .nw a{color:#AFC0D6}
+@media(max-width:900px){#crmNav{position:static;width:auto;flex-direction:row;overflow-x:auto;padding:8px 10px}#crmNav .ng{flex-direction:row}#crmNav .ng h4,#crmNav .nw{display:none}body.hasNav{padding-right:0}}
+@media print{#crmNav{display:none}body.hasNav{padding-right:0}}
+</style>
+<nav id="crmNav" aria-label="ניווט ב-CRM"></nav>
+<script>
+function navGroups(mods, me, cur){
+  var G = [['היום', ['dashboard', 'calls', 'meetings']], ['לקוחות', ['buyers', 'signatures', 'deals', 'invoices']],
+           ['נכסים', ['props', 'marketing']], ['מערכת', ['flows', 'automations', 'team', 'ai', 'parallel', 'access']]];
+  var T = {dashboard: 'לוח בקרה', marketing: 'שיווק', parallel: 'דוח מקבילות', access: 'הרשאות'}, have = {}, used = {};
+  (mods || []).forEach(function(m){ have[m[0]] = m[1]; });
+  me = me || {};
+  if (me.dashboard){ have.dashboard = T.dashboard; have.parallel = T.parallel; }
+  if (me.access){ have.marketing = T.marketing; have.access = T.access; }
+  var out = G.map(function(g){ return [g[0], g[1].filter(function(k){ return have[k]; }).map(function(k){ used[k] = 1; return [k, have[k], k === cur]; })]; });
+  (mods || []).forEach(function(m){ if (!used[m[0]]) out[3][1].push([m[0], m[1], m[0] === cur]); });
+  return out.filter(function(g){ return g[1].length; });
+}
+(function(){
+  var el = document.getElementById('crmNav'); if (!el) return;
+  var t = ''; try{ t = localStorage.getItem('crmTok') || localStorage.getItem('fbTok') || ''; }catch(e){}
+  if (!t) return;
+  var cur = (location.pathname.split('/')[3] || 'dashboard');
+  fetch('/v2/api/crm/nav', {headers: {'X-Auth-Token': t}}).then(function(r){ return r.json(); }).then(function(j){
+    if (!j || !j.ok) return;
+    window.CRM_ME = j.me || {};
+    function e(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+    var h = '<a class="nb" href="/v2/crm/' + (j.me && j.me.dashboard ? 'dashboard' : 'calls') + '"><img src="/assets/logo" alt="" onerror="this.style.display=\'none\'">' + e(j.office || 'CRM') + '</a>';
+    navGroups(j.modules, j.me, cur).forEach(function(g){
+      h += '<div class="ng"><h4>' + e(g[0]) + '</h4>' + g[1].map(function(i){ return '<a class="ni' + (i[2] ? ' on' : '') + '" href="/v2/crm/' + i[0] + '"' + (i[2] ? ' aria-current="page"' : '') + '>' + e(i[1]) + '</a>'; }).join('') + '</div>'; });
+    h += '<div class="nw"><span>' + e((j.me || {}).name || (j.me || {}).email || '') + '</span><a href="/crm/login">יציאה</a></div>';
+    el.innerHTML = h; document.body.classList.add('hasNav');
+    try{ document.dispatchEvent(new CustomEvent('crmnav', {detail: j})); }catch(x){}
+  }).catch(function(){});
+})();
+</script>"""
+
+def _crm_with_nav(html):
+    return html.replace("<body>", "<body>" + _CRM_NAV_HTML, 1)
+
 _CRM_SCREEN_HTML = r"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>CRM</title>
@@ -13388,6 +13958,10 @@ body.ro #newBtn,body.ro #svBtn,body.ro #dlBtn,body.ro .ra,body.ro .rb{display:no
 .hero{width:100%;max-height:260px;object-fit:cover;border-radius:14px;margin:6px 0 12px;display:block}.grid2 .f{overflow-wrap:anywhere;min-width:0}
 s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-new{background:#F4EEDD;color:#7A5E1C}.lnk{color:#2E6BD6;font-weight:500}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;border-radius:12px;padding:10px 16px;display:none;z-index:40}
+body.hasNav #top{display:none}body.hasNav .views{top:18px}
+.dots{display:inline-flex;gap:3px;vertical-align:middle}.dots i.dt{width:7px!important;height:7px!important;min-width:0;padding:0;flex:none;border-radius:50%;background:#E4DFD3;display:inline-block}.dots i.dt.f{background:var(--gold)}
+.chipl{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:2px 10px;font-size:12.5px;color:var(--blue);font-weight:700;text-decoration:none;background:#fff}
+.chipw{display:inline-block;background:#FBF3E0;color:var(--goldt);font-size:12px;font-weight:700;border-radius:6px;padding:0 6px;margin-inline-end:6px}
 @media(max-width:900px){.page{grid-template-columns:1fr}.views{position:static}}
 </style></head><body>
 <div class="top" id="top"><span class="logo">CRM</span></div>
@@ -13414,7 +13988,8 @@ s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-ne
 <script>
 var MOD = (location.pathname.split('/')[3] || 'calls');
 var META = null, ST = {q:'', view:'all', sort:'date', dir:'desc', page:1, agent:''}, ROWS = [], TOTAL = 0, CUR = null, SAVED = [];
-try { var _uq = new URLSearchParams(location.search).get('q'); if (_uq) ST.q = _uq; } catch(e){}   /* [21/10] קישורים מטאב AI: /v2/crm/deals?q=<טלפון> */
+function initFromUrl(){ try { var u = new URLSearchParams(location.search), _uq = u.get('q'), _uv = u.get('view'); if (_uq) ST.q = _uq; if (_uv) ST.view = _uv; } catch(e){} }   /* [21/10] ?q=<טלפון> · [10/11] ?view= מלוח הבקרה */
+initFromUrl();   /* [21/10] קישורים מטאב AI: /v2/crm/deals?q=<טלפון> */
 var SOON = [['signatures','מתעניינים (חתימות)'],['buyers','קונים'],['props','נכסים'],['deals','עסקאות']];
 function tok(){ try{ return localStorage.getItem('crmTok') || localStorage.getItem('fbTok') || ''; }catch(e){ return ''; } }   // [CRM-ACCESS] Google בלבד; fbTok רק למסלול החזרה
 if (!tok()) location.replace('/crm/login');
@@ -13426,6 +14001,7 @@ function fdate(ts){ if(!ts) return ''; var d = new Date(ts*1000); return d.toLoc
 function stCls(l){ return (l === 'נענתה' || l === 'פעילה' || l === 'תקין') ? 'st-a' : (l === 'יוצאת' ? 'st-o' : (l === 'לא נענתה' || l === 'בוטלה' || l === 'תפוס' || l === 'נכשל' || l === 'כבויה' ? 'st-n' : 'st-x')); }
 function fmtPh(v){ var d = String(v || '').replace(/\D/g, '');
   if (d.indexOf('972') === 0 && (d.length === 12 || d.length === 11)) d = '0' + d.slice(3);
+  if ((d.length === 9 && d.charAt(0) === '5') || (d.length === 8 && /^[2-9]/.test(d))) d = '0' + d;   /* [10/11] טלפון שנשמר בלי 0 */
   if (d.length === 10 && d.charAt(0) === '0') return d.slice(0, 3) + '-' + d.slice(3);
   if (d.length === 9 && d.charAt(0) === '0') return d.slice(0, 2) + '-' + d.slice(2);
   return String(v || ''); }
@@ -13435,8 +14011,13 @@ function cell(r, c){ var v = r[c[0]], t = c[2];
   if (t === 'price') return v ? ((r.dropped && r.price_old ? '<s class="old">₪' + Number(r.price_old).toLocaleString('en-US') + '</s> ' : '') + '<b>₪' + Number(v).toLocaleString('en-US') + '</b>' + (r.dropped ? ' <span class="st st-y">↓ ירידה</span>' : '') + (r.new ? ' <span class="st st-new">חדש</span>' : '')) : '';
   if (t === 'link') return /^(https?:\/\/|\/[a-z])/.test(v || '') ? '<a class="lnk" href="' + esc(v) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + esc(c[3] || 'למודעה') + '</a>' : '';
   if (t === 'status') return '<span class="st ' + stCls(v) + '">' + esc(v) + '</span>';
-  if (t === 'score') return v ? v + '/5' : '—';
-  if (t === 'long') return '<div>' + esc(v) + '</div>';
+  if (t === 'score'){ if (!v) return '—'; var k = Math.max(0, Math.min(5, Math.round(+v) || 0)), sd = '';
+    for (var si = 0; si < 5; si++) sd += '<i class="dt' + (si < k ? ' f' : '') + '"></i>'; return '<span class="dots" title="' + k + '/5">' + sd + '</span>'; }
+  if (t === 'long'){ var sv = String(v == null ? '' : v);
+    if (/^https?:\/\/\S*maskyoo/i.test(sv.trim())) return '<a class="chipl" href="' + esc(sv.trim()) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">חייג חזרה מהקו</a>';   /* [10/11] במקום כתובת גולמית */
+    var mw = /^\s*\u26A0?\uFE0F?\s*\*?\s*שים לב:\s*המתקשר הוא מתווך\s*\*?\s*[-–—:]?\s*/.exec(sv);
+    if (mw) return '<div><span class="chipw">מתווך</span>' + esc(sv.slice(mw[0].length)) + '</div>';
+    return '<div>' + esc(sv) + '</div>'; }
   if (t === 'photo') return v ? '<img class="av" loading="lazy" src="' + esc(v) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '';
   return esc(v); }
 function cols(){ var saved = null; try{ saved = JSON.parse(localStorage.getItem('crmcols:' + MOD) || 'null'); }catch(e){}
@@ -13448,6 +14029,7 @@ function renderTop(){ var h = '<span class="logo">CRM · ' + esc(META.title) + '
   var me = META.me || {};
   if (me.owner) SOON.forEach(function(m){ if (!META.modules.some(function(x){ return x[0] === m[0]; })) h += '<span class="mod soon">' + m[1] + '<small>בקרוב</small></span>'; });
   if (me.dashboard) h += '<a class="mod" href="/v2/crm/dashboard">לוח בקרה</a>';
+  if (me.access) h += '<a class="mod" href="/v2/crm/marketing">שיווק</a>';
   if (me.access) h += '<a class="mod" href="/v2/crm/access">הרשאות</a>';
   h += '<span class="sp"></span><span class="who">' + esc(me.name || me.email || '') + '</span><a class="mod" href="/crm/login">יציאה</a>';
   document.getElementById('top').innerHTML = h;
@@ -13550,7 +14132,7 @@ function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getEleme
       '<div class="grid2">' + field('agent', 'סוכן', r.agent) + field('caller_phone', 'טלפון לקוח', r.caller_phone) +
       field('status', 'סטטוס (' + r.status_label + ')', r.status) + '<div class="f"><b>משך · טלפון סוכן</b>' + esc(r.duration || '—') + ' · <span class="ph">' + esc(r.agent_phone || '') + '</span></div>' +
       field('summary', 'סיכום חכם', r.summary, true) + field('note', 'הערה', r.note, true) + '</div>' +
-      (j.recording ? '<div class="box"><h3>הקלטה</h3><audio controls src="' + esc(j.recording) + '" style="width:100%"></audio></div>' : '') +
+      (j.recording ? '<div class="box"><h3>הקלטה</h3><audio id="recAud" controls preload="none" src="' + esc(j.recording.indexOf('/v2/') === 0 ? j.recording + '&token=' + encodeURIComponent(tok()) : j.recording) + '" style="width:100%"></audio></div>' : '') +
       (r.review ? '<div class="box gold"><h3>ביקורת קצרה</h3>' + esc(r.review) + '</div>' : '') +
       '<div class="box"><h3>תמלול מלא</h3>' + (j.transcript ? esc(j.transcript) : '<span class="mut">אין תמלול לשיחה הזו (נשמר רק לשיחות מ-19/10 והלאה).</span>') + '</div>' +
       '<div class="acts"><button class="tb pri" id="svBtn">שמירה</button>' +
@@ -13559,6 +14141,7 @@ function openRec(key){ CUR = {key:key}; renderTable(); var b = document.getEleme
       (r.hidden ? '<button class="tb" id="rsBtn">שחזור</button>' :
         '<button class="del" id="dlBtn" aria-label="מחיקה"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 5h12M7 5V3h4v2M5 5l1 10h6l1-10" fill="none" stroke="#C24040" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>') + '</div>';
     b.innerHTML = h;
+    var ra = document.getElementById('recAud'); if (ra) ra.onerror = function(){ ra.parentNode.innerHTML = '<h3>הקלטה</h3><span class="mut">ההקלטה לא נמצאה במסקיו.</span>'; };
     document.getElementById('svBtn').onclick = function(){ save(r.key); };
     var d = document.getElementById('dlBtn'); if (d) d.onclick = function(){ if (confirm('למחוק את השיחה? (אפשר לשחזר מ"מחוקות")')) act({key:r.key, delete:true}, 'נמחקה'); };
     var s = document.getElementById('rsBtn'); if (s) s.onclick = function(){ act({key:r.key, restore:true}, 'שוחזרה'); };
@@ -13790,43 +14373,95 @@ table.ag tr.tot td{background:#FBF6E8;font-weight:700}table.ag tr.z td{color:#6B
 .gc{display:inline-flex;align-items:center;gap:6px;font-weight:700}.gc i{display:inline-block;width:46px;height:6px;border-radius:99px;background:#EDEAE2;overflow:hidden;position:relative}
 .gc i b{position:absolute;top:0;bottom:0;right:0;background:#2E6BD6;border-radius:99px}.gc.full{color:#1E3A5F}.gc.full i b{background:#1E3A5F}.gc.zero{color:#6B7280}
 .gtr{font-size:12px;color:#6B7280;font-weight:400;margin-inline-start:6px}.gtr.up{color:#1E3A5F}
+/* [10/11] שדרוג: שורת בריאות, 'מחכה לטיפול', החודש במספרים */
+.hl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:var(--mut);margin:-4px 0 16px}
+.hl .dot{width:9px;height:9px;border-radius:50%;background:#1FAF5E;flex:none}.hl.bad .dot{background:var(--red)}.hl.warn .dot{background:var(--gold)}
+.hl b{color:var(--navy)}.hl .bd{color:var(--red);font-weight:700}.hl .wn{color:var(--goldt);font-weight:700}
+.hl button{border:0;background:none;color:var(--blue);font:600 14px Heebo;cursor:pointer;padding:0;min-height:32px}
+.health{display:none}.health.open{display:grid}
+.inbox{background:var(--navy);border-radius:22px;padding:22px 24px 20px;color:#fff;margin-bottom:22px;box-shadow:0 14px 34px rgba(14,29,51,.22)}
+.inbox h2{font-size:21px;font-weight:800;margin:0 0 2px;color:#fff}.inbox .lead{color:#AFC0D6;margin:0 0 16px;font-size:14px}
+.icols{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.icols.c4{grid-template-columns:repeat(4,1fr)}
+.icol{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:14px 16px 12px;display:flex;flex-direction:column;min-width:0}
+.icol .ih{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}.icol .ib{font-size:40px;font-weight:800;line-height:1}
+.icol.urg .ib{color:#FF9C9C}.icol .il{font-weight:600;color:#DCE5F0;font-size:14.5px}
+.icol .ir{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;padding:6px 0;border-top:1px solid rgba(255,255,255,.08)}
+.icol .ir span:last-child{color:#8FA3BD;white-space:nowrap}.icol .ir a{color:#fff}
+.icol .ir.more{display:none}.icol.open .ir.more{display:flex}
+.icol .ia{margin-top:auto;padding-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.icol .ia a,.icol .ia button{border:0;background:#fff;color:var(--navy);border-radius:10px;padding:0 14px;min-height:36px;display:inline-flex;align-items:center;font:700 13.5px Heebo;text-decoration:none;cursor:pointer}
+.icol .ia button{background:rgba(255,255,255,.12);color:#fff}
+.icol .none{color:#AFC0D6;font-size:14px;padding:6px 0}
+.ldg{display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);overflow:hidden;margin:12px 0 12px}
+.lk{padding:16px 18px;border-inline-start:1px solid var(--line);min-width:0}.lk:first-child{border-inline-start:0}
+.lk .l{font-size:14px;color:var(--mut);font-weight:500}.lk .v{font-size:40px;font-weight:800;line-height:1.15;margin:4px 0 4px}.lk .x{font-size:13px;color:var(--mut)}
+.gb{height:6px;border-radius:6px;background:#EFEAD9;margin-top:10px;position:relative;overflow:hidden}.gb i{position:absolute;top:0;bottom:0;right:0;background:var(--gold);border-radius:6px}
+.gt{font-size:12.5px;color:var(--goldt);margin-top:5px;font-weight:600}
+.kpis.sm .kpi .v{font-size:24px}
+.hd{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:22px 0 4px}.hd h2{font-size:18px;font-weight:800;margin:0}
+.heat{display:inline-block;min-width:36px;text-align:center;padding:2px 8px;border-radius:8px}
+@media(max-width:1100px){.icols,.icols.c4{grid-template-columns:1fr}.ldg{grid-template-columns:repeat(2,1fr)}}
 </style></head><body><div class="wrap">
-<header><h1>לוח בקרה</h1><span class="upd" id="upd"></span><span class="sp"></span>
-<a class="btn" href="/v2/crm/calls">CRM</a><a class="btn" href="/v2/crm/parallel">דוח מקבילות</a><button class="btn pri" id="rf">רענן</button></header>
+<header><div><h1 id="hi">לוח בקרה</h1><span class="upd" id="upd"></span></div><span class="sp"></span>
+<button class="btn pri" id="rf">רענן</button></header>
 <div id="app"><div class="card ld">טוען… (בפעם הראשונה עד כחצי דקה)</div></div></div>
 <script>
 var P='month', D=null, CH={};
 var PL={day:'היום',week:'השבוע',month:'החודש',year:'השנה'};
 var ST={ok:'תקין',warn:'איטי מהרגיל',bad:'תקלה',quiet:'שבת/חג',none:'אין נתון'};
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-function ago(ts){if(!ts)return '—';var m=Math.round((Date.now()/1000-ts)/60);if(m<1)return 'עכשיו';if(m<60)return 'לפני '+m+' דק׳';var h=Math.round(m/60);if(h<48)return 'לפני '+h+' שע׳';return 'לפני '+Math.round(h/24)+' ימים';}
+function ago(ts){if(ts&&typeof ts==='string'&&isNaN(+ts))ts=Date.parse(ts)/1000;if(!ts||!isFinite(ts))return '—';var m=Math.round((Date.now()/1000-ts)/60);if(m<1)return 'עכשיו';if(m<60)return 'לפני '+m+' דק׳';var h=Math.round(m/60);if(h<48)return 'לפני '+h+' שע׳';return 'לפני '+Math.round(h/24)+' ימים';}
 function n(v){return (v==null?0:v).toLocaleString('he-IL');}
 function pv(o){return o&&o[P]!=null?o[P]:0;}
 function kpis(){var p=D.periods,ca=pv(p.calls),an=pv(p.calls_answered),ex=pv((p.signings_by_label||{})['בלעדיות']);
- var k=[['שיחות נכנסות',n(ca),ca?('נענו '+Math.round(an*100/ca)+'%'):'—'],['חתימות',n(pv(p.signings)),'מתוכן בלעדיות '+n(ex)],
-  ['קונים חדשים',n(pv(p.buyers)),''],['נכס נולד',n(pv(p.newborn)),'שת״פ חדשות '+n(pv(p.shtaf))],
-  ['עסקאות',n(pv(p.deals_closed))+' נסגרו','נפתחו '+n(pv(p.deals_opened))+' · פתוחים '+n(p.open_now)+' · אצל עו״ד '+n(p.lawyer_now)],
-  ['נכסי המשרד בפרסום',n(p.office_active),'בלעדי '+n(p.office_active_excl)+' · רגיל '+n((p.office_active||0)-(p.office_active_excl||0))]];
+ var k=[['נכס נולד',n(pv(p.newborn)),'שת״פ חדשות '+n(pv(p.shtaf))]];   /* [10/11] חמשת הראשיים עברו ל-ledger() */
  var wo=(D.wa_official||{})[P];
  var so=(D.story||{})[P];
  if(so)k.push(['סטורי נכסים חמים',n(so.taps)+' לחצו לראות',n(so.tap_people)+' אנשים · נפתח לבד '+n(so.autos)+' · המשיכו אחרי היעדים '+n(so.past_summary)+' · עד הסוף '+n(so.full)+' · ראה 1 = רק היעדים · נספר מ-21/10']);
  if(wo)k.push(['וואטסאפ רשמי (360)',n(wo.sent)+' נשלחו',(wo.failed?'נכשלו '+n(wo.failed):'אין כשלים')+(wo.blocked?' · נחסמו במתג '+n(wo.blocked):'')+' · נספר מ-19/10']);
  return k.map(function(x){return '<div class="card kpi"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+'</div><div class="x">'+esc(x[2])+'</div></div>';}).join('');}
 function tm(ts){if(!ts)return '';var d=new Date(ts*1000);return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
-function ph(v){var d=String(v||'').replace(/\D/g,'');if(d.indexOf('972')===0)d='0'+d.slice(3);return d.length===10?d.slice(0,3)+'-'+d.slice(3):String(v||'');}
-function todoCard(){var T=D.todo;if(!T)return '';
- function box(title,cnt,rows,empty){return '<div class="td"><h3>'+title+' <span class="cnt'+(cnt?' hot':'')+'">'+n(cnt)+'</span></h3>'+(rows||'<div class="mut">'+empty+'</div>')+'</div>';}
- var m=(T.missed||[]).slice(0,8).map(function(x){return '<div class="ti"><b>'+esc(ph(x.phone))+'</b> · '+esc(x.agent||'—')+'<span class="mut"> · '+tm(x.ts)+(x.tries>1?' · '+x.tries+' ניסיונות':'')+'</span></div>';}).join('');
- var s=(T.pending_sigs||[]).slice(0,8).map(function(x){return '<div class="ti">'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.client||'לקוח')+'</a>':'<b>'+esc(x.client||'לקוח')+'</b>')+' · '+esc(x.agent)+'<span class="mut"> · '+esc(x.type)+' · נשלח '+tm(x.ts)+'</span></div>';}).join('');
- var l=(T.likes||[]).slice(0,8).map(function(x){return '<div class="ti">'+esc(x.detail)+'<span class="mut"> · '+esc(x.agent)+' · '+tm(x.ts)+'</span></div>';}).join('');
- var nb=T.nb_untouched||{n:0,list:[]},nl=(nb.list||[]).slice(0,8).map(function(x){return '<div class="ti">'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+esc(x.address||'מודעה')+'</a>':esc(x.address||'מודעה'))+(x.price?'<span class="mut"> · ₪'+Number(x.price).toLocaleString('en-US')+'</span>':'')+'</div>';}).join('');
- return '<div class="card"><h2>מחכה לטיפול</h2><div class="todo">'+
-  box('שיחות שלא נענו ולא חזרו אליהן (72 שע׳)',T.missed_n||0,m,'אין — חזרו לכולם')+
-  box('חתימות שממתינות יותר מיומיים',T.pending_n||0,s,'אין חתימות תקועות')+
-  box('סימנו "מתאים" בדף קונה (72 שע׳)',(T.likes||[]).length,l,'אין סימונים חדשים')+
-  box('נכס נולד מהיממה — אף אחד לא פנה',nb.n,nl,'פנו לכל המודעות החדשות')+'</div></div>';}
+function ph(v){var d=String(v||'').replace(/\D/g,'');if(d.indexOf('972')===0)d='0'+d.slice(3);if((d.length===9&&d.charAt(0)==='5')||(d.length===8&&/^[2-9]/.test(d)))d='0'+d;   /* [10/11] בלי 0 */
+ return d.length===10?d.slice(0,3)+'-'+d.slice(3):(d.length===9&&d.charAt(0)==='0'?d.slice(0,2)+'-'+d.slice(2):String(v||''));}
+function healthLine(H){var bad=(H||[]).filter(function(x){return x.status==='bad';}),wn=(H||[]).filter(function(x){return x.status==='warn';}),okn=(H||[]).filter(function(x){return x.status==='ok'||x.status==='quiet';}).length;
+ var cls=bad.length?'bad':(wn.length?'warn':''),t;
+ if(bad.length||wn.length)t=bad.map(function(x){return '<span class="bd">'+esc(x.label)+' · תקלה</span>';}).concat(wn.map(function(x){return '<span class="wn">'+esc(x.label)+' · איטי מהרגיל</span>';})).join(' · ')+' <span>· '+okn+' תקינים</span>';
+ else t='כל <b>'+okn+'</b> מקורות הנתונים תקינים';
+ return '<div class="hl '+cls+'"><span class="dot"></span><span>'+t+'</span><button type="button" id="hlT">פירוט</button></div>';}
+function sigGroups(L){var m={},o=[];(L||[]).forEach(function(x){var k=(x.client||'')+'|'+(x.agent||'');
+  if(!m[k]){m[k]={client:x.client,agent:x.agent,link:x.link,ts:x.ts,types:[],n:0};o.push(m[k]);}
+  m[k].n++;if(x.type&&m[k].types.indexOf(x.type)<0)m[k].types.push(x.type);});return o;}
+function inboxCard(){var T=D.todo;if(!T)return '';
+ function col(cls,big,lbl,rows,act,empty){var more=rows.length>3;
+  return '<div class="icol '+cls+'"><div class="ih"><span class="ib">'+n(big)+'</span><span class="il">'+lbl+'</span></div>'+
+   (rows.length?rows.map(function(r,i){return '<div class="ir'+(i>=3?' more':'')+'">'+r+'</div>';}).join(''):'<div class="none">'+empty+'</div>')+
+   '<div class="ia">'+act+(more?'<button type="button" data-more="1">עוד '+n(rows.length-3)+'</button>':'')+'</div></div>';}
+ var m=(T.missed||[]).slice(0,10).map(function(x){return '<span><b>'+esc(ph(x.phone))+'</b> · '+esc(x.agent||'—')+'</span><span>'+(x.tries>1?x.tries+' ניסיונות':tm(x.ts))+'</span>';});
+ var G=sigGroups(T.pending_sigs),s=G.slice(0,10).map(function(x){var nm=esc(x.client||'לקוח');
+  return '<span>'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+nm+'</a>':nm)+' · '+esc(x.types.join(' + '))+'</span><span>'+esc(x.agent||'')+'</span>';});
+ var nb=T.nb_untouched||{n:0,list:[]},l=(nb.list||[]).slice(0,10).map(function(x){var a=esc(x.address||'מודעה');
+  return '<span>'+(x.link?'<a href="'+esc(x.link)+'" target="_blank" rel="noopener">'+a+'</a>':a)+'</span><span>'+(x.price?'₪'+Number(x.price).toLocaleString('en-US'):'')+'</span>';});
+ var lk=(T.likes||[]).slice(0,10).map(function(x){return '<span>'+esc(x.detail)+'</span><span>'+esc(x.agent)+'</span>';});
+ var tot=(T.missed_n||0)+(T.pending_n||0)+(nb.n||0)+lk.length;
+ return '<section class="inbox" id="inbox"><h2>מחכה לטיפול</h2><p class="lead">'+(tot?n(tot)+' דברים פתוחים במשרד · שיחות וסימונים מ-72 השעות האחרונות, חתימות שממתינות יותר מיומיים, נכס נולד מהיממה':'אין כרגע שום דבר פתוח.')+'</p><div class="icols'+(lk.length?' c4':'')+'">'+
+  col('urg',T.missed_n||0,'שיחות שלא חזרו אליהן',m,'<a href="/v2/crm/calls?view=missed">לכל השיחות</a>','חזרו לכולם')+
+  col('',T.pending_n||0,'חתימות ממתינות',s,'<a href="/v2/crm/signatures?view=pending">לכל הממתינות</a>','אין חתימות תקועות')+
+  col('',nb.n||0,'נכס נולד שאף סוכן לא פנה',l,'<a href="/v2/newborn">לנכס נולד</a>','פנו לכל המודעות החדשות')+
+  (lk.length?col('',lk.length,'סימנו "מתאים" בדף קונה',lk,'','') :'')+'</div></section>';}
+function gTot(){var k={day:'today',week:'week',month:'month'}[P],G=k&&D.goals&&D.goals[k];return G&&G.total?G.total:null;}
+function gBar(c,t,lb){if(t==null||!t)return '';var p=Math.min(100,Math.round(c*100/t)),miss=t-c;
+ return '<div class="gb"><i style="width:'+p+'%"></i></div><div class="gt">'+lb+' '+n(c)+' · יעד '+(P==='day'?'להיום':'עד היום')+' '+n(t)+(miss>0?' · חסרים '+n(miss):' · הושג')+'</div>';}
+function ledger(){var p=D.periods,ca=pv(p.calls),an=pv(p.calls_answered),ex=pv((p.signings_by_label||{})['בלעדיות']),gt=gTot(),gc=gt&&gt.counts||{},tg=gt&&gt.targets||{};
+ var k=[['שיחות נכנסות',n(ca),ca?('<b>'+Math.round(an*100/ca)+'%</b> נענו'):'—',''],
+  ['החתמות',n(pv(p.signings)),'מתוכן בלעדיות <b>'+n(ex)+'</b>',gt?gBar(gc.listings||0,tg.listings,'גיוס נכסים'):''],
+  ['קונים חדשים',n(pv(p.buyers)),'',gt?gBar(gc.buyers||0,tg.buyers,'קונים'):''],
+  ['עסקאות שנסגרו',n(pv(p.deals_closed)),'נפתחו <b>'+n(pv(p.deals_opened))+'</b> · פתוחים '+n(p.open_now)+' · אצל עו״ד '+n(p.lawyer_now),''],
+  ['נכסי המשרד בפרסום',n(p.office_active),'בלעדי <b>'+n(p.office_active_excl)+'</b> · רגיל '+n((p.office_active||0)-(p.office_active_excl||0)),'']];
+ return '<div class="ldg">'+k.map(function(x){return '<div class="lk"><div class="l">'+x[0]+'</div><div class="v">'+x[1]+'</div><div class="x">'+x[2]+'</div>'+x[3]+'</div>';}).join('')+'</div>';}
 function agentsCard(){var A=(D.agents||{})[P]||[];
- var r=A.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+n(x.answered)+'<span class="mut"> / '+n(x.calls)+'</span></td><td>'+n(x.sigs)+'</td><td>'+n(x.buyers)+'</td><td>'+n(x.bpage)+'</td><td>'+n(x.nb)+'</td><td>'+(x.min?n(x.min)+' דק׳':'—')+'</td></tr>';}).join('');
+ var mx={};['answered','sigs','buyers','nb'].forEach(function(f){mx[f]=Math.max.apply(null,[1].concat(A.map(function(x){return x[f]||0;})));});
+ function ht(v,f,c){var a=(v||0)/mx[f];return v?'<span class="heat" style="background:rgba('+c+','+(0.07+0.3*a).toFixed(2)+')">'+n(v)+'</span>':'<span class="mut">0</span>';}
+ var r=A.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+ht(x.answered,'answered','30,58,95')+'<span class="mut"> / '+n(x.calls)+'</span></td><td>'+ht(x.sigs,'sigs','194,148,53')+'</td><td>'+ht(x.buyers,'buyers','46,107,214')+'</td><td>'+n(x.bpage)+'</td><td>'+ht(x.nb,'nb','31,175,94')+'</td><td>'+(x.min?n(x.min)+' דק׳':'—')+'</td></tr>';}).join('');
  return '<div class="card"><h2>הסוכנים · '+PL[P]+'</h2><div class="tw"><table class="ag"><tr><th>סוכן</th><th>שיחות שנענו / הכל</th><th>החתמות</th><th>קונים חדשים</th><th>שליחות דף קונה</th><th>פניות לנכס נולד</th><th>זמן באפי</th></tr>'+
   (r||'<tr><td class="mut" colspan="7">אין פעילות בתקופה</td></tr>')+'</table></div>'+
   '<div class="mut">פניות לנכס נולד = וואטסאפ מכרטיס המודעה. זמן באפי בשנה — 60 הימים האחרונים.</div></div>';}
@@ -13848,12 +14483,12 @@ function waKinds(){var wo=(D.wa_official||{})[P];if(!wo||!wo.kinds)return '';
  var ks=Object.keys(wo.kinds).sort(function(a,b){return wo.kinds[b]-wo.kinds[a];});
  if(!ks.length)return '';
  return '<div class="mut" style="margin-top:8px">לפי סוג · '+PL[P]+'</div><table>'+ks.map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+n(wo.kinds[k])+'</td></tr>';}).join('')+'</table>';}
-var GP='today',GPL={today:'היום',yesterday:'אתמול',week:'השבוע'},GKEYS=['listings','meetings','nb_wa','buyers','past_clients','reviews'];
+var GP='today',GPL={today:'היום',yesterday:'אתמול',week:'השבוע',month:'החודש'},GKEYS=['listings','meetings','nb_wa','buyers','past_clients','reviews'];
 var GDAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 function gNum(v){return v==null?'—':(+v).toLocaleString('he-IL');}
 function gCell(c,t){if(c==null)return '—';if(!t)return '<span class="gc full">'+gNum(c)+'/—</span>';var p=Math.min(100,Math.round(c*100/t));
  return '<span class="gc'+(c>=t?' full':(c?'':' zero'))+'">'+gNum(c)+'/'+gNum(t)+' <i><b style="width:'+p+'%"></b></i></span>';}
-function gVs(G,eq){var w=GP==='week'?'שבוע שעבר':GDAYS[new Date(G.day+'T12:00:00').getDay()]+' שעבר';return (eq?'כמו ב':'מול ')+w;}
+function gVs(G,eq){var w=GP==='month'?'החודש שעבר':GP==='week'?'שבוע שעבר':GDAYS[new Date(G.day+'T12:00:00').getDay()]+' שעבר';return (eq?'כמו ב':'מול ')+w;}
 function gTrend(tr,G){if(!tr)return '';var s=0,k=0;GKEYS.forEach(function(g){if(tr[g]!=null){s+=tr[g];k++;}});if(!k)return '';
  return '<span class="gtr'+(s>0?' up':'')+'">'+(s?(s>0?'↑'+s:'↓'+(-s))+' '+gVs(G,false):gVs(G,true))+'</span>';}
 function gRow(x,G,tot){var c=x.counts||{},t=x.targets||{},fu=c.followups,ina=!tot&&x.active===false,un=!tot&&!ina&&GP==='today'&&!x.seen_today;
@@ -13864,11 +14499,11 @@ function gRow(x,G,tot){var c=x.counts||{},t=x.targets||{},fu=c.followups,ina=!to
   '<td><b>'+(x.goals_n?gNum(x.met)+'/'+gNum(x.goals_n):'—')+'</b></td></tr>';}
 function goalsCard(){var A=D.goals;if(!A)return '';var G=A[GP]||{rows:[],total:{}},rows=G.rows||[];
  var seen=(A.today&&A.today.rows||[]).filter(function(r){return r.seen_today;}).length;
- var meta=GP==='week'?('א׳–'+GDAYS[new Date(G.to+'T12:00:00').getDay()]+' · '+gNum(G.workdays)+' ימי עבודה · היעד = היעד היומי × ימי העבודה (שישי חצי)')
+ var meta=GP==='month'?('1–'+(+G.to.split('-')[2])+' לחודש · '+gNum(G.workdays)+' ימי עבודה · היעד = לפי ימי העבודה שעברו בחודש'):GP==='week'?('א׳–'+GDAYS[new Date(G.to+'T12:00:00').getDay()]+' · '+gNum(G.workdays)+' ימי עבודה · היעד = היעד היומי × ימי העבודה (שישי חצי)')
    :(GP==='today'?(seen===1?'סוכן אחד נכנס היום':gNum(seen)+' סוכנים נכנסו היום'):G.day.split('-').reverse().join('/'));
  return '<div class="card"><div class="gh"><h2>יעדי היום · '+GPL[GP]+' <span class="mut" style="font-size:13px;font-weight:400">'+esc(meta)+'</span></h2>'+
-  '<div class="seg gseg" id="gseg">'+['today','yesterday','week'].map(function(k){return '<button data-g="'+k+'" class="'+(k===GP?'on':'')+'">'+GPL[k]+'</button>';}).join('')+'</div></div>'+
-  '<div class="tw"><table class="ag"><tr><th>סוכן</th><th>גיוס נכסים · השבוע</th><th>פגישות נכס נולד</th><th>פניות נכס נולד</th><th>קונים חדשים</th><th>דף קונה</th><th>לקוחות עבר</th><th>המלצות</th><th>פולו-אפ</th><th>שיחות פתוחות</th><th>עמידה</th></tr>'+
+  '<div class="seg gseg" id="gseg">'+['today','yesterday','week','month'].map(function(k){return '<button data-g="'+k+'" class="'+(k===GP?'on':'')+'">'+GPL[k]+'</button>';}).join('')+'</div></div>'+
+  '<div class="tw"><table class="ag"><tr><th>סוכן</th><th>גיוס נכסים · '+(GP==='month'?'החודש':'השבוע')+'</th><th>פגישות נכס נולד</th><th>פניות נכס נולד</th><th>קונים חדשים</th><th>דף קונה</th><th>לקוחות עבר</th><th>המלצות</th><th>פולו-אפ</th><th>שיחות פתוחות</th><th>עמידה</th></tr>'+
   gRow(G.total||{},G,true)+(rows.map(function(x){return gRow(x,G,false);}).join('')||'<tr><td class="mut" colspan="11">אין סוכנים להצגה</td></tr>')+'</table></div>'+
   '<div class="mut">עמידה = כמה משישת היעדים הושלמו במלואם. גיוס נכסים = הסכמי בלעדיות שנחתמו מתחילת השבוע, מול יעד שבועי. יעד המשרד = היעד החודשי שנקבע, לתקופה, ומתחלק בין הסוכנים הפעילים — לפחות 10 דקות באפי ב-10 הימים האחרונים, בלי מנהלים ומתאמות'+(G.total&&G.total.agents!=null?' ('+gNum(G.total.agents)+')':'')+'; היעד של כל סוכן מעוגל למעלה. מי שלא פעיל מוצג רק אם נספר לו משהו, בלי יעד. הקונים כוללים את מי שנכנס אוטומטית מהחתמה. המגמה = סכום היעדים מול אותה תקופה לפני שבוע. "—" = הנתון לא זמין כרגע. שיחות פתוחות = מצב נוכחי.</div></div>';}
 function siteCt(){var c=D.site_contacts;if(!c||!c.periods)return '';var P4=['day','week','month','year'],L={day:'היום',week:'השבוע',month:'החודש',year:'השנה'};
@@ -13890,16 +14525,16 @@ function render(){
  if(ut&&ut.users)us='<tr class="tot"><td><b>סה״כ · '+n(ut.users)+' משתמשים</b></td><td><b>'+n(ut.min)+' דק׳</b>'+(ut.min>=60?' <span class="mut">('+(Math.round(ut.min/6)/10)+' ש׳)</span>':'')+'</td></tr>'+us;
  var uT='הכי פעילים באפי · '+PL[P]+(P==='year'&&UB.year_from?' <span class="mut">(מ-'+UB.year_from.split('-').reverse().join('/')+' — הנתונים נשמרים 60 יום)</span>':'');
  document.getElementById('app').innerHTML=
-  '<div class="health">'+h+'</div>'+
+  healthLine(D.health)+'<div class="health" id="hgrid">'+h+'</div>'+inboxCard()+
+  '<div class="hd"><h2>'+({day:'היום',week:'השבוע',month:'החודש',year:'השנה'})[P]+' במספרים</h2>'+
+  '<div class="seg" id="seg">'+['day','week','month','year'].map(function(k){return '<button data-p="'+k+'" class="'+(k===P?'on':'')+'">'+PL[k]+'</button>';}).join('')+'</div></div>'+
+  ledger()+'<div class="kpis sm">'+kpis()+'</div>'+goalsCard()+
   '<div class="ctl"><div class="card"><h2>באתר עכשיו <span class="mut" id="slN"></span></h2><div class="on-list" id="slList"><span class="mut">טוען…</span></div><div id="slStats"></div>'+siteCt()+
   '<h2 style="margin-top:14px">מחוברים לאפי עכשיו <span class="mut" id="onN"></span></h2><div class="on-list" id="onList"><span class="mut">טוען…</span></div></div>'+
   '<div class="card"><h2>שליטה</h2>'+
   '<div class="sw"><div><div class="t">וואטסאפ רשמי</div><div class="d">כל ההודעות האוטומטיות מהמספר הרשמי (שיחות, חתימות, לידים, חשבוניות)</div></div><button class="tg" id="swWa" aria-label="וואטסאפ רשמי"></button></div>'+
   '<div class="sw"><div><div class="t">התראות פוש</div><div class="d">כל הפושים לטלפונים של הסוכנים</div></div><button class="tg" id="swPush" aria-label="פוש"></button></div>'+
   '<div class="d mut" id="swQuiet"></div></div></div>'+
-  '<div class="seg" id="seg">'+['day','week','month','year'].map(function(k){return '<button data-p="'+k+'" class="'+(k===P?'on':'')+'">'+PL[k]+'</button>';}).join('')+'</div>'+
-  '<div class="kpis">'+kpis()+'</div>'+
-  goalsCard()+
   '<div class="row r2"><div class="card"><h2>30 הימים האחרונים</h2><div class="chart"><canvas id="c1"></canvas></div><div id="t1"></div></div>'+
   '<div class="card"><h2>חיפושי AI באתר היום</h2><div class="big">'+n(a.today)+' <span class="mut">מתוך תקרה של '+n(a.cap)+'</span></div>'+
   '<div class="bar'+(pct>=90?' hot':'')+'"><i style="width:'+pct+'%"></i></div><div class="mut">מהמטמון (בלי טוקנים): '+n(a.cache)+' · נחסמו בתקרה: '+n(a.blocked)+'</div>'+
@@ -13914,7 +14549,9 @@ function render(){
   '<h2 style="margin-top:16px">מהמספר הרשמי</h2><div class="big">'+n(W.official_today.sent)+' <span class="mut">נשלחו'+(W.official_today.failed?' · '+n(W.official_today.failed)+' נכשלו':'')+'</span></div>'+
   waKinds()+
   '<div class="mut">נספרת פתיחת הצ׳אט מאפי, לא מסירה. נספר מ-19/10.</div></div></div>'+
-  meetsCard()+todoCard()+agentsCard()+listingsCard()+searchesCard();   // 20/10: שלושת הכרטיסים בתחתית (אייל)
+  meetsCard()+agentsCard()+listingsCard()+searchesCard();   // [10/11] 'מחכה לטיפול' עבר לראש הלוח
+ var hb=document.getElementById('hlT');if(hb)hb.onclick=function(){document.getElementById('hgrid').classList.toggle('open');};
+ var ib=document.getElementById('inbox');if(ib)ib.onclick=function(ev){var b=ev.target.closest('[data-more]');if(!b)return;var c=b.closest('.icol');c.classList.toggle('open');b.textContent=c.classList.contains('open')?'פחות':'עוד '+(c.querySelectorAll('.ir.more').length);};
  document.getElementById('seg').onclick=function(ev){var b=ev.target.closest('button');if(!b)return;P=b.dataset.p;render();};
  var gs=document.getElementById('gseg');if(gs)gs.onclick=function(ev){var b=ev.target.closest('button');if(!b)return;GP=b.dataset.g;render();};
  charts();ctl();
@@ -13978,8 +14615,69 @@ function load(fresh){var t='';try{t=localStorage.getItem('crmTok')||localStorage
   if(!j.ok){document.getElementById('app').innerHTML='<div class="card">'+(j.reason==='forbidden'?'אין לך הרשאה ללוח הבקרה. <a href="/v2/crm/meetings">ל-CRM</a>':'שגיאה: '+esc(j.reason))+'</div>';return;}
   D=j;document.getElementById('upd').textContent='עודכן '+new Date(j.built_at*1000).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});render();
  }).catch(function(){if(!D)document.getElementById('app').innerHTML='<div class="card">לא הצלחתי לטעון — נסה שוב.</div>';});}
+function greet(me){var h=new Date().getHours(),g=h<5?'לילה טוב':h<12?'בוקר טוב':h<17?'צהריים טובים':h<21?'ערב טוב':'לילה טוב',nm=String((me||{}).name||'').trim().split(/\s+/)[0];
+ if(nm&&/[\u0590-\u05FF]/.test(nm)&&nm!=='מנהל')document.getElementById('hi').textContent=g+', '+nm;}
+document.addEventListener('crmnav',function(e){greet((e.detail||{}).me);});
 document.getElementById('rf').onclick=function(){document.getElementById('upd').textContent='מתעדכן…';load(true);setTimeout(function(){load(false);},25000);};
 load(false);setInterval(function(){load(false);},15*60*1000);
+</script></body></html>"""
+
+
+_CRM_MKT_HTML = r"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>שיווק ופרסום</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#F2EFE7;--navy:#1E3A5F;--blue:#2E6BD6;--gold:#C29435;--goldt:#7A5E1C;--mut:#5B6472;--line:#ECE8DD}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);font-family:Heebo,sans-serif;color:var(--navy)}
+.wrap{max-width:1100px;margin:0 auto;padding:22px 20px 60px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}h1{font-size:26px;font-weight:800;margin:0}
+.sp{flex:1}.mut{color:var(--mut);font-size:13px}
+.btn{min-height:44px;padding:0 18px;border-radius:12px;border:1px solid #d8d3c6;background:#fff;color:var(--navy);font:600 15px Heebo;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff}
+.seg{display:inline-flex;background:#fff;border-radius:12px;padding:4px;gap:4px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+.seg button{min-height:40px;padding:0 18px;border:0;border-radius:9px;background:none;font:700 15px Heebo;color:var(--navy);cursor:pointer}
+.seg button.on{background:var(--navy);color:#fff}
+.card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:18px}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:16px 0}
+.kpi .v{font-size:34px;font-weight:800;line-height:1.1}.kpi .l{font-size:14px;font-weight:700;color:var(--mut);margin-top:6px}
+.kpi .x{font-size:13px;color:#8B8F99;margin-top:4px;min-height:18px}.kpi.gold .v{color:var(--gold)}.kpi.tot{background:var(--navy);color:#fff}
+.kpi.tot .l,.kpi.tot .x{color:#D9E1EC}
+table{width:100%;border-collapse:collapse;font-size:15px}td,th{padding:10px 8px;border-bottom:1px solid var(--line);text-align:center}
+th{background:#F6EEDB;color:var(--goldt);font-weight:800}td:first-child,th:first-child{text-align:right}
+td.t{font-weight:800}.z{color:#C9C4B8}.warn{background:#F6EEDB;color:var(--goldt);border-radius:12px;padding:10px 14px;font-weight:700;margin-bottom:12px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}}
+</style></head><body><div class="wrap">
+<header><h1>שיווק ופרסום</h1><span class="mut" id="rng"></span><span class="sp"></span>
+<div class="seg" id="seg"><button data-p="day">היום</button><button data-p="week">השבוע</button><button data-p="month">החודש</button></div>
+<a class="btn" href="/v2/crm/dashboard">לוח בקרה</a><a class="btn" href="/v2/crm/calls">CRM</a><button class="btn pri" id="rf">רענן</button></header>
+<div id="app"><div class="card">טוען…</div></div></div>
+<script>
+var P='week';try{P=localStorage.getItem('crmMktP')||'week';}catch(e){}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function nets(o){if(!o)return '';var a=[];if(o.fb)a.push('פייסבוק '+o.fb);if(o.ig)a.push('אינסטגרם '+o.ig);return a.join(' · ');}
+function day(t){var d=new Date(t*1000);return d.getDate()+'/'+(d.getMonth()+1);}
+function mkHtml(j){var T=j.totals||{},h='';
+ if(j.missing&&j.missing.length)h+='<div class="warn">חלק מהנתונים לא נטענו: '+j.missing.map(esc).join(', ')+' — המספרים עשויים להיות חסרים.</div>';
+ var K=[['posts','פוסטים — נכס למכירה',''],['reels','רילס',''],['stories','סטורי — נכס למכירה',''],['sold','סטורי SOLD','gold'],['kits','תיקי פרזנטציה שנשלחו','gold']];
+ h+='<div class="kpis">'+K.map(function(k){var o=T[k[0]]||{n:0};return '<div class="card kpi '+k[2]+'"><div class="v">'+(o.n||0)+'</div><div class="l">'+k[1]+'</div><div class="x">'+esc(nets(o))+'</div></div>';}).join('')+
+  '<div class="card kpi tot"><div class="v">'+(T.total||0)+'</div><div class="l">סה״כ פרסומים</div><div class="x"></div></div></div>';
+ var A=j.agents||[];
+ if(!A.length)return h+'<div class="card mut" style="font-size:15px">אין פרסומים בתקופה הזו.</div>';
+ var c=function(v){return v?String(v):'<span class="z">0</span>';};
+ h+='<div class="card"><table><tr><th>סוכן</th><th>פוסטים</th><th>רילס</th><th>סטורי</th><th>SOLD</th><th>תיקים</th><th>סה״כ</th></tr>'+
+  A.map(function(a){return '<tr><td>'+esc(a.name)+'</td><td>'+c(a.posts)+'</td><td>'+c(a.reels)+'</td><td>'+c(a.stories)+'</td><td>'+c(a.sold)+'</td><td>'+c(a.kits)+'</td><td class="t">'+a.total+'</td></tr>';}).join('')+'</table></div>';
+ return h;}
+function segs(){[].forEach.call(document.querySelectorAll('#seg button'),function(b){b.classList.toggle('on',b.getAttribute('data-p')===P);});}
+function load(){var t='';try{t=localStorage.getItem('crmTok')||localStorage.getItem('fbTok')||'';}catch(e){}
+ if(!t){location.replace('/crm/login');return;}segs();var my=P;
+ fetch('/v2/api/crm/marketing?period='+P,{headers:{'X-Auth-Token':t}}).then(function(r){if(r.status===401)location.replace('/crm/login');return r.json();}).then(function(j){
+  if(my!==P)return;
+  if(!j.ok){document.getElementById('app').innerHTML='<div class="card">'+(j.reason==='forbidden'?'המסך הזה פתוח רק לבעל המשרד.':'שגיאה: '+esc(j.reason))+'</div>';return;}
+  document.getElementById('rng').textContent=day(j.from)+' – '+day(j.to);document.getElementById('app').innerHTML=mkHtml(j);
+ }).catch(function(){document.getElementById('app').innerHTML='<div class="card">לא הצלחתי לטעון — נסה שוב.</div>';});}
+[].forEach.call(document.querySelectorAll('#seg button'),function(b){b.onclick=function(){P=b.getAttribute('data-p');try{localStorage.setItem('crmMktP',P);}catch(e){}document.getElementById('app').innerHTML='<div class="card">טוען…</div>';load();};});
+document.getElementById('rf').onclick=load;load();
 </script></body></html>"""
 
 
@@ -14026,6 +14724,9 @@ document.getElementById('seg').onclick=function(e){var b=e.target.closest('butto
  [].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});load();};
 load();
 </script></body></html>"""
+_CRM_SCREEN_HTML, _CRM_ACCESS_HTML, _CRM_DASH_HTML, _CRM_MKT_HTML, _CRM_PARALLEL_HTML = (_crm_with_nav(h) for h in (
+    _CRM_SCREEN_HTML, _CRM_ACCESS_HTML, _CRM_DASH_HTML, _CRM_MKT_HTML, _CRM_PARALLEL_HTML))
+
 
 
 def crm_ts(s):
@@ -14613,7 +15314,7 @@ def crm_agent_listings(props, people, canon, hidden=None):
                 d["rent"] += 1
             if str(r.get("ad_id") or "") not in hid:
                 d["site"] += 1
-    out = sorted(rows.values(), key=lambda x: (x["name"] == "(לא משויך)", -x["total"], -x["excl"], x["name"]))
+    out = sorted(rows.values(), key=lambda x: (x["name"] == "(לא משויך)", x["name"]))   # 08/11 אייל: לפי א-ב
     return {"rows": out, "total": tot}
 
 
@@ -14701,6 +15402,7 @@ _CRM_Y2_BRANCH = {"5625538": "מוצקין", "5628636": "ביאליק", "8532791
 _CRM_AGENT_BRANCH = {"אלי שמול": "ביאליק", "יהודית שמול": "ביאליק"}
 
 
+_CRM_STALE = 6 * 3600   # [10/11] עותק ישן של מודול CRM עד 6 שעות מוגש מיד; בנייה חדשה ברקע
 CRM_MODULES = {
     "buyers": {
         "title": "קונים",
@@ -16935,6 +17637,10 @@ def register(app, G):
     def v2_meets():
         return _page(V2_MEETS_HTML)
 
+    @app.route("/v2/kits", methods=["GET"])
+    def v2_kits():
+        return _page(V2_KITS_HTML)
+
     @app.route("/v2/goals", methods=["GET"])   # [GOALS 28/10] היעדים שלי להיום
     def v2_goals():
         return _page(V2_GOALS_HTML.replace("<!--GOALS_KIT-->", V2_GOALS_KIT, 1))
@@ -18819,9 +19525,11 @@ def register(app, G):
         if not _INGEST_KEY or not k or not _hmac.compare_digest(k, _INGEST_KEY):
             return jsonify({"ok": False, "reason": "forbidden"}), 403
         try:
-            row = inv_ingest_row(request.get_json(silent=True) or {})
+            # [09/11] Make שולח ישירות (במקום פיירברי) כטופס — ?via=make; פיירברי ממשיך ב-JSON
+            via = request.args.get("via", "")
+            row = inv_ingest_row(request.get_json(silent=True) or request.form.to_dict() or {})
             if not row:
-                return jsonify({"ok": False, "reason": "no_name"})
+                return jsonify({"ok": False, "reason": "no_name"}), (400 if via == "make" else 200)
             nm, amount, created = row["client_name"], row["amount"], row["created_at"]
             sb = G.get("_sbdb")
             if not (sb and sb.enabled()):
@@ -18833,8 +19541,11 @@ def register(app, G):
                 sb.shadow_upsert("invoices", row["row_hash"], created, row)
                 return jsonify({"ok": True, "mode": "shadow", "new": False, "wa": False})
             inserted = sb.insert_invoice_row(row)
-            _log_activity("Fireberry", "system", "", "חשבונית חדשה מפיירברי",
-                          (nm + " " + amount)[:60].strip())
+            if via == "make":
+                _log_activity("Make", "system", "", "חשבונית חדשה (Make)", (nm + " " + amount)[:60].strip())
+            else:
+                _log_activity("Fireberry", "system", "", "חשבונית חדשה מפיירברי",
+                              (nm + " " + amount)[:60].strip())
             wa_q = bool(inserted) and _inv_wa_send_async(row)
             return jsonify({"ok": True, "new": bool(inserted), "wa": wa_q})
         except Exception as e:
@@ -18864,6 +19575,7 @@ def register(app, G):
                 sb.call_upsert_direct(sk, riso, raw)
                 try:
                     G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
+                    G["_cache_clear"]("crmcalls")
                 except Exception:
                     pass
                 G["_log_activity"]("Make", "system", "", "שיחה חדשה (ישירות)",
@@ -19037,6 +19749,20 @@ def register(app, G):
     # [AI-DIGEST 29/10] app.py (_ai_digest_tick, 11:00) קורא את רשומות טאב ה-AI בלי לשכפל את הבנייה
     G["_crm_ai_rows"] = lambda: _crm_records("ai")
 
+    # [10/11 אייל: 'לוקח המון זמן להעלות, גם לדשבורד'] המודולים הכבדים והדשבורד נבנים ברקע ע"י ה-warmer
+    # (app._warm_once — מיד אחרי עלייה ואז כל 5 דק'), כך שמשתמש לא מחכה לבנייה קרה (נמדד 4-13ש' אחרי פריסה).
+    def _crm_warm():
+        try:   # לוח הבקרה ראשון — הכי נפתח
+            G["_swr"]("crmdash", 900, _crm_dash_builder(), max_stale=_CRM_STALE)
+        except Exception as e:
+            if log: log.warning(f"crm warm dashboard: {e}")
+        for m in ("calls", "buyers", "signatures", "deals", "invoices", "props", "flows", "ai"):
+            try:
+                _crm_records(m)
+            except Exception as e:
+                if log: log.warning(f"crm warm {m}: {e}")
+    G["_crm_warm"] = _crm_warm
+
     def _crm_read_err(e):
         return jsonify({"ok": False, "reason": "table_error", "detail": str(e)})
 
@@ -19051,11 +19777,14 @@ def register(app, G):
                 if log: log.warning(f"crm overrides read failed: {e}")
                 ov = {}
         if module == "calls":
-            try:
-                hidden = set(G["_fetch_hidden_calls"]() or set())
-            except Exception:
-                hidden = set()
-            return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden, uid=G.get("_call_uid"))
+            def _build_calls():
+                try:
+                    hidden = set(G["_fetch_hidden_calls"]() or set())
+                except Exception:
+                    hidden = set()
+                return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden, uid=G.get("_call_uid"))
+            swr = G.get("_swr")   # [10/11] בנייה קרה 8ש' — מטמון כמו שאר המודולים; עריכה מנקה (crmcalls)
+            return swr("crmcalls", 60, _build_calls, max_stale=_CRM_STALE) if swr else _build_calls()
         if module == "team":
             if not (sb and sb.enabled()):
                 return []
@@ -19095,7 +19824,7 @@ def register(app, G):
                 return crm_unify_agents(crm_buyer_records(G["_fetch_manual_buyers"]() or [], st, G["_excl_epoch"], pages, canon=_bcanon),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
-            return swr("crmbuyers", 60, _build_buyers) if swr else _build_buyers()
+            return swr("crmbuyers", 60, _build_buyers, max_stale=_CRM_STALE) if swr else _build_buyers()
         if module == "signatures":
             def _sig_doc_headers(toks):
                 """כותרות מסמכי החתימה (נשמרות לתמיד בזיכרון — כותרת של מסמך לא משתנה)."""
@@ -19114,7 +19843,7 @@ def register(app, G):
                 return crm_unify_agents(crm_sig_records(sigs, {"ep": G["_excl_epoch"], "label": G["_deal_label"]}),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
-            return swr("crmsigs", 120, _build_sigs) if swr else _build_sigs()
+            return swr("crmsigs", 120, _build_sigs, max_stale=_CRM_STALE) if swr else _build_sigs()
         if module == "deals":
             fn = G.get("_deal_history_linked")
             if not fn:
@@ -19144,7 +19873,7 @@ def register(app, G):
                     if log: log.warning(f"crm deals review marks: {e}")
                 return crm_unify_agents(recs, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
-            return swr("crmdeals", 120, _build_deals) if swr else _build_deals()
+            return swr("crmdeals", 120, _build_deals, max_stale=_CRM_STALE) if swr else _build_deals()
         if module == "meetings":
             return crm_unify_agents(crm_meeting_records(G["_nb_statuses"]() or {}),
                                     lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=("by",))
@@ -19174,7 +19903,7 @@ def register(app, G):
                 # [28/10 אייל: 'תאחד שמות'] כל סוכן פעם אחת ברשימת הסוכנים
                 return crm_unify_agents(recs, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
-            return swr("crmai", 120, _build_ai) if swr else _build_ai()
+            return swr("crmai", 120, _build_ai, max_stale=_CRM_STALE) if swr else _build_ai()
         if module == "invoices":
             def _build_inv():
                 try:
@@ -19197,7 +19926,7 @@ def register(app, G):
                 rows = crm_inv_records(sbi.invoices_all() or [], crm_inv_agent_index(buyers, sigs), sent, G["_excl_epoch"])
                 return crm_unify_agents(rows, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
-            return swr("crminv", 120, _build_inv) if swr else _build_inv()
+            return swr("crminv", 120, _build_inv, max_stale=_CRM_STALE) if swr else _build_inv()
         if module == "props":
             def _build_props():
                 import time as _tp
@@ -19222,7 +19951,7 @@ def register(app, G):
                 return crm_unify_agents(crm_props_records(G["fetch_newborn"]() or [], G["fetch_external_exclusives"]() or [], office, pd, _tp.time(), h),
                                         lambda n: G["_canon_key"](G["_canon_agent_name"](n)))
             swr = G.get("_swr")
-            return swr("crmprops", 120, _build_props) if swr else _build_props()
+            return swr("crmprops", 120, _build_props, max_stale=_CRM_STALE) if swr else _build_props()
         if module in ("flows", "automations"):
             import time as _tf
             now = _tf.time()
@@ -19237,7 +19966,7 @@ def register(app, G):
                     if log: log.warning(f"crm activity filtered read failed — full read: {e}")
                 return G["_activity_fetch"](t0, today=False) or []
             swr = G.get("_swr")
-            act = swr("crmact30", 120, _build_act) if swr else _build_act()
+            act = swr("crmact30", 120, _build_act, max_stale=_CRM_STALE) if swr else _build_act()
             if module == "flows":
                 return crm_flow_records(act)
             return crm_automation_records(act, dict(os.environ), now)
@@ -19250,6 +19979,19 @@ def register(app, G):
         if a.get("period"):
             filters["period"] = a.get("period")
         return a.get("q", ""), filters, a.get("sort", "date"), a.get("dir", "desc")
+
+    @app.route("/v2/api/crm/nav", methods=["GET"])
+    def v2_api_crm_nav():
+        """[10/11] תפריט הצד: המודולים שמותרים למשתמש, מי הוא, ושם המשרד."""
+        ctx = _crm_guard()
+        if not ctx:
+            return _crm_deny()
+        try:
+            office = ((G["_load_config"]() or {}).get("v2_office") or {}).get("name") or ""
+        except Exception:
+            office = ""
+        return jsonify({"ok": True, "office": office, "me": _crm_me(ctx),
+                        "modules": [[k, v["title"]] for k, v in CRM_MODULES.items() if k in ctx["modules"]]})
 
     @app.route("/v2/api/crm/<module>/meta", methods=["GET"])
     def v2_api_crm_meta(module):
@@ -19324,9 +20066,16 @@ def register(app, G):
         sb = G.get("_sbdb")
         if not (sb and sb.enabled()):
             return None
-        t = sb.transcript_get(rec["key"]) if rec["key"].startswith("mk:") else None
-        if t or not rec.get("date"):
-            return t
+        sk = _crm_call_sk(rec)
+        return sb.transcript_get(sk) if sk else None
+
+    def _crm_call_sk(rec):
+        """[REC 10/11] מפתח השיחה הישירה (mk:<uuid>) — לפי המפתח, אחרת השיחה התואמת בטבלת הצל."""
+        if rec["key"].startswith("mk:"):
+            return rec["key"]
+        sb = G.get("_sbdb")
+        if not (sb and sb.enabled()) or not rec.get("date"):
+            return None
         import datetime as _dtr
         if rec["date"] < 1792360800:          # 19/10/2026 — לפני הזרם הישיר אין תמלולים
             return None
@@ -19341,7 +20090,94 @@ def register(app, G):
             ts = crm_ts(r.get("received_at"))
             if ts is not None and abs(ts - rec["date"]) < best_d:
                 best, best_d = r, abs(ts - rec["date"])
-        return sb.transcript_get(best.get("_source_key")) if best else None
+        sk = str((best or {}).get("_source_key") or "")
+        return sk if sk.startswith("mk:") else None
+
+    # [REC 10/11 אייל: 'כן' — לשמוע את הקלטת השיחה] ההקלטה במסקיו דורשת טוקן, אז אפי מביאה אותה
+    # בעצמה לפי מזהה השיחה (אותה קריאה של מודול 32 בסנריו 'לוג שיחה מסקיו') ומגישה לנגן בכרטיס.
+    _REC_CACHE = {}
+    _REC_LOG = {}
+
+    def _maskyoo_rec_accounts():
+        out = []
+        for acct, env in (("zipper_993", "MASKYOO_TOKEN_ZIPPER"), ("bislani_763", "MASKYOO_TOKEN_BISLANI")):
+            t = (os.environ.get(env) or "").strip().strip('"\'').strip()
+            if t.lower().startswith("bearer "):          # הודבק עם המילה Bearer
+                t = t[7:].strip()
+            if t:
+                out.append((acct, t))
+        return out
+
+    def _looks_audio(ctype, data):
+        if not data or len(data) < 64:
+            return False
+        if (ctype or "").lower().startswith(("audio/", "application/octet-stream")):
+            return not data[:1] in (b"{", b"[", b"<")
+        return data[:4] in (b"RIFF", b"OggS", b"fLaC") or data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")
+
+    def _maskyoo_record(uuid):
+        """(bytes, content-type) או None. מנסה את שני החשבונות; זיכרון ל-15 אחרונות."""
+        if uuid in _REC_CACHE:
+            return _REC_CACHE[uuid]
+        for acct, tok in _maskyoo_rec_accounts():
+            try:
+                r = _requests.get("https://www.maskyoo.com/%s/api/" % acct,
+                                  params={"service": "get_record_by_call_uuid", "call_uuid": uuid, "format": "json"},
+                                  headers={"Authorization": "Bearer " + tok}, timeout=30)
+            except Exception as e:
+                if log: log.warning(f"maskyoo record {acct}: {e}")
+                continue
+            ct = (r.headers.get("Content-Type") or "").split(";")[0].strip()
+            if r.status_code == 200 and _looks_audio(ct, r.content):
+                if not ct.startswith("audio/"):
+                    ct = "audio/wav" if r.content[:4] == b"RIFF" else "audio/mpeg"
+                if len(_REC_CACHE) >= 15:
+                    _REC_CACHE.pop(next(iter(_REC_CACHE)))
+                _REC_CACHE[uuid] = (r.content, ct)
+                return _REC_CACHE[uuid]
+            if log: log.info(f"maskyoo record {acct}: no audio (HTTP {r.status_code}, {ct}, {len(r.content)}B) "
+                             f"token len={len(tok)} head={tok[:4]} body={r.content[:80]!r}")
+        return None
+
+    @app.route("/v2/api/crm/calls/audio", methods=["GET"])
+    def v2_api_crm_call_audio():
+        s = _crm_guard("calls")
+        if not s:
+            return _crm_deny()
+        key = request.args.get("key", "")
+        try:
+            rec = next((r for r in _crm_scoped("calls", s) if r["key"] == key), None)
+        except _CrmReadError as e:
+            return _crm_read_err(e)
+        sk = _crm_call_sk(rec) if rec else None
+        if not sk:
+            return jsonify({"ok": False, "reason": "not_found"}), 404
+        got = _maskyoo_record(sk[3:])
+        if not got:
+            return jsonify({"ok": False, "reason": "no_recording"}), 404
+        data, ct = got
+        if time.time() - _REC_LOG.get(key, 0) > 600:          # שורה ביומן לכל היותר פעם ב-10 דק' לשיחה
+            _REC_LOG[key] = time.time()
+            try:
+                G["_log_activity"](s.get("name", ""), s.get("role", ""), s.get("phone", ""), "CRM — האזנה להקלטה", key)
+            except Exception:
+                pass
+        from flask import Response as _Resp
+        n = len(data)
+        rng = _re.match(r"bytes=(\d*)-(\d*)", request.headers.get("Range", ""))
+        if rng and (rng.group(1) or rng.group(2)):
+            a = int(rng.group(1)) if rng.group(1) else max(0, n - int(rng.group(2)))
+            b = int(rng.group(2)) if (rng.group(1) and rng.group(2)) else n - 1
+            b = min(b, n - 1)
+            if a > b:
+                return _Resp(status=416, headers={"Content-Range": "bytes */%d" % n})
+            resp = _Resp(data[a:b + 1], 206, mimetype=ct)
+            resp.headers["Content-Range"] = "bytes %d-%d/%d" % (a, b, n)
+        else:
+            resp = _Resp(data, 200, mimetype=ct)
+        resp.headers["Accept-Ranges"] = "bytes"
+        resp.headers["Cache-Control"] = "private, max-age=3600"
+        return resp
 
     @app.route("/v2/api/crm/<module>/record", methods=["GET", "POST"])
     def v2_api_crm_record(module):
@@ -19386,8 +20222,15 @@ def register(app, G):
             except Exception as e:
                 if log: log.warning(f"crm transcript lookup failed: {e}")
                 t = {}
+            _rec_u = t.get("recording_url") or ""
+            if not _rec_u and _maskyoo_rec_accounts():
+                try:
+                    if _crm_call_sk(rec):
+                        _rec_u = "/v2/api/crm/calls/audio?key=" + _quote(rec["key"], safe="")
+                except Exception:
+                    pass
             return jsonify({"ok": True, "record": rec, "transcript": t.get("transcript") or "",
-                            "recording": t.get("recording_url") or ""})
+                            "recording": _rec_u})
         b = request.get_json(silent=True) or {}
         key = str(b.get("key") or "").strip()
         who = s.get("name", "")
@@ -19396,6 +20239,7 @@ def register(app, G):
             if not j or not j.get("ok"):
                 return jsonify({"ok": False, "reason": "fail"}), 502
             G["_cache_clear"]("hidden_calls")
+            G["_cache_clear"]("crmcalls")
             G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — מחיקת שיחה", key)
             return jsonify({"ok": True})
         if key and b.get("restore"):
@@ -19403,6 +20247,7 @@ def register(app, G):
             if not j or not j.get("ok"):
                 return jsonify({"ok": False, "reason": "fail"}), 502
             G["_cache_clear"]("hidden_calls")
+            G["_cache_clear"]("crmcalls")
             G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — שחזור שיחה", key)
             return jsonify({"ok": True})
         allowed = {f for f, _l in mod["editable"]}
@@ -19412,6 +20257,7 @@ def register(app, G):
         if key:
             sb.crm_override_upsert(module, key, fields, who)
             G["_cache_clear"]("crmov:" + module)
+            G["_cache_clear"]("crmcalls")
             G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — עריכת שיחה", key + " · " + ",".join(fields))
             return jsonify({"ok": True, "key": key})
         import uuid as _uu, datetime as _dn
@@ -19425,7 +20271,9 @@ def register(app, G):
         if fields.get("note"):
             sb.crm_override_upsert(module, nk, {"note": fields["note"]}, who)
             G["_cache_clear"]("crmov:" + module)
+            G["_cache_clear"]("crmcalls")
         G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
+        G["_cache_clear"]("crmcalls")
         G["_log_activity"](who, s.get("role", ""), s.get("phone", ""), "CRM — שיחה חדשה (ידנית)", nk)
         return jsonify({"ok": True, "key": nk})
 
@@ -19873,12 +20721,8 @@ def register(app, G):
     import threading as _thd0
     _CRM_DASH_BUSY = {"lock": _thd0.Lock(), "on": False}
 
-    @app.route("/v2/api/crm/dashboard", methods=["GET"])
-    def v2_api_crm_dashboard():
-        """[CRM-3] נתוני הדשבורד. מי שמותר לו 'לוח בקרה' בהיקף 'הכל'. נבנה דרך _swr (15 דק'); ?fresh=1 בונה עכשיו."""
-        s = _crm_guard("dashboard", need="all")
-        if not s:
-            return _crm_deny()
+    def _crm_dash_builder():
+        """[10/11] בונה הדשבורד מחוץ לבקשה — כדי שה-warmer יחמם אותו גם מיד אחרי פריסה."""
         import datetime as _dbd, time as _tbd
         from zoneinfo import ZoneInfo as _ZBD
         il = _ZBD("Asia/Jerusalem")
@@ -19983,6 +20827,16 @@ def register(app, G):
                 if saved is not None:
                     rl.clear(); rl.update(saved)
 
+        return build_keep_diag
+
+    @app.route("/v2/api/crm/dashboard", methods=["GET"])
+    def v2_api_crm_dashboard():
+        """[CRM-3] נתוני הדשבורד. מי שמותר לו 'לוח בקרה' בהיקף 'הכל'. נבנה דרך _swr (15 דק'); ?fresh=1 בונה עכשיו."""
+        s = _crm_guard("dashboard", need="all")
+        if not s:
+            return _crm_deny()
+        build_keep_diag = _crm_dash_builder()
+
         try:
             if request.args.get("fresh") == "1":
                 # רענן: בנייה אחת ברקע (לא בתוך הבקשה, לא במקביל); מחזירים מיד את מה שיש
@@ -20002,13 +20856,61 @@ def register(app, G):
                                 _CRM_DASH_BUSY["on"] = False
                     import threading as _thd
                     _thd.Thread(target=_bg, daemon=True, name="crmdash").start()
-                data = dict(G["_swr"]("crmdash", 900, build_keep_diag))
+                data = dict(G["_swr"]("crmdash", 900, build_keep_diag, max_stale=_CRM_STALE))
                 data["refreshing"] = True
                 return jsonify(data)
-            return jsonify(G["_swr"]("crmdash", 900, build_keep_diag))
+            return jsonify(G["_swr"]("crmdash", 900, build_keep_diag, max_stale=_CRM_STALE))
         except Exception as e:
             if log: log.error(f"crm dashboard error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    @app.route("/v2/crm/marketing", methods=["GET"])
+    def v2_crm_marketing_page():
+        """[10/11 אייל] מסך שיווק — כמה פרסמנו (פוסטים/רילס/סטורי/SOLD/תיקים). בעל המשרד בלבד (נבדק ב-API)."""
+        return Response(_CRM_MKT_HTML, mimetype="text/html")
+
+    @app.route("/v2/api/crm/marketing", methods=["GET"])
+    def v2_api_crm_marketing():
+        """[10/11 אייל] ?period=day|week|month → סיכום המשרד + טבלה לפי סוכן (marketing_stats). בעל המשרד בלבד."""
+        s = _crm_guard(owner=True)
+        if not s:
+            return _crm_deny()
+        import marketing_stats as _mk
+        period = request.args.get("period", "week")
+        period = period if period in ("day", "week", "month") else "week"
+        start, end = _mk.period_range(period, time.time())
+        sb, miss = G.get("_sbdb"), []
+        def _get(label, fn):
+            try:
+                return list(fn() or [])
+            except Exception as e:
+                if log: log.warning(f"crm marketing: {label}: {e}")
+                miss.append(label)
+                return []
+        posts = _get("פוסטים", lambda: sb.social_recent(40))
+        videos = _get("סרטונים", lambda: sb.video_recent(40))
+        kits = _get("תיקי פרזנטציה", lambda: sb.kit_list(days=40))
+        def _solds():
+            import social_sold as _ss
+            return _ss._db().all()
+        solds = _get("SOLD", _solds)
+        amap = {}
+        try:
+            import social_publish as _sp
+            for r in _sp.soc_office_rows(G):
+                k = _sp._key(r.get("מספר מודעה"))
+                if k and k not in amap:
+                    amap[k] = " ".join(str(r.get("סוכן 1") or r.get("סוכן") or "").split())
+        except Exception as e:
+            if log: log.warning(f"crm marketing: office rows: {e}")
+            miss.append("שיוך לסוכנים")
+        def _canon(n):
+            try:
+                return G["_canon_key"](n)
+            except Exception:
+                return " ".join(str(n or "").split())
+        out = _mk.count(posts, videos, solds, kits, start, end, amap.get, _canon)
+        return jsonify({"ok": True, "period": period, "from": start, "to": end, "missing": miss, **out})
 
     @app.route("/v2/crm/parallel", methods=["GET"])
     def v2_crm_parallel_page():
@@ -20041,6 +20943,7 @@ def register(app, G):
             n += 1
         try:
             G["_cache_clear"]("raw:שיחות:01/01/2020:31/12/2099")
+            G["_cache_clear"]("crmcalls")
         except Exception:
             pass
         G["_log_activity"]("אפי", "system", "", "ניתוק פיירברי — שיחות מהצל", str(n))

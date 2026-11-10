@@ -626,18 +626,35 @@ def build_periods(src, today, canon):
     yday = today - _dt.timedelta(days=1)
     ws = week_start(today)
     week = [ws + _dt.timedelta(days=i) for i in range((today - ws).days + 1)]
-    periods = {"today": ([today], workday_weight(today)), "yesterday": ([yday], workday_weight(yday)),
-               "week": (week, workdays_elapsed(today))}
+    # [08/11 אייל] 'החודש': מה-1 בחודש עד היום; יעד = קצב × ימי העבודה שעברו (גיוס — × שבועות); מגמה מול
+    # אותם ימים בחודש הקודם; גיוס נכסים נספר מתחילת החודש (לא מתחילת השבוע).
+    ms = today.replace(day=1)
+    month = [ms + _dt.timedelta(days=i) for i in range((today - ms).days + 1)]
+    pms = month_period(today)[0]
+    pml = today.replace(day=1) - _dt.timedelta(days=1)
+    pmonth = [d for d in (pms + _dt.timedelta(days=i) for i in range(len(month))) if d <= pml]
+
+    def _wk(days):
+        return [d - _dt.timedelta(days=7) for d in days]
+    periods = {"today": ([today], workday_weight(today), 1.0, _wk([today]), False),
+               "yesterday": ([yday], workday_weight(yday), 1.0, _wk([yday]), False),
+               "week": (week, workdays_elapsed(today), 1.0, _wk(week), False),
+               "month": (month, sum(workday_weight(d) for d in month), len(month) / 7.0, pmonth, True)}
+
+    def _cnt(n, days, span):
+        c = count_days(n, days, src, canon)
+        if span and days:
+            c["listings"] = count_listings(n, (day_bounds(days[0])[0], day_bounds(days[-1])[1]), src.get("sigs"), canon)
+        return c
     out = {}
-    for pk, (days, scale) in periods.items():
-        prev_days = [d - _dt.timedelta(days=7) for d in days]
+    for pk, (days, scale, weeks, prev_days, span) in periods.items():
         rows, per, tg, total = _assemble(
-            src, canon, lambda n, days=days: count_days(n, days, src, canon),
-            lambda n, scale=scale: scaled(rates_for(plan, n, canon), scale),
-            lambda names, scale=scale: office_scaled(plan, scale))
+            src, canon, lambda n, days=days, span=span: _cnt(n, days, span),
+            lambda n, scale=scale, weeks=weeks: scaled(rates_for(plan, n, canon), scale, weeks),
+            lambda names, scale=scale, weeks=weeks: office_scaled(plan, scale, weeks))
         prev_per = {}
         for r in rows:
-            pc = count_days(r["name"], prev_days, src, canon)
+            pc = _cnt(r["name"], prev_days, span)
             prev_per[canon(r["name"])] = pc
             r["met"], r["goals_n"] = _met(r["counts"], r["targets"])
             r["trend"] = _trend(r["counts"], pc)
@@ -646,7 +663,7 @@ def build_periods(src, today, canon):
         total["met"], total["goals_n"] = _met(total["counts"], total["targets"])
         total["trend"] = _trend(total["counts"], rollup(prev_per, tg)["counts"])
         out[pk] = {"day": days[0].isoformat(), "to": days[-1].isoformat(), "rows": rows, "total": total,
-                   "workdays": _num(scale) if pk == "week" else None}
+                   "workdays": _num(scale) if pk in ("week", "month") else None}
     return out
 
 
@@ -1147,7 +1164,8 @@ def dashboard_goals(G, now):
     """[GOALS 28/10] כרטיס 'יעדי היום' בלוח הבקרה — היום / אתמול / השבוע, מול אותה תקופה לפני שבוע.
     יומן הפעולות נשלף פעם אחת מתחילת השבוע הקודם (או משמונה ימים אחורה, המוקדם) — רק 'תזכורת ללקוח עבר', סינון בשרת."""
     day = _dt.datetime.fromtimestamp(now, _IL).date()
-    first = min(week_start(day) - _dt.timedelta(days=7), day - _dt.timedelta(days=8))
+    first = min(week_start(day) - _dt.timedelta(days=7), day - _dt.timedelta(days=8),
+                month_period(day)[0])            # [08/11] גם 'החודש' מול החודש הקודם
     t0 = day_bounds(first)[0]
 
     def activity():

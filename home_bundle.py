@@ -39,6 +39,8 @@ WARM_EVERY = 600           # כל 10 דק'
 WARM_RECENT = 3 * 3600     # בחימום התקופתי — מי שהשתמש ב-3 השעות האחרונות
 WARM_DAYSTART = 2 * 86400  # בעלייה ובתחילת היום — מי שהשתמש ביומיים האחרונים
 WARM_GAP = 1.5             # הפסקה בין משתמשים — שהחימום לא יתחרה בבקשות אמיתיות
+WARM_USER_TIMEOUT = 90     # משתמש שהחימום שלו לא נגמר עד אז — מדלגים עליו (ה-thread שלו ממשיך ברקע)
+WARM_STUCK_MAX = 3         # יותר מזה משתמשים תקועים בבת אחת — לא מתחילים סבב חדש עד שישתחררו
 
 
 def trim_part(key, j):
@@ -79,6 +81,7 @@ def trim_part(key, j):
     if key == "nb":
         res = [r for r in (j.get("results") or []) if isinstance(r, dict)]
         return {"ok": True, "total": j.get("total") or len(res),
+                "dropsToday": j.get("dropsToday") or {"nb": 0, "office": 0},   # [HOME-TILES 08/11]
                 "results": [{"ageDays": r.get("ageDays"), "address": r.get("address", ""),
                              "city": r.get("city", "")} for r in res if r.get("ageDays") == 0]}
     if key == "dialer":
@@ -194,16 +197,49 @@ def register(app, G):
                     _seen[ph] = ts
         log.info(f"home warm: seeded {len(_seen)} users from pings")
 
+    # [HOME-WARM-TIMEOUT 08/11] ב-06/11 החימום נעצר ב-10:01 ולא חזר עד הפריסה, בלי שגיאה בלוג —
+    # כנראה בקשה אחת שנתקעה ותקעה את כל הלולאה. עכשיו כל משתמש רץ ב-thread עם תקרת זמן;
+    # משתמש שנתקע נרשם בלוג והחימום ממשיך לבא בתור.
+    _stuck = {"n": 0}
+
+    def _warm_one_limited(ph):
+        if _stuck["n"] >= WARM_STUCK_MAX:
+            return False
+        done = _threading.Event()
+
+        def run():
+            try:
+                _warm_one(ph)
+            finally:
+                done.set()
+                if getattr(run, "late", False):
+                    _stuck["n"] = max(0, _stuck["n"] - 1)
+
+        _threading.Thread(target=run, daemon=True, name="home-warm-user").start()
+        if done.wait(WARM_USER_TIMEOUT):
+            return True
+        run.late = True
+        _stuck["n"] += 1
+        log.warning(f"home warm: user …{str(ph)[-4:]} stuck > {WARM_USER_TIMEOUT}s — skipped (stuck={_stuck['n']})")
+        return False
+
     def _round(window, why):
         with _seen_lock:
             targets = warm_targets(dict(_seen), _time.time(), window)
         if not targets:
             return
+        if _stuck["n"] >= WARM_STUCK_MAX:
+            log.warning(f"home warm ({why}): skipped — {_stuck['n']} users still stuck")
+            return
+        log.info(f"home warm ({why}): start {len(targets)} users")
         t0 = _time.time()
+        skipped = 0
         for ph in targets:
-            _warm_one(ph)
+            if not _warm_one_limited(ph):
+                skipped += 1
             _time.sleep(WARM_GAP)
-        log.info(f"home warm ({why}): {len(targets)} users in {_time.time() - t0:.0f}s")
+        log.info(f"home warm ({why}): {len(targets)} users in {_time.time() - t0:.0f}s"
+                 + (f" skipped={skipped}" if skipped else ""))
 
     def _loop():
         _time.sleep(25)   # אחרי ה-cache warmer הוותיק (שמביא את המקורות המשותפים)
@@ -242,4 +278,4 @@ def register(app, G):
     if os.environ.get("HOME_WARM", "1") != "0":
         _threading.Thread(target=_loop, daemon=True, name="home-warm").start()
         log.info("home warm started")
-    return {"warm_one": _warm_one, "seen": _seen, "seed": _seed_from_pings}
+    return {"warm_one": _warm_one, "seen": _seen, "seed": _seed_from_pings, "round": _round, "stuck": _stuck}

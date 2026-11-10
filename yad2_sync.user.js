@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      14.9
+// @version      15.0
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -52,7 +52,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='14.9'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='15.0'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -2498,7 +2498,13 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
     var nm=exclOfficeName(html); if(nm && (!office.name || office.name.indexOf('משרד ')===0)) office.name=nm; // שם אמיתי מדף המשרד אם המדריך נכשל
     officePhone=pagePhones(html)[0]||''; // טלפון המשרד (tel:/JSON) — ברירת המחדל לכל מודעות המשרד
     var bids=exclBrokerIds(html);
-    var nd=exclParseNextData(html);if(nd)addItems(exclFindListings(nd),office.name+' (לא משויך)','');
+    // v15.0 (08/11, מודעות חיות סומנו "ירד מפרסום"): עמודי המשרד נעצרו בעמוד הראשון שלא הוסיף מודעה —
+    // גם כשכל מודעותיו כבר נאספו מעמודי הסוכנים. סוכן בלי קישור /broker/ בעמוד 1 (המודעות שלו
+    // בעמודים 3+) לא נאסף, והסניף נשלח כסריקה מלאה. עכשיו הסוף = עמוד שאין בו אף מודעה שלא
+    // הופיעה כבר בעמודי *המשרד* (יד2 חוזר על העמוד האחרון אחרי הסוף — ההגנה של v13.9 נשמרת).
+    var offSeen={};
+    function offFresh(items){ var n=0; items.forEach(function(x){ if(x&&x.token&&!offSeen[x.token]){ offSeen[x.token]=1; n++; } }); return n; }
+    var nd=exclParseNextData(html);if(nd){ var it1=exclFindListings(nd); offFresh(it1); addItems(it1,office.name+' (לא משויך)',''); }
     var bi=0;
     (function nextBroker(){
       if(bi>=bids.length){ // שלב 3: שאר עמודי המשרד — מה שלא שויך לסוכן
@@ -2507,10 +2513,12 @@ function exclCrawlOffice(office,fetchFn,onProg,done){
           fetchFn(base+'/forsale?page='+p).then(function(h){
             var nd2=exclParseNextData(h);var items=nd2?exclFindListings(nd2):[];
             if(looksBlocked(h)||!nd2){ gap('forsale/'+p, looksBlocked(h)?'blocked':'nodata'); diag.partial=true; done(order.map(function(t){return rows[t];}),diag); return; }
-            var added=addItems(items,office.name+' (לא משויך)','');
+            var fresh=offFresh(items);
+            addItems(items,office.name+' (לא משויך)','');
             if(onProg)onProg(office.name,'forsale',p,items.length);
-            if(added>0&&p<60){p++;setTimeout(nextOfficePage,humanGap(1800,2200));}   // v13.9: 0 חדשות = סוף אמיתי
-            else { diag.partial=diag.gaps.length>0; done(order.map(function(t){return rows[t];}),diag); }
+            if(fresh>0&&p<60){p++;setTimeout(nextOfficePage,humanGap(1800,2200));}   // v15.0: סוף = עמוד בלי מודעה חדשה לעמודי המשרד
+            else { if(fresh>0)gap('forsale/'+p,'cap');   // נעצרנו בתקרה ולא בסוף — לא סריקה מלאה
+              diag.partial=diag.gaps.length>0; done(order.map(function(t){return rows[t];}),diag); }
           }).catch(function(){ gap('forsale/'+p,'fetch'); diag.partial=true; done(order.map(function(t){return rows[t];}),diag); });
         })();
         return;

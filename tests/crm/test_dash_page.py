@@ -7,7 +7,7 @@ r = A.app.test_client().get("/v2/crm/dashboard")
 assert r.status_code == 200 and "text/html" in r.content_type, r.status_code
 h = r.get_data(as_text=True)
 for need in ("crmTok", "/crm/login", "X-Auth-Token", "/v2/api/crm/dashboard", 'dir="rtl"', "Heebo",
-             "cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js", "/v2/crm/parallel"):
+             "cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js", "crmNav"):   # [10/11] דוח מקבילות ושיווק — בתפריט הצד (navGroups)
     assert need in h, need
 js = re.findall(r"<script>(.*?)</script>", h, re.S)
 assert js, "inline script"
@@ -32,14 +32,14 @@ _D = {"todo": {"missed": [{"phone": "972542222222", "agent": "דנה", "ts": 180
       "searches": {"site": [{"ts": 1800000000, "q": "4 חדרים באפקה", "n": "12", "who": ""}], "effie": []},
       "meetings_today": {"meetings": 1, "followups": 0, "done": 0, "rows": [{"date": 1800000000, "kind": "פגישה", "agent": "רפי", "by": "אוצר", "source": "נכס נולד", "address": "הנשיא 4", "state": "פתוח"}]}}
 _js = ("var document={getElementById:function(){return {}}},localStorage={getItem:function(){return ''}},fetch=function(){return {then:function(){return {then:function(){return {catch:function(){}}},catch:function(){}}}}},setInterval=function(){};"
-       + _m.group(1).split("function render(){")[0] + ";D=" + _js2.dumps(_D, ensure_ascii=False) + ";console.log(todoCard()+'\\n@@\\n'+agentsCard()+'\\n@@\\n'+listingsCard()+'\\n@@\\n'+searchesCard()+'\\n@@\\n'+meetsCard());")
+       + _m.group(1).split("function render(){")[0] + ";D=" + _js2.dumps(_D, ensure_ascii=False) + ";console.log(inboxCard()+'\\n@@\\n'+agentsCard()+'\\n@@\\n'+listingsCard()+'\\n@@\\n'+searchesCard()+'\\n@@\\n'+meetsCard());")
 _out = _sp2.run(["node", "-e", _js], capture_output=True, text=True)
 assert _out.returncode == 0, _out.stderr[-600:]
 _t, _a, _l, _s, _mt = _out.stdout.split("@@")
 assert "פגישות היום · 1 פגישות" in _mt and "<td>אוצר</td>" in _mt and "נכס נולד" in _mt and "הנשיא 4" in _mt, _mt
 assert "4 חדרים באפקה" in _s and "12 נכסים" in _s and "אין חיפושים ב-14 יום" in _s, _s
 assert "כל המשרד" in _l and "<td>רפי</td><td>3</td><td>1</td><td><b>5</b></td>" in _l and 'class="z"><td>אוצר' in _l, _l
-assert "054-2222222" in _t and "2 ניסיונות" in _t and "א&lt;b&gt;" in _t and 'href="/s/x"' in _t and "אין סימונים חדשים" in _t and "₪2,000,000" in _t, _t
-assert "<td>רפי</td>" in _a and "3<span" in _a and "90 דק׳" in _a and "החודש" in _a, _a
+assert "054-2222222" in _t and "2 ניסיונות" in _t and "א&lt;b&gt;" in _t and 'href="/s/x"' in _t and "סימנו" not in _t and "₪2,000,000" in _t and "קונים" in _t, _t   # [10/11] עמודת "מתאים" רק כשיש סימונים
+assert "<td>רפי</td>" in _a and "3</span><span class=\"mut\"> / 5" in _a and "90 דק׳" in _a and "החודש" in _a, _a
 assert "וואטסאפ רשמי (360)" in h and "function waKinds" in h, "360dialog counter on the dashboard"
 print("dash_page todo/agents OK")
