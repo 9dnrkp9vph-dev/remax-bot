@@ -13918,6 +13918,7 @@ function renderTop(){ var h = '<span class="logo">CRM · ' + esc(META.title) + '
   var me = META.me || {};
   if (me.owner) SOON.forEach(function(m){ if (!META.modules.some(function(x){ return x[0] === m[0]; })) h += '<span class="mod soon">' + m[1] + '<small>בקרוב</small></span>'; });
   if (me.dashboard) h += '<a class="mod" href="/v2/crm/dashboard">לוח בקרה</a>';
+  if (me.access) h += '<a class="mod" href="/v2/crm/marketing">שיווק</a>';
   if (me.access) h += '<a class="mod" href="/v2/crm/access">הרשאות</a>';
   h += '<span class="sp"></span><span class="who">' + esc(me.name || me.email || '') + '</span><a class="mod" href="/crm/login">יציאה</a>';
   document.getElementById('top').innerHTML = h;
@@ -14262,7 +14263,7 @@ table.ag tr.tot td{background:#FBF6E8;font-weight:700}table.ag tr.z td{color:#6B
 .gtr{font-size:12px;color:#6B7280;font-weight:400;margin-inline-start:6px}.gtr.up{color:#1E3A5F}
 </style></head><body><div class="wrap">
 <header><h1>לוח בקרה</h1><span class="upd" id="upd"></span><span class="sp"></span>
-<a class="btn" href="/v2/crm/calls">CRM</a><a class="btn" href="/v2/crm/parallel">דוח מקבילות</a><button class="btn pri" id="rf">רענן</button></header>
+<a class="btn" href="/v2/crm/calls">CRM</a><a class="btn" href="/v2/crm/marketing">שיווק</a><a class="btn" href="/v2/crm/parallel">דוח מקבילות</a><button class="btn pri" id="rf">רענן</button></header>
 <div id="app"><div class="card ld">טוען… (בפעם הראשונה עד כחצי דקה)</div></div></div>
 <script>
 var P='month', D=null, CH={};
@@ -14450,6 +14451,64 @@ function load(fresh){var t='';try{t=localStorage.getItem('crmTok')||localStorage
  }).catch(function(){if(!D)document.getElementById('app').innerHTML='<div class="card">לא הצלחתי לטעון — נסה שוב.</div>';});}
 document.getElementById('rf').onclick=function(){document.getElementById('upd').textContent='מתעדכן…';load(true);setTimeout(function(){load(false);},25000);};
 load(false);setInterval(function(){load(false);},15*60*1000);
+</script></body></html>"""
+
+
+_CRM_MKT_HTML = r"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>שיווק ופרסום</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#F2EFE7;--navy:#1E3A5F;--blue:#2E6BD6;--gold:#C29435;--goldt:#7A5E1C;--mut:#5B6472;--line:#ECE8DD}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);font-family:Heebo,sans-serif;color:var(--navy)}
+.wrap{max-width:1100px;margin:0 auto;padding:22px 20px 60px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}h1{font-size:26px;font-weight:800;margin:0}
+.sp{flex:1}.mut{color:var(--mut);font-size:13px}
+.btn{min-height:44px;padding:0 18px;border-radius:12px;border:1px solid #d8d3c6;background:#fff;color:var(--navy);font:600 15px Heebo;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff}
+.seg{display:inline-flex;background:#fff;border-radius:12px;padding:4px;gap:4px;box-shadow:0 6px 20px rgba(30,58,95,.06)}
+.seg button{min-height:40px;padding:0 18px;border:0;border-radius:9px;background:none;font:700 15px Heebo;color:var(--navy);cursor:pointer}
+.seg button.on{background:var(--navy);color:#fff}
+.card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:18px}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:16px 0}
+.kpi .v{font-size:34px;font-weight:800;line-height:1.1}.kpi .l{font-size:14px;font-weight:700;color:var(--mut);margin-top:6px}
+.kpi .x{font-size:13px;color:#8B8F99;margin-top:4px;min-height:18px}.kpi.gold .v{color:var(--gold)}.kpi.tot{background:var(--navy);color:#fff}
+.kpi.tot .l,.kpi.tot .x{color:#D9E1EC}
+table{width:100%;border-collapse:collapse;font-size:15px}td,th{padding:10px 8px;border-bottom:1px solid var(--line);text-align:center}
+th{background:#F6EEDB;color:var(--goldt);font-weight:800}td:first-child,th:first-child{text-align:right}
+td.t{font-weight:800}.z{color:#C9C4B8}.warn{background:#F6EEDB;color:var(--goldt);border-radius:12px;padding:10px 14px;font-weight:700;margin-bottom:12px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}}
+</style></head><body><div class="wrap">
+<header><h1>שיווק ופרסום</h1><span class="mut" id="rng"></span><span class="sp"></span>
+<div class="seg" id="seg"><button data-p="day">היום</button><button data-p="week">השבוע</button><button data-p="month">החודש</button></div>
+<a class="btn" href="/v2/crm/dashboard">לוח בקרה</a><a class="btn" href="/v2/crm/calls">CRM</a><button class="btn pri" id="rf">רענן</button></header>
+<div id="app"><div class="card">טוען…</div></div></div>
+<script>
+var P='week';try{P=localStorage.getItem('crmMktP')||'week';}catch(e){}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function nets(o){if(!o)return '';var a=[];if(o.fb)a.push('פייסבוק '+o.fb);if(o.ig)a.push('אינסטגרם '+o.ig);return a.join(' · ');}
+function day(t){var d=new Date(t*1000);return d.getDate()+'/'+(d.getMonth()+1);}
+function mkHtml(j){var T=j.totals||{},h='';
+ if(j.missing&&j.missing.length)h+='<div class="warn">חלק מהנתונים לא נטענו: '+j.missing.map(esc).join(', ')+' — המספרים עשויים להיות חסרים.</div>';
+ var K=[['posts','פוסטים — נכס למכירה',''],['reels','רילס',''],['stories','סטורי — נכס למכירה',''],['sold','סטורי SOLD','gold'],['kits','תיקי פרזנטציה שנשלחו','gold']];
+ h+='<div class="kpis">'+K.map(function(k){var o=T[k[0]]||{n:0};return '<div class="card kpi '+k[2]+'"><div class="v">'+(o.n||0)+'</div><div class="l">'+k[1]+'</div><div class="x">'+esc(nets(o))+'</div></div>';}).join('')+
+  '<div class="card kpi tot"><div class="v">'+(T.total||0)+'</div><div class="l">סה״כ פרסומים</div><div class="x"></div></div></div>';
+ var A=j.agents||[];
+ if(!A.length)return h+'<div class="card mut" style="font-size:15px">אין פרסומים בתקופה הזו.</div>';
+ var c=function(v){return v?String(v):'<span class="z">0</span>';};
+ h+='<div class="card"><table><tr><th>סוכן</th><th>פוסטים</th><th>רילס</th><th>סטורי</th><th>SOLD</th><th>תיקים</th><th>סה״כ</th></tr>'+
+  A.map(function(a){return '<tr><td>'+esc(a.name)+'</td><td>'+c(a.posts)+'</td><td>'+c(a.reels)+'</td><td>'+c(a.stories)+'</td><td>'+c(a.sold)+'</td><td>'+c(a.kits)+'</td><td class="t">'+a.total+'</td></tr>';}).join('')+'</table></div>';
+ return h;}
+function segs(){[].forEach.call(document.querySelectorAll('#seg button'),function(b){b.classList.toggle('on',b.getAttribute('data-p')===P);});}
+function load(){var t='';try{t=localStorage.getItem('crmTok')||localStorage.getItem('fbTok')||'';}catch(e){}
+ if(!t){location.replace('/crm/login');return;}segs();var my=P;
+ fetch('/v2/api/crm/marketing?period='+P,{headers:{'X-Auth-Token':t}}).then(function(r){if(r.status===401)location.replace('/crm/login');return r.json();}).then(function(j){
+  if(my!==P)return;
+  if(!j.ok){document.getElementById('app').innerHTML='<div class="card">'+(j.reason==='forbidden'?'המסך הזה פתוח רק לבעל המשרד.':'שגיאה: '+esc(j.reason))+'</div>';return;}
+  document.getElementById('rng').textContent=day(j.from)+' – '+day(j.to);document.getElementById('app').innerHTML=mkHtml(j);
+ }).catch(function(){document.getElementById('app').innerHTML='<div class="card">לא הצלחתי לטעון — נסה שוב.</div>';});}
+[].forEach.call(document.querySelectorAll('#seg button'),function(b){b.onclick=function(){P=b.getAttribute('data-p');try{localStorage.setItem('crmMktP',P);}catch(e){}document.getElementById('app').innerHTML='<div class="card">טוען…</div>';load();};});
+document.getElementById('rf').onclick=load;load();
 </script></body></html>"""
 
 
@@ -20479,6 +20538,54 @@ def register(app, G):
         except Exception as e:
             if log: log.error(f"crm dashboard error: {e}", exc_info=True)
             return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    @app.route("/v2/crm/marketing", methods=["GET"])
+    def v2_crm_marketing_page():
+        """[10/11 אייל] מסך שיווק — כמה פרסמנו (פוסטים/רילס/סטורי/SOLD/תיקים). בעל המשרד בלבד (נבדק ב-API)."""
+        return Response(_CRM_MKT_HTML, mimetype="text/html")
+
+    @app.route("/v2/api/crm/marketing", methods=["GET"])
+    def v2_api_crm_marketing():
+        """[10/11 אייל] ?period=day|week|month → סיכום המשרד + טבלה לפי סוכן (marketing_stats). בעל המשרד בלבד."""
+        s = _crm_guard(owner=True)
+        if not s:
+            return _crm_deny()
+        import marketing_stats as _mk
+        period = request.args.get("period", "week")
+        period = period if period in ("day", "week", "month") else "week"
+        start, end = _mk.period_range(period, time.time())
+        sb, miss = G.get("_sbdb"), []
+        def _get(label, fn):
+            try:
+                return list(fn() or [])
+            except Exception as e:
+                if log: log.warning(f"crm marketing: {label}: {e}")
+                miss.append(label)
+                return []
+        posts = _get("פוסטים", lambda: sb.social_recent(40))
+        videos = _get("סרטונים", lambda: sb.video_recent(40))
+        kits = _get("תיקי פרזנטציה", lambda: sb.kit_list(days=40))
+        def _solds():
+            import social_sold as _ss
+            return _ss._db().all()
+        solds = _get("SOLD", _solds)
+        amap = {}
+        try:
+            import social_publish as _sp
+            for r in _sp.soc_office_rows(G):
+                k = _sp._key(r.get("מספר מודעה"))
+                if k and k not in amap:
+                    amap[k] = " ".join(str(r.get("סוכן 1") or r.get("סוכן") or "").split())
+        except Exception as e:
+            if log: log.warning(f"crm marketing: office rows: {e}")
+            miss.append("שיוך לסוכנים")
+        def _canon(n):
+            try:
+                return G["_canon_key"](n)
+            except Exception:
+                return " ".join(str(n or "").split())
+        out = _mk.count(posts, videos, solds, kits, start, end, amap.get, _canon)
+        return jsonify({"ok": True, "period": period, "from": start, "to": end, "missing": miss, **out})
 
     @app.route("/v2/crm/parallel", methods=["GET"])
     def v2_crm_parallel_page():
