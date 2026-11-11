@@ -15572,7 +15572,9 @@ def crm_calls_records(rows, overrides, hidden, uid=None):
                     "duration": dur, "summary": _re.sub(r"^\s*\*?AI מתמלל ומסכם שיחות\*?\s*(\*?סיכום השיחה:\*?)?\s*-?\s*", "",
                                                         str(g("summary", "transcript_summary"))),
                     "review": review, "score": int(m.group(1)) if m else None, "note": str(ov.get("note") or ""),
-                    "hidden": key in (hidden or set()), "edited": bool(ov)})
+                    "hidden": key in (hidden or set()), "edited": bool(ov),
+                    "src_caller": str(r.get("c2c_src_caller") or ""),      # [REC-C2C] שיחת חייגן — הטלפונים המקוריים
+                    "src_agent": str(r.get("c2c_src_agent") or "")})
     return out
 
 
@@ -20088,10 +20090,14 @@ def register(app, G):
         since = _dtr.datetime.utcfromtimestamp(rec["date"] - 86400).date().isoformat()
         until = _dtr.datetime.utcfromtimestamp(rec["date"] + 86400).date().isoformat()
         best, best_d = None, 901
+        _cp = inv_phone9(rec.get("src_caller") or rec.get("caller_phone"))   # [REC-C2C] בחייגן — הקו הווירטואלי
+        _ap = {inv_phone9(rec.get("src_agent") or rec.get("agent_phone"))}
+        if rec.get("src_caller"):        # בחייגן כל רגל מדווחת עם טלפון אחר (הסוכן / הלקוח)
+            _ap |= {inv_phone9(rec.get("agent_phone")), inv_phone9(rec.get("caller_phone"))}
         for r in sb.fetch_shadow("calls", since, until) or []:
-            if inv_phone9(r.get("caller_phone")) != inv_phone9(rec.get("caller_phone")):
+            if inv_phone9(r.get("caller_phone")) != _cp:
                 continue
-            if inv_phone9(r.get("agent_phone")) != inv_phone9(rec.get("agent_phone")):
+            if inv_phone9(r.get("agent_phone")) not in _ap:
                 continue
             ts = crm_ts(r.get("received_at"))
             if ts is not None and abs(ts - rec["date"]) < best_d:

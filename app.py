@@ -4558,6 +4558,10 @@ def _apply_c2c(rows, clicks=None):
         cust_ans = any(_st(x) in ("ANSWER", "CALL2CALL") for x in rs)
         best = max(rs, key=lambda x: (len(_summ(x)), _st(x) in ("ANSWER", "CALL2CALL"), _epoch_from_iso(x.get("received_at", ""))))
         m = dict(best)
+        # [REC-C2C 11/11] הטלפונים כפי שמסקיו דיווחה (קו וירטואלי / רגל) — כדי למצוא את השיחה הישירה
+        # (mk:<uuid>) בטבלת הצל ולנגן את ההקלטה בכרטיס ב-CRM
+        m["c2c_src_caller"] = best.get("caller_phone", "")
+        m["c2c_src_agent"] = best.get("agent_phone", "")
         m["caller_phone"] = "0" + k["to9"]
         if k.get("agent9"):
             m["agent_phone"] = "0" + k["agent9"]

@@ -68,6 +68,21 @@ CACHE.clear()
 nr = c.get("/v2/api/crm/calls/audio?key=mk:zzz")
 ck(nr.status_code == 404 and nr.get_json()["reason"] == "no_recording", nr.data)
 
+# [REC-C2C 11/11] שיחת חייגן: הרשומה מאוחדת (לקוח + נייד הסוכן), והצל רשום עם הקו הווירטואלי
+A._web_auth = lambda: {"phone": "505709865", "name": "אייל שמול", "role": "admin"}
+ROWS.append({"event_id": "", "status": "CALL2CALL", "agent": "נוי", "agent_phone": "0504875995", "caller_phone": "0506978763",
+             "c2c_src_caller": "0529172021", "c2c_src_agent": "0504875995", "received_at": "2026-11-09T12:00:58.000Z"})
+SH = [{"caller_phone": "0529172021", "agent_phone": "0504875995", "received_at": "2026-11-09T12:01:30Z", "_source_key": "mk:c2c-9"},
+      {"caller_phone": "0529172021", "agent_phone": "0509999999", "received_at": "2026-11-09T12:01:00Z", "_source_key": "mk:other"}]
+FakeSB.fetch_shadow = lambda s, st, since, until=None: SH
+CACHE.clear()
+k = [r for r in E.crm_calls_records(ROWS, {}, set(), A._call_uid) if r["status"] == "CALL2CALL"][0]["key"]
+E._requests.get = lambda *a, **kw: Resp(200, "audio/x-wav", WAV)
+r = c.get("/v2/api/crm/calls/record?key=" + k).get_json()
+ck(r["recording"].startswith("/v2/api/crm/calls/audio?key="), ("c2c gets player", r["recording"]))
+a = c.get("/v2/api/crm/calls/audio?key=" + k)
+ck(a.status_code == 200 and a.data == WAV, (a.status_code, a.data[:40]))
+
 # בלי הרשאה
 A._web_auth = lambda: None
 ck(c.get("/v2/api/crm/calls/audio?key=mk:abc-1").status_code in (401, 403), "auth required")
