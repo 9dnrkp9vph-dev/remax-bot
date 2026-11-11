@@ -356,8 +356,14 @@ def subject_from_listing(listing):
             "price": _int(g("מחיר", "price")), "key": str(g("listing_key", "key") or "")}
 
 
+def _skey(s):
+    """מפתח רחוב להשוואה: 'הפטל' = 'פטל' (מדלן לפעמים בלי ה' הידיעה, הבוט ואפי איתה)."""
+    c = _cmp(s or "")
+    return c[1:] if c.startswith("ה") and len(c) > 3 else c
+
+
 def _same_street(r, subj):
-    return r.get("street") == subj["street"] and (not r.get("city") or not subj.get("city")
+    return bool(r.get("street")) and _skey(r.get("street")) == _skey(subj["street"]) and (not r.get("city") or not subj.get("city")
                                                     or city_key(r["city"]) == city_key(subj["city"]))
 
 
