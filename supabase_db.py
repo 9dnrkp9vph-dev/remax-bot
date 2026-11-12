@@ -771,6 +771,26 @@ def signdoc_headers(tokens):
     return out
 
 
+def signdoc_excl_to(tokens):
+    """[13/11 אייל: 'הבלעדיות נגמרת בחודש הקרוב'] {token: 'ועד יום X'} מגוף ההסכם — לחתימות בלעדיות מאפי
+    שנשלחו לפני שתאריך הסיום נשמר בשורה (20/10). במנות של 50; טוקן בלי תאריך → ''."""
+    import json as _json, re as _re
+    out, toks = {}, [t for t in dict.fromkeys(str(x) for x in (tokens or [])) if t and all(c.isalnum() or c in "-_" for c in t)]
+    pat = _re.compile(r"ועד יום\s+(\d{1,2}[/.]\d{1,2}[/.]\d{2,4}|\d{4}-\d{2}-\d{2})")
+    for i in range(0, len(toks), 50):
+        part = toks[i:i + 50]
+        r = requests.get(SUPABASE_URL + "/rest/v1/sign_docs", headers=_headers(),
+                         params={"select": "token,docs", "office_id": "eq." + SB_OFFICE_ID,
+                                 "token": "in.(" + ",".join(part) + ")"}, timeout=25)
+        r.raise_for_status()
+        for rec in r.json() or []:
+            m = pat.findall(_json.dumps(rec.get("docs") or [], ensure_ascii=False))
+            out[str(rec.get("token"))] = m[-1] if m else ""
+        for t in part:
+            out.setdefault(t, "")
+    return out
+
+
 def signdoc_save(doc):
     """upsert מסמך חתימה לפי token (טבלת sign_docs). doc במבנה של savesigndoc:
     doc_token, event_id, status, header, docs (מחרוזת JSON), signature, signed_at."""

@@ -7954,6 +7954,18 @@ def api_history():
             "id": _call_uid(c),
             "ts": _epoch_from_iso(c.get("received_at", "")),
         })
+    try:
+        _ends = _excl_end_map(sigs)
+    except Exception as _ee:
+        log.error(f"signatures excl end error: {_ee}")
+        _ends = {}
+    # בלעדיות שנגמרת בחודש הקרוב — גם כשהיא ישנה מכדי להיכנס ל-500 האחרונות (6-12 חודשים אחורה)
+    import datetime as _dsx
+    from zoneinfo import ZoneInfo as _ZIx
+    _today = _dsx.datetime.now(_ZIx("Asia/Jerusalem")).date()
+    _soon_extra = [g for g in sigs[500:] if id(g) in _ends
+                   and 0 <= (_ends[id(g)] - _today).days <= _EXCL_SOON_DAYS]
+    _rows = sigs[:500] + _soon_extra
     sig_out = [{
         "time": (_fmt_il_dt(g.get("received_at", "")) or str(g.get("received_at", "") or "").strip()),
         "type": _deal_label(g.get("deal_type", "")),
@@ -7967,7 +7979,8 @@ def api_history():
         "eid": str(g.get("event_id", "") or "").strip(),
         "notes": (g.get("notes") or g.get("הערות") or "").strip(),
         "raw": str(g.get("received_at", "") or "").strip(),
-    } for g in sigs[:500]]
+        "exclTo": (_ends[id(g)].strftime("%d/%m/%Y") if id(g) in _ends else ""),
+    } for g in _rows]
     # שעת החתימה האמיתית (sign_docs ב-Supabase) — "נחתם · <מתי נחתם>" במקום שעת השליחה.
     # מסמכים מלפני המעבר (05/08) אינם בטבלה — יציגו את שעת השליחה כמו קודם.
     _sdt = _cache_get("signdoc_times", 60)
@@ -7990,6 +8003,79 @@ def api_history():
                        "dev": bool(s.get("dev", False)),
                        "drole": s.get("drole", ""), "tabs": _tabs_for_role(s.get("drole", "")),
                        "vphone": vphone, "calls": call_out, "signatures": sig_out})
+
+# ── [13/11 אייל] טאב 'בלעדיות': מי שהבלעדיות שלו נגמרת בחודש הקרוב — למעלה, עם 'בלעדיות עד' מודגש ──
+_EXCL_END_CACHE = {}   # token → תאריך הסיום מגוף ההסכם ('' = אין). הסכם חתום לא משתנה — נשמר לתמיד בזיכרון.
+_EXCL_SOON_DAYS = 30
+
+def _excl_parse_date(v):
+    """'12/02/2027' / '12.2.27' / '2027-02-12' → date, אחרת None."""
+    import datetime as _dx
+    t = str(v or "").strip()
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2}).*", t)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    else:
+        m = re.fullmatch(r"(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})", t)
+        if not m:
+            return None
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if y < 100:
+            y += 2000
+    try:
+        return _dx.date(y, mo, d)
+    except ValueError:
+        return None
+
+def _sig_doc_token(g):
+    """טוקן מסמך אפי של שורת חתימה: doc_token, קישור /s/<token>, או מזהה בפורמט טוקן (16 תווים)."""
+    tok = str(g.get("doc_token") or "").strip()
+    if tok:
+        return tok
+    m = re.search(r"/s/([A-Za-z0-9_-]{8,64})", str(g.get("commission_pct") or ""))
+    if m:
+        return m.group(1)
+    eid = str(g.get("event_id") or "")
+    return eid if (re.fullmatch(r"[A-Za-z0-9_-]{16}", eid) and re.search(r"[A-Za-z]", eid)) else ""
+
+def _sig_is_signed(g):
+    cp = g.get("commission_pct")
+    return bool((isinstance(cp, str) and re.search(r"https?://", cp)) or _web_valid_pct(cp))
+
+def _excl_end_map(sigs, fetch=None):
+    """{id(g): date} לחתימות בלעדיות שנחתמו ב-400 הימים האחרונים: excl_to מהשורה, אחרת מגוף ההסכם באפי
+    (שאילתה אחת לטוקנים שעוד לא נבדקו). כשל במקור = בלי תאריך; לא נופלים."""
+    import time as _tx
+    out, need = {}, {}
+    cutoff = _tx.time() - 400 * 86400
+    for g in sigs or []:
+        if "EXCLUSIVE" not in str(g.get("deal_type", "")).upper() or not _sig_is_signed(g):
+            continue
+        d = _excl_parse_date(g.get("excl_to"))
+        if d:
+            out[id(g)] = d
+            continue
+        if (_excl_epoch(g.get("received_at", "")) or 0) < cutoff:
+            continue
+        tok = _sig_doc_token(g)
+        if tok:
+            need.setdefault(tok, []).append(g)
+    miss = [t for t in need if t not in _EXCL_END_CACHE]
+    if miss:
+        try:
+            if fetch is None:
+                import supabase_db as _sbx
+                fetch = _sbx.signdoc_excl_to
+            _EXCL_END_CACHE.update(fetch(miss) or {})
+        except Exception as _e:
+            log.warning(f"excl end fetch failed: {_e}")
+    for tok, gs in need.items():
+        d = _excl_parse_date(_EXCL_END_CACHE.get(tok))
+        if d:
+            for g in gs:
+                out[id(g)] = d
+    return out
+
 
 @app.route("/api/signatures", methods=["GET"])
 def api_signatures():

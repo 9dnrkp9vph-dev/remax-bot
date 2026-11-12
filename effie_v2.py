@@ -6094,7 +6094,7 @@ function load(){
     MULTI = (j && j.role) !== 'agent';
     ROLE = (j && j.role) || '';
     DRAFTS = (rs[1] && rs[1].drafts) || [];
-    try{ localStorage.setItem('v2c:sigs', JSON.stringify({g: SIGS.slice(0, 150), m: MULTI, r: ROLE})); }catch(e){}
+    try{ localStorage.setItem('v2c:sigs', JSON.stringify({g: SIGS.slice(0, 150).concat(SIGS.slice(150).filter(exclSoon)), m: MULTI, r: ROLE})); }catch(e){}
     render();
   }).catch(function(){});
 }
@@ -6136,6 +6136,23 @@ function delDraft(di){
     if (c && c.g){ SIGS = c.g; MULTI = !!c.m; ROLE = c.r || ''; }
   }catch(e){}
 })();
+/* [13/11 אייל] בלעדיות שנגמרת בחודש הקרוב — בראש טאב 'בלעדיות', עם 'בלעדיות עד' מודגש */
+function exclDays(g){
+  var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(g && g.exclTo || '');
+  if (!m) return null;
+  var end = new Date(+m[3], +m[2] - 1, +m[1]), t = new Date(); t.setHours(0,0,0,0);
+  return Math.round((end - t) / 86400000);
+}
+function exclSoon(g){ var d = exclDays(g); return d !== null && d >= 0 && d <= 30; }
+function exclLine(g){
+  var d = exclDays(g);
+  if (d === null) return '';
+  var soon = d >= 0 && d <= 30;
+  var tail = d < 0 ? ' · הסתיימה' : (d === 0 ? ' · נגמרת היום' : (d === 1 ? ' · נגמרת מחר' : (soon ? ' · עוד ' + d + ' ימים' : '')));
+  return '<div style="margin-top:6px;font-size:14px;font-weight:800;color:' + (soon ? '#7A5E1C' : '#1E3A5F') + '">' +
+    (soon ? '<span style="display:inline-block;background:#F6EEDB;border-radius:8px;padding:3px 9px">' : '') +
+    'בלעדיות עד ' + esc(g.exclTo) + tail + (soon ? '</span>' : '') + '</div>';
+}
 function render(){
   var ws = weekStart();
   el('weekN').textContent = SIGS.filter(function(g){ return (g.ts || 0) >= ws; }).length + ' השבוע';
@@ -6167,7 +6184,14 @@ function render(){
       return false;
     });
   })();
+  var nSoon = 0;
+  if (!searching && FILTER === 'excl'){   // החודש הקרוב — ראשונים, הקרוב לסיום למעלה; השאר באותו סדר כמו היום
+    var soonL = src.filter(exclSoon).sort(function(a, b){ return exclDays(a) - exclDays(b); });
+    nSoon = soonL.length;
+    src = soonL.concat(src.filter(function(g){ return !exclSoon(g); }));
+  }
   var h = '';
+  var secHd = function(t){ return '<div style="font-size:13px;color:#5B6472;font-weight:800;margin:4px 6px 8px">' + t + '</div>'; };
   if (searching) h += '<div style="font-size:12.5px;color:#6B7280;font-weight:600;margin:2px 4px 8px">' +
     src.length + ' תוצאות מכל ההיסטוריה</div>';
   if (!searching && FILTER === 'all' && DRAFTS.length){   // טיוטות — למעלה, תחת "הכל" בלבד
@@ -6175,6 +6199,8 @@ function render(){
   }
   var shown = src.slice(0, searching ? 200 : 100);
   shown.forEach(function(g, gi){
+    if (nSoon && gi === 0) h += secHd('הבלעדיות נגמרת בחודש הקרוב · ' + nSoon);
+    if (nSoon && gi === nSoon) h += secHd('כל הבלעדיות');
     var k = kindOf(g);
     var chip = (k === 'buyer') ? '<div class="chip buyer">קונים</div>'
       : (k === 'excl') ? '<div class="chip owner">בלעדיות</div>'
@@ -6210,6 +6236,7 @@ function render(){
       (signed ? ('נחתם' + ((g.signed_time || g.time) ? ' · ' + esc(g.signed_time || g.time) : ''))
               : ('נשלח' + (g.time ? ' · ' + esc(g.time) : '') + ' · ממתין לחתימה')) +
       (signed && g.pct ? ' · עמלה ' + esc(String(g.pct)) + '%' : '') + '</div>' +
+      (k === 'excl' ? exclLine(g) : '') +
       (g.avg ? '<div style="font-size:12px;color:#6E7683;margin-top:3px">ממוצע הנכסים שנצפו: ' +
         esc(g.avg) + ' ₪' + (g.avg_n > 1 ? ' · ' + g.avg_n + ' נכסים' : '') + '</div>' : '') +
       (g.notes ? '<div style="margin-top:8px;font-size:12.5px;color:#5B6472;background:#F7F5EE;border-radius:10px;padding:8px 11px;line-height:1.5">הערה: ' + esc(g.notes) + '</div>' : '') +
