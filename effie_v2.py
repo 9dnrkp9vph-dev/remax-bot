@@ -20172,7 +20172,8 @@ def register(app, G):
         for r in sb.fetch_shadow("calls", since, until) or []:
             _rc, _ra = inv_phone9(r.get("caller_phone")), inv_phone9(r.get("agent_phone"))
             if _c2c:
-                if not (_rc in _ap and _ra in _ap and _cp in (_rc, _ra)):
+                # בחי (12/11): הצל מגיע עם הקו כמחייג ו-agent_phone ריק (DESTINATION ריק בחייגן v2)
+                if not (_rc in _ap and (_ra in _ap or not _ra) and _cp in (_rc, _ra)):
                     continue
             elif _rc != _cp or _ra not in _ap:
                 continue

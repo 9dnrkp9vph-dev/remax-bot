@@ -98,6 +98,14 @@ E._requests.get = lambda *a, **kw: (got.append(kw.get("params", {}).get("call_uu
 c.get("/v2/api/crm/calls/audio?key=" + k2)
 ck(got and got[0] == "c2c-live", ("picked live leg", got))
 
+# [REC-C2C 12/11] בחי: agent_phone ריק בצל
+SH = [{"caller_phone": "529125944", "agent_phone": "", "received_at": "2026-11-09T15:00:15Z", "_source_key": "mk:c2c-empty"}]
+CACHE.clear(); got.clear()
+r = c.get("/v2/api/crm/calls/record?key=" + k2).get_json()
+ck(r["recording"].startswith("/v2/api/crm/calls/audio?key="), ("c2c empty dest gets player", r))
+c.get("/v2/api/crm/calls/audio?key=" + k2)
+ck(got and got[0] == "c2c-empty", ("picked empty-dest leg", got))
+
 # בלי הרשאה
 A._web_auth = lambda: None
 ck(c.get("/v2/api/crm/calls/audio?key=mk:abc-1").status_code in (401, 403), "auth required")
