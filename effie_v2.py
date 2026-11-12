@@ -19659,6 +19659,10 @@ def register(app, G):
                     pass
                 G["_log_activity"]("Make", "system", "", "שיחה חדשה (ישירות)",
                                    ((raw.get("agent") or "") + " " + (raw.get("status") or ""))[:60].strip())
+                try:   # [LIVE-CALLS 13/11] התראה לסוכן עכשיו, לא בסבב הבא של הלולאה
+                    G["_kick_calls_notify"]()
+                except Exception:
+                    pass
             else:
                 sb.shadow_upsert("calls", sk, riso, raw)
             sb.transcript_upsert(sk, sk, transcript, rec)

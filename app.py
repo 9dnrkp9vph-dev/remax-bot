@@ -3115,6 +3115,16 @@ def normalize_phone_simple(p: str) -> str:
     return digits
 def fetch_calls_for_agent(agent_phone: str) -> list:
     """קרא שיחות מ-Apps Script (cache 5 דקות), סנן רק ANSWER של הסוכן הזה"""
+    if CALLS_SOURCE == "supabase" and _sbdb and _sbdb.enabled():
+        # [LIVE-CALLS 13/11] אותו מקור כמו מסך השיחות (Supabase, אחרי איחוד הכפילויות) — הגיליון
+        # מפסיק להתעדכן עם הניתוק מפיירברי
+        try:
+            norm = normalize_phone_simple(agent_phone)
+            return [row for row in (web_fetch_raw("שיחות") or [])
+                    if _is_answered_status(row.get("status", ""))
+                    and normalize_phone_simple(str(row.get("agent_phone", ""))) == norm]
+        except Exception as _fe:
+            log.error(f"fetch_calls_for_agent supabase: {_fe}")
     if not APPS_SCRIPT_URL or not APPS_SCRIPT_TOKEN:
         log.error("APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN missing in env")
         return []
@@ -4518,6 +4528,46 @@ def _c2c_clicks():
     _cache_put("c2c_clicks", out)
     return out
 
+def _dedupe_direct_calls(rows, window=900):
+    """[LIVE-CALLS 13/11] מעבר לזרם הישיר (CALLS_DIRECT=live): אותה שיחה עלולה להופיע פעמיים בטבלת calls —
+    השורה הישירה מ-Make (event_id mk:<uuid>, מגיעה תוך שניות) והשורה שמגיעה מפיירברי דרך הגיליון (דקות אחר כך).
+    השורה הישירה נשארת; שורת פיירברי עם אותו טלפון לקוח + טלפון סוכן עד 15 דק' ממנה יורדת (התאמה אחת לכל שורה,
+    לקרובה בזמן — כמו בדוח המקבילות). המזהה הישן נשמר ב-_legacy_uid כדי שהתראה שכבר נשלחה לא תישלח שוב.
+    בלי שורות mk: (לפני המעבר) — הרשימה כמו שהיא."""
+    if not rows:
+        return rows
+    def _isd(r):
+        return isinstance(r, dict) and str(r.get("event_id", "") or "").startswith("mk:")
+    direct = [r for r in rows if _isd(r)]
+    if not direct:
+        return rows
+    def _key(r):
+        return _last9(r.get("caller_phone", "")), _last9(r.get("agent_phone", ""))
+    free = [(_key(r), _epoch_from_iso(r.get("received_at", "")), r) for r in direct]
+    drop = set()
+    for i, r in enumerate(rows):
+        if not isinstance(r, dict) or _isd(r):
+            continue
+        k, ts = _key(r), _epoch_from_iso(r.get("received_at", ""))
+        if not ts or not k[0]:
+            continue
+        best = None
+        for j, (k2, t2, _) in enumerate(free):
+            if k2 == k and t2 and abs(ts - t2) <= window and (best is None or abs(ts - t2) < best[0]):
+                best = (abs(ts - t2), j)
+        if best is None:
+            continue
+        _, _, d = free.pop(best[1])
+        try:
+            d["_legacy_uid"] = _call_uid(r)
+            for _f in ("transcript_summary", "duration_sec"):   # שדה שחסר בשורה הישירה — מהשורה הישנה
+                if not str(d.get(_f, "") or "").strip() and str(r.get(_f, "") or "").strip():
+                    d[_f] = r.get(_f)
+        except Exception:
+            pass
+        drop.add(i)
+    return [r for i, r in enumerate(rows) if i not in drop] if drop else rows
+
 def _apply_c2c(rows, clicks=None):
     """שיחות click2call (create_maskyoo_call_v2, 02/11): מסקיו מדווחת כל רגל כשיחה שהמחייג שלה הוא
     **הקו הווירטואלי של הסוכן** — ולכן ביומן הלקוח הופיע כ-0529125944. כל השורות של חיוג אחד
@@ -4597,6 +4647,10 @@ def web_fetch_raw(type_he, frm="01/01/2020", to="31/12/2099"):
         rows = _web_fetch_raw_uncached(type_he, frm, to)
         if type_he == "שיחות":
             rows = _strip_call_reviews(rows)
+            try:
+                rows = _dedupe_direct_calls(rows)
+            except Exception as _de:
+                log.warning(f"direct calls dedupe failed: {_de}")
             try:
                 rows = _apply_c2c(rows)
             except Exception as _ce:
@@ -13999,7 +14053,29 @@ def _report_thread_kick():
     except Exception as e:
         log.warning(f"daily report thread kick: {e}")
 
+_CHECK_CALLS_LOCK = threading.Lock()
+
 def check_new_calls():
+    """[LIVE-CALLS 13/11] נעילה: הלולאה (כל 3 דק') והדחיפה מיד אחרי שיחה ישירה לא רצות במקביל."""
+    if not _CHECK_CALLS_LOCK.acquire(timeout=60):
+        return
+    try:
+        _check_new_calls_inner()
+    finally:
+        _CHECK_CALLS_LOCK.release()
+
+def _kick_calls_notify(delay=3):
+    """[LIVE-CALLS 13/11] שיחה ישירה נכנסה לטבלה → התראה לסוכן עכשיו, לא בסבב הבא של הלולאה (עד 3 דק')."""
+    def _run():
+        try:
+            time.sleep(delay)
+            if _seen_calls_seeded:   # לפני ה-seed הראשון — רק הלולאה (אחרת כל השיחות 'חדשות')
+                check_new_calls()
+        except Exception as e:
+            log.warning(f"calls notify kick: {e}")
+    threading.Thread(target=_run, daemon=True, name="calls-kick").start()
+
+def _check_new_calls_inner():
     """מזהה שיחה חדשה בגיליון 'שיחות' ושולח לסוכן וואטסאפ עם תמלול + קישור הוספת קונה.
     seed בריצה הראשונה + שמירה לדיסק + שסתום בטיחות — בדיוק כמו נכס נולד (מונע הצפה)."""
     global _seen_calls, _seen_calls_seeded
@@ -14051,6 +14127,10 @@ def check_new_calls():
         new_keys = fresh
     for k in new_keys:
         r = keymap[k]
+        _lu = r.get("_legacy_uid") if isinstance(r, dict) else None
+        if _lu and _lu in _seen_calls:   # [LIVE-CALLS] אותה שיחה כבר נשלחה מהשורה של פיירברי
+            _seen_calls.add(k)
+            continue
         if not _wa_auto_on():   # מושהה — מסמנים כנצפה בלי לשלוח (אין הצפת עבר בהפעלה מחדש)
             _wa_call_diag(r, "skipped: quiet_hours" if _quiet_hours() else "skipped: wa_auto_off")
             _seen_calls.add(k)
