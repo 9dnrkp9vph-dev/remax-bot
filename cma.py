@@ -397,8 +397,9 @@ def _rooms_ok(r, rooms, tol):
     return r.get("rooms") is not None and abs(float(r["rooms"]) - float(rooms)) <= tol + 1e-9
 
 
-def cma_compute(subject, deals, listings, today):
-    """הנכס + עסקאות (link_ours) + מודעות פעילות → נתוני העמוד והתצוגה לסוכן, או None כשאין מספיק."""
+def cma_compute(subject, deals, listings, today, city_wide=False):
+    """הנכס + עסקאות (link_ours) + מודעות פעילות → נתוני העמוד והתצוגה לסוכן, או None כשאין מספיק.
+    city_wide — במקום השכונה: כל העסקאות באותה עיר (שלב הגיבוי האחרון של cma_auto)."""
     since = today.replace(year=today.year - YEARS) if not (today.month == 2 and today.day == 29) \
         else today.replace(year=today.year - YEARS, day=28)
     since_s = since.isoformat()
@@ -407,7 +408,11 @@ def cma_compute(subject, deals, listings, today):
     ok = [r for r in deals or [] if not r.get("bad") and r.get("deal_date") and r["deal_date"] >= since_s
           and r.get("rooms") is not None and ptype_key(r.get("ptype")) == pk and r.get("price")]  # בלי סוג (בוט מדלן) = דירה
     street = [r for r in ok if _same_street(r, subject)]
-    nbrs = [r for r in ok if nb and r.get("nb") == nb and not _same_street(r, subject)]
+    if city_wide:
+        ck = city_key(subject.get("city") or "")
+        nbrs = [r for r in ok if ck and r.get("city") and city_key(r["city"]) == ck and not _same_street(r, subject)]
+    else:
+        nbrs = [r for r in ok if nb and r.get("nb") == nb and not _same_street(r, subject)]
     h = subject.get("house")
     street.sort(key=lambda r: (abs(r["house"] - h) if (h is not None and r.get("house") is not None) else 9999,
                                -_dt.date.fromisoformat(r["deal_date"]).toordinal()))
@@ -460,7 +465,7 @@ def cma_compute(subject, deals, listings, today):
     s_cnt = exact(street)
     level = "street"
     if len(s_cnt) < 3:
-        s_cnt, level = exact(street + nbrs), "neighborhood"
+        s_cnt, level = exact(street + nbrs), ("city" if city_wide else "neighborhood")
     pp = [r["ppm"] for r in s_cnt if r.get("ppm")]
     comp_l, seen = [], set()
     for x in listings or []:
@@ -485,6 +490,36 @@ def cma_compute(subject, deals, listings, today):
             "ppm_median": int(round(_median(pp) / 100.0)) * 100 if pp else 0,
             "competing": len(comp_l), "range": rng, "ppm_range": prng, "basis": basis, "n_used": len(chosen),
             "comps": rows[:SHOW_COMPS], "listings": comp_l, "data_as_of": up[-1] if up else ""}
+
+
+FALLBACK_TEXT = {"nosqm": "לפי מספר החדרים, בלי התאמת שטח — אין מספיק עסקאות בגודל דומה",
+                 "type": "לפי דירות רגילות באותו מספר חדרים — אין מספיק עסקאות מאותו סוג",
+                 "city": "לפי כל העיר — אין מספיק עסקאות דומות בשכונה",
+                 "city_type": "לפי דירות רגילות בכל העיר — אין מספיק עסקאות דומות בשכונה"}
+
+
+def cma_auto(subject, deals, listings, today):
+    """[13/11] אייל: 'שהמערכת תרוץ אוטומטית' — קודם החישוב המדויק; אין מספיק → מרחיבים בשלבים:
+    בלי שטח → דירות רגילות → כל העיר. התוצאה מסומנת fallback + fallback_text. כלום בכלל → None."""
+    res = cma_compute(subject, deals, listings, today)
+    if res:
+        return res
+    reg = ptype_key(subject.get("ptype")) != ptype_key("דירה")
+    steps = [("nosqm", dict(subject, sqm=None), False)]
+    if reg:
+        steps.append(("type", dict(subject, sqm=None, ptype="דירה"), False))
+    steps.append(("city", dict(subject, sqm=None), True))
+    if reg:
+        steps.append(("city_type", dict(subject, sqm=None, ptype="דירה"), True))
+    for key, subj, wide in steps:
+        if key == "nosqm" and not subject.get("sqm"):
+            continue
+        res = cma_compute(subj, deals, listings, today, city_wide=wide)
+        if res:
+            res["fallback"], res["fallback_text"] = key, FALLBACK_TEXT[key]
+            res["subject"] = dict(res["subject"], sqm=subject.get("sqm"), ptype=subject.get("ptype"))
+            return res
+    return None
 
 
 # ── משימה 3: cma_block (הוק התיק), ראוטים ומסך "ניתוח שוק" ──
@@ -614,7 +649,7 @@ def cma_block(G, listing):
     """הוק תיק הפרזנטציה: פרטי הנכס → נתוני עמודי ה-CMA (strip_addresses), או None.
     אין מספיק עסקאות → מבקשים מבוט מדלן ברקע (פעם בשבוע לכתובת), כדי שבבנייה הבאה של התיק יהיה עמוד."""
     res = cma_full(G, listing)
-    if res is None:
+    if res is None or res.get("fallback"):   # בלי חישוב מדויק — הבוט מביא עסקאות לפעם הבאה, התיק לא מחכה
         ask_bot_async(G, listing)
     return strip_addresses(res)
 
@@ -657,7 +692,7 @@ def cma_full(G, listing):
             return None
         deals, listings, known = _cached_inputs(G)
         subj["street"] = canon_street(subj["street"], known)
-        return cma_compute(subj, deals, listings, _today_il())
+        return cma_auto(subj, deals, listings, _today_il())
     except Exception as e:
         lg = G.get("log") or logging.getLogger("cma")
         if lg:
@@ -816,8 +851,9 @@ function cmaResult(j){
   var m = j && j.cma;
   if (!m) return '<div class="card empty"><div class="dot">?</div><div class="h">אין מספיק עסקאות דומות</div>' +
     '<div class="lbl">נסה בלי מ"ר, או בדוק שהשכונה הועלתה בכרטיס "עסקאות ממדלן" בניהול.</div></div>';
-  var where = m.level === 'street' ? 'ב' + cmaEsc(m.subject.street) : 'בשכונה';
-  var h = '<div class="rng"><div class="lbl" style="color:#231700">טווח מומלץ</div><div class="big">' +
+  var where = m.level === 'street' ? 'ב' + cmaEsc(m.subject.street) : (m.level === 'city' ? 'בעיר' : 'בשכונה');
+  var h = (m.fallback_text ? '<div class="card lbl" style="border:1.5px solid var(--gold2)"><b style="color:var(--goldtxt)">חישוב מורחב: </b>' +
+    cmaEsc(m.fallback_text) + '</div>' : '') + '<div class="rng"><div class="lbl" style="color:#231700">טווח מומלץ</div><div class="big">' +
     cmaFmt(m.range[0]) + ' – ' + cmaFmt(m.range[1]) + ' ₪</div><div class="lbl" style="color:#231700">' +
     (m.basis === 'sqm' ? cmaFmt(m.ppm_range[0]) + '–' + cmaFmt(m.ppm_range[1]) + ' ₪ למ"ר · ' : 'בלי שטח — לפי מחיר עסקאות בלבד · ') +
     'מבוסס על ' + m.n_used + ' עסקאות</div></div>';

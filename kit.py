@@ -72,6 +72,8 @@ def cma_review_html(c):
     from html import escape as e
     fm = lambda v: "{:,}".format(int(v)) if v not in (None, "") else ""
     head = "טווח ה-CMA: %s–%s ₪ · מבוסס על %s עסקאות" % (fm(c["range"][0]), fm(c["range"][1]), c.get("n_used") or 0)
+    if c.get("fallback_text"):
+        head += " · חישוב מורחב: " + c["fallback_text"]
     rows = []
     for x in [x for x in (c.get("comps") or []) if x.get("used")][:7]:
         p = str(x.get("date") or "").split("-")

@@ -684,8 +684,9 @@ def _p_cma(snap, n):
     f, ls = _block(d, head, 900, 92, width, 2)
     y = _lines(d, ls, f, W - PAD, y + 10, NAVY, 110) + 6
     street = (snap.get("street") or "").strip()
-    where = ("ב" + street) if (c.get("level") == "street" and street) else "בשכונה"
-    sub = "עסקאות אמיתיות %s שלך · 3 השנים האחרונות" % ("ברחוב" if where != "בשכונה" else "בשכונה")
+    where = ("ב" + street) if (c.get("level") == "street" and street) else ("בעיר" if c.get("level") == "city" else "בשכונה")
+    area = "ברחוב" if c.get("level") == "street" and street else where
+    sub = "עסקאות אמיתיות %s שלך · 3 השנים האחרונות" % area
     _line_r(d, sub, _font(500, 44), W - PAD, y, MUTED2)
     y += 100
     rooms = str((c.get("subject") or {}).get("rooms") or snap.get("rooms") or "").strip()
@@ -697,7 +698,7 @@ def _p_cma(snap, n):
     y += 280
     small = []
     if c.get("ppm_median"):
-        small.append((_fmt_n(c.get("ppm_median")) + " ₪", "מחיר ממוצע למ\"ר " + ("ברחוב" if where != "בשכונה" else "בשכונה")))
+        small.append((_fmt_n(c.get("ppm_median")) + " ₪", "מחיר ממוצע למ\"ר " + area))
     if int(c.get("competing") or 0) > 0:
         small.append((_fmt_n(c.get("competing")), "דירות דומות מתחרות בך עכשיו"))
     if small:
