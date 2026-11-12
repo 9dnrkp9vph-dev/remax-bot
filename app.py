@@ -8373,7 +8373,24 @@ def api_deals_delete():
         if it and not _deals_can_see(it, s):
             return jsonify({"ok": False, "reason": "forbidden"}), 403
         _deals_save_all([x for x in items if x.get("id") != iid])
+    if it:
+        _deals_notify_deleted(it, s)
     return jsonify({"ok": True})
+
+def _deals_notify_deleted(rec, s):
+    """פוש על מחיקת תהליך/עסקה → למנהלים (כולל אייל). בקשת אייל 12/11."""
+    try:
+        ids = list(_manager_push_ids())
+        if not ids:
+            return
+        title = ("עסקה נמחקה" if rec.get("deal") else "תהליך נמחק") + " 🗑"
+        ag = " + ".join([a for a in (rec.get("agents") or []) if a])
+        addr = (rec.get("notes", "") or "נכס").strip()
+        body = " · ".join(x for x in (addr, ag, "נמחק ע\"י " + (s.get("name", "") or "")) if x)
+        threading.Thread(target=send_push, args=(title, body[:180], ids), daemon=True).start()
+        _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "מחיקת " + ("עסקה" if rec.get("deal") else "תהליך"), body[:120])
+    except Exception:
+        pass
 
 # ── Activity log (admin only) ──────────────────────────────────────────────────
 @app.route("/api/recent", methods=["GET", "POST"])
