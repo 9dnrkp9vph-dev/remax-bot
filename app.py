@@ -4071,7 +4071,8 @@ def _display_name_for(name, phone):
             except Exception:
                 pass
         real = real or next((x for x in cands if x), "")
-        if not re.search(r"[\u0590-\u05FF]", real or nm) and nm not in _DN_UNRESOLVED_LOGGED:
+        # 12/11: בלי טלפון = פעולת מערכת (SMS, Fireberry, Claude) — אין מה לתרגם, בלי שורת אזהרה
+        if l9 and not re.search(r"[\u0590-\u05FF]", real or nm) and nm not in _DN_UNRESOLVED_LOGGED:
             # 04/11 אבחון: באוויר 'eyal-shmul' לא מתורגם למרות שבבדיקה מקומית כן — שורה אחת לשם בכל עלייה
             _DN_UNRESOLVED_LOGGED.add(nm)
             try:
