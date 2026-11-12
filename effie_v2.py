@@ -4325,9 +4325,11 @@ function dialAny(){   // חיוג לכל מספר מהקו הווירטואלי 
 function dialAnyGo(){
   var v = String((el('anyTel') || {}).value || '').replace(/\D/g, '');
   if (v.length < 9){ toast('מספר לא תקין'); return Promise.resolve(false); }
+  DIAL_LOCK = Date.now();   // [DIAL-GUARD 12/11] נגיעה שנחתה אחרי סגירת החלון לא תחייג שוב
   closeSheet();
   return c2cDial(v);
 }
+var DIAL_LOCK = 0;
 function copyVp(){
   var v = el('vpNum').textContent;
   try{ navigator.clipboard.writeText(v).then(function(){ toast('המספר הועתק'); }); }
@@ -4349,7 +4351,22 @@ function dialBack(i){
   /* חיוג חזרה: קישור ה-click2call של Maskyoo מהסיכום כשקיים; אחרת (10/09) מבקשים קישור
      חדש מהשרת דרך Make (c2cDial ב-V2_BOOST) — השיחה יוצאת מהמרכזיה, מוקלטת ומתועדת;
      כשל/כבוי → החייגן הרגיל (tel:). */
+  /* [DIAL-GUARD 12/11 אייל] חיוג ל-04-6000800 ואחריו, 16 שניות אחר כך, חיוג ל'חייג חזרה' של שיחה
+     אחרת ברשימה — נגיעה שנחתה מתחת לחלון שנסגר. עכשיו: שנייה וחצי אחרי חיוג — לא מגיב, ותמיד אישור. */
+  if (Date.now() - DIAL_LOCK < 1500) return;
   var c = el('list')._src[i];
+  if (!c) return;
+  openSheet('<h3>חיוג חזרה</h3>' +
+    '<div style="font-size:15px;color:#1E3A5F;font-weight:700;direction:ltr;text-align:right">' + esc(c.caller || c.tel || '') + '</div>' +
+    '<div style="font-size:12px;color:#6B7280">' + esc(c.time || '') + '</div>' +
+    '<button class="btn btn-blue" onclick="dialBackGo(' + i + ')">חייג</button>' +
+    '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
+}
+function dialBackGo(i){
+  var c = el('list')._src[i];
+  DIAL_LOCK = Date.now();
+  closeSheet();
+  if (!c) return;
   if (c.callback){ window.open(c.callback, '_blank'); return; }
   return c2cDial(c.tel);
 }
