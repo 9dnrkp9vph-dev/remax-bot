@@ -195,9 +195,13 @@ def bot_rows(deals, address, known, stored):
     street = canon_street(a["street"], known) if a["street"] else ""
     nb = subject_nb(street, a["city"], stored) if street else ""
     try:
-        return madlan_rows(table, nb or a["city"] or "בוט מדלן", "bot:" + _norm(address)[:80], known)
+        rows, st = madlan_rows(table, nb or a["city"] or "בוט מדלן", "bot:" + _norm(address)[:80], known)
     except ValueError:
         return [], empty
+    for r in rows:   # [13/11] עסקה בלי עיר (nadlan.gov.il לפי רחוב) — העיר מהכתובת שביקשנו
+        if not r.get("city") and a["city"]:
+            r["city"] = a["city"]
+    return rows, st
 
 
 def madlan_rows(table, nb, file_name, known):

@@ -56,3 +56,12 @@ def test_near_duplicate_across_sources_in_inputs():
     b = dict(a, deal_date="2021-12-11")
     out = cma.mark_near_dups([b, a])
     assert sorted(r["bad"] for r in out) == ["", "dup"]
+
+
+def test_city_from_request_when_missing():
+    """[13/11] בוט לפי רחוב (nadlan.gov.il) — בעסקה 'עפרה חזה 11' בלי עיר; העיר מהבקשה."""
+    import cma
+    rows, st = cma.bot_rows([{"date": "09/12/2025", "address": "עפרה חזה 11", "price": "1,825,000",
+                              "type": "דירה בבית קומות", "rooms": "4", "sqm": "123.65", "floor": "קומה 4"}],
+                            "עפרה חזה 11, קרית מוצקין", set(), [])
+    assert st["n"] == 1 and rows[0]["city"] == "קרית מוצקין" and cma.ptype_key(rows[0]["ptype"]) == "דירה"
