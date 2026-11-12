@@ -13874,7 +13874,7 @@ body.hasNav{padding-right:216px}
 <nav id="crmNav" aria-label="ניווט ב-CRM"></nav>
 <script>
 function navGroups(mods, me, cur){
-  var G = [['היום', ['dashboard', 'calls', 'meetings']], ['לקוחות', ['buyers', 'signatures', 'deals', 'invoices']],
+  var G = [['היום', ['dashboard', 'calls', 'meetings']], ['לקוחות', ['buyers', 'signatures', 'processes', 'deals', 'invoices']],
            ['נכסים', ['props', 'marketing']], ['מערכת', ['flows', 'automations', 'team', 'ai', 'parallel', 'access']]];
   var T = {dashboard: 'לוח בקרה', marketing: 'שיווק', parallel: 'דוח מקבילות', access: 'הרשאות'}, have = {}, used = {};
   (mods || []).forEach(function(m){ have[m[0]] = m[1]; });
@@ -14016,7 +14016,7 @@ function api(path, opt){ opt = opt || {}; opt.headers = Object.assign({'X-Auth-T
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function toast(t){ var e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(function(){ e.style.display = 'none'; }, 2600); }
 function fdate(ts){ if(!ts) return ''; var d = new Date(ts*1000); return d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ' ' + d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); }
-function stCls(l){ return (l === 'נענתה' || l === 'פעילה' || l === 'תקין') ? 'st-a' : (l === 'יוצאת' ? 'st-o' : (l === 'לא נענתה' || l === 'בוטלה' || l === 'תפוס' || l === 'נכשל' || l === 'כבויה' ? 'st-n' : 'st-x')); }
+function stCls(l){ return (l === 'נענתה' || l === 'פעילה' || l === 'תקין' || l === 'נסגר לעסקה') ? 'st-a' : (l === 'יוצאת' ? 'st-o' : (l === 'לא נענתה' || l === 'בוטלה' || l === 'תפוס' || l === 'נכשל' || l === 'כבויה' ? 'st-n' : 'st-x')); }
 function fmtPh(v){ var d = String(v || '').replace(/\D/g, '');
   if (d.indexOf('972') === 0 && (d.length === 12 || d.length === 11)) d = '0' + d.slice(3);
   if ((d.length === 9 && d.charAt(0) === '5') || (d.length === 8 && /^[2-9]/.test(d))) d = '0' + d;   /* [10/11] טלפון שנשמר בלי 0 */
@@ -15262,6 +15262,31 @@ def crm_meeting_records(statuses):
     return out
 
 
+def crm_process_records(items):
+    """[CRM תהליכים 12/11] תהליכים ועסקאות שנפתחו באפי (deals.json — מסך 'תהליכים ועסקאות') → רשומות.
+    שונה ממודול 'עסקאות' (היסטוריית קבצי הדרופבוקס). קריאה בלבד — עריכה במסך באפי."""
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        deal = bool(it.get("deal"))
+        stage = str(it.get("stage") or "").strip()
+        state = "נסגר לעסקה" if deal else ("הצעה" if it.get("offer") else (stage or "פתוח"))
+        sides = " / ".join(x for x in (str(it.get("side1") or "").strip(), str(it.get("side2") or "").strip()) if x)
+        law = " · ".join(x for x in (str(it.get("lawyers") or "").strip(), str(it.get("lawyers2") or "").strip()) if x)
+        offer = " · ".join(x for x in (("מוכר: " + str(it.get("offer_seller")).strip()) if str(it.get("offer_seller") or "").strip() else "",
+                                       ("קונה: " + str(it.get("offer_buyer")).strip()) if str(it.get("offer_buyer") or "").strip() else "") if x)
+        ts = float(it.get("ts") or 0) or (crm_ts(it.get("created")) or 0)
+        out.append({"key": "p:" + str(it.get("id") or ""), "date": ts,
+                    "agent": " + ".join(a for a in (it.get("agents") or []) if a), "by": str(it.get("by") or "").strip(),
+                    "address": str(it.get("notes") or "").strip(), "sides": sides, "state": state, "stage": stage,
+                    "is_deal": deal, "offer_on": bool(it.get("offer")),
+                    "price": _crm_int(it.get("price")), "offer": offer, "lawyers": law,
+                    "sale_price": _crm_int(it.get("sale_price")), "close_date": (crm_ts(it.get("close_date")) or 0) if deal else 0,
+                    "commission": _crm_int(it.get("commission"))})
+    return out
+
+
 def crm_meetings_today(recs, now):
     """[CRM 20/10 'פגישות היום'] מתוך רשומות מודול הפגישות: מה שקבוע להיום, לפי השעה (פולו-אפ בלי שעה ראשון)."""
     import datetime as _dmt
@@ -15486,6 +15511,17 @@ CRM_MODULES = {
         "views": [("all", "כל הפגישות והפולו-אפ"), ("today", "היום"), ("upcoming", "קרובות (מהיום)"), ("meetings", "פגישות"),
                   ("followups", "פולו-אפ"), ("newborn", "מנכס נולד"), ("manual", "נקבעו ידנית"), ("coordinated", "תואמו ע\"י אחר"),
                   ("done", "בוצעו")],
+    },
+    "processes": {
+        "title": "תהליכים",
+        "columns": [("date", "נפתח", "date"), ("state", "מצב", "status"), ("address", "כתובת", "text"), ("agent", "סוכנים", "text"),
+                    ("sides", "צדדים", "text"), ("price", "מחיר", "price"), ("offer", "הצעה", "text"), ("lawyers", "עורכי דין", "text"),
+                    ("by", "נפתח ע\"י", "text"), ("sale_price", "מחיר מכירה", "price"), ("close_date", "נסגר", "date"),
+                    ("commission", "עמלה", "price")],
+        "default_cols": ["date", "state", "address", "agent", "sides", "price", "lawyers", "by", "sale_price", "close_date"],
+        "editable": [],
+        "views": [("all", "כל התהליכים והעסקאות"), ("open", "תהליכים פתוחים"), ("lawyer", "אצל עו\"ד"), ("offer", "הצעה"),
+                  ("signing", "לקראת חתימה"), ("closed", "נסגרו לעסקה"), ("today", "נפתחו היום")],
     },
     "invoices": {
         "title": "מקבלי מסמכים",
@@ -15758,7 +15794,7 @@ def crm_scope_filter(module, recs, keys, canon):
     for r in recs or []:
         if module == "props" and not str(r.get("agent") or "").strip():
             out.append(r)
-        elif mine(r.get("agent")) or (module == "meetings" and mine(r.get("by"))):
+        elif mine(r.get("agent")) or (module in ("meetings", "processes") and mine(r.get("by"))):
             out.append(r)
     return out
 
@@ -15845,6 +15881,12 @@ CRM_VIEWS = {
                  "manual": lambda r, t: r.get("source") == "ידני",
                  "coordinated": lambda r, t: bool(r.get("by")) and r.get("by") != r.get("agent"),
                  "done": lambda r, t: r.get("state") == "בוצע"},
+    "processes": {"open": lambda r, t: not r.get("is_deal"),
+                  "lawyer": lambda r, t: not r.get("is_deal") and r.get("stage") == "אצל עו\"ד",
+                  "offer": lambda r, t: not r.get("is_deal") and bool(r.get("offer_on")),
+                  "signing": lambda r, t: not r.get("is_deal") and r.get("stage") == "לקראת חתימה",
+                  "closed": lambda r, t: bool(r.get("is_deal")),
+                  "today": lambda r, t: _crm_day(r.get("date"), t)},
     "invoices": {"today": lambda r, t: _crm_day(r.get("date"), t),
                  "tax": lambda r, t: "חשבונית" in (r.get("type") or ""),
                  "receipt": lambda r, t: r.get("type") == "קבלה",
@@ -19894,6 +19936,8 @@ def register(app, G):
                 return crm_unify_agents(recs, lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=())
             swr = G.get("_swr")
             return swr("crmdeals", 120, _build_deals, max_stale=_CRM_STALE) if swr else _build_deals()
+        if module == "processes":
+            return crm_process_records(G["_deals_load"]() or [])
         if module == "meetings":
             return crm_unify_agents(crm_meeting_records(G["_nb_statuses"]() or {}),
                                     lambda n: G["_canon_key"](G["_canon_agent_name"](n)), also=("by",))
