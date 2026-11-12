@@ -11493,6 +11493,7 @@ function editMeet(i){
     '<div class="fld2" id="emTagRow" style="display:' + (meet ? 'none' : 'flex') + '"><span>תגית פולו-אפ</span>' +
     '<div class="stSeg"><div id="emTagB" class="' + (m.tag !== 'after' ? 'on' : '') + '" onclick="emTag(\'before\')">לפני פגישה</div>' +
     '<div id="emTagA" class="' + (m.tag === 'after' ? 'on' : '') + '" onclick="emTag(\'after\')">אחרי פגישה</div></div></div>' +
+    emAgentHtml(m) +
     '<div class="fld2"><span>מועד</span><div style="display:flex;gap:8px">' +
     '<input id="emDtD" type="date" style="flex:1.2" value="' + dVal + '">' +
     '<select id="emDtT" style="flex:1">' + dt15Opts(tVal) + '</select></div></div>' +
@@ -11502,6 +11503,15 @@ function editMeet(i){
     '<button class="btn btn-sec" onclick="closeSheet()">ביטול</button>');
   el('sheet')._st = m.status;
   el('sheet')._etag = (m.tag === 'after') ? 'after' : 'before';
+}
+function emAgentHtml(m){   // [MEET-REASSIGN 12/11] מנהל/מתאמת — החלפת הסוכן שהפגישה שלו
+  if (!AG_OPTS.length) return '';
+  var cur = String(m.agent || ''), seen = {}, list = [];
+  [cur, MYNAME].concat(AG_OPTS).forEach(function(a){ a = String(a || '').trim(); if (a && !seen[a]){ seen[a] = 1; list.push(a); } });
+  return '<div class="fld2"><span>סוכן</span><select id="emAg" style="background:#fff;border:1.5px solid #DCD6C8;' +
+    'border-radius:13px;padding:12px 13px;font-size:16px;font-family:inherit;color:#1E3A5F;width:100%">' +
+    list.map(function(a){ return '<option value="' + esc(a) + '"' + (a === cur ? ' selected' : '') + '>' + esc(a) + (a === MYNAME ? ' (אני)' : '') + '</option>'; }).join('') +
+    '</select></div>';
 }
 function emType(node, st){
   el('sheet')._st = st;
@@ -11520,8 +11530,10 @@ function saveMeet(i){
   if (!dt){ toast('בחר מועד'); return; }
   POST('/api/newborn/status/edit', {skey: m.skey || '', date: dt,
     status: el('sheet')._st || m.status, note: el('emNote').value.trim(),
+    agent: (el('emAg') && el('emAg').value) || '',
     tag: (el('sheet')._st === 'followup') ? (el('sheet')._etag || '') : ''}).then(function(j){
-    if (!j.ok){ toast(j.reason === 'forbidden' ? 'אין הרשאה לעריכה' : 'שגיאה בשמירה'); return; }
+    if (!j.ok){ toast({forbidden: 'אין הרשאה לעריכה', agent: 'הסוכן לא מוכר במשרד',
+      agent_busy: 'לסוכן הזה כבר יש פגישה פתוחה על הנכס הזה'}[j.reason] || 'שגיאה בשמירה'); return; }
     closeSheet(); toast('עודכן' + (j.calendar === false ? '' : ' + היומן')); load();
   });
 }

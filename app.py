@@ -10721,7 +10721,26 @@ def api_newborn_status_edit():
                     if nm: allowed.add(_canon_key(nm))
         if _canon_key(rec.get("agent", "")) not in allowed:
             return jsonify({"ok": False, "reason": "forbidden"}), 403
-    cal_changed = False
+    # [MEET-REASSIGN 12/11] החלפת הסוכן בעריכה (אייל: "איך המתאמת יכולה בעריכה לשנות לסוכן אחר?").
+    # אותם כללים כמו ביצירה: מנהל — כל סוכן במשרד; מתאמת — הסוכנים שלה או סוכן מוכר במשרד; סוכן — לא.
+    new_skey = skey
+    new_agent = (d.get("agent", "") or "").strip() if s["role"] in ("admin", "coordinator") else ""
+    if new_agent and _canon_key(new_agent) != _canon_key(rec.get("agent", "")):
+        _office = set(_canon_key(n) for n in web_phone_name_map().values() if n)
+        try:
+            _office |= set(_canon_key(a.get("name", "")) for a in (_load_config().get("agents") or []) if a.get("name"))
+        except Exception:
+            pass
+        _office.add(_canon_key(s.get("name", "")))
+        if _canon_key(new_agent) not in _office:
+            return jsonify({"ok": False, "reason": "agent"}), 400
+        new_skey = _canon_key(new_agent) + "::" + (rec.get("pkey") or skey.split("::", 1)[-1])
+        _ex = m.get(new_skey)
+        if _ex and _ex.get("status") in ("meeting", "followup") and not _ex.get("done"):
+            return jsonify({"ok": False, "reason": "agent_busy"}), 409
+        rec = dict(rec)
+        rec["agent"] = new_agent
+    cal_changed = new_skey != skey
     if new_status in ("meeting", "followup") and new_status != rec.get("status"):
         rec["status"] = new_status
         cal_changed = True
@@ -10745,11 +10764,16 @@ def api_newborn_status_edit():
     def _mut(cfg):   # RMW בטוח — כותב רק את skey הזה, לא דורס פגישות אחרות בו-זמנית
         mm = cfg.get("nbStatus")
         if not isinstance(mm, dict): mm = {}
-        mm[skey] = rec
+        if new_skey != skey:
+            mm.pop(skey, None)
+        mm[new_skey] = rec
         cfg["nbStatus"] = mm
     _config_mutate(_mut)
     _nb_result_bump()
-    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עריכת פגישה/פולו-אפ", (rec.get("addr") or skey)[:80])
+    _det = (rec.get("addr") or skey)[:80]
+    if new_skey != skey:
+        _det = (_det + " · הועבר ל" + rec.get("agent", ""))[:120]
+    _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "עריכת פגישה/פולו-אפ", _det)
     return jsonify({"ok": True, "calendar": bool(rec.get("cal"))})
 
 @app.route("/api/newborn/status/done", methods=["POST"])
