@@ -20148,17 +20148,30 @@ def register(app, G):
         best, best_d = None, 901
         _cp = inv_phone9(rec.get("src_caller") or rec.get("caller_phone"))   # [REC-C2C] בחייגן — הקו הווירטואלי
         _ap = {inv_phone9(rec.get("src_agent") or rec.get("agent_phone"))}
-        if rec.get("src_caller"):        # בחייגן כל רגל מדווחת עם טלפון אחר (הסוכן / הלקוח)
-            _ap |= {inv_phone9(rec.get("agent_phone")), inv_phone9(rec.get("caller_phone"))}
+        _c2c = bool(rec.get("src_caller"))
+        if _c2c:      # [REC-C2C 12/11] בחייגן כל רגל מדווחת אחרת: הקו הווירטואלי / נייד הסוכן / הלקוח (גם כ-DESTINATION)
+            _ap |= {_cp, inv_phone9(rec.get("agent_phone")), inv_phone9(rec.get("caller_phone"))}
+            _ap.discard("")
         for r in sb.fetch_shadow("calls", since, until) or []:
-            if inv_phone9(r.get("caller_phone")) != _cp:
-                continue
-            if inv_phone9(r.get("agent_phone")) not in _ap:
+            _rc, _ra = inv_phone9(r.get("caller_phone")), inv_phone9(r.get("agent_phone"))
+            if _c2c:
+                if not (_rc in _ap and _ra in _ap and _cp in (_rc, _ra)):
+                    continue
+            elif _rc != _cp or _ra not in _ap:
                 continue
             ts = crm_ts(r.get("received_at"))
             if ts is not None and abs(ts - rec["date"]) < best_d:
                 best, best_d = r, abs(ts - rec["date"])
         sk = str((best or {}).get("_source_key") or "")
+        if _c2c and not sk.startswith("mk:") and log:      # [REC-C2C] אבחון: מה יש בצל סביב השיחה
+            try:
+                _near = [(str(r.get("_source_key"))[:14], inv_phone9(r.get("caller_phone"))[-4:],
+                          inv_phone9(r.get("agent_phone"))[-4:], r.get("received_at"))
+                         for r in (sb.fetch_shadow("calls", since, until) or [])
+                         if (crm_ts(r.get("received_at")) or 0) and abs(crm_ts(r.get("received_at")) - rec["date"]) < 1800]
+                log.info(f"rec c2c no match key={rec.get('key')} want={sorted(x[-4:] for x in _ap)} near={_near[:8]}")
+            except Exception:
+                pass
         return sk if sk.startswith("mk:") else None
 
     # [REC 10/11 אייל: 'כן' — לשמוע את הקלטת השיחה] ההקלטה במסקיו דורשת טוקן, אז אפי מביאה אותה

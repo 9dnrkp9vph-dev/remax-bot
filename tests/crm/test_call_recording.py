@@ -83,6 +83,21 @@ ck(r["recording"].startswith("/v2/api/crm/calls/audio?key="), ("c2c gets player"
 a = c.get("/v2/api/crm/calls/audio?key=" + k)
 ck(a.status_code == 200 and a.data == WAV, (a.status_code, a.data[:40]))
 
+# [REC-C2C 12/11] כמו בחי: בלי נייד מקורי לסוכן, והצל רשום עם הקו גם כ-DESTINATION (agent_phone)
+ROWS.append({"event_id": "", "status": "CALL2CALL", "agent": "אייל שמול", "agent_phone": "0505709865", "caller_phone": "0545544748",
+             "c2c_src_caller": "529125944", "c2c_src_agent": "", "received_at": "2026-11-09T15:00:00.000Z"})
+SH = [{"caller_phone": "529125944", "agent_phone": "0529125944", "received_at": "2026-11-09T15:00:20Z", "_source_key": "mk:c2c-live"},
+      {"caller_phone": "529125944", "agent_phone": "0501234567", "received_at": "2026-11-09T15:00:05Z", "_source_key": "mk:wrong"}]
+CACHE.clear()
+k2 = [r for r in E.crm_calls_records(ROWS, {}, set(), A._call_uid) if r["caller_phone"] == "0545544748"][0]["key"]
+A._web_auth = lambda: {"phone": "505709865", "name": "אייל שמול", "role": "admin"}
+r = c.get("/v2/api/crm/calls/record?key=" + k2).get_json()
+ck(r["recording"].startswith("/v2/api/crm/calls/audio?key="), ("c2c live-shape gets player", r))
+got = []
+E._requests.get = lambda *a, **kw: (got.append(kw.get("params", {}).get("call_uuid")), Resp(200, "audio/x-wav", WAV))[1]
+c.get("/v2/api/crm/calls/audio?key=" + k2)
+ck(got and got[0] == "c2c-live", ("picked live leg", got))
+
 # בלי הרשאה
 A._web_auth = lambda: None
 ck(c.get("/v2/api/crm/calls/audio?key=mk:abc-1").status_code in (401, 403), "auth required")
