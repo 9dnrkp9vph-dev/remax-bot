@@ -944,6 +944,20 @@ def crm_overrides_fetch(module):
     return {r.get("record_key"): dict(r.get("fields") or {}) for r in recs if r.get("record_key")}
 
 
+def crm_overrides_put_many(module, items, by=""):
+    """[DUR 12/11] כתיבה מרוכזת {record_key: fields} (מחליף את השדות — לנתונים מחושבים, לא לעריכות)."""
+    import datetime as _dt_o
+    now = _dt_o.datetime.now(_dt_o.timezone.utc).isoformat()
+    rows = [{"office_id": SB_OFFICE_ID, "module": module, "record_key": k, "fields": v,
+             "updated_at": now, "updated_by": by or ""} for k, v in (items or {}).items()]
+    for i in range(0, len(rows), 100):
+        r = requests.post(SUPABASE_URL + "/rest/v1/crm_overrides",
+                          headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                          params={"on_conflict": "office_id,module,record_key"}, json=rows[i:i + 100], timeout=_TIMEOUT)
+        r.raise_for_status()
+    return len(rows)
+
+
 def crm_override_upsert(module, key, fields, by):
     """מיזוג שדות חדשים מעל העריכות הקיימות של הרשומה (שדה ריק = נשמר ריק, לא נמחק)."""
     import datetime as _dt_o

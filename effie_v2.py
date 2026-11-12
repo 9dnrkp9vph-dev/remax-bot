@@ -19861,7 +19861,12 @@ def register(app, G):
                     hidden = set(G["_fetch_hidden_calls"]() or set())
                 except Exception:
                     hidden = set()
-                return crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden, uid=G.get("_call_uid"))
+                recs = crm_calls_records(G["web_fetch_raw"]("שיחות") or [], ov, hidden, uid=G.get("_call_uid"))
+                try:
+                    recs = _fill_call_durations(recs)      # [DUR 12/11]
+                except Exception as e:
+                    if log: log.warning(f"call durations fill failed: {e}")
+                return recs
             swr = G.get("_swr")   # [10/11] בנייה קרה 8ש' — מטמון כמו שאר המודולים; עריכה מנקה (crmcalls)
             return swr("crmcalls", 60, _build_calls, max_stale=_CRM_STALE) if swr else _build_calls()
         if module == "team":
@@ -20162,6 +20167,21 @@ def register(app, G):
             return None
         since = _dtr.datetime.utcfromtimestamp(rec["date"] - 86400).date().isoformat()
         until = _dtr.datetime.utcfromtimestamp(rec["date"] + 86400).date().isoformat()
+        _shadow = sb.fetch_shadow("calls", since, until) or []
+        sk = _match_shadow(rec, _shadow)
+        if rec.get("src_caller") and not sk and log:      # [REC-C2C] אבחון: מה יש בצל סביב השיחה
+            try:
+                _near = [(str(r.get("_source_key"))[:14], inv_phone9(r.get("caller_phone"))[-4:],
+                          inv_phone9(r.get("agent_phone"))[-4:], r.get("received_at"))
+                         for r in _shadow
+                         if (crm_ts(r.get("received_at")) or 0) and abs(crm_ts(r.get("received_at")) - rec["date"]) < 1800]
+                log.info(f"rec c2c no match key={rec.get('key')} near={_near[:8]}")
+            except Exception:
+                pass
+        return sk
+
+    def _match_shadow(rec, rows):
+        """[REC/DUR] השיחה הישירה (mk:<uuid>) מתוך שורות הצל שהכי קרובה לרשומה — או None."""
         best, best_d = None, 901
         _cp = inv_phone9(rec.get("src_caller") or rec.get("caller_phone"))   # [REC-C2C] בחייגן — הקו הווירטואלי
         _ap = {inv_phone9(rec.get("src_agent") or rec.get("agent_phone"))}
@@ -20169,7 +20189,7 @@ def register(app, G):
         if _c2c:      # [REC-C2C 12/11] בחייגן כל רגל מדווחת אחרת: הקו הווירטואלי / נייד הסוכן / הלקוח (גם כ-DESTINATION)
             _ap |= {_cp, inv_phone9(rec.get("agent_phone")), inv_phone9(rec.get("caller_phone"))}
             _ap.discard("")
-        for r in sb.fetch_shadow("calls", since, until) or []:
+        for r in rows or []:
             _rc, _ra = inv_phone9(r.get("caller_phone")), inv_phone9(r.get("agent_phone"))
             if _c2c:
                 # בחי (12/11): הצל מגיע עם הקו כמחייג ו-agent_phone ריק (DESTINATION ריק בחייגן v2)
@@ -20181,16 +20201,8 @@ def register(app, G):
             if ts is not None and abs(ts - rec["date"]) < best_d:
                 best, best_d = r, abs(ts - rec["date"])
         sk = str((best or {}).get("_source_key") or "")
-        if _c2c and not sk.startswith("mk:") and log:      # [REC-C2C] אבחון: מה יש בצל סביב השיחה
-            try:
-                _near = [(str(r.get("_source_key"))[:14], inv_phone9(r.get("caller_phone"))[-4:],
-                          inv_phone9(r.get("agent_phone"))[-4:], r.get("received_at"))
-                         for r in (sb.fetch_shadow("calls", since, until) or [])
-                         if (crm_ts(r.get("received_at")) or 0) and abs(crm_ts(r.get("received_at")) - rec["date"]) < 1800]
-                log.info(f"rec c2c no match key={rec.get('key')} want={sorted(x[-4:] for x in _ap)} near={_near[:8]}")
-            except Exception:
-                pass
         return sk if sk.startswith("mk:") else None
+
 
     # [REC 10/11 אייל: 'כן' — לשמוע את הקלטת השיחה] ההקלטה במסקיו דורשת טוקן, אז אפי מביאה אותה
     # בעצמה לפי מזהה השיחה (אותה קריאה של מודול 32 בסנריו 'לוג שיחה מסקיו') ומגישה לנגן בכרטיס.
@@ -20214,7 +20226,7 @@ def register(app, G):
             return not data[:1] in (b"{", b"[", b"<")
         return data[:4] in (b"RIFF", b"OggS", b"fLaC") or data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")
 
-    def _maskyoo_record(uuid):
+    def _maskyoo_record(uuid, cache=True):
         """(bytes, content-type) או None. מנסה את שני החשבונות; זיכרון ל-15 אחרונות."""
         if uuid in _REC_CACHE:
             return _REC_CACHE[uuid]
@@ -20230,6 +20242,8 @@ def register(app, G):
             if r.status_code == 200 and _looks_audio(ct, r.content):
                 if not ct.startswith("audio/"):
                     ct = "audio/wav" if r.content[:4] == b"RIFF" else "audio/mpeg"
+                if not cache:
+                    return (r.content, ct)
                 if len(_REC_CACHE) >= 15:
                     _REC_CACHE.pop(next(iter(_REC_CACHE)))
                 _REC_CACHE[uuid] = (r.content, ct)
@@ -20237,6 +20251,117 @@ def register(app, G):
             if log: log.info(f"maskyoo record {acct}: no audio (HTTP {r.status_code}, {ct}, {len(r.content)}B) "
                              f"token len={len(tok)} head={tok[:4]} body={r.content[:80]!r}")
         return None
+
+    # [DUR 12/11 אייל: 'משך השיחה בכל השיחות'] מסקיו לא שולחת משך — מחשבים מקובץ ה-WAV של ההקלטה
+    # (רק לשיחות מהזרם הישיר, מ-19/10). ברקע, עד 40 הקלטות כל 5 דק'; נשמר ב-crm_overrides (module=calldur) {uuid: {s, t}}.
+    def _wav_secs(data):
+        try:
+            if not data or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+                return None
+            i, br = 12, None
+            while i + 8 <= len(data):
+                cid, sz = data[i:i + 4], int.from_bytes(data[i + 4:i + 8], "little")
+                if cid == b"fmt ":
+                    br = int.from_bytes(data[i + 16:i + 20], "little")
+                elif cid == b"data":
+                    if not br:
+                        return None
+                    if sz in (0, 0xFFFFFFFF) or i + 8 + sz > len(data):
+                        sz = len(data) - i - 8
+                    return sz / float(br)
+                i += 8 + sz + (sz & 1)
+        except Exception:
+            pass
+        return None
+
+    _DUR = {"t": 0, "busy": False}
+    _DUR_LOCK = _bpthr.Lock()
+
+    def _call_dur_map():
+        """{uuid: {s, t}} — נשמר בטבלת crm_overrides (module=calldur), לא בקונפיג (לא לנפח אותו)."""
+        c = G["_cache_get"]("calldur", 120)
+        if c is not None:
+            return c
+        sb = G.get("_sbdb")
+        try:
+            m = sb.crm_overrides_fetch("calldur") if (sb and sb.enabled()) else {}
+        except Exception as e:
+            if log: log.warning(f"call durations read failed: {e}")
+            return {}
+        G["_cache_put"]("calldur", m)
+        return m
+
+    def _call_dur_run():
+        try:
+            sb = G.get("_sbdb")
+            if not (sb and sb.enabled() and _maskyoo_rec_accounts()):
+                return
+            import datetime as _dtd
+            since = (_dtd.datetime.utcnow() - _dtd.timedelta(days=40)).date().isoformat()
+            known = _call_dur_map()
+            rows = [r for r in (sb.fetch_shadow("calls", since) or [])
+                    if str(r.get("_source_key") or "").startswith("mk:")]
+            rows.sort(key=lambda r: crm_ts(r.get("received_at")) or 0, reverse=True)
+            now, new = time.time(), {}
+            for r in rows:
+                if len(new) >= 40:
+                    break
+                u = str(r["_source_key"])[3:]
+                if u in known:
+                    continue
+                ts = crm_ts(r.get("received_at")) or now
+                got = _maskyoo_record(u, cache=False)
+                sec = _wav_secs(got[0]) if got else None
+                if sec is not None:
+                    new[u] = {"s": int(round(sec)), "t": int(ts)}
+                elif now - ts > 3 * 3600:            # אין הקלטה גם אחרי 3 שעות — לא מנסים שוב
+                    new[u] = {"s": -1, "t": int(ts)}
+            if not new:
+                return
+            sb.crm_overrides_put_many("calldur", new, "אפי")
+            G["_cache_clear"]("calldur")
+            G["_cache_clear"]("crmcalls")
+            if log: log.info(f"call durations: +{len(new)} ({sum(1 for v in new.values() if v['s'] >= 0)} from wav)")
+        except Exception as e:
+            if log: log.warning(f"call durations failed: {e}")
+        finally:
+            _DUR["busy"] = False
+
+    @app.before_request
+    def _call_dur_tick():
+        if time.time() - _DUR["t"] < 300 or _DUR["busy"]:
+            return
+        with _DUR_LOCK:
+            if time.time() - _DUR["t"] < 300 or _DUR["busy"]:
+                return
+            _DUR["t"], _DUR["busy"] = time.time(), True
+        _bpthr.Thread(target=_call_dur_run, name="call-dur", daemon=True).start()
+
+    G["_wav_secs"] = _wav_secs; G["_call_dur_run"] = _call_dur_run   # לבדיקות
+
+    def _fill_call_durations(recs):
+        """רשומות בלי משך — לפי המשך שחושב מההקלטה (אותה התאמה של הנגן)."""
+        dm = _call_dur_map()
+        sb = G.get("_sbdb")
+        if not dm or not (sb and sb.enabled()):
+            return recs
+        need = [r for r in recs if not r.get("duration") and (r.get("date") or 0) >= 1792360800]
+        if not need:
+            return recs
+        import datetime as _dtd
+        since = _dtd.datetime.utcfromtimestamp(min(r["date"] for r in need) - 86400).date().isoformat()
+        idx = {}
+        for sr in (sb.fetch_shadow("calls", since) or []):
+            if str(sr.get("_source_key") or "")[3:] in dm:
+                idx.setdefault(inv_phone9(sr.get("caller_phone")), []).append(sr)
+        for r in need:
+            sk = r["key"] if r["key"].startswith("mk:") else \
+                _match_shadow(r, idx.get(inv_phone9(r.get("src_caller") or r.get("caller_phone")), []))
+            v = dm.get((sk or "")[3:]) or {}
+            sec = v.get("s", -1)
+            if sec and sec > 0:
+                r["duration"] = "%d:%02d" % (sec // 60, sec % 60)
+        return recs
 
     @app.route("/v2/api/crm/calls/audio", methods=["GET"])
     def v2_api_crm_call_audio():
