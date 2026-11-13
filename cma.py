@@ -840,7 +840,12 @@ def register(app, G):
         a = request.args
         res = cma_full(G, {"street": a.get("street", ""), "house": a.get("house", ""), "city": a.get("city", ""),
                             "rooms": a.get("rooms", ""), "sqm": a.get("sqm", ""), "ptype": a.get("ptype", "")})
-        return jsonify({"ok": True, "cma": res, "reason": "" if res else "few"})
+        try:
+            import cma_bot
+            bot = cma_bot.bot_enabled()
+        except Exception:
+            bot = False
+        return jsonify({"ok": True, "cma": res, "reason": "" if res else "few", "bot": bot})
 
 
 V2_CMA_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
@@ -911,7 +916,7 @@ function cmaRow(c){
 function cmaResult(j){
   var m = j && j.cma;
   if (!m) return '<div class="card empty"><div class="dot">?</div><div class="h">אין מספיק עסקאות דומות</div>' +
-    '<div class="lbl">נסה בלי מ"ר, או בדוק שהשכונה הועלתה בכרטיס "עסקאות ממדלן" בניהול.</div></div>';
+    '<div class="lbl">עסקאות האזור נאספות אוטומטית מיד2 עם כל מודעה חדשה — נסה שוב בעוד כמה ימים.</div></div>';
   var where = m.level === 'street' ? 'ב' + cmaEsc(m.subject.street) : (m.level === 'city' ? 'בעיר' : 'בשכונה');
   var h = (m.fallback_text ? '<div class="card lbl" style="border:1.5px solid var(--gold2)"><b style="color:var(--goldtxt)">חישוב מורחב: </b>' +
     cmaEsc(m.fallback_text) + '</div>' : '') + '<div class="rng"><div class="lbl" style="color:#231700">טווח מומלץ</div><div class="big">' +
@@ -938,7 +943,7 @@ function run(){
   el('res').innerHTML = '<div class="card lbl">מחשב…</div>';
   fetch('/v2/api/cma/view?' + q, {headers: {'X-Auth-Token': TOK}}).then(function(r){
     if (r.status === 401){ location.replace('/v2'); return null; } return r.json();
-  }).then(function(j){ if (j){ el('res').innerHTML = cmaResult(j) + botCard(); botShow(); } })
+  }).then(function(j){ if (j){ el('res').innerHTML = cmaResult(j) + (j.bot ? botCard() : ''); if (j.bot) botShow(); } })
     .catch(function(){ el('res').innerHTML = '<div class="card lbl">שגיאת רשת — נסה שוב</div>'; });
 }
 // מתיק פרזנטציה: /v2/cma?street=&house=&city=&rooms=&sqm=&ptype= — ממלא ומחשב

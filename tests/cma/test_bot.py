@@ -5,6 +5,7 @@ import types
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 os.environ["CMA_BOT_KEY"] = "secret-test"
+os.environ["CMA_BOT_ENABLED"] = "1"
 from flask import Flask, request  # noqa: E402
 import cma_bot  # noqa: E402
 

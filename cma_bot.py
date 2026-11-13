@@ -88,9 +88,15 @@ def sent_today(reqs, now):
     return sum(1 for r in (reqs or {}).values() if now - float(r.get("ts") or 0) < 86400)
 
 
+def bot_enabled():
+    return (os.environ.get("CMA_BOT_ENABLED") or "").strip() == "1"
+
+
 def request_bot(G, address, by="", force=False):
     """שולח כתובת לבוט (פעם בשבוע לכל כתובת, עד CMA_BOT_DAILY ביום). משמש את מסך ניתוח השוק ואת התיק.
     מחזיר {ok, request_id, reused?, reason?, status?}."""
+    if not bot_enabled():   # [13/11] אייל: 'רק הסורק של יד2' — הבוט כבוי עד CMA_BOT_ENABLED=1
+        return {"ok": False, "reason": "off"}
     url = (os.environ.get("CMA_BOT_URL") or "").strip()
     if not url:
         return {"ok": False, "reason": "no_bot_url"}
