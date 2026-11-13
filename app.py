@@ -7954,18 +7954,6 @@ def api_history():
             "id": _call_uid(c),
             "ts": _epoch_from_iso(c.get("received_at", "")),
         })
-    try:
-        _ends = _excl_end_map(sigs)
-    except Exception as _ee:
-        log.error(f"signatures excl end error: {_ee}")
-        _ends = {}
-    # בלעדיות שנגמרת בחודש הקרוב — גם כשהיא ישנה מכדי להיכנס ל-500 האחרונות (6-12 חודשים אחורה)
-    import datetime as _dsx
-    from zoneinfo import ZoneInfo as _ZIx
-    _today = _dsx.datetime.now(_ZIx("Asia/Jerusalem")).date()
-    _soon_extra = [g for g in sigs[500:] if id(g) in _ends
-                   and 0 <= (_ends[id(g)] - _today).days <= _EXCL_SOON_DAYS]
-    _rows = sigs[:500] + _soon_extra
     sig_out = [{
         "time": (_fmt_il_dt(g.get("received_at", "")) or str(g.get("received_at", "") or "").strip()),
         "type": _deal_label(g.get("deal_type", "")),
@@ -7979,8 +7967,7 @@ def api_history():
         "eid": str(g.get("event_id", "") or "").strip(),
         "notes": (g.get("notes") or g.get("הערות") or "").strip(),
         "raw": str(g.get("received_at", "") or "").strip(),
-        "exclTo": (_ends[id(g)].strftime("%d/%m/%Y") if id(g) in _ends else ""),
-    } for g in _rows]
+    } for g in sigs[:500]]
     # שעת החתימה האמיתית (sign_docs ב-Supabase) — "נחתם · <מתי נחתם>" במקום שעת השליחה.
     # מסמכים מלפני המעבר (05/08) אינם בטבלה — יציגו את שעת השליחה כמו קודם.
     _sdt = _cache_get("signdoc_times", 60)
@@ -8116,6 +8103,18 @@ def api_signatures():
                            ("client_name", "address", "city", "agent")).lower().replace("קריית", "קרית")
             return all(t.replace("קריית", "קרית") in hay for t in _toks)
         sigs = [g for g in sigs if _sig_match(g)]
+    try:
+        _ends = _excl_end_map(sigs)
+    except Exception as _ee:
+        log.error(f"signatures excl end error: {_ee}")
+        _ends = {}
+    # בלעדיות שנגמרת בחודש הקרוב — גם כשהיא ישנה מכדי להיכנס ל-500 האחרונות (6-12 חודשים אחורה)
+    import datetime as _dsx
+    from zoneinfo import ZoneInfo as _ZIx
+    _today = _dsx.datetime.now(_ZIx("Asia/Jerusalem")).date()
+    _soon_extra = [g for g in sigs[500:] if id(g) in _ends
+                   and 0 <= (_ends[id(g)] - _today).days <= _EXCL_SOON_DAYS]
+    _rows = sigs[:500] + _soon_extra
     sig_out = [{
         "time": (_fmt_il_dt(g.get("received_at", "")) or str(g.get("received_at", "") or "").strip()),
         "type": _deal_label(g.get("deal_type", "")),
@@ -8129,7 +8128,8 @@ def api_signatures():
         "eid": str(g.get("event_id", "") or "").strip(),
         "notes": (g.get("notes") or g.get("הערות") or "").strip(),
         "raw": str(g.get("received_at", "") or "").strip(),
-    } for g in sigs[:500]]
+        "exclTo": (_ends[id(g)].strftime("%d/%m/%Y") if id(g) in _ends else ""),
+    } for g in _rows]
     # ממוצע הנכסים שהלקוח חתם עליהם (טפסי מתעניין) — לפי זיהוי הכתובת בנכסי המשרד/שת"פ.
     # מופרד מכירה/שכירות; מוצג באפור קטן על כרטיס החתימה (בקשת אייל 13/07).
     # ⚡ המפה נשמרת ב-cache פר-סקופ ל-120ש' — הבית ומסך החתימות קוראים לכאן בכל

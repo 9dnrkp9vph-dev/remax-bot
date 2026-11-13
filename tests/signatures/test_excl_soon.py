@@ -71,5 +71,12 @@ check("בלעדיות עד" in out["lfar"] and "עוד" not in out["lfar"], "ר�
 check(out["lnone"] == "", "בלי תאריך — בלי שורה")
 check("הסתיימה" in out["lpast"], "שעברה — 'הסתיימה'")
 check(e2.count("'הבלעדיות נגמרת בחודש הקרוב · ' + nSoon") == 1, "כותרת הקבוצה בראש הטאב")
+# 13/11: הבלוק נכנס בטעות ל-/api/history (מסך השיחות) במקום ל-/api/signatures — המסך לא קיבל exclTo
+_tree = ast.parse(SRC) if "SRC" in globals() else ast.parse(open(os.path.join(ROOT, "app.py"), encoding="utf-8").read())
+_src_all = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
+_fns = {n.name: ast.get_source_segment(_src_all, n) for n in ast.walk(ast.parse(_src_all)) if isinstance(n, ast.FunctionDef)}
+check('"exclTo"' in _fns["api_signatures"] and "_excl_end_map(sigs)" in _fns["api_signatures"], "exclTo נשלח מ-/api/signatures (המסך)")
+check("exclTo" not in _fns["api_history"], "/api/history לא מחשב בלעדיות")
+
 print("\nRESULT:", "ALL GREEN" if not fails else "%d FAILED" % len(fails))
 raise SystemExit(1 if fails else 0)
