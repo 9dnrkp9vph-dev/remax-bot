@@ -214,6 +214,25 @@ def register(app, G):
             pass
         return jsonify({"ok": True, "n": rec["n"], "request_id": rec["request_id"]})
 
+    @app.route("/v2/api/cma/yad2_deals", methods=["POST"])
+    def cma_yad2_deals():
+        """[13/11] הסורק (נכס נולד): 'נכסים שנמכרו באזור' מדף המודעה ביד2 → מאגר העסקאות. מפתח הבוט."""
+        if not key_ok(request.headers.get("X-CMA-Key", "")):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        b = request.get_json(silent=True) or {}
+        deals = b.get("deals") if isinstance(b.get("deals"), list) else []
+        try:
+            import cma
+            st = cma.ingest_yad2(G, deals[:200])
+        except Exception as e:
+            return jsonify({"ok": False, "reason": "save", "error": str(e)[:160]}), 500
+        try:
+            G["_log_activity"]("סורק יד2", "system", "", "CMA — עסקאות מדף מודעה ביד2",
+                               ("%s · %d עסקאות" % (str(b.get("address") or b.get("token") or "")[:40], st.get("n", 0)))[:60])
+        except Exception:
+            pass
+        return jsonify({"ok": True, "n": st.get("n", 0), "min_date": st.get("min_date"), "max_date": st.get("max_date")})
+
     @app.route("/v2/api/cma/bot_results", methods=["GET"])
     def cma_bot_results():
         if not _allowed():

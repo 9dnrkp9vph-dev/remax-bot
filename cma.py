@@ -204,6 +204,44 @@ def bot_rows(deals, address, known, stored):
     return rows, st
 
 
+def yad2_rows(deals, known):
+    """[13/11] 'נכסים שנמכרו באזור' מדף מודעה ביד2 (gw.yad2.co.il/latest-deals-completed, כמו שהגיע מהסורק)
+    → (שורות ל-market_upsert, סטטיסטיקה). השכונה — כמו שיד2 כותב; בלי שכונה — העיר."""
+    empty = {"n": 0, "dups": 0, "bad": 0, "min_date": None, "max_date": None, "streets": 0}
+    groups = {}
+    for d in deals or []:
+        if not isinstance(d, dict):
+            continue
+        a = d.get("address") if isinstance(d.get("address"), dict) else {}
+        tx = lambda k: _norm((a.get(k) or {}).get("text") if isinstance(a.get(k), dict) else a.get(k))
+        st, city, hn = tx("street"), tx("city"), a.get("houseNumber")
+        if not st or not d.get("price") or not d.get("saleDate"):
+            continue
+        fl = d.get("floor")
+        groups.setdefault(tx("neighborhood") or city or "יד2", []).append({
+            "יום מכירה": d.get("saleDate"), "כתובת": ("%s %s" % (st, hn) if hn not in (None, "") else st) + (", " + city if city else ""),
+            "מחיר (₪)": d.get("price"), "סוג נכס": d.get("propertyType") or "", "חדרים": d.get("rooms"),
+            "שטח (מ״ר)": d.get("buildingMR"), "קומה": "" if fl is None else fl, "מחיר (₪) למ״ר": None,
+            "שנת בנייה": d.get("buildYear")})
+    rows, tot = [], dict(empty)
+    for nb, table in groups.items():
+        try:
+            r, st = madlan_rows(table, nb, "yad2", known)
+        except ValueError:
+            continue
+        for x in r:
+            x["source"] = "yad2"
+        rows += r
+        tot["n"] += st["n"]
+        tot["dups"] += st["dups"]
+        tot["bad"] += st["bad"]
+        for k, f in (("min_date", min), ("max_date", max)):
+            if st.get(k):
+                tot[k] = f(tot[k], st[k]) if tot[k] else st[k]
+    tot["streets"] = len({x["street"] for x in rows if x.get("street")})
+    return rows, tot
+
+
 def madlan_rows(table, nb, file_name, known):
     """טבלת מדלן ([{כותרת: ערך}], מ-ibs_parse_table) → (שורות ל-market_upsert, סטטיסטיקה).
     כותרת חסרה → ValueError('headers'). העמודות לפי הכותרת, לא לפי המיקום."""
@@ -622,6 +660,20 @@ def ingest_bot(G, address, deals):
     if rows:
         sb.market_upsert(rows)
     clear_cache(G)
+    return st
+
+
+def ingest_yad2(G, deals):
+    """[13/11] עסקאות 'נמכרו באזור' מהסורק (נכס נולד) → מאגר העסקאות, ואיפוס המטמון."""
+    sb = G["_sbdb"]
+    try:
+        dh = G["_deal_history_linked"]() or []
+    except Exception:
+        dh = []
+    rows, st = yad2_rows(deals, _known_streets(G, dh))
+    if rows:
+        sb.market_upsert(rows)
+        clear_cache(G)
     return st
 
 
