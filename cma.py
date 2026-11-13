@@ -294,6 +294,7 @@ SIZE_TOL = 0.20             # שטח ±20%
 SIZE_TOL_WIDE = 0.30        # [11/11 אייל] אין 4 דומות ב-±20% → ±30%
 OUTLIER = 0.30              # מחיר למ"ר רחוק 30%+ מהחציון — חריג
 YEARS = 3
+OURS_FIRST_DAYS = 365      # [13/11] עסקה שלנו מקבלת עדיפות רק אם היא מהשנה האחרונה
 SHOW_COMPS = 12
 
 
@@ -464,6 +465,11 @@ def cma_compute(subject, deals, listings, today, city_wide=False):
     street.sort(key=lambda r: (abs(r["house"] - h) if (h is not None and r.get("house") is not None) else 9999,
                                -_dt.date.fromisoformat(r["deal_date"]).toordinal()))
     nbrs.sort(key=lambda r: r["deal_date"], reverse=True)
+    # [13/11] אייל (עפרה חזה 18): עסקה שלנו מהשנה האחרונה נכנסת לפני האחרות — ברחוב לפני הרחוב, בשכונה לפני השכונה
+    ours_since = (today - _dt.timedelta(days=OURS_FIRST_DAYS)).isoformat()
+    _first = lambda r: 0 if (r.get("ours") and r["deal_date"] >= ours_since) else 1
+    street.sort(key=_first)
+    nbrs.sort(key=_first)
     sqm = subject.get("sqm")
 
     def pick(tol, size_tol=SIZE_TOL):
