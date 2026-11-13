@@ -8312,11 +8312,18 @@ def api_deals_save():
             rec["created"] = existing.get("created", "")
             rec["ts"] = existing.get("ts", time.time())
             rec["by"] = existing.get("by", s["name"])
+            if existing.get("by_phone"):
+                rec["by_phone"] = existing.get("by_phone")
             items = [rec if it.get("id") == rec["id"] else it for it in items]
         else:
             rec["created"] = _il_today()
             rec["ts"] = time.time()
-            rec["by"] = s["name"]
+            # [13/11 אייל] מנהל נכנס בשם הגנרי 'מנהל' — שומרים את השם האמיתי לפי הטלפון
+            try:
+                rec["by"] = _display_name_for(s["name"], s.get("phone", "")) or s["name"]
+            except Exception:
+                rec["by"] = s["name"]
+            rec["by_phone"] = _last9(s.get("phone", "") or "")
             items.append(rec)
         _deals_save_all(items)
     _deals_notify(rec, is_new=(not existing), became_deal=(bool(existing) and (not _was_deal) and bool(rec.get("deal"))))
