@@ -218,7 +218,10 @@ def yad2_rows(deals, known):
         if not st or not d.get("price") or not d.get("saleDate"):
             continue
         fl = d.get("floor")
-        groups.setdefault(tx("neighborhood") or city or "יד2", []).append({
+        nbn = tx("neighborhood")
+        if nbn and city and city_key(city) not in city_key(nbn):
+            nbn = nbn + ", " + city   # כמו בקבצי מדלן ('נווה גנים, קרית מוצקין') — שם שכונה זהה בערים שונות
+        groups.setdefault(nbn or city or "יד2", []).append({
             "יום מכירה": d.get("saleDate"), "כתובת": ("%s %s" % (st, hn) if hn not in (None, "") else st) + (", " + city if city else ""),
             "מחיר (₪)": d.get("price"), "סוג נכס": d.get("propertyType") or "", "חדרים": d.get("rooms"),
             "שטח (מ״ר)": d.get("buildingMR"), "קומה": "" if fl is None else fl, "מחיר (₪) למ״ר": None,
@@ -454,7 +457,9 @@ def cma_compute(subject, deals, listings, today, city_wide=False):
         ck = city_key(subject.get("city") or "")
         nbrs = [r for r in ok if ck and r.get("city") and city_key(r["city"]) == ck and not _same_street(r, subject)]
     else:
-        nbrs = [r for r in ok if nb and r.get("nb") == nb and not _same_street(r, subject)]
+        ck = city_key(subject.get("city") or "")   # [13/11] אותו שם שכונה בעיר אחרת ('מרכז העיר') — לא מערבבים
+        nbrs = [r for r in ok if nb and r.get("nb") == nb and not _same_street(r, subject)
+                and (not ck or not r.get("city") or city_key(r["city"]) == ck)]
     h = subject.get("house")
     street.sort(key=lambda r: (abs(r["house"] - h) if (h is not None and r.get("house") is not None) else 9999,
                                -_dt.date.fromisoformat(r["deal_date"]).toordinal()))
