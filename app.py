@@ -9724,7 +9724,8 @@ def _office_drops_today():
         return c
     try:
         rows = [r for r in fetch_sheet_rows() if (r.get("סטטוס", "") or "").strip() in ("", "פעילה")]
-        n = drops_today_count(rows, _prop_price_key, _price_drop_ts_map(), _il_midnight_epoch())
+        # 15/11 (אייל): בריבוע 'הורדות מחיר · המשרד' — כל ההורדות של 7 הימים האחרונים (לא רק מחצות)
+        n = drops_today_count(rows, _prop_price_key, _price_drop_ts_map(), int(time.time()) - 7 * 86400)
     except Exception as e:
         log.warning(f"office drops today: {e}")
         return 0

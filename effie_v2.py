@@ -1765,8 +1765,8 @@ V2_HOME_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
     <div class="stats">
       <div class="stat" role="link" id="stLst" onclick="location.href='/v2/sigs?tab=excl'"><span id="stLstR"></span><div class="l">גיוס</div><div class="t" id="stLstT">&nbsp;</div></div>
       <div class="stat" role="link" id="stBuy" onclick="location.href='/v2/buyers?tab=active'"><span id="stBuyR"></span><div class="l">קונים</div><div class="t" id="stBuyT">&nbsp;</div></div>
-      <div class="stat" role="link" id="stNbd" onclick="location.href='/v2/newborn'"><span id="stNbdR"></span><div class="l">ירידות</div><div class="t">נכס נולד</div></div>
-      <div class="stat" role="link" id="stOfd" onclick="location.href='/v2/props?drops=today'"><span id="stOfdR"></span><div class="l">ירידות</div><div class="t">המשרד</div></div>
+      <div class="stat" role="link" id="stNbd" onclick="location.href='/v2/newborn'"><span id="stNbdR"></span><div class="l">הורדות מחיר</div><div class="t">נכס נולד</div></div>
+      <div class="stat" role="link" id="stOfd" onclick="location.href='/v2/props?drops=week'"><span id="stOfdR"></span><div class="l">הורדות מחיר</div><div class="t">המשרד</div></div>
     </div>
 
     <div class="briefBar" onclick="openStory(true)">
@@ -2305,8 +2305,8 @@ function homeTiles(){
   var nd = (M.dropsNb == null) ? '—' : M.dropsNb, od = (M.dropsOffice == null) ? '—' : M.dropsOffice;
   el('stNbdR').innerHTML = homeRingSvg(nd, null);
   el('stOfdR').innerHTML = homeRingSvg(od, null);
-  el('stNbd').setAttribute('aria-label', 'ירידות מחיר היום בנכס נולד: ' + nd);
-  el('stOfd').setAttribute('aria-label', 'ירידות מחיר היום בנכסי המשרד: ' + od);
+  el('stNbd').setAttribute('aria-label', 'הורדות מחיר היום בנכס נולד: ' + nd);
+  el('stOfd').setAttribute('aria-label', 'הורדות מחיר ב-7 הימים האחרונים בנכסי המשרד: ' + od);
   if (_tilesDirty){ try{ homeSnapSave(); }catch(e){} }
 }
 function renderDash(){
@@ -7540,10 +7540,10 @@ function fmtPrice(p){
 }
 
 var MODE = 'office', OFFICE = [], SHTAF = [], MINE = [], MINE_MULTI = false, SUM = {office:'', shtaf:''}, UPD = {office:'', shtaf:''};
-var DROPS_TODAY = /[?&]drops=today\b/.test(location.search);   // [HOME-TILES 08/11] ירידות מחיר היום בנכסי המשרד
+var DROPS_TODAY = /[?&]drops=(today|week)\b/.test(location.search);   // [HOME-TILES 08/11] ירידות מחיר היום בנכסי המשרד
 function dropsTodayOff(){ DROPS_TODAY = false; try{ history.replaceState(null, '', '/v2/props'); }catch(e){} render(); }
 function dropsTodayList(list){
-  var mid = new Date(); mid.setHours(0, 0, 0, 0); mid = mid.getTime() / 1000;
+  var mid = Date.now() / 1000 - 7 * 86400;   // 15/11 (אייל): כל ההורדות של 7 הימים האחרונים
   return (list || []).filter(function(p){ return !p.delisted && (p.priceDropAt || 0) >= mid; })
     .sort(function(a, b){ return (b.priceDropAt || 0) - (a.priceDropAt || 0); });
 }
@@ -8037,11 +8037,11 @@ function render(){
   if (src.length > 40) h += '<div class="more">מוצגים 40 מתוך ' + src.length + ' — חדד את החיפוש</div>';
   var _ob = orphanBanner(); if (_ob) h = _ob + h;   // 24/09: סימון נכס-חם יתום — באנר עם "הסר"
   if (_drops){
-    el('sumLine').textContent = 'ירידות מחיר היום · נכסי המשרד · ' + src.length;
+    el('sumLine').textContent = 'הורדות מחיר · 7 ימים · נכסי המשרד · ' + src.length;
     h = '<div class="card" style="display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:10px">' +
-      '<div style="flex:1;font-weight:800;color:#1E3A5F">ירידות מחיר היום · ' + src.length + '</div>' +
+      '<div style="flex:1;font-weight:800;color:#1E3A5F">הורדות מחיר · 7 ימים · ' + src.length + '</div>' +
       '<button onclick="dropsTodayOff()" style="min-height:44px;padding:0 14px;border-radius:12px;border:1.5px solid #E2DED3;background:#fff;font:inherit;font-weight:700;color:#1E3A5F;cursor:pointer">כל הנכסים</button></div>' +
-      (h || '<div class="card empty"><div class="t">אין ירידות מחיר היום בנכסי המשרד</div><div class="s">ירידות מחיר מתגלות בכל סריקה של יד2. הנכסים שירדו ב-7 הימים האחרונים מסומנים בתג בכרטיס.</div></div>');
+      (h || '<div class="card empty"><div class="t">אין הורדות מחיר ב-7 הימים האחרונים בנכסי המשרד</div><div class="s">הורדות מחיר מתגלות בכל סריקה של יד2.</div></div>');
   }
   el('list').innerHTML = h ||
     '<div class="card empty"><div class="ic"><svg width="28" height="28" viewBox="0 0 16 16"><path d="M2 8L8 3l6 5v5a.8.8 0 0 1-.8.8H9.8V10H6.2v3.8H2.8A.8.8 0 0 1 2 13z" fill="none" stroke="#C29435" stroke-width="1.4" stroke-linejoin="round"/></svg></div>' +

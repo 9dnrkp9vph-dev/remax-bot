@@ -33,7 +33,7 @@ for name, html in CONSTS.items():
 
 # 2) ארבעה ריבועים, הלחיצות, בלי 'שיחות השבוע'
 assert "שיחות השבוע" not in HOME and "stCalls" not in HOME
-for href in ("/v2/sigs?tab=excl", "/v2/buyers?tab=active", "/v2/newborn", "/v2/props?drops=today"):
+for href in ("/v2/sigs?tab=excl", "/v2/buyers?tab=active", "/v2/newborn", "/v2/props?drops=week"):
     assert "location.href='" + href + "'" in HOME, href
 assert "repeat(4,minmax(0,1fr))" in HOME and "aspect-ratio:1/1" in HOME
 
@@ -74,11 +74,12 @@ pr = CONSTS["V2_PROPS_HTML"]
 f2 = re.search(r"(function dropsTodayList\(list\)\{.*?\n\})\n", pr, re.S)
 assert f2
 js = """%s
-var mid = new Date(); mid.setHours(0,0,0,0); mid = mid.getTime()/1000;
-var r = dropsTodayList([{a:1, priceDropAt: mid+100}, {a:2, priceDropAt: mid-5}, {a:3, priceDropAt: mid+500},
-                        {a:4, priceDropAt: mid+50, delisted:'07/11'}, {a:5}]);
+var now = Date.now()/1000, d = 86400;   // 15/11 (אייל): 7 ימים אחורה, לא רק מחצות
+var r = dropsTodayList([{a:1, priceDropAt: now-2*d}, {a:2, priceDropAt: now-8*d}, {a:3, priceDropAt: now-60},
+                        {a:4, priceDropAt: now-d, delisted:'07/11'}, {a:5}, {a:6, priceDropAt: now-6.9*d}]);
 console.log(JSON.stringify(r.map(function(x){return x.a;})));""" % f2.group(1)
-assert json.loads(node_run(js)) == [3, 1]
+assert json.loads(node_run(js)) == [3, 1, 6]
+assert "הורדות מחיר" in HOME and ">ירידות<" not in HOME
 assert "if (DROPS_TODAY){ MODE = 'office'" in pr
 assert "tab=excl" in CONSTS["V2_SIGS_HTML"] and "tab=active" in CONSTS["V2_BUYERS_HTML"]
 print("ok")
