@@ -152,22 +152,53 @@ def mark_dup_projects(rows):
 NEAR_DUP_DAYS = 14          # אותה דירה, אותו מחיר/שטח/קומה, הפרש של עד שבועיים — אותה עסקה (נראה אצל הבוט: דולב 4, 6 ימים)
 
 
+_FLOOR_WORDS = {"קרקע": 0, "ראשונה": 1, "שניה": 2, "שנייה": 2, "שלישית": 3, "רביעית": 4, "חמישית": 5, "שישית": 6,
+                "שביעית": 7, "שמינית": 8, "תשיעית": 9, "עשירית": 10, "אחת עשרה": 11, "שתים עשרה": 12,
+                "שלוש עשרה": 13, "ארבע עשרה": 14, "חמש עשרה": 15}
+NEAR_DUP_SQM = 3            # [15/11] קובץ רחוב וקובץ שכונה של מדלן — אותה עסקה בהפרש מ"ר אחד
+
+
+def floor_num(f):
+    """'שישית' / '6' / 'קרקע וראשונה' → 6 / 6 / 0; לא ידוע → None."""
+    t = _norm(f)
+    if not t:
+        return None
+    m = re.match(r"^-?\d+", t)
+    if m:
+        return int(m.group(0))
+    for w in sorted(_FLOOR_WORDS, key=len, reverse=True):
+        if t.startswith(w):
+            return _FLOOR_WORDS[w]
+    return None
+
+
+def _same_unit(a, b):
+    fa, fb = floor_num(a.get("floor")), floor_num(b.get("floor"))
+    sa, sb = a.get("sqm"), b.get("sqm")
+    if fa is not None and fb is not None:
+        if fa != fb:
+            return False
+        return sa is None or sb is None or abs(float(sa) - float(sb)) <= NEAR_DUP_SQM
+    return sa is not None and sb is not None and float(sa) == float(sb)   # קומה חסרה — רק שטח זהה
+
+
 def mark_near_dups(rows):
-    """אותה עסקה פעמיים בתאריכים קרובים (אותו רחוב, בית, מחיר, שטח וקומה) — המוקדמת נשארת, השאר bad='dup'."""
+    """אותה עסקה פעמיים (אותו רחוב, בית ומחיר, תאריך עד NEAR_DUP_DAYS, אותה קומה — 'שישית' = '6', שטח עד 3 מ"ר)
+    — נשארת המוקדמת (ובאותו יום — זו עם יותר פרטים), השאר bad='dup'."""
     groups = {}
     for r in rows:
         if r.get("bad") or not r.get("street") or r.get("house") is None or not r.get("price") or not r.get("deal_date"):
             continue
-        groups.setdefault((r["street"], r["house"], r["price"], r.get("sqm"), str(r.get("floor") or "")), []).append(r)
+        groups.setdefault((r["street"], r["house"], r["price"]), []).append(r)
     for g in groups.values():
-        g.sort(key=lambda r: r["deal_date"])
-        last = None
+        g.sort(key=lambda r: (r["deal_date"], 0 if r.get("year_built") else 1, 0 if r.get("ptype") else 1))
+        kept = []
         for r in g:
             d = _dt.date.fromisoformat(r["deal_date"])
-            if last is not None and (d - last).days <= NEAR_DUP_DAYS:
+            if any((d - _dt.date.fromisoformat(k["deal_date"])).days <= NEAR_DUP_DAYS and _same_unit(k, r) for k in kept):
                 r["bad"] = "dup"
                 continue
-            last = d
+            kept.append(r)
     return rows
 
 

@@ -65,3 +65,24 @@ def test_city_from_request_when_missing():
                               "type": "דירה בבית קומות", "rooms": "4", "sqm": "123.65", "floor": "קומה 4"}],
                             "עפרה חזה 11, קרית מוצקין", set(), [])
     assert st["n"] == 1 and rows[0]["city"] == "קרית מוצקין" and cma.ptype_key(rows[0]["ptype"]) == "דירה"
+
+
+def test_floor_words():
+    assert cma.floor_num("שישית") == 6 and cma.floor_num("6") == 6 and cma.floor_num("קרקע וראשונה") == 0
+    assert cma.floor_num("שתים עשרה") == 12 and cma.floor_num("") is None
+
+
+def test_madlan_street_and_nb_files_same_deal():
+    """[15/11] מנחם בגין 18: קובץ רחוב ('שישית', בלי שנת בנייה) וקובץ שכונה ('6', 1993) — עסקה אחת."""
+    a = {"street": "מנחם בגין", "house": 18, "price": 1660000, "sqm": 100, "floor": "שישית", "deal_date": "2026-01-26", "bad": ""}
+    b = dict(a, floor="6", year_built=1993, ptype="דירה")
+    c = {"street": "מנחם בגין", "house": 18, "price": 1450000, "sqm": 99, "floor": "5", "deal_date": "2025-11-04", "bad": "", "year_built": 1993}
+    d = dict(c, sqm=100, floor="חמישית", year_built=None)
+    out = cma.mark_near_dups([a, b, c, d])
+    assert [r["bad"] for r in out] == ["dup", "", "", "dup"]
+
+
+def test_different_floor_not_dup():
+    a = {"street": "עפרה חזה", "house": 3, "price": 990000, "sqm": 109, "floor": "2", "deal_date": "2016-08-15", "bad": ""}
+    out = cma.mark_near_dups([a, dict(a, floor="3"), dict(a, floor="", sqm=111)])
+    assert all(r["bad"] == "" for r in out)
