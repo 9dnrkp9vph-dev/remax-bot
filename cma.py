@@ -753,7 +753,48 @@ def strip_addresses(res):
     out["listings"] = [dict({k: v for k, v in x.items() if k not in ("street", "house")},
                             same_street=bool(x.get("street")) and x.get("street") == subj.get("street"))
                        for x in res.get("listings") or []]
+    # [15/11] לסוכן בלבד, עד שהוא בוחר מה נכנס לתיק — הכתובת של כל מודעה מתחרה. נמחק בבחירה (apply_pick)
+    out["_lst_addr"] = [("%s %s" % (x.get("street") or "", x.get("house") if x.get("house") is not None else "")).strip()
+                        for x in res.get("listings") or []]
     return out
+
+
+PICK_MAX_COMPS = MAX_COMPS   # [15/11] כמה עסקאות הסוכן יכול להכניס לתיק (עמוד העסקאות מכיל 7)
+PICK_MAX_LISTINGS = 3        # מתחרות — כמה שנכנסות בעמוד
+
+
+def apply_pick(c, comp_idx, list_idx):
+    """[15/11] אייל: הסוכן בוחר אילו עסקאות ומודעות מתחרות נכנסות לתיק, והטווח מחושב מחדש רק מהעסקאות שבחר
+    (גם עסקה שאפי סימנה כחריגה). מחזיר (cma חדש, '') או (None, סיבה): few / many / many_listings."""
+    rows = [dict(x) for x in (c or {}).get("comps") or []]
+    lst = list((c or {}).get("listings") or [])
+    ci = sorted({int(i) for i in comp_idx or [] if 0 <= int(i) < len(rows)})
+    li = sorted({int(i) for i in list_idx or [] if 0 <= int(i) < len(lst)})
+    if len(ci) > PICK_MAX_COMPS:
+        return None, "many"
+    if len(li) > PICK_MAX_LISTINGS:
+        return None, "many_listings"
+    sqm = ((c or {}).get("subject") or {}).get("sqm")
+    basis = "sqm" if (c.get("basis") == "sqm" and sqm) else "price"
+    for i, r in enumerate(rows):
+        r["used"] = i in ci
+        r["extra"] = False
+    chosen = [rows[i] for i in ci]
+    vals = [r.get("ppm") if basis == "sqm" else r.get("price") for r in chosen]
+    vals = [float(v) for v in vals if v]
+    if len(vals) < MIN_COMPS:
+        return None, "few"
+    q1, q3 = _quart(vals)
+    out = {k: v for k, v in c.items() if k != "_lst_addr"}
+    if basis == "sqm":
+        out.update(range=[_round10k(q1 * float(sqm)), _round10k(q3 * float(sqm))], ppm_range=[int(round(q1)), int(round(q3))])
+    else:
+        out.update(range=[_round10k(q1), _round10k(q3)], ppm_range=[])
+    # סדר העמוד: לפי הקרבה לבית (הסדר של אפי), הנבחרות קודם
+    out["comps"] = [r for r in rows if r["used"]] + [r for r in rows if not r["used"]]
+    out["listings"] = [lst[i] for i in li]
+    out.update(basis=basis, n_used=len(chosen), competing=len(li), picked=True)
+    return out, ""
 
 
 def cma_block(G, listing):
@@ -932,10 +973,21 @@ input,select{width:100%;min-height:44px;border:1.5px solid var(--line);border-ra
 .ours{background:#FBF4E2;color:var(--goldtxt)}.why{background:#F1F1F1;color:var(--mut2)}
 .empty{text-align:center;padding:26px 10px}.dot{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold2));margin:0 auto 10px;display:grid;place-items:center;color:#231700;font-size:24px;font-weight:800}
 .h{font-size:14px;font-weight:800;color:var(--navy);margin-bottom:4px}
+.lst{border:1.5px solid var(--gold2)}.lst .ad{font-size:18px;font-weight:800;color:var(--navy);margin-top:2px}
+.lst .pr{font-size:24px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums;margin-top:4px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.tag{font-size:13px;font-weight:700;background:#F7F5EE;color:var(--navy);border-radius:10px;padding:5px 10px}
+.pk{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #F1EDE3;cursor:pointer;min-height:44px}
+.pk:last-child{border:0}.pk .bx{width:26px;height:26px;border-radius:8px;border:2px solid #C9CFD8;flex-shrink:0;display:grid;place-items:center;margin-top:1px;background:#fff}
+.pk.on .bx{background:var(--blue);border-color:var(--blue)}.pk .tx{flex:1;min-width:0;font-size:13.5px}
+.pk .tx .m{font-size:12px;color:var(--mut2);margin-top:2px}.pk b{font-variant-numeric:tabular-nums;font-size:14px}
+.pk:not(.on) .tx,.pk:not(.on) b{color:#8A909B}
+.bar{position:sticky;bottom:0;background:var(--cream);padding:10px 0 calc(env(safe-area-inset-bottom,0px) + 12px)}
+.bar .go{margin-top:0}.bar .go:disabled{opacity:.5}.bar .lbl{text-align:center;margin-top:6px;min-height:16px}
 </style></head><body>
 <div class="hero"><div class="top"><a class="back" href="/v2/home" aria-label="חזרה">&#8250;</a>
 <div><h1>ניתוח שוק</h1><div class="sub">טווח מחיר מעסקאות אמיתיות ב-3 השנים האחרונות</div></div></div></div>
 <div class="wrap">
+<div id="lst"></div>
 <div class="card" id="form">
  <div class="f"><div><label for="st">רחוב</label><input id="st" autocomplete="off"></div>
   <div><label for="hs">מספר בית</label><input id="hs" inputmode="numeric"></div></div>
@@ -996,11 +1048,117 @@ function run(){
   }).then(function(j){ if (j){ el('res').innerHTML = cmaResult(j) + (j.bot ? botCard() : ''); if (j.bot) botShow(); } })
     .catch(function(){ el('res').innerHTML = '<div class="card lbl">שגיאת רשת — נסה שוב</div>'; });
 }
-// מתיק פרזנטציה: /v2/cma?street=&house=&city=&rooms=&sqm=&ptype= — ממלא ומחשב
+// [15/11] פרטי המודעה בראש המסך — מול העיניים להשוואה
+function lstCard(L){
+  if (!L || !L.address) return '';
+  var pr = parseInt(String(L.price || '').replace(/\D/g, ''), 10) || 0, sq = parseInt(L.sqm, 10) || 0;
+  var tags = [L.rooms ? cmaEsc(L.rooms) + ' חדרים' : '', sq ? sq + ' מ"ר' : '', L.ptype ? cmaEsc(L.ptype) : '',
+              pr && sq ? cmaFmt(pr / sq) + ' ₪ למ"ר' : ''].filter(Boolean);
+  return '<div class="card lst"><div class="kick">המודעה' + (L.owner ? ' · ' + cmaEsc(L.owner) : '') + '</div>' +
+    '<div class="ad">' + cmaEsc(L.address) + (L.city ? ', ' + cmaEsc(L.city) : '') + '</div>' +
+    (pr ? '<div class="pr">' + cmaFmt(pr) + ' ₪</div>' : '<div class="lbl">אין מחיר מבוקש</div>') +
+    (tags.length ? '<div class="tags">' + tags.map(function(t){ return '<span class="tag">' + t + '</span>'; }).join('') + '</div>' : '') + '</div>';
+}
+// ── [15/11] תיק פרזנטציה: הסוכן בוחר עסקאות ומתחרות, ואז מפיק (בלי אישור של אייל) ──
+var PK = null;
+function pkQ(v, p){ var n = v.length, pos = (n - 1) * p, lo = Math.floor(pos); return lo + 1 < n ? v[lo] + (v[lo + 1] - v[lo]) * (pos - lo) : v[lo]; }
+function pkRange(){
+  var m = PK.cma, sq = Number((m.subject || {}).sqm) || 0, bySqm = m.basis === 'sqm' && sq;
+  var v = PK.comps.map(function(i){ var c = m.comps[i]; return Number(bySqm ? c.ppm : c.price) || 0; })
+    .filter(function(x){ return x > 0; }).sort(function(a, b){ return a - b; });
+  if (v.length < PK.min) return null;
+  var q1 = pkQ(v, .25), q3 = pkQ(v, .75), r = function(x){ return Math.round(x / 10000) * 10000; };
+  return bySqm ? [r(q1 * sq), r(q3 * sq), Math.round(q1), Math.round(q3)] : [r(q1), r(q3)];
+}
+function pkRow(on, onclick, addr, chips, meta, price){
+  return '<div class="pk' + (on ? ' on' : '') + '" role="checkbox" aria-checked="' + on + '" tabindex="0" onclick="' + onclick + '">' +
+    '<span class="bx">' + (on ? '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 7.5l2.6 2.5L11 4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '') + '</span>' +
+    '<span class="tx">' + addr + chips + '<div class="m">' + meta + '</div></span><b>' + price + '</b></div>';
+}
+function pkRender(){
+  var m = PK.cma, h = lstCard(PK.listing);
+  if (!m){
+    h += '<div class="card empty"><div class="dot">?</div><div class="h">אין מספיק עסקאות לניתוח שוק</div>' +
+      '<div class="lbl">התיק ייצא בלי עמודי ניתוח השוק.</div></div>';
+  } else {
+    var rg = pkRange();
+    h += (m.fallback_text ? '<div class="card lbl" style="border:1.5px solid var(--gold2)"><b style="color:var(--goldtxt)">חישוב מורחב: </b>' + cmaEsc(m.fallback_text) + '</div>' : '') +
+      '<div class="rng"><div class="lbl" style="color:#231700">טווח מומלץ לפי מה שבחרת</div><div class="big">' +
+      (rg ? cmaFmt(rg[0]) + ' – ' + cmaFmt(rg[1]) + ' ₪' : '—') + '</div><div class="lbl" style="color:#231700">' +
+      (rg ? (rg.length > 2 ? cmaFmt(rg[2]) + '–' + cmaFmt(rg[3]) + ' ₪ למ"ר · ' : '') + 'מבוסס על ' + PK.comps.length + ' עסקאות'
+          : 'צריך לפחות ' + PK.min + ' עסקאות' + (m.basis === 'sqm' ? ' עם שטח' : '')) + '</div></div>';
+    h += '<div class="card"><div class="h">נמכרו — מה נכנס לתיק</div><div class="lbl" style="margin-bottom:4px">עד ' + PK.maxC +
+      ' עסקאות. בעל הנכס רואה אותן ברשימה, והטווח מחושב רק מהן.</div>' + (m.comps || []).map(function(c, i){
+        var on = PK.comps.indexOf(i) >= 0;
+        var meta = [cmaDate(c.date), c.rooms != null ? cmaEsc(c.rooms) + ' חד׳' : '', c.sqm ? cmaEsc(c.sqm) + ' מ"ר' : '',
+                    c.floor !== '' && c.floor != null ? 'קומה ' + cmaEsc(c.floor) : '', c.ppm ? cmaFmt(c.ppm) + ' ₪ למ"ר' : ''].filter(Boolean).join(' · ');
+        return pkRow(on, 'pkC(' + i + ')', cmaEsc(c.street) + (c.house != null ? ' ' + cmaEsc(c.house) : ''),
+          (c.ours ? '<span class="chip ours">עסקה שלנו</span>' : '') + (c.reason ? '<span class="chip why">' + cmaEsc(c.reason) + '</span>' : ''),
+          meta, cmaFmt(c.price));
+      }).join('') + '</div>';
+    if ((m.listings || []).length) h += '<div class="card"><div class="h">מתחרות בך — מה נכנס לתיק</div><div class="lbl" style="margin-bottom:4px">עד ' +
+      PK.maxL + '. בעל הנכס רואה אותן בלי מספר בית.</div>' + m.listings.map(function(x, i){
+        return pkRow(PK.lst.indexOf(i) >= 0, 'pkL(' + i + ')', cmaEsc(x.addr || x.street || 'ברחוב') + (x.source ? ' · ' + cmaEsc(x.source) : ''), '',
+          [x.rooms != null ? cmaEsc(x.rooms) + ' חד׳' : '', x.sqm ? cmaEsc(x.sqm) + ' מ"ר' : ''].filter(Boolean).join(' · '), cmaFmt(x.price));
+      }).join('') + '</div>';
+  }
+  var ok = !m || !!pkRange();
+  h += '<div class="bar"><button class="go" id="pkGo" onclick="pkGo()"' + (ok ? '' : ' disabled') + '>הפק את התיק' +
+    (m ? ' · ' + PK.comps.length + ' עסקאות · ' + PK.lst.length + ' מתחרות' : '') + '</button><div class="lbl" id="pkMsg">' + cmaEsc(PK.msg || '') + '</div></div>';
+  el('res').innerHTML = h;
+}
+function pkC(i){
+  var k = PK.comps.indexOf(i);
+  if (k >= 0) PK.comps.splice(k, 1);
+  else if (PK.comps.length >= PK.maxC){ PK.msg = 'אפשר עד ' + PK.maxC + ' עסקאות — הורד אחת קודם'; pkRender(); return; }
+  else PK.comps.push(i);
+  PK.msg = ''; pkRender();
+}
+function pkL(i){
+  var k = PK.lst.indexOf(i);
+  if (k >= 0) PK.lst.splice(k, 1);
+  else if (PK.lst.length >= PK.maxL){ PK.msg = 'אפשר עד ' + PK.maxL + ' מתחרות — הורד אחת קודם'; pkRender(); return; }
+  else PK.lst.push(i);
+  PK.msg = ''; pkRender();
+}
+var PK_ERR = {few: 'צריך לפחות 4 עסקאות', many: 'יותר מדי עסקאות', many_listings: 'יותר מדי מתחרות',
+  status: 'התיק כבר הופק או פג תוקפו', preparing: 'התיק עוד בהכנה', not_found: 'התיק לא נמצא'};
+function pkGo(){
+  var b = el('pkGo'); b.disabled = true; b.textContent = 'מפיק את התיק…';
+  fetch('/v2/api/kit/pick', {method: 'POST', headers: {'X-Auth-Token': TOK, 'Content-Type': 'application/json'},
+    body: JSON.stringify({id: PK.id, comps: PK.comps, listings: PK.lst})}).then(function(r){ return r.json(); }).then(function(j){
+      if (j && j.ok){ location.replace('/v2/kits?open=' + encodeURIComponent(PK.id)); return; }
+      PK.msg = PK_ERR[j && j.reason] || 'לא נשמר — נסה שוב'; pkRender();
+    }).catch(function(){ PK.msg = 'שגיאת רשת — נסה שוב'; pkRender(); });
+}
+function pkLoad(id){
+  el('form').style.display = 'none';
+  document.querySelector('.back').setAttribute('href', '/v2/kits');
+  document.querySelector('h1').textContent = 'עסקאות לתיק';
+  document.querySelector('.hero .sub').textContent = 'בחר מה בעל הנכס יראה בתיק, ואז הפק';
+  el('res').innerHTML = '<div class="card lbl">טוען…</div>';
+  fetch('/v2/api/kit/pick?id=' + encodeURIComponent(id), {headers: {'X-Auth-Token': TOK}}).then(function(r){
+    if (r.status === 401){ location.replace('/v2'); return null; } return r.json();
+  }).then(function(j){
+    if (!j) return;
+    if (!j.ok){ el('res').innerHTML = '<div class="card empty"><div class="dot">!</div><div class="h">' + cmaEsc(PK_ERR[j.reason] || 'לא הצלחנו לטעון') +
+      '</div><button class="sec" onclick="location.href=\'/v2/kits\'">לתיקים</button></div>'; return; }
+    var m = j.cma;
+    PK = {id: j.id, listing: j.listing, cma: m, maxC: j.max_comps || 7, maxL: j.max_listings || 3, min: j.min_comps || 4, msg: '',
+      comps: m ? (m.comps || []).map(function(c, i){ return c.used ? i : -1; }).filter(function(i){ return i >= 0; }).slice(0, j.max_comps || 7) : [],
+      lst: m ? (m.listings || []).map(function(x, i){ return x.price ? i : -1; }).filter(function(i){ return i >= 0; }).slice(0, j.max_listings || 3) : []};
+    pkRender();
+  }).catch(function(){ el('res').innerHTML = '<div class="card lbl">שגיאת רשת — נסה שוב</div>'; });
+}
+// מתיק פרזנטציה: /v2/cma?street=&house=&city=&rooms=&sqm=&ptype=&price= — ממלא ומחשב; /v2/cma?kit=<id> — בחירה לתיק
 (function(){
   try{
-    var q = new URLSearchParams(location.search), map = {street: 'st', house: 'hs', city: 'ct', rooms: 'rm', sqm: 'sq', ptype: 'pt'}, any = false;
+    var q = new URLSearchParams(location.search);
+    if (q.get('kit')){ pkLoad(q.get('kit')); return; }
+    var map = {street: 'st', house: 'hs', city: 'ct', rooms: 'rm', sqm: 'sq', ptype: 'pt'}, any = false;
     Object.keys(map).forEach(function(k){ var v = q.get(k); if (v){ el(map[k]).value = v; any = true; } });
+    if (q.get('street')) el('lst').innerHTML = lstCard({address: (q.get('street') + ' ' + (q.get('house') || '')).trim(), city: q.get('city'),
+      rooms: q.get('rooms'), sqm: q.get('sqm'), ptype: q.get('ptype'), price: q.get('price')});
     if (any && q.get('street')) setTimeout(run, 0);
   }catch(e){}
 })();

@@ -6464,7 +6464,7 @@ function kitFromNb(i){
   kitFromNb._busy = true;
   POST('/v2/api/kit/create', {source: 'nb', key: r.key}).then(function(j){
     kitFromNb._busy = false;
-    if (j && j.ok){ toast('התיק נשלח לבדיקה'); return; }
+    if (j && j.ok){ toast('מכינים את התיק — תקבל הודעה לבחור עסקאות'); return; }
     var why = j && j.reason;
     toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
       : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה'
@@ -11720,7 +11720,7 @@ function kitFromMeet(i){   // [KIT 09/11] תיק פרזנטציה מהפגישה
   kitFromMeet._busy = true;
   POST('/v2/api/kit/create', {source: 'meet', skey: m.skey || ''}).then(function(j){
     kitFromMeet._busy = false;
-    if (j && j.ok){ toast('התיק נשלח לבדיקה'); return; }
+    if (j && j.ok){ toast('מכינים את התיק — תקבל הודעה לבחור עסקאות'); return; }
     var why = j && j.reason;
     toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
       : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה'
@@ -11871,7 +11871,7 @@ V2_KITS_HTML = r"""<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset=
       <h1>תיקי פרזנטציה</h1>
       <div class="cnt" id="cnt">—</div>
     </div>
-    <div class="sub">תיק אישי לבעל הנכס לפני פגישת הגיוס. כל תיק עובר אישור, ואחריו אפשר לשלוח אותו לבעל הנכס בוואטסאפ.</div>
+    <div class="sub">תיק אישי לבעל הנכס לפני פגישת הגיוס. כשהתיק נבנה, בוחרים אילו עסקאות ומודעות מתחרות ייכנסו אליו, ואז שולחים לבעל הנכס בוואטסאפ.</div>
     <div class="segs" id="scope" style="display:none">
       <div class="sg on" data-s="mine" onclick="setScope(this)">שלי</div>
       <div class="sg" data-s="all" onclick="setScope(this)">כל המשרד</div>
@@ -11927,7 +11927,7 @@ function kitPad(x){ return ('0' + x).slice(-2); }
 /* צ'יפ המצב — רק צבעי הפלטה: זהב-טקסט · כחול · ירוק · אפור; 'נדחה' נייבי על לבן עם מסגרת (אדום שמור למחיקה) */
 function kitStatusChip(k){
   var st = (k && k.status) || '';
-  if (st === 'pending') return '<span class="kchip" style="background:#F6EEDB;color:#7A5E1C">בהכנה</span>';
+  if (st === 'pending') return '<span class="kchip" style="background:#F6EEDB;color:#7A5E1C">' + (k.pick_url ? 'לבחירת עסקאות' : 'בהכנה') + '</span>';
   if (st === 'approved') return '<span class="kchip" style="background:#EAF0FA;color:#2E6BD6">מוכן לשליחה</span>';
   if (st === 'sent') return '<span class="kchip" style="background:#E7F7EE;color:#157A43">נשלח</span>';
   if (st === 'expired') return '<span class="kchip" style="background:#F0EDE3;color:#6B7280">פג תוקף</span>';
@@ -11981,11 +11981,11 @@ function kitCard(k, i){
     kitStatusChip(k) + '</div>' +
     (showViews ? '<div class="vw"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="#5B6472" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="none" stroke="#5B6472" stroke-width="1.4"/></svg>' +
       esc(kitViews(k.views)) + '</div>' : '') +
-    (k.status === 'pending' ? '<div class="sb">' + (k.preparing ? 'מכינים את התיק וניתוח השוק — יישלח לאישור כשמוכן' : 'ממתין לאישור — תקבל כאן כפתור שליחה ברגע שיאושר') + '</div>' : '') +
-    (k.review_url ? '<button class="kbtn pri" onclick="location.href=\'' + esc(k.review_url) + '\'">לצפייה ולאישור</button>' : '') +
+    (k.status === 'pending' ? '<div class="sb">' + (k.preparing ? 'מכינים את התיק וניתוח השוק — תקבל הודעה כשאפשר לבחור עסקאות' : 'בחר אילו עסקאות ומודעות מתחרות ייכנסו לתיק, ואז הוא מוכן לשליחה') + '</div>' : '') +
+    (k.pick_url ? '<button class="kbtn pri" onclick="location.href=\'' + esc(k.pick_url) + '\'">בחר עסקאות והפק תיק</button>' : '') +
     kitSendBtn(k, i) +
     (k.status === 'rejected' || k.status === 'expired'
-      ? '<button class="kbtn sec" onclick="kitResend(' + i + ')">שלח שוב לאישור</button>' : '') +
+      ? '<button class="kbtn sec" onclick="kitResend(' + i + ')">הכן את התיק מחדש</button>' : '') +
     (k.cma_q ? '<button class="kbtn sec" onclick="location.href=\'/v2/cma?' + esc(k.cma_q) + '\'">ניתוח שוק</button>' : '') +
     '</div>';
 }
@@ -12038,7 +12038,7 @@ function kitSend(i){
 function kitResend(i){
   var k = KITS[i]; if (!k) return;
   POST('/v2/api/kit/resend', {id: k.id}).then(function(j){
-    if (j && j.ok){ toast('התיק נשלח לבדיקה'); load(); return; }
+    if (j && j.ok){ toast('מכינים את התיק — תקבל הודעה לבחור עסקאות'); load(); return; }
     if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); load(); return; }
     toast(j && j.reason === 'status' ? 'התיק כבר לא במצב הזה' : 'לא הצלחנו לשלוח שוב');
   }).catch(function(){ toast('שגיאה'); });
@@ -12059,7 +12059,7 @@ function kitManual(){
       AGENTS.map(function(a){ return '<option value="' + esc(a) + '">' + esc(a) + '</option>'; }).join('') +
       '</select><div class="ferr" id="kmAgentErr"></div></label>' : '';
   openSheet('<h3>תיק חדש (ידני)</h3>' +
-    '<div class="sub">התיק נשלח לאישור לפני שאפשר לשלוח אותו לבעל הנכס.</div>' + ag +
+    '<div class="sub">אחרי שהתיק נבנה תבחר אילו עסקאות ייכנסו אליו, ואז אפשר לשלוח לבעל הנכס.</div>' + ag +
     kmFld('kmOwner', 'שם בעל הנכס', 'autocomplete="off"') +
     kmFld('kmPhone', 'טלפון בעל הנכס', 'type="tel" inputmode="tel" dir="ltr" style="text-align:right"') +
     kmFld('kmStreet', 'רחוב ומספר', 'autocomplete="off"') +
@@ -12071,7 +12071,7 @@ function kitManual(){
       ['דירה', 'דירת גן', 'פנטהאוז', "קוטג'", 'דו משפחתי'].map(function(t){ return '<option>' + esc(t) + '</option>'; }).join('') +
       '</select></label></div>' +
     '<div class="row2">' + kmFld('kmDate', 'מועד הפגישה', 'type="date"', true) + kmFld('kmTime', 'שעה', 'type="time"', true) + '</div>' +
-    '<button class="kbtn pri" id="kmGo" onclick="kitManualGo()">שלח לאישור</button>' +
+    '<button class="kbtn pri" id="kmGo" onclick="kitManualGo()">הכן תיק</button>' +
     '<button class="kbtn sec" onclick="closeSheet()">ביטול</button>');
 }
 function kmClear(){
@@ -12100,12 +12100,12 @@ function kitManualGo(){
   if (miss){ kmShowErr(miss); return; }
   var b = el('kmGo'); b.disabled = true; b.textContent = 'שולח…';
   POST('/v2/api/kit/create', d).then(function(j){
-    b.disabled = false; b.textContent = 'שלח לאישור';
-    if (j && j.ok){ closeSheet(); toast('התיק נשלח לבדיקה'); load(); return; }
+    b.disabled = false; b.textContent = 'הכן תיק';
+    if (j && j.ok){ closeSheet(); toast('מכינים את התיק — תקבל הודעה לבחור עסקאות'); load(); return; }
     if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); return; }
     if (j && j.reason === 'exists'){ toast('לנכס הזה כבר יש תיק של ' + (j.by || 'סוכן אחר')); return; }
     if (!kmShowErr(j && j.reason)) toast('לא הצלחנו להכין את התיק');
-  }).catch(function(){ b.disabled = false; b.textContent = 'שלח לאישור'; toast('שגיאת רשת'); });
+  }).catch(function(){ b.disabled = false; b.textContent = 'הכן תיק'; toast('שגיאת רשת'); });
 }
 
 (function(){

@@ -30,7 +30,8 @@ NB = {"מזהה": "77", "שם בעל הנכס": "משה כהן", "טלפון ב�
 CFG = {"v2_office": {"name": "רימקס פמילי"}}
 SESS, REV, SNAPS = {"t": None}, [], []
 sb = SBK()
-G = {"_web_auth": lambda: SESS["t"], "_sbdb": sb, "_load_config": lambda: CFG, "_config_mutate": lambda fn: (True, fn(CFG)),
+G = {"_quiet_hours": lambda: False, "_shabbat_quiet_now": lambda: False, "send_text": lambda to, t: True,
+     "_web_auth": lambda: SESS["t"], "_sbdb": sb, "_load_config": lambda: CFG, "_config_mutate": lambda fn: (True, fn(CFG)),
      "fetch_newborn": lambda: [NB], "_nb_key": lambda r: "id:" + str(r.get("מזהה")),
      "_log_activity": lambda *a: None, "_display_name_for": lambda nm, p: nm, "_phones_for_name": lambda nm: [],
      "_is_dev": lambda p: str(p)[-9:] == "505709865", "_last9": lambda p: "".join(c for c in str(p) if c.isdigit())[-9:],
@@ -50,12 +51,12 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _patched():
-    saved = (KC.build_snapshot, K.send_review, K._spawn)
+    saved = (KC.build_snapshot, K.notify_pick, K._spawn)
     KC.build_snapshot = fake_snap
-    K.send_review = lambda G_, rec, base: (REV.append(rec["id"]), True)[1]
+    K.notify_pick = lambda G_, rec, base: (REV.append(rec["id"]), True)[1]
     K._spawn = lambda fn: fn()
     yield
-    KC.build_snapshot, K.send_review, K._spawn = saved
+    KC.build_snapshot, K.notify_pick, K._spawn = saved
 
 
 app = Flask(__name__); K.register(app, G); c = app.test_client()
@@ -101,13 +102,14 @@ def test_timeout_releases_without_cma():
     j = c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json
     assert REV == []
     for r in sb.kits: r["snapshot"]["_cma_wait"]["since"] -= 10000
-    assert G["_kit_cma_release"](older=K.CMA_WAIT_SEC) == 1 and REV == [j["id"]]
+    assert G["_kit_cma_release"](older=K.CMA_WAIT_SEC) == 1 and REV == []   # [15/11] בלי ניתוח שוק — מוכן מיד
+    assert sb.kit_get(j["id"])["status"] == "approved"
 
 
 def test_answered_request_does_not_wait():
     _reset(); SESS["t"] = AG; _bot_pending("cma-c"); CFG[cma_bot.CFG] = [{"request_id": "cma-c"}]
     j = c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json
-    assert REV == [j["id"]]
+    assert REV == [] and sb.kit_get(j["id"])["status"] == "approved"
 
 
 def test_one_kit_per_property_owner_exempt():

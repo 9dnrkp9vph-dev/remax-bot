@@ -65,19 +65,20 @@ def fake_snap(G_, src):
     st["src"].append(dict(src))
     return {"owner": src.get("owner"), "owner_first": (src.get("owner") or "").split(" ")[0],
             "street": KC.street_only(src.get("street")), "city": src.get("city"), "agent": {"name": src.get("agent_name")},
-            "office": {"office": "רימקס פמילי"}, "meet_at": src.get("meet_at") or ""}
+            "office": {"office": "רימקס פמילי"}, "meet_at": src.get("meet_at") or "",
+            "cma": {"range": [1, 2], "comps": []}}   # [15/11] עם ניתוח שוק — התיק מחכה לבחירת עסקאות
 
 @contextlib.contextmanager
 def patched():
-    """מחליף את build_snapshot / send_review / _spawn רק בתוך בדיקה — סדר הייבוא של pytest לא משנה."""
-    saved = (KC.build_snapshot, K.send_review, K._spawn)
+    """מחליף את build_snapshot / notify_pick / _spawn רק בתוך בדיקה — סדר הייבוא של pytest לא משנה."""
+    saved = (KC.build_snapshot, K.notify_pick, K._spawn)
     KC.build_snapshot = fake_snap
-    K.send_review = lambda G_, rec, base: (st["reviews"].append(rec["id"]), True)[1]
+    K.notify_pick = lambda G_, rec, base: (st["reviews"].append(rec["id"]), True)[1]
     K._spawn = lambda fn: fn()
     try:
         yield
     finally:
-        KC.build_snapshot, K.send_review, K._spawn = saved
+        KC.build_snapshot, K.notify_pick, K._spawn = saved
 
 
 k1 = k2 = k3 = k4 = MAN = None
@@ -131,7 +132,7 @@ def test_create_nb():
         s0 = st["src"][-1]
         ck(s0["sqm"] == "110" and s0["ptype"] == "דירה" and s0["listing_key"] == "id:77" and s0["street"] == "הנוטר 12"
            and s0["rooms"] == "4" and s0["price"] == "1890000" and s0["meet_at"] == "2026-11-11T17:00", s0)
-        ck(len(st["acts"]) == 1 and st["acts"][0][3] == "תיק פרזנטציה — נשלח לבדיקה" and st["acts"][0][4] == "משה כהן · הנוטר", st["acts"])
+        ck(len(st["acts"]) == 1 and st["acts"][0][3] == "תיק פרזנטציה — בהכנה" and st["acts"][0][4] == "משה כהן · הנוטר", st["acts"])
 
         # nb missing owner / phone / key
         NB2 = dict(NB, **{"מזהה": "78", "שם בעל הנכס": ""}); NB3 = dict(NB, **{"מזהה": "79", "טלפון בעל הנכס-": "05"})
@@ -205,7 +206,7 @@ def test_mine():
         ck(j["ok"] and "k1" in ids and "k3" not in ids, ids)
         m1 = next(x for x in j["kits"] if x["id"] == "k1")
         ck(m1["status"] == "pending" and "wa" not in m1 and "url" not in m1 and "text" not in m1, m1)
-        ck("review_url" not in m1, "agent has no review link")
+        ck(m1.get("pick_url") == "/v2/cma?kit=k1" and "review_url" not in m1, "agent picks (15/11)")
         ck(m1["owner"] == "משה כהן" and m1["street"] == "הנוטר" and set(m1["views"]) == {"opens", "secs", "last"}, m1)
         ck("544448065" not in str(m1), m1)
         sb.kit_update("k1", {"status": "approved"})
@@ -222,8 +223,8 @@ def test_mine():
         ids = [x["id"] for x in c.get("/v2/api/kit/mine?all=1").json["kits"]]
         ck("k1" in ids and "k3" in ids, ids)
         pend = [x for x in c.get("/v2/api/kit/mine?all=1").json["kits"] if x["status"] == "pending"]
-        ck(pend and all(x.get("review_url", "").startswith("/v2/kit/review/") for x in pend), pend)
-        ck(all("review_url" not in x for x in c.get("/v2/api/kit/mine?all=1").json["kits"] if x["status"] != "pending"), "only pending")
+        ck(pend and all(x.get("pick_url", "").startswith("/v2/cma?kit=") for x in pend), pend)
+        ck(all("pick_url" not in x for x in c.get("/v2/api/kit/mine?all=1").json["kits"] if x["status"] != "pending"), "only pending")
         SESS["t"] = AG
         ids = [x["id"] for x in c.get("/v2/api/kit/mine?all=1").json["kits"]]
         ck("k3" not in ids, "agent ignores all")

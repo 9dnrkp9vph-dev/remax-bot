@@ -43,37 +43,30 @@ def mk(status="pending", h=1, **kw):
     return sb.kit_insert(r)
 
 
-def test_send_review():
+def test_notify_pick():
+    """[15/11] התיק נבנה — וואטסאפ לסוכן לבחור עסקאות (במקום אישור של אייל)."""
     rec = mk()
-    st["quiet"] = True
-    ck(K.send_review(G, rec, "https://x.test") is False and st["sent"] == [], st["sent"])
+    st["sent"].clear(); st["quiet"] = True
+    ck(K.notify_pick(G, rec, "https://x.test") is False and st["sent"] == [], st["sent"])
     ck(sb.kit_get(rec["id"])["review_due"] is True, sb.kit_get(rec["id"]))
     st["quiet"] = False
-    ck(K.send_review(G, rec, "https://x.test") is True, "sent")
+    ck(K.notify_pick(G, rec, "https://x.test") is True, "sent")
     to, txt = st["sent"][-1]
-    ck(to == "972505709865", to)
-    ck(txt.startswith("תיק פרזנטציה חדש לאישור\nאוהד לוי · משה כהן · הנוטר, קרית ביאליק\n"), txt)
-    ck("https://x.test/v2/kit/review/" + rec["review_token"] in txt and "544448065" not in txt, txt)
-    r = sb.kit_get(rec["id"])
-    ck(r["review_due"] is False and r["sent_review_at"], r)
-    # KIT_APPROVER גובר
-    os.environ["KIT_APPROVER"] = "052-1234567"
-    try:
-        K.send_review(G, rec, "https://x.test")
-        ck(st["sent"][-1][0] == "972521234567", st["sent"][-1])
-    finally:
-        del os.environ["KIT_APPROVER"]
-    # כשל שליחה → נשאר לסבב הבא
+    ck(to == "972501111111", to)
+    ck(txt.startswith("תיק הפרזנטציה כמעט מוכן — משה כהן · הנוטר, קרית ביאליק\n"), txt)
+    ck(txt.endswith("https://x.test/v2/cma?kit=" + rec["id"]) and "544448065" not in txt, txt)
+    ck(sb.kit_get(rec["id"])["review_due"] is False, "cleared")
     st["ok"] = False
-    ck(K.send_review(G, rec, "https://x.test") is False and sb.kit_get(rec["id"])["review_due"] is True, "fail")
+    ck(K.notify_pick(G, rec, "https://x.test") is False and sb.kit_get(rec["id"])["review_due"] is True, "fail")
     st["ok"] = True
-    # הסבב שולח רק ממתינים שמסומנים review_due ועוד לא פגו
-    old = mk(h=50, review_due=True); done = mk("approved", review_due=True); due = mk(review_due=True)
+    # הסבב: ממתינים שמסומנים review_due ולא פגו → לסוכן; לא לאייל
+    old = mk(h=50, review_due=True); due = mk(review_due=True)
+    wait = mk(review_due=True); sb.kit_update(wait["id"], {"snapshot": dict(wait["snapshot"], _cma_wait={"rid": "x", "since": 0})})
     st["sent"].clear()
     K._kit_tick_once(G)
-    got = sorted(t.rsplit("/", 1)[1] for _, t in st["sent"] if "/v2/kit/review/" in t)
-    ck(got == sorted([rec["review_token"], due["review_token"]]), got)   # rec נשאר review_due מהכשל
-    ck(not any(old["review_token"] in t or done["review_token"] in t for _, t in st["sent"]), "tick filter")
+    got = sorted(t.rsplit("=", 1)[1] for _, t in st["sent"] if "/v2/cma?kit=" in t)
+    ck(got == sorted([rec["id"], due["id"]]), got)
+    ck(not any(x[0] == "972505709865" for x in st["sent"]), "nothing to approver")
 
 
 def test_notify_agent():
@@ -86,7 +79,7 @@ def test_notify_agent():
     ck(K.notify_agent(G, rec, "https://x.test") is True, "sent")
     to, txt = st["sent"][-1]
     ck(to == "972501111111", to)
-    ck(txt.startswith("תיק הפרזנטציה מוכן ואושר — משה כהן · הנוטר, קרית ביאליק\n"), txt)
+    ck(txt.startswith("תיק הפרזנטציה מוכן — משה כהן · הנוטר, קרית ביאליק\n"), txt)
     ck(txt.endswith("https://x.test/v2/kits?open=" + rec["id"]) and "544448065" not in txt, txt)
     ck(sb.kit_get(rec["id"])["review_due"] is False, "cleared")
     # הסבב שולח לסוכן תיק מאושר שמסומן review_due
@@ -233,14 +226,6 @@ def test_binding():
 
 
 def test_final_fixes():
-    # 5 — בלי מאשר: אזהרה + review_due
-    rec = mk()
-    saved = G["DEV_PHONES"]; G["DEV_PHONES"] = set(); st["sent"].clear()
-    try:
-        ck(K.send_review(G, rec, "https://x.test") is False and st["sent"] == [], st["sent"])
-        ck(sb.kit_get(rec["id"])["review_due"] is True, "no approver due")
-    finally:
-        G["DEV_PHONES"] = saved
     # 3 — שליחה חוזרת שהחליפה טוקנים באמצע ההחלטה: הקישור הישן לא מאשר
     r = mk()
     old_tok = r["review_token"]
@@ -283,6 +268,6 @@ def test_final_fixes():
 
 
 if __name__ == "__main__":
-    for _f in (test_send_review, test_notify_agent, test_review_page_and_decide, test_view_closed, test_view_open, test_binding, test_final_fixes):
+    for _f in (test_notify_pick, test_notify_agent, test_review_page_and_decide, test_view_closed, test_view_open, test_binding, test_final_fixes):
         _f()
     print("OK", n)

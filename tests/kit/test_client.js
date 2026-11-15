@@ -133,7 +133,7 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   }
   let r = await nb({ok: true});
   ck(r.P[0][0] === '/v2/api/kit/create' && r.P[0][1].source === 'nb' && r.P[0][1].key === 'nbk1', 'nb POST');
-  ck(r.Ts[0] === 'התיק בהכנה · ממתין לאישור', 'nb toast ok');
+  ck(r.Ts[0] === 'מכינים את התיק — תקבל הודעה לבחור עסקאות', 'nb toast ok');
   r = await nb({ok: false, reason: 'owner'});
   ck(r.Ts[0] === 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני', 'nb owner');
   r = await nb({ok: false, reason: 'phone'});

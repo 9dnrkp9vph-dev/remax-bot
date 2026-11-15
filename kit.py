@@ -1,5 +1,6 @@
 # kit.py — תיק פרזנטציה לבעל נכס: ראוטים לסוכן (יצירה, רשימה, שליחה חוזרת, נשלח) והגדרות בעל המשרד.
-# בלי AI. הנתונים נצלמים פעם אחת (kit_core.build_snapshot) ואייל מאשר לפני שמשהו מגיע לבעל הנכס.
+# בלי AI. הנתונים נצלמים פעם אחת (kit_core.build_snapshot). [15/11] בלי אישור של אייל: הסוכן בוחר אילו עסקאות
+# ומודעות מתחרות נכנסות לתיק (/v2/cma?kit=<id>), ורק אז התיק מוכן לשליחה.
 import os
 import re
 import secrets
@@ -61,7 +62,8 @@ def cma_query(src):
     m = _re.match(r"^(.*?)\s*(\d+)\s*$", st)
     street, house = (m.group(1).strip(), m.group(2)) if m else (st, "")
     q = {"street": street, "house": house, "city": src.get("city") or "", "rooms": src.get("rooms") or "",
-         "sqm": src.get("sqm") or "", "ptype": src.get("ptype") or ""}
+         "sqm": src.get("sqm") or "", "ptype": src.get("ptype") or "",
+         "price": re.sub(r"\D", "", str(src.get("price") or ""))}
     return urlencode({k: v for k, v in q.items() if v})
 
 
@@ -87,31 +89,28 @@ def cma_review_html(c):
         e(head), "".join(rows))
 
 
-def send_review(G, rec, base) -> bool:
-    """שולח לאייל (או KIT_APPROVER) בוואטסאפ קישור לאישור התיק. בשעות שקט/שבת — מסמן review_due לסבב הבא."""
+def notify_pick(G, rec, base) -> bool:
+    """[15/11] התיק נבנה — וואטסאפ לסוכן: לבחור אילו עסקאות ומודעות מתחרות נכנסות לתיק. בשעות שקט/שבת, או כשהשליחה
+    נכשלה — review_due נשאר דלוק והסבב הבא שולח."""
     sb = G["_sbdb"]
-    if G["_quiet_hours"]() or G["_shabbat_quiet_now"]():
-        sb.kit_update(rec["id"], {"review_due": True})
-        return False
-    to9 = _approver9(G)
+    to9 = kc.phone9(rec.get("agent_phone"))
     if not to9:
-        log.warning("kit: no approver configured")
+        log.warning("kit notify_pick: no agent phone for %s", rec.get("id"))
+        return False
+    if G["_quiet_hours"]() or G["_shabbat_quiet_now"]():
         sb.kit_update(rec["id"], {"review_due": True})
         return False
     snap = rec.get("snapshot") or {}
     place = ", ".join(x for x in (snap.get("street") or "", snap.get("city") or "") if x)
-    text = "תיק פרזנטציה חדש לאישור\n%s · %s · %s\nלצפייה ולאישור: %s/v2/kit/review/%s" % (
-        rec.get("agent_name") or "", rec.get("owner_name") or snap.get("owner") or "", place,
-        base, rec.get("review_token") or "")
+    who = " · ".join(x for x in (rec.get("owner_name") or snap.get("owner") or "", place) if x)
+    text = "תיק הפרזנטציה כמעט מוכן%s\nבחר אילו עסקאות ומודעות מתחרות ייכנסו לתיק: %s/v2/cma?kit=%s" % (
+        (" — " + who) if who else "", base, rec.get("id") or "")
     ok = False
     try:
         ok = bool(G["send_text"]("972" + to9, text))
     except Exception as e:
-        log.warning("kit send_review: send_text failed: %s", e)
-    if ok:
-        sb.kit_update(rec["id"], {"sent_review_at": _now_iso(), "review_due": False})
-    else:   # הסבב הבא ינסה שוב
-        sb.kit_update(rec["id"], {"review_due": True})
+        log.warning("kit notify_pick: send_text failed: %s", e)
+    sb.kit_update(rec["id"], {"review_due": not ok})
     return ok
 
 
@@ -135,7 +134,7 @@ def notify_agent(G, rec, base) -> bool:
         text = "תיק הפרזנטציה נדחה%s%s\nלתיקון ושליחה מחדש לאישור: %s" % (
             (" — " + who) if who else "", ("\nסיבה: " + why) if why else "", link)
     else:
-        text = "תיק הפרזנטציה מוכן ואושר%s\nלשליחה לבעל הנכס: %s" % ((" — " + who) if who else "", link)
+        text = "תיק הפרזנטציה מוכן%s\nלשליחה לבעל הנכס: %s" % ((" — " + who) if who else "", link)
     ok = False
     try:
         ok = bool(G["send_text"]("972" + to9, text))
@@ -146,7 +145,7 @@ def notify_agent(G, rec, base) -> bool:
 
 
 def _kit_tick_once(G):
-    """סבב אחד: ממתינים שסומנו review_due → לאישור; מאושרים שסומנו → הודעה לסוכן.
+    """סבב אחד: ממתינים שסומנו review_due → הודעה לסוכן לבחור עסקאות (15/11, במקום אישור); מוכנים → 'התיק מוכן'.
     [10/11] תיק שמחכה לבוט מדלן יותר מ-CMA_WAIT_SEC — נבנה מחדש ויוצא לאישור גם בלי ניתוח השוק."""
     rel = G.get("_kit_cma_release")
     if rel:
@@ -161,7 +160,7 @@ def _kit_tick_once(G):
         if not r.get("review_due"):
             continue
         st = kc.eff_status(r, now)
-        if st == "pending" and send_review(G, r, base):
+        if st == "pending" and not (r.get("snapshot") or {}).get("_cma_wait") and notify_pick(G, r, base):
             sent += 1
         elif st in ("approved", "rejected") and notify_agent(G, r, base):
             sent += 1
@@ -324,9 +323,9 @@ def register(app, G):
 
         def run():
             try:
-                send_review(G, rec, base)   # מוחלף בבדיקות דרך kit.send_review
+                notify_pick(G, rec, base)   # מוחלף בבדיקות דרך kit.notify_pick
             except Exception as e:
-                log.warning("kit send_review failed: %s", e)
+                log.warning("kit notify_pick failed: %s", e)
         _spawn(run)
 
     def addr_taken(src):
@@ -363,11 +362,30 @@ def register(app, G):
             return None
 
     def finish(kid, snap):
-        """הצילום מוכן → לאישור."""
-        sb().kit_update(kid, {"snapshot": snap, "sent_review_at": _now_iso(), "review_due": False})
+        """הצילום מוכן. [15/11] יש ניתוח שוק → הסוכן בוחר עסקאות; אין → התיק מוכן מיד (בלי אישור)."""
+        if snap.get("cma"):
+            sb().kit_update(kid, {"snapshot": snap, "sent_review_at": _now_iso(), "review_due": False})
+            rec = sb().kit_get(kid)
+            if rec:
+                dispatch_review(rec)
+            return
+        mark_ready(kid, snap, "אפי")
+
+    def mark_ready(kid, snap, who):
+        """התיק מוכן לשליחה לבעל הנכס → וואטסאפ לסוכן."""
+        fields = {"snapshot": snap, "status": "approved", "decided_by": who, "decided_at": _now_iso(),
+                  "reject_reason": None, "review_due": False}
+        sb().kit_update(kid, fields)
         rec = sb().kit_get(kid)
-        if rec:
-            dispatch_review(rec)
+        if not rec:
+            return
+
+        def run():
+            try:
+                notify_agent(G, rec, _base())
+            except Exception as e:
+                log.warning("kit notify_agent failed: %s", e)
+        _spawn(run)
 
     def ask_bot_early(src):
         """[10/11] אייל: 'שולח לבוט רק אחרי דקה וחצי' — בדיקה מהירה של מספר העסקאות ברחוב לפני כל הבנייה;
@@ -528,7 +546,7 @@ def register(app, G):
         rec = sb().kit_insert(row)
         if not rec:
             return jsonify({"ok": False, "reason": "db"})
-        log_act(s, "תיק פרזנטציה — נשלח לבדיקה", "%s · %s" % (src["owner"], prov.get("street") or ""))
+        log_act(s, "תיק פרזנטציה — בהכנה", "%s · %s" % (src["owner"], prov.get("street") or ""))
         build_bg(rec["id"], src, s)
         return jsonify({"ok": True, "id": rec["id"], "status": "pending"})
 
@@ -550,7 +568,6 @@ def register(app, G):
         if team is not None:   # מתאמת — הצוות שלה והתיקים שלה, לא כל המשרד
             rows = [r for r in rows if kc.phone9(r.get("agent_phone")) == me9 or norm(r.get("agent_name")) in team]
         now, base, out, tk = _t.time(), _base(), [], {}
-        approver = is_owner(s) or (bool(me9) and me9 == _approver9(G))
         for r in rows:
             snap = r.get("snapshot") or {}
             v = r.get("views") or {}
@@ -579,15 +596,15 @@ def register(app, G):
             preparing = bool(snap.get("_building") or snap.get("_cma_wait"))
             if preparing:
                 it["preparing"] = True
-            if st == "pending" and r.get("review_token") and approver and not preparing:   # [10/11] אישור מהמסך — בלי לחכות לוואטסאפ (שעות שקט)
-                it["review_url"] = "/v2/kit/review/" + r["review_token"]
+            if st == "pending" and not preparing:   # [15/11] הסוכן בוחר עסקאות ומפיק — בלי אישור
+                it["pick_url"] = "/v2/cma?kit=" + str(r.get("id") or "")
             if st in _SHOW_LINK and r.get("view_token"):
                 url = base + "/k/" + r["view_token"]
                 it.update(wa=kc.wa972(r.get("owner_phone")), url=url, text=kc.owner_message(snap) + "\n" + url)
             out.append(it)
         return jsonify({"ok": True, "kits": out})
 
-    # ── שליחה חוזרת לאישור (אחרי דחייה/פקיעה) ────────────────────────────
+    # ── הכנה מחדש (אחרי דחייה/פקיעה) ─────────────────────────────────────
     def src_from_rec(rec):
         snap = rec.get("snapshot") or {}
         L = snap.get("listing") or {}
@@ -627,9 +644,81 @@ def register(app, G):
         if not sb().kit_claim(rec["id"], rec.get("status") or "", "pending", fields):
             return jsonify({"ok": False, "reason": "status"})
         rec = sb().kit_get(rec["id"]) or dict(rec, status="pending", **fields)
-        dispatch_review(rec)
-        log_act(s, "תיק פרזנטציה — נשלח שוב לאישור", "%s · %s" % (rec.get("owner_name") or "", snap.get("street") or ""))
+        finish(rec["id"], snap)
+        log_act(s, "תיק פרזנטציה — הוכן מחדש", "%s · %s" % (rec.get("owner_name") or "", snap.get("street") or ""))
         return jsonify({"ok": True, "id": rec["id"], "status": "pending"})
+
+    # ── [15/11] הסוכן בוחר עסקאות ומודעות מתחרות → התיק מוכן ──────────────
+    def pick_rec(s, kid):
+        rec = sb().kit_get(kid) if kid else None
+        if not can_touch(s, rec):
+            return None, "not_found"
+        snap = rec.get("snapshot") or {}
+        if kc.eff_status(rec, _t.time()) != "pending":
+            return None, "status"
+        if snap.get("_building") or snap.get("_cma_wait"):
+            return None, "preparing"
+        return rec, ""
+
+    def pick_listing(rec):
+        src = src_from_rec(rec)
+        return {"owner": src.get("owner") or "", "address": src.get("street") or "", "city": src.get("city") or "",
+                "rooms": src.get("rooms") or "", "sqm": src.get("sqm") or "", "ptype": src.get("ptype") or "",
+                "price": re.sub(r"\D", "", str(src.get("price") or "")), "agent": rec.get("agent_name") or ""}
+
+    @app.route("/v2/api/kit/pick", methods=["GET"])
+    def kit_api_pick_get():
+        s, err = auth()
+        if err:
+            return err
+        rec, why = pick_rec(s, request.args.get("id"))
+        if not rec:
+            return jsonify({"ok": False, "reason": why})
+        import cma
+        c = dict((rec.get("snapshot") or {}).get("cma") or {}) or None
+        if c:
+            addrs = c.pop("_lst_addr", None) or []
+            c["listings"] = [dict(x, addr=(addrs[i] if i < len(addrs) else "")) for i, x in enumerate(c.get("listings") or [])]
+        return jsonify({"ok": True, "id": rec["id"], "listing": pick_listing(rec), "cma": c,
+                        "max_comps": cma.PICK_MAX_COMPS, "max_listings": cma.PICK_MAX_LISTINGS, "min_comps": cma.MIN_COMPS})
+
+    @app.route("/v2/api/kit/pick", methods=["POST"])
+    def kit_api_pick_post():
+        s, err = auth()
+        if err:
+            return err
+        j = request.get_json(silent=True) or {}
+        rec, why = pick_rec(s, j.get("id"))
+        if not rec:
+            return jsonify({"ok": False, "reason": why})
+        import cma
+        snap = dict(rec.get("snapshot") or {})
+        if snap.get("cma"):
+            try:
+                new, why = cma.apply_pick(snap["cma"], j.get("comps") or [], j.get("listings") or [])
+            except (TypeError, ValueError):
+                new, why = None, "bad"
+            if not new:
+                return jsonify({"ok": False, "reason": why})
+            snap["cma"] = new
+        snap["picked_at"] = _now_iso()
+        fields = {"snapshot": snap, "decided_by": real_name(s), "decided_at": _now_iso(), "reject_reason": None,
+                  "review_due": False}
+        if not sb().kit_claim(rec["id"], "pending", "approved", fields):
+            return jsonify({"ok": False, "reason": "status"})
+        fresh = dict(rec, status="approved", **fields)
+        c = snap.get("cma") or {}
+        log_act(s, "תיק פרזנטציה — הוכן", "%s · %s · %s עסקאות · %s מתחרות" % (
+            rec.get("owner_name") or "", snap.get("street") or "", c.get("n_used") or 0, c.get("competing") or 0))
+
+        def run():
+            try:
+                notify_agent(G, fresh, _base())
+            except Exception as e:
+                log.warning("kit notify_agent failed: %s", e)
+        _spawn(run)
+        return jsonify({"ok": True, "id": rec["id"], "status": "approved",
+                        "range": c.get("range") or None})
 
     # ── הסוכן שלח לבעל הנכס ───────────────────────────────────────────────
     @app.route("/v2/api/kit/sent", methods=["POST"])
@@ -739,7 +828,7 @@ def register(app, G):
     def jpegs(rec):
         """עמודי התיק כ-JPEG (q85), במטמון לפי (id, זמן הצילום) — עד 20 תיקים. ping לא מבטל את המטמון."""
         snap = rec.get("snapshot") or {}
-        key = (rec.get("id"), str(snap.get("made_at") or rec.get("updated_at") or ""))
+        key = (rec.get("id"), str(snap.get("made_at") or rec.get("updated_at") or ""), str(snap.get("picked_at") or ""))
         with imgs_lock:
             if key in imgs_cache:
                 imgs_cache.move_to_end(key)
