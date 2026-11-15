@@ -223,6 +223,27 @@ def register(app, G):
         except Exception:
             return None
 
+    def _is_coord(s):
+        """מתאמת — לפי התפקיד, השיוך במסך המתאמות או השם ברשימת המתאמות."""
+        if not s:
+            return False
+        if s.get("role") == "coordinator" or s.get("drole") == "coordinator":
+            return True
+        if _coord_rec(s):
+            return True
+        k = canon(_real(s))
+        try:
+            for it in (G["_load_config"]().get("coordinators") or []):
+                if isinstance(it, dict) and k and k in (canon(it.get("coordinator")), canon(it.get("name"))):
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _agent_only(s):
+        """[DIALER-SELF 15/11] סוכן רגיל שנבחר לחייגן קובע פגישות רק לעצמו (אייל: 'למה מופיעים כולם?')."""
+        return bool(s) and not s.get("dev") and s.get("role") == "agent" and not _is_coord(s)
+
     def allowed(s):
         """רק מתאמות (ובעל המשרד — לבדיקה). מתאמות רשומות בניהול כמנהלות, ולכן מזוהות לפי הטלפון/השם."""
         if not s:
@@ -469,6 +490,8 @@ def register(app, G):
             gl = allst.get("_global") or {}
             ready, later = queue_split(_cands(), mine["leads"], gl.get("out") or {}, gl.get("claims") or {}, me9, now)
             team, roster = _team(s), _roster()
+            if _agent_only(s):
+                team, roster = [_real(s)], []
             counts = agent_counts(G["fetch_sheet_rows"]() or [], canon)
             for c in ready[:40]:
                 c["agents"] = rank_agents(c["city"], c["nb"], counts, team, roster, canon)
