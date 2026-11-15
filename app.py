@@ -10305,10 +10305,37 @@ def nb_meet_index(statuses, canon=None):
         if not k or k.startswith("manual:"):
             continue
         ak = str(sk).split("::", 1)[0] if "::" in str(sk) else ((canon or (lambda x: x))(v.get("agent", "")))
-        out.setdefault(k, []).append({"date": str(v.get("date", "") or ""), "agent": str(v.get("agent", "") or ""), "ak": ak})
+        out.setdefault(k, []).append({"date": str(v.get("date", "") or ""), "agent": str(v.get("agent", "") or ""), "ak": ak,
+                                      "by": str(v.get("by", "") or ""), "by9": re.sub(r"\D", "", str(v.get("by_phone", "") or ""))[-9:]})
     for lst in out.values():
         lst.sort(key=lambda x: x["date"])
     return out
+
+def nb_meet_visible(m, mgr):
+    """mgr = True (מנהל — הכל) או {'keys','phones','me'} של מתאמת: פגישה שהיא תיאמה או של סוכן שלה."""
+    if mgr is True:
+        return True
+    if not isinstance(mgr, dict):
+        return False
+    if m.get("by9") and m["by9"] in mgr.get("phones9", ()):
+        return True
+    if m.get("by") and _canon_key(m["by"]) in mgr.get("me", ()):
+        return True
+    return m.get("ak") in mgr.get("keys", ())
+
+def _nb_meet_scope(s):
+    """[NB-MEET 15/11] היקף הפגישות שמוצגות בכרטיס נכס נולד: None (סוכן) / True (מנהל) / dict (מתאמת)."""
+    if _is_dev(s.get("phone", "")):
+        return True
+    coord = s.get("role") == "coordinator" or bool(s.get("agents") or s.get("agent_names"))
+    if not coord:
+        return True if s.get("role") == "admin" else None
+    try:
+        keys, _ph, _m = _scope_keys_phones("coordinator", s.get("name", ""), set(), s.get("agents"), s.get("agent_names"))
+    except Exception:
+        keys = set()
+    me = {_canon_key(x) for x in (s.get("name", ""), _display_name_for(s.get("name", ""), s.get("phone", ""))) if x and x not in ("מנהל", "סוכן")}
+    return {"keys": set(keys) | me, "me": me, "phones9": {_last9(s.get("phone", ""))} - {""}}
 
 def _nb_meets_ctx(ctx):
     if "_meets" not in ctx:
@@ -10355,8 +10382,10 @@ def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
         "stat": _vstat or None,
         # [NB-MEET 15/11] פגישות של סוכנים אחרים על הנכס (שלי — כבר בשורת הסטטוס)
         # 15/11 (אייל): סוכן רגיל לא רואה פגישות של סוכנים אחרים — רק מנהל/מתאמת
+        # 15/11 (אייל): מתאמת — רק פגישות שהיא תיאמה או של הסוכנים שלה; מנהל — הכל
         "meets": ([{"date": m["date"], "agent": m["agent"]} for m in _nb_meets_ctx(ctx).get(_k, [])
-                   if m["ak"] != _canon_key(ctx["eff_name"])][:3] if ctx.get("mgr") else []),
+                   if m["ak"] != _canon_key(ctx["eff_name"]) and nb_meet_visible(m, ctx.get("mgr"))][:3]
+                  if ctx.get("mgr") else []),
         "unotes": _nb_notes_for(_k, ctx["phone9"], ctx["notes_admin"]),
         "ageDays": ad,
         "delisted": _nb_clean(r.get("delisted_at", "")),   # ירד מיד2 — תווית; 24/09: המודעה נשארת (אייל)
@@ -10553,7 +10582,7 @@ def api_newborn():
         _ctx = {"contacts": contacts, "statuses": nbstatuses, "fam_list": fam_list, "pd_map": _pd_map,
                 "pd_ts": _pd_ts, "eff_name": eff_name, "phone9": _last9(s.get("phone", "")),
                 "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", ""))),
-                "mgr": (s["role"] in ("admin", "coordinator") or _is_dev(s.get("phone", "")))}
+                "mgr": _nb_meet_scope(s)}
         for (r, ad, city, _addr, _owner, lister, _dropped, _dl) in (_cand[:_lim] if _lim else _cand):
             out.append(_nb_row_out(r, ad, city, _addr, _owner, lister, _dropped, _ctx))   # [NB-SEARCH 30/09] בונה משותף
         _res = {"ok": True, "count": len(_cand), "rentAllowed": _rent_ok, "deal": _deal,
@@ -10611,7 +10640,7 @@ def api_search_newborn():
         _ctx = {"contacts": _fetch_newborn_contacts(), "statuses": _nb_statuses(), "fam_list": _famexcl_addr_list(),
                 "pd_map": _pd, "eff_name": s.get("name", ""), "phone9": _last9(s.get("phone", "")),
                 "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", ""))),
-                "mgr": (s["role"] in ("admin", "coordinator") or _is_dev(s.get("phone", "")))}
+                "mgr": _nb_meet_scope(s)}
         out = []
         for sc, pr, _fx in matches:
             r = pr["_nb"]

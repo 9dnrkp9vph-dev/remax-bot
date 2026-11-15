@@ -10,7 +10,7 @@ def check(c, m):
 src = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
 tree = ast.parse(src)
 fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "nb_meet_index")
-ns = {}; exec(ast.get_source_segment(src, fn), ns)
+ns = {"re": re}; exec(ast.get_source_segment(src, fn), ns)
 idx = ns["nb_meet_index"]({
     "נחמי זקס::N:1": {"status": "meeting", "date": "2026-11-17T10:30", "agent": "נחמי זקס", "pkey": "N:1"},
     "רויטל גל::N:1": {"status": "meeting", "date": "2026-11-16T09:00", "agent": "רויטל גל"},
@@ -31,7 +31,16 @@ MGR = true;  (function(){ var contacted=''; %s out.mgr = contacted; })();
 console.log(JSON.stringify(out));""" % (blk, blk)
 o = json.loads(subprocess.run(["node", "-e", "var MGR;" + js], capture_output=True, text=True).stdout)
 check("תואמה פגישה · 16/11 09:00 · לסוכן רויטל גל" in o["mgr"], "מנהל/מתאמת — המועד ולמי תואמה")
-check('if ctx.get("mgr") else []' in src and src.count('"mgr": (s["role"] in ("admin", "coordinator")') == 2,
+check('if ctx.get("mgr") else []' in src and src.count('"mgr": _nb_meet_scope(s)') == 2,
       "סוכן רגיל — השרת לא שולח פגישות של אחרים (גם בחיפוש)")
+fv = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "nb_meet_visible")
+ns2 = {"_canon_key": lambda x: " ".join(str(x or "").split())}; exec(ast.get_source_segment(src, fv), ns2)
+vis = ns2["nb_meet_visible"]
+co = {"keys": {"נוי רבן", "רויטל גל"}, "me": {"נוי רבן"}, "phones9": {"504875995"}}
+check(vis({"ak": "רויטל גל", "by": "", "by9": ""}, co), "מתאמת — פגישה של סוכנת שלה")
+check(vis({"ak": "עוז דנילוב", "by": "נוי רבן", "by9": ""}, co), "מתאמת — פגישה שהיא תיאמה לסוכן שאינו שלה")
+check(vis({"ak": "עוז דנילוב", "by": "מנהל", "by9": "504875995"}, co), "מתאמת שנכנסה כ'מנהל' — לפי הטלפון שלה")
+check(not vis({"ak": "עוז דנילוב", "by": "אוצר בן חמו", "by9": "528899985"}, co), "מתאמת — לא פגישה של מתאמת אחרת לסוכן אחר")
+check(vis({"ak": "עוז דנילוב"}, True) and not vis({"ak": "x"}, None), "מנהל — הכל; סוכן — כלום")
 print("\nRESULT:", "ALL GREEN" if not fails else "%d FAILED: %s" % (len(fails), fails))
 raise SystemExit(1 if fails else 0)
