@@ -6405,12 +6405,12 @@ function nbCard(r, i){
     ? '<div class="contacted">כבר פנו: ' + esc(r.contacted[0]) +
       (r.contacted.length > 1 ? ' +' + (r.contacted.length - 1) : '') + ' · ' + r.contacted.length + ' פניות</div>'
     : '';
-  // [NB-MEET 15/11] פגישה שתואמה על הנכס (ע"י סוכן אחר) — המועד לכולם, ולמנהל/מתאמת גם לאיזה סוכן
+  // [NB-MEET 15/11] פגישה שתואמה על הנכס לסוכן אחר — רק למנהל/מתאמת (השרת לא שולח לסוכן רגיל)
   var meets = (r.meets || []).map(function(m){
     var d = String(m.date || ''), mm = d.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}:\d{2}))?/);
     var when = mm ? mm[3] + '/' + mm[2] + (mm[4] ? ' ' + mm[4] : '') : d.replace('T', ' ');
     return '<div class="contacted" style="background:#EAF0FA;color:#1E3A5F">תואמה פגישה' + (when ? ' · ' + esc(when) : '') +
-      (MGR && m.agent ? ' · לסוכן ' + esc(m.agent) : '') + '</div>';
+      (m.agent ? ' · לסוכן ' + esc(m.agent) : '') + '</div>';
   }).join('');
   contacted += meets;
   var stLine = st ? '<div class="stLine"><i></i>' + esc((ST_LABEL[st.status] || st.status) +

@@ -30,7 +30,8 @@ MGR = false; (function(){ var contacted=''; %s out.agent = contacted; })();
 MGR = true;  (function(){ var contacted=''; %s out.mgr = contacted; })();
 console.log(JSON.stringify(out));""" % (blk, blk)
 o = json.loads(subprocess.run(["node", "-e", "var MGR;" + js], capture_output=True, text=True).stdout)
-check("תואמה פגישה · 16/11 09:00" in o["agent"] and "רויטל" not in o["agent"], "סוכן — רואה את המועד בלבד")
-check("לסוכן רויטל גל" in o["mgr"], "מנהל/מתאמת — גם למי תואמה")
+check("תואמה פגישה · 16/11 09:00 · לסוכן רויטל גל" in o["mgr"], "מנהל/מתאמת — המועד ולמי תואמה")
+check('if ctx.get("mgr") else []' in src and src.count('"mgr": (s["role"] in ("admin", "coordinator")') == 2,
+      "סוכן רגיל — השרת לא שולח פגישות של אחרים (גם בחיפוש)")
 print("\nRESULT:", "ALL GREEN" if not fails else "%d FAILED: %s" % (len(fails), fails))
 raise SystemExit(1 if fails else 0)

@@ -10354,8 +10354,9 @@ def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
         "date": _nb_clean(r.get("נראה לראשונה", "") or r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),   # 26/09: נראה לראשונה
         "stat": _vstat or None,
         # [NB-MEET 15/11] פגישות של סוכנים אחרים על הנכס (שלי — כבר בשורת הסטטוס)
-        "meets": [{"date": m["date"], "agent": m["agent"]} for m in _nb_meets_ctx(ctx).get(_k, [])
-                  if m["ak"] != _canon_key(ctx["eff_name"])][:3],
+        # 15/11 (אייל): סוכן רגיל לא רואה פגישות של סוכנים אחרים — רק מנהל/מתאמת
+        "meets": ([{"date": m["date"], "agent": m["agent"]} for m in _nb_meets_ctx(ctx).get(_k, [])
+                   if m["ak"] != _canon_key(ctx["eff_name"])][:3] if ctx.get("mgr") else []),
         "unotes": _nb_notes_for(_k, ctx["phone9"], ctx["notes_admin"]),
         "ageDays": ad,
         "delisted": _nb_clean(r.get("delisted_at", "")),   # ירד מיד2 — תווית; 24/09: המודעה נשארת (אייל)
@@ -10551,7 +10552,8 @@ def api_newborn():
         _cand.sort(key=lambda c: _tier_new_drop_rest(c[1] <= 2, c[6], c[7]))
         _ctx = {"contacts": contacts, "statuses": nbstatuses, "fam_list": fam_list, "pd_map": _pd_map,
                 "pd_ts": _pd_ts, "eff_name": eff_name, "phone9": _last9(s.get("phone", "")),
-                "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", "")))}
+                "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", ""))),
+                "mgr": (s["role"] in ("admin", "coordinator") or _is_dev(s.get("phone", "")))}
         for (r, ad, city, _addr, _owner, lister, _dropped, _dl) in (_cand[:_lim] if _lim else _cand):
             out.append(_nb_row_out(r, ad, city, _addr, _owner, lister, _dropped, _ctx))   # [NB-SEARCH 30/09] בונה משותף
         _res = {"ok": True, "count": len(_cand), "rentAllowed": _rent_ok, "deal": _deal,
@@ -10608,7 +10610,8 @@ def api_search_newborn():
         _pd = _price_dropped_map()
         _ctx = {"contacts": _fetch_newborn_contacts(), "statuses": _nb_statuses(), "fam_list": _famexcl_addr_list(),
                 "pd_map": _pd, "eff_name": s.get("name", ""), "phone9": _last9(s.get("phone", "")),
-                "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", "")))}
+                "notes_admin": (s["role"] == "admin" or _is_dev(s.get("phone", ""))),
+                "mgr": (s["role"] in ("admin", "coordinator") or _is_dev(s.get("phone", "")))}
         out = []
         for sc, pr, _fx in matches:
             r = pr["_nb"]
