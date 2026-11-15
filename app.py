@@ -10294,6 +10294,30 @@ def _nb_as_office_row(r):
             "סוג נכס": ptype, "תיאור": desc,
             "תגיות": _nb_clean(r.get("תגיות", ""))}   # 28/10: מאפיינים מדף המודעה (סורק v14.5)
 
+def nb_meet_index(statuses, canon=None):
+    """[NB-MEET 15/11] {מפתח נכס: [{date, agent, ak}]} — פגישות שתואמו (לא 'בוצע') מכל הסוכנים.
+    אייל: 'על נכסים שתואמו פגישות שיופיע מתחת לפנו מועד הפגישה, ולמתאמות למי תואם'."""
+    out = {}
+    for sk, v in (statuses or {}).items():
+        if not isinstance(v, dict) or v.get("status") != "meeting" or v.get("done"):
+            continue
+        k = str(v.get("pkey") or (str(sk).split("::", 1)[1] if "::" in str(sk) else "") or "")
+        if not k or k.startswith("manual:"):
+            continue
+        ak = str(sk).split("::", 1)[0] if "::" in str(sk) else ((canon or (lambda x: x))(v.get("agent", "")))
+        out.setdefault(k, []).append({"date": str(v.get("date", "") or ""), "agent": str(v.get("agent", "") or ""), "ak": ak})
+    for lst in out.values():
+        lst.sort(key=lambda x: x["date"])
+    return out
+
+def _nb_meets_ctx(ctx):
+    if "_meets" not in ctx:
+        try:
+            ctx["_meets"] = nb_meet_index(ctx.get("statuses") or {}, _canon_key)
+        except Exception:
+            ctx["_meets"] = {}
+    return ctx["_meets"]
+
 def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
     """[NB-SEARCH 30/09] כרטיס נכס נולד לקליינט — משותף ל-/api/newborn ול-/api/search/newborn.
     ctx: contacts, statuses, fam_list, pd_map, eff_name, phone9, notes_admin."""
@@ -10329,6 +10353,9 @@ def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
         "link": _nb_clean(r.get("קישור", "")),
         "date": _nb_clean(r.get("נראה לראשונה", "") or r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),   # 26/09: נראה לראשונה
         "stat": _vstat or None,
+        # [NB-MEET 15/11] פגישות של סוכנים אחרים על הנכס (שלי — כבר בשורת הסטטוס)
+        "meets": [{"date": m["date"], "agent": m["agent"]} for m in _nb_meets_ctx(ctx).get(_k, [])
+                  if m["ak"] != _canon_key(ctx["eff_name"])][:3],
         "unotes": _nb_notes_for(_k, ctx["phone9"], ctx["notes_admin"]),
         "ageDays": ad,
         "delisted": _nb_clean(r.get("delisted_at", "")),   # ירד מיד2 — תווית; 24/09: המודעה נשארת (אייל)
