@@ -6446,7 +6446,8 @@ function nbCard(r, i){
     '<button class="s' + (st && st.status === 'followup' ? ' on' : '') + '" onclick="stDate(' + i + ',\'followup\')">פולו-אפ</button>' +
     '<button class="s red' + (st && st.status === 'not_interested' ? ' on' : '') + '" onclick="stToggleNI(' + i + ')">לא מעוניין</button>' +
     '<button class="s" onclick="noteSheet(' + i + ')">הערה</button>' +
-    '<button class="s kit" onclick="kitFromNb(' + i + ')">תיק לפני פגישה</button></div>' +
+    '<button class="s kit" onclick="kitFromNb(' + i + ')">תיק לפני פגישה</button>' +
+    (typeof bpAdd === 'function' ? '<button class="s" onclick="bpAddNb(' + i + ')">לדף קונה</button>' : '') + '</div>' +
     stLine + notes + '</div>';
 }
 // [KIT 09/11] תיק פרזנטציה לבעל הנכס — נשלח לאישור; הרשימה והשליחה במסך /v2/kits
@@ -6606,6 +6607,104 @@ function nbKitInit(){
 }
 </script>
 """
+
+# [BP-ADD 15/11] הוספת נכס לדף קונה מתוך החיפוש — נכס נולד, המשרד ושת"פ (מסך הנכסים ומסך נכס נולד).
+# הוספה שקטה; אחריה פס עם 'שלח לקונה בוואטסאפ'. רק קונים של הסוכן שיש להם דף קונה.
+V2_BPADD_KIT = r"""<style>
+#bpaOv{position:fixed;inset:0;background:rgba(14,29,51,.45);z-index:900;display:none;align-items:flex-end;justify-content:center}
+#bpaOv.on{display:flex}
+#bpaSh{background:#fff;width:100%;max-width:560px;max-height:82vh;max-height:82dvh;overflow:auto;border-radius:22px 22px 0 0;
+  padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);box-shadow:0 -6px 20px rgba(30,58,95,.12);font-family:'Heebo',sans-serif}
+#bpaSh .hd{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+#bpaSh .hd b{display:block;font-size:17px;font-weight:800;color:#1E3A5F}
+#bpaSh .hd span{font-size:13px;color:#5B6472}
+#bpaSh .x{margin-inline-start:auto;width:44px;height:44px;border-radius:50%;background:#F2EFE7;border:0;cursor:pointer;flex:none;display:grid;place-items:center}
+#bpaSh .q{width:100%;min-height:44px;border:1.5px solid #DCD6C8;border-radius:12px;padding:0 12px;font-family:inherit;font-size:16px;margin-bottom:10px}
+#bpaSh .by{display:flex;align-items:center;gap:10px;width:100%;min-height:56px;text-align:start;background:#FBFAF6;border:1px solid #E6E1D6;
+  border-radius:16px;padding:9px 12px;margin-bottom:7px;font-family:inherit;cursor:pointer}
+#bpaSh .by .n{font-size:15px;font-weight:800;color:#14192B}
+#bpaSh .by .s{font-size:12px;color:#5B6472;margin-top:1px}
+#bpaSh .by .c{margin-inline-start:auto;font-size:12px;font-weight:700;color:#2E6BD6;white-space:nowrap}
+#bpaSh .by[disabled]{opacity:.5}
+#bpaSh .emp{text-align:center;padding:18px 6px 6px}
+#bpaSh .emp .ic{width:56px;height:56px;border-radius:50%;background:#FBF3DD;display:grid;place-items:center;margin:0 auto 10px}
+#bpaSh .emp b{display:block;font-size:16px;color:#1E3A5F;margin-bottom:4px}
+#bpaSh .emp p{font-size:13px;color:#5B6472;line-height:1.5;margin-bottom:12px}
+#bpaSh .emp a{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border-radius:12px;background:#2E6BD6;color:#fff;font-weight:800;text-decoration:none}
+#bpaBar{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);z-index:901;display:none;align-items:center;gap:10px;
+  max-width:540px;margin:0 auto;background:#1E3A5F;color:#fff;border-radius:16px;padding:10px 12px;box-shadow:0 6px 20px rgba(30,58,95,.25);font-family:'Heebo',sans-serif}
+#bpaBar.on{display:flex}
+#bpaBar .t{flex:1;font-size:14px;font-weight:700}
+#bpaBar button{min-height:44px;border:0;border-radius:12px;padding:0 12px;font-family:inherit;font-weight:800;font-size:13px;cursor:pointer;background:#157A43;color:#fff;white-space:nowrap}
+</style>
+<div id="bpaOv" onclick="if(event.target===this)bpaClose()"><div id="bpaSh" role="dialog" aria-modal="true" aria-label="הוספה לדף קונה"></div></div>
+<div id="bpaBar" role="status" aria-live="polite"><div class="t" id="bpaTxt"></div><button id="bpaWa" type="button">שלח לקונה בוואטסאפ</button></div>
+<script>
+var BPA = {it: null, list: null, q: '', busy: false, t: 0};
+function bpaEsc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function bpAdd(source, key, label){
+  if (!key){ toast('לנכס הזה אין מזהה — אי אפשר להוסיף'); return; }
+  BPA.it = {source: source, key: String(key), label: label || ''}; BPA.q = '';
+  el('bpaOv').classList.add('on'); bpaRender();
+  if (BPA.list && Date.now() - BPA.t < 60000) return;
+  GET('/v2/api/bpage/mine').then(function(j){
+    if (!j || !j.ok){ BPA.list = BPA.list || []; toast('לא הצלחנו לטעון את הקונים'); }
+    else { BPA.list = j.off ? [] : (j.buyers || []); BPA.off = !!j.off; BPA.t = Date.now(); }
+    bpaRender();
+  }).catch(function(){ BPA.list = BPA.list || []; bpaRender(); toast('לא הצלחנו לטעון את הקונים'); });
+}
+function bpAddNb(i){ var r = (typeof nbKitRows === 'function' ? nbKitRows() : [])[i] || {}; bpAdd('newborn', r.key, [r.address, r.city].filter(Boolean).join(', ')); }
+function bpaClose(){ el('bpaOv').classList.remove('on'); }
+function bpaRender(){
+  var it = BPA.it || {};
+  var h = '<div class="hd"><div><b>הוספה לדף קונה</b><span>' + bpaEsc(it.label) + '</span></div>' +
+    '<button class="x" type="button" onclick="bpaClose()" aria-label="סגירה"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="#1E3A5F" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>';
+  if (BPA.list === null){ el('bpaSh').innerHTML = h + '<div style="padding:18px;text-align:center;color:#5B6472">טוען את הקונים שלך…</div>'; return; }
+  if (!BPA.list.length){
+    el('bpaSh').innerHTML = h + '<div class="emp"><div class="ic"><svg width="26" height="26" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#7A5E1C" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#7A5E1C" stroke-width="1.8" stroke-linecap="round"/></svg></div>' +
+      '<b>' + (BPA.off ? 'דף קונה כבוי כרגע' : 'אין לך עדיין קונים עם דף קונה') + '</b>' +
+      '<p>דף קונה נוצר כששולחים לקונה נכסים מחלון ההתאמות במסך הקונים. אחרי שנוצר — אפשר להוסיף אליו נכסים מכאן.</p>' +
+      '<a href="/v2/buyers">למסך הקונים</a></div>';
+    return;
+  }
+  var q = BPA.q.trim(), L = BPA.list.filter(function(b){ return !q || (b.name + ' ' + b.search).indexOf(q) >= 0; });
+  var rows = L.map(function(b){
+    return '<button class="by" type="button" ' + (BPA.busy ? 'disabled ' : '') + 'onclick="bpaPick(' + BPA.list.indexOf(b) + ')"><div><div class="n">' + bpaEsc(b.name) + '</div>' +
+      (b.search ? '<div class="s">' + bpaEsc(b.search) + '</div>' : '') + '</div>' +
+      '<div class="c">' + (b.expired ? 'פג תוקף · יחודש' : b.total + ' נכסים בדף') + '</div></button>';
+  }).join('') || '<div style="padding:14px;text-align:center;color:#5B6472">אין קונה בשם הזה</div>';
+  var hadQ = document.activeElement && document.activeElement.id === 'bpaQ';
+  el('bpaSh').innerHTML = h + (BPA.list.length > 6 ? '<input id="bpaQ" class="q" type="search" placeholder="חיפוש קונה" aria-label="חיפוש קונה" value="' + bpaEsc(BPA.q) + '" oninput="BPA.q=this.value;bpaRender()">' : '') + rows;
+  if (hadQ && el('bpaQ')){ var f = el('bpaQ'); f.focus(); try{ f.setSelectionRange(f.value.length, f.value.length); }catch(e){} }
+}
+function bpaPick(n){
+  var b = BPA.list[n], it = BPA.it; if (!b || !it || BPA.busy) return;
+  BPA.busy = true; bpaRender();
+  POST('/v2/api/bpage/add', {row: b.row, source: it.source, key: it.key}).then(function(j){
+    BPA.busy = false;
+    if (!j || !j.ok){
+      var w = j && j.reason;
+      bpaRender();
+      toast(w === 'no_page' ? 'לקונה הזה עדיין אין דף קונה' : w === 'not_found' ? 'הנכס לא נמצא — רענן ונסה שוב'
+        : w === 'forbidden' ? 'אפשר להוסיף רק לקונים שלך' : (j && j.off) ? 'דף קונה כבוי כרגע' : 'ההוספה נכשלה');
+      return;
+    }
+    bpaClose();
+    if (j.added){ b.total = (b.total || 0) + 1; b.expired = false; }
+    try{ localStorage.removeItem('v2c:bp:' + b.row); }catch(e){}
+    bpaBar(j.added ? 'נוסף לדף של ' + (j.name || b.name) : 'כבר בדף של ' + (j.name || b.name), j);
+  }).catch(function(){ BPA.busy = false; bpaRender(); toast('ההוספה נכשלה'); });
+}
+function bpaBar(txt, j){
+  el('bpaTxt').textContent = txt;
+  var w = el('bpaWa');
+  w.style.display = (j && j.wa && j.msg) ? '' : 'none';
+  w.onclick = function(){ el('bpaBar').classList.remove('on'); window.open('https://wa.me/' + j.wa + '?text=' + encodeURIComponent(j.msg), '_blank'); };
+  el('bpaBar').classList.add('on');
+  clearTimeout(bpaBar._t); bpaBar._t = setTimeout(function(){ el('bpaBar').classList.remove('on'); }, 7000);
+}
+</script>"""
+
 
 V2_NB_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -7971,6 +8070,17 @@ function propDate(p){
 /* [FEATS 21/10] מעלית / ממ"ד / מרפסת — תגיות קטנות, רק כשכתוב שיש (מהשרת: p.feats) */
 function featChips(p){var f=(p&&p.feats)||[];if(!f.length)return '';
   return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">'+f.map(function(x){return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px">'+esc(x)+'</span>';}).join('')+'</div>';}
+// [BP-ADD 15/11] 'לדף קונה' בכרטיס — משרד, שלי ושת"פ (הקוד המשותף ב-V2_BPADD_KIT)
+function bpaBtn(p, i){
+  if (!p || !p.pkey || typeof bpAdd !== 'function') return '';
+  return '<div style="margin-top:8px"><button onclick="bpAddProp(' + i + ')" style="width:100%;min-height:44px;border-radius:12px;font-size:14px;' +
+    'font-weight:800;font-family:inherit;cursor:pointer;background:#fff;color:#2E6BD6;border:1.5px solid #2E6BD6;display:flex;align-items:center;justify-content:center;gap:7px">' +
+    '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg>הוסף לדף קונה</button></div>';
+}
+function bpAddProp(i){
+  var p = (el('list')._src || [])[i]; if (!p) return;
+  bpAdd(MODE === 'shtaf' ? 'shtaf' : 'office', p.pkey, [p.address || p.street, p.city].filter(Boolean).join(', '));
+}
 function propCard(p, i){
   var isShtaf = MODE === 'shtaf';
   var isMine = MODE === 'mine';
@@ -8047,7 +8157,7 @@ function propCard(p, i){
     (p.score != null ? '<div style="font-size:12px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div>' +
     (propDate(p) ? '<div style="font-size:12px;color:#6B7280;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
-    acts + shareRow(p, i) + hotRow + fhRow + siteRow + socRow(p) + vidRow(p) + soldRow(p) + '</div>';
+    acts + bpaBtn(p, i) + shareRow(p, i) + hotRow + fhRow + siteRow + socRow(p) + vidRow(p) + soldRow(p) + '</div>';
 }
 /* [SHARE 01/11] שליחת נכס ללקוח עם תמונות (אייל): לחיצה ראשונה מכינה את התמונות, השנייה פותחת את חלון השיתוף
    (חלון השיתוף חייב לחיצה טרייה — הורדת 10 תמונות לוקחת כמה שניות). בלי שם סוכן / מספר בית / קישורים. */
@@ -17784,11 +17894,11 @@ def register(app, G):
 
     @app.route("/v2/newborn", methods=["GET"])
     def v2_newborn():
-        return _page(V2_NB_HTML.replace("<!--NB_KIT-->", V2_NB_KIT, 1))
+        return _page(V2_NB_HTML.replace("<!--NB_KIT-->", V2_NB_KIT + V2_BPADD_KIT, 1))
 
     @app.route("/v2/props", methods=["GET"])
     def v2_props():
-        return _page(V2_PROPS_HTML.replace("<!--NB_KIT-->", V2_NB_KIT, 1))
+        return _page(V2_PROPS_HTML.replace("<!--NB_KIT-->", V2_NB_KIT + V2_BPADD_KIT, 1))
 
     @app.route("/v2/map", methods=["GET"])
     def v2_map():
@@ -18617,6 +18727,94 @@ def register(app, G):
         except Exception as e:
             if log: log.warning(f"bpage summary: {e}")
             return jsonify({"ok": True, "rows": {}})
+
+    # [BP-ADD 15/11] (אייל: "כפתור להוסיף נכס לדף קונה מתוך החיפוש — בנכס נולד, במשרד ובשת"פ;
+    # כל סוכן רק לקונה שלו שיש לו דף קונה"). הוספה שקטה: בלי וואטסאפ אוטומטי, בלי לשנות את
+    # החיפוש השמור של הדף (שממנו מחושבות 'התאמות חדשות'). גם מנהל רואה כאן רק את הקונים שלו.
+    def _bp_own_strict(s):
+        if s.get("role") != "admin":
+            return _bp_own(s)
+        ck, l9 = G["_canon_key"], G["_last9"]
+        try:
+            real = G["_display_name_for"](s.get("name", ""), s.get("phone", "")) or s.get("name", "")
+        except Exception:
+            real = s.get("name", "")
+        keys = {ck(x) for x in (real, s.get("name", "")) if x and x not in ("מנהל", "סוכן")}
+        ph = {l9(p) for p in (G["_phones_for_name"](real) or []) if l9(p)}
+        if s.get("phone"):
+            ph.add(l9(s["phone"]))
+        return lambda b: (ck(b.get("agent", "")) in keys) or (l9(b.get("agent_phone", "")) in ph)
+
+    @app.route("/v2/api/bpage/mine", methods=["GET"])
+    def v2_api_bpage_mine():
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        sb = _bp_sb()
+        if not sb or not _BPAGE_ON:
+            return jsonify({"ok": True, "off": True, "buyers": []})
+        try:
+            own = _bp_own_strict(s)
+            bys = {str(b.get("row", "")): b for b in (G["_fetch_manual_buyers"]() or []) if own(b)}
+            pages = [p for p in (sb.bpage_all() or []) if str(p.get("row")) in bys]
+            cnt = {}
+            for i in (sb.bpage_items([p["id"] for p in pages]) if pages else []):
+                cnt[i["page_id"]] = cnt.get(i["page_id"], 0) + 1
+            now = time.time()
+            out = []
+            for p in pages:
+                b = bys[str(p["row"])]
+                out.append({"row": b.get("row"), "name": str(b.get("name", "") or "").strip() or "ללא שם",
+                            "search": str(b.get("search", "") or "")[:80], "total": cnt.get(p["id"], 0),
+                            "expired": bpage_expired(p, now), "_t": str(p.get("last_sent_at") or p.get("created_at") or "")})
+            out.sort(key=lambda x: x.pop("_t"), reverse=True)
+            return jsonify({"ok": True, "buyers": out})
+        except Exception as e:
+            if log: log.warning(f"bpage mine: {e}")
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
+
+    @app.route("/v2/api/bpage/add", methods=["POST"])
+    def v2_api_bpage_add():
+        if not _BPAGE_ON:
+            return jsonify({"ok": False, "off": True})
+        b = request.get_json(silent=True) or {}
+        s = _web_auth()
+        if not s:
+            return jsonify({"ok": False, "auth": False}), 401
+        buyer = _bp_buyer(b.get("row"))
+        if not buyer:
+            return jsonify({"ok": False, "reason": "no_buyer"}), 404
+        if not _bp_own_strict(s)(buyer):
+            return jsonify({"ok": False, "reason": "forbidden"}), 403
+        sb = _bp_sb()
+        if not sb:
+            return jsonify({"ok": False, "off": True})
+        try:
+            page = sb.bpage_by_row(buyer["row"])
+            if not page:
+                return jsonify({"ok": False, "reason": "no_page"})
+            so = "office" if b.get("source") == "mine" else str(b.get("source") or "")
+            k = str(b.get("key") or "")
+            r = (_bp_sources().get(so) or {}).get(k)
+            if r is None:
+                return jsonify({"ok": False, "reason": "not_found"})
+            import datetime as _dtb
+            added = sb.bpage_add_items(page["id"], [{"source": so, "prop_key": k, "snapshot": bpage_snapshot(so, r)}])
+            if added:
+                exp = (_dtb.datetime.now(_dtb.timezone.utc) + _dtb.timedelta(days=BPAGE_DAYS)).isoformat()
+                sb.bpage_update(page["id"], {"expires_at": exp})
+            _bp_cache["new"].pop(page["id"], None)
+            name = str(buyer.get("name", "") or "").strip()
+            url = _bp_url(page["token"])
+            if added:
+                _log_activity(s.get("name", ""), s.get("role", ""), s.get("phone", ""), "דף קונה — הוספה מהחיפוש",
+                              "%s · %s" % (name, so))
+            return jsonify({"ok": True, "added": len(added), "name": name, "url": url,
+                            "msg": bpage_wa_text(name.split()[0] if name else "", url, 1 if added else 0, False),
+                            "wa": G["_wa_phone"](buyer.get("phone", ""))})
+        except Exception as e:
+            if log: log.error(f"bpage add: {e}", exc_info=True)
+            return jsonify({"ok": False, "reason": str(e)[:160]}), 500
 
     @app.route("/v2/api/bpage/seen", methods=["POST"])
     def v2_api_bpage_seen():
