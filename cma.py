@@ -413,6 +413,16 @@ def _same_street(r, subj):
                                                     or city_key(r["city"]) == city_key(subj["city"]))
 
 
+def nb_canon(nb, city):
+    """[15/11] 'מרכז העיר' + 'קרית אתא' → 'מרכז העיר, קרית אתא' — כמו שיד2 נשמר מאז 13/11 ובקבצי מדלן,
+    כדי שעסקאות שנקלטו לפני כן (בלי העיר) לא ייפרדו לשכונה נפרדת."""
+    n = _norm(nb)
+    c = _norm(city)
+    if not n or not c or city_key(c) in city_key(n):
+        return n
+    return n + ", " + c
+
+
 def subject_nb(street, city, deals):
     cnt = {}
     for r in deals or []:
@@ -644,7 +654,10 @@ def _inputs(G):
         dh = []
     known = _known_streets(G, dh) | {r.get("street") for r in market if r.get("street")}
     # אותה עסקה בקבצים שונים (כתובת בקובץ אחד, שם פרויקט באחר) — הניקוי חוזר על כל המאגר
-    market = mark_near_dups(mark_dup_projects([dict(r) for r in market]))
+    market = [dict(r) for r in market]
+    for r in market:
+        r["nb"] = nb_canon(r.get("nb"), r.get("city"))
+    market = mark_near_dups(mark_dup_projects(market))
     deals = link_ours(market, ours_rows(dh, known))
     try:
         listings = _listings(G)
