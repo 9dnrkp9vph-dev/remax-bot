@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      15.2
+// @version      15.3
 // @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -53,7 +53,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='15.2'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='15.3'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -3339,12 +3339,14 @@ function npFetchFeat(fetchFn,need,m,onProg){
         if(fx||exclParseNextData(html)){ m[tok]={x:fx||[],d:npItemDesc(html,tok),t:Date.now()}; got++; okp=true; }
         else m[tok]={f:((m[tok]&&m[tok].f)||0)+1,t:Date.now()};
         if(onProg)onProg(i,need.length,got);
-        var after=function(){ setTimeout(next,humanGap(1400,2600)); };
+        // v15.3: הזיכרון נשמר אחרי כל מודעה — סריקה שנקטעת באמצע (ריענון/החלפת סניף) לא פותחת שוב את אותן מודעות ולא מבקשת שוב עסקאות
+        var after=function(){ npFeatSave(m); setTimeout(next,humanGap(1400,2600)); };
         if(okp) npDealsFor(fetchFn,tok,html,m).then(function(n){ if(n)log('🏷️ נכס נולד '+tok+': '+n+' עסקאות באזור נשלחו לאפי'); setTimeout(after,humanGap(1200,2000)); });
         else after();
       }).catch(function(){
         m[tok]={f:((m[tok]&&m[tok].f)||0)+1,t:Date.now()};
         if(onProg)onProg(i,need.length,got);
+        npFeatSave(m);
         setTimeout(next,humanGap(1800,2600));
       });
     })();
