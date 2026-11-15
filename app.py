@@ -2965,11 +2965,25 @@ def _search_rank_tier(query):
         return t
     return tier
 
+def _search_live_rows(rows):
+    """[15/11 אייל: 'למה זה מראה נכסים שירדו מפרסום?'] תוצאות חיפוש — בלי מודעות שירדו מפרסום.
+    משרד: 'ירד מפרסום'; נכס נולד (שורה ממופה): delisted_at בשורה המקורית (_nb). בלי חיפוש — הרשימה המלאה לא משתנה."""
+    out = []
+    for r in rows or []:
+        if str(r.get("ירד מפרסום", "") or "").strip():
+            continue
+        _o = r.get("_nb")
+        if isinstance(_o, dict) and str(_o.get("delisted_at", "") or "").strip():
+            continue
+        out.append(r)
+    return out
+
 def search_listings_in_sheet(query: dict, rows=None, cap=None) -> list:
     # [NB-SEARCH 30/09] rows/cap אופציונליים — אותו סולם flex משמש גם לנכס נולד (rows=שורות ממופות)
     if rows is None:
         # [SEARCH-AUDIT 22/10] 'להשכרה …' החזיר דירות למכירה — fetch_sheet_rows הוא מכירה בלבד
         rows = fetch_sheet_rows_deal("השכרה") if "שכר" in str(query.get("deal_type") or "") else fetch_sheet_rows()
+    rows = _search_live_rows(rows)   # [15/11 אייל] חיפוש לא מחזיר מודעות שירדו מפרסום
     if not rows:
         return []
     _ag = _agent_in_query(query.get("_qtext") or "", rows) if query.get("_qtext") else ""
@@ -11082,7 +11096,8 @@ def api_search_exclusives():
                                                         bool(str(r.get("delisted_at", "") or "").strip())))
             matches = [(1, r) for r in rows]
         else:
-            scored = [(score_exclusivity_match(r, parsed), r) for r in rows]
+            scored = [(score_exclusivity_match(r, parsed), r) for r in rows
+                      if not str(r.get("delisted_at", "") or "").strip()]   # [15/11] בלי מודעות שירדו
             scored = [(sc, r) for sc, r in scored if sc > 0]
             scored.sort(key=lambda x: -x[0])
             matches = scored[:15]
