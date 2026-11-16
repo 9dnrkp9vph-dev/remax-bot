@@ -14256,7 +14256,7 @@ function load(){ return api('/v2/api/crm/' + MOD + '/list?' + qs()).then(functio
   ROWS = j.rows; TOTAL = j.total; renderTable(); renderSum(j.summary); renderExcl(j.excl); }); }
 function renderExcl(X){ var el = document.getElementById('exclBar'); if (!el) return;   /* [16/11] בלעדי · רגיל לפי הסינון */
   if (!X || !(X.excl + X.reg)){ el.innerHTML = ''; return; }
-  el.innerHTML = '<div class="exs"><b>בלעדי ' + X.excl.toLocaleString('he-IL') + '</b> · רגיל ' + X.reg.toLocaleString('he-IL') + ' <span class="mut">מתוך ' + (X.excl + X.reg).toLocaleString('he-IL') + ' נכסי משרד בתצוגה</span></div>'; }
+  el.innerHTML = '<div class="exs"><b>בלעדי ' + X.excl.toLocaleString('he-IL') + '</b> · רגיל ' + X.reg.toLocaleString('he-IL') + ' <span class="mut">מתוך ' + (X.excl + X.reg).toLocaleString('he-IL') + ' בתצוגה הזו</span></div>'; }
 function renderSum(S){ var el = document.getElementById('sumBar'); if (!el) return;
   if (!S || !S.length){ el.innerHTML = ''; return; }
   function m(v){ return '₪' + Math.round(v || 0).toLocaleString('en-US'); }
