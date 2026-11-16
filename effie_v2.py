@@ -14178,7 +14178,7 @@ function api(path, opt){ opt = opt || {}; opt.headers = Object.assign({'X-Auth-T
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function toast(t){ var e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(function(){ e.style.display = 'none'; }, 2600); }
 function fdate(ts){ if(!ts) return ''; var d = new Date(ts*1000); return d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ' ' + d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}); }
-function stCls(l){ return (l === 'נענתה' || l === 'פעילה' || l === 'תקין' || l === 'נסגר לעסקה') ? 'st-a' : (l === 'יוצאת' ? 'st-o' : (l === 'לא נענתה' || l === 'בוטלה' || l === 'תפוס' || l === 'נכשל' || l === 'כבויה' ? 'st-n' : 'st-x')); }
+function stCls(l){ return (l === 'נענתה' || l === 'פעילה' || l === 'תקין' || l === 'נסגר לעסקה' || l === 'מסונכרן') ? 'st-a' : (l === 'יוצאת' ? 'st-o' : (l === 'לא נענתה' || l === 'בוטלה' || l === 'תפוס' || l === 'נכשל' || l === 'כבויה' || l === 'פג — לחבר מחדש' ? 'st-n' : 'st-x')); }
 function fmtPh(v){ var d = String(v || '').replace(/\D/g, '');
   if (d.indexOf('972') === 0 && (d.length === 12 || d.length === 11)) d = '0' + d.slice(3);
   if ((d.length === 9 && d.charAt(0) === '5') || (d.length === 8 && /^[2-9]/.test(d))) d = '0' + d;   /* [10/11] טלפון שנשמר בלי 0 */
@@ -15607,6 +15607,31 @@ _CRM_Y2_BRANCH = {"5625538": "מוצקין", "5628636": "ביאליק", "8532791
 _CRM_AGENT_BRANCH = {"אלי שמול": "ביאליק", "יהודית שמול": "ביאליק"}
 
 
+def crm_gsync(phones, gauth, expired=()):
+    """[16/11 אייל: 'מי מסונכרן עם המייל'] חשבון ה-Google של אדם ומצב יומן ה-Google שלו, מכל הטלפונים שלו.
+    בלי קריאה ל-Google: לפי מה ששמור בקישור (טוקן יומן, כיבוי), ו'פג' רק כשבדיקה קודמת מצאה שהטוקן נדחה.
+    אותה בחירה כמו _gauth_email_for_phones: חשבון עם טוקן יומן קודם, ואז האחרון שקושר."""
+    want = {"".join(ch for ch in str(p or "") if ch.isdigit())[-9:] for p in (phones or ())}
+    want.discard("")
+    best, key = "", None
+    for em, rec in (gauth or {}).items():
+        rec = rec or {}
+        if "".join(ch for ch in str(rec.get("phone") or "") if ch.isdigit())[-9:] not in want:
+            continue
+        k = (1 if rec.get("refresh_token") else 0, int(rec.get("ts") or 0))
+        if key is None or k > key:
+            best, key = em, k
+    if not best:
+        return "", "לא מחובר"
+    rec = gauth.get(best) or {}
+    if not rec.get("refresh_token"):
+        return best, "מחובר בלי יומן"
+    if rec.get("cal_off"):
+        return best, "יומן כבוי"
+    if best in (expired or ()):
+        return best, "פג — לחבר מחדש"
+    return best, "מסונכרן"
+
 _CRM_STALE = 6 * 3600   # [10/11] עותק ישן של מודול CRM עד 6 שעות מוגש מיד; בנייה חדשה ברקע
 CRM_MODULES = {
     "buyers": {
@@ -15735,12 +15760,13 @@ CRM_MODULES = {
         "title": "צוות",
         "columns": [("photo", "תמונה", "photo"), ("name", "שם", "text"), ("phone", "נייד אישי", "phone"),
                     ("vphone", "וירטואלי", "phone"), ("email", "מייל", "text"), ("license", "רישיון", "text"),
+                    ("gmail", "חשבון Google", "text"), ("gsync", "סנכרון יומן", "status"),
                     ("status", "מצב", "status"), ("updated_by", "עודכן ע\"י", "text")],
-        "default_cols": ["photo", "name", "phone", "vphone", "email", "license", "status"],
+        "default_cols": ["photo", "name", "phone", "vphone", "email", "license", "gsync", "status"],
         "editable": [("name", "שם"), ("phone", "נייד אישי"), ("vphone", "מספר וירטואלי"), ("email", "מייל"),
                      ("license", "רישיון תיווך")],
         "views": [("all", "פעילים"), ("no_vphone", "בלי וירטואלי"), ("no_email", "בלי מייל"), ("no_license", "בלי רישיון"),
-                  ("inactive", "מושבתים")],
+                  ("gsync_ok", "מסונכרנים עם Google"), ("gsync_no", "לא מסונכרנים"), ("inactive", "מושבתים")],
     },
     "automations": {
         "title": "אוטומציות",
@@ -15993,7 +16019,9 @@ CRM_VIEWS = {
              "inactive": lambda r, t: not r.get("active"),
              "no_vphone": lambda r, t: bool(r.get("active")) and not r.get("vphone"),
              "no_email": lambda r, t: bool(r.get("active")) and "@" not in (r.get("email") or "") and "@" not in (r.get("license") or ""),
-             "no_license": lambda r, t: bool(r.get("active")) and not "".join(ch for ch in (r.get("license") or "") if ch.isdigit())},
+             "no_license": lambda r, t: bool(r.get("active")) and not "".join(ch for ch in (r.get("license") or "") if ch.isdigit()),
+             "gsync_ok": lambda r, t: bool(r.get("active")) and r.get("gsync") == "מסונכרן",
+             "gsync_no": lambda r, t: bool(r.get("active")) and r.get("gsync") != "מסונכרן"},
     "buyers": {"active": lambda r, t: r.get("status") in ("פעיל", "חם"),
                "hot": lambda r, t: r.get("status") == "חם",
                "frozen": lambda r, t: r.get("status") == "בהקפאה",
@@ -20116,6 +20144,15 @@ def register(app, G):
                 have = _sb_mod().avatar_phones(sorted({p for v in phones_of.values() for p in v}))
             except Exception:
                 have = None
+            try:
+                _ga = G["_gauth_all"]() or {}
+            except Exception:
+                _ga = {}
+            _exp = set()
+            for _em in _ga:   # 'פג' רק לפי בדיקה שכבר נעשתה (אזור אישי) — בלי קריאה ל-Google מכאן
+                _c = G["_cache_get"]("gcal_status:" + _em, 10 ** 9)
+                if _c and _c.get("status") == "expired":
+                    _exp.add(_em)
             def _photo_phone(tid):
                 ps = phones_of.get(tid) or []
                 hit = [p for p in ps if have and p in have] or [p for p in ps if os.path.exists(os.path.join(_AV_DIR, p + ".jpg"))]
@@ -20127,6 +20164,8 @@ def register(app, G):
                             "license": str(t.get("license") or ""), "active": bool(t.get("active")),
                             "status": "פעיל" if t.get("active") else "מושבת",
                             "photo": ("/v2/api/avatar?p=" + _photo_phone(str(t.get("id")))) if _photo_phone(str(t.get("id"))) else "",
+                            "gmail": crm_gsync(phones_of.get(str(t.get("id"))), _ga, _exp)[0],
+                            "gsync": crm_gsync(phones_of.get(str(t.get("id"))), _ga, _exp)[1],
                             "updated_by": str(t.get("updated_by") or ""), "date": 0})
             return out
         if module == "buyers":
