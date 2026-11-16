@@ -14138,7 +14138,8 @@ body.ro #newBtn,body.ro #svBtn,body.ro #dlBtn,body.ro .ra,body.ro .rb{display:no
 .hero{width:100%;max-height:260px;object-fit:cover;border-radius:14px;margin:6px 0 12px;display:block}.grid2 .f{overflow-wrap:anywhere;min-width:0}
 s.old{color:#6B7280;font-size:12px}.st-y{background:#E6F2EC;color:#157A43}.st-new{background:#F4EEDD;color:#7A5E1C}.lnk{color:#2E6BD6;font-weight:500}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;border-radius:12px;padding:10px 16px;display:none;z-index:40}
-body.hasNav #top{display:none}body.hasNav .views{top:18px}
+body.hasNav #top{display:none}
+.exs{margin:0 18px 12px;padding:10px 14px;border-radius:12px;background:#FBF6E8;border:1px solid #EADBB0;font-size:15px}.exs b{color:var(--goldt)}body.hasNav .views{top:18px}
 .dots{display:inline-flex;gap:3px;vertical-align:middle}.dots i.dt{width:7px!important;height:7px!important;min-width:0;padding:0;flex:none;border-radius:50%;background:#E4DFD3;display:inline-block}.dots i.dt.f{background:var(--gold)}
 .chipl{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:2px 10px;font-size:12.5px;color:var(--blue);font-weight:700;text-decoration:none;background:#fff}
 .chipw{display:inline-block;background:#FBF3E0;color:var(--goldt);font-size:12px;font-weight:700;border-radius:6px;padding:0 6px;margin-inline-end:6px}
@@ -14159,7 +14160,7 @@ body.hasNav #top{display:none}body.hasNav .views{top:18px}
 <button class="tb pri" id="newBtn">+ חדש</button>
 </div>
 <div id="banner"></div>
-<div id="sumBar"></div>
+<div id="sumBar"></div><div id="exclBar"></div>
 <div class="wrapt"><table id="tbl"></table></div>
 <div class="foot"><span id="range"></span><span><button class="tb" id="prev">הקודם</button> <button class="tb" id="next">הבא</button></span></div>
 </section></div>
@@ -14252,7 +14253,10 @@ function renderTable(){ var cs = cols(), h = '<tr>';
   document.getElementById('prev').disabled = ST.page <= 1; document.getElementById('next').disabled = b >= TOTAL; }
 function load(){ return api('/v2/api/crm/' + MOD + '/list?' + qs()).then(function(r){ return r.json(); }).then(function(j){
   if (!j.ok){ document.getElementById('tbl').innerHTML = '<tr><td class="empty">' + (j.reason === 'forbidden' ? 'אין הרשאה — ה-CRM לבעל המשרד בלבד.' : 'שגיאה: ' + esc(j.reason)) + '</td></tr>'; return; }
-  ROWS = j.rows; TOTAL = j.total; renderTable(); renderSum(j.summary); }); }
+  ROWS = j.rows; TOTAL = j.total; renderTable(); renderSum(j.summary); renderExcl(j.excl); }); }
+function renderExcl(X){ var el = document.getElementById('exclBar'); if (!el) return;   /* [16/11] בלעדי · רגיל לפי הסינון */
+  if (!X || !(X.excl + X.reg)){ el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="exs"><b>בלעדי ' + X.excl.toLocaleString('he-IL') + '</b> · רגיל ' + X.reg.toLocaleString('he-IL') + ' <span class="mut">מתוך ' + (X.excl + X.reg).toLocaleString('he-IL') + ' נכסי משרד בתצוגה</span></div>'; }
 function renderSum(S){ var el = document.getElementById('sumBar'); if (!el) return;
   if (!S || !S.length){ el.innerHTML = ''; return; }
   function m(v){ return '₪' + Math.round(v || 0).toLocaleString('en-US'); }
@@ -16785,6 +16789,14 @@ def crm_query(records, q, filters, sort, direction, page, size, now, module="cal
         rows = [r for r in rows if not sk(r)[0]] + [r for r in rows if sk(r)[0]]
     page, size = max(1, int(page or 1)), max(1, min(200, int(size or 50)))
     return {"rows": rows[(page - 1) * size: page * size], "total": len(rows)}
+
+
+def crm_excl_split(records, q, filters, now):
+    """[16/11 אייל: 'כמה רגיל וכמה בלעדי בסניף ביאליק ובמוצקין?'] ספירת בלעדי/רגיל לפי הסינון הנוכחי
+    במסך הנכסים (תצוגה, סניף, חיפוש, סוכן, תקופה). סינון של המשתמש על עמודת הבלעדיות עצמה לא נלקח בחשבון."""
+    base = {k: v for k, v in (filters or {}).items() if k != "excl"}
+    return {"excl": crm_query(records, q, dict(base, excl="בלעדי"), "date", "desc", 1, 1, now, module="props")["total"],
+            "reg": crm_query(records, q, dict(base, excl="רגיל"), "date", "desc", 1, 1, now, module="props")["total"]}
 
 
 def crm_csv(records, columns):
@@ -20410,6 +20422,11 @@ def register(app, G):
         except _CrmReadError as e:
             return _crm_read_err(e)
         out = {"ok": True, "rows": res["rows"], "total": res["total"], "page": page, "size": 50}
+        if module == "props":   # [16/11] בלעדי · רגיל מעל הטבלה
+            try:
+                out["excl"] = crm_excl_split(recs, q, filters, _tm.time())
+            except Exception as e:
+                if log: log.warning(f"crm props excl split: {e}")
         if module == "deals":   # [21/10] שנתי / רבעוני / חודשי / מתחילת החודש — על הסינון הנוכחי (בלי בורר התקופה)
             try:
                 f2 = {k: v for k, v in filters.items() if k != "period"}
