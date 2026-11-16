@@ -4555,8 +4555,14 @@ def _dedupe_direct_calls(rows, window=900):
     direct = [r for r in rows if _isd(r)]
     if not direct:
         return rows
+    def _pk(v):
+        # [13/11 → 16/11] הגיליון מוחק 0 מוביל ('46000800' מול '046000800') — משווים בלי 972/0 מובילים
+        d = "".join(ch for ch in str(v or "") if ch.isdigit())
+        if d.startswith("972"):
+            d = d[3:]
+        return d.lstrip("0")[-9:]
     def _key(r):
-        return _last9(r.get("caller_phone", "")), _last9(r.get("agent_phone", ""))
+        return _pk(r.get("caller_phone", "")), _pk(r.get("agent_phone", ""))
     free = [(_key(r), _epoch_from_iso(r.get("received_at", "")), r) for r in direct]
     drop = set()
     for i, r in enumerate(rows):
