@@ -21,7 +21,21 @@ ck("📍 אהוד מנור" in b and "אהוד מנור 13" not in b, b)
 ck("1,890,000 ₪" in b and '110 מ"ר' in b and "קומה 3" in b, b)
 ck("054" not in b and "1234567" not in b, b)
 ck(b.rstrip().endswith("לפרטים — הודעה לעמוד") and "רימקס פמילי" in b, b)
-ck('✔ מעלית · ממ"ד' in b, b)
+# [18/11 אייל] "שהמלל יירד שורות": כל מאפיין בשורה משלו, ותיאור שהגיע כגוש אחד מתפרק לשורות
+ck('✔ מעלית\n✔ ממ"ד' in b and "מעלית ·" not in b, b)
+ck("דירה מוארת ומשופצת.\nהתקשרו" in b, b)
+flat = ("בלעדית למכירה בשכונת הפרפר המבוקשת *לא פורסמה מעולם* ✔ 2 מעליות בבניין ✔ סלון מרווח עם יציאה למרפסת "
+        "✔ ממ\"ד. ✔ חניה פרטית מחיר שיווק 1.850.000 ש\"ח מיקום מנצח: כ-5 דקות הליכה מהקריון, פינוי כ-שנה! לפרטים נוספים")
+L = SP.soc_break_lines(flat).split("\n")
+ck(L[0].startswith("בלעדית למכירה") and L[1] == "✔ 2 מעליות בבניין" and L[2] == "✔ סלון מרווח עם יציאה למרפסת", L)
+ck(L[3] == '✔ ממ"ד.' and L[4].startswith("✔ חניה פרטית מחיר שיווק 1.850.000"), L)   # מחיר עם נקודות לא נשבר
+ck(L[-1] == "לפרטים נוספים" and L[-2].endswith("פינוי כ-שנה!") and "כ-5 דקות" in L[-2], L)   # 'כ-5' לא נשבר
+ck(all(x == x.strip() and x for x in L), L)
+multi = "שורה ראשונה\nשורה שנייה. עם משפט נוסף\nשורה שלישית"
+ck(SP.soc_break_lines(multi) == multi, "already multi-line → untouched")
+ck(SP.soc_break_lines("") == "" and SP.soc_break_lines(None) == "", "empty")
+ck(SP.soc_break_lines("דירה 3.5 חדרים בקומה 2 - משופצת • מרפסת • חניה") ==
+   "דירה 3.5 חדרים בקומה 2\n- משופצת\n• מרפסת\n• חניה", SP.soc_break_lines("דירה 3.5 חדרים בקומה 2 - משופצת • מרפסת • חניה"))
 ck("✔" not in SP.soc_build_post(ROW, "רימקס פמילי", clean, feats_off)["body"], "no feats line")
 ck(p["ig_caption"].startswith(b) and "#דירותלמכירה" in p["ig_caption"] and "#קריתביאליק" in p["ig_caption"]
    and "#נדלן" in p["ig_caption"] and "#רימקספמילי" in p["ig_caption"], p["ig_caption"])

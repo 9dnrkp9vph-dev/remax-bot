@@ -128,6 +128,21 @@ def _cut(t, n):
     return t.rstrip(" ,.-·") + "…"
 
 
+_BULLETS = "✔✅☑•●▪◾★⭐🔹🔸"
+
+
+def soc_break_lines(text):
+    """[18/11 אייל] "שהמלל יירד שורות": תיאור שהגיע כגוש אחד מתפרק לשורות — שורה חדשה לפני סימן רשימה
+    (✔ • וכו', או ' - ' / ' * ' בין מילים) ואחרי סוף משפט. תיאור שכבר מחולק לשורות נשאר כמו שהוא."""
+    t = str(text or "").strip()
+    if not t or t.count("\n") >= 2:
+        return t
+    t = re.sub(r"[ \t]*([%s])" % _BULLETS, r"\n\1", t)
+    t = re.sub(r"[ \t]+([-*])[ \t]+(?=\S)", r"\n\1 ", t)
+    t = re.sub(r"([.!?])[ \t]+(?=[^\s%s])" % _BULLETS, r"\1\n", t)
+    return "\n".join(x.strip() for x in t.split("\n") if x.strip())
+
+
 def soc_build_post(row, office_name, clean_desc, feats, agent=None, wa_link=None):
     """שורת נכס → {'body', 'ig_caption', 'images'}. בלי מספר בית; טלפונים מהתיאור נמחקים.
     agent = {'name','phone'} — שם הסוכן ווואטסאפ לנייד האישי שלו בסוף (01/11); בלי — 'לפרטים — הודעה לעמוד'."""
@@ -151,11 +166,11 @@ def soc_build_post(row, office_name, clean_desc, feats, agent=None, wa_link=None
     if spec:
         lines.append("📐 " + " · ".join(spec))
     ft = [f for f in (feats(row) or []) if f]
-    if ft:
-        lines.append("✔ " + " · ".join(ft))
+    for f in ft:   # [18/11 אייל] כל מאפיין בשורה משלו
+        lines.append("✔ " + f)
     desc = soc_scrub_phones(clean_desc(row.get("_desc_ae") or row.get("תיאור") or ""))
     desc = soc_scrub_house(desc, row.get("כתובת"))
-    desc = _cut(re.sub(r"\s+\n", "\n", desc), DESC_MAX)
+    desc = soc_break_lines(_cut(re.sub(r"\s+\n", "\n", desc), DESC_MAX))
     parts = ["\n".join(lines)]
     if desc:
         parts.append(desc)
@@ -834,6 +849,41 @@ def _wa_link(env, key):
     return "%s/v2/social/wa/%s" % (base, _key(key))
 
 
+def soc_notify_agent(G, row, rec, by_phone, env):
+    """[18/11 אייל] פוסט עלה → וואטסאפ לסוכן של הנכס, לנייד האישי (לא למרכזיה), עם קישורי הפוסט לשיתוף — כמו בסרטונים.
+    לא נשלח: בשעות שקט/שבת, לסוכן בלי נייד אישי, או כשהסוכן הוא מי שלחץ 'פרסם'. כיבוי: SOCIAL_POST_SEND_AGENT=0.
+    → 9 ספרות של מי שקיבל, או ''."""
+    if str((env or {}).get("SOCIAL_POST_SEND_AGENT") or "1").strip() == "0":
+        return ""
+    for k in ("_quiet_hours", "_shabbat_quiet_now"):
+        try:
+            if G[k]():
+                return ""
+        except Exception:
+            pass
+    import social_video as V   # ייבוא מאוחר — social_video מייבא את המודול הזה
+    l9 = V._agent_personal(G, row)
+    if not l9 or l9 == V._l9(by_phone):
+        return ""
+    first = (_norm(row.get("סוכן 1")).split() or [""])[0]
+    rooms = _num(row.get("חדרים"))
+    street = re.sub(r"\s*(?:מס['׳]?\s*)?[\d/]+[א-ת]?\s*$", "", _norm(row.get("כתובת")))
+    what = ", ".join(x for x in ((rooms + " חדרים") if rooms and rooms != "0" else "", street,
+                                 _norm(row.get("עיר / ישוב"))) if x)
+    lines = ["היי %s, הנכס שלך%s עלה עכשיו לפייסבוק ולאינסטגרם של המשרד." % (first, (" — " + what + " —") if what else "")]
+    for label, k in (("פייסבוק", "fb_permalink"), ("אינסטגרם", "ig_permalink")):
+        if rec.get(k):
+            lines.append("%s: %s" % (label, rec[k]))
+    lines.append("אפשר לשתף את הפוסט גם אצלך.")
+    if not G["send_text"](V._wa(l9), "\n".join(lines)):
+        return ""
+    try:
+        G["_log_activity"]("אפי", "system", "", "פרסום ברשתות — נשלח לסוכן", "%s 0%s" % (_key(row.get("מספר מודעה")), l9))
+    except Exception:
+        pass
+    return l9
+
+
 def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, env=None):
     """פרסום (או תצוגה מקדימה) של נכס אחד. → {'ok','mode','fb','ig','reason','row_id'}.
     נגד כפילות (ביקורת סופית): נכס אחד בכל רגע; רשומת pending לפני כל כתיבה ל-Meta."""
@@ -986,6 +1036,11 @@ def _soc_run_one(G, key, trigger, by_phone, channels, http, now, env):
         G["_sbdb"].social_update(rid, {f: rec.get(f) for f in ("fb_status", "ig_status", "fb_post_id", "fb_permalink",
                                                               "ig_media_id", "ig_permalink", "error")})
     res["ok"] = "ok" in (res["fb"], res["ig"])
+    if res["ok"]:   # [18/11 אייל] על כל פוסט שעולה — הודעה לסוכן עם הקישורים לשיתוף
+        try:
+            soc_notify_agent(G, row, rec, by_phone, env)
+        except Exception:
+            pass
     if res["ok"] and scfg.get("token_bad"):
         _social_mutate(G, lambda s2: s2.__setitem__("token_bad", False))
     res["reason"] = " · ".join(reasons + errs)

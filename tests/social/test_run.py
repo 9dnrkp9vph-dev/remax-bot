@@ -34,6 +34,34 @@ ck(len(fbu) == 2 and all(u.startswith("https://app.test/v2/social/img/") and u.e
 ck(all(u.endswith("-sq.jpg") for u in igu), igu)
 ck(any("פרסום ברשתות — פורסם" in str(a) for a in st["acts"]), st["acts"])
 
+# [18/11 אייל] על כל פוסט שעולה — הודעת וואטסאפ לסוכן של הנכס, לנייד האישי, עם הקישורים לשיתוף
+def wa_G(**over):
+    G, st, sb = make_G()
+    st["sent"] = []
+    G["send_text"] = lambda to, txt: (st["sent"].append((to, txt)), True)[1]
+    G["_phones_for_name"] = lambda nm: ["0725550101", "0521234567"]
+    G["_agent_vphones9"] = lambda: {"725550101"}
+    G["_quiet_hours"] = lambda: False
+    G.update(over)
+    return G, st, sb
+G, st, sb = wa_G()
+r = run(G, PUB)
+ck(r["ok"] and len(st["sent"]) == 1 and st["sent"][0][0] == "972521234567", st["sent"])   # האישי, לא המרכזיה
+txt = st["sent"][0][1]
+ck(ROW["סוכן 1"].split()[0] in txt and "https://ig/m1" in txt and sb.rows[-1]["fb_permalink"] in txt, txt)
+ck("אהוד מנור" in txt and "אהוד מנור 13" not in txt and "לשתף" in txt, txt)
+ck(any("נשלח לסוכן" in str(a) for a in st["acts"]), st["acts"])
+G, st, sb = wa_G(); r = run(G, {"META_TOKEN": "SECRET123"}); ck(not st["sent"], "preview → nothing")
+G, st, sb = wa_G(); r = run(G, dict(PUB, SOCIAL_POST_SEND_AGENT="0")); ck(r["ok"] and not st["sent"], "off")
+for key in ("_quiet_hours", "_shabbat_quiet_now"):
+    G, st, sb = wa_G(**{key: lambda: True}); r = run(G, PUB); ck(r["ok"] and not st["sent"], key)
+G, st, sb = wa_G(_phones_for_name=lambda nm: ["0725550101"]); r = run(G, PUB); ck(r["ok"] and not st["sent"], "virtual only")
+G, st, sb = wa_G(_phones_for_name=lambda nm: ["0505709865"]); r = run(G, PUB); ck(r["ok"] and not st["sent"], "agent = publisher")
+G, st, sb = wa_G(); FakeGraph.next_err = {"fb": SP.MetaError("x", code=1), "ig": SP.MetaError("y", code=1)}
+r = run(G, PUB); FakeGraph.next_err = {}; ck(not r["ok"] and not st["sent"], "nothing published → nothing sent")
+G, st, sb = wa_G(send_text=lambda to, txt: (_ for _ in ()).throw(RuntimeError("wa down")))
+r = run(G, PUB); ck(r["ok"], "a WhatsApp failure never fails the publish")
+
 G, st, sb = make_G(); FakeGraph.next_err = {"ig": SP.MetaError("boom SECRET123", code=1)}
 r = run(G, PUB); FakeGraph.next_err = {}
 ck(r["fb"] == "ok" and r["ig"] == "failed" and "SECRET123" not in (sb.rows[-1].get("error") or ""), sb.rows[-1])
