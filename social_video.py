@@ -1146,6 +1146,11 @@ def vid_publish(G, vid, http=None, now=None, env=None, store=None, channels=None
     G["_sbdb"].video_update(vid, upd)
     res["ok"] = bool(oks)
     res["reason"] = " · ".join(errs)
+    if oks:   # [17/11 אייל] אושר ועלה → הסרטון נשלח גם לסוכן, לנייד האישי
+        try:
+            vid_send_agent(G, dict(merged, **upd), env, store)
+        except Exception:
+            pass
     name = rec.get("decided_by") or "אפי"
     G["_log_activity"](name, "system", "", "סרטון לרשתות — " + ("פורסם" if upd["status"] == "published" else "פורסם חלקית"),
                        "%s %d/%d" % (rec.get("property_key"), len(oks), len(active)))
@@ -1283,6 +1288,63 @@ def vid_send_review(G, rec, base, env, initiator=""):
     except Exception:
         pass
     return sent
+
+
+def vid_send_agent(G, rec, env, store=None):
+    """[17/11 אייל] אחרי האישור והפרסום: הסרטון נשלח לסוכן של הנכס בוואטסאפ — לנייד האישי, לא למספר המרכזיה.
+    פעם אחת (texts.agent_sent). בשעות שקט/שבת לא שולחים ולא מסמנים — התחזוקה משלימה. → 9 ספרות של מי שקיבל, או ''.
+    כיבוי: SOCIAL_VIDEO_SEND_AGENT=0."""
+    env = SP._env(env)
+    texts = rec.get("texts") if isinstance(rec.get("texts"), dict) else {}
+    if texts.get("agent_sent") or str(env.get("SOCIAL_VIDEO_SEND_AGENT") or "1").strip() == "0" \
+            or SP.soc_mode(env) != "publish" or not any(rec.get(c + "_status") == "ok" for c in CHANNELS):
+        return ""
+    tok = rec.get("video_token")
+    if not tok or not (store or _store()).exists(tok):
+        return ""
+    try:
+        if bool(G["_quiet_hours"]()) or bool(G["_shabbat_quiet_now"]()):
+            return ""
+    except Exception:
+        pass
+    row = _row_by_key(G, rec.get("property_key"))
+    l9 = _agent_personal(G, row)
+    if not l9:
+        return ""
+
+    def mark():
+        G["_sbdb"].video_update(rec["id"], {"texts": dict(texts, agent_sent=_iso(__import__("time").time()))})
+    if l9 in [_l9(x) for x in (rec.get("recipients") or [])]:   # הסוכן הוא מי שאישר — כבר קיבל את הסרטון
+        mark()
+        return ""
+    o = texts.get("open") or {}
+    first = (str((row or {}).get("סוכן 1") or "").split() or [""])[0]
+    what = ", ".join(x for x in (o.get("title"), o.get("place")) if x)
+    lines = ["היי %s, הסרטון של הנכס שלך%s עלה לסטורי ולריל של המשרד." % (first, (" — " + what + " —") if what else "")]
+    for label, k in (("אינסטגרם", "ig_reel_permalink"), ("פייסבוק", "fb_reel_permalink")):
+        if rec.get(k):
+            lines.append("%s: %s" % (label, rec[k]))
+    lines.append("אפשר לשתף אותו גם אצלך.")
+    text = "\n".join(lines)
+    vurl = "%s/v2/social/vid/%s.mp4" % (_base(env), tok)
+    to, ok = _wa(l9), False
+    try:
+        if G["_wa_window_open"](to):
+            res = G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
+                                           "type": "video", "video": {"link": vurl, "caption": text[:1000]}})
+            ok = bool(res[0]) if isinstance(res, tuple) else bool(res)
+        if not ok:   # אין חלון, או שהווידאו נדחה → טקסט עם קישור לסרטון (תבנית family_update מחוץ לחלון)
+            ok = bool(G["send_text"](to, "%s\nלצפייה בסרטון: %s" % (text, vurl)))
+    except Exception:
+        ok = False
+    if not ok:
+        return ""
+    mark()
+    try:
+        G["_log_activity"]("אפי", "system", "", "סרטון לרשתות — נשלח לסוכן", "%s 0%s" % (rec.get("property_key", ""), l9))
+    except Exception:
+        pass
+    return l9
 
 
 def _spawn(fn):
@@ -1470,6 +1532,11 @@ def _housekeeping(G, now, env, store):
                 vid = r["id"]
                 G["_sbdb"].video_update(vid, {"publish_at": None})
                 _spawn(lambda vid=vid: vid_publish(G, vid, env=env))
+        elif st in ("published", "partial"):   # [17/11] עלה בזמן שקט / השליחה נכשלה → משלימים את השליחה לסוכן
+            try:
+                vid_send_agent(G, r, env, store)
+            except Exception:
+                pass
     try:
         by_tok = {r.get("video_token"): r for r in recs if r.get("video_token")}
         for tok in vid_gc(store.files(), by_tok, now):
