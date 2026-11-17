@@ -10,7 +10,9 @@ import social_video as V
 from _fakes import ROW, make_G
 NOW = time.time()
 def iso(t): return SP._dt.datetime.fromtimestamp(t, SP._dt.timezone.utc).isoformat()
-ENV = {"SOCIAL_MODE": "publish", "APP_BASE_URL": "https://app", "SOCIAL_VIDEO_REVIEW_AGENT": "1"}
+ENV = {"SOCIAL_MODE": "publish", "APP_BASE_URL": "https://app"}
+# [18/11 אייל] האישור הולך לסוכן של הנכס (521234567); "שלח שוב" של אייל (initiator) מוסיף גם אותו — כך נבדקים שני נמענים
+EYAL = "505709865"
 import tempfile
 V._STORE = V.VidStore(tempfile.mkdtemp())
 open(V._STORE.path("TOK"), "wb").write(b"mp4")
@@ -24,11 +26,12 @@ def mkrec(sb, **kw):
 # ── שליחה בתוך החלון: וידאו + כפתורים ──
 G, st, sb = make_G(); st["window"].update({"505709865", "521234567"})
 rec = mkrec(sb)
-to = V.vid_send_review(G, rec, "https://app", ENV)
-ck(to == ["505709865", "521234567"], to)
+ck(V.vid_send_review(G, rec, "https://app", ENV) == ["521234567"], "auto video → the agent only"); st["posted"].clear()
+to = V.vid_send_review(G, rec, "https://app", ENV, initiator=EYAL)
+ck(to == ["521234567", "505709865"], to)
 ck("725550101" not in to, "virtual excluded")
 kinds = [(p["to"], p["type"]) for p in st["posted"]]
-ck(kinds == [("972505709865", "video"), ("972505709865", "interactive"), ("972521234567", "video"), ("972521234567", "interactive")], kinds)
+ck(kinds == [("972521234567", "video"), ("972521234567", "interactive"), ("972505709865", "video"), ("972505709865", "interactive")], kinds)
 vmsg, imsg = st["posted"][0], st["posted"][1]
 ck(vmsg["video"]["link"] == "https://app/v2/social/vid/TOK.mp4", vmsg)
 btn = imsg["interactive"]["action"]["buttons"]
@@ -39,7 +42,7 @@ ck(not st["sent"], st["sent"])
 # ── מחוץ לחלון, בלי תבנית → טקסט עם קישור לדף אישור ──
 G, st, sb = make_G()
 rec = mkrec(sb, ai=False)
-V.vid_send_review(G, rec, "https://app", ENV)
+V.vid_send_review(G, rec, "https://app", ENV, initiator=EYAL)
 ck(len(st["sent"]) == 2 and all("https://app/v2/social/review/RVW" in t for _, t in st["sent"]), st["sent"])
 ck("ללא AI" in st["sent"][0][1] and not st["posted"], st["sent"][0])
 
@@ -58,7 +61,7 @@ ck([c["parameters"][0]["payload"] for c in qr] == ["vid:%s:pub" % rec["id"], "vi
 G, st, sb = make_G(); st["window"].add("505709865")
 G["_d360_post_message"] = lambda payload: (st["posted"].append(payload), (False, None))[1]
 rec = mkrec(sb)
-to = V.vid_send_review(G, rec, "https://app", ENV)
+to = V.vid_send_review(G, rec, "https://app", ENV, initiator=EYAL)
 ck("505709865" in to and any(t.startswith("972505709865") or "505709865" in t for t, _ in st["sent"]), (to, st["sent"]))
 ck(all("https://app/v2/social/review/RVW" in t for _, t in st["sent"]), st["sent"])
 
@@ -66,8 +69,8 @@ ck(all("https://app/v2/social/review/RVW" in t for _, t in st["sent"]), st["sent
 G, st, sb = make_G()
 G["_d360_post_message"] = lambda payload: (st["posted"].append(payload), (False, None))[1]
 rec = mkrec(sb)
-to = V.vid_send_review(G, rec, "https://app", dict(ENV, WA_TPL_VIDEO="video_review"))
-ck(to == ["505709865", "521234567"] and len(st["sent"]) == 2, (to, st["sent"]))
+to = V.vid_send_review(G, rec, "https://app", dict(ENV, WA_TPL_VIDEO="video_review"), initiator=EYAL)
+ck(to == ["521234567", "505709865"] and len(st["sent"]) == 2, (to, st["sent"]))
 
 # ── [02/11] גם הקישור נכשל → לא נספר כנשלח, והסיבה נרשמת על הסרטון ──
 G, st, sb = make_G()

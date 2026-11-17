@@ -62,4 +62,8 @@ def make_G(rows=None, cfg=None):
     G["_d360_post_message"] = lambda payload: (st["posted"].append(payload), (True, None))[1]
     G["_quiet_hours"] = lambda: False
     G["DEV_PHONES"] = {"505709865"}
+    # [18/11] סרטון אוטומטי רק לסוכן שהיה באפי 10+ דק' ב-30 יום — בבדיקות הסוכן של ROW פעיל
+    G["_usage_rows"] = lambda start: [{"name": ROW["סוכן 1"], "min": 60}]
+    import social_publish as _SP
+    _SP._ACTIVE_BOX.clear()
     return G, st, sb

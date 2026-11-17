@@ -351,6 +351,13 @@ def soc_active_agents(G, now):
     return v
 
 
+def soc_row_allowed(G, row, act):
+    """[01/11] פרסום אוטומטי רק לנכס של סוכן פעיל (act = soc_active_agents). משמש את הפוסטים ואת הסרטונים."""
+    from goals import g_canon, g_display
+    name = _norm(row.get("סוכן 1") or row.get("סוכן"))
+    return bool(act) and _real_agent(name) and g_canon(G, g_display(G, name)) in act
+
+
 def soc_plan_round(rows, state, history, now, hidden, blocked, allowed=None):
     """→ {'publish': [keys], 'state': state חדש, 'flood': bool, 'reason': str}.
     'חדש' = מספר מודעה שלא נראה (known) — לא _y2_first_seen, שנדרס בהזרמות ושחזורים."""
@@ -852,6 +859,54 @@ def _wa_link(env, key):
     return "%s/v2/social/wa/%s" % (base, _key(key))
 
 
+MANUAL_CAP = 2       # [18/11 אייל] פרסום ידני של סוכן/מתאמת: עד 2 ביום לכל משתמש, לכל סוג (פוסט / סרטון) בנפרד
+MANUAL_CAP_REASON = "הגעת למגבלה היומית — %d פרסומים ידניים ביום" % MANUAL_CAP
+
+
+def _l9(p):
+    return re.sub(r"\D", "", str(p or ""))[-9:]
+
+
+def soc_manual_used(history, phone, now, counts=None):
+    """כמה פרסומים ידניים של המשתמש הזה (לפי טלפון) נספרים היום. counts(h) קובע מה נחשב 'יצא' —
+    ברירת מחדל לפוסטים: מצב publish ואחד הערוצים לא נכשל."""
+    me = _l9(phone)
+    if not me:
+        return 0
+    if counts is None:
+        counts = lambda h: h.get("mode") == "publish" and any(
+            str(h.get(c + "_status") or "") in ("ok", "unknown", "pending") for c in ("fb", "ig"))
+    n = 0
+    for h in history or []:
+        if h.get("trigger") != "manual" or _l9(h.get("by_phone")) != me or not counts(h):
+            continue
+        t = _ts(h.get("created_at"))
+        if t is not None and _day(t) == _day(now):
+            n += 1
+    return n
+
+
+def soc_is_dev(s):
+    return bool(s) and s.get("drole") == "developer"
+
+
+def soc_user_owns(G, s, row):
+    """[18/11 אייל] מפתח — כל נכס. סוכן / מתאמת / מנהל — רק נכס שמופיע אצלו ב"שלי" (אותו חישוב של /api/my/properties)."""
+    if not s or not row:
+        return False
+    if soc_is_dev(s):
+        return True
+    try:
+        name = s.get("name", "")
+        phones = set(G["_phones_for_name"](name) or [])
+        if s.get("phone"):
+            phones.add(G["_last9"](s["phone"]))
+        keys, ph, _ = G["_scope_keys_phones"](s.get("role"), name, phones, s.get("agents"), s.get("agent_names"))
+        return bool(G["_row_owned"](row, keys, ph))
+    except Exception:
+        return False
+
+
 def soc_notify_agent(G, row, rec, by_phone, env):
     """[18/11 אייל] פוסט עלה → וואטסאפ לסוכן של הנכס, לנייד האישי (לא למרכזיה), עם קישורי הפוסט לשיתוף — כמו בסרטונים.
     לא נשלח: בשעות שקט/שבת, לסוכן בלי נייד אישי, או כשהסוכן הוא מי שלחץ 'פרסם'. כיבוי: SOCIAL_POST_SEND_AGENT=0.
@@ -1094,9 +1149,7 @@ def soc_auto_tick(G, now, env=None, sleep=None):
     act = soc_active_agents(G, now)
 
     def allowed(r):
-        from goals import g_canon, g_display
-        name = _norm(r.get("סוכן 1") or r.get("סוכן"))
-        return bool(act) and _real_agent(name) and g_canon(G, g_display(G, name)) in act
+        return soc_row_allowed(G, r, act)
 
     plan = soc_plan_round(rows, scfg, history, now, hidden, blocked_now(now), allowed=allowed)
     _social_mutate(G, lambda s: s.update(known=plan["state"]["known"], waiting=plan["state"]["waiting"], last_tick=now))
@@ -1165,9 +1218,19 @@ def register(app, G):
         except Exception:
             return []
 
+    def user():
+        """[18/11 אייל] כל משתמש מחובר — ההרשאה לנכס עצמו נבדקת ב-soc_user_owns."""
+        s = G["_web_auth"]()
+        if not s:
+            return None, (jsonify({"ok": False, "auth": False}), 401)
+        return s, None
+
+    def row_of(key):
+        return next((r for r in soc_office_rows(G) if _key(r.get("מספר מודעה")) == key), None)
+
     @app.route("/v2/api/social/publish", methods=["POST"])
     def soc_api_publish():
-        s, err = dev()
+        s, err = user()
         if err:
             return err
         j = request.get_json(silent=True) or {}
@@ -1175,6 +1238,14 @@ def register(app, G):
         ch = [c for c in (j.get("channels") or []) if c in ("fb", "ig")] or None
         if not key:
             return jsonify({"ok": False, "error": "key"}), 400
+        if not soc_is_dev(s):
+            row = row_of(key)
+            if not row:
+                return jsonify({"ok": False, "error": "הנכס לא נמצא"}), 404
+            if not soc_user_owns(G, s, row):
+                return jsonify({"ok": False, "error": "forbidden"}), 403
+            if soc_manual_used(hist(), s.get("phone"), _t.time()) >= MANUAL_CAP:
+                return jsonify({"ok": False, "error": MANUAL_CAP_REASON})
         _spawn(lambda: soc_run_one(G, key, "manual", s.get("phone", ""), channels=ch))
         return jsonify({"ok": True, "queued": True})
 
@@ -1199,7 +1270,7 @@ def register(app, G):
 
     @app.route("/v2/api/social/status")
     def soc_api_status():
-        s, err = dev()
+        s, err = user()
         if err:
             return err
         keys = [_key(k) for k in str(request.args.get("keys") or "").split(",") if _key(k)][:200]
@@ -1207,10 +1278,17 @@ def register(app, G):
         last = _last_by_key(h)
         rows = {_key(r.get("מספר מודעה")): r for r in soc_office_rows(G)}
         now, hidden = _t.time(), soc_hidden(G)
+        is_dev = soc_is_dev(s)
+        capped = not is_dev and soc_manual_used(h, s.get("phone"), now) >= MANUAL_CAP
         items = {}
         for k in keys:
-            items[k] = {"last": last.get(k), "can": can_map(rows[k], h, now, hidden) if k in rows else None}
-        return jsonify({"ok": True, "mode": soc_mode(os.environ), "items": items})
+            if not is_dev and not soc_user_owns(G, s, rows.get(k)):   # סוכן רואה רק את הנכסים שלו
+                continue
+            can = can_map(rows[k], h, now, hidden) if k in rows else None
+            if capped and can:
+                can = {c: ({"ok": False, "reason": MANUAL_CAP_REASON} if v.get("ok") else v) for c, v in can.items()}
+            items[k] = {"last": last.get(k), "can": can}
+        return jsonify({"ok": True, "mode": soc_mode(os.environ), "items": items, "dev": is_dev})
 
     @app.route("/v2/api/social/health")
     def soc_api_health():
