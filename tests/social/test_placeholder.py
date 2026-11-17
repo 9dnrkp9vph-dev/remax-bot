@@ -47,14 +47,20 @@ G, st, sb = make_G()
 r = SP.soc_run_one(G, "tok1", "manual", "505709865", http=Http(lambda u: PH), env={"META_TOKEN": "x"})
 ck(not r["ok"] and r.get("placeholder"), ("preview flags placeholder", r))
 
-# תמונה אחת פלייסהולדר ואחת אמיתית → מפרסמים רק את האמיתית
+# [18/11 אייל] תמונה אחת פלייסהולדר ואחת אמיתית → נשארה תמונה אמיתית אחת → לא מפרסמים (לעולם לא עם תמונה אחת)
 G, st, sb = make_G()
 FakeGraph.instances.clear()
 r = SP.soc_run_one(G, "tok1", "manual", "505709865", http=Http(lambda u: PH if "a.jpg" in u else REAL), env=PUB)
+ck(not r["ok"] and r.get("placeholder") and "לפחות 2" in r["reason"], r)
+ck(not sb.rows and not any(g.calls for g in FakeGraph.instances), "nothing recorded, no graph calls")
+# שלוש תמונות, אחת פלייסהולדר → מפרסמים את שתי האמיתיות
+G, st, sb = make_G([dict(ROW, תמונות=["https://img/a.jpg", "https://img/b.jpg", "https://img/c.jpg"])])
+FakeGraph.instances.clear()
+r = SP.soc_run_one(G, "tok1", "manual", "505709865", http=Http(lambda u: PH if "a.jpg" in u else REAL), env=PUB)
 ck(r["ok"] and r["fb"] == "ok", r)
-ck(sb.rows[-1]["images"] == ["https://img/b.jpg"], sb.rows[-1]["images"])
+ck(sb.rows[-1]["images"] == ["https://img/b.jpg", "https://img/c.jpg"], sb.rows[-1]["images"])
 fbu = [c for c in FakeGraph.instances[-1].calls if c[0] == "fb"][0][3]
-ck(len(fbu) == 1, fbu)
+ck(len(fbu) == 2, fbu)
 
 # הסבב האוטומטי: נכס שנדחה בגלל פלייסהולדר חוזר להמתנה עם הזמן המקורי שלו
 import datetime as dt

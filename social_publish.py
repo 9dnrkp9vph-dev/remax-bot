@@ -15,14 +15,15 @@ try:
 except Exception:  # pragma: no cover
     _IL = _dt.timezone(_dt.timedelta(hours=2))
 
-DAILY_CAP = 5
+DAILY_CAP = 10        # [18/11 אייל] היה 5
 ROUND_CAP = 3
 FLOOD = 40
 GAP_MIN = 20
 REPEAT_DAYS = 14
 WAIT_DAYS = 3
 RETRY_DAYS = 3
-ONE_IMG_HOURS = 72
+MIN_IMAGES = 2       # [18/11 אייל] "לעולם לא להעלות נכס עם תמונה אחת" (היה: אחרי 72 שעות עולה גם עם אחת)
+MIN_IMG_REASON = "נשארה תמונה אמיתית אחת — צריך לפחות 2 תמונות"
 MAX_IMAGES = 10
 DESC_MAX = 600
 NIGHT = (22, 8)
@@ -128,6 +129,21 @@ def _cut(t, n):
     return t.rstrip(" ,.-·") + "…"
 
 
+_BULLETS = "✔✅☑•●▪◾★⭐🔹🔸"
+
+
+def soc_break_lines(text):
+    """[18/11 אייל] "שהמלל יירד שורות": תיאור שהגיע כגוש אחד מתפרק לשורות — שורה חדשה לפני סימן רשימה
+    (✔ • וכו', או ' - ' / ' * ' בין מילים) ואחרי סוף משפט. תיאור שכבר מחולק לשורות נשאר כמו שהוא."""
+    t = str(text or "").strip()
+    if not t or t.count("\n") >= 2:
+        return t
+    t = re.sub(r"[ \t]*([%s])" % _BULLETS, r"\n\1", t)
+    t = re.sub(r"[ \t]+([-*])[ \t]+(?=\S)", r"\n\1 ", t)
+    t = re.sub(r"([.!?])[ \t]+(?=[^\s%s])" % _BULLETS, r"\1\n", t)
+    return "\n".join(x.strip() for x in t.split("\n") if x.strip())
+
+
 def soc_build_post(row, office_name, clean_desc, feats, agent=None, wa_link=None):
     """שורת נכס → {'body', 'ig_caption', 'images'}. בלי מספר בית; טלפונים מהתיאור נמחקים.
     agent = {'name','phone'} — שם הסוכן ווואטסאפ לנייד האישי שלו בסוף (01/11); בלי — 'לפרטים — הודעה לעמוד'."""
@@ -151,11 +167,11 @@ def soc_build_post(row, office_name, clean_desc, feats, agent=None, wa_link=None
     if spec:
         lines.append("📐 " + " · ".join(spec))
     ft = [f for f in (feats(row) or []) if f]
-    if ft:
-        lines.append("✔ " + " · ".join(ft))
+    for f in ft:   # [18/11 אייל] כל מאפיין בשורה משלו
+        lines.append("✔ " + f)
     desc = soc_scrub_phones(clean_desc(row.get("_desc_ae") or row.get("תיאור") or ""))
     desc = soc_scrub_house(desc, row.get("כתובת"))
-    desc = _cut(re.sub(r"\s+\n", "\n", desc), DESC_MAX)
+    desc = soc_break_lines(_cut(re.sub(r"\s+\n", "\n", desc), DESC_MAX))
     parts = ["\n".join(lines)]
     if desc:
         parts.append(desc)
@@ -273,10 +289,8 @@ def soc_can_publish(row, channel, history, now, hidden):
     imgs = soc_images(row)
     if not imgs:
         return False, "אין תמונות"
-    if len(imgs) < 2:
-        fs = _ts(row.get("_y2_first_seen"))
-        if fs is None or now - fs < ONE_IMG_HOURS * 3600:
-            return False, "מחכה לתמונות"
+    if len(imgs) < MIN_IMAGES:
+        return False, "מחכה לתמונות"
     akey, afl = soc_addr_key(row), soc_floor(row)
     st_col = channel + "_status"
     last = None
@@ -337,6 +351,13 @@ def soc_active_agents(G, now):
     return v
 
 
+def soc_row_allowed(G, row, act):
+    """[01/11] פרסום אוטומטי רק לנכס של סוכן פעיל (act = soc_active_agents). משמש את הפוסטים ואת הסרטונים."""
+    from goals import g_canon, g_display
+    name = _norm(row.get("סוכן 1") or row.get("סוכן"))
+    return bool(act) and _real_agent(name) and g_canon(G, g_display(G, name)) in act
+
+
 def soc_plan_round(rows, state, history, now, hidden, blocked, allowed=None):
     """→ {'publish': [keys], 'state': state חדש, 'flood': bool, 'reason': str}.
     'חדש' = מספר מודעה שלא נראה (known) — לא _y2_first_seen, שנדרס בהזרמות ושחזורים."""
@@ -358,11 +379,15 @@ def soc_plan_round(rows, state, history, now, hidden, blocked, allowed=None):
         return out
     for k in new:
         st["waiting"].setdefault(k, now)
-    def _expired(k, t):   # נכס עם תמונה אחת מחכה גם ל-72 השעות (ביקורת סופית — אחרת לא היה עולה אף פעם)
-        extra = ONE_IMG_HOURS * 3600 if len(soc_images(by_key[k])) < 2 else 0
-        return now - float(t) > WAIT_DAYS * 86400 + extra
-    for k in [k for k, t in st["waiting"].items() if k not in by_key or _expired(k, t)]:
-        st["waiting"].pop(k, None)
+    # [18/11 אייל] נכס עם פחות מ-2 תמונות מחכה בלי הגבלת זמן ("גם אם העדכון של התמונות אחרי חודש"): השעון שלו
+    # מתחדש בכל סבב, כך ש-WAIT_DAYS נספרים רק מהרגע שיש לו מספיק תמונות. נכס שירד מהרשימה יוצא מהתור.
+    for k, t in list(st["waiting"].items()):
+        if k not in by_key:
+            st["waiting"].pop(k, None)
+        elif len(soc_images(by_key[k])) < MIN_IMAGES:
+            st["waiting"][k] = now
+        elif now - float(t) > WAIT_DAYS * 86400:
+            st["waiting"].pop(k, None)
     if blocked or _is_night(now):
         out["reason"] = "שבת / השתקה / לילה"
         return out
@@ -834,6 +859,89 @@ def _wa_link(env, key):
     return "%s/v2/social/wa/%s" % (base, _key(key))
 
 
+MANUAL_CAP = 2       # [18/11 אייל] פרסום ידני של סוכן/מתאמת: עד 2 ביום לכל משתמש, לכל סוג (פוסט / סרטון) בנפרד
+MANUAL_CAP_REASON = "הגעת למגבלה היומית — %d פרסומים ידניים ביום" % MANUAL_CAP
+
+
+def _l9(p):
+    return re.sub(r"\D", "", str(p or ""))[-9:]
+
+
+def soc_manual_used(history, phone, now, counts=None):
+    """כמה פרסומים ידניים של המשתמש הזה (לפי טלפון) נספרים היום. counts(h) קובע מה נחשב 'יצא' —
+    ברירת מחדל לפוסטים: מצב publish ואחד הערוצים לא נכשל."""
+    me = _l9(phone)
+    if not me:
+        return 0
+    if counts is None:
+        counts = lambda h: h.get("mode") == "publish" and any(
+            str(h.get(c + "_status") or "") in ("ok", "unknown", "pending") for c in ("fb", "ig"))
+    n = 0
+    for h in history or []:
+        if h.get("trigger") != "manual" or _l9(h.get("by_phone")) != me or not counts(h):
+            continue
+        t = _ts(h.get("created_at"))
+        if t is not None and _day(t) == _day(now):
+            n += 1
+    return n
+
+
+def soc_is_dev(s):
+    return bool(s) and s.get("drole") == "developer"
+
+
+def soc_user_owns(G, s, row):
+    """[18/11 אייל] מפתח — כל נכס. סוכן / מתאמת / מנהל — רק נכס שמופיע אצלו ב"שלי" (אותו חישוב של /api/my/properties)."""
+    if not s or not row:
+        return False
+    if soc_is_dev(s):
+        return True
+    try:
+        name = s.get("name", "")
+        phones = set(G["_phones_for_name"](name) or [])
+        if s.get("phone"):
+            phones.add(G["_last9"](s["phone"]))
+        keys, ph, _ = G["_scope_keys_phones"](s.get("role"), name, phones, s.get("agents"), s.get("agent_names"))
+        return bool(G["_row_owned"](row, keys, ph))
+    except Exception:
+        return False
+
+
+def soc_notify_agent(G, row, rec, by_phone, env):
+    """[18/11 אייל] פוסט עלה → וואטסאפ לסוכן של הנכס, לנייד האישי (לא למרכזיה), עם קישורי הפוסט לשיתוף — כמו בסרטונים.
+    לא נשלח: בשעות שקט/שבת, לסוכן בלי נייד אישי, או כשהסוכן הוא מי שלחץ 'פרסם'. כיבוי: SOCIAL_POST_SEND_AGENT=0.
+    → 9 ספרות של מי שקיבל, או ''."""
+    if str((env or {}).get("SOCIAL_POST_SEND_AGENT") or "1").strip() == "0":
+        return ""
+    for k in ("_quiet_hours", "_shabbat_quiet_now"):
+        try:
+            if G[k]():
+                return ""
+        except Exception:
+            pass
+    import social_video as V   # ייבוא מאוחר — social_video מייבא את המודול הזה
+    l9 = V._agent_personal(G, row)
+    if not l9 or l9 == V._l9(by_phone):
+        return ""
+    first = (_norm(row.get("סוכן 1")).split() or [""])[0]
+    rooms = _num(row.get("חדרים"))
+    street = re.sub(r"\s*(?:מס['׳]?\s*)?[\d/]+[א-ת]?\s*$", "", _norm(row.get("כתובת")))
+    what = ", ".join(x for x in ((rooms + " חדרים") if rooms and rooms != "0" else "", street,
+                                 _norm(row.get("עיר / ישוב"))) if x)
+    lines = ["היי %s, הנכס שלך%s עלה עכשיו לפייסבוק ולאינסטגרם של המשרד." % (first, (" — " + what + " —") if what else "")]
+    for label, k in (("פייסבוק", "fb_permalink"), ("אינסטגרם", "ig_permalink")):
+        if rec.get(k):
+            lines.append("%s: %s" % (label, rec[k]))
+    lines.append("אפשר לשתף את הפוסט גם אצלך.")
+    if not G["send_text"](V._wa(l9), "\n".join(lines)):
+        return ""
+    try:
+        G["_log_activity"]("אפי", "system", "", "פרסום ברשתות — נשלח לסוכן", "%s 0%s" % (_key(row.get("מספר מודעה")), l9))
+    except Exception:
+        pass
+    return l9
+
+
 def soc_run_one(G, key, trigger, by_phone, channels=None, http=None, now=None, env=None):
     """פרסום (או תצוגה מקדימה) של נכס אחד. → {'ok','mode','fb','ig','reason','row_id'}.
     נגד כפילות (ביקורת סופית): נכס אחד בכל רגע; רשומת pending לפני כל כתיבה ל-Meta."""
@@ -897,8 +1005,8 @@ def _soc_run_one(G, key, trigger, by_phone, channels, http, now, env):
     if http is None:
         import requests as http
     real, ph = soc_real_images(http, post["images"])   # [01/11] בלי תמונות 'תמונות בקרוב'
-    if ph and not real:
-        res.update(placeholder=True, reason=PLACEHOLDER_REASON)
+    if (ph and not real) or 0 < len(real) < MIN_IMAGES:   # [18/11] גם תמונה אמיתית אחת לא מספיקה; בסבב האוטומטי חוזר להמתנה
+        res.update(placeholder=True, reason=MIN_IMG_REASON if real else PLACEHOLDER_REASON)
         return res
     post["images"] = real
     rec = {"property_key": key, "addr_key": soc_addr_key(row) + "#" + soc_floor(row), "trigger": trigger,
@@ -986,6 +1094,11 @@ def _soc_run_one(G, key, trigger, by_phone, channels, http, now, env):
         G["_sbdb"].social_update(rid, {f: rec.get(f) for f in ("fb_status", "ig_status", "fb_post_id", "fb_permalink",
                                                               "ig_media_id", "ig_permalink", "error")})
     res["ok"] = "ok" in (res["fb"], res["ig"])
+    if res["ok"]:   # [18/11 אייל] על כל פוסט שעולה — הודעה לסוכן עם הקישורים לשיתוף
+        try:
+            soc_notify_agent(G, row, rec, by_phone, env)
+        except Exception:
+            pass
     if res["ok"] and scfg.get("token_bad"):
         _social_mutate(G, lambda s2: s2.__setitem__("token_bad", False))
     res["reason"] = " · ".join(reasons + errs)
@@ -1036,9 +1149,7 @@ def soc_auto_tick(G, now, env=None, sleep=None):
     act = soc_active_agents(G, now)
 
     def allowed(r):
-        from goals import g_canon, g_display
-        name = _norm(r.get("סוכן 1") or r.get("סוכן"))
-        return bool(act) and _real_agent(name) and g_canon(G, g_display(G, name)) in act
+        return soc_row_allowed(G, r, act)
 
     plan = soc_plan_round(rows, scfg, history, now, hidden, blocked_now(now), allowed=allowed)
     _social_mutate(G, lambda s: s.update(known=plan["state"]["known"], waiting=plan["state"]["waiting"], last_tick=now))
@@ -1107,9 +1218,19 @@ def register(app, G):
         except Exception:
             return []
 
+    def user():
+        """[18/11 אייל] כל משתמש מחובר — ההרשאה לנכס עצמו נבדקת ב-soc_user_owns."""
+        s = G["_web_auth"]()
+        if not s:
+            return None, (jsonify({"ok": False, "auth": False}), 401)
+        return s, None
+
+    def row_of(key):
+        return next((r for r in soc_office_rows(G) if _key(r.get("מספר מודעה")) == key), None)
+
     @app.route("/v2/api/social/publish", methods=["POST"])
     def soc_api_publish():
-        s, err = dev()
+        s, err = user()
         if err:
             return err
         j = request.get_json(silent=True) or {}
@@ -1117,6 +1238,14 @@ def register(app, G):
         ch = [c for c in (j.get("channels") or []) if c in ("fb", "ig")] or None
         if not key:
             return jsonify({"ok": False, "error": "key"}), 400
+        if not soc_is_dev(s):
+            row = row_of(key)
+            if not row:
+                return jsonify({"ok": False, "error": "הנכס לא נמצא"}), 404
+            if not soc_user_owns(G, s, row):
+                return jsonify({"ok": False, "error": "forbidden"}), 403
+            if soc_manual_used(hist(), s.get("phone"), _t.time()) >= MANUAL_CAP:
+                return jsonify({"ok": False, "error": MANUAL_CAP_REASON})
         _spawn(lambda: soc_run_one(G, key, "manual", s.get("phone", ""), channels=ch))
         return jsonify({"ok": True, "queued": True})
 
@@ -1135,13 +1264,13 @@ def register(app, G):
         can = can_map(row, hist(), _t.time(), soc_hidden(G))
         real, ph = soc_real_images(_HTTP, post["images"])   # [01/11] גם בתצוגה המקדימה — בלי 'תמונות בקרוב'
         post["images"] = real
-        if ph and not real:
-            can = {c: {"ok": False, "reason": PLACEHOLDER_REASON} for c in ("fb", "ig")}
+        if (ph and not real) or 0 < len(real) < MIN_IMAGES:
+            can = {c: {"ok": False, "reason": MIN_IMG_REASON if real else PLACEHOLDER_REASON} for c in ("fb", "ig")}
         return jsonify(dict(post, ok=True, key=key, can=can))
 
     @app.route("/v2/api/social/status")
     def soc_api_status():
-        s, err = dev()
+        s, err = user()
         if err:
             return err
         keys = [_key(k) for k in str(request.args.get("keys") or "").split(",") if _key(k)][:200]
@@ -1149,10 +1278,17 @@ def register(app, G):
         last = _last_by_key(h)
         rows = {_key(r.get("מספר מודעה")): r for r in soc_office_rows(G)}
         now, hidden = _t.time(), soc_hidden(G)
+        is_dev = soc_is_dev(s)
+        capped = not is_dev and soc_manual_used(h, s.get("phone"), now) >= MANUAL_CAP
         items = {}
         for k in keys:
-            items[k] = {"last": last.get(k), "can": can_map(rows[k], h, now, hidden) if k in rows else None}
-        return jsonify({"ok": True, "mode": soc_mode(os.environ), "items": items})
+            if not is_dev and not soc_user_owns(G, s, rows.get(k)):   # סוכן רואה רק את הנכסים שלו
+                continue
+            can = can_map(rows[k], h, now, hidden) if k in rows else None
+            if capped and can:
+                can = {c: ({"ok": False, "reason": MANUAL_CAP_REASON} if v.get("ok") else v) for c, v in can.items()}
+            items[k] = {"last": last.get(k), "can": can}
+        return jsonify({"ok": True, "mode": soc_mode(os.environ), "items": items, "dev": is_dev})
 
     @app.route("/v2/api/social/health")
     def soc_api_health():

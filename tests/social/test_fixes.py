@@ -83,12 +83,14 @@ for resp in (R({"error": {"message": "x"}}, 500), R({"error": {"code": 2, "messa
     except SP.MetaError as e:
         ck(not e.unknown, "non-final stays failed")
 
-# I2: נכס עם תמונה אחת לא נמחק מההמתנה לפני שעברו 72 שעות + WAIT_DAYS
+# I2 → [18/11 אייל] נכס עם תמונה אחת לא עולה ולא נמחק מההמתנה — מחכה לתמונות בלי הגבלת זמן
 NOW = dt.datetime(2026, 11, 3, 12, 0, tzinfo=IL).timestamp()
 one = dict(ROW, **{"מספר מודעה": "one", "תמונות": ["https://x/1.jpg"], "_y2_first_seen": "31/10/2026 11:00"})
 st0 = {"known": {"one": NOW}, "waiting": {"one": NOW - 3.1 * 86400}, "enabled_at": NOW - 9e5}
 r = SP.soc_plan_round([one], st0, [], NOW, set(), False)
-ck(r["publish"] == ["one"], r)
+ck(r["publish"] == [] and "one" in r["state"]["waiting"], r)
+two = dict(one, **{"תמונות": ["https://x/1.jpg", "https://x/2.jpg"]})
+ck(SP.soc_plan_round([two], r["state"], [], NOW + 600, set(), False)["publish"] == ["one"], "photos added → published")
 
 # I4: אוטומטי חזר אחרי הפסקה ארוכה → זריעה מחדש בלי פרסום
 G, st, sb = make_G(rows=[dict(ROW, **{"מספר מודעה": k, "כתובת": "ר " + k}) for k in ("a", "b", "c")])

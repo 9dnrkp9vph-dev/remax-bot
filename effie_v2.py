@@ -7607,15 +7607,21 @@ function orphanBanner(){
 var HOT_BY = {};   // property_key → שם הסוכן שסימן (לתצוגת מנהל: "נכס חם · שם")
 /* [SITE 13/10] אתר refamily — "הסתר מהאתר" בכרטיסי הנכסים, למזכירה (וגם מנהל/מפתח) בלבד (site_api.py).
    סוכן לא משנה כלום באתר; המומלצים באתר = הנכס החם של הסטורי (אחד לסוכן) — אייל 13/10 */
-/* [SOCIAL 31/10] פרסום ברשתות (עמוד הפייסבוק + אינסטגרם של המשרד) — כרגע למפתח בלבד (social_publish.py) */
-var SOC = {dev: false, mode: 'preview', items: {}, asked: {}, busy: {}};
+/* [SOCIAL 31/10] פרסום ברשתות (עמוד הפייסבוק + אינסטגרם של המשרד) (social_publish.py).
+   [18/11 אייל] פוסט + סרטון נפתחו גם לסוכנים, למתאמות ולמנהל — רק בטאב "שלי", עד 2 ביום מכל סוג (השרת אוכף);
+   למפתח — בכל הטאבים ובלי מגבלה. סטורי SOLD נשאר למפתח בלבד. */
+var SOC = {dev: false, user: false, mode: 'preview', items: {}, asked: {}, busy: {}};
+function socOn(){
+  if (MODE === 'shtaf' || MODE === 'nb' || DEAL === 'commercial') return false;
+  return SOC.dev || (SOC.user && MODE === 'mine');
+}
 var SOC_RETRY_DAYS = 3;
 function socWhen(iso){
   var d = new Date(iso || ''); if (isNaN(d)) return '';
   return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
 }
 function socRow(p){
-  if (!SOC.dev || MODE === 'shtaf' || MODE === 'nb' || DEAL === 'commercial') return '';
+  if (!socOn()) return '';
   var k = String((p && p.id) || ''); var it = k && SOC.items[k];
   if (!it) return '';
   var css = 'width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;';
@@ -7645,7 +7651,7 @@ function socRow(p){
   return h;
 }
 function socLoad(list){
-  if (!SOC.dev) return;
+  if (!socOn()) return;
   var keys = (list || []).slice(0, 40).map(function(p){ return String((p && p.id) || ''); })
     .filter(function(k){ return k && !SOC.asked[k]; });
   if (!keys.length) return;
@@ -7671,7 +7677,7 @@ var VID = {items: {}, busy: {}, asked: {}};
 var VID_ST = {rendering: 'בהכנה', preview: 'מוכן (מצב בדיקה)', pending: 'ממתין לאישור בוואטסאפ', approved: 'אושר — עולה',
   published: 'פורסם', partial: 'פורסם חלקית', skipped: 'דולג', expired: 'פג — לא אושר בזמן', failed: 'נכשל'};
 function vidRow(p){
-  if (!SOC.dev || MODE === 'shtaf' || MODE === 'nb' || DEAL === 'commercial') return '';
+  if (!socOn()) return '';
   var k = String((p && p.id) || ''); var it = k && VID.items[k];
   if (!it) return '';
   var css = 'width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer;';
@@ -7693,10 +7699,10 @@ function vidRow(p){
   }
   if (VID.busy[k]) return h + '<div style="margin-top:8px"><button disabled style="' + css +
     'cursor:default;background:#F2EFE7;color:#5B6472;border:1.5px solid #DCD6C8">בהכנה… (כמה דקות)</button></div>';
-  if (L && L.status === 'partial')
+  if (SOC.dev && L && L.status === 'partial')
     h += '<div style="margin-top:8px"><button onclick="vidRetry(\'' + esc(L.id) + '\')" style="' + css +
          'background:#fff;color:#7A5E1C;border:1.5px solid #C29435">נסה שוב את מה שנכשל</button></div>';
-  if (L && L.status === 'approved' && L.publish_at && !VID.busy['n:' + L.id])
+  if (SOC.dev && L && L.status === 'approved' && L.publish_at && !VID.busy['n:' + L.id])
     h += '<div style="margin-top:8px"><button onclick="vidNow(\'' + esc(L.id) + '\')" style="' + css +
          'background:#2E6BD6;color:#fff;border:none">פרסם עכשיו</button></div>';
   if (L && L.status === 'pending' && !VID.busy['s:' + L.id])
@@ -7713,7 +7719,7 @@ function vidRow(p){
   return h;
 }
 function vidLoad(list){
-  if (!SOC.dev) return;
+  if (!socOn()) return;
   var keys = (list || []).slice(0, 40).map(function(p){ return String((p && p.id) || ''); })
     .filter(function(k){ return k && !VID.asked[k]; });
   if (!keys.length) return;
@@ -8445,7 +8451,8 @@ render = function(){
     if (!j.ok){ location.replace('/v2'); return; }
     el('avatarTx').textContent = (j.name || ' ').trim()[0] || '';
     SOC.dev = j.drole === 'developer';   // [SOCIAL 31/10]
-    if (SOC.dev) render();
+    SOC.user = true;                     // [18/11] פוסט + סרטון גם לסוכנים ולמתאמות, ב"שלי"
+    render();
     MYNAME = j.name || '';   // [NB-SEARCH] כרטיסי נכס נולד: "מי פנה" למנהל/מתאמת, בחירת סוכן בסטטוס
     MGR = (j.role === 'admin' || j.role === 'coordinator');
     if (MGR){

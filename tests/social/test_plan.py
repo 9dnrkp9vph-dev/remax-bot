@@ -28,9 +28,16 @@ flood = [row("f%d" % i) for i in range(41)]
 r = SP.soc_plan_round(old + flood, st, [], NOW, set(), False)
 ck(r["publish"] == [] and r["flood"] and all("f%d" % i in r["state"]["known"] for i in range(41)), r["reason"])
 
-H5 = [{"property_key": "p%d" % i, "trigger": "auto", "mode": "publish", "fb_status": "ok", "created_at": iso(3 + i)} for i in range(5)]
+H5 = [{"property_key": "p%d" % i, "trigger": "auto", "mode": "publish", "fb_status": "ok", "created_at": iso(0.5 + i * 0.5)} for i in range(5)]
+four_ = [row("m%d" % i) for i in range(4)]
+# [18/11 אייל] התקרה היומית: 10 פוסטים אוטומטיים ביום (היה 5)
+ck(SP.DAILY_CAP == 10, SP.DAILY_CAP)
+ck(SP.soc_plan_round(old + [row("new2")], st, H5, NOW, set(), False)["publish"] == ["new2"], "5 today → still room")
+H9 = [dict(H5[0], property_key="q%d" % i, created_at=iso(0.5 + i * 0.5)) for i in range(9)]
+ck(SP.soc_plan_round(old + four_, st, H9, NOW, set(), False)["publish"].__len__() == 1, "9 today → one slot left")
+H5 = [dict(H5[0], property_key="p%d" % i, created_at=iso(0.5 + i * 0.5)) for i in range(10)]
 r = SP.soc_plan_round(old + [row("new2")], st, H5, NOW, set(), False)
-ck(r["publish"] == [] and "new2" in r["state"]["waiting"], r)
+ck(r["publish"] == [] and "new2" in r["state"]["waiting"] and r["reason"] == "התקרה היומית", r)
 Hm = [dict(h, trigger="manual") for h in H5]
 ck(SP.soc_plan_round(old + [row("new2")], st, Hm, NOW, set(), False)["publish"] == ["new2"], "manual not counted")
 
@@ -56,4 +63,18 @@ ck("gone" not in SP.soc_plan_round(old, stale, [], NOW, set(), False)["state"]["
 
 r = SP.soc_plan_round(old + [row("one", imgs=1)], st, [], NOW, set(), False)
 ck(r["publish"] == [] and "one" in r["state"]["waiting"], r)
+# [18/11 אייל] נכס עם פחות מ-2 תמונות מחכה בלי הגבלת זמן — "גם אם העדכון של התמונות אחרי חודש" — ואז עולה אוטומטית
+s2, t = r["state"], NOW
+for d in range(1, 41):                                  # 40 יום, סבב ביום, עדיין תמונה אחת
+    t = NOW + d * 86400
+    r = SP.soc_plan_round(old + [row("one", imgs=1)], s2, [], t, set(), False)
+    s2 = r["state"]
+    ck(r["publish"] == [] and "one" in s2["waiting"] and "one" in s2["known"], ("day", d))
+r = SP.soc_plan_round(old + [row("zero", imgs=0)], st, [], NOW, set(), False)
+r = SP.soc_plan_round(old + [row("zero", imgs=0)], r["state"], [], NOW + 10 * 86400, set(), False)
+ck(r["publish"] == [] and "zero" in r["state"]["waiting"], "no photos at all also waits")
+r = SP.soc_plan_round(old + [row("one", imgs=3)], s2, [], t + 600, set(), False)   # המזכירה הוסיפה תמונות
+ck(r["publish"] == ["one"] and "one" not in r["state"]["waiting"], r)
+gone = SP.soc_plan_round(old, s2, [], t + 600, set(), False)                      # הנכס ירד בינתיים → יוצא מהתור
+ck("one" not in gone["state"]["waiting"], "listing gone → dropped")
 print("social_plan OK", n)

@@ -24,9 +24,35 @@ const ctx = {String, Math, JSON, Date, encodeURIComponent, console, DEAL: '', MO
   esc: s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]))};
 vm.createContext(ctx);
 const vst = pjs.slice(pjs.indexOf('var VID_ST = '), pjs.indexOf('};', pjs.indexOf('var VID_ST = ')) + 2);
-vm.runInContext('var SOC = {dev:false, mode:"preview", items:{}}; var VID = {items:{}, busy:{}, asked:{}};\n' + vst + '\n' + fn(pjs, 'socWhen') + '\n' + fn(pjs, 'vidRow'), ctx);
+vm.runInContext('var SOC = {dev:false, user:false, mode:"preview", items:{}, asked:{}, busy:{}}; var VID = {items:{}, busy:{}, asked:{}};\n' + vst + '\n' +
+  fn(pjs, 'socWhen') + '\n' + fn(pjs, 'socOn') + '\n' + fn(pjs, 'vidRow') + '\n' + fn(pjs, 'socRow'), ctx);
 const P = {id: 'tok1'};
-ck(ctx.vidRow(P) === '', 'non-dev → empty');
+ck(ctx.vidRow(P) === '', 'not logged in yet → empty');
+// [18/11 אייל] הכפתורים נפתחו לסוכנים ולמתאמות — רק בטאב "שלי"; למפתח — כמו קודם, בכל הטאבים
+{
+  const full = {id: 'v1', status: 'approved', publish_at: '2026-11-07T06:00:00+00:00', created_at: '2026-11-06T10:00:00+00:00'};
+  ctx.VID.items.tok1 = {last: null, can: {ok: true, reason: ''}};
+  ctx.SOC.items.tok1 = {last: null, can: {fb: {ok: true}, ig: {ok: true}}};
+  vm.runInContext('SOC.user = true; SOC.mode = "publish";', ctx);
+  ck(ctx.socOn() && ctx.vidRow(P).includes("vidCreate('tok1')") && ctx.socRow(P).includes("socPublish('tok1')"), 'agent sees both buttons in "mine"');
+  ctx.MODE = 'office'; ck(!ctx.socOn() && ctx.vidRow(P) === '' && ctx.socRow(P) === '', 'agent: nothing in the office tab');
+  ctx.MODE = 'mine';
+  ctx.VID.items.tok1 = {last: full, can: {ok: false, reason: 'x'}};
+  ck(!ctx.vidRow(P).includes('vidNow('), 'agent: no "publish now" (developer only)');
+  ctx.VID.items.tok1 = {last: Object.assign({}, full, {status: 'partial', publish_at: null}), can: {ok: false, reason: 'x'}};
+  ck(!ctx.vidRow(P).includes('vidRetry('), 'agent: no retry (developer only)');
+  ctx.VID.items.tok1 = {last: Object.assign({}, full, {status: 'pending', publish_at: null}), can: {ok: false, reason: 'x'}};
+  ck(ctx.vidRow(P).includes('vidResend('), 'agent can resend the approval message');
+  ctx.VID.items.tok1 = {last: null, can: {ok: false, reason: 'הגעת למגבלה היומית — 2 פרסומים ידניים ביום'}};
+  ck(ctx.vidRow(P).includes('הגעת למגבלה היומית') && ctx.vidRow(P).includes('disabled'), 'cap reason shown');
+  vm.runInContext('SOC.dev = true;', ctx);
+  ctx.MODE = 'office'; ck(ctx.socOn(), 'developer: every tab'); ctx.MODE = 'mine';
+  ctx.VID.items.tok1 = {last: full, can: {ok: false, reason: 'x'}};
+  ck(ctx.vidRow(P).includes('vidNow('), 'developer keeps "publish now"');
+  vm.runInContext('SOC.dev = false; SOC.user = false; SOC.mode = "preview"; VID.items = {}; SOC.items = {};', ctx);
+}
+ck(/SOC\.user = true/.test(PROPS) && /function socLoad\(list\)\{\s*if \(!socOn\(\)\) return;/.test(PROPS)
+   && /function vidLoad\(list\)\{\s*if \(!socOn\(\)\) return;/.test(PROPS), 'whoami + loaders use socOn');
 vm.runInContext('SOC.dev = true; SOC.mode = "publish";', ctx);
 ck(ctx.vidRow(P) === '', 'nothing loaded → empty');
 ctx.VID.items.tok1 = {last: null, can: {ok: true, reason: ''}};

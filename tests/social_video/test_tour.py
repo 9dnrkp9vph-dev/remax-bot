@@ -142,7 +142,7 @@ Image.new("RGB", (256, 256), (1, 2, 3)).save(os.path.join(AVD, "v2_avatars", "52
 ck(V._agent_photo(G, ROW).endswith("521234567.jpg"), "disk: personal phone first")
 del os.environ["MAP_CACHE_DIR"]
 
-# ── אישור: אייל בלבד כברירת מחדל ──
+# ── אישור: אוטומטי → הסוכן; ידני → מי שיצר ──
 G, st, sb = make_G()
 G["_quiet_hours"] = lambda: False; G["_shabbat_quiet_now"] = lambda: False
 G["DEV_PHONES"] = {"505709865"}
@@ -153,9 +153,9 @@ G["_agent_vphones9"] = lambda: set()
 G["_phones_for_name"] = lambda n: ["0521234567"]
 rec = {"id": "v9", "property_key": "tok1", "video_token": "t", "review_token": "r", "texts": TX, "recipients": []}
 sb.videos.append(dict(rec))
-ck(V.vid_send_review(G, rec, "https://app", {}) == ["505709865"], SENT)
+ck(V.vid_send_review(G, rec, "https://app", {}) == ["521234567"], SENT)   # [18/11] האישור לסוכן של הנכס
 SENT.clear()
-ck(V.vid_send_review(G, rec, "https://app", {"SOCIAL_VIDEO_REVIEW_AGENT": "1"}) == ["505709865", "521234567"], SENT)
+ck(V.vid_send_review(G, dict(rec, trigger="manual", by_phone="0505709865"), "https://app", {}) == ["505709865"], SENT)   # ידני → מי שיצר
 
 # ── רינדור אמיתי קצר (אם יש ffmpeg) ──
 import importlib

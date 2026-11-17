@@ -1210,8 +1210,33 @@ def _summary(rec):
     return s + ("" if rec.get("ai") else " (ללא AI)")
 
 
+def vid_reviewers(G, rec, env):
+    """[18/11 אייל] מי מאשר את הסרטון: ידני → מי שיצר אותו (סוכן / מתאמת / אייל) מאשר לעצמו;
+    אוטומטי → הסוכן של הנכס, לנייד האישי ("כמו שהיה נשלח לי — שיישלח לסוכן"). אין לסוכן נייד אישי → אייל."""
+    by = _l9(rec.get("by_phone"))
+    if rec.get("trigger") == "manual" and by:
+        return [by]
+    ag = _agent_personal(G, _row_by_key(G, rec.get("property_key")))
+    if ag:
+        return [ag]
+    appr = _l9((env or {}).get("SOCIAL_VIDEO_APPROVER")) or next(iter(sorted(G.get("DEV_PHONES") or [])), "")
+    return [appr] if appr else []
+
+
+def vid_manual_used(history_videos, phone, now):
+    """כמה סרטונים המשתמש הזה יצר ידנית היום (לא נכשלו, לא מצב בדיקה) — למגבלה של SP.MANUAL_CAP."""
+    return SP.soc_manual_used(history_videos, phone, now,
+                              counts=lambda h: str(h.get("status") or "") not in _FINAL_BAD + ("preview",))
+
+
+def vid_auto_on(env):
+    """[18/11 אייל] יצירה אוטומטית של סרטונים: SOCIAL_VIDEO_AUTO אם הוגדר (1/0), אחרת כמו הפוסטים (SOCIAL_AUTO)."""
+    v = str((env or {}).get("SOCIAL_VIDEO_AUTO") or "").strip()
+    return (v or str((env or {}).get("SOCIAL_AUTO") or "0").strip()) == "1"
+
+
 def vid_send_review(G, rec, base, env, initiator=""):
-    """שולח את הסרטון לאישור לאייל (ולסוכן — רק עם SOCIAL_VIDEO_REVIEW_AGENT=1). → רשימת 9 ספרות של מי שקיבל. בשעות שקט — review_due ולא שולח,
+    """שולח את הסרטון לאישור למי ש-vid_reviewers קובע (+ מי שלחץ "שלח שוב"). → רשימת 9 ספרות של מי שקיבל. בשעות שקט — review_due ולא שולח,
     חוץ ממי שיזם את הפעולה בעצמו (initiator — יצירה ידנית / "שלח שוב"), שמקבל מיד; השאר בבוקר.
     שליחת הבוקר מדלגת על מי שכבר ב-recipients."""
     try:
@@ -1223,15 +1248,9 @@ def vid_send_review(G, rec, base, env, initiator=""):
         G["_sbdb"].video_update(rec["id"], {"review_due": True})
         if not me:
             return []
-    who = []
-    appr = _l9(env.get("SOCIAL_VIDEO_APPROVER")) or next(iter(sorted(G.get("DEV_PHONES") or [])), "")
-    if appr:
-        who.append(appr)
-    # [04/11] אייל: "אני בלבד כרגע" — הסוכן מקבל לאישור רק עם SOCIAL_VIDEO_REVIEW_AGENT=1 ב-Render
-    ag = _agent_personal(G, _row_by_key(G, rec.get("property_key"))) \
-        if str(env.get("SOCIAL_VIDEO_REVIEW_AGENT") or "").strip() == "1" else ""
-    if ag and ag not in who:
-        who.append(ag)
+    who = vid_reviewers(G, rec, env)
+    if me and me not in who:
+        who.append(me)
     if quiet:
         who = [me]
     elif not me:
@@ -1547,16 +1566,17 @@ def _housekeeping(G, now, env, store):
 
 def vid_auto_tick(G, now, env=None, store=None):
     """סבב אחד: publish + META_TOKEN → תחזוקה (אישורים שחיכו לבוקר, פג, פרסום מתוזמן) גם לסרטונים ידניים;
-    יצירה אוטומטית רק עם SOCIAL_VIDEO_AUTO=1 — נכסים חדשים (מספר מודעה שלא ראינו) → עד 3 ביום."""
+    יצירה אוטומטית כש-vid_auto_on (כמו הפוסטים; SOCIAL_VIDEO_AUTO=0 מכבה) — נכסים חדשים של סוכן פעיל → עד 3 ביום."""
     env = SP._env(env)
     if SP.soc_mode(env) != "publish" or not str(env.get("META_TOKEN") or "").strip():
         return {"ran": False}
     store = store or _store()
     _housekeeping(G, now, env, store)
-    if str(env.get("SOCIAL_VIDEO_AUTO") or "0").strip() != "1":
+    if not vid_auto_on(env):
         return {"ran": False, "housekeeping": True}
     rows = SP.soc_office_rows(G)
-    keys = [SP._key(r.get("מספר מודעה")) for r in rows if SP._key(r.get("מספר מודעה"))]
+    by_key = {SP._key(r.get("מספר מודעה")): r for r in rows if SP._key(r.get("מספר מודעה"))}
+    keys = list(by_key)
     scfg = SP._cfg_social(G)
     gap = now - float(scfg.get("vid_last_tick") or 0)
     if not scfg.get("vid_enabled_at") or gap > 86400:
@@ -1565,8 +1585,10 @@ def vid_auto_tick(G, now, env=None, store=None):
         SP._social_mutate(G, lambda s: s.update(seed))
         return {"ran": True, "seeded": len(keys)}
     known = {k: v for k, v in (scfg.get("vid_known") or {}).items() if now - float(v or 0) < SP.KNOWN_TTL_DAYS * 86400}
-    waiting = {k: v for k, v in (scfg.get("vid_waiting") or {}).items()
-               if k in keys and now - float(v or 0) < SP.WAIT_DAYS * 86400}
+    # [18/11 אייל] כמו בפוסטים: נכס עם פחות מ-2 תמונות מחכה בלי הגבלת זמן (השעון מתחדש עד שיש תמונות)
+    few = lambda k: len(SP.soc_images(by_key[k])) < SP.MIN_IMAGES
+    waiting = {k: (now if few(k) else v) for k, v in (scfg.get("vid_waiting") or {}).items()
+               if k in by_key and (few(k) or now - float(v or 0) < SP.WAIT_DAYS * 86400)}
     new = [k for k in keys if k not in known and k not in waiting]
     for k in new:
         waiting[k] = now
@@ -1587,9 +1609,12 @@ def vid_auto_tick(G, now, env=None, store=None):
             today = SP._day(now)
             left = DAILY_CAP - sum(1 for h in hist if h.get("trigger") == "auto" and SP._ts(h.get("created_at"))
                                    and SP._day(SP._ts(h.get("created_at"))) == today)
+            act = SP.soc_active_agents(G, now)   # [18/11 אייל] רק לסוכן שהיה באפי 10+ דק' ב-30 יום, כמו בפוסטים
             for k in sorted(waiting, key=lambda x: -float(waiting[x])):
                 if left <= 0:
                     break
+                if few(k) or not SP.soc_row_allowed(G, by_key[k], act):   # נשאר בהמתנה
+                    continue
                 waiting.pop(k, None)
                 r = vid_create_one(G, k, "auto", "", env=env, store=store)
                 out["created"].append(k)
@@ -1620,40 +1645,56 @@ def register(app, G):
         except Exception:
             return []
 
+    def user():
+        """[18/11 אייל] כל משתמש מחובר — ההרשאה לנכס עצמו נבדקת ב-SP.soc_user_owns."""
+        s = G["_web_auth"]()
+        if not s:
+            return None, (jsonify({"ok": False, "auth": False}), 401)
+        return s, None
+
     @app.route("/v2/api/social/video", methods=["POST"])
     def vid_api_create():
-        s, err = dev()
+        s, err = user()
         if err:
             return err
         key = SP._key((request.get_json(silent=True) or {}).get("key"))
         if not key:
             return jsonify({"ok": False, "error": "key"}), 400
         by = s.get("phone", "")
+        if not SP.soc_is_dev(s):
+            if not SP.soc_user_owns(G, s, _row_by_key(G, key)):
+                return jsonify({"ok": False, "error": "forbidden"}), 403
+            if vid_manual_used(hist(), by, _t.time()) >= SP.MANUAL_CAP:
+                return jsonify({"ok": False, "error": SP.MANUAL_CAP_REASON})
         _spawn(lambda: vid_create_one(G, key, "manual", by))
         return jsonify({"ok": True, "queued": True})
 
     @app.route("/v2/api/social/videos")
     def vid_api_list():
-        s, err = dev()
+        s, err = user()
         if err:
             return err
+        is_dev = SP.soc_is_dev(s)
         keys = [SP._key(k) for k in str(request.args.get("keys") or "").split(",") if SP._key(k)][:200]
         h = hist()
         now, hidden = _t.time(), SP.soc_hidden(G) or set()
         _recover_stale(G, h, now)
         rows = {SP._key(r.get("מספר מודעה")): r for r in SP.soc_office_rows(G)}
         items = {}
+        capped = not is_dev and vid_manual_used(h, s.get("phone"), now) >= SP.MANUAL_CAP
         for k in keys:
-            if k not in rows:
+            if k not in rows or not SP.soc_user_owns(G, s, rows[k]):   # סוכן רואה רק את הנכסים שלו
                 continue
             last = next((x for x in h if SP._key(x.get("property_key")) == k), None)
             ok, why = vid_can_create(rows[k], h, now, hidden, "manual")
+            if ok and capped:
+                ok, why = False, SP.MANUAL_CAP_REASON
             items[k] = {"last": {f: last.get(f) for f in ("id", "status", "created_at", "ai", "decided_by", "error",
                                                           "ig_story_status", "ig_reel_status", "fb_story_status",
                                                           "fb_reel_status", "ig_reel_permalink", "fb_reel_permalink",
                                                           "video_token", "publish_at")} if last else None,
                         "can": {"ok": ok, "reason": why}}
-        return jsonify({"ok": True, "mode": SP.soc_mode(os.environ), "items": items})
+        return jsonify({"ok": True, "mode": SP.soc_mode(os.environ), "items": items, "dev": is_dev})
 
     @app.route("/v2/api/social/video/retry", methods=["POST"])
     def vid_api_retry():
@@ -1691,11 +1732,13 @@ def register(app, G):
     @app.route("/v2/api/social/video/resend", methods=["POST"])
     def vid_api_resend():
         """[02/11] אייל: "לא נשלחה לי הודעה לאישור" — שליחה חוזרת של הודעת האישור לסרטון שממתין."""
-        s, err = dev()
+        s, err = user()
         if err:
             return err
         j = request.get_json(silent=True) or {}
         rec = G["_sbdb"].video_get(str(j.get("id") or ""))
+        if not SP.soc_is_dev(s) and not SP.soc_user_owns(G, s, _row_by_key(G, (rec or {}).get("property_key"))):
+            return jsonify({"ok": False, "error": "forbidden"}), 403
         if not rec or rec.get("status") != "pending":
             return jsonify({"ok": False, "error": "הסרטון לא ממתין לאישור"})
         to = vid_send_review(G, rec, _base(os.environ), os.environ, initiator=s.get("phone", "")) or []
@@ -1714,7 +1757,7 @@ def register(app, G):
         m0 = _month_start(now)
         mon = [x for x in h if x.get("ai") and (SP._ts(x.get("created_at")) or 0) >= m0]
         return jsonify({"ok": True, "mode": SP.soc_mode(os.environ),
-                        "auto": str(os.environ.get("SOCIAL_VIDEO_AUTO") or "0") == "1",
+                        "auto": vid_auto_on(os.environ),
                         "fal": "set" if str(os.environ.get("FAL_KEY") or "").strip() else "missing",
                         "fal_bad": (SP._cfg_social(G).get("alerts") or {}).get("fal") == SP._day(now).isoformat(),
                         "model": os.environ.get("FAL_VIDEO_MODEL") or FAL_DEFAULT_MODEL,

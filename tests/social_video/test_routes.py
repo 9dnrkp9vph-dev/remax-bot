@@ -27,10 +27,37 @@ app = Flask(__name__); V.register(app, G); c = app.test_client()
 DEV = {"name": "אייל", "drole": "developer", "phone": "505709865"}
 AG = {"name": "דנה", "drole": "agent", "phone": "501111111"}
 
+# [18/11 אייל] יצירת סרטון נפתחה גם לסוכנים ולמתאמות — רק לנכסים שלהם ("שלי"), עד 2 ביום; השאר — מפתח בלבד
+G["_last9"] = lambda p: "".join(ch for ch in str(p or "") if ch.isdigit())[-9:]
+G["_scope_keys_phones"] = lambda role, name, phones, agents=None, agent_names=None: ({name} | set(agent_names or []), phones, False)
+G["_row_owned"] = lambda r, keys, phones: r.get("סוכן 1") in keys
+OWN = {"name": ROW["סוכן 1"], "role": "agent", "drole": "agent", "phone": "0501111111"}
+COORD = {"name": "רכזת", "role": "coordinator", "drole": "coordinator", "phone": "0502222222", "agent_names": [ROW["סוכן 1"]]}
 for path, meth in (("/v2/api/social/video", "post"), ("/v2/api/social/videos?keys=tok1", "get"),
                    ("/v2/api/social/video/retry", "post"), ("/v2/api/social/video/health", "get")):
     SESS["t"] = None; ck(getattr(c, meth)(path, json={"key": "tok1"}).status_code == 401, path)
+for path, meth in (("/v2/api/social/video", "post"), ("/v2/api/social/video/retry", "post"), ("/v2/api/social/video/health", "get")):
     SESS["t"] = AG; ck(getattr(c, meth)(path, json={"key": "tok1"}).status_code == 403, path)
+SESS["t"] = OWN; ck(c.get("/v2/api/social/video/health").status_code == 403 and
+                    c.post("/v2/api/social/video/retry", json={"id": "x"}).status_code == 403, "owner: health/retry stay dev-only")
+SESS["t"] = AG
+ck(c.get("/v2/api/social/videos?keys=tok1").json["items"] == {} and not RUNS, "not my listing → hidden")
+for s_ in (OWN, COORD):
+    SESS["t"] = s_
+    r = c.post("/v2/api/social/video", json={"key": "tok1"})
+    ck(r.status_code == 200 and r.json["ok"] and RUNS[-1] == ("tok1", "manual", s_["phone"]), (s_["name"], r.json, RUNS))
+    j = c.get("/v2/api/social/videos?keys=tok1").json
+    ck(j["items"]["tok1"]["can"]["ok"] and j["dev"] is False, j)
+now_iso = lambda: SP._dt.datetime.now(SP._dt.timezone.utc).isoformat()
+sb.videos.extend({"id": "m%d" % i, "property_key": "zz%d" % i, "trigger": "manual", "by_phone": "0501111111", "mode": "publish",
+                  "status": "pending", "created_at": now_iso()} for i in range(2))
+SESS["t"] = OWN; RUNS.clear()
+r = c.post("/v2/api/social/video", json={"key": "tok1"})
+ck(r.json["ok"] is False and "2" in r.json["error"] and not RUNS, r.json)
+j = c.get("/v2/api/social/videos?keys=tok1").json
+ck(j["items"]["tok1"]["can"]["ok"] is False and "2" in j["items"]["tok1"]["can"]["reason"], j)
+SESS["t"] = COORD; ck(c.post("/v2/api/social/video", json={"key": "tok1"}).json["ok"], "another user's count doesn't block")
+sb.videos[:] = []; RUNS.clear()
 SESS["t"] = DEV
 r = c.post("/v2/api/social/video", json={"key": "L:tok1"})
 ck(r.status_code == 200 and r.json["ok"] and RUNS == [("tok1", "manual", "505709865")], (r.json, RUNS))
@@ -50,7 +77,10 @@ _orig_send = V.vid_send_review
 V.vid_send_review = lambda G_, rec, base, env, initiator="": (RS.append((rec["id"], initiator)), ["505709865"])[1]
 sb.videos.append({"id": "v8", "property_key": "tok1", "status": "pending", "video_token": "AbC123", "review_token": "R8",
                   "created_at": SP._dt.datetime.now(SP._dt.timezone.utc).isoformat()})
-SESS["t"] = AG; ck(c.post("/v2/api/social/video/resend", json={"id": "v8"}).status_code == 403, "resend dev only")
+SESS["t"] = AG; ck(c.post("/v2/api/social/video/resend", json={"id": "v8"}).status_code == 403, "resend: not my listing")
+SESS["t"] = OWN
+r = c.post("/v2/api/social/video/resend", json={"id": "v8"})
+ck(r.json["ok"] and RS == [("v8", "0501111111")], ("owner may resend", r.json, RS)); RS.clear()
 SESS["t"] = DEV
 r = c.post("/v2/api/social/video/resend", json={"id": "v8"})
 ck(r.json["ok"] and RS == [("v8", "505709865")] and sb.video_get("v8")["recipients"] == ["505709865"], (r.json, RS))

@@ -27,7 +27,11 @@ ck(SP.soc_can_publish(ROW, "fb", [], NOW, {"L:tok1"}) == (False, "מוסתר מ�
 ck(SP.soc_can_publish(dict(ROW, **{"סוג עסקה": "מסחרי"}), "fb", [], NOW, set()) == (False, "מסחרי"), "commercial")
 one = dict(ROW, תמונות=["https://x/a.jpg"])
 ck(SP.soc_can_publish(one, "fb", [], NOW, set()) == (False, "מחכה לתמונות"), "one img fresh")
-ck(SP.soc_can_publish(dict(one, _y2_first_seen=ago(73)), "fb", [], NOW, set()) == (True, ""), "one img old")
+# [18/11 אייל] "לעולם לא להעלות נכס עם תמונה אחת" — גם אחרי 72 שעות, גם אחרי חודש
+ck(SP.soc_can_publish(dict(one, _y2_first_seen=ago(73)), "fb", [], NOW, set()) == (False, "מחכה לתמונות"), "one img, 3 days")
+ck(SP.soc_can_publish(dict(one, _y2_first_seen=ago(24 * 40)), "fb", [], NOW, set()) == (False, "מחכה לתמונות"), "one img, 40 days")
+ck(SP.soc_can_publish(dict(one, תמונות=["https://x/a.jpg", "https://x/b.jpg"], _y2_first_seen=ago(24 * 40)), "fb", [], NOW, set())
+   == (True, ""), "two imgs → ok, however old")
 ck(SP.soc_can_publish(dict(ROW, תמונות=[], תמונה=""), "fb", [], NOW, set()) == (False, "אין תמונות"), "no imgs")
 
 ok, why = SP.soc_can_publish(ROW, "fb", [H()], NOW, set())
