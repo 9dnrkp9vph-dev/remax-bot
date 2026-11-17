@@ -105,6 +105,11 @@ def validate(contest, canon):
     return None
 
 
+def _l9(p):
+    d = "".join(ch for ch in str(p or "") if ch.isdigit())
+    return d[-9:] if len(d) >= 9 else ""
+
+
 def _generic(name):
     n = str(name or "").strip()
     return not n or n.startswith("מנהל")
@@ -136,7 +141,8 @@ def ledger_update(ledger, nb, contest, now, display):
         if when is not None and dk in seen:   # [02/11 'נחמי זקס 9'] אותה פגישה שנשמרה כמה פעמים = פגישה אחת
             continue
         seen.add(dk)
-        new[key] = {"agent": ag, "by": nb_by, "at": at, "when": when, "addr": str(rec.get("addr") or "")}
+        new[key] = {"agent": ag, "by": nb_by, "at": at, "when": when, "addr": str(rec.get("addr") or ""),
+                    "by_phone": _l9(rec.get("by_phone"))}   # [17/11 נויה] מי שתיאם — גם לפי הטלפון (שם שהשתנה באמצע התחרות)
     for key, row in old.items():
         if key not in new:
             if row.get("addr") is not None and row.get("when") is not None and dkey(row.get("agent"), row.get("when"), row.get("addr")) in seen:
@@ -203,7 +209,7 @@ def _adj_sum(adjs, group, kind, label, canon):
 BOOKER_ONLY_FROM = _dt.datetime(2026, 11, 3, 14, 35, tzinfo=_IL).timestamp()
 
 
-def score(contest, ledger, sigs, adjustments, canon, now, power=None):
+def score(contest, ledger, sigs, adjustments, canon, now, power=None, coord_phones=None):
     pts = contest["pts"]
     s, e = _d(contest["start"]), _d(contest["end"])
     cb = (day_bounds(s)[0], day_bounds(e)[1])
@@ -217,7 +223,11 @@ def score(contest, ledger, sigs, adjustments, canon, now, power=None):
     cut = contest.get("booker_only_from", BOOKER_ONLY_FROM)
     is_new = lambda x: (x.get("at") or 0) >= cut
     mem_of = lambda x: canon(booker(x)) if is_new(x) else canon(x.get("agent"))
-    coord_of = lambda x, k: canon(booker(x)) == k if is_new(x) else (canon(x.get("by")) == k and canon(x.get("agent")) != k)
+    # [17/11 נויה → נויה אלבר] מתאמת שהשם שלה השתנה באמצע התחרות — מזוהה גם לפי הטלפון שתיאם ממנו
+    cph = coord_phones or {}
+    ph_of = lambda x, k: bool(x.get("by_phone")) and x.get("by_phone") in cph.get(k, ()) and not _generic(str(x.get("by") or ""))
+    coord_of = lambda x, k: (canon(booker(x)) == k or ph_of(x, k)) if is_new(x) else \
+        ((canon(x.get("by")) == k or ph_of(x, k)) and canon(x.get("agent")) != k)
     out_groups, totals = [], []
     for gi, g in enumerate(contest["groups"]):
         g = dict(g, _i=gi)
@@ -475,6 +485,27 @@ def register(app, G):
             pass
         return None
 
+    def _coord_phones(ct):   # [17/11] {שם מתאמת מנורמל: טלפונים} — מהספרייה ומשיוך המתאמות
+        out = {}
+        try:
+            call = G["_coordinators_all"]() or {}
+        except Exception:
+            call = {}
+        for g in (ct or {}).get("groups") or []:
+            for n in g.get("coords") or []:
+                k = canon(n)
+                ph = set()
+                try:
+                    ph |= {_l9(p) for p in (G["_phones_for_name"](n) or ())}
+                except Exception:
+                    pass
+                for p, nm in call.items():
+                    if canon(nm if isinstance(nm, str) else (nm or {}).get("name") if isinstance(nm, dict) else "") == k:
+                        ph.add(_l9(p))
+                ph.discard("")
+                out[k] = ph
+        return out
+
     def _unmatched(ct):   # [FIX5] שמות בתחרות שלא נמצאו באפי (לעורכים) — בלי מקור שמות לא מחזירים כלום
         known = set()
         try:
@@ -515,7 +546,7 @@ def register(app, G):
         if isinstance(sigs, Exception):
             sigs = None
         adj = ((cfg.get("v2_contest_adj") or {}).get(lid)) or []
-        b = score(ct, new, sigs, adj, canon, now, power_days(cfg, lid))
+        b = score(ct, new, sigs, adj, canon, now, power_days(cfg, lid), _coord_phones(ct))
         if b.get("partial"):
             last = _LAST_GOOD.get(lid)
             if last:
