@@ -67,9 +67,21 @@ G, st, sb, stv, rec = setup()
 G["_phones_for_name"] = lambda nm: ["0725550101"]
 ck(V.vid_send_agent(G, rec, ENV, store=stv) == "" and not st["sent"] and not st["posted"], "virtual only")
 
-# הסוכן הוא מי שאישר (כבר קיבל את הסרטון) → לא שולחים שוב, מסומן
+# [18/11 אייל] הסוכן הוא מי שאישר (כבר קיבל את הסרטון) → לא שולחים את הסרטון שוב, אבל כן הודעה עם קישורי הריל לשיתוף
 G, st, sb, stv, rec = setup(recipients=["521234567"])
-ck(V.vid_send_agent(G, rec, ENV, store=stv) == "" and not st["sent"] and sb.videos[-1]["texts"].get("agent_sent"), "approver = agent")
+st["window"].add("521234567")
+ck(V.vid_send_agent(G, rec, ENV, store=stv) == "521234567" and not st["posted"] and len(st["sent"]) == 1, st)
+to, txt = st["sent"][0]
+ck(to == "972521234567" and "https://ig/r" in txt and "https://fb/r" in txt and "לשתף" in txt and "דירת 4 חדרים" in txt, txt)
+ck("/v2/social/vid/" not in txt, "no video link — he already has the video")
+ck(sb.videos[-1]["texts"].get("agent_sent"), "marked")
+ck(V.vid_send_agent(G, sb.video_get(rec["id"]), ENV, store=stv) == "" and len(st["sent"]) == 1, "once")
+# אין קישורי ריל (עלה רק סטורי) → אין מה לשלוח למי שכבר קיבל את הסרטון; מסומן
+G, st, sb, stv, rec = setup(recipients=["521234567"], ig_reel_permalink="", fb_reel_permalink="")
+ck(V.vid_send_agent(G, rec, ENV, store=stv) == "" and not st["sent"] and not st["posted"] and sb.videos[-1]["texts"].get("agent_sent"), "no links")
+# שעות שקט → גם הודעת הקישורים מחכה (לא מסומן)
+G, st, sb, stv, rec = setup(recipients=["521234567"]); G["_quiet_hours"] = lambda: True
+ck(V.vid_send_agent(G, rec, ENV, store=stv) == "" and not st["sent"] and not sb.videos[-1]["texts"].get("agent_sent"), "quiet")
 
 # כבוי ב-Render / מצב בדיקה / הקובץ כבר נמחק / שום ערוץ לא עלה
 G, st, sb, stv, rec = setup()

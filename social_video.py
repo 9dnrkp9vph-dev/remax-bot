@@ -1333,7 +1333,9 @@ def vid_send_agent(G, rec, env, store=None):
 
     def mark():
         G["_sbdb"].video_update(rec["id"], {"texts": dict(texts, agent_sent=_iso(__import__("time").time()))})
-    if l9 in [_l9(x) for x in (rec.get("recipients") or [])]:   # הסוכן הוא מי שאישר — כבר קיבל את הסרטון
+    # [18/11 אייל] הסוכן הוא מי שאישר — כבר קיבל את הסרטון; שולחים לו רק את קישורי הריל לשיתוף
+    has_video = l9 in [_l9(x) for x in (rec.get("recipients") or [])]
+    if has_video and not (rec.get("ig_reel_permalink") or rec.get("fb_reel_permalink")):
         mark()
         return ""
     o = texts.get("open") or {}
@@ -1348,11 +1350,13 @@ def vid_send_agent(G, rec, env, store=None):
     vurl = "%s/v2/social/vid/%s.mp4" % (_base(env), tok)
     to, ok = _wa(l9), False
     try:
-        if G["_wa_window_open"](to):
+        if has_video:
+            ok = bool(G["send_text"](to, text))
+        elif G["_wa_window_open"](to):
             res = G["_d360_post_message"]({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to,
                                            "type": "video", "video": {"link": vurl, "caption": text[:1000]}})
             ok = bool(res[0]) if isinstance(res, tuple) else bool(res)
-        if not ok:   # אין חלון, או שהווידאו נדחה → טקסט עם קישור לסרטון (תבנית family_update מחוץ לחלון)
+        if not ok and not has_video:   # אין חלון, או שהווידאו נדחה → טקסט עם קישור לסרטון (תבנית family_update מחוץ לחלון)
             ok = bool(G["send_text"](to, "%s\nלצפייה בסרטון: %s" % (text, vurl)))
     except Exception:
         ok = False
