@@ -28,9 +28,16 @@ flood = [row("f%d" % i) for i in range(41)]
 r = SP.soc_plan_round(old + flood, st, [], NOW, set(), False)
 ck(r["publish"] == [] and r["flood"] and all("f%d" % i in r["state"]["known"] for i in range(41)), r["reason"])
 
-H5 = [{"property_key": "p%d" % i, "trigger": "auto", "mode": "publish", "fb_status": "ok", "created_at": iso(3 + i)} for i in range(5)]
+H5 = [{"property_key": "p%d" % i, "trigger": "auto", "mode": "publish", "fb_status": "ok", "created_at": iso(0.5 + i * 0.5)} for i in range(5)]
+four_ = [row("m%d" % i) for i in range(4)]
+# [18/11 אייל] התקרה היומית: 10 פוסטים אוטומטיים ביום (היה 5)
+ck(SP.DAILY_CAP == 10, SP.DAILY_CAP)
+ck(SP.soc_plan_round(old + [row("new2")], st, H5, NOW, set(), False)["publish"] == ["new2"], "5 today → still room")
+H9 = [dict(H5[0], property_key="q%d" % i, created_at=iso(0.5 + i * 0.5)) for i in range(9)]
+ck(SP.soc_plan_round(old + four_, st, H9, NOW, set(), False)["publish"].__len__() == 1, "9 today → one slot left")
+H5 = [dict(H5[0], property_key="p%d" % i, created_at=iso(0.5 + i * 0.5)) for i in range(10)]
 r = SP.soc_plan_round(old + [row("new2")], st, H5, NOW, set(), False)
-ck(r["publish"] == [] and "new2" in r["state"]["waiting"], r)
+ck(r["publish"] == [] and "new2" in r["state"]["waiting"] and r["reason"] == "התקרה היומית", r)
 Hm = [dict(h, trigger="manual") for h in H5]
 ck(SP.soc_plan_round(old + [row("new2")], st, Hm, NOW, set(), False)["publish"] == ["new2"], "manual not counted")
 

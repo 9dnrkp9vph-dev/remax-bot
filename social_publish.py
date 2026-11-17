@@ -15,7 +15,7 @@ try:
 except Exception:  # pragma: no cover
     _IL = _dt.timezone(_dt.timedelta(hours=2))
 
-DAILY_CAP = 5
+DAILY_CAP = 10        # [18/11 אייל] היה 5
 ROUND_CAP = 3
 FLOOD = 40
 GAP_MIN = 20
