@@ -15,8 +15,30 @@ def jpg(color=(90, 90, 90), size=(1440, 960)):
     b = io.BytesIO(); Image.new("RGB", size, color).save(b, "JPEG"); return b.getvalue()
 
 # ── עיצוב מתחלף: שני סרטונים רצופים לא באותו עיצוב ──
-ck([T.tour_theme(k) for k in range(4)] == ["dark", "cream", "split", "dark"], "rotation")
-ck(T.tour_theme(None) == "dark", "none")
+# [17/11 אייל] ברירת המחדל: מסך מלא ("full"); הסבב הישן — SOCIAL_VIDEO_TOUR_THEME=rotate, או שם של עיצוב אחד
+ck([T.tour_theme(k) for k in range(4)] == ["full"] * 4 and T.tour_theme(None) == "full", "full by default")
+ROT = {"SOCIAL_VIDEO_TOUR_THEME": "rotate"}
+ck([T.tour_theme(k, ROT) for k in range(4)] == ["dark", "cream", "split", "dark"], "rotation")
+ck(T.tour_theme(None, ROT) == "dark", "none")
+ck(T.tour_theme(5, {"SOCIAL_VIDEO_TOUR_THEME": "cream"}) == "cream" and T.tour_theme(5, {"SOCIAL_VIDEO_TOUR_THEME": "zzz"}) == "full", "named / junk")
+
+# [17/11 אייל] מסך מלא: התמונה ממלאת 9:16 ומתקרבת לאורך השוט (החלון בתמונת המקור קטן), עם תזוזה קלה לסירוגין
+def box_ok(b, w, h):
+    return b[0] >= -1e-6 and b[1] >= -1e-6 and b[2] <= w + 1e-6 and b[3] <= h + 1e-6 and \
+        abs((b[2] - b[0]) / (b[3] - b[1]) - 9 / 16) < 1e-6
+for (w, h) in ((1440, 960), (720, 480), (600, 900), (1080, 1920)):
+    b0, b1 = T.tour_full_box(w, h, 0, 0.0), T.tour_full_box(w, h, 0, T.SHOT)
+    ck(box_ok(b0, w, h) and box_ok(b1, w, h), (w, h, b0, b1))
+    ck((b1[3] - b1[1]) < (b0[3] - b0[1]) * 0.93, ("zooms in", b0, b1))
+    ck(abs((b0[3] - b0[1]) - h) < 1e-6 or abs((b0[2] - b0[0]) - w) < 1e-6, ("starts at full cover", b0))
+bm = T.tour_full_box(1440, 960, 0, T.SHOT / 2)
+bz, be = T.tour_full_box(1440, 960, 0, 0), T.tour_full_box(1440, 960, 0, T.SHOT)
+ck(bz[3] - bz[1] > bm[3] - bm[1] > be[3] - be[1], ("monotonic", bz, bm, be))
+c = lambda b: (b[0] + b[2]) / 2
+a0, a1 = T.tour_full_box(1440, 960, 0, 0.0), T.tour_full_box(1440, 960, 0, T.SHOT)
+d0, d1 = T.tour_full_box(1440, 960, 1, 0.0), T.tour_full_box(1440, 960, 1, T.SHOT)
+ck((c(a1) - c(a0)) * (c(d1) - c(d0)) < 0, ("pan alternates", c(a0), c(a1), c(d0), c(d1)))
+ck(abs(c(T.tour_full_box(600, 900, 0, 0)) - c(T.tour_full_box(600, 900, 0, T.SHOT))) < 600 * 0.1, "portrait: little/no pan")
 
 # ── חיתוך סימן מים החוצה ──
 ck(T.tour_photo_box(1440, 960, None) == (86, 0, 1354, 845), T.tour_photo_box(1440, 960, None))   # רצועה תחתונה 12% תמיד נחתכת
@@ -87,13 +109,16 @@ r = V.vid_create_one(G, "tok1", "manual", "505709865", http=SF.ImgHttp(), now=ti
                      store=V.VidStore(tempfile.mkdtemp()))
 rec = sb.videos[-1]
 ck(r["ok"] and rec["status"] == "preview" and not FAL and rec["ai"] is False and rec["ai_cost_usd"] == 0, (r, rec))
-ck(rec["texts"]["tour"]["theme"] == "dark" and CALLS[-1]["n"] >= 2, (rec["texts"].get("tour"), CALLS))
+ck(rec["texts"]["tour"]["theme"] == "full" and CALLS[-1]["n"] >= 2, (rec["texts"].get("tour"), CALLS))
 ck(rec["texts"]["end"]["phone"] == "072-555-0101", rec["texts"]["end"])   # [04/11] אייל: בסוף — הטלפון הווירטואלי של הסוכן
 ck(V._summary(rec).endswith(rec["texts"]["open"]["price"]) and "AI" not in V._summary(rec), V._summary(rec))
 sb.videos[-1]["property_key"] = "other"
 sb.videos[-1]["created_at"] = "2020-01-01T00:00:00+00:00"
 V.vid_create_one(G, "tok1", "manual", "", http=SF.ImgHttp(), now=time.time(), env=env, store=V.VidStore(tempfile.mkdtemp()))
-ck(CALLS[-1]["theme"] in ("cream", "dark"), CALLS[-1])
+ck(CALLS[-1]["theme"] == "full", CALLS[-1])
+V.vid_create_one(G, "tok1", "manual", "", http=SF.ImgHttp(), now=time.time(), env=dict(env, SOCIAL_VIDEO_TOUR_THEME="rotate"),
+                 store=V.VidStore(tempfile.mkdtemp()))
+ck(CALLS[-1]["theme"] in T.THEMES, CALLS[-1])
 
 # ── תמונת הסוכן לסוף הסרטון: דיסק → Supabase → אין (אות) ──
 import base64
@@ -140,10 +165,14 @@ if V.vid_ffmpeg():
     ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
     photos = {0: jpg((200, 120, 60)), 1: jpg((60, 160, 90)), 2: jpg((40, 60, 160))}
     shots = T.tour_plan(TX, [0, 1, 2], {0: "נוף פתוח"}, ["מעלית"])
-    for theme in T.THEMES:
+    for theme in T.THEMES + ("full",):
         out = os.path.join(d, theme + ".mp4")
         rr = T.vid_compose_tour(photos, shots, TX, theme, None, out, os.path.join(ROOT, "family-logo.png"), fp)
         ck(rr["ok"] and os.path.getsize(out) > 10000, rr)
-        ck(Image.open(rr["cover"]).size == (1080, 1920), rr)
+        cov = Image.open(rr["cover"]).convert("RGB")
+        ck(cov.size == (1080, 1920), rr)
+        edge = cov.getpixel((6, 1100))   # קצה המסך מתחת למסגרות הישנות: במסך מלא — התמונה עצמה, לא רקע
+        near = all(abs(edge[i] - (200, 120, 60)[i]) < 28 for i in range(3))
+        ck(near == (theme == "full"), (theme, edge))
     ck(not T.vid_compose_tour({0: photos[0]}, shots[:1], TX, "dark", None, os.path.join(d, "x.mp4"), None)["ok"], "1 shot")
 print("video_tour OK", n)

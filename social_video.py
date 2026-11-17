@@ -887,7 +887,7 @@ def _render_tour(G, row, key, imgs, desc, feats, hist, env, out_path, http):
     texts = _agent_texts(G, row, feats, "")
     photos = {i: data for data, i in clean}
     shots = T.tour_plan(texts, [i for _, i in clean], pick["captions"], feats)
-    theme = T.tour_theme(len(hist or []))
+    theme = T.tour_theme(len(hist or []), env)
     texts["tour"] = {"theme": theme, "shots": [{"title": s["title"], "sub": s["sub"]} for s in shots]}
     music = vid_music(key)
     with _render_lock():

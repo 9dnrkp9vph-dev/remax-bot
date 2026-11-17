@@ -3,6 +3,7 @@
 6–7 תמונות בקצב מהיר, כל תמונה שלמה במסגרת (לא נחתכת ל-9:16 — תמונות יד2 קטנות ונמרחות בחיתוך),
 כיתוב קצר לכל חדר, מחיר לאורך כל הסרטון וכרטיס סוכן בסוף. בלי קליפ AI (בלי עלות fal).
 3 עיצובים מתחלפים בין סרטון לסרטון (tour_theme). תמונה עם סימן יד2 — חותכים אותו החוצה, ואם אי אפשר — מדלגים.
+[17/11 אייל] ברירת המחדל עכשיו "full": התמונה על כל המסך (חיתוך 9:16 מהמרכז) ומתקרבת לאורך השוט — tour_full_box.
 החלק העליון טהור (נבדק ב-tests/social_video/test_tour.py); הרינדור — Pillow פריים-פריים לצינור של ffmpeg.
 """
 from __future__ import annotations
@@ -23,9 +24,32 @@ RENDER_TIMEOUT_S = 240
 
 
 # ── טהור ─────────────────────────────────────────────────────────────────────────
-def tour_theme(n_prev):
-    """עיצוב לפי מספר הסרטונים הקודמים — שני סרטונים רצופים אף פעם לא באותו עיצוב."""
-    return THEMES[int(n_prev or 0) % len(THEMES)]
+def tour_theme(n_prev, env=None):
+    """[17/11 אייל] ברירת מחדל: "full" — התמונה על כל המסך ומתקרבת. SOCIAL_VIDEO_TOUR_THEME=rotate מחזיר את
+    הסבב הישן (שני סרטונים רצופים לא באותו עיצוב); שם של עיצוב אחד (dark/cream/split) — תמיד הוא."""
+    want = str((env or {}).get("SOCIAL_VIDEO_TOUR_THEME") or "").strip().lower()
+    if want == "rotate":
+        return THEMES[int(n_prev or 0) % len(THEMES)]
+    return want if want in THEMES else "full"
+
+
+FULL_ZOOM = 0.12     # כמה התמונה מתקרבת לאורך שוט אחד
+FULL_PAN = 0.18      # חלק מהמרווח האופקי שהתמונה זזה בו (לסירוגין ימינה/שמאלה)
+
+
+def tour_full_box(w, h, k, t):
+    """[17/11 אייל] מסך מלא: החלון 9:16 בתמונת המקור (w×h) בשוט k בזמן t → (x0,y0,x1,y1) בנקודה צפה.
+    מתחיל בחלון הגדול ביותר (התמונה מכסה את כל המסך) ומתכווץ = התקרבות; המרכז זז מעט לרוחב, כל שוט לכיוון אחר."""
+    u = max(0.0, min(1.0, t / SHOT))
+    if w / h > W / H:
+        cw, ch = h * W / H, float(h)
+    else:
+        cw, ch = float(w), w * H / W
+    z = 1.0 + FULL_ZOOM * u
+    bw, bh = cw / z, ch / z
+    p = (w - cw) * FULL_PAN * (1 if k % 2 == 0 else -1)
+    cx, cy = w / 2 + p * (2 * u - 1), h / 2
+    return (cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2)
 
 
 BOTTOM_BAND = 0.12   # [04/11] סימני יד2/RE/MAX יושבים בפינות התחתונות וClaude מפספס אותם — הרצועה התחתונה תמיד נחתכת
@@ -256,7 +280,10 @@ class _Painter:
                 self.agent_photo = ap
             except Exception:
                 self.agent_photo = None
-        if theme == "split":
+        if theme == "full":
+            self.FW, self.FH, self.FY = W, H, 0
+            self.scrim = self._scrim()
+        elif theme == "split":
             self.FW, self.FH, self.FY = W, int(W * 2 / 3), 300
         else:
             self.FW = 1040
@@ -265,7 +292,9 @@ class _Painter:
         self.prep = []
         for s in shots:
             im = Image.open(__import__("io").BytesIO(photos[s["i"]])).convert("RGB")
-            if theme == "dark":
+            if theme == "full":
+                bg = None
+            elif theme == "dark":
                 bg = _cover(im, W // 4, H // 4).filter(ImageFilter.GaussianBlur(10)).resize((W, H), Image.BILINEAR)
                 bg = Image.blend(bg, Image.new("RGB", (W, H), NAVY0), 0.55)
             elif theme == "cream":
@@ -281,6 +310,42 @@ class _Painter:
             k = y / 255
             g.putpixel((0, y), tuple(int(NAVY0[c] + (NAVY1[c] - NAVY0[c]) * k) for c in range(3)))
         return g.resize((W, H), self.Image.BILINEAR)
+
+    def _scrim(self):
+        """הצללה למעלה (לוגו) ולמטה (כיתוב + מחיר) — שהטקסט ייקרא על כל תמונה."""
+        col = self.Image.new("L", (1, H), 0)
+        for y in range(H):
+            top = max(0.0, 1 - y / 460) ** 1.5 * 150
+            bot = max(0.0, (y - 1040) / (H - 1040)) ** 1.2 * 215
+            col.putpixel((0, y), int(max(top, bot)))
+        out = self.Image.new("RGBA", (W, H), NAVY0 + (0,))
+        out.putalpha(col.resize((W, H)))
+        return out
+
+    def _shot_full(self, k, t):
+        Image, ImageDraw = self.Image, self.ImageDraw
+        im, _ = self.prep[k]
+        s = self.shots[k]
+        fr = im.resize((W, H), Image.BICUBIC, box=tour_full_box(im.width, im.height, k, t)).convert("RGBA")
+        fr.alpha_composite(self.scrim)
+        if self.logo:
+            fr.alpha_composite(self.logo, ((W - self.logo.width) // 2, 150))
+        a = _ease(t / 0.45)
+        al = int(255 * a)
+        lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        dl = ImageDraw.Draw(lay)
+        price = ((self.texts.get("open") or {}).get("price")) or ""
+        agent = ((self.texts.get("end") or {}).get("agent")) or ""
+        yb = 1250 + int((1 - a) * 40)     # מעל האזור שהכפתורים של אינסטגרם מכסים בתחתית
+        self._text(dl, W // 2, yb, s["title"], 92, 800, WHITE + (al,))
+        self._text(dl, W // 2, yb + 122, s["sub"], 46, 500, (232, 236, 242, al))
+        if price:
+            self._pill(lay, W // 2, 1470, price + ("  ·  " + agent if agent and k else ""), 46 if k else 64,
+                       NAVY0 + (255,), GOLD + (245,))
+        fr.alpha_composite(lay)
+        p = (k * SHOT + t) / (len(self.shots) * SHOT)
+        ImageDraw.Draw(fr).rounded_rectangle((60, 96, 60 + max(8, int((W - 120) * p)), 104), 4, fill=GOLD + (235,))
+        return fr.convert("RGB")
 
     def _text(self, d, x, y, s, size, weight, fill, anchor="ma"):
         if not s:
@@ -299,6 +364,8 @@ class _Painter:
         d.text((cx, y + h // 2), V._rtl(s), font=f, fill=fg, anchor="mm")
 
     def shot(self, k, t):
+        if self.theme == "full":
+            return self._shot_full(k, t)
         Image, ImageDraw = self.Image, self.ImageDraw
         im, bg = self.prep[k]
         s = self.shots[k]
