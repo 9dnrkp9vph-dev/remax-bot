@@ -139,7 +139,16 @@ ck(sb.videos[-1]["ig_reel_permalink"] == "https://ig/r" and sb.videos[-1]["fb_re
 
 G, st, sb = make_G(); FG.calls = []; FG.fail = {"ig_REELS": SP.MetaError("bad mt")}
 v, stv = approved_video(G, sb, st)
+import logging
+class _Cap(logging.Handler):
+    recs = []
+    def emit(s, rec): _Cap.recs.append(rec.getMessage())
+logging.getLogger("social_video").addHandler(_Cap()); logging.getLogger("social_video").setLevel(logging.INFO)
 r = V.vid_publish(G, v["id"], http=HTTP, now=NOW, env=env, store=stv)
+# [04/11] אייל: "אני רוצה שתהיה מחובר" — תוצאת הפרסום לכל ערוץ נכתבת ללוג של Render (בלי טוקן)
+pl = [m for m in _Cap.recs if m.startswith("social-video publish")]
+ck(pl and "key=tok1" in pl[-1] and "ig_story=ok" in pl[-1] and "ig_reel=failed" in pl[-1]
+   and "bad ***" in pl[-1] and "mt" not in pl[-1].replace("bad ***", ""), pl)
 ck(sb.videos[-1]["status"] == "partial" and sb.videos[-1]["ig_reel_status"] == "failed" and sb.videos[-1]["ig_story_status"] == "ok", sb.videos[-1])
 ck("bad ***" in sb.videos[-1]["error"], sb.videos[-1]["error"])
 FG.fail = {}; FG.calls = []
