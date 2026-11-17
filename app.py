@@ -6610,9 +6610,8 @@ def api_sign_submit():
                 _add_buyer_from_signing(agent, client, phone, address, "מהחתמה דיגיטלית",
                                         price="|".join(str(x) for x in _sprices),
                                         deal_kind=("rent" if any("RENT" in str(d.get("deal_type", "")).upper() for d in docs) else "sale"))
-            # פוש לכל המנהלים על חתימה חדשה + SMS לסוכן
+            # פוש לכל המנהלים על חתימה חדשה (17/11 אייל: בלי SMS לסוכן — הוא מקבל וואטסאפ)
             _notify_managers_signing("נחתם", client, agent, address)
-            _sms_agent_signing(client, agent, address, link)
             # עותק ללקוח (החתמה במקום — בקשת אייל 05/08): קישור להסכם החתום שלו.
             # בהחתמה מרחוק הלקוח כבר מחזיק את הקישור; כאן הוא חתם על מכשיר הסוכן.
             try: _send_client_signed_copy(phone, client, link, link2)   # SMS + וואטסאפ
@@ -7367,8 +7366,7 @@ def api_sign_complete():
                 elif _ln.startswith("נכס"):
                     _addr = re.split(r"\s*·\s*", _ln.split(":", 1)[-1].strip())[0].strip()
             _notify_managers_signing("נחתם", _cl, _ag, _addr)
-            _sms_agent_signing(_cl, _ag, _addr, link)
-            _wa_signing(_cl, _ag, _addr, link)
+            _wa_signing(_cl, _ag, _addr, link)   # 17/11 אייל: בלי SMS לסוכן — הוואטסאפ מספיק
             # 29/09 (אייל): גם בהחתמה מרחוק — עותק חתום ללקוח (SMS + וואטסאפ)
             try:
                 _ph = _parse_sign_header(header).get("phone", "")
