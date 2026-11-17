@@ -22,7 +22,8 @@ GAP_MIN = 20
 REPEAT_DAYS = 14
 WAIT_DAYS = 3
 RETRY_DAYS = 3
-ONE_IMG_HOURS = 72
+MIN_IMAGES = 2       # [18/11 אייל] "לעולם לא להעלות נכס עם תמונה אחת" (היה: אחרי 72 שעות עולה גם עם אחת)
+MIN_IMG_REASON = "נשארה תמונה אמיתית אחת — צריך לפחות 2 תמונות"
 MAX_IMAGES = 10
 DESC_MAX = 600
 NIGHT = (22, 8)
@@ -288,10 +289,8 @@ def soc_can_publish(row, channel, history, now, hidden):
     imgs = soc_images(row)
     if not imgs:
         return False, "אין תמונות"
-    if len(imgs) < 2:
-        fs = _ts(row.get("_y2_first_seen"))
-        if fs is None or now - fs < ONE_IMG_HOURS * 3600:
-            return False, "מחכה לתמונות"
+    if len(imgs) < MIN_IMAGES:
+        return False, "מחכה לתמונות"
     akey, afl = soc_addr_key(row), soc_floor(row)
     st_col = channel + "_status"
     last = None
@@ -373,11 +372,15 @@ def soc_plan_round(rows, state, history, now, hidden, blocked, allowed=None):
         return out
     for k in new:
         st["waiting"].setdefault(k, now)
-    def _expired(k, t):   # נכס עם תמונה אחת מחכה גם ל-72 השעות (ביקורת סופית — אחרת לא היה עולה אף פעם)
-        extra = ONE_IMG_HOURS * 3600 if len(soc_images(by_key[k])) < 2 else 0
-        return now - float(t) > WAIT_DAYS * 86400 + extra
-    for k in [k for k, t in st["waiting"].items() if k not in by_key or _expired(k, t)]:
-        st["waiting"].pop(k, None)
+    # [18/11 אייל] נכס עם פחות מ-2 תמונות מחכה בלי הגבלת זמן ("גם אם העדכון של התמונות אחרי חודש"): השעון שלו
+    # מתחדש בכל סבב, כך ש-WAIT_DAYS נספרים רק מהרגע שיש לו מספיק תמונות. נכס שירד מהרשימה יוצא מהתור.
+    for k, t in list(st["waiting"].items()):
+        if k not in by_key:
+            st["waiting"].pop(k, None)
+        elif len(soc_images(by_key[k])) < MIN_IMAGES:
+            st["waiting"][k] = now
+        elif now - float(t) > WAIT_DAYS * 86400:
+            st["waiting"].pop(k, None)
     if blocked or _is_night(now):
         out["reason"] = "שבת / השתקה / לילה"
         return out
@@ -947,8 +950,8 @@ def _soc_run_one(G, key, trigger, by_phone, channels, http, now, env):
     if http is None:
         import requests as http
     real, ph = soc_real_images(http, post["images"])   # [01/11] בלי תמונות 'תמונות בקרוב'
-    if ph and not real:
-        res.update(placeholder=True, reason=PLACEHOLDER_REASON)
+    if (ph and not real) or 0 < len(real) < MIN_IMAGES:   # [18/11] גם תמונה אמיתית אחת לא מספיקה; בסבב האוטומטי חוזר להמתנה
+        res.update(placeholder=True, reason=MIN_IMG_REASON if real else PLACEHOLDER_REASON)
         return res
     post["images"] = real
     rec = {"property_key": key, "addr_key": soc_addr_key(row) + "#" + soc_floor(row), "trigger": trigger,
@@ -1190,8 +1193,8 @@ def register(app, G):
         can = can_map(row, hist(), _t.time(), soc_hidden(G))
         real, ph = soc_real_images(_HTTP, post["images"])   # [01/11] גם בתצוגה המקדימה — בלי 'תמונות בקרוב'
         post["images"] = real
-        if ph and not real:
-            can = {c: {"ok": False, "reason": PLACEHOLDER_REASON} for c in ("fb", "ig")}
+        if (ph and not real) or 0 < len(real) < MIN_IMAGES:
+            can = {c: {"ok": False, "reason": MIN_IMG_REASON if real else PLACEHOLDER_REASON} for c in ("fb", "ig")}
         return jsonify(dict(post, ok=True, key=key, can=can))
 
     @app.route("/v2/api/social/status")

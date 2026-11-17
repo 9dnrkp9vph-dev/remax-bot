@@ -56,4 +56,18 @@ ck("gone" not in SP.soc_plan_round(old, stale, [], NOW, set(), False)["state"]["
 
 r = SP.soc_plan_round(old + [row("one", imgs=1)], st, [], NOW, set(), False)
 ck(r["publish"] == [] and "one" in r["state"]["waiting"], r)
+# [18/11 אייל] נכס עם פחות מ-2 תמונות מחכה בלי הגבלת זמן — "גם אם העדכון של התמונות אחרי חודש" — ואז עולה אוטומטית
+s2, t = r["state"], NOW
+for d in range(1, 41):                                  # 40 יום, סבב ביום, עדיין תמונה אחת
+    t = NOW + d * 86400
+    r = SP.soc_plan_round(old + [row("one", imgs=1)], s2, [], t, set(), False)
+    s2 = r["state"]
+    ck(r["publish"] == [] and "one" in s2["waiting"] and "one" in s2["known"], ("day", d))
+r = SP.soc_plan_round(old + [row("zero", imgs=0)], st, [], NOW, set(), False)
+r = SP.soc_plan_round(old + [row("zero", imgs=0)], r["state"], [], NOW + 10 * 86400, set(), False)
+ck(r["publish"] == [] and "zero" in r["state"]["waiting"], "no photos at all also waits")
+r = SP.soc_plan_round(old + [row("one", imgs=3)], s2, [], t + 600, set(), False)   # המזכירה הוסיפה תמונות
+ck(r["publish"] == ["one"] and "one" not in r["state"]["waiting"], r)
+gone = SP.soc_plan_round(old, s2, [], t + 600, set(), False)                      # הנכס ירד בינתיים → יוצא מהתור
+ck("one" not in gone["state"]["waiting"], "listing gone → dropped")
 print("social_plan OK", n)
