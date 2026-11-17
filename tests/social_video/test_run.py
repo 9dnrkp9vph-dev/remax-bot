@@ -113,6 +113,14 @@ v, stv = approved_video(G, sb, st)
 r = V.vid_publish(G, v["id"], http=HTTP, now=NOW, env=env, store=stv)
 ck([c[0] for c in FG.calls] == ["ig_STORIES", "ig_REELS", "fb_reel"], FG.calls)
 ck(r["ok"] and sb.videos[-1]["status"] == "published" and sb.videos[-1]["fb_story_status"] == "off", sb.videos[-1])
+# [17/11 אייל] אושר ועלה → הסרטון נשלח גם לסוכן, לנייד האישי (פעם אחת)
+ck(not st["sent"] and sb.videos[-1]["texts"].get("agent_sent"), "agent was among the approvers → not sent again")
+G2, st2, sb2 = make_G(); FG.calls = []
+v2, stv2 = approved_video(G2, sb2, st2); v2["recipients"] = ["505709865"]   # רק אייל אישר
+V.vid_publish(G2, v2["id"], http=HTTP, now=NOW, env=env, store=stv2)
+ck([m[0] for m in st2["sent"]] == ["972521234567"] and sb2.videos[-1]["texts"].get("agent_sent"), st2["sent"])
+V.vid_publish(G2, v2["id"], http=HTTP, now=NOW, env=env, store=stv2)
+ck(len(st2["sent"]) == 1, "retry does not resend")
 ck(V.vid_channels({"SOCIAL_VIDEO_CHANNELS": "fb_story, ig_reel,bogus"}) == ("ig_reel", "fb_story"), "env channels")
 ck(V.vid_channels({"SOCIAL_VIDEO_CHANNELS": "bogus"}) == V.DEFAULT_CHANNELS, "bad env → default")
 # סטורי שכבר עלה (לפני השינוי) לא נדרס ל-off בניסיון חוזר
