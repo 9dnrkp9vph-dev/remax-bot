@@ -3,8 +3,8 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      15.4
-// @description  Auto-scrape 08:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
+// @version      15.5
+// @description  Auto-scrape 07:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
 // @match        https://www.yad2.co.il/realestate-plus*
@@ -53,7 +53,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='15.4'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='15.5'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -920,7 +920,7 @@ function copyNetReport(){
   catch(e){ build(false); }
 }
 
-// ===== schedule: active 08:00-23:00 with random daily edges =====
+// ===== schedule: active 07:00-23:00 with random daily edges (v15.5: התחלה 07:00-07:05, בקשת אייל 18/11) =====
 function edge(now,key,h1,m1,h2,m2){var ck='yad2_'+key+'_'+now.toDateString();var c=localStorage.getItem(ck);if(c)return parseInt(c);var v=(h1*60+m1)+Math.floor(Math.random()*((h2*60+m2)-(h1*60+m1)+1));localStorage.setItem(ck,String(v));return v;}
 // חלון שקט יומי אקראי (60-120 דק', בין 09:00 ל-22:00) שבו לא סורקים כלל — הדפוס נראה אנושי, לא מכונתי
 function quietWin(now){
@@ -933,8 +933,8 @@ function quietWin(now){
   return {s:start,e:start+dur};
 }
 function inQuiet(d){d=d||new Date();var nm=d.getHours()*60+d.getMinutes();var w=quietWin(d);return nm>=w.s&&nm<w.e;}
-function isActive(){var now=new Date();var nm=now.getHours()*60+now.getMinutes();return nm>=edge(now,'start',8,0,8,20)&&nm<edge(now,'stop',22,40,23,0)&&!inQuiet(now);}
-function nextActive(){var now=new Date();var nm=now.getHours()*60+now.getMinutes();var t=new Date(now);var s=edge(now,'start',8,0,8,20);if(nm<s){t.setHours(0,s,0,0);}else{t.setDate(t.getDate()+1);t.setHours(0,edge(t,'start',8,0,8,20),0,0);}return t;}
+function isActive(){var now=new Date();var nm=now.getHours()*60+now.getMinutes();return nm>=edge(now,'start',7,0,7,5)&&nm<edge(now,'stop',22,40,23,0)&&!inQuiet(now);}
+function nextActive(){var now=new Date();var nm=now.getHours()*60+now.getMinutes();var t=new Date(now);var s=edge(now,'start',7,0,7,5);if(nm<s){t.setHours(0,s,0,0);}else{t.setDate(t.getDate()+1);t.setHours(0,edge(t,'start',7,0,7,5),0,0);}return t;}
 
 // ===== scrape =====
 function findHeaders(){
@@ -3618,10 +3618,10 @@ function userActive(){ return !!lastUserInput && (Date.now()-lastUserInput) < US
 function init(){
   try{ ['mousemove','mousedown','keydown','wheel','touchstart'].forEach(function(t){ document.addEventListener(t,noteUserInput,{passive:true,capture:true}); }); }catch(e){}
   step('פאנל', function(){ buildPanel(); setInterval(panelKeeper,5000); }); // גם אם הדף לא מוכן — יחזור תוך 5ש'
-  log('starting Yad2 Plus sync v6.9 (active 08:00-23:00)');
+  log('starting Yad2 Plus sync v6.9 (active 07:00-23:00)');
   step('סימן-חיים', function(){ postHB('ok'); setInterval(healthTick,60000); setInterval(privTick,60000); });
   step('לופ סריקה', function(){
-    if(!isActive()){log('💤 מחוץ לשעות (08:00-23:00). ישן עד '+nextActive().toLocaleString());sleepCheck();}
+    if(!isActive()){log('💤 מחוץ לשעות (07:00-23:00). ישן עד '+nextActive().toLocaleString());sleepCheck();}
     else setTimeout(function(){waitScrape(0);},3000);
   });
   step('תזמון משרדים', function(){ setInterval(exclSchedTick,60000);setTimeout(exclSchedTick,5000); });
