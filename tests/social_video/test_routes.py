@@ -140,21 +140,46 @@ G2, st2, sb2 = make_G(rows=rows); RUNS.clear()
 pub = {"SOCIAL_MODE": "publish", "META_TOKEN": "t", "SOCIAL_VIDEO_AUTO": "1"}
 ck(V.vid_auto_tick(G2, DAY, env=dict(pub, SOCIAL_MODE="preview"))["ran"] is False, "not in preview")
 ck(V.vid_auto_tick(G2, DAY, env=dict(pub, SOCIAL_VIDEO_AUTO="0"))["ran"] is False, "flag off")
+# [18/11 אייל] הסרטון הולך אחרי הפוסט: כל פוסט אוטומטי שעלה → סרטון לאישור על אותו נכס (בלי זריעה, בלי תור נפרד)
+iso = lambda t: dt.datetime.fromtimestamp(t, dt.timezone.utc).isoformat()
+post = lambda k, ago, **kw: sb2.rows.append(dict({"id": "p" + k, "property_key": k, "trigger": "auto", "mode": "publish",
+                                                  "fb_status": "ok", "ig_status": "ok", "created_at": iso(DAY - ago)}, **kw))
 r = V.vid_auto_tick(G2, DAY, env=pub)
-ck(r.get("seeded") == 3 and RUNS == [], r)
-new = [dict(ROW, **{"מספר מודעה": "n%d" % i, "מספר בית": str(10 + i)}) for i in range(5)]
-G2["fetch_sheet_rows"] = lambda: rows + new
-r = V.vid_auto_tick(G2, DAY + 600, env=pub)
-ck(len(RUNS) == 3 and all(t == "auto" for _, t, _ in RUNS), RUNS)
-ck(len(G2["_load_config"]()["v2_social"]["vid_waiting"]) == 2, G2["_load_config"]()["v2_social"])
-RUNS.clear()
-G3, st3, sb3 = make_G(rows=rows)
-V.vid_auto_tick(G3, DAY, env=pub); G3["fetch_sheet_rows"] = lambda: rows + new
+ck(r.get("ran") and RUNS == [], ("no posts → no videos", r, RUNS))
+post("k0", 600); post("k1", 300, fb_status="failed"); post("k2", 200, fb_status="failed", ig_status="failed")
+post("zz", 100)                                   # הנכס כבר ירד
+sb2.rows.append({"id": "m", "property_key": "k2", "trigger": "manual", "mode": "publish", "fb_status": "ok", "created_at": iso(DAY - 50)})
+sb2.rows.append({"id": "old", "property_key": "k2", "trigger": "auto", "mode": "publish", "fb_status": "ok", "created_at": iso(DAY - 3 * 86400)})
+r = V.vid_auto_tick(G2, DAY, env=pub)
+ck(RUNS == [("k0", "auto", ""), ("k1", "auto", "")], RUNS)      # לפי סדר הפוסטים; ידני / ישן / נכשל / נכס שירד — לא
+sb2.videos += [{"id": "x0", "property_key": "k0", "trigger": "auto", "mode": "publish", "status": "pending", "created_at": iso(DAY)},
+               {"id": "x1", "property_key": "k1", "trigger": "auto", "mode": "publish", "status": "failed", "created_at": iso(DAY)}]
+RUNS.clear(); V.vid_auto_tick(G2, DAY + 600, env=pub)
+ck(RUNS == [], ("one video per post — also after a failure", RUNS))
+# סרטון ידני קיים לאותו נכס → לא נוצר עוד אחד; תצוגה מקדימה לא נחשבת
+G3, st3, sb3 = make_G(rows=rows); sb2 = sb3; RUNS.clear()
+post("k0", 600); post("k1", 500)
+sb3.videos += [{"id": "y0", "property_key": "k0", "trigger": "manual", "mode": "publish", "status": "pending", "created_at": iso(DAY - 3600)},
+               {"id": "y1", "property_key": "k1", "trigger": "manual", "mode": "preview", "status": "preview", "created_at": iso(DAY - 3600)}]
+V.vid_auto_tick(G3, DAY, env=pub)
+ck(RUNS == [("k1", "auto", "")], RUNS)
+# לילה → מחכה לבוקר (הפוסט מאתמול עדיין בחלון)
+G3, st3, sb3 = make_G(rows=rows); sb2 = sb3; RUNS.clear()
+post("k0", 600)
 V.vid_auto_tick(G3, NIGHT, env=pub)
 ck(RUNS == [], "night")
+V.vid_auto_tick(G3, NIGHT + 13 * 3600, env=pub)
+ck(RUNS == [("k0", "auto", "")], RUNS)
+# תקרה יומית — כמו הפוסטים (10)
+many = [dict(ROW, **{"מספר מודעה": "q%d" % i, "מספר בית": str(30 + i)}) for i in range(12)]
+G3, st3, sb3 = make_G(rows=many); sb2 = sb3; RUNS.clear()
+for i in range(12):
+    post("q%d" % i, 600 - i)
+sb3.videos += [{"id": "c%d" % i, "property_key": "w%d" % i, "trigger": "auto", "mode": "publish", "status": "pending", "created_at": iso(DAY - 60)} for i in range(7)]
+V.vid_auto_tick(G3, DAY, env=pub)
+ck(len(RUNS) == 3 and V.DAILY_CAP == SP.DAILY_CAP == 10, RUNS)
 # הודעות אישור שממתינות, פג, ופרסום מתוזמן
 G4, st4, sb4 = make_G(rows=rows); PUBS.clear()
-iso = lambda t: dt.datetime.fromtimestamp(t, dt.timezone.utc).isoformat()
 sb4.videos += [{"id": "a", "property_key": "k0", "status": "pending", "sent_at": iso(DAY - 49 * 3600), "created_at": iso(DAY - 49 * 3600)},
                {"id": "b", "property_key": "k1", "status": "approved", "publish_at": iso(DAY - 60), "created_at": iso(DAY - 3600)},
                {"id": "c", "property_key": "k2", "status": "pending", "review_due": True, "sent_at": iso(DAY - 600),

@@ -52,8 +52,9 @@ ren = [{"property_key": "tok1", "status": "rendering", "created_at": iso(NOW - 6
 ck(V.vid_can_create(ROW, ren, NOW, set(), "manual") == (False, "כבר בתהליך"), "in flight")
 
 # ── תקרות ──
-auto3 = [{"trigger": "auto", "ai": True, "created_at": iso(NOW - 60 * i)} for i in range(3)]
-ck(V.vid_caps(auto3, NOW, "auto") == (False, "תקרה יומית (3)"), "daily")
+auto3 = [{"trigger": "auto", "ai": True, "created_at": iso(NOW - 60 * i)} for i in range(10)]   # [18/11] 10 ביום, כמו הפוסטים
+ck(V.vid_caps(auto3[:9], NOW, "auto")[0], "under daily cap")
+ck(V.vid_caps(auto3, NOW, "auto") == (False, "תקרה יומית (10)"), "daily")
 ck(V.vid_caps(auto3, NOW, "manual")[0], "manual not daily")
 yday = [{"trigger": "auto", "ai": True, "created_at": iso(NOW - 86400 - 60 * i)} for i in range(3)]
 ck(V.vid_caps(yday, NOW, "auto")[0], "yesterday")

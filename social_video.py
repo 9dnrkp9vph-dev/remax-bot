@@ -10,7 +10,8 @@ import re
 
 import social_publish as SP
 
-DAILY_CAP = 3
+DAILY_CAP = SP.DAILY_CAP   # [18/11 אייל] סרטון לכל פוסט אוטומטי — אותה תקרה יומית של הפוסטים (היה 3)
+FOLLOW_HOURS = 48           # פוסט שעלה לפני שבת/לילה: הסרטון שלו נוצר כשהשקט נגמר
 MONTH_AI_CAP = 100
 APPROVE_H = 48
 RETRY_DAYS = 3
@@ -1569,8 +1570,10 @@ def _housekeeping(G, now, env, store):
 
 
 def vid_auto_tick(G, now, env=None, store=None):
-    """סבב אחד: publish + META_TOKEN → תחזוקה (אישורים שחיכו לבוקר, פג, פרסום מתוזמן) גם לסרטונים ידניים;
-    יצירה אוטומטית כש-vid_auto_on (כמו הפוסטים; SOCIAL_VIDEO_AUTO=0 מכבה) — נכסים חדשים של סוכן פעיל → עד 3 ביום."""
+    """סבב אחד: publish + META_TOKEN → תחזוקה (אישורים שחיכו לבוקר, פג, פרסום מתוזמן) גם לסרטונים ידניים.
+    [18/11 אייל] יצירה אוטומטית (vid_auto_on; SOCIAL_VIDEO_AUTO=0 מכבה): הסרטון הולך אחרי הפוסט — כל פוסט אוטומטי
+    שעלה ב-FOLLOW_HOURS האחרונות ואין לנכס שלו סרטון → סרטון לאישור הסוכן. הפוסט כבר עבר את כל הכללים
+    (נכס חדש, סוכן פעיל, 2+ תמונות), אז אין כאן תור או זריעה משלנו."""
     env = SP._env(env)
     if SP.soc_mode(env) != "publish" or not str(env.get("META_TOKEN") or "").strip():
         return {"ran": False}
@@ -1578,53 +1581,35 @@ def vid_auto_tick(G, now, env=None, store=None):
     _housekeeping(G, now, env, store)
     if not vid_auto_on(env):
         return {"ran": False, "housekeeping": True}
-    rows = SP.soc_office_rows(G)
-    by_key = {SP._key(r.get("מספר מודעה")): r for r in rows if SP._key(r.get("מספר מודעה"))}
-    keys = list(by_key)
-    scfg = SP._cfg_social(G)
-    gap = now - float(scfg.get("vid_last_tick") or 0)
-    if not scfg.get("vid_enabled_at") or gap > 86400:
-        seed = {"vid_known": {k: now for k in keys}, "vid_waiting": {}, "vid_last_tick": now,
-                "vid_enabled_at": scfg.get("vid_enabled_at") or now}
-        SP._social_mutate(G, lambda s: s.update(seed))
-        return {"ran": True, "seeded": len(keys)}
-    known = {k: v for k, v in (scfg.get("vid_known") or {}).items() if now - float(v or 0) < SP.KNOWN_TTL_DAYS * 86400}
-    # [18/11 אייל] כמו בפוסטים: נכס עם פחות מ-2 תמונות מחכה בלי הגבלת זמן (השעון מתחדש עד שיש תמונות)
-    few = lambda k: len(SP.soc_images(by_key[k])) < SP.MIN_IMAGES
-    waiting = {k: (now if few(k) else v) for k, v in (scfg.get("vid_waiting") or {}).items()
-               if k in by_key and (few(k) or now - float(v or 0) < SP.WAIT_DAYS * 86400)}
-    new = [k for k in keys if k not in known and k not in waiting]
-    for k in new:
-        waiting[k] = now
-    for k in keys:
-        known.setdefault(k, now)
     out = {"ran": True, "created": []}
-    if len(new) > SP.FLOOD:
-        for k in new:
-            waiting.pop(k, None)
-        SP.soc_daily_alert(G, "vid_flood", "סרטונים לרשתות", "%d נכסים חדשים בבת אחת — נראה כמו הזרמה, לא נוצרו סרטונים" % len(new), now)
-        out["flood"] = True
-    elif not _blocked_now(G, now) and waiting:
-        try:
-            hist = G["_sbdb"].video_recent(31) or []
-        except Exception:
-            hist = None
-        if hist is not None:
-            today = SP._day(now)
-            left = DAILY_CAP - sum(1 for h in hist if h.get("trigger") == "auto" and SP._ts(h.get("created_at"))
-                                   and SP._day(SP._ts(h.get("created_at"))) == today)
-            act = SP.soc_active_agents(G, now)   # [18/11 אייל] רק לסוכן שהיה באפי 10+ דק' ב-30 יום, כמו בפוסטים
-            for k in sorted(waiting, key=lambda x: -float(waiting[x])):
-                if left <= 0:
-                    break
-                if few(k) or not SP.soc_row_allowed(G, by_key[k], act):   # נשאר בהמתנה
-                    continue
-                waiting.pop(k, None)
-                r = vid_create_one(G, k, "auto", "", env=env, store=store)
-                out["created"].append(k)
-                if (r or {}).get("ok") or (r or {}).get("status") == "failed":
-                    left -= 1
-    SP._social_mutate(G, lambda s: s.update(vid_known=known, vid_waiting=waiting, vid_last_tick=now))
+    if _blocked_now(G, now):
+        return out
+    try:
+        posts = G["_sbdb"].social_recent(3) or []
+        hist = G["_sbdb"].video_recent(31) or []
+    except Exception:
+        return dict(out, skipped="history")
+    live = {SP._key(r.get("מספר מודעה")) for r in SP.soc_office_rows(G)}
+    have = {SP._key(h.get("property_key")) for h in hist if h.get("mode") != "preview"}
+    today = SP._day(now)
+    left = DAILY_CAP - sum(1 for h in hist if h.get("trigger") == "auto" and SP._ts(h.get("created_at"))
+                           and SP._day(SP._ts(h.get("created_at"))) == today)
+    todo = []
+    for h in posts:
+        k, t = SP._key(h.get("property_key")), SP._ts(h.get("created_at"))
+        if h.get("trigger") != "auto" or h.get("mode") != "publish" or "ok" not in (h.get("fb_status"), h.get("ig_status")):
+            continue
+        if not k or t is None or now - t > FOLLOW_HOURS * 3600 or k not in live or k in have:
+            continue
+        have.add(k)
+        todo.append((t, k))
+    for _, k in sorted(todo):
+        if left <= 0:
+            break
+        r = vid_create_one(G, k, "auto", "", env=env, store=store)
+        out["created"].append(k)
+        if (r or {}).get("ok") or (r or {}).get("status") == "failed":
+            left -= 1
     return out
 
 
