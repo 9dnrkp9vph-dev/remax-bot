@@ -1822,6 +1822,10 @@ def _search_post_rules(parsed, text):
             parsed["_strict_area"] = True
     except Exception:
         pass
+    try:
+        _street_prefix_fix(parsed, t)
+    except Exception:
+        pass
     return parsed
 
 def parse_search_query(text: str) -> dict:
@@ -2461,7 +2465,7 @@ def _query_streets(query):
     if "_qstreets" in q:
         return q["_qstreets"]
     out, seen = [], set()
-    for st in [q.get("street")] + _ST_PHRASE_RE.findall(str(q.get("_qtext") or "")):
+    for st in [q.get("street"), q.get("_street_alt")] + _ST_PHRASE_RE.findall(str(q.get("_qtext") or "")):
         st = re.sub(r"\s+ו$", "", re.sub(r"\s+", " ", str(st or "")).strip(" -")).strip()   # 'ויצמן' נשאר עם ו'
         k = _street_norm(st)
         if len(k) >= 2 and k not in seen:
@@ -2844,7 +2848,70 @@ def _street_match(q_street, r_street):
     a, b = _street_norm(q_street), _street_norm(r_street)
     if len(a) < 2 or len(b) < 2:
         return False
-    return bool(re.search(r"(^|\s)" + re.escape(a) + r"($|\s)", b) or re.search(r"(^|\s)" + re.escape(b) + r"($|\s)", a))
+    if re.search(r"(^|\s)" + re.escape(a) + r"($|\s)", b) or re.search(r"(^|\s)" + re.escape(b) + r"($|\s)", a):
+        return True
+    # [SEARCH-SPELL 18/11 אייל: 'כן תתחיל מ-1 ו-2'] כתיב מלא/חסר — 'בלינסון' / 'ביילינסון' ↔ 'בילינסון', 'מטיס' ↔ 'מאטיס'
+    a2, b2 = _street_skel(a), _street_skel(b)
+    if a2 == a and b2 == b:
+        return False
+    for x, y in ((a2, b2), (b2, a2)):
+        if len(x.replace(" ", "")) >= 4 and re.search(r"(^|\s)" + re.escape(x) + r"($|\s)", y):
+            return True
+    return False
+
+def _street_skel(norm):
+    """שלד השם להשוואת כתיב: בלי י/ו/א באמצע מילה (האות הראשונה והאחרונה נשארות — 'שמעון' אינו 'שמעוני').
+    משמש רק כשהשלד באורך 4 אותיות ומעלה ('שמיר' לא יתאים ל'שמר')."""
+    return " ".join((w[0] + re.sub(r"[יוא]", "", w[1:-1]) + w[-1]) if len(w) > 2 else w for w in str(norm or "").split())
+
+_KNOWN_ST = {"ts": 0.0, "names": None}
+
+def _known_street(name):
+    """האם זה שם של רחוב מוכר — מפת הרחובות המאושרת + הרחובות של נכסי המשרד. מטמון 10 דק'."""
+    if len(_street_norm(name)) < 2:
+        return False
+    if _KNOWN_ST["names"] is None or time.time() - _KNOWN_ST["ts"] > 600:
+        names = set()
+        try:
+            for m in (_nb_guess_index() or {}).values():
+                names.update(m.keys())
+        except Exception:
+            pass
+        try:
+            for r in fetch_sheet_rows() or []:
+                k = _nb_street_key(r.get("כתובת", ""))
+                if len(k) >= 2:
+                    names.add(k)
+        except Exception:
+            pass
+        _KNOWN_ST.update({"ts": time.time(), "names": names})
+    return any(_street_match(name, k) for k in _KNOWN_ST["names"])
+
+def _street_prefix_fix(parsed, text):
+    """[SEARCH-SPELL 18/11] ה-AI חותך אות ראשונה משם הרחוב כאילו היא מילת יחס: 'ברק 54' → 'רק', 'בלינסון 8' →
+    'לינסון', 'ביקינטון' → 'קינטון'. כשהמילה שה-AI החזיר לא נכתבה כך — בוחרים את הצורה שהיא רחוב מוכר
+    (כפי שנכתב, או בלי אות היחס); כשאף אחת לא מוכרת — הרחוב של ה-AI נשאר, והצורה שנכתבה נבדקת גם היא."""
+    st = re.sub(r"\s+", " ", str(parsed.get("street") or "")).strip()
+    if not st:
+        return parsed
+    w0 = st.split()[0]
+    if len(w0) < 2 or re.search(r"(?:^|[\s,])" + re.escape(w0) + r"(?=$|[\s,.]|\d)", text):
+        return parsed
+    m = re.search(r"(?:^|[\s,])(\S{1,2}" + re.escape(w0) + r")(?=$|[\s,.]|\d)", text)
+    if not m:
+        return parsed
+    typed = m.group(1)
+    cands = [st]
+    if typed[0] in "בלומ" and typed[1:] != w0:
+        cands.append(typed[1:] + st[len(w0):])
+    cands.append(typed + st[len(w0):])
+    for c in cands:
+        if _known_street(c):
+            parsed["street"] = c
+            return parsed
+    if text.strip().startswith(typed):   # בתחילת החיפוש זה שם ('בלינסון 8'); באמצע משפט זו מילת יחס ('דירה בסוקולוב')
+        parsed["_street_alt"] = cands[-1]
+    return parsed
 
 _STREET_HINT_STOP = {"מחפש", "מחפשת", "דירה", "דירת", "דירות", "גן", "גינה", "חדרים", "חדר", "חד", "מעלית", "מרפסת",
                      "חניה", "חנייה", "ממד", "עד", "מיליון", "מליון", "אלף", "בית", "פרטי", "פנטהאוז", "פנטהוז", "גג",
@@ -2919,8 +2986,9 @@ def search_area_note(query, matches):
     tail = (" · הנה נכסים ב" + city) if (rows and city) else (" · הנה נכסים קרובים לחיפוש" if rows else "")
     st = (q.get("street") or "").strip()
     if st:
-        if not any(_street_match(st, r.get("כתובת", "") or "") for r in rows):
-            nm = re.sub(r"\s*\d+\s*$", "", st).strip() or st
+        alt = (q.get("_street_alt") or "").strip()   # [SEARCH-SPELL 18/11] הצורה שנכתבה ('בלינסון') — נבדקת גם היא
+        if not any(_street_match(s, r.get("כתובת", "") or "") for r in rows for s in ([st, alt] if alt else [st])):
+            nm = re.sub(r"\s*\d+\s*$", "", alt or st).strip() or st
             return "אין לנו כרגע נכס ברחוב " + nm + tail
         return ""
     nbs = [n for n in ([q.get("neighborhood")] + list(q.get("neighborhoods") or [])) if n and str(n).strip()]

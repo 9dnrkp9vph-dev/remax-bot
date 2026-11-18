@@ -254,7 +254,7 @@ def check_search(q, parsed, matches, note="", feature_state=None):
 
     if note:
         # האזור מהפירוק עצמו (לא מניתוח ההודעה — 'ברק 60' נקרא בטעות 'רק')
-        st = re.sub(r"\s*\d+\s*$", "", str(parsed.get("street") or "")).strip()
+        st = re.sub(r"\s*\d+\s*$", "", str(parsed.get("_street_alt") or parsed.get("street") or "")).strip()
         nbs_n = [str(n).strip() for n in ([parsed.get("neighborhood")] + list(parsed.get("neighborhoods") or [])) if n and str(n).strip()]
         area = ("רחוב " + st) if st else (" / ".join(nbs_n[:2]) or str(note)[:60])
         city = parsed.get("city") or ", ".join(parsed.get("cities") or [])
