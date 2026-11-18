@@ -41,8 +41,13 @@ def _font(weight, size):
     return _rs_font(weight, int(size))
 
 
+_BIDI_CTRL = re.compile("[\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+
+
 def _rtl(s):
-    return _bidi(str(s or ""))
+    """[18/11] סימני כיוון נסתרים (FSI/LRI/RLM…) שמגיעים מהנתונים מפילים את python-bidi ('FSI not allowed here')
+    — והעמוד כולו לא נבנה ('התיק אינו זמין'). מסירים אותם לפני העיבוד."""
+    return _bidi(_BIDI_CTRL.sub("", str(s or "")))
 
 
 def _tl(d, s, f):
