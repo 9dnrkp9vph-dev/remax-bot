@@ -51,41 +51,20 @@ ck(V.vid_manual_used(H, "", NOW) == 0, "no phone")
 ck(V.vid_auto_on({"SOCIAL_AUTO": "1"}) and not V.vid_auto_on({"SOCIAL_AUTO": "0"}) and not V.vid_auto_on({}), "follows SOCIAL_AUTO")
 ck(not V.vid_auto_on({"SOCIAL_AUTO": "1", "SOCIAL_VIDEO_AUTO": "0"}) and V.vid_auto_on({"SOCIAL_VIDEO_AUTO": "1"}), "explicit wins")
 
+# [18/11 אייל] הסרטון האוטומטי הולך אחרי הפוסט האוטומטי (הפוסט כבר עבר: סוכן פעיל, 2+ תמונות) — ונשלח לאישור הסוכן
 ON = {"SOCIAL_AUTO": "1", "SOCIAL_MODE": "publish", "META_TOKEN": "T"}
 import datetime as dt
 T0 = dt.datetime(2026, 11, 3, 12, 0, tzinfo=SP._IL).timestamp()
-rows = lambda *ks, **kw: [dict(ROW, **dict({"מספר מודעה": k, "כתובת": "רחוב " + k}, **kw)) for k in ks]
 MADE = []
+real_create = V.vid_create_one
 V.vid_create_one = lambda G_, key, trigger, by_phone, **kw: (MADE.append((key, trigger)), {"ok": True})[1]
 stv = V.VidStore(tempfile.mkdtemp())
-
-def world(active):
-    G, st, sb = G_()
-    G["_usage_rows"] = lambda start: [{"name": ROW["סוכן 1"], "min": 60 if active else 3}]
-    SP._ACTIVE_BOX.clear()
-    listing = {"rows": rows("a")}
-    G["fetch_sheet_rows"] = lambda: list(listing["rows"])
-    V.vid_auto_tick(G, T0, ON, store=stv)          # זריעה: הנכסים הקיימים לא מקבלים סרטון
-    return G, st, listing
-
-G, st, L = world(active=True); MADE.clear()
-L["rows"] = rows("a", "b")
-V.vid_auto_tick(G, T0 + 600, ON, store=stv)
-ck(MADE == [("b", "auto")], MADE)
-
-G, st, L = world(active=False); MADE.clear()   # הסוכן היה באפי פחות מ-10 דק' ב-30 יום → לא נוצר
-L["rows"] = rows("a", "b")
-V.vid_auto_tick(G, T0 + 600, ON, store=stv)
-ck(MADE == [] and "b" in st["cfg"]["v2_social"]["vid_waiting"], (MADE, st["cfg"]["v2_social"]))
-
-G, st, L = world(active=True); MADE.clear()    # תמונה אחת → מחכה, גם אחרי חודש; כשנוספות תמונות — נוצר
-one = rows("b", **{"תמונות": ["https://img/a.jpg"]})
-for d in range(1, 36):
-    L["rows"] = rows("a") + one
-    V.vid_auto_tick(G, T0 + d * 86400 - 3600, ON, store=stv)
-ck(MADE == [] and "b" in st["cfg"]["v2_social"]["vid_waiting"], MADE)
-L["rows"] = rows("a", "b")
-V.vid_auto_tick(G, T0 + 35 * 86400, ON, store=stv)
-ck(MADE == [("b", "auto")], MADE)
-
+G, st, sb = G_()
+V.vid_auto_tick(G, T0, ON, store=stv)
+ck(MADE == [], "listing without an automatic post → no video")
+sb.rows.append({"id": "p1", "property_key": "tok1", "trigger": "auto", "mode": "publish", "ig_status": "ok",
+                "created_at": dt.datetime.fromtimestamp(T0 - 300, dt.timezone.utc).isoformat()})
+V.vid_auto_tick(G, T0, ON, store=stv)
+ck(MADE == [("tok1", "auto")], MADE)
+V.vid_create_one = real_create
 print("video_reviewers OK", n)
