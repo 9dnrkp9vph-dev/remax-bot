@@ -51,7 +51,8 @@ ns = dict(
     _last9=lambda p: str(p)[-9:], _NB_STATUS_LABELS={"meeting": "פגישה", "followup": "פולו-אפ", "none": "—"},
     _nb_cal_create=cal_create, _gauth_email_for_phone=lambda p: "irena@x",
     _goals=types.SimpleNamespace(meeting_stamp=lambda prev, st, t: None),
-    _config_mutate=mutate, _NB_RESULT_VER=[0], _log_activity=lambda *a: None,
+    _config_mutate=mutate, _NB_RESULT_VER=[0], _nb_result_bump=lambda: None,   # [22/11] מאז 05/11 העלאת הגרסה דרך _nb_result_bump
+    _log_activity=lambda *a: None,
     gcal_delete_event=lambda email, eid: DELETED.append(eid),
     _threading=types.SimpleNamespace(Thread=Thr),
 )
