@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 
 import social_publish as SP
+import media_remote as MR
 
 DAILY_CAP = SP.DAILY_CAP   # [18/11 אייל] סרטון לכל פוסט אוטומטי — אותה תקרה יומית של הפוסטים (היה 3)
 FOLLOW_HOURS = 48           # פוסט שעלה לפני שבת/לילה: הסרטון שלו נוצר כשהשקט נגמר
@@ -67,6 +68,8 @@ def vid_mem_state(read=None):
 def vid_mem_ok(env=None, state=None):
     """האם יש מספיק זיכרון פנוי לרינדור. → (ok, free_mb | None). VID_MEM_HEADROOM_MB משנה את הסף; 0 מכבה את הבדיקה."""
     env = SP._env(env)
+    if MR.enabled(env):   # הרינדור בשרת המדיה — הזיכרון של אפי לא רלוונטי
+        return True, None
     try:
         need = int(str(env.get("VID_MEM_HEADROOM_MB") or MEM_HEADROOM_MB))
     except Exception:
@@ -996,8 +999,13 @@ def _render_tour(G, row, key, imgs, desc, feats, hist, env, out_path, http):
     theme = T.tour_theme(len(hist or []), env)
     texts["tour"] = {"theme": theme, "shots": [{"title": s["title"], "sub": s["sub"]} for s in shots]}
     music = vid_music(key)
-    with _render_lock():
-        out = T.vid_compose_tour(photos, shots, texts, theme, music, out_path, _logo_path(), _agent_photo(G, row))
+    ap = _agent_photo(G, row)
+    if MR.enabled(env):   # [22/11] ההרכבה בשרת המדיה
+        out = MR.render("tour", {"photos": photos, "shots": shots, "texts": texts, "theme": theme,
+                                 "music": MR.File(music), "agent_photo": MR.File(ap)}, out_path, env)
+    else:
+        with _render_lock():
+            out = T.vid_compose_tour(photos, shots, texts, theme, music, out_path, _logo_path(), ap)
     out["music"] = music
     return out, texts
 
@@ -1034,10 +1042,14 @@ def _render_classic(G, row, key, imgs, desc, feats, env, http, tmp, out_path, up
     ai = clip_path is not None
     texts = _agent_texts(G, row, feats, pick["highlight"])
     tl = vid_timeline(min(2, len(slides) - 1), ai)
-    layers = vid_layers(texts, tl, _logo_path(), ai, os.path.join(tmp, "L"))
     music = vid_music(key)
-    with _render_lock():
-        out = vid_compose(clip_path, slides, layers, tl, music, out_path)
+    if MR.enabled(env):   # [22/11] ההרכבה (כולל שכבות הטקסט) בשרת המדיה
+        out = MR.render("classic", {"clip": MR.File(clip_path), "slides": slides, "texts": texts, "timeline": tl,
+                                    "ai": ai, "music": MR.File(music)}, out_path, env)
+    else:
+        layers = vid_layers(texts, tl, _logo_path(), ai, os.path.join(tmp, "L"))
+        with _render_lock():
+            out = vid_compose(clip_path, slides, layers, tl, music, out_path)
     return out, texts, ai, cost, music, clip_path
 
 

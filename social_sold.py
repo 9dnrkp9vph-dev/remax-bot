@@ -886,9 +886,17 @@ def sold_create(G, ref_kind, ref, side, by_phone, http=None, env=None, store=Non
                     break
             if not photo and kind == "seller":
                 raise RuntimeError("התמונה של הנכס לא ירדה")
-        with V._render_lock():
-            out = sold_compose(kind, photo, texts, agents, sold_music(env, len(db.all())), store.path(tok),
-                               V._logo_path())
+        if V.MR.enabled(env):   # [22/11] ההרכבה בשרת המדיה
+            def _ph(a):
+                return dict(a, photo=V.MR.File(a.get("photo")))
+            ags = ({k: [_ph(a) for a in v] for k, v in agents.items()} if isinstance(agents, dict)
+                   else [_ph(a) for a in agents])
+            out = V.MR.render("sold", {"kind": kind, "photo": photo, "texts": texts, "agents": ags,
+                                       "music": V.MR.File(sold_music(env, len(db.all())))}, store.path(tok), env)
+        else:
+            with V._render_lock():
+                out = sold_compose(kind, photo, texts, agents, sold_music(env, len(db.all())), store.path(tok),
+                                   V._logo_path())
         if not out.get("ok"):
             raise RuntimeError(out.get("error") or "רינדור נכשל")
         db.update(rec["id"], {"status": "ready", "ts": _t.time(), "agents": flat})
