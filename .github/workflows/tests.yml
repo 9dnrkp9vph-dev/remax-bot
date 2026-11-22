@@ -1,0 +1,34 @@
+# מריץ את כל הבדיקות שב-tests/ בכל push ובכל pull request.
+# לא פורס כלום ולא נוגע ב-Render — רק מסמן ✓ / ✗ ליד ה-commit ב-GitHub.
+# אותה הרצה במחשב:  python3 tools/run_tests.py
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch: {}   # הפעלה ידנית מה-Actions tab
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # כמו runtime.txt (3.11.9) בפרודקשן
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'       # חלק מהבדיקות מריצות node על ה-JS של המסכים
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest   # pytest: tests/siteweb/conftest.py מייבא אותו
+      - name: Run all tests
+        run: python3 tools/run_tests.py

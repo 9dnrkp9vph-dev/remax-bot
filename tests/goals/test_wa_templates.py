@@ -22,48 +22,34 @@ ck(g.span_he("2026-10-18", "2026-10-24") == "18–24 באוקטובר", g.span_h
 ck(g.span_he("2026-10-25", "2026-10-31") == "25–31 באוקטובר")
 ck(g.span_he("2026-11-29", "2026-12-05") == "29 בנובמבר – 5 בדצמבר", g.span_he("2026-11-29", "2026-12-05"))
 
+# [22/11] הבדיקה עודכנה ל-GOALS4 (29/10): weekly_tpl_params/monthly_tpl_params/owner_tpl_params הוחלפו ב-
+# weekly_params/monthly_params (10 פרמטרים: שם, תקופה, 6 יעדים, שורת עידוד, קישור), בלי המלצות לסוכן.
+# השליחה עצמה (goals_send) נבדקת ב-tests/goals/test_weekly.py; סיכום בעל המשרד ב-tests/goals/test_monthly.py.
+LINK = "https://x/v2/goals"
+
 # ── פרמטרים לתבנית השבועית ───────────────────────────────────────────────────
-p = g.weekly_tpl_params(row)
+p = g.weekly_params(row, LINK)
 ck(len(p) == 10, p)
-ck(p[0] == "אור" and p[1] == "18–24 באוקטובר", p[:2])
+ck(p[0] == "אור" and p[1] == "שבוע 18–24 באוקטובר", p[:2])
 ck(p[2] == "0 מתוך 2", p[2])
 ck(p[5] == "14 מתוך 16.5 (3 מהחתמה)", p[5])
 ck(p[7] == "אין נתון", p[7])
-ck(p[8] == "2", p[8])
-ck("להוריד" in p[9] and "פגישות מנכס נולד ל-1 ביום" in p[9], p[9])
+ck("2 מתוך 6" in p[8], p[8])
+ck(p[9] == LINK, p[9])
 ck(all("\n" not in x and "\t" not in x and x.strip() for x in p), "Meta: no newlines / empty")
-row_ok = dict(row, counts=dict(row["counts"], buyers=20), rec={k: ("keep", v) for k, v in row["daily"].items()})
-ck(g.weekly_tpl_params(row_ok)[5] == "20 מתוך 16.5 (3 מהחתמה) — הושג", g.weekly_tpl_params(row_ok)[5])
-ck(g.weekly_tpl_params(row_ok)[9] == "להשאיר את היעדים כמו שהם", g.weekly_tpl_params(row_ok)[9])
+row_ok = dict(row, counts=dict(row["counts"], buyers=20))
+ck(g.weekly_params(row_ok, LINK)[5] == "20 מתוך 16.5 (3 מהחתמה) — הושג", g.weekly_params(row_ok, LINK)[5])
 
 # ── ההודעה בטקסט חופשי (בחלון 24 ש' / בלי תבנית) — ברורה, בלי '/' בתאריכים ──
-msg = g.weekly_message(row, "RE/MAX Family", "https://x/v2/goals")
+msg = g.weekly_message(row, "RE/MAX Family", LINK)
 ck("בRE/MAX" not in msg and "18–24 באוקטובר" in msg, msg.split("\n")[0])
 ck("\n\nגיוס נכסים: 0 מתוך 2\n" in msg, msg)
 
 # ── חודשי ────────────────────────────────────────────────────────────────────
 mrow = dict(row, prev={"listings": 1, "meetings": 3, "nb_wa": 0, "buyers": 10, "past_clients": 0, "reviews": 1},
             prev_met=1, from_="2026-10-01")
-mp = g.monthly_tpl_params(mrow, "אוקטובר 2026")
-ck(len(mp) == 11 and mp[1] == "אוקטובר 2026", mp)
+mp = g.monthly_params(mrow, "אוקטובר 2026", LINK)
+ck(len(mp) == 10 and mp[1] == "חודש אוקטובר 2026", mp)
 ck(mp[3] == "0 מתוך 11 (בחודש הקודם 3)", mp[3])
-ck(mp[9] == "1", mp[9])
-
-# ── בעל המשרד ────────────────────────────────────────────────────────────────
-M = {"label": "אוקטובר 2026", "rows": [row], "total": {"met": 3, "goals_n": 6}, "top": [row], "inactive": ["א", "ב"]}
-op = g.owner_tpl_params("חודשי", M)
-ck(len(op) == 7 and op[0] == "חודשי" and op[1] == "אוקטובר 2026" and op[2] == "1" and op[3] == "3 מתוך 6", op)
-ck(op[4] == "אור צוקרמן (2/6)" and op[5] == "2" and op[6] == "3", op)
-
-# ── השליחה: תבנית כשמוגדרת ב-env, אחרת טקסט ─────────────────────────────────
-calls = []
-G = {"send_text": lambda to, t: calls.append(("text", to, t)) or True,
-     "send_template": lambda to, name, params, btn=None: calls.append(("tpl", to, name, params, btn)) or True}
-os.environ.pop("WA_TPL_GOALS_WEEKLY", None)
-ck(g.goals_send(G, "9725", "WA_TPL_GOALS_WEEKLY", "טקסט", ["a"]) and calls[-1][0] == "text", calls)
-os.environ["WA_TPL_GOALS_WEEKLY"] = "goals_weekly"
-ck(g.goals_send(G, "9725", "WA_TPL_GOALS_WEEKLY", "טקסט", ["a"], "weekly") and calls[-1] == ("tpl", "9725", "goals_weekly", ["a"], "weekly"), calls)
-G2 = {"send_text": G["send_text"]}           # אין send_template (גרסה ישנה) → טקסט
-ck(g.goals_send(G2, "9725", "WA_TPL_GOALS_WEEKLY", "טקסט", ["a"]) and calls[-1][0] == "text", calls)
-os.environ.pop("WA_TPL_GOALS_WEEKLY")
+ck("בחודש הקודם: 1 מתוך 6" in mp[8], mp[8])
 print("wa templates ok", N[0])
