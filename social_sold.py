@@ -1005,6 +1005,8 @@ def register(app, G):
             return jsonify({"ok": False, "error": "חסר נכס/עסקה"}), 400
         by = s.get("phone", "")
         det = j.get("details") if isinstance(j.get("details"), dict) else None
+        if not V.vid_mem_ok()[0]:   # [22/11] אותה הגנת זיכרון כמו בסרטוני הנכסים
+            return jsonify({"ok": False, "error": V.MEM_BUSY})
         V._spawn(lambda: sold_create(G, kind, ref, side, by, details=det))
         return jsonify({"ok": True, "queued": True})
 

@@ -27,6 +27,111 @@ XFADE = 0.4
 LOOP_SEC = 600
 STALE_S = 1800   # רינדור/פרסום שלא התקדם חצי שעה = נקטע (דפלוי/אתחול באמצע)
 CTA = "חייגו"   # [02/11] אייל — במקום "שלחו הודעה ונחזור אליכם"
+MEM_HEADROOM_MB = 600   # [22/11] כמה זיכרון פנוי חייב להיות לפני שמתחילים רינדור (ffmpeg) — אחרת השרת כולו נהרג (OOM 22/11)
+MEM_BUSY = "השרת עמוס כרגע — נסו שוב בעוד כמה דקות"
+import time as _time0
+_BOOT_TS = _time0.time()   # רינדור/פרסום שהתחיל לפני עליית התהליך הזה מת איתו — לא מחכים STALE_S
+
+
+def vid_mem_state(read=None):
+    """זיכרון הקונטיינר (cgroup v2, ואז v1): (used, limit) בבייטים; used = בלי מטמון קבצים שהליבה יכולה לפנות.
+    לא ניתן לקרוא (מק/בדיקות) → (None, None)."""
+    def rd(path):
+        with open(path) as f:
+            return f.read()
+    read = read or rd
+    for cur, mx, stat in (("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.stat"),
+                          ("/sys/fs/cgroup/memory/memory.usage_in_bytes", "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+                           "/sys/fs/cgroup/memory/memory.stat")):
+        try:
+            used = int(str(read(cur)).strip())
+            lim = str(read(mx)).strip()
+            if lim == "max":
+                return None, None
+            lim = int(lim)
+            st = {}
+            for ln in str(read(stat)).splitlines():
+                p = ln.split()
+                if len(p) == 2 and p[1].isdigit():
+                    st[p[0]] = int(p[1])
+            file_, shm = st.get("file", st.get("cache", 0)), st.get("shmem", 0)
+            used = max(0, used - max(0, file_ - shm))   # tmpfs (shmem) אינו ניתן לפינוי — נשאר בחשבון
+            if lim <= 0 or lim > (1 << 50):
+                return None, None
+            return used, lim
+        except Exception:
+            continue
+    return None, None
+
+
+def vid_mem_ok(env=None, state=None):
+    """האם יש מספיק זיכרון פנוי לרינדור. → (ok, free_mb | None). VID_MEM_HEADROOM_MB משנה את הסף; 0 מכבה את הבדיקה."""
+    env = SP._env(env)
+    try:
+        need = int(str(env.get("VID_MEM_HEADROOM_MB") or MEM_HEADROOM_MB))
+    except Exception:
+        need = MEM_HEADROOM_MB
+    used, lim = state if state is not None else vid_mem_state()
+    if used is None or lim is None:
+        return True, None
+    free = int((lim - used) / (1 << 20))
+    return (need <= 0 or free >= need), free
+
+
+def vid_tmp_sweep(now, root=None, max_age=3600):
+    """תיקיות עבודה זמניות (vid_*/vidc_*) שנשארו מרינדור שנהרג באמצע — נמחקות אחרי שעה. → (נמחקו, MB שנשארו ב-tmp)."""
+    import os, tempfile, shutil
+    root = root or tempfile.gettempdir()
+    gone, left = 0, 0
+    try:
+        names = os.listdir(root)
+    except Exception:
+        return 0, 0
+    for nm in names:
+        pth = os.path.join(root, nm)
+        try:
+            if os.path.isdir(pth) and (nm.startswith("vid_") or nm.startswith("vidc_")):
+                if now - os.path.getmtime(pth) > max_age:
+                    shutil.rmtree(pth, ignore_errors=True)
+                    gone += 1
+                    continue
+                for dp, _dn, fns in os.walk(pth):
+                    for fn in fns:
+                        try:
+                            left += os.path.getsize(os.path.join(dp, fn))
+                        except Exception:
+                            pass
+            elif os.path.isfile(pth):
+                left += os.path.getsize(pth)
+        except Exception:
+            continue
+    return gone, int(left / (1 << 20))
+
+
+def vid_mem_report(read=None):
+    """שורת אבחון ללוג: מה תופס את זיכרון הקונטיינר מעבר לתהליך (anon / מטמון קבצים / tmpfs)."""
+    def rd(path):
+        with open(path) as f:
+            return f.read()
+    read = read or rd
+    try:
+        cur = int(str(read("/sys/fs/cgroup/memory.current")).strip())
+        st = {}
+        for ln in str(read("/sys/fs/cgroup/memory.stat")).splitlines():
+            p = ln.split()
+            if len(p) == 2 and p[1].isdigit():
+                st[p[0]] = int(p[1])
+        mb = lambda k: int(st.get(k, 0) / (1 << 20))
+        return "total=%dMB anon=%dMB file=%dMB (active=%dMB inactive=%dMB) shmem=%dMB" % (
+            int(cur / (1 << 20)), mb("anon"), mb("file"), mb("active_file"), mb("inactive_file"), mb("shmem"))
+    except Exception:
+        return ""
+
+
+def _dead_or_stale(t, now, boot=None):
+    """רשומת 'בתהליך' נחשבת מתה: לא התקדמה STALE_S, או שהתחילה לפני שהתהליך הזה עלה (אתחול/נפילה באמצע)."""
+    boot = _BOOT_TS if boot is None else boot
+    return (now - t >= STALE_S) or (t < boot - 5)
 
 
 # ── טקסטים ותזמון ────────────────────────────────────────────────────────────────
@@ -136,7 +241,7 @@ def vid_can_create(row, history_videos, now, hidden, trigger):
         if not mine:
             continue
         if st in ("rendering", "publishing"):
-            if now - (SP._ts(h.get("updated_at") or h.get("created_at")) or 0) < STALE_S:
+            if not _dead_or_stale(SP._ts(h.get("updated_at") or h.get("created_at")) or 0, now):
                 return False, "כבר בתהליך"
             continue
         if st in _FINAL_BAD or st == "preview":
@@ -949,6 +1054,13 @@ def _vid_create_one(G, key, trigger, by_phone, http, now, env, store):
     if not row:
         res["reason"] = "הנכס לא נמצא"
         return res
+    okm, free = vid_mem_ok(env)
+    if not okm:   # [22/11] לא מתחילים רינדור כשאין זיכרון פנוי — בלי רשומה, כדי שהאוטומטי ינסה שוב בסבב הבא
+        lg = G.get("log")
+        if lg:
+            lg.warning("social video: skipped (low memory, free=%sMB) key=%s trigger=%s" % (free, key, trigger))
+        res["reason"] = MEM_BUSY
+        return res
     try:
         hist = G["_sbdb"].video_recent(31) or []
     except Exception:
@@ -1520,7 +1632,7 @@ def _recover_stale(G, recs, now):
     for r in recs or []:
         st = r.get("status")
         t = SP._ts(r.get("updated_at") or r.get("decided_at") or r.get("created_at")) or now
-        if now - t < STALE_S:
+        if not _dead_or_stale(t, now):
             continue
         if st == "rendering":
             G["_sbdb"].video_update(r["id"], {"status": "failed", "error": "נקטע באמצע (אתחול השרת)"})
@@ -1655,6 +1767,8 @@ def register(app, G):
                 return jsonify({"ok": False, "error": "forbidden"}), 403
             if vid_manual_used(hist(), by, _t.time()) >= SP.MANUAL_CAP:
                 return jsonify({"ok": False, "error": SP.MANUAL_CAP_REASON})
+        if not vid_mem_ok()[0]:
+            return jsonify({"ok": False, "error": MEM_BUSY})
         _spawn(lambda: vid_create_one(G, key, "manual", by))
         return jsonify({"ok": True, "queued": True})
 
@@ -1789,6 +1903,14 @@ def register(app, G):
     def loop():
         _t.sleep(150)
         while True:
+            try:   # [22/11] אבחון זיכרון הקונטיינר + ניקוי שאריות רינדור שנהרג
+                lg0 = G.get("log")
+                gone, left = vid_tmp_sweep(_t.time())
+                rep = vid_mem_report()
+                if lg0 and (rep or gone):
+                    lg0.warning("social mem: %s | tmp=%dMB swept=%d" % (rep, left, gone))
+            except Exception:
+                pass
             try:
                 vid_auto_tick(G, _t.time())
             except Exception as e:

@@ -6,6 +6,7 @@ n = 0
 def ck(c, m):
     global n; assert c, m; n += 1
 import social_video as V
+V._BOOT_TS = 0   # [22/11] הבדיקות כאן מדמות שרת שרץ מזמן; אתחול באמצע נבדק ב-test_mem_guard
 from _fakes import ROW
 from zoneinfo import ZoneInfo
 IL = ZoneInfo("Asia/Jerusalem")
