@@ -1208,7 +1208,7 @@ def keep_real_agents(raw_rows, current):
     return fixed
 
 
-def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now_full="", guarded=None):
+def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now_full="", guarded=None, agent_fix=None):
     """נכסי המשרד מיד2 (שלב ב', החלטת אייל 01/09): מחליף את שורות הסניף office_tag
     ברשימה החדשה ושומר את שאר הסניפים. שורה של הסניף שנעדרת מהסריקה: ב-delisted →
     נשארת עם תווית "ירד מפרסום"; אחרת נשארת כמו שהיא (סריקה חלקית לא מוחקת).
@@ -1339,6 +1339,20 @@ def merge_office_props(office_tag, raw_rows, delisted_tokens=None, stamp="", now
                   + ",".join(str(r.get('מספר מודעה') or '') for r in _st[:20]), flush=True)
     except Exception:
         pass   # הכלל לעולם לא מפיל את הקליטה
+    if agent_fix:   # [AGENT-ORDER 22/11] גם שורות קיימות (כל הסניפים) מקבלות את שם הסוכן כפי שהוא באפי
+        try:
+            _af = 0
+            for r in keep:
+                _o = str(r.get("סוכן 1") or "")
+                if _o and not is_placeholder_agent(_o):
+                    _nn = agent_fix(_o)
+                    if _nn and _nn != _o:
+                        r["סוכן 1"] = _nn
+                        _af += 1
+            if _af:
+                print(f"props merge {office_tag}: agent name fixed on {_af} existing rows", flush=True)
+        except Exception:
+            pass   # לעולם לא מפיל את הקליטה
     ok, n = replace_properties(keep + list(raw_rows))
     return ok, n, new_rows
 

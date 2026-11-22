@@ -12967,6 +12967,55 @@ def y2_norm_private(row):
 Y2_AGENT_FIX = {"דוד עובדיה": "דודו עובדיה", "רחל וקסלר": "רחלי וקסלר",
                 "זאודיטו חן בזונך": "זאודיטו בזונך", "בינימין אביטן": "בנימין אביטן"}
 
+def _y2_nk(s):
+    t = _re.sub(r"[\s'\"`׳״’.\-_,()\[\]]", "", str(s or ""))
+    for _a, _b in (("ך", "כ"), ("ם", "מ"), ("ן", "נ"), ("ף", "פ"), ("ץ", "צ")):
+        t = t.replace(_a, _b)
+    return t.replace("יי", "י").replace("וו", "ו")
+
+def y2_agent_canon(name, known):
+    """[AGENT-ORDER 22/11] יד2 שולח לחלק מהסוכנים שם משפחה לפני הפרטי ('עובדיה דוד', 'גימפל ליאת ויקי') —
+    השם לא תאם לשם באפי, והנכסים נעלמו מ'שלי' ומעמוד הסוכן באתר ('למה אין נכסים לדודו?' — אייל).
+    מחזיר את השם כפי שהוא רשום באפי (known) כשיש התאמה אחת ויחידה: אותו שם, אותן מילים בסדר אחר,
+    או שכל מילות השם באפי (2+) מופיעות בשם מיד2. בלי התאמה ודאית — השם לא משתנה."""
+    nm = " ".join(str(name or "").split())
+    if not nm:
+        return nm
+    by_key = {}
+    for k in known or ():
+        k = " ".join(str(k or "").split())
+        if k:
+            by_key.setdefault(_y2_nk(k), k)
+    if _y2_nk(nm) in by_key:          # השם כבר רשום כך באפי — לא נוגעים
+        return by_key[_y2_nk(nm)]
+    nm = Y2_AGENT_FIX.get(nm, nm)
+    if _y2_nk(nm) in by_key:
+        return by_key[_y2_nk(nm)]
+    words = nm.split()
+    if len(words) < 2:
+        return nm
+    hits = set()
+    if len(words) <= 4:
+        import itertools as _it
+        for perm in _it.permutations(words):
+            c = " ".join(perm)
+            c2 = Y2_AGENT_FIX.get(c, c)
+            if _y2_nk(c2) in by_key:
+                hits.add(by_key[_y2_nk(c2)])
+            elif c2 != c:
+                hits.add(c2)
+    if len(hits) == 1:
+        return hits.pop()
+    if hits:
+        return nm
+    wk = set(_y2_nk(w) for w in words)
+    sub = set()
+    for k in by_key.values():
+        kw = [_y2_nk(w) for w in k.split()]
+        if len(kw) >= 2 and all(w in wk for w in kw):
+            sub.add(k)
+    return sub.pop() if len(sub) == 1 else nm
+
 def y2_num_str(v):
     """מספרים מהסריקה/גיליון עלולים להגיע כ-float ("18.0", "2390000.0") — מנקה
     אפס-עשרוני מיותר ושומר שברים אמיתיים ("6.5"). לא-מספר חוזר כמו שהוא."""
@@ -21741,12 +21790,22 @@ def register(app, G):
                         if _sid and log: log.info(f"props snapshot taken: {_sn} rows ({_sid})")
                     except Exception as _se:
                         if log: log.warning(f"props snapshot failed: {_se}")
+                _y2_known = None
                 for _oid, _rows in ours.items():
                     # שלב ב' (החלטת אייל 01/09): הסניפים שלנו → properties בפורמט הגיליון
                     props = [y2_norm_office(r, _oid) for r in _rows]
+                    try:   # [AGENT-ORDER 22/11] שם הסוכן כפי שהוא רשום באפי (יד2 שולח חלק מהשמות הפוך)
+                        if _y2_known is None:
+                            _y2_known = [v.get("name", "") for v in (G["fetch_agents_full"]() or {}).values()] \
+                                        + [ag.get("name", "") for ag in ((G["_load_config"]() or {}).get("agents") or [])]
+                        for _pr in props:
+                            _pr["סוכן 1"] = y2_agent_canon(_pr.get("סוכן 1"), _y2_known)
+                    except Exception as _ae:
+                        if log: log.warning(f"yad2 agent canon failed: {_ae}")
                     for _pr in props:
                         _pr["_y2_ingested"] = _now_full   # "עדכון אחרון" במסך הנכסים
-                    _okp, _n, _new_rows = sb.merge_office_props(_oid, props, _dl if _oid == batch_oid else set(), _stamp, _now_full, guarded=_guarded)
+                    _okp, _n, _new_rows = sb.merge_office_props(_oid, props, _dl if _oid == batch_oid else set(), _stamp, _now_full, guarded=_guarded,
+                                                                agent_fix=(lambda _n0: y2_agent_canon(_n0, _y2_known)) if _y2_known else None)
                     out["ourN"] += _n
                     try:   # פוש לסוכן על מודעה חדשה שלו (אייל 10/09) — לא בהזרמות/backfill (שער 40)
                         if str(b.get("machine", "") or "").startswith("resend"):
