@@ -323,6 +323,7 @@ MAX_COMPS = 7               # עד 7 עסקאות דומות (4 נתנו טוו�
 MIN_COMPS = 4               # פחות — אין טווח, ואין עמוד בתיק
 SIZE_TOL = 0.20             # שטח ±20%
 SIZE_TOL_WIDE = 0.30        # [11/11 אייל] אין 4 דומות ב-±20% → ±30%
+STREET_ROOMS_TOL = 1.0       # [22/11] באותו רחוב — עד חדר הפרש נכנס לפני השכונה
 OUTLIER = 0.30              # מחיר למ"ר רחוק 30%+ מהחציון — חריג
 YEARS = 3
 OURS_FIRST_DAYS = 365      # [13/11] עסקה שלנו מקבלת עדיפות רק אם היא מהשנה האחרונה
@@ -514,7 +515,9 @@ def cma_compute(subject, deals, listings, today, city_wide=False):
     sqm = subject.get("sqm")
 
     def pick(tol, size_tol=SIZE_TOL):
-        cands = [r for r in street + nbrs if _rooms_ok(r, subject["rooms"], tol)]
+        # [22/11] אייל (הברוש, תיק דורין): ברחוב — עד חדר הפרש כבר בסבב הראשון, לפני השכונה בחדרים מדויקים
+        cands = ([r for r in street if _rooms_ok(r, subject["rooms"], max(tol, STREET_ROOMS_TOL))]
+                 + [r for r in nbrs if _rooms_ok(r, subject["rooms"], tol)])
         rows = []
         for r in cands:
             c = {"street": r.get("street") or r.get("project") or "", "house": r.get("house"), "date": r["deal_date"],
