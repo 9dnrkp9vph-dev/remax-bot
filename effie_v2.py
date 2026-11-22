@@ -15739,8 +15739,9 @@ CRM_MODULES = {
                     ("sqm", "מ\"ר", "text"), ("floor", "קומה", "text"), ("price", "מחיר", "price"), ("deal", "עסקה", "text"),
                     ("contact", "בעלים / משרד / סוכן", "text"), ("phone", "טלפון", "phone"), ("excl", "בלעדיות", "text"),
                     ("branch", "סניף", "text"),
-                    ("date", "נראה לראשונה", "date"), ("status", "מצב", "status"), ("link", "מודעה", "link"), ("desc", "תיאור", "long")],
-        "default_cols": ["image", "source", "type", "city", "neighborhood", "address", "rooms", "price", "contact", "phone", "branch", "date", "status", "link"],
+                    ("date", "נראה לראשונה", "date"), ("status", "מצב", "status"), ("link", "מודעה", "link"),
+                    ("site", "באתר", "link", "באתר"), ("desc", "תיאור", "long")],
+        "default_cols": ["image", "source", "type", "city", "neighborhood", "address", "rooms", "price", "contact", "phone", "branch", "date", "status", "link", "site"],
         "editable": [],
         "views": [("all", "כל הפעילים"), ("private", "פרטיים (נכס נולד)"), ("new", "חדשים (עד 2 ימים)"), ("drops", "ירידות מחיר"),
                   ("shtaf", "מודעות משרדים (שת\"פ)"), ("office", "המשרד שלנו")]
@@ -16658,6 +16659,15 @@ def _crm_rooms(v):
         return ""
 
 
+def crm_site_link(office_id, ad_id, base):
+    """[22/11 אייל] הקישור הקצר של המודעה ב-refamily.co.il — אותו מזהה שהאתר מחשב (refsite/listings.py: prop_id)."""
+    import hashlib as _hs
+    oid, ad = str(office_id or "").strip(), str(ad_id or "").strip()
+    if not oid or not ad:
+        return ""
+    return str(base or "").strip().rstrip("/") + "/n/" + _hs.sha1((oid + "|" + ad).encode("utf-8")).hexdigest()[:10]
+
+
 def crm_props_records(nb, excl, office, pd_map, now, h):
     """[CRM נכסים 19/10] נכס נולד (פרטי) + שת"פ + נכסי המשרד → רשומה אחת לטבלת ה-CRM.
     h: עוזרים מ-app (תאריך נראה-לראשונה, מפתח ירידת מחיר, פענוח תיאור נכס נולד, שם סוכן) — כך הפונקציה טהורה ונבדקת."""
@@ -16721,6 +16731,12 @@ def crm_props_records(nb, excl, office, pd_map, now, h):
                     "excl": "בלעדי" if ex == "1" else ("רגיל" if ex == "0" else ""), "agent": ag,
                     "link": str(r.get("קישור") or ""), "image": str(r.get("תמונה") or ""), "desc": str(r.get("תיאור") or r.get("_desc_ae") or "")})
         rec["dropped"] = bool(rec["price_old"] and price and price < rec["price_old"])
+        rec["site"] = ""
+        if not rec["delisted"] and rec["ad_id"] and h.get("site_link"):
+            try:
+                rec["site"] = h["site_link"](rec["ad_id"]) or ""
+            except Exception:
+                pass
         add(rec)
     return out
 
@@ -20325,6 +20341,16 @@ def register(app, G):
                      "excl_ep": lambda r: G["_excl_epoch"](r.get("first_seen") or r.get("received_at") or ""),
                      "excl_pkey": G["_excl_price_key"], "prop_ep": G["_prop_epoch"], "prop_pkey": G["_prop_price_key"],
                      "agent_name": lambda n: (G["_canon_agent_name"](n) or n) if n else ""}
+                # [22/11 אייל] קישור לכל מודעה של המשרד ב-refamily.co.il; מה שהוסתר מהאתר — בלי קישור
+                try:
+                    import site_api as _sa
+                    _hid, _ = _sa.prop_flags(_sa.SettingsStore(G.get("_sbdb")).all())
+                except Exception as e:
+                    _hid = set()
+                    if log: log.warning(f"crm props: site hidden: {e}")
+                _oid = str(getattr(G.get("_sbdb"), "SB_OFFICE_ID", "") or "")
+                _sbase = (os.environ.get("SITE_PUBLIC_URL") or "https://refamily.co.il").strip()
+                h["site_link"] = lambda ad: "" if ad in _hid else crm_site_link(_oid, ad, _sbase)
                 try:
                     pd = G["_price_dropped_map"]() or {}
                 except Exception:
