@@ -29,6 +29,9 @@ DUMMY_ENV = {
     "MAYTAPI_PHONE_ID": "1",
     "MAYTAPI_PRODUCT_ID": "1",
     "CLAUDE_API_KEY": "dummy",
+    # הבדיקות נכתבו ורצות על מחשב בשעון ישראל, ואחת מהן (tests/signing/test_last_form_budget.py) תלויה בזה:
+    # בשעון UTC (GitHub Actions) היא נכשלת בהפרש של 3 שעות. קובעים אזור זמן אחיד כדי שהתוצאה תהיה זהה בכל מקום.
+    "TZ": "Asia/Jerusalem",
 }
 
 
