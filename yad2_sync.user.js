@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      15.5
+// @version      15.6
 // @description  Auto-scrape 07:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -53,7 +53,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='15.5'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='15.6'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -2105,6 +2105,19 @@ var GAL_KEY='ysGal', GAL_MAX_ENTRIES=4000, GALLERY_BACKFILL=false, GALLERY_BACKF
 // v15.4: דף שנפתח עם פחות מ-2 תמונות (מודעה שהועלתה עם תמונה אחת והתמונות נוספו אחר כך) לא נחשב 'גמור' לתמיד —
 // נפתח שוב אחרי GAL_RETRY_DAYS, עד GAL_RETRY_MAX פתיחות בסך הכל, באותה תקרה ובעדיפות האחרונה
 var GAL_RETRY_DAYS=3, GAL_RETRY_MAX=4;
+// v15.6 (23/11, אייל: "תמונות שעודכנו ביד2 נשארות ישנות באפי ובאתר" → "כן תבנה את שתיהן"): גלריה גמורה
+// של סניף Family נפתחת שוב (1) כשהתמונה הראשית בדף המשרד לא בגלריה השמורה ולא זו שנראתה ברענון הקודם,
+// (2) כשהגלריה בת יותר מ-GAL_REFRESH_DAYS. בתוך אותה תקרה, עם מכסה לכל משרד בכל סריקה.
+var GAL_REFRESH_DAYS=14, GAL_REFRESH_COVER_PER_SCAN=2, GAL_REFRESH_AGE_PER_SCAN=1;
+function imgBase(u){ return String(u||'').split('?')[0].split('#')[0].split('/').pop(); }
+// 'cover' | 'age' | ''
+function galStaleWhy(e, row, now){
+  if(!e||!e.u||e.u.length<2)return '';
+  var cov=imgBase(row&&row.image);
+  if(cov && cov!==e.c && !e.u.some(function(u){return imgBase(u)===cov;})) return 'cover';
+  if((now-(e.t||0)) > GAL_REFRESH_DAYS*86400000) return 'age';
+  return '';
+}
 function galIsDone(e, row, now){
   if(((row&&row.images&&row.images.length)||0)>1) return true;
   if(!e) return false;
@@ -2316,6 +2329,7 @@ function fetchItemAgents(rows, officeName, fetchFn, cap, onProg, done, stats, of
   var cache=agentCache(), gal=galLoad(), feat=featLoad(), need=[], seen={}, now=Date.now();
   stats.gal=0; stats.feat=0;
   var galFill=GALLERY_BACKFILL||(GALLERY_BACKFILL_FAMILY&&isFamId(officeId));
+  var galRefresh=isFamId(officeId), refCover=[], refAge=[];
   var featFill=FEAT_BACKFILL_ALL||(FEAT_BACKFILL_FAMILY&&isFamId(officeId));
   (rows||[]).forEach(function(r){
     var tok=String(r.link||'').split('/').pop();
@@ -2324,15 +2338,20 @@ function fetchItemAgents(rows, officeName, fetchFn, cap, onProg, done, stats, of
     // v13.40: השלמת גלריה למודעה שאין לה (כבוי כברירת מחדל — ראה GALLERY_BACKFILL)
     var galDone=galIsDone(gal[tok], r, now);
     var featDone=!!feat[tok];
-    if(c&&c.a){ if((galFill&&!galDone)||(featFill&&!featDone))need.push({tok:tok,row:r,pri:3}); return; }   // כבר יש סוכן ב-cache
+    var stale=(galRefresh&&galDone)?galStaleWhy(gal[tok], r, now):'';
+    var pushStale=function(){ if(stale==='cover')refCover.push({tok:tok,row:r,pri:3.5}); else if(stale==='age')refAge.push({tok:tok,row:r,pri:4,t:(gal[tok].t||0)}); };
+    if(c&&c.a){ if((galFill&&!galDone)||(featFill&&!featDone))need.push({tok:tok,row:r,pri:3}); else pushStale(); return; }   // כבר יש סוכן ב-cache
     var noAgent=!isRealAgent(r.agent,officeName);
     // כשל נשמר עם מונה+חותמת: עד 3 ניסיונות. מודעה בלי שם סוכן חוזרת אחרי 6 שעות
     // (זה החוסר הבולט בסיכום), מודעה שחסר בה רק תיאור — אחרי יממה.
     if(c&&c.f){ if(c.f>=3 || (now-(c.t||0)) < (noAgent?6:24)*3600000) return; }
-    if(!noAgent && r.phone && r.description){ if((galFill&&!galDone)||(featFill&&!featDone))need.push({tok:tok,row:r,pri:3}); return; }   // יש סוכן+טלפון+תיאור → אין צורך
+    if(!noAgent && r.phone && r.description){ if((galFill&&!galDone)||(featFill&&!featDone))need.push({tok:tok,row:r,pri:3}); else pushStale(); return; }   // יש סוכן+טלפון+תיאור → אין צורך
     // דירוג: קודם מי שאין לו שם סוכן, אחריו מי שחסר תיאור, ואז השאר
     need.push({tok:tok,row:r,pri:(noAgent?0:(r.description?2:1))});
   });
+  // v15.6: רענון גלריות — תמונה ראשית שהשתנתה קודם, ואז הישנות ביותר; מכסה קטנה לכל משרד בכל סריקה
+  refAge.sort(function(a,b){return a.t-b.t;});
+  need=need.concat(refCover.slice(0,GAL_REFRESH_COVER_PER_SCAN), refAge.slice(0,GAL_REFRESH_AGE_PER_SCAN));
   need.sort(function(a,b){return a.pri-b.pri;});
   // סניפי רימקס Family — פי ארבעה, כי זה הסיכום שאייל עובד איתו (וסניף חדש מגיע ריק)
   var isFam=isFamId(officeId);
@@ -2352,8 +2371,12 @@ function fetchItemAgents(rows, officeName, fetchFn, cap, onProg, done, stats, of
         fin(); return;
       }
       var gi=itemPageImages(html, it.tok);                   // v13.40: הגלריה — מאותו דף, בלי בקשה נוספת
-      var pg=gal[it.tok];
-      gal[it.tok]= gi.length>1 ? {u:gi, t:Date.now()} : {u:[], t:Date.now(), n:((pg&&!(pg.u&&pg.u.length>1))?(pg.n||1):0)+1};
+      var pg=gal[it.tok], cov=imgBase(it.row&&it.row.image)||undefined;
+      if(gi.length<2 && pg && pg.u && pg.u.length>1 && !exclParseNextData(html)){
+        pg.c=cov;   // v15.6: דף שבור ברענון — הגלריה הקיימת נשארת, והתמונה הראשית נרשמת כדי לא לנסות שוב בכל סריקה
+      } else {
+        gal[it.tok]= gi.length>1 ? {u:gi, t:Date.now(), c:cov} : {u:[], t:Date.now(), c:cov, n:((pg&&!(pg.u&&pg.u.length>1))?(pg.n||1):0)+1};
+      }
       if(gi.length>1)stats.gal++;
       var fx=itemFeatures(html, it.tok);                     // v14.4: "מה יש בנכס" — מאותו דף
       if(fx){ feat[it.tok]={x:fx,t:Date.now()}; stats.feat++; }
