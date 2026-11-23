@@ -48,4 +48,20 @@ ck(r.status_code == 403, ("team-scope cannot add", r.status_code))
 r = c.post("/v2/api/crm/team/record", headers=H("0541111111", "orian@example.com"), json={"fields": {"name": "חדש", "phone": "0549999999"}})
 ck(r.status_code == 200 and r.get_json().get("ok") and ADDED and ADDED[0]["name"] == "חדש", ("orian adds an agent", r.status_code, r.get_json()))
 ck(c.post("/v2/api/crm/team/import", headers=H("0541111111", "orian@example.com")).status_code == 403, "import stays owner only")
+# תמונה לסוכן — נשמרת בטבלת avatars (משם האתר מושך אותה)
+import io, base64
+from PIL import Image
+buf = io.BytesIO(); Image.new("RGB", (600, 400), (30, 58, 95)).save(buf, "JPEG")
+img = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+import supabase_db as _S
+AV = {}
+_S.enabled = lambda: True
+_S.avatar_save = lambda p, b64: AV.__setitem__(p, b64)
+A.web_phone_name_map = lambda: {}
+A.web_contacts_phone_name = lambda: {}
+r = c.post("/v2/api/crm/team/avatar", headers=H("0541111111", "orian@example.com"), json={"phone": "0549999999", "name": "חדש", "img": img})
+ck(r.status_code == 200 and r.get_json()["ok"] and "549999999" in AV, ("orian uploads an agent photo", r.status_code, r.get_json(), list(AV)))
+r = c.post("/v2/api/crm/team/avatar", headers=H("0542222222", "udi@example.com"), json={"phone": "0549999999", "img": img})
+ck(r.status_code == 403, "team-scope cannot change photos")
+import shutil; shutil.rmtree(A._AV_DIR if hasattr(A, "_AV_DIR") else "v2_avatars", ignore_errors=True)
 print("crm_team_admin OK", n)
