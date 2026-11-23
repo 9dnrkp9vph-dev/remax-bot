@@ -15971,6 +15971,16 @@ CRM_ACCESS_MODULES = [m for m in CRM_MODULES if m not in CRM_OWNER_ONLY] + ["das
 _CRM_AGENTLESS = ("flows", "automations", "team")      # אין שדה סוכן → רק להיקף 'הכל'
 
 
+def crm_team_admin(ctx):
+    """[23/11] מי מנהל את הצוות ב-CRM (הוספה/עריכה/השבתה, תמונות, תיקון נתונים): בעל המשרד,
+    או מי שקיבל במסך ההרשאות את מודול הצוות + עריכה + היקף 'הכל'. מפתח הקריאה של Claude — לעולם לא."""
+    if not ctx or ctx.get("agent_key"):
+        return False
+    if ctx.get("owner"):
+        return True
+    return "team" in (ctx.get("modules") or []) and bool(ctx.get("edit")) and ctx.get("scope") == "all"
+
+
 def crm_access_for(email, phone, cfg, owner_emails, is_dev):
     """מי נכנס ל-CRM ומה מותר לו. בעל המשרד (מייל ב-CRM_OWNER_EMAILS או מייל שמקושר לטלפון מפתח) — הכל + 'הרשאות'.
     אחר — רק אם הוא ברשימה v2_crm_access (מפתח = מייל); מודול לא מוכר נזרק, היקף לא מוכר = 'רק שלו'."""
@@ -20107,12 +20117,16 @@ def register(app, G):
 
     _CRM_AGENT_LOG = [0.0]
 
-    def _crm_guard(module=None, owner=False, need=None):
-        """ctx או None. module = חייב להיות מותר; owner = רק בעל המשרד; need = 'export' / 'edit' / 'all' (היקף מלא)."""
+    def _crm_guard(module=None, owner=False, need=None, team_admin=False):
+        """ctx או None. module = חייב להיות מותר; owner = רק בעל המשרד; need = 'export' / 'edit' / 'all' (היקף מלא).
+        team_admin = [23/11] בעל המשרד, או מי שיש לו עריכה והיקף 'הכל' (ניהול הצוות ב-CRM — אייל: לאפשר לאוריין)."""
         from flask import g as _fg
         ctx, why = _crm_ctx()
         _fg._crm_why = why or "forbidden"
         if not ctx:
+            return None
+        if team_admin and not crm_team_admin(ctx):
+            _fg._crm_why = "forbidden"
             return None
         if (module and module not in ctx["modules"]) or (owner and not ctx["owner"]) \
                 or (need == "export" and not ctx["export"]) or (need == "edit" and (not ctx["edit"] or ctx.get("agent_key"))) \
@@ -20785,7 +20799,7 @@ def register(app, G):
             return jsonify({"ok": False, "reason": "unknown_module"}), 404
         if request.method == "POST" and not mod["editable"]:
             return jsonify({"ok": False, "reason": "read_only"}), 400
-        s = _crm_guard(module, owner=(request.method == "POST" and module == "team"),
+        s = _crm_guard(module, team_admin=(request.method == "POST" and module == "team"),
                        need=("edit" if request.method == "POST" else None))
         if not s:
             return _crm_deny()
@@ -21056,7 +21070,7 @@ def register(app, G):
 
     @app.route("/v2/api/crm/team/status", methods=["GET"])
     def v2_api_crm_team_status():
-        if not _crm_guard("team", owner=True):
+        if not _crm_guard("team", team_admin=True):
             return _crm_deny()
         sb = G.get("_sbdb")
         try:
@@ -21071,7 +21085,7 @@ def register(app, G):
     @app.route("/v2/api/crm/team/fix", methods=["GET", "POST"])
     def v2_api_crm_team_fix():
         """תיקוני נתונים: GET = תצוגה מקדימה, POST = החלה (מייל מעמודה D, רישיון מהאזור האישי, טלפונים, 'עודכן ע"י')."""
-        s = _crm_guard("team", owner=True)
+        s = _crm_guard("team", team_admin=True)
         if not s:
             return _crm_deny()
         sb = G.get("_sbdb")
@@ -21132,7 +21146,7 @@ def register(app, G):
 
     @app.route("/v2/api/crm/team/avatar", methods=["POST"])
     def v2_api_crm_team_avatar():
-        s = _crm_guard("team", owner=True)
+        s = _crm_guard("team", team_admin=True)
         if not s:
             return _crm_deny()
         b = request.get_json(silent=True) or {}
@@ -22191,7 +22205,7 @@ def register(app, G):
     # ── השלמת תמונות סוכנים מהאתר הישן (אייל 18/10: "סנכרון מלא — כל תמונה גם באפי וגם באתר") ──
     @app.route("/v2/api/admin/avatars/import_site", methods=["POST"])
     def v2_api_avatars_import_site():
-        s = _dev_guard() or _crm_guard("team", owner=True)
+        s = _dev_guard() or _crm_guard("team", team_admin=True)
         if s and s.get("agent_key"):
             s = None
         if not s:
