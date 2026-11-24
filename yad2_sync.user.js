@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      15.6
+// @version      15.7
 // @description  Auto-scrape 07:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -53,7 +53,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='15.6'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='15.7'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -2022,6 +2022,53 @@ function exclDiscoverOffices(fetchFn,done){
 }
 function gmGet(k,d){try{if(typeof GM_getValue==='function'){var v=GM_getValue(k);return v===undefined?d:v;}}catch(e){}try{var s=localStorage.getItem('gm_'+k);return s===null?d:s;}catch(e){return d;}}
 function gmSet(k,v){try{if(typeof GM_setValue==='function'){GM_setValue(k,v);return;}}catch(e){}try{localStorage.setItem('gm_'+k,v);}catch(e){}}
+// v15.7 (24/11, אייל: "הלפטופ רץ, יש שם ג'יבריש"): הזיכרון יובא מהמק ללפטופ דרך הגיבוי של Tampermonkey,
+// והעברית שבו התקלקלה (UTF-8 שנקרא כ-Latin-1/Windows-1252). משחזרים בעלייה, לפני שסריקה קוראת אותו —
+// אחרת תיאורים ותגיות שבורים נשלחים לאפי. מחרוזת שאי אפשר לשחזר מתרוקנת (לא נשלחת שבורה).
+var MOJI_RE=/[Ã×][\u0080-¿Œ-Ÿˆ˜–-›€™]/g;
+var MOJI_CP={0x20ac:0x80,0x201a:0x82,0x0192:0x83,0x201e:0x84,0x2026:0x85,0x2020:0x86,0x2021:0x87,0x02c6:0x88,0x2030:0x89,0x0160:0x8a,0x2039:0x8b,0x0152:0x8c,0x017d:0x8e,0x2018:0x91,0x2019:0x92,0x201c:0x93,0x201d:0x94,0x2022:0x95,0x2013:0x96,0x2014:0x97,0x02dc:0x98,0x2122:0x99,0x0161:0x9a,0x203a:0x9b,0x0153:0x9c,0x017e:0x9e,0x0178:0x9f};
+var MOJI_KEYS=['ysNpFeat','ysFeat','ysExclLog','ysNav','ysExclRun','ysExclLease','ysSwitchLog','ysProfileSecond','ysProfCand','ysMenuDump','ysNpOther','ysGal','ysNpPhones'];
+function mojiDecode(s){   // תווים → בייטים → UTF-8. null כשזה לא UTF-8 תקין
+  var b=[], i, c;
+  for(i=0;i<s.length;i++){ c=s.charCodeAt(i); if(c<256)b.push(c); else if(MOJI_CP[c])b.push(MOJI_CP[c]); else return null; }
+  var out='', n=b.length, x, cp, need;
+  for(i=0;i<n;){
+    x=b[i++];
+    if(x<0x80){ out+=String.fromCharCode(x); continue; }
+    if(x>=0xc2&&x<=0xdf){ cp=x&0x1f; need=1; } else if(x>=0xe0&&x<=0xef){ cp=x&0x0f; need=2; } else if(x>=0xf0&&x<=0xf4){ cp=x&0x07; need=3; } else return null;
+    while(need--){ if(i>=n||(b[i]&0xc0)!==0x80)return null; cp=(cp<<6)|(b[i++]&0x3f); }
+    out+= cp>0xffff ? String.fromCharCode(0xd800+((cp-0x10000)>>10),0xdc00+((cp-0x10000)&0x3ff)) : String.fromCharCode(cp);
+  }
+  return out;
+}
+function mojiFix(s){
+  if(typeof s!=='string'||!s)return s;
+  var lead=(s.match(/[\u00c3\u00d7]/g)||[]).length; if(!lead)return s;
+  var hits=(s.match(MOJI_RE)||[]).length;
+  if(hits){ var d=mojiDecode(s); if(d!==null)return d; }
+  return (lead>=5 && lead/s.length>0.15)?'':s;   // רצף של × ואי אפשר לשחזר = טקסט שבור; מעט = טקסט רגיל ('3×4')
+}
+function mojiWalk(v){
+  if(typeof v==='string')return mojiFix(v);
+  if(Array.isArray(v))return v.map(mojiWalk).filter(function(x){return x!=='';});
+  if(v&&typeof v==='object'){ var o={}; Object.keys(v).forEach(function(k){ o[k]=mojiWalk(v[k]); }); return o; }
+  return v;
+}
+function mojiRepair(get,set){
+  var n=0;
+  MOJI_KEYS.forEach(function(k){
+    try{
+      var raw=get(k); if(typeof raw!=='string'||!raw)return;
+      if(!/[\u00c3\u00d7]/.test(raw))return;
+      var out, j=null; try{ j=JSON.parse(raw); }catch(e){}
+      out=(j&&typeof j==='object')?JSON.stringify(mojiWalk(j)):mojiFix(raw);
+      if(out!==raw){ set(k,out); n++; }
+    }catch(e){}
+  });
+  return n;
+}
+try{ var __mojiN=mojiRepair(function(k){return gmGet(k,'');},gmSet); if(__mojiN)console.log('[yad2-sync] תוקן טקסט שבור בזיכרון: '+__mojiN+' מפתחות'); }catch(e){}
+try{ window.__ysMoji={fix:mojiFix,walk:mojiWalk,repair:mojiRepair}; }catch(e){}
 // לוח זמנים יומי: רגע רנדומלי בחלון 08-09 ורגע רנדומלי בחלון 17-18 (rnd מוזרק לבדיקות)
 function exclSchedule(dayStr,rnd){
   rnd=rnd||Math.random;
