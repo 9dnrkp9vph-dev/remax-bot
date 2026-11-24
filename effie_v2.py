@@ -15315,12 +15315,23 @@ def review_min_year():
         return 0
 
 
-def review_queue(rows, sent, now, max_n, wait_days=7, min_year=2026):
+def review_max_age_days():
+    """[24/11 אייל: 'נקפיא בינתיים את האוטומטית, שישלח רק לחדשות שנכנסו לאחרונה'] רק עסקה שנכנסה לאפי
+    ב-N הימים האחרונים (ותאריך העסקה עצמו לא ישן מ-N+60 יום). ברירת מחדל 30; 0 = בלי הגבלה (כמו קודם).
+    env REVIEW_MAX_AGE_DAYS."""
+    try:
+        return max(0, int(os.environ.get("REVIEW_MAX_AGE_DAYS", "30") or 0))
+    except ValueError:
+        return 30
+
+
+def review_queue(rows, sent, now, max_n, wait_days=7, min_year=2026, max_age_days=None):
     """[REVIEW 21/10 אייל: 'וואטסאפ מה-360 לכל לקוח אחרי שבוע שהוא נכנס עם המספר טלפון'] עסקאות שמגיעה להן
     בקשת ביקורת: מ-2026, נכנסו לאפי (created_at) לפני wait_days+, עם נייד, לא הפנייה, לא נעלמו מהקובץ,
     בלי תאריך עתידי, טרם נשלח לעסקה ולא לאותו טלפון. טלפון אחד = הודעה אחת. החדשות (לפי תאריך העסקה) קודם."""
     done_keys = set(sent or {})
     done_p9 = {str((v or {}).get("p9") or "") for v in (sent or {}).values()}
+    age = review_max_age_days() if max_age_days is None else max_age_days
     cand = []
     for r in rows or []:
         try:
@@ -15339,6 +15350,8 @@ def review_queue(rows, sent, now, max_n, wait_days=7, min_year=2026):
         dt = crm_ts(r.get("deal_date")) or 0
         if dt > now + 30 * 86400:
             continue
+        if age and (ct < now - age * 86400 or not dt or dt < now - (age + 60) * 86400):
+            continue                                    # עסקה ישנה / יובאה מזמן — לא שולחים (רק חדשות)
         cand.append((dt, r, p9))
     cand.sort(key=lambda x: -x[0])
     out, seen = [], set()
@@ -19223,7 +19236,7 @@ def register(app, G):
             office = ((G["_load_config"]() or {}).get("v2_office") or {}).get("name") or ""
             todo = review_queue(fn() or [], sent, now, left, min_year=review_min_year())
             if not todo:
-                _rv_stop("queue_empty (אין עסקה שנכנסה לפני 7+ ימים עם נייד שטרם קיבלה)", sent_total=len(sent),
+                _rv_stop("queue_empty (אין עסקה חדשה — נכנסה לפני 7 עד %d ימים — עם נייד שטרם קיבלה)" % (review_max_age_days() or 9999), sent_total=len(sent),
                          sent_today=review_sent_today(sent, now))
             done = {}
             for r in todo:

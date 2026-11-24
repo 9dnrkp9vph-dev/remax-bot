@@ -1,9 +1,10 @@
 # tests/crm/test_review_requests.py — [21/10 אייל] וואטסאפ מ-360 לכל לקוח שבוע אחרי שהעסקה נכנסה עם טלפון: בקשת ביקורת בגוגל
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
+os.environ["REVIEW_MAX_AGE_DAYS"] = "0"   # הבדיקות הישנות — בלי הגבלת גיל (הגבלה נבדקת בסוף)
 import _load
 from _load import ck
-ns = _load.load("review_queue", "review_message", "review_phone", "crm_deal_review", "crm_ts", "_crm_int", "inv_parse_dt", "review_window", "review_sent_today", "CRM_MODULES", "CRM_VIEWS", "crm_query", "_crm_norm", "inv_phone9", "_crm_day")
+ns = _load.load("review_max_age_days", "review_queue", "review_message", "review_phone", "crm_deal_review", "crm_ts", "_crm_int", "inv_parse_dt", "review_window", "review_sent_today", "CRM_MODULES", "CRM_VIEWS", "crm_query", "_crm_norm", "inv_phone9", "_crm_day", extra={"os": os})
 Q, M, P, MARK = ns["review_queue"], ns["review_message"], ns["review_phone"], ns["crm_deal_review"]
 NOW = 1_800_000_000.0
 DAY = 86400
@@ -73,4 +74,18 @@ vw = dict(mod["views"])
 ck(vw.get("review_sent") == "נשלחה בקשת ביקורת" and vw.get("review_due") == "ממתינות לבקשת ביקורת", vw)
 QV = lambda v: ns["crm_query"](recs, "", {"view": v}, "date", "desc", 1, 50, NOW, module="deals")["total"]
 ck(QV("review_sent") == 1 and QV("review_due") == 1, (QV("review_sent"), QV("review_due")))
+# [24/11 אייל: 'נקפיא את האוטומטית, רק לחדשות שנכנסו לאחרונה'] — עד 30 יום מהכניסה לאפי, ותאריך עסקה עד 90 יום
+import datetime as _d
+dd = lambda days: _d.datetime.utcfromtimestamp(NOW - days * DAY).strftime("%Y-%m-%d")
+fresh = [row(21, phone="0521000001", created=NOW - 10 * DAY, date=dd(12)),          # חדשה — נשלחת
+         row(22, phone="0521000002", created=NOW - 40 * DAY, date=dd(45)),          # נכנסה לפני 40 יום — לא
+         row(23, phone="0521000003", created=NOW - 10 * DAY, date=dd(400)),         # יובאה לאחרונה אבל עסקה ישנה — לא
+         row(24, phone="0521000004", created=NOW - 10 * DAY, date=""),               # בלי תאריך עסקה — לא
+         row(25, phone="0521000005", created=NOW - 3 * DAY, date=dd(4))]            # עוד לא עבר שבוע — לא (עדיין)
+ck([r["id"] for r in Q(fresh, {}, NOW, 50, min_year=0, max_age_days=30)] == ["id21"], "only recent deals")
+ck(len(Q(fresh, {}, NOW, 50, min_year=0, max_age_days=0)) == 4, "0 = no age limit (old behaviour)")
+os.environ["REVIEW_MAX_AGE_DAYS"] = "30"
+ck(ns["review_max_age_days"]() == 30 and [r["id"] for r in Q(fresh, {}, NOW, 50, min_year=0)] == ["id21"], "env default")
+os.environ.pop("REVIEW_MAX_AGE_DAYS")
+ck(ns["review_max_age_days"]() == 30, "default 30")
 print("review_requests OK", _load.n)
