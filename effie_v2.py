@@ -932,6 +932,9 @@ html:not(.pwa) body:has(nav) main{ overflow:visible; overscroll-behavior:auto; }
   body:has(nav){padding-right:264px}
   body:has(nav) header, body:has(nav) main, body:has(nav) #impBar{max-width:940px}
   #sheet{max-width:640px}
+  /* [26/11 אייל] חלון (גיליון) במחשב — במרכז אזור התוכן ולא במרכז המסך (הסרגל מימין), וצף באמצע הגובה */
+  body:has(nav) #sheet{right:264px;bottom:auto;top:50%;transform:translateY(-50%);border-radius:24px;max-height:86vh}
+  body:has(nav) #sheet .grip{display:none}
   nav{width:224px;padding:88px 12px 16px;align-items:stretch}
   nav::before{content:'';position:absolute;top:18px;left:14px;right:14px;height:52px;
       background:url(/assets/logo) center/contain no-repeat}
