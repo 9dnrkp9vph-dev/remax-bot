@@ -8185,7 +8185,7 @@ function propCard(p, i){
   var fhRow = (isMine && !DEAL && SITE.on && _sk) ? ('<div style="margin-top:8px">' +
     '<button onclick="toggleFH(' + i + ')" style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
     (_fh ? 'background:#1E3A5F;color:#fff;border:1.5px solid #1E3A5F">יד ראשונה · מוצג באתר (בטל)' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">סמן כיד ראשונה (חדש מקבלן)') + '</button></div>') : '';
-  if (!isShtaf) return mineCard(p, i, {mine: isMine, where: where, dt: dt, who: who, chip: chip, hot: _hot, hotRow: hotRow, fhRow: fhRow, siteRow: siteRow});
+  return mineCard(p, i, {mine: isMine, shtaf: isShtaf, where: where, dt: dt, who: who, chip: chip, hot: _hot, hotRow: hotRow, fhRow: fhRow, siteRow: siteRow});
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div>' + featChips(p) + '</div>' + chip + '</div>' +
@@ -8243,17 +8243,17 @@ function mineCard(p, i, o){
       '<span style="width:34px;height:34px;border-radius:10px;background:#FBEDED;display:flex;align-items:center;justify-content:center;flex:none">' +
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' +
       'הנכס יורד (מכרתי / נגמרה הבלעדיות)</button>' : '');
-  return '<div class="prop' + (o.mine ? ' mine' : '') + '">' +
+  return '<div class="prop' + (o.mine ? ' mine' : o.shtaf ? ' shtaf' : '') + '">' +
     '<div style="display:flex;gap:12px;align-items:flex-start"><div class="pth">' + home.replace('<svg', '<svg style="position:absolute"') + img + '</div>' +
     '<div style="flex:1;min-width:0"><div class="ad">' + esc(o.where) + '</div>' +
-    '<div class="dt">' + [esc(o.dt), o.who].filter(Boolean).join(' · ') + '</div>' +
+    '<div class="dt"' + (o.shtaf ? ' style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden"' : '') + '>' + [o.shtaf ? o.who : '', esc(o.dt), o.shtaf ? '' : o.who].filter(Boolean).join(' · ') + '</div>' +
     '<div style="margin-top:3px">' + price + '</div>' +
     (propDate(p) ? '<div style="font-size:12px;color:#6B7280;font-weight:600">' + esc(propDate(p)) + '</div>' : '') +
     (p.score != null ? '<div style="font-size:12px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
     '</div></div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + o.chip + featChips(p).replace('margin-top:5px', 'margin-top:0') + '</div>' +
     '<div class="acts"><button class="a1 big" onclick="matchBuyers(' + i + ')">' +
-    '<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>קונים מתאימים</button>' + (o.mine ? '' : dBtn + (p.link ? '<button class="a2 big" style="flex:.7" onclick="window.open(\'' + esc(p.link) + '\',\'_blank\')">למודעה</button>' : '')) + '</div>' +
+    '<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>קונים מתאימים</button>' + (o.mine ? '' : (o.shtaf ? '' : dBtn) + (p.link ? '<button class="a2 big" style="flex:.7" onclick="window.open(\'' + esc(p.link) + '\',\'_blank\')">למודעה</button>' : '')) + '</div>' +
     '<div class="pm2">' + shareRow(p, i) + bpaBtn(p, i).replace('הוסף לדף קונה', 'לדף קונה') + '</div>' +
     priceRow + mkBox +
     (!more ? '' : '<details class="px"' + (CARD_OPEN[ck + ':x'] ? ' open' : '') + ' ontoggle="cardTog(\'' + esc(ck) + ':x\',this)"><summary>עוד פעולות ' + chev + '</summary>' + more + '</details>') +

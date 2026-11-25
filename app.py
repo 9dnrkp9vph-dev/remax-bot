@@ -11255,6 +11255,7 @@ def api_search_exclusives():
                 "priceDropped": _excl_price_key(r) in _pd_map,               # 24/09: תג ירידת מחיר בשת"פ
                 "priceOld": _pd_map.get(_excl_price_key(r), ""),
                 "pkey": _excl_price_key(r),     # [BPAGE 06/10]
+                "image": str(r.get("image", "") or "").strip(),   # [CARD 26/11] תמונה ראשית בכרטיס
                 "lat": round(_ll[0], 6) if _ll else None,
                 "lng": round(_ll[1], 6) if _ll else None,
             })
