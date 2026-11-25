@@ -6384,6 +6384,9 @@ function nbFmtPrice(p){
   if (!p) return '';
   return (/^[\d,.]+$/.test(p) ? '₪' : '') + p;
 }
+function nbDescAll(el, i){   // 25/11: 'הצג הכל' — התיאור המלא במקום (טקסט בלבד, בלי HTML)
+  var r = (nbKitRows() || [])[i]; if (r && el && el.parentNode) el.parentNode.textContent = String(r.desc || '');
+}
 function nbCard(r, i){
   var chip = (r.ageDays === 0) ? '<div class="chip new">חדש היום</div>'
     : '<div class="chip age">' + (r.ageDays < 180 ? 'חודש ' + (Math.floor(r.ageDays / 30) + 1) : '7+ חודשים') + '</div>';
@@ -6433,7 +6436,12 @@ function nbCard(r, i){
     'ירד מפרסום · ' + esc(r.delisted) + '</div>';
   return '<div class="nb">' +
     '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
-    '<div class="dt">' + esc((r.desc || '').slice(0, 90)) + '</div>' +
+    // 25/11 (אייל: 'למה אני לא רואה את כל הפרטים של הנכס אלה רק חצי?'): התיאור נחתך ל-90 תווים.
+    // עכשיו קצר מוצג כולו; ארוך — 90 התווים הראשונים + 'הצג הכל' שפותח את הטקסט המלא במקום.
+    ((r.desc || '').length > 110
+      ? '<div class="dt">' + esc(r.desc.slice(0, 90)) + '… <span role="button" tabindex="0" style="color:#2E6BD6;font-weight:700;cursor:pointer;white-space:nowrap" ' +
+        'onclick="nbDescAll(this,' + i + ')">הצג הכל</span></div>'
+      : '<div class="dt">' + esc(r.desc || '') + '</div>') +
     // 28/10: מעלית / ממ"ד / מרפסת (סורק v14.5) — אותו מראה כמו בכרטיסי המשרד
     ((r.feats && r.feats.length) ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">' + r.feats.map(function(x){
       return '<span style="background:#EEF1F5;color:#1E3A5F;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px">' + esc(x) + '</span>'; }).join('') + '</div>' : '') +
