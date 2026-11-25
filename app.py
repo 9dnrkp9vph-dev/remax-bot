@@ -9432,6 +9432,7 @@ def api_my_properties():
                 "desc": (r.get("_desc_ae", "") or "").strip(),
                 "link": (r.get("קישור", "") or "").strip(),   # מודעת יד2 (בקשת אייל 01/09)
                 "pkey": _prop_price_key(r),   # [BPAGE 06/10]
+                "image": str(r.get("תמונה", "") or "").strip(),   # [CARD 26/11] תמונה ראשית בכרטיס "שלי"
                 "delisted": (r.get("ירד מפרסום", "") or "").strip(),
                 "date": (r.get("תאריך יצירה", "") or r.get("_y2_first_seen", "") or "").strip(),
                 "isNew": _prop_is_new(r),

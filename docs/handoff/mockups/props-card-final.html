@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>כרטיס נכס — ההצעה המשולבת</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#F2EFE7;--navy:#1E3A5F;--blue:#2E6BD6;--gold:#C29435;--goldtx:#7A5E1C;--green:#157A43;--red:#C24040;--mut:#6B7280;--line:#E4E0D5}
+*{box-sizing:border-box}
+body{margin:0;background:var(--cream);font-family:Heebo,system-ui,sans-serif;color:var(--navy);padding:24px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}
+.lead{color:var(--mut);font-size:14px;margin:0 0 24px;max-width:720px;line-height:1.6}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:28px;align-items:start}
+.opt h2{font-size:17px;margin:0 0 2px}
+.opt .why{font-size:13px;color:var(--mut);margin:0 0 12px;line-height:1.55;min-height:60px}
+.phone{background:var(--cream);border:1px solid var(--line);border-radius:28px;padding:12px;max-width:390px;margin-inline:auto}
+.card{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:16px;position:relative}
+.ttl{font-weight:700;font-size:16px;line-height:1.35}
+.sub{font-size:13px;color:var(--mut);margin-top:2px}
+.price{font-size:22px;font-weight:800;margin:8px 0 2px}
+.meta{font-size:12px;color:var(--mut)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chip{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;background:#F1EFE9;color:var(--navy)}
+.chip.gold{background:#F7EEDA;color:var(--goldtx)}
+.chip.ok{background:#E6F3EC;color:var(--green)}
+.chip.off{background:#EEF0F3;color:var(--mut)}
+button{font-family:inherit;cursor:pointer}
+.btn{min-height:46px;border-radius:14px;border:1px solid var(--line);background:#fff;color:var(--navy);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;width:100%}
+.btn.blue{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.green{background:var(--green);border-color:var(--green);color:#fff}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#231700}
+.btn.oblue{border-color:var(--blue);color:var(--blue)}
+.btn.ogold{border-color:var(--gold);color:var(--goldtx)}
+.row{display:flex;gap:8px;margin-top:10px}
+svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.trash{width:46px;min-height:46px;border-radius:12px;background:#FBEDED;border:0;color:var(--red);display:flex;align-items:center;justify-content:center;flex:none}
+
+/* A */
+.more{margin-top:10px;border-top:1px solid var(--line);padding-top:6px}
+.more summary{list-style:none;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px;font-weight:700;font-size:14px;color:var(--mut);cursor:pointer}
+.more summary::-webkit-details-marker{display:none}
+.more[open] summary .chev{transform:rotate(180deg)}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 6px;border-radius:12px;font-size:14px;font-weight:600;border:0;background:none;width:100%;color:var(--navy);text-align:right}
+.li:hover{background:#F7F5EF}
+.li .st{margin-inline-start:auto;font-size:12px;font-weight:500;color:var(--mut)}
+.li.del{color:var(--red)}
+.sep{height:1px;background:var(--line);margin:4px 0}
+
+/* B */
+.grp{border:1px solid var(--line);border-radius:14px;margin-top:8px;overflow:hidden}
+.grp summary{list-style:none;min-height:50px;padding:0 14px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;cursor:pointer}
+.grp summary::-webkit-details-marker{display:none}
+.grp summary .hint{margin-inline-start:auto;font-size:12px;font-weight:500;color:var(--mut)}
+.grp[open] summary{border-bottom:1px solid var(--line);background:#FAF8F3}
+.grp[open] .chev{transform:rotate(180deg)}
+.grp .in{padding:10px;display:grid;gap:8px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+
+/* C */
+.top{display:flex;gap:12px}
+.ph{width:92px;height:92px;border-radius:14px;flex:none;background:linear-gradient(135deg,#0E1D33,#2C4C77);display:flex;align-items:center;justify-content:center;color:#E4C56B}
+.ph svg{width:30px;height:30px}
+.icons{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+.ic{min-height:64px;border-radius:14px;border:1px solid var(--line);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:700;color:var(--navy)}
+.ic.blue{background:var(--blue);border-color:var(--blue);color:#fff}
+.ic.green{color:var(--green);border-color:#BFE0CD}
+.ic.gold{color:var(--goldtx);border-color:#E8D7AE}
+.kebab{position:absolute;top:10px;left:10px;width:44px;height:44px;border:0;background:none;color:var(--mut);display:flex;align-items:center;justify-content:center}
+.note{font-size:12px;color:var(--mut);text-align:center;margin-top:10px}
+</style>
+</head>
+<body>
+<h1>כרטיס נכס ב"שלי" — ההצעה המשולבת</h1>
+<p class="lead">א' + התמונה של ג' + קבוצת השיווק של ב'. משמאל הכרטיס סגור (כך הוא נראה ברשימה), מימין אותו כרטיס עם "שיווק" ו"עוד פעולות" פתוחים. אפשר ללחוץ.</p>
+<div class="grid">
+<section class="opt">
+  <h2>סגור — ברירת המחדל</h2>
+  <div class="phone"><div class="card" style="border:2px solid var(--gold)">
+    <div class="top">
+      <div class="ph"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z"/><path d="M9 20v-6h6v6"/></svg></div>
+      <div style="min-width:0">
+        <div class="ttl">אנרי מאטיס, גבעת טל, קרית אתא</div>
+        <div class="sub">בית פרטי/קוטג' · 7 חד' · 516 מ"ר</div>
+        <div class="price" style="font-size:20px;margin:4px 0 0">₪4,900,000</div>
+        <div class="meta">נכנס 11/09/2026 · לפני 2 חודשים</div>
+      </div>
+    </div>
+    <div class="chips"><span class="chip gold">הנכס שלי</span><span class="chip off">רגיל</span><span class="chip">ממ"ד</span><span class="chip">מרפסת</span></div>
+    <div class="row"><button class="btn blue"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>קונים מתאימים</button></div>
+    <div class="row">
+      <button class="btn green"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-12 7l-5 1 1-4.500A8 8 0 1 1 21 12z"/></svg>מלל ותמונות</button>
+      <button class="btn oblue"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>לדף קונה</button>
+    </div>
+    <details class="grp" >
+      <summary><span class="dot" style="background:var(--gold)"></span>שיווק<span class="hint">סרטון פורסם 05/11 · 3/3</span><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+      <div class="in">
+        <div class="meta">סרטון: פורסם 05/11 · 3/3 · <a href="#" style="color:var(--blue);font-weight:700">ריל באינסטגרם</a> · <a href="#" style="color:var(--blue);font-weight:700">ריל בפייסבוק</a></div>
+        <button class="btn gold">צור סרטון סטורי + ריל</button>
+        <button class="btn ogold">סמן כנכס חם</button>
+        <div class="meta">פורסם 26/11 · פייסבוק — · אינסטגרם —</div>
+        <button class="btn" disabled style="background:#F2EFE7;color:#5B6472">כבר נשלח היום</button>
+        <button class="btn gold">סטורי SOLD — נמכר</button>
+      </div>
+    </details>
+    <details class="more" >
+      <summary>עוד פעולות <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+      <button class="li"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>עדכן מחיר</button>
+      <button class="li"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 9h6M9 13h6"/></svg>פרטי הנכס</button>
+      <button class="li"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></svg>למודעה ביד2</button>
+      <div class="sep"></div>
+      <button class="li"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z"/></svg>סמן כיד ראשונה (חדש מקבלן)</button>
+      <button class="li"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg>הסתר מהאתר<span class="st">מוצג עכשיו</span></button>
+      <div class="sep"></div>
+      <button class="li del"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>הנכס יורד (מכרתי / נגמרה הבלעדיות)</button>
+    </details>
+  </div></div>
+</section>
+<section class="opt">
+  <h2>פתוח — אחרי לחיצה</h2>
+  <div class="phone"><div class="card" style="border:2px solid var(--gold)">
+    <div class="top">
+      <div class="ph"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z"/><path d="M9 20v-6h6v6"/></svg></div>
+      <div style="min-width:0">
+        <div class="ttl">אנרי מאטיס, גבעת טל, קרית אתא</div>
+        <div class="sub">בית פרטי/קוטג' · 7 חד' · 516 מ"ר</div>
+        <div class="price" style="font-size:20px;margin:4px 0 0">₪4,900,000</div>
+        <div class="meta">נכנס 11/09/2026 · לפני 2 חודשים</div>
+      </div>
+    </div>
+    <div class="chips"><span class="chip gold">הנכס שלי</span><span class="chip off">רגיל</span><span class="chip">ממ"ד</span><span class="chip">מרפסת</span></div>
+    <div class="row"><button class="btn blue"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>קונים מתאימים</button></div>
+    <div class="row">
+      <button class="btn green"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-12 7l-5 1 1-4.500A8 8 0 1 1 21 12z"/></svg>מלל ותמונות</button>
+      <button class="btn oblue"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>לדף קונה</button>
+    </div>
+    <details class="grp" open>
+      <summary><span class="dot" style="background:var(--gold)"></span>שיווק<span class="hint">סרטון פורסם 05/11 · 3/3</span><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+      <div class="in">
+        <div class="meta">סרטון: פורסם 05/11 · 3/3 · <a href="#" style="color:var(--blue);font-weight:700">ריל באינסטגרם</a> · <a href="#" style="color:var(--blue);font-weight:700">ריל בפייסבוק</a></div>
+        <button class="btn gold">צור סרטון סטורי + ריל</button>
+        <button class="btn ogold">סמן כנכס חם</button>
+        <div class="meta">פורסם 26/11 · פייסבוק — · אינסטגרם —</div>
+        <button class="btn" disabled style="background:#F2EFE7;color:#5B6472">כבר נשלח היום</button>
+        <button class="btn gold">סטורי SOLD — נמכר</button>
+      </div>
+    </details>
+    <details class="more" open>
+      <summary>עוד פעולות <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+      <button class="li"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>עדכן מחיר</button>
+      <button class="li"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 9h6M9 13h6"/></svg>פרטי הנכס</button>
+      <button class="li"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></svg>למודעה ביד2</button>
+      <div class="sep"></div>
+      <button class="li"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z"/></svg>סמן כיד ראשונה (חדש מקבלן)</button>
+      <button class="li"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg>הסתר מהאתר<span class="st">מוצג עכשיו</span></button>
+      <div class="sep"></div>
+      <button class="li del"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>הנכס יורד (מכרתי / נגמרה הבלעדיות)</button>
+    </details>
+  </div></div>
+</section>
+</div></body></html>

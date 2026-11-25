@@ -7394,6 +7394,24 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .prop .a2{flex:1;display:flex;align-items:center;justify-content:center;background:#fff;color:#1E3A5F;
       border:1.5px solid #DCD6C8;border-radius:11px;padding:10px 0;font-size:12.5px;font-weight:700;border-style:solid;cursor:pointer;font-family:inherit}
   .more{display:flex;align-items:center;justify-content:center;padding:12px 0;font-size:13px;font-weight:700;color:#2E6BD6}
+  /* [CARD 26/11] כרטיס "שלי": תמונה, 3 פעולות גלויות, "שיווק" ו"עוד פעולות" מתקפלים */
+  .prop .pth{flex:0 0 84px;width:84px;height:84px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#0E1D33,#2C4C77);
+      display:flex;align-items:center;justify-content:center;position:relative}
+  .prop .pth img{width:100%;height:100%;object-fit:cover;display:block;position:relative}
+  .prop .pm2{display:flex;gap:8px}
+  .prop .pm2>div{flex:1;margin-top:0!important;min-width:0}
+  .prop .a1.big{min-height:46px;font-size:14px;border-radius:12px}
+  .prop details.pg{border:1.5px solid #E4E0D5;border-radius:14px;overflow:hidden}
+  .prop details.pg>summary{list-style:none;min-height:48px;padding:0 14px;display:flex;align-items:center;gap:9px;font-size:14px;font-weight:800;cursor:pointer}
+  .prop details>summary::-webkit-details-marker{display:none}
+  .prop details.pg>summary .hint{margin-inline-start:auto;font-size:12px;font-weight:600;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .prop details.pg[open]>summary{border-bottom:1.5px solid #E4E0D5;background:#FAF8F3}
+  .prop details[open]>summary .chev{transform:rotate(180deg)}
+  .prop details.pg>.in{padding:2px 10px 10px}
+  .prop details.px>summary{list-style:none;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13.5px;font-weight:700;color:#6B7280;cursor:pointer;border-top:1px solid #E4E0D5}
+  .prop .pli{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0 6px;border:0;background:none;border-radius:12px;
+      font:inherit;font-size:14px;font-weight:700;color:#1E3A5F;text-align:right;cursor:pointer}
+  .prop .pli.del{color:#C24040}
   .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
   .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
   .empty .t{font-size:15px;font-weight:800}
@@ -8164,6 +8182,7 @@ function propCard(p, i){
   var fhRow = (isMine && !DEAL && SITE.on && _sk) ? ('<div style="margin-top:8px">' +
     '<button onclick="toggleFH(' + i + ')" style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
     (_fh ? 'background:#1E3A5F;color:#fff;border:1.5px solid #1E3A5F">יד ראשונה · מוצג באתר (בטל)' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">סמן כיד ראשונה (חדש מקבלן)') + '</button></div>') : '';
+  if (isMine) return mineCard(p, i, {where: where, dt: dt, who: who, chip: chip, hot: _hot, hotRow: hotRow, fhRow: fhRow, siteRow: siteRow});
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div>' + featChips(p) + '</div>' + chip + '</div>' +
@@ -8180,6 +8199,60 @@ function propCard(p, i){
     '</div>' +
     (propDate(p) ? '<div style="font-size:12px;color:#6B7280;font-weight:600;margin-top:2px">' + esc(propDate(p)) + '</div>' : '') +
     acts + bpaBtn(p, i) + shareRow(p, i) + hotRow + fhRow + siteRow + socRow(p) + vidRow(p) + soldRow(p) + '</div>';
+}
+/* [CARD 26/11 אייל] כרטיס "שלי" — תמונה, קונים מתאימים / מלל ותמונות / דף קונה / עדכן מחיר גלויים,
+   "שיווק" (סרטון, נכס חם, רשתות, SOLD) ו"עוד פעולות" מתקפלים. שום פעולה לא נמחקה. */
+var CARD_OPEN = {};
+function cardTog(k, d){ CARD_OPEN[k] = !!d.open; }
+function cardHint(p, hot){
+  var k = String((p && p.id) || ''), L = k && VID.items[k] && VID.items[k].last, a = [];
+  if (hot) a.push('נכס חם');
+  if (L) a.push('סרטון: ' + (VID_ST[L.status] || L.status) + ' ' + socWhen(L.created_at));
+  return a.join(' · ');
+}
+function mineCard(p, i, o){
+  var chev = '<svg class="chev" width="14" height="14" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var ck = String(p.pkey || p.id || i);
+  var home = '<svg width="28" height="28" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z M9 20v-6h6v6" fill="none" stroke="#E4C56B" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+  var img = /^https?:\/\//.test(String(p.image || ''))
+    ? '<img src="' + esc(p.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '';
+  var price = (p.priceDropped && p.priceOld
+      ? '<span style="text-decoration:line-through;color:#6B7280;font-size:13px;font-weight:600">' + esc(fmtPrice(p.priceOld)) + '</span> ' : '') +
+    '<span class="pr" style="font-size:19px">' + esc(fmtPrice(p.price)) + '</span>' +
+    (p.priceDropped ? ' <span style="font-size:12px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:2px 9px;white-space:nowrap">↓ ירידת מחיר</span>'
+      : p.priceChanged ? ' <span style="font-size:12px;font-weight:800;color:#231700;background:#E4C56B;border-radius:999px;padding:2px 9px;white-space:nowrap">עדכון מחיר</span>' : '');
+  var canReq = p.own && p.id;
+  var priceRow = !canReq ? '' : p.pending
+    ? '<div class="reqRow" style="margin-top:0"><button class="dn" style="min-height:44px" onclick="doneListing(' + i + ')">הטיפול בוצע — הסר את הסימון</button></div>'
+    : '<div class="reqRow" style="margin-top:0"><button class="rq" style="min-height:44px;font-size:14px" onclick="reqPrice(' + i + ')">' +
+      '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3L6 13l-3.7.7L3 10z" fill="none" stroke="#1E3A5F" stroke-width="1.6" stroke-linejoin="round"/></svg>עדכן מחיר</button></div>';
+  var mk = o.hotRow + socRow(p) + vidRow(p) + soldRow(p);
+  var hint = cardHint(p, o.hot);
+  var mkBox = !mk ? '' : '<details class="pg"' + (CARD_OPEN[ck + ':m'] ? ' open' : '') + ' ontoggle="cardTog(\'' + esc(ck) + ':m\',this)">' +
+    '<summary><span style="width:8px;height:8px;border-radius:50%;background:#C29435;flex:none"></span>שיווק' +
+    '<span class="hint">' + esc(hint) + '</span>' + chev + '</summary><div class="in">' + mk + '</div></details>';
+  var more = '<button class="pli" onclick="propDetails(' + i + ')">פרטי הנכס</button>' +
+    (p.link ? '<button class="pli" onclick="window.open(\'' + esc(p.link) + '\',\'_blank\')">למודעה ביד2</button>' : '') +
+    o.fhRow + o.siteRow +
+    (canReq && !p.pending ? '<button class="pli del" style="margin-top:8px" onclick="reqRemove(' + i + ')">' +
+      '<span style="width:34px;height:34px;border-radius:10px;background:#FBEDED;display:flex;align-items:center;justify-content:center;flex:none">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' +
+      'הנכס יורד (מכרתי / נגמרה הבלעדיות)</button>' : '');
+  return '<div class="prop mine">' +
+    '<div style="display:flex;gap:12px;align-items:flex-start"><div class="pth">' + home.replace('<svg', '<svg style="position:absolute"') + img + '</div>' +
+    '<div style="flex:1;min-width:0"><div class="ad">' + esc(o.where) + '</div>' +
+    '<div class="dt">' + [esc(o.dt), o.who].filter(Boolean).join(' · ') + '</div>' +
+    '<div style="margin-top:3px">' + price + '</div>' +
+    (propDate(p) ? '<div style="font-size:12px;color:#6B7280;font-weight:600">' + esc(propDate(p)) + '</div>' : '') +
+    (p.score != null ? '<div style="font-size:12px;font-weight:700;color:' + (p.score >= 90 ? '#157A43' : '#7A5E1C') + '">' + p.score + '% התאמה</div>' : '') +
+    '</div></div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + o.chip + featChips(p).replace('margin-top:5px', 'margin-top:0') + '</div>' +
+    '<div class="acts"><button class="a1 big" onclick="matchBuyers(' + i + ')">' +
+    '<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>קונים מתאימים</button></div>' +
+    '<div class="pm2">' + shareRow(p, i) + bpaBtn(p, i).replace('הוסף לדף קונה', 'לדף קונה') + '</div>' +
+    priceRow + mkBox +
+    '<details class="px"' + (CARD_OPEN[ck + ':x'] ? ' open' : '') + ' ontoggle="cardTog(\'' + esc(ck) + ':x\',this)"><summary>עוד פעולות ' + chev + '</summary>' + more + '</details>' +
+    '</div>';
 }
 /* [SHARE 01/11] שליחת נכס ללקוח עם תמונות (אייל): לחיצה ראשונה מכינה את התמונות, השנייה פותחת את חלון השיתוף
    (חלון השיתוף חייב לחיצה טרייה — הורדת 10 תמונות לוקחת כמה שניות). בלי שם סוכן / מספר בית / קישורים. */
