@@ -3,7 +3,7 @@
 // @namespace    eyal-yad2-sync
 // @updateURL    https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
 // @downloadURL  https://script.google.com/macros/s/AKfycbxNnLyvMp2YicxUnRhQvcL2R2RC9pQ8L-XnvAL-2LM0BZT8CNEfCgakCHE4dcaxClnW/exec?key=crm-MuB-0WpGaAQ0m8l8T_f4&script=1
-// @version      15.8
+// @version      15.7
 // @description  Auto-scrape 07:00-23:00 (random edges) + Secretary panel + network JSON recorder + סורק בלעדיות משרדים (2×יום).
 // @match        https://plus.yad2.co.il/*
 // @match        https://www.yad2.co.il/realestate/*
@@ -53,7 +53,7 @@ const SECRET='yad2-d8DTagQ78wnBzt83xX-AZ3Pa';
 const MIN_DELAY_MIN=8, MAX_DELAY_MIN=30, CHECK_MIN=25; // ריענון אוטומטי נדיר יותר = טביעת רגל נמוכה יותר
 const FETCH_TIMEOUT_MS=25000;   // בקשה שלא חוזרת (חיבור תקוע) — נכשלת במקום להקפיא את הסריקה
 const SCAN_MAX_MIN=20;   // גדל עם תקציב הפגינציה — אחרת שומר-הראש מרענן סריקה תקינה          // סריקה שנמשכת יותר מזה = תקועה → ריענון דף (מנקה הכול ומתחיל מחדש)
-var VER='15.8'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
+var VER='15.7'; // מוצג בפאנל ונשלח בסימן-החיים — כדי לדעת מרחוק איזו גרסה באמת רצה
 var POST_RETRY_WAITS=[20000,45000]; // שמירה שנפלה על תקלת-גוגל רגעית: שני ניסיונות נוספים
 // v13.15: שמירה של ~1,800 שורות לוקחת לשרת יותר מ-60ש׳ (קריאת גיליון + כתיבות תא-תא + העברה לאפליקציה).
 // ב-60ש׳ הסורק התייאש, שלח שוב את כל השורות (פעמיים) — כל סריקה נשמרה 2-3 פעמים והפאנל דיווח
@@ -2786,7 +2786,6 @@ function famDue(now, lastFam, opts){
   if(!opts.mayScan)return {ok:false,why:'לא הבעלים'};
   if(now<Number(opts.cool||0))return {ok:false,why:'מנוחה אחרי חסימה'};
   if(!opts.leaseDead)return {ok:false,why:'סריקה פעילה'};
-  if(opts.privFirst)return {ok:false,why:'נכס נולד קודם'};   // v15.8: בבוקר נכס נולד ראשון
   // ריצה מלאה מתקרבת (עד 25 דק') — לא פותחים Family שתתנגש בה
   if(opts.nextFull && opts.nextFull-now>0 && opts.nextFull-now<FAM_GUARD_MS)return {ok:false,why:'ריצה מלאה בקרוב'};
   if(now-Number(lastFam||0)<FAM_EVERY_MS)return {ok:false,why:'עוד לא שעתיים'};
@@ -2797,8 +2796,7 @@ function famTick(now,st){
     var nextFull=0;
     if(st){ ['m','e'].forEach(function(k){ if(st[k]&&!st[k].done&&st[k].t>now&&(!nextFull||st[k].t<nextFull))nextFull=st[k].t; }); }
     var d=famDue(now, gmGet('ysFamLast','0'), {active:isActive(), quiet:inQuiet(new Date(now)), mayScan:mayScan(),
-      cool:gmGet('ysExclCool','0'), leaseDead:exclDeadNow(now), nextFull:nextFull,
-      privFirst:morningPrivPending(now, edge(new Date(now),'start',7,0,7,5), scanStampsRead())});
+      cool:gmGet('ysExclCool','0'), leaseDead:exclDeadNow(now), nextFull:nextFull});
     if(!d.ok)return;
     gmSet('ysFamLast',String(now));
     leaseOpen(now,'fam');   // v13.43: בלי exclRunClear — לא מוחקים התקדמות של ריצה מלאה
@@ -3329,7 +3327,7 @@ function healthTick(){
   if(now-lastHB>HB_MIN*60000 || lo){ lastHB=now; postHB(lo?'logged_out':'ok'); }
   if(lo&&!npAuthLost)tryAutoLogin();
 }
-try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={nextDelay:npNextDelay,morningPending:morningPrivPending,switch:npSwitch,authErr:npIsAuthErr,authRecover:npAuthRecover,authLost:function(){return npAuthLost;},refresh:npRefreshToken,resetRefresh:function(){npRefreshAt=0;},mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,featPlan:npFeatPlan,fetchFeat:npFetchFeat,itemAddr:npItemAddr,dealsUrl:npDealsUrl,dealsList:npDealsList,dealsFor:npDealsFor,applyFeat:npApplyFeat,itemDesc:npItemDesc,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;},get NP_FEAT_PER_SCAN(){return NP_FEAT_PER_SCAN;}}};window.__ysPriv={canScan:privCanScan,owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={setCookie:dsCookieSet,hostClean:dsHostDupClean,enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRedact=ysRedact;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
+try{window.__ysLooksLoggedOut=looksLoggedOut;window.__ysSetVal=setVal;window.__ysClickByText=clickByText;window.__ysHealthTick=healthTick;window.__ysScanWatchdog=scanWatchdog;window.__ysOnce=once;window.__ysFetchT=fetchT;window.__ysSrcKey=srcKey;window.__ysPageInfo=pageInfo;window.__ysOwnText=ownText;window.__ysPagerHint=pagerHint;window.__ysCurFromEl=curFromEl;window.__ysPagerInside=pagerInside;window.__ysPagerButtons=pagerButtons;window.__ysUiPaginateAll=uiPaginateAll;window.__ysLastTableSig=lastTableSig;window.__ysListings=LISTINGS;window.__ysOfficeIdSeen=officeIdSeen;window.__ysOfficeId=officeId;window.__ysProfileLabel=profileLabel;window.__ysProfileSwitch=profileSwitchMenu;window.__ysProfileSwitchAuto=profileSwitch;window.__ysDirectSwitch=directSwitch;window.__ysTimersWorker=!!__ysTimers.worker;window.__ysPairDecision=pairDecision;window.__ysAfterAutoScan=afterAutoScan;window.__ysDsPlan=dsPlan;window.__ysDsPickTarget=dsPickTarget;window.__ysDsVerify=dsVerifyAfterReload;window.__ysDsRestore=dsRestoreBackup;window.__ysProfSwitchWhy=function(){return profSwitchWhy;};window.__ysAccountButton=accountButton;window.__ysAccountPill=accountPill;window.__ysNormLabel=normLabel;window.__ysOpenAccountMenu=openAccountMenu;window.__ysAccountMenuRoot=accountMenuRoot;window.__ysAccountTriggers=accountTriggerCandidates;window.__ysActiveProfile=activeProfile;window.__ysProfileItems=profileItems;window.__ysNotProfile=notProfile;window.__ysScanState=function(v,msg){if(v!==undefined)scanStart=v;if(msg!==undefined)lastScanMsg=msg;return {scanStart:scanStart,paused:paused,lastScanMsg:lastScanMsg};};window.__ysScanDeps=function(d){scanDeps=d||{};};window.__ysNp={switch:npSwitch,authErr:npIsAuthErr,authRecover:npAuthRecover,authLost:function(){return npAuthLost;},refresh:npRefreshToken,resetRefresh:function(){npRefreshAt=0;},mapItem:npMapItem,fetchAll:npFetchAll,fetchPhones:npFetchPhones,offices:npOffices,run:npRunScan,date:npDate,featPlan:npFeatPlan,fetchFeat:npFetchFeat,itemAddr:npItemAddr,dealsUrl:npDealsUrl,dealsList:npDealsList,dealsFor:npDealsFor,applyFeat:npApplyFeat,itemDesc:npItemDesc,get area(){return NP_AREA;},src:function(v){if(v!==undefined)NP_SRC=v;return NP_SRC;},consts:{get NP_PHONES_PER_SCAN(){return NP_PHONES_PER_SCAN;},get NP_FEAT_PER_SCAN(){return NP_FEAT_PER_SCAN;}}};window.__ysPriv={canScan:privCanScan,owner:privOwner,claim:privClaim,read:privLockRead,tick:privTick,id:TAB_ID,LOCK_MS:PRIV_LOCK_MS};window.__ysDs={setCookie:dsCookieSet,hostClean:dsHostDupClean,enabled:dsEnabled,disable:dsDisable,reEnable:dsReEnable,OFF_MS:DS_OFF_MS};window.__ysManualSave=manualSave;window.__ysRedact=ysRedact;window.__ysRunFullScan=runFullScan;window.__ysPostHB=postHB;window.__ysPostRows=postRows;window.__ysVer=VER;window.__ysMachineId=machineId;window.__ysPgDiag=function(){return pgDiag;};window.__ysRewind=uiRewindToFirst;window.__ysConsts={FETCH_TIMEOUT_MS:FETCH_TIMEOUT_MS,SCAN_MAX_MIN:SCAN_MAX_MIN,TOKENS_PER_SCAN:TOKENS_PER_SCAN,POST_RETRY_WAITS:POST_RETRY_WAITS};}catch(e){}
 
 // כל שלב באתחול עטוף בנפרד — כשל בפאנל (או בכל שלב אחר) לא מפיל את הסריקה, את סימן-החיים
 // ולא את תזמון המשרדים. זו הסיבה שהפאנל "נעלם" והכול מת איתו בגרסאות קודמות.
@@ -3666,22 +3664,9 @@ function npAfterScan(){
   npScheduleNext();
 }
 // בלי ריענון: הסריקה היא API בלבד, ולכן לא מפריעים לאייל אם הוא עובד בטאב
-// v15.8 (25/11, אייל: "תקדים את נכס נולד ל-7"): בבוקר הסורק בדק פעם ב-10 דק׳ אם הגיע הזמן, ואחרי
-// שהתעורר חיכה עוד 8-30 דק׳ (rDelay) — הסריקה הראשונה של נכס נולד יצאה ב-07:30, וסריקת Family
-// (טיק של דקה) קדמה לה ב-07:00. עכשיו: בדיקה כל דקה, סריקה ראשונה דקה אחרי ההתעוררות, ו-Family
-// מחכה עד שנכס נולד נסרק הבוקר (עד 45 דק׳ — אם נכס נולד תקוע, Family לא נחסמת לכל היום).
-var MORNING_PRIV_WAIT_MIN=45, npWasAsleep=false;
-function scanStampsRead(){ try{ return JSON.parse(localStorage.getItem('ysScanBySrc')||'{}')||{}; }catch(e){ return {}; } }
-function morningPrivPending(now, startMin, stamps){
-  var d=new Date(now), st=new Date(d); st.setHours(0,0,0,0); st=st.getTime()+Number(startMin||0)*60000;
-  if(now<st || now-st>MORNING_PRIV_WAIT_MIN*60000) return false;
-  var last=0; Object.keys(stamps||{}).forEach(function(k){ var v=Number(stamps[k])||0; if(v>last) last=v; });
-  return last<st;
-}
-function npNextDelay(wasAsleep, rnd){ rnd=rnd||Math.random; return wasAsleep ? (20000+Math.floor(rnd()*40000)) : rDelay(); }
 function npScheduleNext(){
-  if(!isActive()){ if(!npWasAsleep) log('💤 מחוץ לשעות הפעילות. ישן עד '+nextActive().toLocaleString()); npWasAsleep=true; setTimeout(npScheduleNext,60000); return; }
-  var d=npNextDelay(npWasAsleep); npWasAsleep=false; log('next scan in '+(d/60000).toFixed(1)+' min');
+  if(!isActive()){ log('💤 מחוץ לשעות הפעילות. ישן עד '+nextActive().toLocaleString()); setTimeout(npScheduleNext,10*60000); return; }
+  var d=rDelay(); log('next scan in '+(d/60000).toFixed(1)+' min');
   setTimeout(function(){ if(!isActive()||!mayScan()){ npScheduleNext(); return; } if(!privOwner()){ var _om=privOtherMsg(); log('⏸️ '+_om); lastScanMsg=_om; status('⏸️ '+_om); npScheduleNext(); return; } paused=true; npRunScan(log,npAfterScan); },d);
 }
 function initNew(){
