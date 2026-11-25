@@ -7729,7 +7729,7 @@ def public_sign_doc(token):
              ".avwrap{width:84px;height:84px;border-radius:50%;border:2.5px solid var(--gold);padding:2px;flex:0 0 auto;box-sizing:border-box}"
              ".avin{position:relative;width:100%;height:100%;border-radius:50%;background:#15263b;display:flex;align-items:center;justify-content:center;overflow:hidden}"
              ".avin span{color:#fff;font-size:30px;font-weight:800;line-height:1}"
-             ".avin img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}"
+             ".logobar .avin img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border:0;padding:0;background:none}"
              ".okcard{text-align:center;padding:14px 0 4px}"
              ".okcard .big{font-size:44px}"
              ".okcard h2{font-size:20px;font-weight:800;margin:8px 0 4px}"
