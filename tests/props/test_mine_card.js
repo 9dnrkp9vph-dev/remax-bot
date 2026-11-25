@@ -30,11 +30,22 @@ assert(!h.includes('<img') && h.includes('doneListing(0)') && !h.includes('reqPr
 ctx.VID.items.abc = {last: {status: 'published', created_at: '2026-11-05T10:00:00Z'}}; ctx.HOT.abc = 1;
 h = ctx.propCard(P, 0); assert(h.includes('נכס חם · סרטון: פורסם 05/11'));
 // המשרד ושת"פ — בלי שינוי (אין הכרטיס החדש)
-ctx.MODE = 'office'; h = ctx.propCard(P, 0); assert(!h.includes('<details') && h.includes('class="top"'));
+// המשרד שלנו — אותו עיצוב, 'פרטי הנכס' ו'למודעה' גלויים, בלי פעולות של הסוכן; ירידת מחיר מוצגת
+ctx.MODE = 'office'; ctx.HOT = {};
+h = ctx.propCard(Object.assign({}, P, {priceDropped: true, priceOld: '5,100,000'}), 0);
+assert(h.includes('class="pth"') && !h.includes('prop mine'));
+assert(h.indexOf('propDetails(0)') < h.indexOf('<details') && h.includes('example.test/item/abc'));
+assert(h.indexOf('propDetails(0)') < h.indexOf('shareProp(0'), 'פרטי הנכס בשורה הראשונה');
+['reqPrice(0)', 'reqRemove(0)', 'toggleHot(0)', 'toggleFH(0)'].forEach(z => assert(!h.includes(z), 'לא במשרד: ' + z));
+assert(h.includes('toggleSite(0)') && h.includes('₪5,100,000') && h.includes('line-through') && h.includes('ירידת מחיר'));
+ctx.SITE.can = false; ctx.vidRow = () => ''; h = ctx.propCard(P, 0); assert(!h.includes('<details'), 'סוכן רגיל במשרד — בלי חלקים מתקפלים');
+ctx.SITE.can = true; ctx.vidRow = () => '<div>VIDROW</div>';
+// שת"פ — בלי שינוי
+ctx.MODE = 'shtaf'; h = ctx.propCard({street: 'רחוב', city: 'עיר', price: '1', office: 'משרד'}, 0); assert(!h.includes('class="pth"') && h.includes('class="top"'));
 // הדגמה לצילום
 if (process.argv[2]){ ctx.MODE = 'mine'; const css = page.match(/<style>([\s\S]*?)<\/style>/)[1];
   ctx.vidRow = () => '<div style="font-size:12px;color:#5B6472;font-weight:700;margin-top:8px">סרטון: פורסם 05/11 · 3/3</div><div style="margin-top:8px"><button style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;background:#C29435;color:#231700;border:none">צור סרטון סטורי + ריל</button></div>';
-  const a = ctx.propCard(P, 0); ctx.cardTog('abc:x', {open: true});
-  const b = ctx.propCard(Object.assign({}, P, {image: ''}), 0);
+  ctx.MODE = 'office'; const a = ctx.propCard(Object.assign({}, P, {agent: 'סוכן לדוגמה', priceDropped: true, priceOld: '5,100,000'}), 0); ctx.SITE.can = false;
+  const b = ctx.propCard(Object.assign({}, P, {image: '', agent: 'סוכן לדוגמה'}), 0);
   fs.writeFileSync(process.argv[2], '<!doctype html><html dir="rtl" lang="he"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>' + css + '</style><body><div style="max-width:390px;margin:auto;padding:12px">' + a + b + '</div></body></html>'); }
 console.log('ok mine card');

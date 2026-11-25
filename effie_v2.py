@@ -7403,7 +7403,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .prop .pth img{width:100%;height:100%;object-fit:cover;display:block;position:relative}
   .prop .pm2{display:flex;gap:8px}
   .prop .pm2>div{flex:1;margin-top:0!important;min-width:0}
-  .prop .a1.big{min-height:46px;font-size:14px;border-radius:12px}
+  .prop .a1.big,.prop .a2.big{min-height:46px;font-size:14px;border-radius:12px;gap:7px}
   .prop details.pg{border:1.5px solid #E4E0D5;border-radius:14px;overflow:hidden}
   .prop details.pg>summary{list-style:none;min-height:48px;padding:0 14px;display:flex;align-items:center;gap:9px;font-size:14px;font-weight:800;cursor:pointer}
   .prop details>summary::-webkit-details-marker{display:none}
@@ -8185,7 +8185,7 @@ function propCard(p, i){
   var fhRow = (isMine && !DEAL && SITE.on && _sk) ? ('<div style="margin-top:8px">' +
     '<button onclick="toggleFH(' + i + ')" style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;' +
     (_fh ? 'background:#1E3A5F;color:#fff;border:1.5px solid #1E3A5F">יד ראשונה · מוצג באתר (בטל)' : 'background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">סמן כיד ראשונה (חדש מקבלן)') + '</button></div>') : '';
-  if (isMine) return mineCard(p, i, {where: where, dt: dt, who: who, chip: chip, hot: _hot, hotRow: hotRow, fhRow: fhRow, siteRow: siteRow});
+  if (!isShtaf) return mineCard(p, i, {mine: isMine, where: where, dt: dt, who: who, chip: chip, hot: _hot, hotRow: hotRow, fhRow: fhRow, siteRow: siteRow});
   return '<div class="prop' + (isShtaf ? ' shtaf' : isMine ? ' mine' : '') + '">' +
     '<div class="top"><div><div class="ad">' + esc(where) + '</div>' +
     '<div class="dt">' + [esc(dt), who].filter(Boolean).join(' · ') + '</div>' + featChips(p) + '</div>' + chip + '</div>' +
@@ -8224,7 +8224,7 @@ function mineCard(p, i, o){
     '<span class="pr" style="font-size:19px">' + esc(fmtPrice(p.price)) + '</span>' +
     (p.priceDropped ? ' <span style="font-size:12px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:2px 9px;white-space:nowrap">↓ ירידת מחיר</span>'
       : p.priceChanged ? ' <span style="font-size:12px;font-weight:800;color:#231700;background:#E4C56B;border-radius:999px;padding:2px 9px;white-space:nowrap">עדכון מחיר</span>' : '');
-  var canReq = p.own && p.id;
+  var canReq = o.mine && p.own && p.id;
   var priceRow = !canReq ? '' : p.pending
     ? '<div class="reqRow" style="margin-top:0"><button class="dn" style="min-height:44px" onclick="doneListing(' + i + ')">הטיפול בוצע — הסר את הסימון</button></div>'
     : '<div class="reqRow" style="margin-top:0"><button class="rq" style="min-height:44px;font-size:14px" onclick="reqPrice(' + i + ')">' +
@@ -8234,14 +8234,16 @@ function mineCard(p, i, o){
   var mkBox = !mk ? '' : '<details class="pg"' + (CARD_OPEN[ck + ':m'] ? ' open' : '') + ' ontoggle="cardTog(\'' + esc(ck) + ':m\',this)">' +
     '<summary><span style="width:8px;height:8px;border-radius:50%;background:#C29435;flex:none"></span>שיווק' +
     '<span class="hint">' + esc(hint) + '</span>' + chev + '</summary><div class="in">' + mk + '</div></details>';
-  var more = '<button class="pli" onclick="propDetails(' + i + ')">פרטי הנכס</button>' +
-    (p.link ? '<button class="pli" onclick="window.open(\'' + esc(p.link) + '\',\'_blank\')">למודעה ביד2</button>' : '') +
+  var dBtn = '<button class="a2 big" onclick="propDetails(' + i + ')">' +
+    '<svg width="14" height="14" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9.500 8h5M9.500 12h5M9.500 16h3" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>פרטי הנכס</button>';
+  var more = (o.mine ? '<button class="pli" onclick="propDetails(' + i + ')">פרטי הנכס</button>' : '') +
+    (o.mine && p.link ? '<button class="pli" onclick="window.open(\'' + esc(p.link) + '\',\'_blank\')">למודעה ביד2</button>' : '') +
     o.fhRow + o.siteRow +
     (canReq && !p.pending ? '<button class="pli del" style="margin-top:8px" onclick="reqRemove(' + i + ')">' +
       '<span style="width:34px;height:34px;border-radius:10px;background:#FBEDED;display:flex;align-items:center;justify-content:center;flex:none">' +
       '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.6a1 1 0 0 0 1 .9h3.6a1 1 0 0 0 1-.9l.7-8.6M6.7 7v4M9.3 7v4" fill="none" stroke="#C24040" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>' +
       'הנכס יורד (מכרתי / נגמרה הבלעדיות)</button>' : '');
-  return '<div class="prop mine">' +
+  return '<div class="prop' + (o.mine ? ' mine' : '') + '">' +
     '<div style="display:flex;gap:12px;align-items:flex-start"><div class="pth">' + home.replace('<svg', '<svg style="position:absolute"') + img + '</div>' +
     '<div style="flex:1;min-width:0"><div class="ad">' + esc(o.where) + '</div>' +
     '<div class="dt">' + [esc(o.dt), o.who].filter(Boolean).join(' · ') + '</div>' +
@@ -8251,10 +8253,10 @@ function mineCard(p, i, o){
     '</div></div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + o.chip + featChips(p).replace('margin-top:5px', 'margin-top:0') + '</div>' +
     '<div class="acts"><button class="a1 big" onclick="matchBuyers(' + i + ')">' +
-    '<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>קונים מתאימים</button></div>' +
+    '<svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>קונים מתאימים</button>' + (o.mine ? '' : dBtn + (p.link ? '<button class="a2 big" style="flex:.7" onclick="window.open(\'' + esc(p.link) + '\',\'_blank\')">למודעה</button>' : '')) + '</div>' +
     '<div class="pm2">' + shareRow(p, i) + bpaBtn(p, i).replace('הוסף לדף קונה', 'לדף קונה') + '</div>' +
     priceRow + mkBox +
-    '<details class="px"' + (CARD_OPEN[ck + ':x'] ? ' open' : '') + ' ontoggle="cardTog(\'' + esc(ck) + ':x\',this)"><summary>עוד פעולות ' + chev + '</summary>' + more + '</details>' +
+    (!more ? '' : '<details class="px"' + (CARD_OPEN[ck + ':x'] ? ' open' : '') + ' ontoggle="cardTog(\'' + esc(ck) + ':x\',this)"><summary>עוד פעולות ' + chev + '</summary>' + more + '</details>') +
     '</div>';
 }
 /* [SHARE 01/11] שליחת נכס ללקוח עם תמונות (אייל): לחיצה ראשונה מכינה את התמונות, השנייה פותחת את חלון השיתוף

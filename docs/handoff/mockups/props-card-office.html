@@ -1,0 +1,130 @@
+<!doctype html><html dir="rtl" lang="he"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Heebo',sans-serif;background:#F2EFE7;min-height:100vh;min-height:100dvh;
+       display:flex;flex-direction:column;color:#1E3A5F}
+  header{padding:calc(env(safe-area-inset-top,0px) + 10px) 18px 12px;display:flex;align-items:center;justify-content:space-between}
+  .avatar{position:relative;width:44px;height:44px}
+  .avatar .c{width:44px;height:44px;border-radius:50%;background:#1E3A5F;color:#fff;display:flex;
+      align-items:center;justify-content:center;font-size:17px;font-weight:700}
+  .avatar .dot{position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;background:#1FAF5E;border:2px solid #F2EFE7}
+  .brand img{height:36px;max-width:150px;object-fit:contain}
+  .menuBtn{width:44px;height:44px;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(30,58,95,.08);
+      display:flex;align-items:center;justify-content:center;border:0;cursor:pointer}
+  main{flex:1;padding:4px 16px 14px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .card{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px 13px;
+      display:flex;flex-direction:column;gap:11px}
+  .hd{display:flex;align-items:center;justify-content:space-between}
+  .hd .tt{display:flex;align-items:center;gap:10px}
+  .hd .ic{width:36px;height:36px;border-radius:11px;background:#EAF0FA;display:flex;align-items:center;justify-content:center}
+  .hd h1{font-size:21px;font-weight:800}
+  .mapChip{display:flex;align-items:center;gap:6px;background:#EAF0FA;color:#2E6BD6;border-radius:999px;
+      padding:6px 13px;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
+  .segs{display:flex;background:#EBE8DD;border-radius:13px;padding:4px;gap:4px;overflow-x:auto;scrollbar-width:none}   /* [NB-SEARCH] 4 סגמנטים */
+  .segs::-webkit-scrollbar{display:none}
+  .segs .sg{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 0;
+      font-size:13px;font-weight:600;color:#6B7280;border-radius:10px;cursor:pointer;white-space:nowrap}
+  .segs .sg b{font-size:12px;font-weight:700}
+  .segs .sg.on{color:#fff;font-weight:700;background:#2E6BD6;box-shadow:0 2px 8px rgba(46,107,214,.3)}
+  .segs .sg.on b{background:rgba(255,255,255,.22);padding:1px 8px;border-radius:999px;font-weight:800}
+  /* [DEALS 13/10] מכירה / השכרה / מסחרי — "המשרד שלנו" ו"שלי" (סניפי Family, מהסורק v13.45) */
+  .dealSegs{display:flex;gap:6px}
+  .dealSegs .dl{flex:1;min-height:36px;display:flex;align-items:center;justify-content:center;border-radius:999px;
+    background:#fff;border:1px solid #DCD6C8;font-size:12.5px;font-weight:700;color:#5B6472;cursor:pointer}
+  .dealSegs .dl.on{background:#1E3A5F;border-color:#1E3A5F;color:#fff}
+  .srch{display:flex;align-items:center;gap:9px;background:#F5F3EC;border:1px solid #E9E4D8;
+      border-radius:13px;padding:0 14px}
+  .srch input{flex:1;border:0;background:none;font-size:13.5px;font-family:inherit;outline:none;
+      color:#1E3A5F;padding:11px 0}
+  /* [21/10] כפתור 'חפש' (זהב = AI) — החיפוש לא רץ תוך כדי הקלדה */
+  .srchRow{display:flex;gap:8px;align-items:stretch}
+  .srchRow .srch{flex:1;min-width:0}
+  .srch input{min-width:0}
+  .srch input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+  .aiBtn{display:flex;align-items:center;justify-content:center;gap:5px;background:#C29435;color:#231700;
+      border-radius:13px;padding:0 14px;min-height:44px;font-size:13px;font-weight:800;border:0;cursor:pointer;
+      font-family:inherit;box-shadow:0 4px 12px rgba(194,148,53,.28);white-space:nowrap;flex-shrink:0}
+  .prop{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
+      display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+  .prop.shtaf{background:#F7F5EE;border:1.5px dashed #DCD6C8;box-shadow:none}
+  .prop.mine{border:2px solid #C29435;box-shadow:0 6px 20px rgba(194,148,53,.1)}
+  .prop .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .prop .ad{font-size:15.5px;font-weight:700}
+  .prop.shtaf .ad{color:#3D5273}
+  .prop .dt{font-size:12.5px;color:#6B7280}
+  .prop .dt b{color:#1E3A5F}
+  .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+  .chip.office{color:#2E6BD6;background:#EAF0FA}
+  .chip.shtaf{color:#6B7280;background:#EBE8DD}
+  .chip.mine{color:#7A5E1C;background:#F6EEDB}
+  .chip.pend{color:#7A5E1C;background:#F6EEDB;border:1px dashed #C29435}
+  .reqRow{display:flex;gap:8px;margin-top:8px}
+  .reqRow .rq{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;
+      padding:10px 0;font-size:12.5px;font-weight:700;border:1.5px solid #DCD6C8;background:#fff;color:#1E3A5F;
+      cursor:pointer;font-family:inherit;min-height:40px}
+  .reqRow .tr{flex:0 0 42px;width:42px;background:#FBEDED;border:none;border-radius:12px;display:flex;
+      align-items:center;justify-content:center;cursor:pointer;min-height:40px}
+  .reqRow .dn{flex:1;background:#E7F7EE;border:none;color:#157A43;border-radius:12px;font-size:12.5px;
+      font-weight:700;cursor:pointer;font-family:inherit;min-height:40px}
+  .prop .pr{font-size:21px;font-weight:800}
+  .prop.shtaf .pr{font-size:19px;color:#3D5273}
+  .prop .acts{display:flex;gap:8px}
+  .prop .a1{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#2E6BD6;color:#fff;
+      border-radius:11px;padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit}
+  .prop .a2{flex:1;display:flex;align-items:center;justify-content:center;background:#fff;color:#1E3A5F;
+      border:1.5px solid #DCD6C8;border-radius:11px;padding:10px 0;font-size:12.5px;font-weight:700;border-style:solid;cursor:pointer;font-family:inherit}
+  .more{display:flex;align-items:center;justify-content:center;padding:12px 0;font-size:13px;font-weight:700;color:#2E6BD6}
+  /* [CARD 26/11] כרטיס "שלי": תמונה, 3 פעולות גלויות, "שיווק" ו"עוד פעולות" מתקפלים */
+  .prop .pth{flex:0 0 84px;width:84px;height:84px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#0E1D33,#2C4C77);
+      display:flex;align-items:center;justify-content:center;position:relative}
+  .prop .pth img{width:100%;height:100%;object-fit:cover;display:block;position:relative}
+  .prop .pm2{display:flex;gap:8px}
+  .prop .pm2>div{flex:1;margin-top:0!important;min-width:0}
+  .prop .a1.big,.prop .a2.big{min-height:46px;font-size:14px;border-radius:12px;gap:7px}
+  .prop details.pg{border:1.5px solid #E4E0D5;border-radius:14px;overflow:hidden}
+  .prop details.pg>summary{list-style:none;min-height:48px;padding:0 14px;display:flex;align-items:center;gap:9px;font-size:14px;font-weight:800;cursor:pointer}
+  .prop details>summary::-webkit-details-marker{display:none}
+  .prop details.pg>summary .hint{margin-inline-start:auto;font-size:12px;font-weight:600;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .prop details.pg[open]>summary{border-bottom:1.5px solid #E4E0D5;background:#FAF8F3}
+  .prop details[open]>summary .chev{transform:rotate(180deg)}
+  .prop details.pg>.in{padding:2px 10px 10px}
+  .prop details.px>summary{list-style:none;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13.5px;font-weight:700;color:#6B7280;cursor:pointer;border-top:1px solid #E4E0D5}
+  .prop .pli{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0 6px;border:0;background:none;border-radius:12px;
+      font:inherit;font-size:14px;font-weight:700;color:#1E3A5F;text-align:right;cursor:pointer}
+  .prop .pli.del{color:#C24040}
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:30px 18px}
+  .empty .ic{width:72px;height:72px;border-radius:50%;background:#F6EEDB;display:flex;align-items:center;justify-content:center}
+  .empty .t{font-size:15px;font-weight:800}
+  .empty .s{font-size:12.5px;color:#5B6472;line-height:1.6;max-width:260px}
+  nav{position:fixed;bottom:0;left:0;right:0;z-index:40;background:#fff;border-top:1px solid #E9E4D8;padding:10px 6px calc(env(safe-area-inset-bottom,0px) + 12px);
+      display:flex;justify-content:space-around;align-items:flex-end}
+  nav .it{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:52px;font-size:12px;
+      font-weight:600;color:#6E7683;cursor:pointer}
+  nav .home{width:44px;height:44px;margin-top:-18px;border-radius:15px;background:#1E3A5F;
+      box-shadow:0 6px 14px rgba(30,58,95,.3);display:flex;align-items:center;justify-content:center}
+  #ovl{position:fixed;inset:0;background:rgba(23,37,60,.45);display:none;z-index:30}
+  #sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:31;background:#F7F5EE;border-radius:28px 28px 0 0;
+      box-shadow:0 -12px 40px rgba(23,37,60,.3);padding:12px 18px 16px;
+      display:none;flex-direction:column;gap:12px;max-height:82vh;overflow:auto}
+  #sheet .grip{width:44px;height:5px;border-radius:999px;background:#E2DDD0;align-self:center;flex-shrink:0}
+  #sheet h3{font-size:19px;font-weight:800}
+  .btn{display:flex;align-items:center;justify-content:center;gap:9px;border-radius:13px;padding:13px 0;width:100%;
+      font-size:14.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;min-height:46px;flex-shrink:0}
+  .btn-sec{background:#fff;color:#5B6472;border:1.5px solid #DCD6C8}
+  .bRow{background:#fff;border-radius:14px;padding:11px 13px;display:flex;flex-direction:column;gap:6px}
+  .bRow .t{font-size:13.5px;font-weight:700}
+  .bRow .s{font-size:12px;color:#5B6472;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .bRow .acts{display:flex;gap:8px}
+  .bRow .wa{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#E7F7EE;color:#1FAF5E;
+      border-radius:10px;padding:8px 0;font-size:12px;font-weight:700;border:0;cursor:pointer;font-family:inherit;text-decoration:none}
+  .bRow .tel{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#EAF0FA;color:#2E6BD6;
+      border-radius:10px;padding:8px 0;font-size:12px;font-weight:700;text-decoration:none}
+  #toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#1E3A5F;color:#fff;
+      font-size:13px;font-weight:700;padding:10px 18px;border-radius:999px;opacity:0;transition:opacity .2s;
+      pointer-events:none;z-index:80;white-space:nowrap}
+  @media (min-width:700px){
+    header,main,nav{width:100%;max-width:600px;margin-left:auto;margin-right:auto}
+    nav{border:1px solid #E9E4D8;border-bottom:0;border-radius:22px 22px 0 0}
+    #sheet{max-width:600px;margin-left:auto;margin-right:auto}
+  }
+  main{padding-bottom:124px}
+</style><body><div style="max-width:390px;margin:auto;padding:12px"><div class="prop"><div style="display:flex;gap:12px;align-items:flex-start"><div class="pth"><svg style="position:absolute" width="28" height="28" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z M9 20v-6h6v6" fill="none" stroke="#E4C56B" stroke-width="1.8" stroke-linejoin="round"/></svg><img src="https://img.example.test/x.jpg" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></div><div style="flex:1;min-width:0"><div class="ad">רחוב הדוגמה 3, קרית אתא</div><div class="dt">קוטג · 7 חד׳ · סוכן לדוגמה</div><div style="margin-top:3px"><span style="text-decoration:line-through;color:#6B7280;font-size:13px;font-weight:600">₪5,100,000</span> <span class="pr" style="font-size:19px">₪4,900,000</span> <span style="font-size:12px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:2px 9px;white-space:nowrap">↓ ירידת מחיר</span></div></div></div><div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center"><div class="chip office">המשרד שלנו</div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:0"><span style="background:#EEF1F5;color:#1E3A5F;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px">ממ&quot;ד</span></div></div><div class="acts"><button class="a1 big" onclick="matchBuyers(0)"><svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>קונים מתאימים</button><button class="a2 big" onclick="propDetails(0)"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9.500 8h5M9.500 12h5M9.500 16h3" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>פרטי הנכס</button><button class="a2 big" style="flex:.7" onclick="window.open('https://example.test/item/abc','_blank')">למודעה</button></div><div class="pm2"><div style="margin-top:8px"><button onclick="shareProp(0, this)" style="width:100%;min-height:44px;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;border:none;background:#157A43;color:#fff;display:flex;align-items:center;justify-content:center;gap:7px"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>מלל ותמונות</button></div><div style="margin-top:8px"><button onclick="bpAddProp(0)" style="width:100%;min-height:44px;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;background:#fff;color:#2E6BD6;border:1.5px solid #2E6BD6;display:flex;align-items:center;justify-content:center;gap:7px"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg>לדף קונה</button></div></div><details class="pg" open ontoggle="cardTog('abc:m',this)"><summary><span style="width:8px;height:8px;border-radius:50%;background:#C29435;flex:none"></span>שיווק<span class="hint">סרטון: פורסם 05/11</span><svg class="chev" width="14" height="14" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary><div class="in"><div style="font-size:12px;color:#5B6472;font-weight:700;margin-top:8px">סרטון: פורסם 05/11 · 3/3</div><div style="margin-top:8px"><button style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;background:#C29435;color:#231700;border:none">צור סרטון סטורי + ריל</button></div></div></details><details class="px" ontoggle="cardTog('abc:x',this)"><summary>עוד פעולות <svg class="chev" width="14" height="14" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary><div style="margin-top:8px"><button onclick="toggleSite(0)" style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">מוצג באתר · הסתר מהאתר</button></div></details></div><div class="prop"><div style="display:flex;gap:12px;align-items:flex-start"><div class="pth"><svg style="position:absolute" width="28" height="28" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z M9 20v-6h6v6" fill="none" stroke="#E4C56B" stroke-width="1.8" stroke-linejoin="round"/></svg></div><div style="flex:1;min-width:0"><div class="ad">רחוב הדוגמה 3, קרית אתא</div><div class="dt">קוטג · 7 חד׳ · סוכן לדוגמה</div><div style="margin-top:3px"><span class="pr" style="font-size:19px">₪4,900,000</span></div></div></div><div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center"><div class="chip office">המשרד שלנו</div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:0"><span style="background:#EEF1F5;color:#1E3A5F;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px">ממ&quot;ד</span></div></div><div class="acts"><button class="a1 big" onclick="matchBuyers(0)"><svg width="14" height="14" viewBox="0 0 22 22"><circle cx="11" cy="7.5" r="3.5" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M4.5 19c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>קונים מתאימים</button><button class="a2 big" onclick="propDetails(0)"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9.500 8h5M9.500 12h5M9.500 16h3" fill="none" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>פרטי הנכס</button><button class="a2 big" style="flex:.7" onclick="window.open('https://example.test/item/abc','_blank')">למודעה</button></div><div class="pm2"><div style="margin-top:8px"><button onclick="shareProp(0, this)" style="width:100%;min-height:44px;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;border:none;background:#157A43;color:#fff;display:flex;align-items:center;justify-content:center;gap:7px"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>מלל ותמונות</button></div><div style="margin-top:8px"><button onclick="bpAddProp(0)" style="width:100%;min-height:44px;border-radius:12px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;background:#fff;color:#2E6BD6;border:1.5px solid #2E6BD6;display:flex;align-items:center;justify-content:center;gap:7px"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="#2E6BD6" stroke-width="1.8" stroke-linecap="round"/></svg>לדף קונה</button></div></div><details class="pg" open ontoggle="cardTog('abc:m',this)"><summary><span style="width:8px;height:8px;border-radius:50%;background:#C29435;flex:none"></span>שיווק<span class="hint">סרטון: פורסם 05/11</span><svg class="chev" width="14" height="14" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary><div class="in"><div style="font-size:12px;color:#5B6472;font-weight:700;margin-top:8px">סרטון: פורסם 05/11 · 3/3</div><div style="margin-top:8px"><button style="width:100%;min-height:44px;border-radius:12px;font-size:13px;font-weight:800;font-family:inherit;background:#C29435;color:#231700;border:none">צור סרטון סטורי + ריל</button></div></div></details></div></div></body></html>

@@ -9316,6 +9316,7 @@ def api_search_properties():
                 "excl": _y2_excl_flag(row.get("בלעדיות", "")),          # 27/09: בלעדי/רגיל גם במשרד (רשימת בלעדיות מול רגילות לאייל)
                 "branch": str(row.get("_y2_office_id", "") or ""),
                 "pkey": _prop_price_key(row),   # [BPAGE 06/10] מפתח יציב לדף הקונה
+                "image": str(row.get("תמונה", "") or "").strip(),   # [CARD 26/11] תמונה ראשית בכרטיס
                 "id": str(row.get("מספר מודעה", "") or "").strip(),   # [SITE 13/10] "הסתר מהאתר" גם בטאב המשרד (מזכירה)
             }
             if score is not None:
