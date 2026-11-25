@@ -12050,6 +12050,17 @@ function kitSendBtn(k, i){
     '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
     'שלח לבעל הנכס</button>';
 }
+/* [26/11] 'צפה בתיק' + 'שתף' (שיתוף חופשי — לא מסמן נשלח) — רק כשיש קישור לתיק */
+function kitMoreBtns(k, i){
+  if (!k || (k.status !== 'approved' && k.status !== 'sent') || !k.url) return '';
+  return '<div style="display:flex;gap:8px">' +
+    '<button class="kbtn sec" onclick="kitView(' + i + ')">' +
+    '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="#1E3A5F" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="none" stroke="#1E3A5F" stroke-width="1.4"/></svg>' +
+    'צפה בתיק</button>' +
+    '<button class="kbtn sec" onclick="kitShare(' + i + ')">' +
+    '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 10V2M5 4.8L8 1.8l3 3M3.5 7.5v6h9v-6" fill="none" stroke="#1E3A5F" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+    'שתף</button></div>';
+}
 /* תיק אחד לכל בעל נכס (09/11) — מי ששלח ראשון */
 function kitTakenMsg(by){
   return 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (by || 'סוכן אחר');
@@ -12077,6 +12088,7 @@ function kitCard(k, i){
     (k.status === 'pending' ? '<div class="sb">' + (k.preparing ? 'מכינים את התיק וניתוח השוק — תקבל הודעה כשאפשר לבחור עסקאות' : 'בחר אילו עסקאות ומודעות מתחרות ייכנסו לתיק, ואז הוא מוכן לשליחה') + '</div>' : '') +
     (k.pick_url ? '<button class="kbtn pri" onclick="location.href=\'' + esc(k.pick_url) + '\'">בחר עסקאות והפק תיק</button>' : '') +
     kitSendBtn(k, i) +
+    kitMoreBtns(k, i) +
     (k.status === 'rejected' || k.status === 'expired'
       ? '<button class="kbtn sec" onclick="kitResend(' + i + ')">הכן את התיק מחדש</button>' : '') +
     (k.cma_q ? '<button class="kbtn sec" onclick="location.href=\'/v2/cma?' + esc(k.cma_q) + '\'">ניתוח שוק</button>' : '') +
@@ -12127,6 +12139,21 @@ function kitSend(i){
     else if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); load(); }
     else fail();
   }).catch(fail);
+}
+function kitView(i){   // הסוכן צופה — ?me=1: לא נספר כצפייה של בעל הנכס
+  var k = KITS[i]; if (!k || !k.url) return;
+  window.open(k.url + '?me=1', '_blank');
+}
+function kitShare(i){   // שיתוף חופשי לכל אחד — לא נספר כ'נשלח לבעל הנכס'
+  var k = KITS[i]; if (!k || !k.url) return;
+  var title = 'תיק אישי' + (k.street ? ' · ' + k.street : '');
+  if (navigator.share){
+    navigator.share({title: title, text: title, url: k.url}).catch(function(){});
+    return;
+  }
+  var done = function(){ toast('הקישור לתיק הועתק'); };
+  try{ navigator.clipboard.writeText(k.url).then(done, function(){ prompt('העתק את הקישור:', k.url); }); }
+  catch(e){ prompt('העתק את הקישור:', k.url); }
 }
 function kitResend(i){
   var k = KITS[i]; if (!k) return;

@@ -1020,6 +1020,8 @@ def register(app, G):
         script = ("(function(){var u=%s;function p(){if(document.visibilityState==='hidden')return;"
                   "try{fetch(u,{method:'POST',keepalive:true});}catch(e){}}"
                   "setTimeout(p,2000);setInterval(p,15000);})();") % json_str(ping)
+        if request.args.get("me") == "1":   # [26/11] הסוכן צופה מאפי — לא נספר כצפייה של בעל הנכס
+            script = ""
         return resp(shell("תיק אישי" + (" · " + off if off else ""), body, script))
 
     @app.route("/k/<vtok>/p<int:n>.jpg")

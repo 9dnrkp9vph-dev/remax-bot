@@ -46,7 +46,7 @@ n++;
 // ── פונקציות טהורות במסך התיקים ─────────────────────────────────────────────
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const T = new Function('esc', [fn(kjs, 'kitPad'), fn(kjs, 'kitStatusChip'), fn(kjs, 'kitViews'), fn(kjs, 'kitSendBtn'),
-  fn(kjs, 'kitManualErr'), fn(kjs, 'kitTakenMsg'), 'return {kitStatusChip, kitViews, kitSendBtn, kitManualErr, kitTakenMsg};'].join('\n'))(esc);
+  fn(kjs, 'kitManualErr'), fn(kjs, 'kitTakenMsg'), fn(kjs, 'kitMoreBtns'), 'return {kitStatusChip, kitViews, kitSendBtn, kitManualErr, kitTakenMsg, kitMoreBtns};'].join('\n'))(esc);
 
 const chip = st => T.kitStatusChip(st);
 ck(chip({status: 'pending'}).includes('בהכנה'), 'pending → בהכנה');
@@ -200,5 +200,19 @@ ck(T.kitManualErr('db') === '', 'db → no field');
     ck(Ts[0] === 'לבעל הנכס הזה כבר נשלח תיק ע״י רון לוי', 'resend taken');
   }
   ck(/j\.reason === 'taken'[^\n]*kitTakenMsg\(j\.by\)/.test(fn(kjs, 'kitManualGo')), 'manual create taken');
+  // [26/11] צפה בתיק + שיתוף חופשי
+  {
+    const k = {id: 'k9', status: 'approved', url: 'https://x/k/abc', text: 'שלום'};
+    const m = T.kitMoreBtns(k, 2);
+    ck(m.includes('צפה בתיק') && m.includes('kitView(2)'), 'view btn');
+    ck(m.includes('שתף') && m.includes('kitShare(2)'), 'share btn');
+    ck(T.kitMoreBtns(Object.assign({}, k, {status: 'sent'}), 0).includes('צפה בתיק'), 'view on sent');
+    ['pending', 'rejected', 'expired', 'taken'].forEach(s => ck(T.kitMoreBtns({status: s, url: 'u'}, 0) === '', 'no more on ' + s));
+    ck(T.kitMoreBtns({status: 'approved'}, 0) === '', 'no more without url');
+    const v = fn(kjs, 'kitView');
+    ck(/\?me=1/.test(v), 'view skips tracking');
+    const sh = fn(kjs, 'kitShare');
+    ck(/navigator\.share/.test(sh) && /clipboard/.test(sh) && !/kit\/sent/.test(sh), 'share: native, copy fallback, not marked sent');
+  }
   console.log('ok kit client · ' + n + ' checks');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

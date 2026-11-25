@@ -209,6 +209,8 @@ def test_view_open():
        and "/k/%s/ping" % v in js[0], js)
     f = tempfile.NamedTemporaryFile("w", suffix=".js", delete=False); f.write(js[0]); f.close()
     ck(subprocess.run(["node", "--check", f.name]).returncode == 0, "node --check")
+    hm = c.get("/k/%s?me=1" % v).get_data(as_text=True)   # [26/11] הסוכן צופה — בלי פעימות
+    ck("<img" in hm and "/ping" not in hm and "<script>" not in hm, "me=1 no tracking")
     rv = re.findall(r"<script>(.*?)</script>", c.get("/v2/kit/review/" + kit["review_token"]).get_data(as_text=True), re.S)
     f2 = tempfile.NamedTemporaryFile("w", suffix=".js", delete=False); f2.write("\n".join(rv)); f2.close()
     ck(subprocess.run(["node", "--check", f2.name]).returncode == 0, "node --check review")
