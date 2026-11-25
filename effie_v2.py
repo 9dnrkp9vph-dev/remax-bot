@@ -6352,14 +6352,21 @@ V2_NB_KIT = r"""<style>
   .nbk .oActs{display:flex;gap:8px}
   .nbk .oActs .a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:11px;
       padding:10px 0;font-size:12.5px;font-weight:700;border:0;cursor:pointer;font-family:inherit;text-decoration:none}
-  .nbk .oActs .call{background:#EAF0FA;color:#2E6BD6}
-  .nbk .oActs .wa{background:#E7F7EE;color:#1FAF5E}
-  .nbk .oActs .view{flex:1.2;background:#1E3A5F;color:#fff}
+  /* [CARD 26/11] כמו כרטיסי הנכסים: חייג / וואטסאפ / למודעה גדולים; תיק ודף קונה ב"עוד פעולות" */
+  .nbk .oActs .a{min-height:46px;font-size:14px;border-radius:12px;padding:0}
+  .nbk .oActs .call{background:#2E6BD6;color:#fff}
+  .nbk .oActs .wa{background:#157A43;color:#fff}
+  .nbk .oActs .view{flex:.8;background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8}
+  .nbk details.px>summary{list-style:none;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13.5px;font-weight:700;color:#6B7280;cursor:pointer;border-top:1px solid #E4E0D5}
+  .nbk details.px>summary::-webkit-details-marker{display:none}
+  .nbk details.px[open]>summary .chev{transform:rotate(180deg)}
+  .nbk .pli{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0 6px;border:0;background:none;border-radius:12px;
+      font:inherit;font-size:14px;font-weight:700;color:#1E3A5F;text-align:right;cursor:pointer}
   .nbk .contacted{display:flex;align-items:center;gap:6px;background:#E7F7EE;border-radius:999px;
       padding:5px 12px;align-self:flex-start;font-size:12px;font-weight:700;color:#1FAF5E}
   .nbk .stActs{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px}
   .nbk .stActs .s{display:flex;align-items:center;justify-content:center;background:#fff;border:1.5px solid #DCD6C8;
-      border-radius:11px;padding:9px 0;font-size:12px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit}
+      border-radius:11px;padding:9px 0;min-height:44px;font-size:12.5px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit}
   .nbk .stActs .s.red{color:#C24040}
   .nbk .stActs .s.on{background:#C29435;border-color:#C29435;color:#231700;box-shadow:0 3px 10px rgba(194,148,53,.25)}
   .nbk .stActs .s.red.on{background:#C24040;border-color:#C24040;color:#fff;box-shadow:0 3px 10px rgba(194,64,64,.25)}
@@ -6391,6 +6398,8 @@ function nbDescAll(el, i){   // 25/11: 'הצג הכל' — התיאור המלא
   var r = (nbKitRows() || [])[i]; if (r && el && el.parentNode) el.parentNode.textContent = String(r.desc || '');
 }
 function nbCard(r, i){
+  var NB_OPEN = nbCard._open || (nbCard._open = {});   // [CARD 26/11] 'עוד פעולות' נשאר פתוח כשהרשימה מצטיירת מחדש
+  var _ok = String(r.key || r.link || i).replace(/[^\w:.\-]/g, '').slice(-60);
   var chip = (r.ageDays === 0) ? '<div class="chip new">חדש היום</div>'
     : '<div class="chip age">' + (r.ageDays < 180 ? 'חודש ' + (Math.floor(r.ageDays / 30) + 1) : '7+ חודשים') + '</div>';
   var st = r.stat;
@@ -6400,13 +6409,13 @@ function nbCard(r, i){
       '<div class="sb">בעל הנכס · מתעדכן יומית</div></div></div>' +
       '<div class="oActs">' +
       '<a class="a call" href="tel:' + esc((r.phone || '').replace(/\D/g, '')) + '" onclick="return nbDial(' + i + ')">' +
-      '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#2E6BD6" stroke-width="1.7"/></svg>חייג</a>' +
+      '<svg width="13" height="13" viewBox="0 0 22 22"><path d="M5 3.5C4 4.5 3.5 6 4 7.5c1.2 4 5.5 8.5 9.5 10 1.5.6 3 .1 4-1l-2.6-2.9-2.2 1c-1.8-1-3.8-3-4.8-4.8l1-2.2z" fill="none" stroke="#fff" stroke-width="1.7"/></svg>חייג</a>' +
       '<button class="a wa" onclick="waOwner(' + i + ')">' +
-      '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#1FAF5E" stroke-width="1.5"/></svg>וואטסאפ</button>' +
-      (r.link ? '<a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">צפייה במודעה</a>' : '') +
+      '<svg width="13" height="13" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c3 0 5.5 2.5 5.5 5.5zM8 13.5L5.5 14l.5-2.3" fill="none" stroke="#fff" stroke-width="1.5"/></svg>וואטסאפ</button>' +
+      (r.link ? '<a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">למודעה</a>' : '') +
       '</div>'
     // אין שם/טלפון של בעל הנכס — עדיין מציגים את הקישור למודעה
-    : (r.link ? '<div class="oActs"><a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">צפייה במודעה</a></div>' : '');
+    : (r.link ? '<div class="oActs"><a class="a view" target="_blank" rel="noopener" href="' + esc(r.link) + '">למודעה</a></div>' : '');
   var contacted = (MGR && r.contacted && r.contacted.length)
     ? '<div class="contacted">כבר פנו: ' + esc(r.contacted[0]) +
       (r.contacted.length > 1 ? ' +' + (r.contacted.length - 1) : '') + ' · ' + r.contacted.length + ' פניות</div>'
@@ -6459,15 +6468,18 @@ function nbCard(r, i){
     (r.priceDropped ? '<span style="font-size:12px;font-weight:800;color:#fff;background:#157A43;border-radius:999px;padding:3px 10px;white-space:nowrap">↓ ירידת מחיר</span>' : '') +
     '</div>' +
     '<div style="font-size:12px;color:#6B7280">' + esc(r.date || '') + '</div></div>' +
-    owner + contacted +
+    owner +
     '<div class="stActs">' +
     '<button class="s' + (st && st.status === 'meeting' ? ' on' : '') + '" onclick="stDate(' + i + ',\'meeting\')">פגישה</button>' +
     '<button class="s' + (st && st.status === 'followup' ? ' on' : '') + '" onclick="stDate(' + i + ',\'followup\')">פולו-אפ</button>' +
     '<button class="s red' + (st && st.status === 'not_interested' ? ' on' : '') + '" onclick="stToggleNI(' + i + ')">לא מעוניין</button>' +
-    '<button class="s" onclick="noteSheet(' + i + ')">הערה</button>' +
-    '<button class="s kit" onclick="kitFromNb(' + i + ')">תיק לפני פגישה</button>' +
-    (typeof bpAdd === 'function' ? '<button class="s" onclick="bpAddNb(' + i + ')">לדף קונה</button>' : '') + '</div>' +
-    stLine + notes + '</div>';
+    '<button class="s" onclick="noteSheet(' + i + ')">הערה</button></div>' +
+    contacted + stLine + notes +
+    '<details class="px"' + (NB_OPEN[_ok] ? ' open' : '') + ' ontoggle="nbCard._open[\'' + esc(_ok) + '\']=this.open"><summary>עוד פעולות ' +
+    '<svg class="chev" width="14" height="14" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>' +
+    '<button class="pli" style="color:#7A5E1C" onclick="kitFromNb(' + i + ')">תיק לפני פגישה</button>' +
+    (typeof bpAdd === 'function' ? '<button class="pli" onclick="bpAddNb(' + i + ')">הוסף לדף קונה</button>' : '') + '</details>' +
+    '</div>';
 }
 // [KIT 09/11] תיק פרזנטציה לבעל הנכס — נשלח לאישור; הרשימה והשליחה במסך /v2/kits
 function kitFromNb(i){

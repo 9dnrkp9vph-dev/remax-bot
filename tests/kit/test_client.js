@@ -122,7 +122,7 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   ck(/#sheet\{[^}]*padding:12px 18px (9\d|1\d\d)px/.test(KITS), 'sheet bottom padding >= 90');
 
   // ── כרטיס נכס נולד: כפתור + kitFromNb ─────────────────────────────────────
-  ck(/<button class="s[^"]*" onclick="kitFromNb\(' \+ i \+ '\)">תיק לפני פגישה<\/button>/.test(NBKIT), 'nb button');
+  ck(/<button class="(s|pli)[^"]*"[^>]* onclick="kitFromNb\(' \+ i \+ '\)">תיק לפני פגישה<\/button>/.test(NBKIT), 'nb button');   // [CARD 26/11] עבר ל"עוד פעולות"
   const nbjs = scripts(NBKIT).join('\n');
   async function nb(reply){
     const P = [], Ts = [];
