@@ -6491,8 +6491,8 @@ function kitFromNb(i){
     var why = j && j.reason;
     toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
       : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה'
-      : why === 'taken' ? 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (j.by || 'סוכן אחר')
-      : why === 'exists' ? 'לנכס הזה כבר יש תיק של ' + (j.by || 'סוכן אחר') : 'לא הצלחנו להכין את התיק');
+      : why === 'taken' ? 'לבעל הנכס הזה כבר נשלחו ' + (j.max || 3) + ' תיקים' + (j.by ? ' (' + j.by + ')' : '')
+      : why === 'exists' ? 'לנכס הזה כבר יש ' + (j.max || 3) + ' תיקים' + (j.by ? ' (' + j.by + ')' : '') : 'לא הצלחנו להכין את התיק');
   }).catch(function(){ kitFromNb._busy = false; toast('שגיאה'); });
 }
 function nbDial(i){   // חיוג לבעל הנכס (10/09): רישום 'מי פנה' + click2call בפיילוט, אחרת tel:
@@ -11829,8 +11829,8 @@ function kitFromMeet(i){   // [KIT 09/11] תיק פרזנטציה מהפגישה
     var why = j && j.reason;
     toast(why === 'owner' || why === 'phone' ? 'חסרים שם או טלפון של בעל הנכס — פתח תיק ידני'
       : why === 'not_found' ? 'הנכס לא נמצא' : why === 'forbidden' ? 'אין הרשאה לנכס הזה'
-      : why === 'taken' ? 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (j.by || 'סוכן אחר')
-      : why === 'exists' ? 'לנכס הזה כבר יש תיק של ' + (j.by || 'סוכן אחר') : 'לא הצלחנו להכין את התיק');
+      : why === 'taken' ? 'לבעל הנכס הזה כבר נשלחו ' + (j.max || 3) + ' תיקים' + (j.by ? ' (' + j.by + ')' : '')
+      : why === 'exists' ? 'לנכס הזה כבר יש ' + (j.max || 3) + ' תיקים' + (j.by ? ' (' + j.by + ')' : '') : 'לא הצלחנו להכין את התיק');
   }).catch(function(){ kitFromMeet._busy = false; toast('שגיאה'); });
 }
 function undoneMeet(i){   // החזרה מ'בוצע' לפעיל
@@ -12036,7 +12036,7 @@ function kitStatusChip(k){
   if (st === 'approved') return '<span class="kchip" style="background:#EAF0FA;color:#2E6BD6">מוכן לשליחה</span>';
   if (st === 'sent') return '<span class="kchip" style="background:#E7F7EE;color:#157A43">נשלח</span>';
   if (st === 'expired') return '<span class="kchip" style="background:#F0EDE3;color:#6B7280">פג תוקף</span>';
-  if (st === 'taken') return '<span class="kchip" style="background:#F0EDE3;color:#6B7280">נשלח ע״י ' + esc(k.taken_by || 'סוכן אחר') + '</span>';
+  if (st === 'taken') return '<span class="kchip" style="background:#F0EDE3;color:#6B7280">כבר נשלחו 3 תיקים</span>';
   if (st === 'rejected') return '<span class="kchip rj" style="background:#fff;color:#1E3A5F;border:1.5px solid #DCD6C8">נדחה' +
     (k.reject_reason ? ' · ' + esc(k.reject_reason) : '') + '</span>';
   return '';
@@ -12073,9 +12073,9 @@ function kitMoreBtns(k, i){
     '<svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 10V2M5 4.8L8 1.8l3 3M3.5 7.5v6h9v-6" fill="none" stroke="#1E3A5F" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
     'שתף</button></div>';
 }
-/* תיק אחד לכל בעל נכס (09/11) — מי ששלח ראשון */
-function kitTakenMsg(by){
-  return 'לבעל הנכס הזה כבר נשלח תיק ע״י ' + (by || 'סוכן אחר');
+/* עד 3 תיקים לכל בעל נכס (09/11 → 26/11) — 3 הראשונים ששלחו */
+function kitTakenMsg(by){   // [26/11] עד 3 תיקים לבעל נכס
+  return 'לבעל הנכס הזה כבר נשלחו 3 תיקים' + (by ? ' (' + by + ')' : '');
 }
 /* reason מהשרת (/v2/api/kit/create) → השדה בטופס הידני; '' = הודעה כללית */
 function kitManualErr(reason){
@@ -12235,7 +12235,7 @@ function kitManualGo(){
     b.disabled = false; b.textContent = 'הכן תיק';
     if (j && j.ok){ closeSheet(); toast('מכינים את התיק — תקבל הודעה לבחור עסקאות'); load(); return; }
     if (j && j.reason === 'taken'){ toast(kitTakenMsg(j.by)); return; }
-    if (j && j.reason === 'exists'){ toast('לנכס הזה כבר יש תיק של ' + (j.by || 'סוכן אחר')); return; }
+    if (j && j.reason === 'exists'){ toast('לנכס הזה כבר יש ' + (j.max || 3) + ' תיקים' + (j.by ? ' (' + j.by + ')' : '')); return; }
     if (!kmShowErr(j && j.reason)) toast('לא הצלחנו להכין את התיק');
   }).catch(function(){ b.disabled = false; b.textContent = 'הכן תיק'; toast('שגיאת רשת'); });
 }

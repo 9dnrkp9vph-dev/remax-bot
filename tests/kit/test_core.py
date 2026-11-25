@@ -124,3 +124,15 @@ def test_owner_message_date_only():
     t = K.owner_message(s)
     assert "ביום ד׳ 11/11 הכנתי" in t and "בשעה" not in t and "00:00" not in t, t
     assert "בשעה 17:00" in K.owner_message(dict(s, meet_at="2026-11-11T17:00"))
+
+
+def test_sent_blockers_three():
+    """[26/11] עד 3 תיקים לבעל נכס: 3 הראשונים מותרים, הרביעי חסום."""
+    S = [{"id": i, "agent_name": a} for i, a in (("a", "דנה"), ("b", "רון"), ("c", "דנה"), ("d", "רון"))]
+    assert K.MAX_PER_OWNER == 3
+    assert K.sent_blockers(S, "c") == []           # שלישי בתור — מותר
+    assert K.sent_blockers(S, "d") == S[:3]        # רביעי — חסום
+    assert K.sent_blockers(S[:2], "x") == []       # נשלחו רק 2 — עוד מותר
+    assert K.sent_blockers(S[:3]) == S[:3]         # תיק חדש אחרי 3 — חסום
+    assert K.sent_blockers([], None) == []
+    assert K.agents_of(S[:3]) == "דנה, רון"

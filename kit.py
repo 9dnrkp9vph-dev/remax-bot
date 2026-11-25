@@ -300,20 +300,22 @@ def register(app, G):
         except Exception:
             pass
 
+    def sent_list(p9):
+        try:
+            return sb().kit_sent_for_phone(p9, kc.MAX_PER_OWNER + 1) or []
+        except Exception as e:
+            log.warning("kit_sent_for_phone failed: %s", e)
+            return []
+
     def taken_by(phone, kid=None):
-        """תיק אחד לכל בעל נכס (אייל 09/11): תיק אחר שכבר נשלח לאותו טלפון — מי ששלח ראשון."""
+        """[26/11] עד 3 תיקים לכל בעל נכס (היה 1, אייל 09/11): כבר נשלחו 3 תיקים אחרים לאותו טלפון → החוסמים; אחרת None."""
         p9 = kc.phone9(phone)
         if not p9:
             return None
-        try:
-            w = sb().kit_sent_for_phone(p9)
-        except Exception as e:
-            log.warning("kit_sent_for_phone failed: %s", e)
-            return None
-        return w if w and w.get("id") != kid else None
+        return kc.sent_blockers(sent_list(p9), kid) or None
 
     def taken_resp(w):
-        return jsonify({"ok": False, "reason": "taken", "by": (w or {}).get("agent_name") or ""})
+        return jsonify({"ok": False, "reason": "taken", "by": kc.agents_of(w), "max": kc.MAX_PER_OWNER})
 
     def fresh_tokens():
         return {"review_token": secrets.token_urlsafe(16), "view_token": secrets.token_urlsafe(16)}
@@ -329,17 +331,16 @@ def register(app, G):
         _spawn(run)
 
     def addr_taken(src):
-        """[10/11] תיק אחד לכל נכס (אייל): תיק קיים לאותה מודעה או לאותו בעל נכס — בכל מצב. רק בעל המשרד פותח נוסף."""
+        """[10/11→26/11] עד 3 תיקים לכל נכס (אייל): 3 תיקים קיימים לאותה מודעה או לאותו בעל נכס — בכל מצב → הם; אחרת None.
+        רק בעל המשרד פותח מעבר לזה."""
         lk, p9 = src.get("listing_key") or "", kc.phone9(src.get("phone"))
         try:
             rows = sb().kit_list(None, days=365) or []
         except Exception as e:
             log.warning("kit addr_taken failed: %s", e)
             return None
-        for r in rows:
-            if (lk and r.get("listing_key") == lk) or (p9 and kc.phone9(r.get("owner_phone")) == p9):
-                return r
-        return None
+        hit = [r for r in rows if (lk and r.get("listing_key") == lk) or (p9 and kc.phone9(r.get("owner_phone")) == p9)]
+        return hit if len(hit) >= kc.MAX_PER_OWNER else None
 
     def cma_wait_for(src):
         """בקשה לבוט מדלן שנשלחה לכתובת הזו ועוד לא נענתה (עד CMA_WAIT_SEC) → request_id; אחרת None."""
@@ -536,7 +537,7 @@ def register(app, G):
         if not is_owner(s) and G.get("_kit_one_per_addr", True):
             w = addr_taken(src)
             if w:
-                return jsonify({"ok": False, "reason": "exists", "by": w.get("agent_name") or ""})
+                return jsonify({"ok": False, "reason": "exists", "by": kc.agents_of(w), "max": kc.MAX_PER_OWNER})
         prov = {"owner": src["owner"], "owner_first": src["owner"].split(" ")[0], "street": kc.street_only(src["street"]),
                 "city": src.get("city") or "", "_building": True}
         row = dict(status="pending", agent_name=agent_name, agent_phone=agent_phone, created_by=me,
@@ -576,8 +577,8 @@ def register(app, G):
             if st == "approved":
                 p9 = kc.phone9(r.get("owner_phone"))
                 if p9 not in tk:
-                    tk[p9] = taken_by(p9)
-                w = tk[p9] if tk[p9] and tk[p9].get("id") != r.get("id") else None
+                    tk[p9] = sent_list(p9) if p9 else []
+                w = kc.sent_blockers(tk[p9], r.get("id")) or None
                 if w:
                     st = "taken"
             it = {"id": r.get("id"), "status": st, "owner": r.get("owner_name") or snap.get("owner") or "",
@@ -585,7 +586,7 @@ def register(app, G):
                   "created_at": r.get("created_at"), "reject_reason": r.get("reject_reason") or "",
                   "views": {"opens": int(v.get("opens") or 0), "secs": int(v.get("secs") or 0), "last": v.get("last")}}
             if w:
-                it["taken_by"] = w.get("agent_name") or ""
+                it["taken_by"] = kc.agents_of(w)
             if snap.get("cma"):   # כפתור 'ניתוח שוק' — פותח את מסך הסוכן עם פרטי הנכס (חישוב חי, עם מספרי בית)
                 try:
                     it["cma_q"] = cma_query(src_from_rec(r))
@@ -737,7 +738,7 @@ def register(app, G):
             return taken_resp(w)
         if not sb().kit_claim(rec["id"], "approved", "sent", {"sent_at": _now_iso()}):
             return jsonify({"ok": False, "reason": "status"})
-        w = taken_by(rec.get("owner_phone"), rec["id"])   # מרוץ: שני סוכנים שלחו יחד — המוקדם ב-sent_at נשאר
+        w = taken_by(rec.get("owner_phone"), rec["id"])   # מרוץ: כמה סוכנים שלחו יחד — 3 המוקדמים ב-sent_at נשארים
         if w:
             sb().kit_claim(rec["id"], "sent", "approved", {"sent_at": None})
             return taken_resp(w)

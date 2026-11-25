@@ -60,9 +60,9 @@ ck(chip({status: 'approved'}).includes('מוכן לשליחה') && chip({status:
 ck(chip({status: 'sent'}).includes('נשלח') && chip({status: 'sent'}).includes('#157A43'), 'sent green');
 ck(chip({status: 'expired'}).includes('פג תוקף') && chip({status: 'expired'}).includes('#6B7280'), 'expired grey');
 const tk = chip({status: 'taken', taken_by: 'דנה <כהן>'});
-ck(tk.includes('נשלח ע״י דנה &lt;כהן&gt;') && tk.includes('#6B7280'), 'taken chip grey: ' + tk);
+ck(tk.includes('כבר נשלחו 3 תיקים') && tk.includes('#6B7280'), 'taken chip grey: ' + tk);
 ck(T.kitSendBtn({status: 'taken', wa: '9725', text: 't'}, 0) === '', 'no send on taken');
-ck(T.kitTakenMsg('דנה כהן') === 'לבעל הנכס הזה כבר נשלח תיק ע״י דנה כהן', 'taken msg');
+ck(T.kitTakenMsg('דנה כהן') === 'לבעל הנכס הזה כבר נשלחו 3 תיקים (דנה כהן)', 'taken msg');
 
 const ts = new Date(2026, 10, 9, 14, 5).getTime() / 1000;
 const v = T.kitViews({opens: 2, secs: 150, last: ts});
@@ -115,7 +115,7 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   sr = await sendRun(() => Promise.resolve({ok: false, reason: 'status'}), 1);
   ck(sr.Ts[0] === 'לא נשמר שהתיק נשלח — נסה שוב' && sr.L.length === 1, 'sent ok:false → toast + reload');
   sr = await sendRun(() => Promise.resolve({ok: false, reason: 'taken', by: 'רון לוי'}), 1);
-  ck(sr.Ts[0] === 'לבעל הנכס הזה כבר נשלח תיק ע״י רון לוי' && sr.L.length === 1, 'sent taken → toast + reload');
+  ck(sr.Ts[0] === 'לבעל הנכס הזה כבר נשלחו 3 תיקים (רון לוי)' && sr.L.length === 1, 'sent taken → toast + reload');
   sr = await sendRun(() => Promise.reject(new Error('net')), 1);
   ck(sr.Ts[0] === 'לא נשמר שהתיק נשלח — נסה שוב' && sr.L.length === 1, 'sent network fail → toast + reload');
   ck(/created = 'הוכן ' \+/.test(kjs) && !/'נפתח ' \+ kitPad/.test(kjs), 'created prefix הוכן');
@@ -141,7 +141,7 @@ ck(T.kitManualErr('db') === '', 'db → no field');
   r = await nb({ok: false, reason: 'not_found'});
   ck(r.Ts[0] === 'הנכס לא נמצא', 'nb not_found');
   r = await nb({ok: false, reason: 'taken', by: 'רון לוי'});
-  ck(r.Ts[0] === 'לבעל הנכס הזה כבר נשלח תיק ע״י רון לוי', 'nb taken');
+  ck(r.Ts[0] === 'לבעל הנכס הזה כבר נשלחו 3 תיקים (רון לוי)', 'nb taken');
   r = await nb({ok: false, reason: 'forbidden'});
   ck(r.Ts[0] === 'אין הרשאה לנכס הזה', 'nb forbidden');
   // בזמן שהבקשה בדרך — לחיצה נוספת לא שולחת שוב; אחרי התשובה אפשר שוב
@@ -177,7 +177,7 @@ ck(T.kitManualErr('db') === '', 'db → no field');
     return Ts;
   }
   ck((await meet(() => Promise.resolve({ok: false, reason: 'not_found'})))[0] === 'הנכס לא נמצא', 'meet not_found');
-  ck((await meet(() => Promise.resolve({ok: false, reason: 'taken', by: 'רון לוי'})))[0] === 'לבעל הנכס הזה כבר נשלח תיק ע״י רון לוי', 'meet taken');
+  ck((await meet(() => Promise.resolve({ok: false, reason: 'taken', by: 'רון לוי'})))[0] === 'לבעל הנכס הזה כבר נשלחו 3 תיקים (רון לוי)', 'meet taken');
   let mt = await meet(() => Promise.resolve({ok: false, reason: 'forbidden'}));
   ck(mt[0] === 'אין הרשאה לנכס הזה' && mt.length === 1, 'meet forbidden + guard');
 
@@ -197,7 +197,7 @@ ck(T.kitManualErr('db') === '', 'db → no field');
     const f = new Function('POST', 'toast', 'load', 'kitTakenMsg', 'var KITS = [{id:"k3"}];\n' + fn(kjs, 'kitResend') + '\nreturn kitResend;')(
       () => Promise.resolve({ok: false, reason: 'taken', by: 'רון לוי'}), m => Ts.push(m), () => L.push(1), T.kitTakenMsg);
     f(0); await new Promise(x => setTimeout(x, 5));
-    ck(Ts[0] === 'לבעל הנכס הזה כבר נשלח תיק ע״י רון לוי', 'resend taken');
+    ck(Ts[0] === 'לבעל הנכס הזה כבר נשלחו 3 תיקים (רון לוי)', 'resend taken');
   }
   ck(/j\.reason === 'taken'[^\n]*kitTakenMsg\(j\.by\)/.test(fn(kjs, 'kitManualGo')), 'manual create taken');
   // [26/11] צפה בתיק + שיתוף חופשי

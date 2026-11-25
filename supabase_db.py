@@ -1857,13 +1857,17 @@ def kit_by_token(col, tok):
     return _kit_one({col: "eq." + str(tok)})
 
 
-def kit_sent_for_phone(phone9):
-    """תיק שכבר נשלח לבעל הנכס הזה (owner_phone, 9 ספרות) במשרד — הראשון לפי sent_at; None אם אין."""
+def kit_sent_for_phone(phone9, limit=3):
+    """[26/11] התיקים שכבר נשלחו לבעל הנכס הזה (owner_phone, 9 ספרות) במשרד — לפי sent_at, עד limit; [] אם אין."""
     p = "".join(ch for ch in str(phone9 or "") if ch.isdigit())[-9:]
     if len(p) < 9:
-        return None
-    return _kit_one({"select": "id,agent_name,sent_at", "owner_phone": "eq." + p, "status": "eq.sent",
-                     "order": "sent_at.asc.nullslast,id.asc", "limit": "1"})
+        return []
+    r = requests.get(SUPABASE_URL + "/rest/v1/presentation_kits", headers=_headers(),
+                     params={"select": "id,agent_name,sent_at", "office_id": "eq." + SB_OFFICE_ID,
+                             "owner_phone": "eq." + p, "status": "eq.sent",
+                             "order": "sent_at.asc.nullslast,id.asc", "limit": str(int(limit))}, timeout=_TIMEOUT)
+    r.raise_for_status()
+    return r.json() or []
 
 
 def kit_list(agent_phone=None, days=90):

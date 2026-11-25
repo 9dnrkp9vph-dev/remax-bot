@@ -72,6 +72,29 @@ def decide(rec, action, who, now):
     return None, "פג תוקף"
 
 
+MAX_PER_OWNER = 3   # [26/11] אייל: עד 3 תיקים לכל נכס / בעל נכס (היה 1)
+
+
+def sent_blockers(sent, kid=None, n=MAX_PER_OWNER):
+    """sent = התיקים שנשלחו לבעל הנכס (לפי sent_at). תיק שבין n הראשונים — מותר ([]).
+    אחרת: n תיקים אחרים כבר נשלחו → הם החוסמים; פחות מ-n → []"""
+    sent = list(sent or [])
+    if kid is not None and any(w.get("id") == kid for w in sent[:n]):
+        return []
+    others = [w for w in sent if w.get("id") != kid]
+    return others[:n] if len(others) >= n else []
+
+
+def agents_of(rows):
+    """שמות הסוכנים (בלי כפילות, לפי הסדר) — להודעת 'כבר יש 3 תיקים'."""
+    out = []
+    for r in rows or []:
+        a = (r or {}).get("agent_name") or ""
+        if a and a not in out:
+            out.append(a)
+    return ", ".join(out)
+
+
 def owner_message(snap):
     s = snap or {}
     ag, of = s.get("agent"), s.get("office")

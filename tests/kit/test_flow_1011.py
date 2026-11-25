@@ -19,7 +19,7 @@ class SBK:
             if r["id"] == kid: r.update(f)
         return True
     def kit_claim(self, kid, frm, to, f, match=None): return False
-    def kit_sent_for_phone(self, p9): return None
+    def kit_sent_for_phone(self, p9, limit=3): return []
     def kit_get(self, kid): return next((dict(r) for r in self.kits if r["id"] == kid), None)
     def kit_list(self, agent_phone=None, days=90):
         return [dict(r) for r in reversed(self.kits) if not agent_phone or r.get("agent_phone") == agent_phone]
@@ -113,13 +113,16 @@ def test_answered_request_does_not_wait():
 
 
 def test_one_kit_per_property_owner_exempt():
+    """[26/11] עד 3 תיקים לכל נכס; הרביעי חסום, בעל המשרד פטור."""
     _reset(); SESS["t"] = AG; CMA_ON["v"] = True
     assert c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json["ok"]
     SESS["t"] = AG2
-    j = c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json
-    assert j == {"ok": False, "reason": "exists", "by": "דנה כהן"}
+    assert c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json["ok"]
     SESS["t"] = AG
-    assert c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json["reason"] == "exists"
+    assert c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json["ok"]
+    SESS["t"] = AG2
+    j = c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json
+    assert j["ok"] is False and j["reason"] == "exists" and j["max"] == 3 and "דנה כהן" in j["by"], j
     SESS["t"] = DEV
     assert c.post("/v2/api/kit/create", json={"source": "nb", "key": "id:77"}).json["ok"]
 
