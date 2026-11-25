@@ -15,6 +15,7 @@ DAILY_CAP = SP.DAILY_CAP   # [18/11 אייל] סרטון לכל פוסט אוט�
 FOLLOW_HOURS = 48           # פוסט שעלה לפני שבת/לילה: הסרטון שלו נוצר כשהשקט נגמר
 MONTH_AI_CAP = 100
 APPROVE_H = 48
+REMIND_H = 3               # [25/11 אייל] תזכורת לאישור 3 שעות אחרי שנשלח ולא אושר (SOCIAL_VIDEO_REMIND_H; 0 מכבה)
 RETRY_DAYS = 3
 REPEAT_DAYS = 14
 KEEP_FINAL_DAYS = 3
@@ -1360,7 +1361,7 @@ def vid_auto_on(env):
     return (v or str((env or {}).get("SOCIAL_AUTO") or "0").strip()) == "1"
 
 
-def vid_send_review(G, rec, base, env, initiator=""):
+def vid_send_review(G, rec, base, env, initiator="", remind=False):
     """שולח את הסרטון לאישור למי ש-vid_reviewers קובע (+ מי שלחץ "שלח שוב"). → רשימת 9 ספרות של מי שקיבל. בשעות שקט — review_due ולא שולח,
     חוץ ממי שיזם את הפעולה בעצמו (initiator — יצירה ידנית / "שלח שוב"), שמקבל מיד; השאר בבוקר.
     שליחת הבוקר מדלגת על מי שכבר ב-recipients."""
@@ -1369,6 +1370,8 @@ def vid_send_review(G, rec, base, env, initiator=""):
     except Exception:
         quiet = False
     me = _l9(initiator)
+    if remind and quiet:   # [25/11] תזכורת בשעות שקט/שבת — מחכה לסבב הבא, בלי review_due
+        return []
     if quiet:
         G["_sbdb"].video_update(rec["id"], {"review_due": True})
         if not me:
@@ -1376,7 +1379,9 @@ def vid_send_review(G, rec, base, env, initiator=""):
     who = vid_reviewers(G, rec, env)
     if me and me not in who:
         who.append(me)
-    if quiet:
+    if remind:   # [25/11] תזכורת — לכל מי שכבר קיבל את הבקשה
+        who = [_l9(x) for x in (rec.get("recipients") or []) if _l9(x)] or who
+    elif quiet:
         who = [me]
     elif not me:
         done = {_l9(x) for x in (rec.get("recipients") or [])}
@@ -1385,6 +1390,8 @@ def vid_send_review(G, rec, base, env, initiator=""):
             G["_sbdb"].video_update(rec["id"], {"review_due": False})
     vurl = "%s/v2/social/vid/%s.mp4" % (base, rec.get("video_token"))
     text = _summary(rec)
+    if remind:
+        text = "תזכורת — הסרטון מחכה לאישורך.\n" + text
     ids = ("vid:%s:pub" % rec["id"], "vid:%s:skip" % rec["id"])
     tpl = str(env.get("WA_TPL_VIDEO") or "").strip()
     link_text = "%s\nלצפייה ולאישור: %s/v2/social/review/%s" % (text, base, rec.get("review_token"))
@@ -1654,6 +1661,20 @@ def _recover_stale(G, recs, now):
             r["status"] = "partial"
 
 
+def _remind_h(env):
+    try:
+        return float(str(SP._env(env).get("SOCIAL_VIDEO_REMIND_H") or REMIND_H))
+    except Exception:
+        return REMIND_H
+
+
+def _remind_due(rec, sent, now, env):
+    """[25/11 אייל] סרטון שנשלח לאישור ולא אושר תוך REMIND_H שעות → תזכורת אחת."""
+    h = _remind_h(env)
+    tx = rec.get("texts") if isinstance(rec.get("texts"), dict) else {}
+    return h > 0 and not tx.get("reminded") and bool(rec.get("recipients")) and now - sent >= h * 3600
+
+
 def _housekeeping(G, now, env, store):
     """פג (48ש'), פרסום מתוזמן שהגיע זמנו, אישורים שחיכו לסוף השקט, ניקוי קבצים."""
     try:
@@ -1674,6 +1695,10 @@ def _housekeeping(G, now, env, store):
                 if to:
                     prev = [x for x in (r.get("recipients") or []) if x not in to]
                     G["_sbdb"].video_update(r["id"], {"review_due": False, "recipients": prev + to})
+            elif sent is not None and _remind_due(r, sent, now, env):
+                if vid_send_review(G, r, base, env, remind=True):
+                    tx = r.get("texts") if isinstance(r.get("texts"), dict) else {}
+                    G["_sbdb"].video_update(r["id"], {"texts": dict(tx, reminded=_iso(now))})
         elif st == "approved" and r.get("publish_at"):
             t = SP._ts(r.get("publish_at"))
             if t is not None and t <= now and not _blocked_now(G, now):
