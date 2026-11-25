@@ -22,23 +22,29 @@ ck([T.tour_theme(k, ROT) for k in range(4)] == ["dark", "cream", "split", "dark"
 ck(T.tour_theme(None, ROT) == "dark", "none")
 ck(T.tour_theme(5, {"SOCIAL_VIDEO_TOUR_THEME": "cream"}) == "cream" and T.tour_theme(5, {"SOCIAL_VIDEO_TOUR_THEME": "zzz"}) == "full", "named / junk")
 
-# [17/11 אייל] מסך מלא: התמונה ממלאת 9:16 ומתקרבת לאורך השוט (החלון בתמונת המקור קטן), עם תזוזה קלה לסירוגין
+# [25/11 אייל] מסך מלא: תמונה רחבה — החלון 9:16 נע מקצה לקצה של התמונה (רואים את כולה), כל שוט בכיוון אחר;
+# תמונה לגובה (אין לאן לנוע) — מתקרבת כמו קודם. 2.6 שניות לתמונה.
 def box_ok(b, w, h):
     return b[0] >= -1e-6 and b[1] >= -1e-6 and b[2] <= w + 1e-6 and b[3] <= h + 1e-6 and \
         abs((b[2] - b[0]) / (b[3] - b[1]) - 9 / 16) < 1e-6
-for (w, h) in ((1440, 960), (720, 480), (600, 900), (1080, 1920)):
-    b0, b1 = T.tour_full_box(w, h, 0, 0.0), T.tour_full_box(w, h, 0, T.SHOT)
-    ck(box_ok(b0, w, h) and box_ok(b1, w, h), (w, h, b0, b1))
-    ck((b1[3] - b1[1]) < (b0[3] - b0[1]) * 0.93, ("zooms in", b0, b1))
-    ck(abs((b0[3] - b0[1]) - h) < 1e-6 or abs((b0[2] - b0[0]) - w) < 1e-6, ("starts at full cover", b0))
-bm = T.tour_full_box(1440, 960, 0, T.SHOT / 2)
-bz, be = T.tour_full_box(1440, 960, 0, 0), T.tour_full_box(1440, 960, 0, T.SHOT)
-ck(bz[3] - bz[1] > bm[3] - bm[1] > be[3] - be[1], ("monotonic", bz, bm, be))
+ck(T.SHOT == 2.6, T.SHOT)
+for (w, h) in ((1440, 960), (1268, 845), (720, 480), (600, 900), (1080, 1920)):
+    for k in (0, 1):
+        for t in (0.0, T.SHOT / 3, T.SHOT / 2, T.SHOT):
+            ck(box_ok(T.tour_full_box(w, h, k, t), w, h), (w, h, k, t, T.tour_full_box(w, h, k, t)))
+for (w, h) in ((1440, 960), (1268, 845), (720, 480)):
+    a0, am, a1 = (T.tour_full_box(w, h, 0, t) for t in (0.0, T.SHOT / 2, T.SHOT))
+    ck(abs(a0[0]) < 1e-6 and abs(a1[2] - w) < 1e-6, ("sweeps edge to edge", a0, a1))
+    ck(a0[0] < am[0] < a1[0] and abs((am[0] + am[2]) / 2 - w / 2) < 1e-6, ("passes the centre", am))
+    ck(abs((a0[3] - a0[1]) - h) < 1e-6 and abs((a1[3] - a1[1]) - h) < 1e-6, ("full height, no zoom", a0, a1))
+    d0, d1 = T.tour_full_box(w, h, 1, 0.0), T.tour_full_box(w, h, 1, T.SHOT)
+    ck(abs(d0[2] - w) < 1e-6 and abs(d1[0]) < 1e-6, ("next shot sweeps back", d0, d1))
+q0, q1 = T.tour_full_box(1440, 960, 0, T.SHOT * 0.05), T.tour_full_box(1440, 960, 0, T.SHOT * 0.5)
+ck(q0[0] < 900 * 0.05 * 0.5, ("eases in — slow start", q0))
 c = lambda b: (b[0] + b[2]) / 2
-a0, a1 = T.tour_full_box(1440, 960, 0, 0.0), T.tour_full_box(1440, 960, 0, T.SHOT)
-d0, d1 = T.tour_full_box(1440, 960, 1, 0.0), T.tour_full_box(1440, 960, 1, T.SHOT)
-ck((c(a1) - c(a0)) * (c(d1) - c(d0)) < 0, ("pan alternates", c(a0), c(a1), c(d0), c(d1)))
-ck(abs(c(T.tour_full_box(600, 900, 0, 0)) - c(T.tour_full_box(600, 900, 0, T.SHOT))) < 600 * 0.1, "portrait: little/no pan")
+for (w, h) in ((520, 900), (1080, 1920)):   # כמעט 9:16 — אין לאן לנוע
+    b0, b1 = T.tour_full_box(w, h, 0, 0.0), T.tour_full_box(w, h, 0, T.SHOT)
+    ck((b1[3] - b1[1]) < (b0[3] - b0[1]) * 0.93 and abs(c(b0) - c(b1)) < 1e-6, ("portrait: zooms in, no pan", b0, b1))
 
 # ── חיתוך סימן מים החוצה ──
 ck(T.tour_photo_box(1440, 960, None) == (86, 0, 1354, 845), T.tour_photo_box(1440, 960, None))   # רצועה תחתונה 12% תמיד נחתכת
@@ -59,7 +65,7 @@ ck(sh[1]["title"] == "מעלית · ממ\"ד" and sh[1]["sub"] == TX["s2"]["main
 ck(sh[2]["title"] == "המטבח" and sh[3]["title"] == "", sh)
 ck(len(T.tour_plan(TX, list(range(12)), {}, [])) == T.MAX_SHOTS, "max shots")
 ck(T.tour_plan(TX, [0, 1], {}, [])[0]["title"] == TX["open"]["title"], "fallback title")
-ck(T.tour_duration(7) == 15.25, "duration")
+ck(T.tour_duration(7) == 21.2, "duration")   # [25/11] 7 × 2.6 + 3
 ck(T.tour_phone("0529125049") == "052-912-5049" and T.tour_phone("+972-52-9125049") == "052-912-5049", "phone fmt")
 ck(T.tour_phone("046000800") == "04-600-0800" and T.tour_phone("072-555-0101") == "072-555-0101", "phone fmt 2")
 
