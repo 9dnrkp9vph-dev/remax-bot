@@ -7413,6 +7413,7 @@ V2_PROPS_HTML = r'''<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset
   .prop .pth{flex:0 0 84px;width:84px;height:84px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#0E1D33,#2C4C77);
       display:flex;align-items:center;justify-content:center;position:relative}
   .prop .pth img{width:100%;height:100%;object-fit:cover;display:block;position:relative}
+  @media (min-width:1024px){.prop .pth{flex:0 0 168px;width:168px;height:126px;border-radius:16px}}   /* [26/11 אייל] במחשב — תמונה גדולה יותר */
   .prop .pm2{display:flex;gap:8px}
   .prop .pm2>div{flex:1;margin-top:0!important;min-width:0}
   .prop .a1.big,.prop .a2.big{min-height:46px;font-size:14px;border-radius:12px;gap:7px}
