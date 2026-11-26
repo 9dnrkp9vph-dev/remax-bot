@@ -6338,6 +6338,7 @@ render = function(){
 V2_NB_KIT = r"""<style>
   .nbk .nb{background:#fff;border-radius:22px;box-shadow:0 6px 20px rgba(30,58,95,.06);padding:15px 18px;
       display:flex;flex-direction:column;gap:9px;margin-bottom:12px}
+  .nbk .nb .nbImg{display:block;width:100%;aspect-ratio:16/10;max-height:220px;object-fit:cover;border-radius:16px;background:#F0EDE3}
   .nbk .nb .top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
   .nbk .nb .ad{font-size:16px;font-weight:700;line-height:1.3}
   .nbk .nb .dt{font-size:12.5px;color:#6B7280}
@@ -6446,7 +6447,10 @@ function nbCard(r, i){
   if (r.delisted) fam += '<div style="display:inline-flex;align-items:center;background:#EBE8DD;color:#5B6472;' +
     'font-weight:800;font-size:12px;padding:4px 10px;border-radius:999px;margin-top:6px;margin-inline-start:6px">' +
     'ירד מפרסום · ' + esc(r.delisted) + '</div>';
-  return '<div class="nb">' +
+  // 26/11 (סורק v15.9): תמונה ראשית — רק למודעות חדשות; בלי תמונה הכרטיס כמו קודם
+  var nbImg = /^https?:\/\//.test(String(r.image || ''))
+    ? '<img class="nbImg" src="' + esc(r.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' : '';
+  return '<div class="nb">' + nbImg +
     '<div class="top"><div><div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ')) + '</div>' +
     // 25/11 (אייל: 'למה אני לא רואה את כל הפרטים של הנכס אלה רק חצי?'): התיאור נחתך ל-90 תווים.
     // עכשיו קצר מוצג כולו; ארוך — 90 התווים הראשונים + 'הצג הכל' שפותח את הטקסט המלא במקום.
@@ -13079,7 +13083,9 @@ def y2_norm_private(row):
            "קומות בבניין": y2_num_str(g("total_floors")),
            # 26/09 (אייל: "רק מה שפורסם לראשונה עכשיו למעלה"): 'נראה לראשונה' = תאריך הפתיחה בגיליון הסורק
            # (imported_at); לא משתנה לעולם אחרי הקליטה הראשונה (ראה y2_nb_first_seen). 'נוצר בתאריך' = modified של יד2.
-           "נראה לראשונה": y2_first_seen_str(g("imported_at"))}
+           "נראה לראשונה": y2_first_seen_str(g("imported_at")),
+           # 26/11 (סורק v15.9): התמונה הראשית של המודעה — רק למודעות חדשות
+           "תמונה": g("image") if g("image").startswith("http") else ""}
     # created_at_source הוא timestamptz — פורמט לא-ISO (למשל 31/08/2026 10:22 מ-modified
     # של יד2) החזיר 400 מ-Supabase (אומת חי 31/08). inv_parse_dt מנרמל; לא-פריס → None.
     _cs = inv_parse_dt(g("listing_date"))

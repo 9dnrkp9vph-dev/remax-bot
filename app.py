@@ -10452,6 +10452,7 @@ def _nb_row_out(r, ad, city, addr, owner, lister, dropped, ctx):
         "wa": _wa_phone(ophone),
         "agent": lister,
         "link": _nb_clean(r.get("קישור", "")),
+        "image": (lambda _u: _u if _u.startswith("http") else "")(_nb_clean(r.get("תמונה", ""))),   # 26/11: סורק v15.9
         "date": _nb_clean(r.get("נראה לראשונה", "") or r.get("נוצר בתאריך", "") or r.get("תאריך יצירה", "")),   # 26/09: נראה לראשונה
         "stat": _vstat or None,
         # [NB-MEET 15/11] פגישות של סוכנים אחרים על הנכס (שלי — כבר בשורת הסטטוס)
